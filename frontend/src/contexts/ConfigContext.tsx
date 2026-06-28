@@ -147,6 +147,7 @@ const defaultConfig: AppConfig = {
   },
   docker: {
     folders: ["/var/lib/linuxio/docker"],
+    requireMountsForFolders: false,
     proxy: {
       caddyEnabled: false,
       baseDomain: "",
@@ -238,6 +239,9 @@ const applyDefaults = (
         cloneArray(docker.folders) ??
         cloneArray(defaultConfig.docker.folders) ??
         [],
+      requireMountsForFolders:
+        docker.requireMountsForFolders ??
+        defaultConfig.docker.requireMountsForFolders,
       proxy: {
         caddyEnabled:
           docker.proxy?.caddyEnabled ?? defaultConfig.docker.proxy.caddyEnabled,
@@ -309,6 +313,13 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const queryClient = useQueryClient();
   const { mutate: setConfigRemote } = linuxio.config.set.useMutation({
     onSuccess: (_result, patch) => {
+      if (patch.docker?.requireMountsForFolders !== undefined) {
+        toast.success(
+          patch.docker.requireMountsForFolders
+            ? "Docker will wait for configured folder mounts."
+            : "Docker folder mount ordering disabled.",
+        );
+      }
       if (patch.docker?.folders === undefined) return;
       void queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_compose_projects.queryKey(),

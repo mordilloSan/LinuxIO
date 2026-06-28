@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,9 +13,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-var healthRunCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
-}
+var healthFetchPreviousUncleanBoot = loginhistory.FetchPreviousUncleanBoot
 
 func FetchSystemHealthSummary(ctx context.Context, username string, privileged bool, sessionStartedAt time.Time) (*apischema.SystemHealthSummary, error) {
 	summary := &apischema.SystemHealthSummary{
@@ -159,83 +155,18 @@ func DetectUncleanShutdown(parent context.Context) (bool, string, error) {
 	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
-	output, err := healthRunCommand(ctx, "last", "-x", "-F", "-n", "6", "reboot", "shutdown")
+	startedAt, unclean, err := healthFetchPreviousUncleanBoot(ctx)
 	if err != nil {
-		return false, "", err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return false, "", ctxErr
+		}
+		return false, "", nil
 	}
-
-	unclean, bootID := parseUncleanShutdownOutput(string(output))
-	return unclean, bootID, nil
-}
-
-// parseUncleanShutdownOutput inspects `last -x -F` output and reports whether
-// the previous boot ended uncleanly. When unclean, it also returns a stable
-// identifier derived from the previous boot's start timestamp so that a
-// dismissal can be scoped to that specific event.
-//
-// The check matches Cockpit's: a previous boot is unclean when its line in
-// `last` is marked "still running" (util-linux convention for an unfinished
-// session) or "crash" (wtmpdb convention). Anything else — including a clean
-// shutdown record between the two reboots — counts as clean.
-func parseUncleanShutdownOutput(output string) (bool, string) {
-	lines := strings.Split(output, "\n")
-	foundCurrent := false
-	for _, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if line == "" ||
-			strings.HasPrefix(line, "wtmp begins") ||
-			strings.HasPrefix(line, "btmp begins") {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		kind := fields[0]
-		if kind != "reboot" && kind != "shutdown" {
-			continue
-		}
-
-		if !foundCurrent {
-			// First valid event = most recent. On any running system this
-			// should be the current boot; bail out otherwise.
-			if kind != "reboot" {
-				return false, ""
-			}
-			foundCurrent = true
-			continue
-		}
-
-		// Second valid event = what came before the current boot.
-		if kind == "shutdown" {
-			return false, ""
-		}
-		// Previous reboot with no shutdown between it and the current boot.
-		// Only flag when `last` itself marks the session as unfinished, to
-		// avoid false positives from rotated/truncated wtmp files.
-		if !strings.Contains(line, "crash") && !strings.Contains(line, "still running") {
-			return false, ""
-		}
-		return true, extractBootTimestamp(line)
+	if !unclean {
+		return false, "", nil
 	}
-	return false, ""
-}
-
-var lastFullTimePattern = regexp.MustCompile(`\b([A-Z][a-z]{2})\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})\s+(\d{4})\b`)
-
-// extractBootTimestamp returns the unix-epoch seconds of the boot start time
-// found in a `last -F` line. Empty when the line can't be parsed — callers
-// treat that as "no dismissal possible" and keep showing the warning.
-func extractBootTimestamp(line string) string {
-	m := lastFullTimePattern.FindStringSubmatch(line)
-	if len(m) != 6 {
-		return ""
+	if startedAt.IsZero() {
+		return true, "", nil
 	}
-	t, err := time.Parse("Mon Jan 2 15:04:05 2006",
-		strings.Join([]string{m[1], m[2], m[3], m[4], m[5]}, " "))
-	if err != nil {
-		return ""
-	}
-	return strconv.FormatInt(t.Unix(), 10)
+	return true, strconv.FormatInt(startedAt.Unix(), 10), nil
 }

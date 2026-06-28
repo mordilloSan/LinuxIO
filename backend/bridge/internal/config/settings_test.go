@@ -23,6 +23,7 @@ func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 	require.Equal(t, []string{"overview", "system", "cpu", "memory", "docker", "nic", "fs", "mb", "gpu", "drive"}, app.DashboardOrder)
 	require.Equal(t, 1, app.ChunkSizeMB)
 	require.Equal(t, []AbsolutePath{"/home/miguel/docker"}, cfg.Docker.Folders)
+	require.False(t, cfg.Docker.RequireMountsForFolders)
 
 	require.NotNil(t, app.ThemeColors)
 	require.NotNil(t, app.ThemeColors.Light)
@@ -78,6 +79,7 @@ jobs:
 	require.NotNil(t, cfg.AppSettings.HardwareSections)
 	require.Equal(t, defaultViewModes(), cfg.AppSettings.ViewModes)
 	require.Equal(t, 1, cfg.AppSettings.ChunkSizeMB)
+	require.False(t, cfg.Docker.RequireMountsForFolders)
 	require.Equal(t, 1000, cfg.Jobs.NotificationMinIntervalMs)
 	require.Equal(t, 16, cfg.Jobs.ProgressMinBytesMB)
 	require.Equal(t, 1, cfg.Jobs.HeavyArchiveConcurrency)

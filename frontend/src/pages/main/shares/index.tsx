@@ -406,6 +406,10 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
+  const { reason: sambaReason, status: sambaStatus } = useCapability(
+    "sambaServerAvailable",
+  );
+  const sambaUnavailable = sambaStatus === "unavailable";
   const [path, setPath] = useState("");
   const [sambaEnabled, setSambaEnabled] = useState(true);
   const [nfsEnabled, setNFSEnabled] = useState(false);
@@ -423,6 +427,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
 
   const isPending = sambaCreate.isPending || nfsCreate.isPending;
   const resolvedName = sambaName.trim() || inferShareName(path);
+  const effectiveSambaEnabled = sambaEnabled && !sambaUnavailable;
 
   const handleClose = () => {
     setPath("");
@@ -445,11 +450,11 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
       setValidationError("Folder path is required");
       return;
     }
-    if (!sambaEnabled && !nfsEnabled) {
+    if (!effectiveSambaEnabled && !nfsEnabled) {
       setValidationError("Enable SMB and/or NFS for this folder share");
       return;
     }
-    if (sambaEnabled && !resolvedName) {
+    if (effectiveSambaEnabled && !resolvedName) {
       setValidationError("Share name is required when SMB is enabled");
       return;
     }
@@ -467,7 +472,7 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
     let createdAny = false;
 
     try {
-      if (sambaEnabled) {
+      if (effectiveSambaEnabled) {
         const sambaProperties: Record<string, string> = {
           path: normalizedPath,
           browseable: "yes",
@@ -546,13 +551,17 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
             <AppFormControlLabel
               control={
                 <AppCheckbox
-                  checked={sambaEnabled}
+                  checked={effectiveSambaEnabled}
                   onChange={(event) => setSambaEnabled(event.target.checked)}
                 />
               }
+              disabled={sambaUnavailable}
               label="Enable SMB"
             />
-            {sambaEnabled ? (
+            {sambaUnavailable ? (
+              <AppAlert severity="warning">{sambaReason}</AppAlert>
+            ) : null}
+            {effectiveSambaEnabled ? (
               <>
                 <AppTextField
                   className="app-text-field--compact-copy"
@@ -666,6 +675,10 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
+  const { reason: sambaReason, status: sambaStatus } = useCapability(
+    "sambaServerAvailable",
+  );
+  const sambaUnavailable = sambaStatus === "unavailable";
   const [sambaEnabled, setSambaEnabled] = useState(Boolean(group?.samba));
   const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
   const [sambaName, setSambaName] = useState(
@@ -706,16 +719,24 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
     return null;
   }
 
+  const hasExistingSamba = Boolean(group.samba);
+  const effectiveSambaEnabled =
+    sambaEnabled && (!sambaUnavailable || hasExistingSamba);
+
   const handleSave = async () => {
     const resolvedName = sambaName.trim() || inferShareName(group.path);
     const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
 
-    if (!sambaEnabled && !nfsEnabled) {
+    if (!effectiveSambaEnabled && !nfsEnabled) {
       setValidationError("Enable SMB and/or NFS for this folder share");
       return;
     }
-    if (sambaEnabled && !resolvedName) {
+    if (effectiveSambaEnabled && !resolvedName) {
       setValidationError("Share name is required when SMB is enabled");
+      return;
+    }
+    if (effectiveSambaEnabled && sambaUnavailable) {
+      setValidationError(sambaReason);
       return;
     }
     if (nfsEnabled && nfsUnavailable) {
@@ -732,7 +753,7 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
     let changedAny = false;
 
     try {
-      if (sambaEnabled) {
+      if (effectiveSambaEnabled) {
         const sambaProperties = buildFolderSambaProperties(
           group.path,
           comment,
@@ -830,13 +851,17 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
             <AppFormControlLabel
               control={
                 <AppCheckbox
-                  checked={sambaEnabled}
+                  checked={effectiveSambaEnabled}
                   onChange={(event) => setSambaEnabled(event.target.checked)}
                 />
               }
+              disabled={sambaUnavailable && !hasExistingSamba}
               label="Enable SMB"
             />
-            {sambaEnabled ? (
+            {sambaUnavailable ? (
+              <AppAlert severity="warning">{sambaReason}</AppAlert>
+            ) : null}
+            {effectiveSambaEnabled ? (
               <>
                 <AppTextField
                   className="app-text-field--compact-copy"

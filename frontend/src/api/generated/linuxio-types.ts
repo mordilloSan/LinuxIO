@@ -225,10 +225,12 @@ export interface CapabilitiesResponse {
   watchtower_available: boolean;
   indexer_available: boolean;
   lm_sensors_available: boolean;
+  memory_inventory_available: boolean;
   smartmontools_available: boolean;
   packagekit_available: boolean;
   nfs_client_available: boolean;
   nfs_server_available: boolean;
+  samba_server_available: boolean;
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
@@ -237,10 +239,12 @@ export interface CapabilitiesResponse {
   watchtower_error?: string;
   indexer_error?: string;
   lm_sensors_error?: string;
+  memory_inventory_error?: string;
   smartmontools_error?: string;
   packagekit_error?: string;
   nfs_client_error?: string;
   nfs_server_error?: string;
+  samba_server_error?: string;
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
@@ -318,6 +322,7 @@ export interface ConfigDockerDashboardSections {
 
 export interface ConfigDockerPayload {
   folders?: string[];
+  requireMountsForFolders?: boolean;
   proxy?: ConfigDockerProxyPayload;
 }
 
@@ -656,6 +661,7 @@ export interface DockerProxySettings {
 
 export interface DockerSettings {
   folders: string[];
+  requireMountsForFolders: boolean;
   proxy: DockerProxySettings;
 }
 

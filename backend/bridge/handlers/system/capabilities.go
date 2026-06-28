@@ -79,6 +79,14 @@ var capabilityRegistry = []CapabilitySpec{
 		Install: &InstallSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
 	},
 	{
+		Name:    "memory_inventory",
+		LogName: "Memory module inventory",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(CheckMemoryModuleInventoryAvailability(ctx))
+		},
+		Install: &InstallSpec{PackageDebian: "dmidecode", PackageRHEL: "dmidecode"},
+	},
+	{
 		Name:    "smartmontools",
 		LogName: "smartmontools",
 		Detect: func(_ context.Context) (bool, string) {
@@ -113,6 +121,20 @@ var capabilityRegistry = []CapabilitySpec{
 			PackageRHEL:   "nfs-utils",
 			ServiceDebian: "nfs-kernel-server.service",
 			ServiceRHEL:   "nfs-server.service",
+			EnableService: true,
+		},
+	},
+	{
+		Name:    "samba_server",
+		LogName: "Samba server",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(nfsshares.CheckSambaServerAvailability())
+		},
+		Install: &InstallSpec{
+			PackageDebian: "samba",
+			PackageRHEL:   "samba",
+			ServiceDebian: "smbd.service",
+			ServiceRHEL:   "smb.service",
 			EnableService: true,
 		},
 	},
@@ -231,6 +253,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "lm_sensors":
 		out.LMSensorsAvailable, out.LMSensorsError = ok, errPtr
+	case "memory_inventory":
+		out.MemoryInventoryAvailable, out.MemoryInventoryError = ok, errPtr
 	case "smartmontools":
 		out.SmartmontoolsAvailable, out.SmartmontoolsError = ok, errPtr
 	case "packagekit":
@@ -239,6 +263,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.NFSClientAvailable, out.NFSClientError = ok, errPtr
 	case "nfs_server":
 		out.NFSServerAvailable, out.NFSServerError = ok, errPtr
+	case "samba_server":
+		out.SambaServerAvailable, out.SambaServerError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":

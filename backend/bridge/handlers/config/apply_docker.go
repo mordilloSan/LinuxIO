@@ -12,6 +12,7 @@ func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *configDocke
 	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
+	applyOptionalBool(&docker.RequireMountsForFolders, payload.RequireMountsForFolders)
 	if payload.Proxy != nil {
 		applyDockerProxyUpdate(&docker.Proxy, payload.Proxy)
 	}

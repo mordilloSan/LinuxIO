@@ -31,6 +31,6 @@ func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoReque
 }
 
 func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store)
+	result, err := SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store, h.rt.Session.Privileged)
 	return bridgeipc.EmitResult(emit, result, err)
 }

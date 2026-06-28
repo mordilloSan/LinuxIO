@@ -96,8 +96,9 @@ type DockerProxy struct {
 
 // Docker holds Docker-related settings
 type Docker struct {
-	Folders []AbsolutePath `json:"folders" yaml:"folders"`
-	Proxy   DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
+	Folders                 []AbsolutePath `json:"folders" yaml:"folders"`
+	RequireMountsForFolders bool           `json:"requireMountsForFolders" yaml:"requireMountsForFolders"`
+	Proxy                   DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
 }
 
 // PersistedJobSettings holds job progress and worker tuning settings.

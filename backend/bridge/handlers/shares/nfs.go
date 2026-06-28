@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -18,29 +17,14 @@ const exportsFile = "/etc/exports"
 
 const nfsServerInstallHint = "nfs-kernel-server or nfs-utils"
 
-var nfsServerCommandFallbackDirs = []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"}
-
 var (
 	validExportPath = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]*$`)
 	exportLineRegex = regexp.MustCompile(`^(\S+)\s+(.+)$`)
 	clientRegex     = regexp.MustCompile(`(\S+?)(\([^)]*\))?\s*`)
 )
 
-func findNFSServerCommand(command string) (string, error) {
-	if path, err := exec.LookPath(command); err == nil {
-		return path, nil
-	}
-	for _, dir := range nfsServerCommandFallbackDirs {
-		path := filepath.Join(dir, command)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-			return path, nil
-		}
-	}
-	return "", exec.ErrNotFound
-}
-
 func CheckNFSServerAvailability() (bool, error) {
-	_, err := findNFSServerCommand("exportfs")
+	_, err := findServerCommand("exportfs")
 	if err != nil {
 		return false, fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
 	}
@@ -261,7 +245,7 @@ func parseExportLine(line string) (apischema.NFSExport, error) {
 func getActiveExports(ctx context.Context) map[string]bool {
 	active := make(map[string]bool)
 
-	exportfs, findErr := findNFSServerCommand("exportfs")
+	exportfs, findErr := findServerCommand("exportfs")
 	if findErr != nil {
 		slog.Debug("exportfs inspection skipped", "error", findErr)
 		return active
@@ -313,7 +297,7 @@ func formatExportLine(path string, clients []apischema.NFSClient) string {
 
 // applyNFSExports runs exportfs -ra to apply changes
 func applyNFSExports(ctx context.Context) error {
-	exportfs, findErr := findNFSServerCommand("exportfs")
+	exportfs, findErr := findServerCommand("exportfs")
 	if findErr != nil {
 		return fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
 	}
