@@ -42,7 +42,10 @@ type InstallSpec struct {
 	RequiresDocker    bool
 }
 
-const OptionalComponentWatchtower = "watchtower"
+const (
+	OptionalComponentIndexer    = "indexer"
+	OptionalComponentWatchtower = "watchtower"
+)
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -68,6 +71,9 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Indexer API",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			OptionalComponent: OptionalComponentIndexer,
 		},
 	},
 	{

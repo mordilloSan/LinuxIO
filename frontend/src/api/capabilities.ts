@@ -18,7 +18,7 @@ export interface CapabilityDef {
   /**
    * Whether the backend can install this capability via
    * `system.install_capability`. Omit for capabilities that have no
-   * install path (Docker, the LinuxIO indexer, PackageKit itself).
+   * install path (Docker, PackageKit itself).
    */
   installable?: {
     /** True when installing also requires PackageKit (i.e. there is a
@@ -95,6 +95,7 @@ export const CAPABILITIES = [
     icon: "mdi:magnify-scan",
     reasonUnknown: "Indexer availability is still being checked.",
     reasonUnavailable: "Indexer API is unavailable.",
+    installable: { requiresPackageKit: false },
   },
   {
     wire: "lm_sensors",
