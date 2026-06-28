@@ -370,6 +370,13 @@ const linuxio = {
     get_drive_info: createEndpoint("storage", "get_drive_info", {
       kind: "none",
     }),
+    list_cifs_mounts: createEndpoint("storage", "list_cifs_mounts", {
+      kind: "none",
+    }),
+    list_cifs_shares: createEndpoint("storage", "list_cifs_shares", {
+      kind: "field",
+      field: "server",
+    }),
     list_lvs: createEndpoint("storage", "list_lvs", { kind: "none" }),
     list_nfs_exports: createEndpoint("storage", "list_nfs_exports", {
       kind: "field",
@@ -380,12 +387,15 @@ const linuxio = {
     }),
     list_pvs: createEndpoint("storage", "list_pvs", { kind: "none" }),
     list_vgs: createEndpoint("storage", "list_vgs", { kind: "none" }),
+    mount_cifs: createEndpoint("storage", "mount_cifs", { kind: "object" }),
     mount_nfs: createEndpoint("storage", "mount_nfs", { kind: "object" }),
+    remount_cifs: createEndpoint("storage", "remount_cifs", { kind: "object" }),
     remount_nfs: createEndpoint("storage", "remount_nfs", { kind: "object" }),
     resize_lv: createEndpoint("storage", "resize_lv", { kind: "object" }),
     run_smart_test: createEndpoint("storage", "run_smart_test", {
       kind: "object",
     }),
+    unmount_cifs: createEndpoint("storage", "unmount_cifs", { kind: "object" }),
     unmount_filesystem: createEndpoint("storage", "unmount_filesystem", {
       kind: "field",
       field: "mountpoint",

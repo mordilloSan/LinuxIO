@@ -145,6 +145,17 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 	},
 	{
+		Name:    "samba_client",
+		LogName: "Samba client",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(storage.CheckCIFSClientAvailability())
+		},
+		Install: &InstallSpec{
+			PackageDebian: "cifs-utils smbclient",
+			PackageRHEL:   "cifs-utils samba-client",
+		},
+	},
+	{
 		Name:    "tuned",
 		LogName: "TuneD",
 		Detect: func(ctx context.Context) (bool, string) {
@@ -271,6 +282,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.NFSServerAvailable, out.NFSServerError = ok, errPtr
 	case "samba_server":
 		out.SambaServerAvailable, out.SambaServerError = ok, errPtr
+	case "samba_client":
+		out.SambaClientAvailable, out.SambaClientError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":

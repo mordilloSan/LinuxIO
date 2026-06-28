@@ -228,17 +228,30 @@ type ServerRequest struct {
 }
 
 type ServerExportMountOptionsPersistRequest struct {
-	Server     string `json:"server"`
-	ExportPath string `json:"exportPath"`
-	Mountpoint string `json:"mountpoint"`
-	Options    string `json:"options"`
-	Persist    string `json:"persist"`
+	Server     string   `json:"server"`
+	ExportPath string   `json:"exportPath"`
+	Mountpoint string   `json:"mountpoint"`
+	Options    []string `json:"options"`
+	Persist    string   `json:"persist"`
+}
+
+// CIFSMountRequest carries SMB mount input. Password is written only to the
+// root-only credentials file referenced by fstab; it is never echoed back in
+// any model. All CIFS mounts are persistent (fstab-backed).
+type CIFSMountRequest struct {
+	Server     string   `json:"server"`
+	Share      string   `json:"share"`
+	Mountpoint string   `json:"mountpoint"`
+	Username   string   `json:"username"`
+	Password   string   `json:"password"`
+	Domain     string   `json:"domain"`
+	Options    []string `json:"options"`
 }
 
 type MountpointOptionsUpdateFstabRequest struct {
-	Mountpoint  string `json:"mountpoint"`
-	Options     string `json:"options"`
-	UpdateFstab string `json:"updateFstab"`
+	Mountpoint  string   `json:"mountpoint"`
+	Options     []string `json:"options"`
+	UpdateFstab string   `json:"updateFstab"`
 }
 
 type MountpointRequest struct {

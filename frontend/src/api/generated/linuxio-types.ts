@@ -194,6 +194,33 @@ export interface BootIDRequest {
   bootId: string;
 }
 
+export interface CIFSMount {
+  domain: string;
+  free: number;
+  fsType: string;
+  inFstab: boolean;
+  mounted: boolean;
+  mountpoint: string;
+  options: string[];
+  server: string;
+  share: string;
+  size: number;
+  source: string;
+  used: number;
+  usedPct: number;
+  username: string;
+}
+
+export interface CIFSMountRequest {
+  server: string;
+  share: string;
+  mountpoint: string;
+  username: string;
+  password: string;
+  domain: string;
+  options: string[];
+}
+
 export interface CPUInfoResponse {
   cores: number;
   currentFrequencies: number[];
@@ -231,6 +258,7 @@ export interface CapabilitiesResponse {
   nfs_client_available: boolean;
   nfs_server_available: boolean;
   samba_server_available: boolean;
+  samba_client_available: boolean;
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
@@ -245,6 +273,7 @@ export interface CapabilitiesResponse {
   nfs_client_error?: string;
   nfs_server_error?: string;
   samba_server_error?: string;
+  samba_client_error?: string;
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
@@ -1193,7 +1222,7 @@ export interface MountpointNameRequest {
 
 export interface MountpointOptionsUpdateFstabRequest {
   mountpoint: string;
-  options: string;
+  options: string[];
   updateFstab: string;
 }
 
@@ -1407,7 +1436,7 @@ export interface ServerExportMountOptionsPersistRequest {
   server: string;
   exportPath: string;
   mountpoint: string;
-  options: string;
+  options: string[];
   persist: string;
 }
 
@@ -2377,6 +2406,12 @@ export interface LinuxIOSchema {
       result: SuccessResponse;
     };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
+    list_cifs_mounts: { input: []; request: void; result: CIFSMount[] };
+    list_cifs_shares: {
+      input: [server: string];
+      request: ServerRequest;
+      result: string[];
+    };
     list_lvs: { input: []; request: void; result: LogicalVolume[] };
     list_nfs_exports: {
       input: [server: string];
@@ -2386,9 +2421,19 @@ export interface LinuxIOSchema {
     list_nfs_mounts: { input: []; request: void; result: NFSMount[] };
     list_pvs: { input: []; request: void; result: PhysicalVolume[] };
     list_vgs: { input: []; request: void; result: VolumeGroup[] };
+    mount_cifs: {
+      input: [request: CIFSMountRequest];
+      request: CIFSMountRequest;
+      result: StorageMountResult;
+    };
     mount_nfs: {
       input: [request: ServerExportMountOptionsPersistRequest];
       request: ServerExportMountOptionsPersistRequest;
+      result: StorageMountResult;
+    };
+    remount_cifs: {
+      input: [request: MountpointOptionsUpdateFstabRequest];
+      request: MountpointOptionsUpdateFstabRequest;
       result: StorageMountResult;
     };
     remount_nfs: {
@@ -2405,6 +2450,11 @@ export interface LinuxIOSchema {
       input: [request: DeviceTestTypeRequest];
       request: DeviceTestTypeRequest;
       result: JobSnapshot;
+    };
+    unmount_cifs: {
+      input: [request: MountpointRemoveFstabRequest];
+      request: MountpointRemoveFstabRequest;
+      result: StorageWarningResult;
     };
     unmount_filesystem: {
       input: [mountpoint: string];
