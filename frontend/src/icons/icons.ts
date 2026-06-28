@@ -42,7 +42,7 @@ addCollection({
   },
 });
 
-// mdi - 104 icons
+// mdi - 105 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -143,6 +143,9 @@ addCollection({
     },
     drag: {
       body: '<path fill="currentColor" d="M7 19v-2h2v2zm4 0v-2h2v2zm4 0v-2h2v2zm-8-4v-2h2v2zm4 0v-2h2v2zm4 0v-2h2v2zm-8-4V9h2v2zm4 0V9h2v2zm4 0V9h2v2zM7 7V5h2v2zm4 0V5h2v2zm4 0V5h2v2z"/>',
+    },
+    eject: {
+      body: '<path fill="currentColor" d="M12 5L5.33 15h13.34M5 17h14v2H5z"/>',
     },
     ethernet: {
       body: '<path fill="currentColor" d="M7 15h2v3h2v-3h2v3h2v-3h2v3h2V9h-4V6H9v3H5v9h2zM4.38 3h15.25A2.37 2.37 0 0 1 22 5.38v14.25A2.37 2.37 0 0 1 19.63 22H4.38A2.37 2.37 0 0 1 2 19.63V5.38C2 4.06 3.06 3 4.38 3"/>',
