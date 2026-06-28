@@ -13,6 +13,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -28,7 +29,29 @@ import { formatFileSize } from "@/utils/formaters";
 const StateChip: React.FC<{
   state: string;
   status: string;
-}> = ({ state, status }) => {
+  stopping?: boolean;
+}> = ({ state, status, stopping = false }) => {
+  if (stopping) {
+    return (
+      <Chip
+        color="warning"
+        label={
+          <span
+            style={{
+              alignItems: "center",
+              display: "inline-flex",
+              gap: 4,
+            }}
+          >
+            <AppCircularProgress color="inherit" size={12} />
+            Stopping
+          </span>
+        }
+        size="small"
+        variant="soft"
+      />
+    );
+  }
   if (status.toLowerCase().includes("unhealthy"))
     return (
       <Chip color="warning" label="Unhealthy" size="small" variant="soft" />
@@ -44,6 +67,7 @@ const StateChip: React.FC<{
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 const RESOURCE_TABLE_MAX_HEIGHT = 201;
+const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 
 const getContainerDisplayName = (names?: string[]) =>
   names?.[0]?.replace(/^\//, "") || "Unnamed";
@@ -62,7 +86,13 @@ const stripStatusDetail = (status: string) =>
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-const DockerDashboard: React.FC = () => {
+interface DockerDashboardProps {
+  stoppingContainerIds?: ReadonlySet<string>;
+}
+
+const DockerDashboard: React.FC<DockerDashboardProps> = ({
+  stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
+}) => {
   const theme = useAppTheme();
   const [, setSearchParams] = useSearchParams();
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
@@ -255,7 +285,11 @@ const DockerDashboard: React.FC = () => {
       id: "state",
       header: "STATE",
       cell: ({ row }) => (
-        <StateChip state={row.original.State} status={row.original.Status} />
+        <StateChip
+          state={row.original.State}
+          status={row.original.Status}
+          stopping={stoppingContainerIds.has(row.original.Id)}
+        />
       ),
       meta: {
         width: "96px",

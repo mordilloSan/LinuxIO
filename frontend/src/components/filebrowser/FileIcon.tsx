@@ -13,7 +13,7 @@ interface FileIconProps {
   size?: number;
 }
 
-const getIconForType = (filename?: string): string => {
+export const getIconForType = (filename?: string): string => {
   if (!filename) return "mdi:file";
 
   // Extract extension from filename
@@ -30,6 +30,9 @@ const getIconForType = (filename?: string): string => {
 
   // Spreadsheets
   if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "mdi:file-table";
+
+  // YAML
+  if (["yaml", "yml"].includes(ext)) return "mdi:file-cog-outline";
 
   // Images
   if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext))
@@ -114,6 +117,11 @@ const getIconColor = (
       "css",
     ].includes(ext)
   ) {
+    return FILE_TYPE_COLORS.code;
+  }
+
+  // YAML - config/code
+  if (["yaml", "yml"].includes(ext)) {
     return FILE_TYPE_COLORS.code;
   }
 
