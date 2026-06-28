@@ -264,6 +264,8 @@ const HistoryPlaceholder: React.FC<{
     <FrostedCard
       style={{
         minHeight: cardHeight,
+        boxSizing: "border-box",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
         padding: 6,

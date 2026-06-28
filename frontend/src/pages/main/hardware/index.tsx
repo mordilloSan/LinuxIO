@@ -227,7 +227,12 @@ const HardwarePage: React.FC = () => {
         title="System Information"
       />
       <AppCollapse in={sections.systemInfo}>
-        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
+        <AppGrid
+          alignItems="stretch"
+          container
+          spacing={4}
+          style={{ marginBottom: 16 }}
+        >
           {[
             { id: "motherboard", component: MotherboardInfoCard },
             { id: "cpu-details", component: CPUDetailsCard },
@@ -250,7 +255,12 @@ const HardwarePage: React.FC = () => {
         title="Hardware"
       />
       <AppCollapse in={sections.hardware}>
-        <AppGrid container spacing={4} style={{ marginBottom: 16 }}>
+        <AppGrid
+          alignItems="stretch"
+          container
+          spacing={4}
+          style={{ marginBottom: 16 }}
+        >
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
               <CPUHistoryCard />
@@ -303,7 +313,12 @@ const HardwarePage: React.FC = () => {
           <SensorEmptyCard />
         ) : (
           <>
-            <AppGrid container spacing={2} style={{ marginBottom: 16 }}>
+            <AppGrid
+              alignItems="stretch"
+              container
+              spacing={2}
+              style={{ marginBottom: 16 }}
+            >
               {visibleSensorGroups.map((group, idx) => (
                 <AppGrid
                   key={`${group.adapter}-${idx}`}
