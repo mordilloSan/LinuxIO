@@ -3,8 +3,9 @@ package system
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/shirou/gopsutil/v4/process"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func FetchProcesses(ctx context.Context) ([]apischema.ProcessInfo, error) {

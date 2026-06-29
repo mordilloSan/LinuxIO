@@ -458,12 +458,14 @@ tsc-only:
 
 golint-only:
 	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
-	@echo "   Running gofmt..."
+	@echo "   Running Go formatters..."
 ifneq ($(CI),)
-	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
+	@fmt_out="$$(cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt --diff 2>&1)"; \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then echo "$$fmt_out"; exit $$status; fi; \
+	if [ -n "$$fmt_out" ]; then echo "Go files need formatting:"; echo "$$fmt_out"; exit 1; fi
 else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt )
 endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
@@ -484,9 +486,6 @@ test-backend: $(GO_BUILD_PREREQ)
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
 
-# Informational only: reports functions unreachable from any main or test entry
-# point. Never fails the build (see `make test`); triage/remove at your pace.
-# `-test` is required so legitimate test-only helpers are not reported as dead.
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
@@ -848,7 +847,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"

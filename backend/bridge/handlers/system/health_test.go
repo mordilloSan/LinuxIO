@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDetectUncleanShutdownUsesPreviousUncleanBoot(t *testing.T) {

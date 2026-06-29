@@ -11,8 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	gopsnet "github.com/shirou/gopsutil/v4/net"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 var (

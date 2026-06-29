@@ -1,8 +1,9 @@
 package apischema
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/shirou/gopsutil/v4/load"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type AutoUpdateFrequency string

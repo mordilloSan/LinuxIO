@@ -7,8 +7,9 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 const sensorsJSONFixture = `{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jaypipes/ghw/pkg/pci"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 

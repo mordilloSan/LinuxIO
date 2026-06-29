@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/stretchr/testify/require"
+
+	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
 func TestRenderDockerMountOrderingDropIn(t *testing.T) {
