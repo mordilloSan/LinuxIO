@@ -249,9 +249,7 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 			bridgejobs.ActionDefault,
 		),
 		apischema.Runner[apischema.BatchPathRequest, apischema.JobSnapshot]("filebrowser.delete_batch").Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchPathRequest) (any, error) {
-				return runDeleteBatchJob(ctx, job, req)
-			},
+			runDeleteBatchJob,
 			bridgejobs.ActionDefault,
 		),
 		apischema.Runner[apischema.OptionalPathRequest, apischema.JobSnapshot]("filebrowser.index").Run(runIndexerJob, bridgejobs.SingletonSystem),

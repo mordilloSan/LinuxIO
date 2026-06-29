@@ -522,7 +522,7 @@ type GeneralLogsFollowRequest struct {
 type DockerSystemPruneRequest struct {
 	Containers bool `json:"containers"`
 	Images     bool `json:"images"`
-	BuildCache bool `json:"buildCache"` //nolint:tagliatelle
+	BuildCache bool `json:"buildCache"`
 	Networks   bool `json:"networks"`
 	Volumes    bool `json:"volumes"`
 }

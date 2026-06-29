@@ -62,8 +62,8 @@ func TestCollectStatInfo(t *testing.T) {
 		assert.NotNil(t, stat)
 		assert.NotEmpty(t, stat.Permissions)
 		// Verify it contains permission info (should mention read/write/execute)
-		assert.Positive(t,
-			len(stat.Permissions),
+		assert.NotEmpty(t,
+			stat.Permissions,
 			"permissions string should be populated",
 		)
 	})
@@ -98,8 +98,8 @@ func TestCollectStatInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, stat.Mode, "mode should be populated")
 		// Mode should start with '-' for regular file or 'd' for directory
-		assert.Positive(t,
-			len(stat.Mode),
+		assert.NotEmpty(t,
+			stat.Mode,
 			"mode string should not be empty",
 		)
 	})

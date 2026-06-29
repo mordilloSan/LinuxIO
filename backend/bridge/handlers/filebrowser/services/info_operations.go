@@ -20,7 +20,7 @@ func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, erro
 	}
 
 	// Build real path directly
-	realPath := filepath.Join(opts.Path)
+	realPath := filepath.Clean(opts.Path)
 
 	// Resolve symlinks
 	resolvedPath, isDir, err := iteminfo.ResolveSymlinks(realPath)
@@ -29,7 +29,7 @@ func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, erro
 	}
 
 	if !strings.HasSuffix(opts.Path, "/") && isDir {
-		opts.Path = opts.Path + "/"
+		opts.Path += "/"
 	}
 
 	var info *iteminfo.FileInfo

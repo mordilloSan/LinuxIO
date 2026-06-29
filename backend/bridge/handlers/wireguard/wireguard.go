@@ -249,7 +249,8 @@ func syncWireGuardConfig(ctx context.Context, name string) (string, error) {
 	stripCmd.Stderr = &stripErr
 	stripped, err := stripCmd.Output()
 	if err != nil {
-		out := append(stripped, stripErr.Bytes()...)
+		out := stripped
+		out = append(out, stripErr.Bytes()...)
 		return string(out), utils.CommandOutputError("wg-quick", []string{"strip", name}, out, err)
 	}
 

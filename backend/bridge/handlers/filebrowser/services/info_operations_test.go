@@ -165,7 +165,7 @@ func TestGetDirInfo(t *testing.T) {
 		info, err := GetDirInfo(dirPath, dirPath)
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
-		assert.Positive(t, len(info.Files))
+		assert.NotEmpty(t, info.Files)
 	})
 
 	t.Run("deep_nested_directory_structure", func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestGetDirInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should have the level2 subdirectory
-		assert.Positive(t, len(info.Folders))
+		assert.NotEmpty(t, info.Folders)
 	})
 }
 

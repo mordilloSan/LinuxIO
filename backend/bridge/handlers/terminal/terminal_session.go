@@ -78,7 +78,8 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 	cmd := exec.CommandContext(ctx, shellPath, "-i", "-l")
 	cmd.Dir = u.HomeDir
-	cmd.Env = append(env, "SHELL="+shellPath)
+	env = append(env, "SHELL="+shellPath)
+	cmd.Env = env
 
 	sysAttr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
 

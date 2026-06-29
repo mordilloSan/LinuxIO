@@ -2,7 +2,6 @@ package virt
 
 import (
 	"context"
-	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -25,9 +24,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Job[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
 		apischema.Job[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged()).Handle(handleCreate),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
-			func(ctx context.Context, stream net.Conn, req apischema.NameRequest) error {
-				return HandleConsoleSession(ctx, stream, req)
-			},
+			HandleConsoleSession,
 		),
 	)
 }

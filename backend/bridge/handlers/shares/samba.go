@@ -37,9 +37,7 @@ var (
 	smbcontrolReload = func(ctx context.Context) ([]byte, error) {
 		return exec.CommandContext(ctx, "smbcontrol", "all", "reload-config").CombinedOutput()
 	}
-	systemdReloadUnit = func(ctx context.Context, name string) error {
-		return systemd.ReloadUnit(ctx, name)
-	}
+	systemdReloadUnit = systemd.ReloadUnit
 	// sambaServerAvailable is the availability gate used by the create/update/
 	// delete preflights; overridable in tests. The capability registry calls
 	// CheckSambaServerAvailability directly.
