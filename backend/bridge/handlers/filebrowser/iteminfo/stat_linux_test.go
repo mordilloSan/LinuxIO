@@ -62,8 +62,8 @@ func TestCollectStatInfo(t *testing.T) {
 		assert.NotNil(t, stat)
 		assert.NotEmpty(t, stat.Permissions)
 		// Verify it contains permission info (should mention read/write/execute)
-		assert.True(t,
-			len(stat.Permissions) > 0,
+		assert.Positive(t,
+			len(stat.Permissions),
 			"permissions string should be populated",
 		)
 	})
@@ -83,8 +83,8 @@ func TestCollectStatInfo(t *testing.T) {
 
 		// Verify it's close to now (within a few seconds)
 		now := time.Now()
-		assert.True(t,
-			now.Sub(parsedTime) < 5*time.Second,
+		assert.Less(t,
+			now.Sub(parsedTime), 5*time.Second,
 			"modification time should be recent",
 		)
 	})
@@ -98,8 +98,8 @@ func TestCollectStatInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, stat.Mode, "mode should be populated")
 		// Mode should start with '-' for regular file or 'd' for directory
-		assert.True(t,
-			len(stat.Mode) > 0,
+		assert.Positive(t,
+			len(stat.Mode),
 			"mode string should not be empty",
 		)
 	})

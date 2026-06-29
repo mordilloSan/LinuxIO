@@ -138,7 +138,7 @@ func TestCreateZip(t *testing.T) {
 		// Verify zip file exists and has content
 		stat, err := os.Stat(zipPath)
 		assert.NoError(t, err, "zip file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "zip file should have content")
+		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
 	t.Run("create_zip_multiple_files", func(t *testing.T) {
@@ -151,7 +151,7 @@ func TestCreateZip(t *testing.T) {
 
 		stat, err := os.Stat(zipPath)
 		assert.NoError(t, err, "zip file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "zip file should have content")
+		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
 	t.Run("create_zip_with_directory", func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestCreateZip(t *testing.T) {
 
 		stat, err := os.Stat(zipPath)
 		assert.NoError(t, err, "zip file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "zip file should have content")
+		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
 	t.Run("create_zip_overwrites_existing", func(t *testing.T) {
@@ -190,8 +190,8 @@ func TestCreateZip(t *testing.T) {
 		// File should have been overwritten - size should likely be different
 		// (though size comparison isn't guaranteed, just check file exists and is valid)
 		assert.NoError(t, err, "should successfully overwrite zip file")
-		assert.Greater(t, secondStat.Size(), int64(0), "recreated zip should have content")
-		assert.Greater(t, firstStat.Size(), int64(0), "original zip should have content")
+		assert.Positive(t, secondStat.Size(), "recreated zip should have content")
+		assert.Positive(t, firstStat.Size(), "original zip should have content")
 	})
 }
 
@@ -208,7 +208,7 @@ func TestCreateTarGz(t *testing.T) {
 		// Verify tar.gz file exists and has content
 		stat, err := os.Stat(targzPath)
 		assert.NoError(t, err, "tar.gz file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "tar.gz file should have content")
+		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 
 	t.Run("create_targz_multiple_files", func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestCreateTarGz(t *testing.T) {
 
 		stat, err := os.Stat(targzPath)
 		assert.NoError(t, err, "tar.gz file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "tar.gz file should have content")
+		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 
 	t.Run("create_targz_with_directory", func(t *testing.T) {
@@ -234,7 +234,7 @@ func TestCreateTarGz(t *testing.T) {
 
 		stat, err := os.Stat(targzPath)
 		assert.NoError(t, err, "tar.gz file should exist")
-		assert.Greater(t, stat.Size(), int64(0), "tar.gz file should have content")
+		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 }
 

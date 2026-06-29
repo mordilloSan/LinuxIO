@@ -519,12 +519,12 @@ func TestCommonPrefix(t *testing.T) {
 
 	t.Run("different_roots", func(t *testing.T) {
 		result := CommonPrefix('/', "/path/a", "/home/b")
-		assert.Equal(t, "", result)
+		assert.Empty(t, result)
 	})
 
 	t.Run("no_common_prefix", func(t *testing.T) {
 		result := CommonPrefix('/', "a", "b")
-		assert.Equal(t, "", result)
+		assert.Empty(t, result)
 	})
 
 	t.Run("multiple_paths_with_common_prefix", func(t *testing.T) {

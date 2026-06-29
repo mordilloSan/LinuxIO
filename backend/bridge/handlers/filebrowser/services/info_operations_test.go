@@ -107,8 +107,8 @@ func TestGetDirInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, "empty", info.Name)
-		assert.Equal(t, 0, len(info.Files), "empty directory should have no files")
-		assert.Equal(t, 0, len(info.Folders), "empty directory should have no folders")
+		assert.Empty(t, info.Files, "empty directory should have no files")
+		assert.Empty(t, info.Folders, "empty directory should have no folders")
 	})
 
 	t.Run("get_directory_with_subdirectories", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestGetDirInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should list both files and subdirectories
-		assert.True(t, len(info.Files)+len(info.Folders) > 0)
+		assert.Positive(t, len(info.Files)+len(info.Folders))
 	})
 
 	t.Run("get_directory_with_hidden_files", func(t *testing.T) {
@@ -165,7 +165,7 @@ func TestGetDirInfo(t *testing.T) {
 		info, err := GetDirInfo(dirPath, dirPath)
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
-		assert.True(t, len(info.Files) > 0)
+		assert.Positive(t, len(info.Files))
 	})
 
 	t.Run("deep_nested_directory_structure", func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestGetDirInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should have the level2 subdirectory
-		assert.True(t, len(info.Folders) > 0)
+		assert.Positive(t, len(info.Folders))
 	})
 }
 
