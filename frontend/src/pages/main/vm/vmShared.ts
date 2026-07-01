@@ -7,12 +7,7 @@ import type {
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type VMAction =
-  | "start"
-  | "shutdown"
-  | "reboot"
-  | "force_off"
-  | "suspend"
-  | "resume";
+  "start" | "shutdown" | "reboot" | "force_off" | "suspend" | "resume";
 
 export type ConsoleSession = {
   stream: Stream | null;

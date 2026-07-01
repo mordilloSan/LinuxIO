@@ -11,11 +11,7 @@ import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 export type ContainerInfoSection =
-  | "overview"
-  | "monitoring"
-  | "ports"
-  | "networks"
-  | "volumes";
+  "overview" | "monitoring" | "ports" | "networks" | "volumes";
 
 const formatUptime = (createdUnix: number) => {
   const secs = Math.floor(Date.now() / 1000) - createdUnix;

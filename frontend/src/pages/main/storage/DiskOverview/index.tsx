@@ -124,8 +124,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         if (canceled) return;
         const mine = jobs.find((j) => {
           const request = j.request as
-            | { device?: string; testType?: string }
-            | undefined;
+            { device?: string; testType?: string } | undefined;
           return (
             j.type === "storage.run_smart_test" &&
             request?.device === deviceName &&
@@ -134,8 +133,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         });
         if (!mine) return;
         const request = mine.request as
-          | { device?: string; testType?: string }
-          | undefined;
+          { device?: string; testType?: string } | undefined;
         const testType: "short" | "long" =
           request?.testType === "long" ? "long" : "short";
         setStartPending(testType);

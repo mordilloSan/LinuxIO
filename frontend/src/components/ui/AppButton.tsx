@@ -3,12 +3,7 @@ import React from "react";
 import "./app-button.css";
 
 type ButtonColor =
-  | "primary"
-  | "secondary"
-  | "error"
-  | "warning"
-  | "success"
-  | "inherit";
+  "primary" | "secondary" | "error" | "warning" | "success" | "inherit";
 
 type ButtonVariant = "contained" | "outlined" | "text";
 

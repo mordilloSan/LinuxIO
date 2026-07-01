@@ -19,12 +19,7 @@ import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
 type SettingsTab =
-  | "general"
-  | "theme"
-  | "capabilities"
-  | "docker"
-  | "indexer"
-  | "power";
+  "general" | "theme" | "capabilities" | "docker" | "indexer" | "power";
 interface SettingsDialogProps {
   onClose: () => void;
   open: boolean;
