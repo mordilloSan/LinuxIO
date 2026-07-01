@@ -53,25 +53,28 @@ linters:
           paramsOnly: false
         underef:
           skipRecvDeref: false
-    gomodguard:
+    gomodguard_v2:
       blocked:
-        modules:
-          - github.com/godbus/dbus:
-              recommendations:
-                - github.com/godbus/dbus/v5
-              reason: use the v5 module path
-          - github.com/golang/protobuf:
-              recommendations:
-                - google.golang.org/protobuf
-              reason: see https://developers.google.com/protocol-buffers/docs/reference/go/faq#modules
-          - github.com/satori/go.uuid:
-              recommendations:
-                - github.com/google/uuid
-              reason: satori's package is not maintained
-          - github.com/gofrs/uuid:
-              recommendations:
-                - github.com/gofrs/uuid/v5
-              reason: gofrs' package was not go module before v5
+        - module: github.com/godbus/dbus
+          match-type: exact
+          recommendations:
+            - github.com/godbus/dbus/v5
+          reason: use the v5 module path
+        - module: github.com/golang/protobuf
+          match-type: exact
+          recommendations:
+            - google.golang.org/protobuf
+          reason: see https://developers.google.com/protocol-buffers/docs/reference/go/faq#modules
+        - module: github.com/satori/go.uuid
+          match-type: exact
+          recommendations:
+            - github.com/google/uuid
+          reason: satori's package is not maintained
+        - module: github.com/gofrs/uuid
+          match-type: exact
+          recommendations:
+            - github.com/gofrs/uuid/v5
+          reason: gofrs' package was not go module before v5
     govet:
       disable:
         - fieldalignment
@@ -118,10 +121,23 @@ linters:
       local-variables-are-used: true
       generated-is-used: true
   enable:
-  - cyclop
-  - gocognit
-  - unused
-  - staticcheck
+    - bodyclose
+    - cyclop
+    - durationcheck
+    - gocognit
+    - gocritic
+    - gomodguard_v2
+    - makezero
+    - nilnesserr
+    - nolintlint
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - testifylint
+    - unconvert
+    - unused
+    - usestdlibvars
+    - wastedassign
   exclusions:
     generated: lax
     presets:

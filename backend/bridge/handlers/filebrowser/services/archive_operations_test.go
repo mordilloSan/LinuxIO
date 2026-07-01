@@ -31,7 +31,7 @@ func TestComputeArchiveSize(t *testing.T) {
 	t.Run("single_file", func(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "file1.txt", []byte("hello"))
 		size, err := ComputeArchiveSize([]string{filePath})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(5), size, "single file size should be 5 bytes")
 	})
 
@@ -39,7 +39,7 @@ func TestComputeArchiveSize(t *testing.T) {
 		file1 := createTestFile(t, tmpDir, "file1.txt", []byte("hello"))
 		file2 := createTestFile(t, tmpDir, "file2.txt", []byte("world"))
 		size, err := ComputeArchiveSize([]string{file1, file2})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(10), size, "two files should total 10 bytes")
 	})
 
@@ -49,7 +49,7 @@ func TestComputeArchiveSize(t *testing.T) {
 		createTestFile(t, subDir, "file2.txt", []byte("data"))
 
 		size, err := ComputeArchiveSize([]string{subDir})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(8), size, "directory with two 4-byte files should be 8 bytes")
 	})
 
@@ -60,19 +60,19 @@ func TestComputeArchiveSize(t *testing.T) {
 		createTestFile(t, dir2, "file2.txt", []byte("bb"))
 
 		size, err := ComputeArchiveSize([]string{dir1})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(3), size, "nested directories with 1+2 byte files should be 3 bytes")
 	})
 
 	t.Run("nonexistent_file", func(t *testing.T) {
 		_, err := ComputeArchiveSize([]string{filepath.Join(tmpDir, "nonexistent.txt")})
-		assert.Error(t, err, "should error on nonexistent file")
+		require.Error(t, err, "should error on nonexistent file")
 	})
 
 	t.Run("empty_directory", func(t *testing.T) {
 		emptyDir := createTestDir(t, tmpDir, "empty")
 		size, err := ComputeArchiveSize([]string{emptyDir})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(0), size, "empty directory should have 0 size")
 	})
 
@@ -82,7 +82,7 @@ func TestComputeArchiveSize(t *testing.T) {
 		createTestFile(t, dir1, "file2.txt", []byte("defgh"))
 
 		size, err := ComputeArchiveSize([]string{file1, dir1})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// File1 is 3 bytes, file2.txt is 5 bytes = 8 bytes total for content files
 		assert.GreaterOrEqual(t, size, int64(8), "should include both files (at least 8 bytes)")
 	})
@@ -121,7 +121,7 @@ func TestComputeExtractSize(t *testing.T) {
 
 	t.Run("unsupported_format", func(t *testing.T) {
 		_, err := ComputeExtractSize(filepath.Join(tmpDir, "file.bin"))
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }
 
@@ -133,11 +133,11 @@ func TestCreateZip(t *testing.T) {
 		zipPath := filepath.Join(tmpDir, "test.zip")
 
 		err := CreateZip(zipPath, nil, zipPath, srcFile)
-		assert.NoError(t, err, "CreateZip should not error")
+		require.NoError(t, err, "CreateZip should not error")
 
 		// Verify zip file exists and has content
 		stat, err := os.Stat(zipPath)
-		assert.NoError(t, err, "zip file should exist")
+		require.NoError(t, err, "zip file should exist")
 		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
@@ -147,10 +147,10 @@ func TestCreateZip(t *testing.T) {
 		zipPath := filepath.Join(tmpDir, "multi.zip")
 
 		err := CreateZip(zipPath, nil, zipPath, file1, file2)
-		assert.NoError(t, err, "CreateZip should handle multiple files")
+		require.NoError(t, err, "CreateZip should handle multiple files")
 
 		stat, err := os.Stat(zipPath)
-		assert.NoError(t, err, "zip file should exist")
+		require.NoError(t, err, "zip file should exist")
 		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
@@ -160,10 +160,10 @@ func TestCreateZip(t *testing.T) {
 		zipPath := filepath.Join(tmpDir, "dir.zip")
 
 		err := CreateZip(zipPath, nil, zipPath, subDir)
-		assert.NoError(t, err, "CreateZip should handle directories")
+		require.NoError(t, err, "CreateZip should handle directories")
 
 		stat, err := os.Stat(zipPath)
-		assert.NoError(t, err, "zip file should exist")
+		require.NoError(t, err, "zip file should exist")
 		assert.Positive(t, stat.Size(), "zip file should have content")
 	})
 
@@ -173,9 +173,9 @@ func TestCreateZip(t *testing.T) {
 
 		// Create first zip
 		err := CreateZip(zipPath, nil, zipPath, srcFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		firstStat, err := os.Stat(zipPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Small delay to ensure file times differ
 		time.Sleep(10 * time.Millisecond)
@@ -183,13 +183,13 @@ func TestCreateZip(t *testing.T) {
 		// Overwrite with different file
 		modifiedFile := createTestFile(t, tmpDir, "modified.txt", []byte("much longer content here"))
 		err = CreateZip(zipPath, nil, zipPath, modifiedFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		secondStat, err := os.Stat(zipPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// File should have been overwritten - size should likely be different
 		// (though size comparison isn't guaranteed, just check file exists and is valid)
-		assert.NoError(t, err, "should successfully overwrite zip file")
+		require.NoError(t, err, "should successfully overwrite zip file")
 		assert.Positive(t, secondStat.Size(), "recreated zip should have content")
 		assert.Positive(t, firstStat.Size(), "original zip should have content")
 	})
@@ -203,11 +203,11 @@ func TestCreateTarGz(t *testing.T) {
 		targzPath := filepath.Join(tmpDir, "test.tar.gz")
 
 		err := CreateTarGz(targzPath, nil, targzPath, 0, srcFile)
-		assert.NoError(t, err, "CreateTarGz should not error")
+		require.NoError(t, err, "CreateTarGz should not error")
 
 		// Verify tar.gz file exists and has content
 		stat, err := os.Stat(targzPath)
-		assert.NoError(t, err, "tar.gz file should exist")
+		require.NoError(t, err, "tar.gz file should exist")
 		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 
@@ -217,10 +217,10 @@ func TestCreateTarGz(t *testing.T) {
 		targzPath := filepath.Join(tmpDir, "multi.tar.gz")
 
 		err := CreateTarGz(targzPath, nil, targzPath, 0, file1, file2)
-		assert.NoError(t, err, "CreateTarGz should handle multiple files")
+		require.NoError(t, err, "CreateTarGz should handle multiple files")
 
 		stat, err := os.Stat(targzPath)
-		assert.NoError(t, err, "tar.gz file should exist")
+		require.NoError(t, err, "tar.gz file should exist")
 		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 
@@ -230,10 +230,10 @@ func TestCreateTarGz(t *testing.T) {
 		targzPath := filepath.Join(tmpDir, "dir.tar.gz")
 
 		err := CreateTarGz(targzPath, nil, targzPath, 0, subDir)
-		assert.NoError(t, err, "CreateTarGz should handle directories")
+		require.NoError(t, err, "CreateTarGz should handle directories")
 
 		stat, err := os.Stat(targzPath)
-		assert.NoError(t, err, "tar.gz file should exist")
+		require.NoError(t, err, "tar.gz file should exist")
 		assert.Positive(t, stat.Size(), "tar.gz file should have content")
 	})
 }
@@ -281,7 +281,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 
 	t.Run("empty_file_list", func(t *testing.T) {
 		size, err := ComputeArchiveSize([]string{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(0), size, "empty file list should have 0 size")
 	})
 
@@ -295,7 +295,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 		}
 
 		size, err := ComputeArchiveSize([]string{linkPath})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(7), size, "symlink should resolve to target size")
 	})
 
@@ -308,7 +308,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 		largeFile := createTestFile(t, tmpDir, "large.bin", largeContent)
 
 		size, err := ComputeArchiveSize([]string{largeFile})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(10*1024*1024), size, "should correctly compute large file size")
 	})
 }

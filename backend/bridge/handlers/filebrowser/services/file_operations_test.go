@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -22,15 +23,15 @@ func TestMoveFile(t *testing.T) {
 		dstPath := filepath.Join(tmpDir, "destination.txt")
 
 		err := MoveFile(srcFile, dstPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Source should not exist
 		_, err = os.Stat(srcFile)
-		assert.Error(t, err, "source file should be deleted after move")
+		require.Error(t, err, "source file should be deleted after move")
 
 		// Destination should exist
 		content, err := os.ReadFile(dstPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte("content"), content, "destination should have source content")
 	})
 
@@ -40,10 +41,10 @@ func TestMoveFile(t *testing.T) {
 		dstPath := filepath.Join(destDir, "file.txt")
 
 		err := MoveFile(srcFile, dstPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		content, err := os.ReadFile(dstPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte("data"), content)
 	})
 
@@ -52,7 +53,7 @@ func TestMoveFile(t *testing.T) {
 		dstPath := filepath.Join(tmpDir, "dest.txt")
 
 		err := MoveFile(srcPath, dstPath, false)
-		assert.Error(t, err, "should error when source doesn't exist")
+		require.Error(t, err, "should error when source doesn't exist")
 	})
 
 	t.Run("move_file_overwrites_existing", func(t *testing.T) {
@@ -60,10 +61,10 @@ func TestMoveFile(t *testing.T) {
 		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
 		err := MoveFile(srcFile, dstFile, true)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		content, err := os.ReadFile(dstFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte("new"), content, "destination should be overwritten")
 	})
 }
@@ -79,7 +80,7 @@ func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
 			reported = append(reported, n)
 		},
 	}, MoveFileOptions{KnownSize: 12345, HasKnownSize: true})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []int64{12345}, reported)
 }
 
@@ -91,15 +92,15 @@ func TestCopyFile(t *testing.T) {
 		destPath := filepath.Join(tmpDir, "copy.txt")
 
 		err := CopyFile(srcFile, destPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Source should still exist
 		_, err = os.Stat(srcFile)
-		assert.NoError(t, err, "source file should still exist after copy")
+		require.NoError(t, err, "source file should still exist after copy")
 
 		// Destination should exist with same content
 		content, err := os.ReadFile(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte("original"), content)
 	})
 
@@ -109,10 +110,10 @@ func TestCopyFile(t *testing.T) {
 		destPath := filepath.Join(destDir, "file.txt")
 
 		err := CopyFile(srcFile, destPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte("content"), content)
 	})
 
@@ -121,7 +122,7 @@ func TestCopyFile(t *testing.T) {
 		destPath := filepath.Join(tmpDir, "dest.txt")
 
 		err := CopyFile(srcPath, destPath, false)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("copy_large_file", func(t *testing.T) {
@@ -133,10 +134,10 @@ func TestCopyFile(t *testing.T) {
 		destPath := filepath.Join(tmpDir, "large_copy.bin")
 
 		err := CopyFile(srcFile, destPath, false)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, largContent, content, "large file content should match")
 	})
 
@@ -145,7 +146,7 @@ func TestCopyFile(t *testing.T) {
 		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
 		err := CopyFile(srcFile, dstFile, false)
-		assert.Error(t, err, "should error when destination exists and overwrite is false")
+		require.Error(t, err, "should error when destination exists and overwrite is false")
 	})
 }
 
@@ -156,10 +157,10 @@ func TestDeleteFiles(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "todelete.txt", []byte("data"))
 
 		err := DeleteFiles(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = os.Stat(filePath)
-		assert.Error(t, err, "file should be deleted")
+		require.Error(t, err, "file should be deleted")
 	})
 
 	t.Run("delete_directory", func(t *testing.T) {
@@ -168,10 +169,10 @@ func TestDeleteFiles(t *testing.T) {
 		createTestFile(t, dirPath, "file2.txt", []byte("content"))
 
 		err := DeleteFiles(dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = os.Stat(dirPath)
-		assert.Error(t, err, "directory should be deleted")
+		require.Error(t, err, "directory should be deleted")
 	})
 
 	t.Run("delete_nonexistent", func(t *testing.T) {
@@ -179,14 +180,14 @@ func TestDeleteFiles(t *testing.T) {
 		missingPath := filepath.Join(tmpDir, "nonexistent.txt")
 
 		err := DeleteFiles(missingPath)
-		assert.NoError(t, err, "deleting a nonexistent path should be a no-op")
+		require.NoError(t, err, "deleting a nonexistent path should be a no-op")
 
 		_, err = os.Stat(missingPath)
-		assert.Error(t, err, "missing path should still not exist")
+		require.Error(t, err, "missing path should still not exist")
 
 		// Ensure other directories are untouched
 		_, err = os.Stat(safeDir)
-		assert.NoError(t, err, "existing directories must remain intact")
+		require.NoError(t, err, "existing directories must remain intact")
 	})
 
 	t.Run("delete_directory_with_nested_files", func(t *testing.T) {
@@ -196,10 +197,10 @@ func TestDeleteFiles(t *testing.T) {
 		createTestFile(t, subDir, "file2.txt", []byte("nested"))
 
 		err := DeleteFiles(dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = os.Stat(dirPath)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }
 
@@ -215,11 +216,11 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 				progress = append(progress, processed)
 			},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(1), processed)
 		assert.Equal(t, []int64{1}, progress)
 		_, err = os.Lstat(filePath)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("directory_known_total_reports_all_entries", func(t *testing.T) {
@@ -238,12 +239,12 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 				assert.False(t, indeterminate)
 			},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(4), processed)
 		assert.Equal(t, int64(4), lastProcessed)
 		assert.Equal(t, int64(4), lastTotal)
 		_, err = os.Lstat(dirPath)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("empty_directory_prescan_counts_directory_itself", func(t *testing.T) {
@@ -258,7 +259,7 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 				lastTotal = total
 			},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(1), processed)
 		assert.Equal(t, int64(1), lastProcessed)
 		assert.Equal(t, int64(1), lastTotal)
@@ -279,7 +280,7 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 				lastIndeterminate = indeterminate
 			},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(2), processed)
 		assert.Equal(t, int64(2), lastProcessed)
 		assert.Equal(t, int64(0), lastTotal)
@@ -296,12 +297,12 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 		}
 
 		processed, err := DeleteFilesWithProgress(context.Background(), linkPath, DeleteOptions{Total: 1})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(1), processed)
 		_, err = os.Lstat(linkPath)
-		assert.Error(t, err)
+		require.Error(t, err)
 		_, err = os.Lstat(targetFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 }
 
@@ -316,10 +317,10 @@ func TestCreateDirectory(t *testing.T) {
 		}
 
 		err := CreateDirectory(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		stat, err := os.Stat(newDir)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, stat.IsDir(), "created path should be a directory")
 	})
 
@@ -331,10 +332,10 @@ func TestCreateDirectory(t *testing.T) {
 		}
 
 		err := CreateDirectory(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		stat, err := os.Stat(newDir)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, stat.IsDir())
 	})
 
@@ -347,7 +348,7 @@ func TestCreateDirectory(t *testing.T) {
 
 		// Should not error if directory already exists
 		err := CreateDirectory(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 }
 
@@ -365,10 +366,10 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		err := WriteContentInFile(opts, reader)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		data, err := os.ReadFile(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, content, data)
 	})
 
@@ -383,10 +384,10 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		err := WriteContentInFile(opts, reader)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		data, err := os.ReadFile(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, newContent, data)
 	})
 
@@ -404,10 +405,10 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		err := WriteContentInFile(opts, reader)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		data, err := os.ReadFile(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, largeContent, data)
 	})
 
@@ -421,10 +422,10 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		err := WriteContentInFile(opts, reader)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		data, err := os.ReadFile(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte{}, data)
 	})
 
@@ -451,7 +452,7 @@ func TestGetContent(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "text.txt", []byte("Hello, World!"))
 
 		content, err := GetContent(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "Hello, World!", content)
 	})
 
@@ -475,20 +476,20 @@ func TestGetContent(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent.String()))
 
 		content, err := GetContent(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, largeContent.String(), content)
 	})
 
 	t.Run("get_nonexistent_file", func(t *testing.T) {
 		_, err := GetContent(filepath.Join(tmpDir, "nonexistent.txt"))
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("get_directory_content_fails", func(t *testing.T) {
 		dirPath := createTestDir(t, tmpDir, "testdir")
 
 		_, err := GetContent(dirPath)
-		assert.Error(t, err, "should error when getting content of directory")
+		require.Error(t, err, "should error when getting content of directory")
 	})
 
 	t.Run("get_multiline_content", func(t *testing.T) {
@@ -496,7 +497,7 @@ func TestGetContent(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "multiline.txt", []byte(multilineContent))
 
 		content, err := GetContent(filePath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, multilineContent, content)
 	})
 }

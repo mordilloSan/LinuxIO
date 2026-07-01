@@ -380,7 +380,9 @@ func TestStableLoginIDDifferentForEventIdentityFields(t *testing.T) {
 		Status:    LoginStatusFailed,
 	}
 
-	require.Equal(t, StableLoginID(base), StableLoginID(base))
+	baseID := StableLoginID(base)
+	baseCopy := base
+	require.Equal(t, baseID, StableLoginID(baseCopy))
 
 	changedStatus := base
 	changedStatus.Status = LoginStatusSuccess
@@ -392,7 +394,7 @@ func TestStableLoginIDDifferentForEventIdentityFields(t *testing.T) {
 	changedSource.Source = "127.0.0.1"
 
 	ids := map[string]bool{
-		StableLoginID(base):            true,
+		baseID:                         true,
 		StableLoginID(changedStatus):   true,
 		StableLoginID(changedTime):     true,
 		StableLoginID(changedTerminal): true,

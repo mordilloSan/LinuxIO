@@ -25,7 +25,7 @@ func TestFileInfoFaster(t *testing.T) {
 		}
 
 		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, "test.txt", info.Name)
 		assert.Equal(t, int64(7), info.Size)
@@ -38,7 +38,7 @@ func TestFileInfoFaster(t *testing.T) {
 		}
 
 		_, err := FileInfoFaster(opts)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("get_info_hidden_file", func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestFileInfoFaster(t *testing.T) {
 		}
 
 		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.True(t, info.Hidden, "file starting with . should be marked as hidden")
 	})
@@ -62,7 +62,7 @@ func TestFileInfoFaster(t *testing.T) {
 		}
 
 		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, int64(0), info.Size)
 	})
@@ -78,7 +78,7 @@ func TestFileInfoFaster(t *testing.T) {
 		}
 
 		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, int64(5*1024*1024), info.Size)
 	})
@@ -93,7 +93,7 @@ func TestGetDirInfo(t *testing.T) {
 		createTestFile(t, dirPath, "file2.txt", []byte("content2"))
 
 		info, err := GetDirInfo(dirPath, dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, "testdir", info.Name)
 		// Should have files listed
@@ -104,7 +104,7 @@ func TestGetDirInfo(t *testing.T) {
 		emptyDir := createTestDir(t, tmpDir, "empty")
 
 		info, err := GetDirInfo(emptyDir, emptyDir)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, "empty", info.Name)
 		assert.Empty(t, info.Files, "empty directory should have no files")
@@ -120,7 +120,7 @@ func TestGetDirInfo(t *testing.T) {
 		assert.NotEmpty(t, subDir2)
 
 		info, err := GetDirInfo(dirPath, dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should list both files and subdirectories
 		assert.Positive(t, len(info.Files)+len(info.Folders))
@@ -132,7 +132,7 @@ func TestGetDirInfo(t *testing.T) {
 		createTestFile(t, dirPath, ".hidden", []byte("hidden"))
 
 		info, err := GetDirInfo(dirPath, dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		// Both visible and hidden should be returned
 		totalItems := len(info.Files) + len(info.Folders)
@@ -143,7 +143,7 @@ func TestGetDirInfo(t *testing.T) {
 		nonexistent := filepath.Join(tmpDir, "nonexistent")
 
 		_, err := GetDirInfo(nonexistent, nonexistent)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("get_file_as_directory", func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestGetDirInfo(t *testing.T) {
 		createTestFile(t, dirPath, "file_with_underscore.txt", []byte("content"))
 
 		info, err := GetDirInfo(dirPath, dirPath)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.NotEmpty(t, info.Files)
 	})
@@ -177,7 +177,7 @@ func TestGetDirInfo(t *testing.T) {
 
 		// GetDirInfo on level1 should see level2
 		info, err := GetDirInfo(level1, level1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should have the level2 subdirectory
 		assert.NotEmpty(t, info.Folders)
@@ -195,7 +195,7 @@ func TestFileTypeDetection(t *testing.T) {
 		}
 
 		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, info)
 		// Should have a type set
 		assert.NotEmpty(t, info.Type)

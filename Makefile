@@ -457,6 +457,7 @@ tsc-only:
 	@bash -c 'cd frontend && ./node_modules/.bin/tsc && echo "✅ TypeScript checks passed!"'
 
 golint-only:
+	@set -euo pipefail
 	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
 	@echo "   Running Go formatters..."
 ifneq ($(CI),)
@@ -472,7 +473,7 @@ endif
 	@echo "   Running modernize..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
 	@echo "   Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
 test-backend: $(GO_BUILD_PREREQ)
