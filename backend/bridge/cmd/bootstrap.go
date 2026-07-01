@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"time"
 
@@ -17,36 +17,36 @@ var sess *session.Session
 
 // readBootstrap reads binary bootstrap from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
-// FAIL-FAST: If bootstrap is invalid, exit immediately with code 1.
-// This ensures the auth daemon's exec-status pipe detects failure.
-func readBootstrap() *authipc.Bootstrap {
+// Bootstrap errors are returned to main as exit code 1 so the auth daemon's
+// exec-status pipe detects startup failure.
+func readBootstrap() (*authipc.Bootstrap, error) {
 	b, err := authipc.ReadBootstrap(os.Stdin)
 	if err != nil {
-		slog.Error("failed to read bridge bootstrap", "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("read bridge bootstrap: %w", err)
 	}
 
 	if b.SessionID == "" {
-		slog.Error("bridge bootstrap missing session_id")
-		os.Exit(1)
+		return b, errors.New("bridge bootstrap missing session_id")
 	}
 
 	if b.Username == "" {
-		slog.Error("bridge bootstrap missing username")
-		os.Exit(1)
+		return b, errors.New("bridge bootstrap missing username")
 	}
 
-	return b
+	return b, nil
 }
 
 // initializeBridgeSession reads bootstrap data and constructs the session
 // object shared by handlers, routing, and audit metadata.
-func initializeBridgeSession() {
-	bootCfg = readBootstrap()
+func initializeBridgeSession() error {
+	var err error
+	bootCfg, err = readBootstrap()
+	if err != nil {
+		return err
+	}
 	if bootCfg.Verbose {
 		if configureErr := logging.Configure("linuxio-bridge", true); configureErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to reconfigure logger: %v\n", configureErr)
-			os.Exit(1)
+			return fmt.Errorf("failed to reconfigure logger: %w", configureErr)
 		}
 	}
 	sess = &session.Session{
@@ -61,4 +61,5 @@ func initializeBridgeSession() {
 			GID:      bootCfg.GID,
 		},
 	}
+	return nil
 }

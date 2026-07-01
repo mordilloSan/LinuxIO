@@ -11,24 +11,35 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
-// runBridgeProcess validates invocation mode, builds the authenticated bridge
-// session, and hands the inherited client connection to the bridge runtime.
-func RunBridgeProcess() {
-	if handledArgs := handleBridgeArgs(); handledArgs {
-		return
+// Run validates invocation mode, builds the authenticated bridge session, and
+// hands the inherited client connection to the bridge runtime. It returns the
+// process exit code; only main should call os.Exit.
+func Run(args []string) int {
+	if handledArgs := handleBridgeArgs(args); handledArgs {
+		return 0
 	}
 
 	if isDirectBridgeInvocation() {
 		fmt.Println("(to be spawned by auth daemon, not for direct use)")
-		return
+		return 0
 	}
 
+	if err := runBridgeProcess(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runBridgeProcess() error {
 	if configureErr := logging.Configure("linuxio-bridge", false); configureErr != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", configureErr)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize logger: %w", configureErr)
 	}
 
-	initializeBridgeSession()
+	if err := initializeBridgeSession(); err != nil {
+		logBridgeStartupError("failed to initialize bridge session", err)
+		return err
+	}
 	slog.Info("bridge boot",
 		"effective_uid", os.Geteuid(),
 		"user", sess.User.Username,
@@ -42,17 +53,36 @@ func RunBridgeProcess() {
 	syscall.Umask(0o077)
 	slog.Info("bridge starting", "uid", os.Geteuid())
 
-	clientConn := openClientConnection()
+	clientConn, err := openClientConnection()
+	if err != nil {
+		logBridgeStartupError("failed to open inherited client connection", err)
+		return err
+	}
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
 
 	userConfig, err := config.OpenUserStore(sess.User.Username)
 	if err != nil {
-		slog.Error("failed to open config store", "user", sess.User.Username, "error", err)
-		os.Exit(1)
+		logBridgeStartupError("failed to open config store", err)
+		return err
 	}
 	slog.Info("config store ready", "user", sess.User.Username, "path", userConfig.Path())
 
 	rt := runtime.New(sess, userConfig)
 	runBridge(clientConn, rt)
 	slog.Info("bridge stopped")
+	return nil
+}
+
+func logBridgeStartupError(message string, err error) {
+	attrs := []any{"error", err}
+	if bootCfg != nil {
+		attrs = append(attrs,
+			"user", bootCfg.Username,
+			"session_id", bootCfg.SessionID,
+			"privileged", bootCfg.Privileged,
+			"uid", bootCfg.UID,
+			"gid", bootCfg.GID,
+		)
+	}
+	slog.Error(message, attrs...)
 }

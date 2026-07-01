@@ -1,7 +1,11 @@
 package main
 
-import "github.com/mordilloSan/LinuxIO/backend/bridge/cmd"
+import (
+	"os"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/cmd"
+)
 
 func main() {
-	cmd.RunBridgeProcess()
+	os.Exit(cmd.Run(os.Args))
 }

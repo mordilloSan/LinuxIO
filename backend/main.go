@@ -31,38 +31,44 @@ const (
 var versionExecCommand = exec.Command
 
 func main() {
+	os.Exit(runCLI(os.Args))
+}
+
+func runCLI(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if len(os.Args) < 2 {
+	if len(args) < 2 {
 		showHelp()
-		os.Exit(0)
+		return 0
 	}
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	cmd := args[1]
+	cmdArgs := args[2:]
 
 	switch cmd {
 	case "status":
-		runStatus(ctx)
+		return runStatus(ctx)
 	case "logs":
-		runLogs(args)
+		return runLogs(cmdArgs)
 	case "start":
-		runSystemctl(ctx, "start", linuxioTargetName)
+		return runSystemctl(ctx, "start", linuxioTargetName)
 	case "stop":
-		runSystemctl(ctx, "stop", linuxioTargetName)
+		return runSystemctl(ctx, "stop", linuxioTargetName)
 	case "restart":
-		runRestart(ctx, args)
+		return runRestart(ctx, cmdArgs)
 	case "verbose":
-		runVerbose(ctx, args)
+		return runVerbose(ctx, cmdArgs)
 	case "version":
-		showVersion(args)
+		showVersion(cmdArgs)
+		return 0
 	case "help", "-h", "--help":
 		showHelp()
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
 		showHelp()
-		os.Exit(1)
+		return 1
 	}
 }
 
@@ -132,13 +138,13 @@ func showVersion(args []string) {
 
 }
 
-func runStatus(parent context.Context) {
+func runStatus(parent context.Context) int {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	units, err := systemd.ListUnitsWithPrefix(ctx, "linuxio")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to query systemd: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	sort.Slice(units, func(i, j int) bool { return units[i].Name < units[j].Name })
@@ -172,6 +178,7 @@ func runStatus(parent context.Context) {
 		fmt.Printf("%s %s\n", r.dot, r.text)
 	}
 	fmt.Printf("\n\033[1m%d loaded units listed.\033[0m\n", len(units))
+	return 0
 }
 
 func isJournalGroup(name string) bool {
@@ -207,7 +214,7 @@ func journalAccessState() (bool, string) {
 	return false, ""
 }
 
-func runLogs(args []string) {
+func runLogs(args []string) int {
 	hasAccess, pendingGroup := journalAccessState()
 	if !hasAccess && pendingGroup == "" {
 		username := "current"
@@ -216,7 +223,7 @@ func runLogs(args []string) {
 		}
 		fmt.Fprintf(os.Stderr, "Error: user %q cannot read the system journal.\n", username)
 		fmt.Fprintf(os.Stderr, "Fix: sudo usermod -aG systemd-journal $USER  (then run 'linuxio logs' again; reconnect later to refresh your shell)\n")
-		os.Exit(1)
+		return 1
 	}
 	mode, lines := parseLogsArgs(args)
 	journalTerms := journalTermsForMode(mode)
@@ -226,7 +233,7 @@ func runLogs(args []string) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create pipe: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	cmd.Stderr = os.Stderr
@@ -234,11 +241,11 @@ func runLogs(args []string) {
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start journalctl: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	streamFormattedJournal(stdout)
-	waitForJournalctl(cmd)
+	return waitForJournalctl(cmd)
 }
 
 func journalctlCommand(args []string, pendingGroup string) *exec.Cmd {
@@ -338,13 +345,14 @@ func streamFormattedJournal(stdout io.Reader) {
 	}
 }
 
-func waitForJournalctl(cmd *exec.Cmd) {
+func waitForJournalctl(cmd *exec.Cmd) int {
 	if err := cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 130 {
-			os.Exit(0)
+			return 0
 		}
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 type journalEntry struct {
@@ -527,14 +535,14 @@ func journalPriorityLevel(entry journalEntry) string {
 	}
 }
 
-func runSystemctl(ctx context.Context, action, target string) {
-	runSystemctlTargets(ctx, action, []string{target}, target)
+func runSystemctl(ctx context.Context, action, target string) int {
+	return runSystemctlTargets(ctx, action, []string{target}, target)
 }
 
-func runSystemctlTargets(parent context.Context, action string, targets []string, successLabel string) {
+func runSystemctlTargets(parent context.Context, action string, targets []string, successLabel string) int {
 	if len(targets) == 0 {
 		fmt.Fprintf(os.Stderr, "No targets provided for systemctl %s\n", action)
-		os.Exit(1)
+		return 1
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
@@ -554,11 +562,11 @@ func runSystemctlTargets(parent context.Context, action string, targets []string
 			err = systemd.DisableUnit(ctx, target)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown action: %s\n", action)
-			os.Exit(1)
+			return 1
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, target, err)
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -566,6 +574,7 @@ func runSystemctlTargets(parent context.Context, action string, targets []string
 		successLabel = strings.Join(targets, " ")
 	}
 	fmt.Printf("Successfully %s %s\n", pastTense(action), successLabel)
+	return 0
 }
 
 func pastTense(action string) string {
@@ -585,15 +594,15 @@ func pastTense(action string) string {
 	}
 }
 
-func runRestart(ctx context.Context, args []string) {
+func runRestart(ctx context.Context, args []string) int {
 	targets, successLabel, err := restartTargets(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		fmt.Fprintln(os.Stderr, "Usage: linuxio restart [--full]")
-		os.Exit(1)
+		return 1
 	}
 
-	runSystemctlTargets(ctx, "restart", targets, successLabel)
+	return runSystemctlTargets(ctx, "restart", targets, successLabel)
 }
 
 func restartTargets(args []string) ([]string, string, error) {
@@ -621,33 +630,34 @@ ExecStart=
 ExecStart=/usr/local/bin/linuxio-webserver run -verbose
 `
 
-func runVerbose(ctx context.Context, args []string) {
+func runVerbose(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: linuxio verbose [enable|disable|status]")
-		os.Exit(1)
+		return 1
 	}
 
 	action := args[0]
 
 	switch action {
 	case "enable":
-		enableVerbose(ctx)
+		return enableVerbose(ctx)
 	case "disable":
-		disableVerbose(ctx)
+		return disableVerbose(ctx)
 	case "status":
 		showVerboseStatus()
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown verbose action: %s\n", action)
 		fmt.Fprintln(os.Stderr, "Usage: linuxio verbose [enable|disable|status]")
-		os.Exit(1)
+		return 1
 	}
 }
 
-func enableVerbose(parent context.Context) {
+func enableVerbose(parent context.Context) int {
 	// Check if already enabled
 	if _, err := os.Stat(verboseDropinPath); err == nil {
 		fmt.Println("Verbose mode is already enabled")
-		return
+		return 0
 	}
 
 	// Create drop-in directory
@@ -655,14 +665,14 @@ func enableVerbose(parent context.Context) {
 	if err := os.MkdirAll(dropinDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create drop-in directory: %v\n", err)
 		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		os.Exit(1)
+		return 1
 	}
 
 	// Write drop-in file
 	if err := os.WriteFile(verboseDropinPath, []byte(verboseDropinContent), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write drop-in file: %v\n", err)
 		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("✓ Verbose mode enabled")
@@ -672,31 +682,32 @@ func enableVerbose(parent context.Context) {
 	defer cancel()
 	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("Restarting linuxio.target...")
 	if err := systemd.RestartUnit(ctx, linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("\n✓ Verbose logging is now active")
 	fmt.Println("  View debug logs with: linuxio logs")
+	return 0
 }
 
-func disableVerbose(parent context.Context) {
+func disableVerbose(parent context.Context) int {
 	// Check if already disabled
 	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
 		fmt.Println("Verbose mode is already disabled")
-		return
+		return 0
 	}
 
 	// Remove drop-in file
 	if err := os.Remove(verboseDropinPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to remove drop-in file: %v\n", err)
 		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("✓ Verbose mode disabled")
@@ -706,16 +717,17 @@ func disableVerbose(parent context.Context) {
 	defer cancel()
 	if err := systemd.DaemonReload(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("Restarting linuxio.target...")
 	if err := systemd.RestartUnit(ctx, linuxioTargetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("\n✓ Verbose logging is now disabled")
+	return 0
 }
 
 func showVerboseStatus() {

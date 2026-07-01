@@ -9,9 +9,9 @@ import (
 
 // handleBridgeArgs handles informational CLI invocations such as version
 // output. A real bridge process is normally exec'd by the auth daemon.
-func handleBridgeArgs() bool {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
+func handleBridgeArgs(args []string) bool {
+	if len(args) > 1 {
+		switch args[1] {
 		case "version", "--version", "-v":
 			printBridgeVersion()
 		default:
