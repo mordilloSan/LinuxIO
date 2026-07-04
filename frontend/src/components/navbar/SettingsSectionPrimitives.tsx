@@ -17,20 +17,38 @@ export const StatusMetric: React.FC<{
       : undefined;
   return (
     <div style={{ minWidth: 0 }}>
-      <AppTypography color="text.secondary" variant="caption">
+      <AppTypography color="text.secondary" variant="body2">
         {label}
       </AppTypography>
-      <AppTypography fontWeight={600} noWrap title={title} variant="body2">
+      <AppTypography fontWeight={500} noWrap title={title} variant="body2">
         {value}
       </AppTypography>
       {detail ? (
-        <AppTypography color="text.secondary" noWrap variant="caption">
+        <AppTypography
+          color="text.secondary"
+          noWrap
+          style={{ display: "block" }}
+          variant="caption"
+        >
           {detail}
         </AppTypography>
       ) : null}
     </div>
   );
 };
+
+export const StatusGroupLabel: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => (
+  <AppTypography
+    color="text.secondary"
+    fontWeight={600}
+    style={{ textTransform: "uppercase" }}
+    variant="caption"
+  >
+    {children}
+  </AppTypography>
+);
 
 export const SectionCard: React.FC<{
   icon: string;

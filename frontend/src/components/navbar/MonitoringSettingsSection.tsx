@@ -14,6 +14,7 @@ import {
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
   SectionCard,
+  StatusGroupLabel,
   StatusMetric,
   ToggleCard,
 } from "@/components/navbar/SettingsSectionPrimitives";
@@ -528,34 +529,39 @@ const MonitoringSettingsSection: React.FC = () => {
                   label="SMART refresh"
                   value={compactGoDuration(agentStatus.smart_refresh_interval)}
                 />
-                <StatusMetric
-                  detail={agentStatus.data_dir}
-                  label="Database"
-                  value={agentStatus.db_path}
-                />
-                <StatusMetric
-                  detail={agentStatus.config.path}
-                  label="Config"
-                  value={agentStatus.config.source}
-                />
               </>,
-              180,
+              140,
+              1,
             )}
-            {agentStatus.listeners?.length ? (
-              <div style={{ marginTop: theme.spacing(1.5) }}>
+            <div style={{ marginTop: theme.spacing(1.5) }}>
+              <StatusGroupLabel>Storage & Listeners</StatusGroupLabel>
+              <div style={{ marginTop: theme.spacing(0.5) }}>
                 {renderGrid(
-                  agentStatus.listeners.map((listener) => (
+                  <>
                     <StatusMetric
-                      detail={listener.apis.join(", ")}
-                      key={listener.name}
-                      label={`Listener: ${listener.name}`}
-                      value={listener.effective_address || listener.address}
+                      detail={agentStatus.data_dir}
+                      label="Database"
+                      value={agentStatus.db_path}
                     />
-                  )),
-                  220,
+                    <StatusMetric
+                      detail={agentStatus.config.source}
+                      label="Config"
+                      value={agentStatus.config.path}
+                    />
+                    {agentStatus.listeners?.map((listener) => (
+                      <StatusMetric
+                        detail={listener.apis.join(", ")}
+                        key={listener.name}
+                        label={`Listener: ${listener.name}`}
+                        value={listener.effective_address || listener.address}
+                      />
+                    ))}
+                  </>,
+                  240,
+                  1,
                 )}
               </div>
-            ) : null}
+            </div>
           </>
         ) : (
           <div style={{ padding: theme.spacing(1) }}>

@@ -451,6 +451,7 @@ const IndexerSettingsSection: React.FC = () => {
       className="indexer-status-grid"
       style={{
         display: "grid",
+        columnGap: theme.spacing(1.5),
         rowGap: theme.spacing(1.5),
       }}
     >
