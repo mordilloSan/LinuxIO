@@ -11,6 +11,7 @@ type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
 type JobState string
+type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
@@ -22,6 +23,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
+	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
@@ -1032,6 +1034,42 @@ type MonitoringConfig struct {
 type MonitoringConfigSetResult struct {
 	Config          MonitoringConfig `json:"config"`
 	RestartRequired bool             `json:"restart_required"`
+}
+
+type MonitoringHistoryRequest struct {
+	Resolution MonitoringHistoryResolution `json:"resolution"`
+	FromMs     int64                       `json:"from_ms,omitempty"`
+	ToMs       int64                       `json:"to_ms,omitempty"`
+	Limit      int                         `json:"limit,omitempty"`
+}
+
+type MonitoringCPUHistoryPoint struct {
+	CapturedAtMs int64   `json:"captured_at_ms"`
+	UsagePercent float64 `json:"usage_percent"`
+	// BreakdownPercent is [user, system, iowait, steal, idle].
+	BreakdownPercent []float64 `json:"breakdown_percent,omitempty"`
+	CoresPercent     []float64 `json:"cores_percent,omitempty"`
+}
+
+type MonitoringMemoryHistoryPoint struct {
+	CapturedAtMs  int64   `json:"captured_at_ms"`
+	TotalGB       float64 `json:"total_gb"`
+	UsedGB        float64 `json:"used_gb"`
+	UsedPercent   float64 `json:"used_percent"`
+	BufferCacheGB float64 `json:"buffer_cache_gb"`
+	ZFSArcGB      float64 `json:"zfs_arc_gb,omitempty"`
+}
+
+type MonitoringDiskIOHistoryPoint struct {
+	CapturedAtMs     int64   `json:"captured_at_ms"`
+	ReadBytesPerSec  float64 `json:"read_bytes_per_sec"`
+	WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
+}
+
+type MonitoringNetworkHistoryPoint struct {
+	CapturedAtMs    int64   `json:"captured_at_ms"`
+	SentBytesPerSec float64 `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64 `json:"recv_bytes_per_sec"`
 }
 
 type MonitoringListenerStatus struct {

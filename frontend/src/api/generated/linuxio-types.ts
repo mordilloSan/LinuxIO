@@ -1190,6 +1190,13 @@ export interface ModifyUserRequest {
   groups?: string[];
 }
 
+export interface MonitoringCPUHistoryPoint {
+  captured_at_ms: number;
+  usage_percent: number;
+  breakdown_percent?: number[];
+  cores_percent?: number[];
+}
+
 export interface MonitoringConfig {
   allow_remote_commands: boolean;
   cache_ttl: Record<string, string>;
@@ -1223,6 +1230,22 @@ export interface MonitoringConfigSetResult {
   restart_required: boolean;
 }
 
+export interface MonitoringDiskIOHistoryPoint {
+  captured_at_ms: number;
+  read_bytes_per_sec: number;
+  write_bytes_per_sec: number;
+}
+
+export interface MonitoringHistoryRequest {
+  resolution: MonitoringHistoryResolution;
+  from_ms?: number;
+  to_ms?: number;
+  limit?: number;
+}
+
+export type MonitoringHistoryResolution =
+  "1m" | "10m" | "20m" | "120m" | "480m";
+
 export interface MonitoringListener {
   address: string;
   apis: string[];
@@ -1235,6 +1258,21 @@ export interface MonitoringListenerStatus {
   apis: string[];
   effective_address: string;
   name: string;
+}
+
+export interface MonitoringMemoryHistoryPoint {
+  captured_at_ms: number;
+  total_gb: number;
+  used_gb: number;
+  used_percent: number;
+  buffer_cache_gb: number;
+  zfs_arc_gb?: number;
+}
+
+export interface MonitoringNetworkHistoryPoint {
+  captured_at_ms: number;
+  sent_bytes_per_sec: number;
+  recv_bytes_per_sec: number;
 }
 
 export interface MonitoringStatus {
@@ -2353,6 +2391,26 @@ export interface LinuxIOSchema {
 
   monitoring: {
     get_config: { input: []; request: void; result: MonitoringConfig };
+    get_cpu_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringCPUHistoryPoint[];
+    };
+    get_diskio_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringDiskIOHistoryPoint[];
+    };
+    get_memory_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringMemoryHistoryPoint[];
+    };
+    get_network_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringNetworkHistoryPoint[];
+    };
     get_status: { input: []; request: void; result: MonitoringStatus };
     restart: { input: []; request: void; result: void };
     set_config: {

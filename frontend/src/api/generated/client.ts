@@ -299,6 +299,18 @@ const linuxio = {
   },
   monitoring: {
     get_config: createEndpoint("monitoring", "get_config", { kind: "none" }),
+    get_cpu_history: createEndpoint("monitoring", "get_cpu_history", {
+      kind: "object",
+    }),
+    get_diskio_history: createEndpoint("monitoring", "get_diskio_history", {
+      kind: "object",
+    }),
+    get_memory_history: createEndpoint("monitoring", "get_memory_history", {
+      kind: "object",
+    }),
+    get_network_history: createEndpoint("monitoring", "get_network_history", {
+      kind: "object",
+    }),
     get_status: createEndpoint("monitoring", "get_status", { kind: "none" }),
     restart: createEndpoint("monitoring", "restart", { kind: "none" }),
     set_config: createEndpoint("monitoring", "set_config", { kind: "object" }),
