@@ -54,9 +54,10 @@ export const SectionCard: React.FC<{
   icon: string;
   title: string;
   subtitle: string;
+  titleAdornment?: React.ReactNode;
   indicator?: React.ReactNode;
   children: React.ReactNode;
-}> = ({ icon, title, subtitle, indicator, children }) => {
+}> = ({ icon, title, subtitle, titleAdornment, indicator, children }) => {
   const theme = useAppTheme();
   return (
     <FrostedCard style={{ padding: 12, position: "relative" }}>
@@ -85,9 +86,18 @@ export const SectionCard: React.FC<{
           <Icon height={22} icon={icon} width={22} />
         </div>
         <div>
-          <AppTypography component="h3" fontWeight={600} variant="body2">
-            {title}
-          </AppTypography>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1),
+            }}
+          >
+            <AppTypography component="h3" fontWeight={600} variant="body2">
+              {title}
+            </AppTypography>
+            {titleAdornment}
+          </div>
           <AppTypography color="text.secondary" variant="caption">
             {subtitle}
           </AppTypography>

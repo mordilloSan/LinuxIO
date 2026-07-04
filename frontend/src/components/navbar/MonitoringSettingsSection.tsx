@@ -20,6 +20,7 @@ import {
 } from "@/components/navbar/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -508,8 +509,18 @@ const MonitoringSettingsSection: React.FC = () => {
             tooltip="Agent healthy"
           />
         }
-        subtitle="Agent version, storage, and listeners"
+        subtitle="Agent storage and listeners"
         title="Agent Status"
+        titleAdornment={
+          agentStatus ? (
+            <Chip
+              color="primary"
+              label={agentStatus.version}
+              size="small"
+              variant="soft"
+            />
+          ) : undefined
+        }
       >
         {statusError ? (
           <AppAlert severity="warning">
@@ -520,7 +531,6 @@ const MonitoringSettingsSection: React.FC = () => {
           <>
             {renderGrid(
               <>
-                <StatusMetric label="Version" value={agentStatus.version} />
                 <StatusMetric
                   label="Collector interval"
                   value={compactGoDuration(agentStatus.collector_interval)}
@@ -534,7 +544,7 @@ const MonitoringSettingsSection: React.FC = () => {
               1,
             )}
             <div style={{ marginTop: theme.spacing(1.5) }}>
-              <StatusGroupLabel>Storage & Listeners</StatusGroupLabel>
+              <StatusGroupLabel>Storage</StatusGroupLabel>
               <div style={{ marginTop: theme.spacing(0.5) }}>
                 {renderGrid(
                   <>
@@ -548,20 +558,31 @@ const MonitoringSettingsSection: React.FC = () => {
                       label="Config"
                       value={agentStatus.config.path}
                     />
-                    {agentStatus.listeners?.map((listener) => (
-                      <StatusMetric
-                        detail={listener.apis.join(", ")}
-                        key={listener.name}
-                        label={`Listener: ${listener.name}`}
-                        value={listener.effective_address || listener.address}
-                      />
-                    ))}
                   </>,
                   240,
                   1,
                 )}
               </div>
             </div>
+            {agentStatus.listeners?.length ? (
+              <div style={{ marginTop: theme.spacing(1.5) }}>
+                <StatusGroupLabel>Listeners</StatusGroupLabel>
+                <div style={{ marginTop: theme.spacing(0.5) }}>
+                  {renderGrid(
+                    agentStatus.listeners.map((listener) => (
+                      <StatusMetric
+                        detail={listener.apis.join(", ")}
+                        key={listener.name}
+                        label={`Listener: ${listener.name}`}
+                        value={listener.effective_address || listener.address}
+                      />
+                    )),
+                    240,
+                    1,
+                  )}
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <div style={{ padding: theme.spacing(1) }}>

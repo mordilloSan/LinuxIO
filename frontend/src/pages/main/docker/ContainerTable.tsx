@@ -232,7 +232,6 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
       />
       <DockerIcon alt={name} identifier={container.icon} size={24} />
       <AppTypography
-        copyText={name}
         fontWeight={700}
         noWrap
         title={name}
@@ -251,7 +250,6 @@ function VersionCell({ image }: { image: string }) {
   return (
     <AppTypography
       color="text.secondary"
-      copyText={version}
       noWrap
       style={{
         fontFamily: "monospace",
@@ -559,7 +557,6 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
         }`;
         return (
           <AppTypography
-            copyText={text}
             key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
             noWrap
             style={{
@@ -595,7 +592,6 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
             }`;
             return (
               <AppTypography
-                copyText={text}
                 key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
                 noWrap
                 style={{
@@ -666,7 +662,6 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
         const text = `${mount.Destination} -> ${mount.Source}`;
         return (
           <AppTypography
-            copyText={text}
             key={`${mount.Destination}-${mount.Source}`}
             noWrap
             style={{
@@ -700,7 +695,6 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
             const text = `${mount.Destination} -> ${mount.Source}`;
             return (
               <AppTypography
-                copyText={text}
                 key={`${mount.Destination}-${mount.Source}`}
                 noWrap
                 style={{

@@ -297,7 +297,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 size={28}
               />
               <AppTypography
-                copyText={project.name}
                 fontWeight={700}
                 noWrap
                 title={project.name}
@@ -486,7 +485,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <DockerIcon alt={name} identifier={container.icon} size={24} />
               <div className="compose-container-name-text">
                 <AppTypography
-                  copyText={name}
                   fontWeight={700}
                   noWrap
                   title={name}
@@ -529,7 +527,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
 
           return (
             <AppTypography
-              copyText={serviceName}
               noWrap
               title={serviceName}
               toastMeta={DOCKER_TOAST_META}
@@ -546,7 +543,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
         header: "Image",
         cell: ({ row }) => (
           <AppTypography
-            copyText={row.original.Image}
             noWrap
             style={{
               maxWidth: 260,
@@ -589,7 +585,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
 
           return (
             <AppTypography
-              copyText={ports.length > 0 ? portsText : undefined}
               noWrap
               title={portsText}
               toastMeta={DOCKER_TOAST_META}

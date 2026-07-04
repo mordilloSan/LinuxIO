@@ -64,7 +64,6 @@ const emptyText = (text: string) => (
 const TruncatedValue: React.FC<{ text: string }> = ({ text }) => (
   <AppTypography
     component="div"
-    copyText={text}
     fontSize="0.75rem"
     fontWeight={500}
     noWrap

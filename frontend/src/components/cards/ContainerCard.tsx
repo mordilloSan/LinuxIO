@@ -448,7 +448,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <AppTypography
                   component="div"
-                  copyText={name}
                   fontSize="0.875rem"
                   fontWeight="bold"
                   noWrap
@@ -555,7 +554,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
             </div>
             <div style={{ flex: 0.95, minWidth: 0 }}>
               <AppTypography
-                copyText={name}
                 fontWeight={600}
                 noWrap
                 style={{
