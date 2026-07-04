@@ -11,19 +11,23 @@ import {
   linuxio,
   type UnitInfo,
 } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import {
+  SectionCard,
+  StatusMetric,
+  ToggleCard,
+} from "@/components/navbar/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
-import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useCapability } from "@/hooks/useCapabilities";
 import { type AppTheme, useAppTheme } from "@/theme";
+import { compactGoDuration, isGoDuration } from "@/utils/durations";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -70,29 +74,6 @@ const RESTART_FIELDS: DraftKey[] = [
   "listen_addr",
 ];
 const INDEXER_TIMER_UNIT = "indexer-index.timer";
-
-const GO_DURATION_PART_PATTERN = /(-?\d+(?:\.\d+)?)(ns|us|µs|μs|ms|s|m|h)/g;
-
-const compactGoDuration = (value: string) => {
-  const trimmed = value.trim();
-  if (trimmed === "0") return "0";
-
-  const parts: string[] = [];
-  let index = 0;
-  let matched = false;
-
-  for (const match of trimmed.matchAll(GO_DURATION_PART_PATTERN)) {
-    matched = true;
-    if (match.index !== index) return trimmed;
-    index = match.index + match[0].length;
-    if (Number(match[1]) !== 0) {
-      parts.push(match[0]);
-    }
-  }
-
-  if (!matched || index !== trimmed.length) return trimmed;
-  return parts.length > 0 ? parts.join("") : "0";
-};
 
 const toDraft = (config: IndexerConfig): DraftConfig => ({
   ...config,
@@ -162,22 +143,6 @@ const toPatchPayload = (
 const isAbsolutePath = (value: string) => value.trim().startsWith("/");
 
 const isNonNegativeInteger = (value: string) => /^\d+$/.test(value.trim());
-
-const isGoDuration = (value: string) => {
-  const trimmed = value.trim();
-  if (trimmed === "0") return true;
-
-  let index = 0;
-  let matched = false;
-  for (const match of trimmed.matchAll(GO_DURATION_PART_PATTERN)) {
-    const matchIndex = match.index ?? -1;
-    matched = true;
-    if (matchIndex !== index || Number(match[1]) < 0) return false;
-    index = matchIndex + match[0].length;
-  }
-
-  return matched && index === trimmed.length;
-};
 
 const validateDraft = (draft: DraftConfig): DraftErrors => {
   const errors: DraftErrors = {};
@@ -306,126 +271,6 @@ const getStatusColor = (
     return theme.palette.error.main;
   }
   return theme.palette.warning.main;
-};
-
-const StatusMetric: React.FC<{
-  label: string;
-  value: React.ReactNode;
-  detail?: React.ReactNode;
-}> = ({ label, value, detail }) => {
-  const title =
-    typeof value === "string" || typeof value === "number"
-      ? String(value)
-      : undefined;
-  return (
-    <div style={{ minWidth: 0 }}>
-      <AppTypography color="text.secondary" variant="caption">
-        {label}
-      </AppTypography>
-      <AppTypography fontWeight={600} noWrap title={title} variant="body2">
-        {value}
-      </AppTypography>
-      {detail ? (
-        <AppTypography color="text.secondary" noWrap variant="caption">
-          {detail}
-        </AppTypography>
-      ) : null}
-    </div>
-  );
-};
-
-const SectionCard: React.FC<{
-  icon: string;
-  title: string;
-  subtitle: string;
-  indicator?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ icon, title, subtitle, indicator, children }) => {
-  const theme = useAppTheme();
-  return (
-    <FrostedCard style={{ padding: 12, position: "relative" }}>
-      {indicator}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: theme.spacing(1.5),
-          marginBottom: theme.spacing(2.75),
-        }}
-      >
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            background: theme.palette.action.hover,
-            color: theme.palette.primary.main,
-            flexShrink: 0,
-          }}
-        >
-          <Icon height={22} icon={icon} width={22} />
-        </div>
-        <div>
-          <AppTypography component="h3" fontWeight={600} variant="body2">
-            {title}
-          </AppTypography>
-          <AppTypography color="text.secondary" variant="caption">
-            {subtitle}
-          </AppTypography>
-        </div>
-      </div>
-      {children}
-    </FrostedCard>
-  );
-};
-
-const ToggleCard: React.FC<{
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (checked: boolean) => void;
-}> = ({ label, description, checked, disabled, onChange }) => {
-  const theme = useAppTheme();
-  return (
-    <FrostedCard
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.spacing(1.5),
-        minHeight: 62,
-        padding: 12,
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <AppTypography
-          fontWeight={600}
-          style={{ lineHeight: 1.25 }}
-          variant="body2"
-        >
-          {label}
-        </AppTypography>
-        <AppTypography
-          color="text.secondary"
-          noWrap
-          style={{ lineHeight: 1.35 }}
-          variant="caption"
-        >
-          {description}
-        </AppTypography>
-      </div>
-      <AppSwitch
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onChange={(_, nextChecked) => onChange(nextChecked)}
-      />
-    </FrostedCard>
-  );
 };
 
 const IndexerSettingsSection: React.FC = () => {

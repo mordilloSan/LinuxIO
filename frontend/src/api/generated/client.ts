@@ -297,6 +297,12 @@ const linuxio = {
     get: createEndpoint("jobs", "get", { kind: "field", field: "jobId" }),
     list: createEndpoint("jobs", "list", { kind: "object" }),
   },
+  monitoring: {
+    get_config: createEndpoint("monitoring", "get_config", { kind: "none" }),
+    get_status: createEndpoint("monitoring", "get_status", { kind: "none" }),
+    restart: createEndpoint("monitoring", "restart", { kind: "none" }),
+    set_config: createEndpoint("monitoring", "set_config", { kind: "object" }),
+  },
   network: {
     disable_connection: createEndpoint("network", "disable_connection", {
       kind: "field",

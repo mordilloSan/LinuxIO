@@ -1013,6 +1013,54 @@ type IndexerDaemonStatus struct {
 	Warning         *string `json:"warning,omitempty"`
 }
 
+type MonitoringListener struct {
+	Address string   `json:"address"`
+	APIs    []string `json:"apis"`
+	Name    string   `json:"name"`
+}
+
+type MonitoringConfig struct {
+	AllowRemoteCommands bool                 `json:"allow_remote_commands"`
+	CacheTTL            map[string]string    `json:"cache_ttl"`
+	CollectorInterval   string               `json:"collector_interval"`
+	History             string               `json:"history"`
+	Listeners           []MonitoringListener `json:"listeners"`
+	Version             int                  `json:"version"`
+}
+
+type MonitoringConfigSetResult struct {
+	Config          MonitoringConfig `json:"config"`
+	RestartRequired bool             `json:"restart_required"`
+}
+
+type MonitoringListenerStatus struct {
+	Active           bool     `json:"active"`
+	Address          string   `json:"address"`
+	APIs             []string `json:"apis"`
+	EffectiveAddress string   `json:"effective_address"`
+	Name             string   `json:"name"`
+}
+
+type MonitoringConfigMeta struct {
+	CacheTTL          map[string]string `json:"cache_ttl"`
+	CollectorInterval string            `json:"collector_interval"`
+	HistoryPlugins    []string          `json:"history_plugins"`
+	Path              string            `json:"path"`
+	Source            string            `json:"source"`
+	Version           int               `json:"version"`
+}
+
+type MonitoringStatus struct {
+	CollectorInterval    string                     `json:"collector_interval"`
+	Config               MonitoringConfigMeta       `json:"config"`
+	DataDir              string                     `json:"data_dir"`
+	DBPath               string                     `json:"db_path"`
+	Listeners            []MonitoringListenerStatus `json:"listeners,omitempty"`
+	Retention            map[string]string          `json:"retention"`
+	SmartRefreshInterval string                     `json:"smart_refresh_interval"`
+	Version              string                     `json:"version"`
+}
+
 type DirectoryValidationResult struct {
 	CanCreate   bool   `json:"canCreate"`
 	CanWrite    bool   `json:"canWrite"`

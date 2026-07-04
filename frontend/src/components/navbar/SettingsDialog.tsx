@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import IndexerSettingsSection from "./IndexerSettingsSection";
+import MonitoringSettingsSection from "./MonitoringSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
 import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
@@ -19,7 +20,13 @@ import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
 type SettingsTab =
-  "general" | "theme" | "capabilities" | "docker" | "indexer" | "power";
+  | "general"
+  | "theme"
+  | "capabilities"
+  | "docker"
+  | "indexer"
+  | "monitoring"
+  | "power";
 interface SettingsDialogProps {
   onClose: () => void;
   open: boolean;
@@ -29,7 +36,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const { privileged } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
-    !privileged && (activeTab === "power" || activeTab === "indexer")
+    !privileged &&
+    (activeTab === "power" ||
+      activeTab === "indexer" ||
+      activeTab === "monitoring")
       ? "general"
       : activeTab;
   const tabs = [
@@ -38,6 +48,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     { value: "capabilities", label: "Capabilities" },
     { value: "docker", label: "Docker" },
     ...(privileged ? [{ value: "indexer", label: "Indexer" }] : []),
+    ...(privileged ? [{ value: "monitoring", label: "Monitoring" }] : []),
     ...(privileged ? [{ value: "power", label: "Power" }] : []),
   ];
 
@@ -156,6 +167,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
         {effectiveTab === "capabilities" ? <CapabilityManagerSection /> : null}
         {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
         {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
+        {effectiveTab === "monitoring" ? <MonitoringSettingsSection /> : null}
         {effectiveTab === "power" ? <PowerSettingsSection /> : null}
       </AppDialogContent>
     </GeneralDialog>

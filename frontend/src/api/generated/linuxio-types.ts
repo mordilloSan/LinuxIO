@@ -1190,6 +1190,62 @@ export interface ModifyUserRequest {
   groups?: string[];
 }
 
+export interface MonitoringConfig {
+  allow_remote_commands: boolean;
+  cache_ttl: Record<string, string>;
+  collector_interval: string;
+  history: string;
+  listeners: MonitoringListener[];
+  version: number;
+}
+
+export interface MonitoringConfigMeta {
+  cache_ttl: Record<string, string>;
+  collector_interval: string;
+  history_plugins: string[];
+  path: string;
+  source: string;
+  version: number;
+}
+
+export interface MonitoringConfigPatch {
+  collector_interval?: string;
+  history?: string;
+  cache_ttl?: Record<string, string>;
+  allow_remote_commands?: boolean;
+  listeners?: MonitoringListener[];
+}
+
+export interface MonitoringConfigSetResult {
+  config: MonitoringConfig;
+  restart_required: boolean;
+}
+
+export interface MonitoringListener {
+  address: string;
+  apis: string[];
+  name: string;
+}
+
+export interface MonitoringListenerStatus {
+  active: boolean;
+  address: string;
+  apis: string[];
+  effective_address: string;
+  name: string;
+}
+
+export interface MonitoringStatus {
+  collector_interval: string;
+  config: MonitoringConfigMeta;
+  data_dir: string;
+  db_path: string;
+  listeners?: MonitoringListenerStatus[];
+  retention: Record<string, string>;
+  smart_refresh_interval: string;
+  version: string;
+}
+
 export interface MotherboardBIOS {
   vendor: string;
   version: string;
@@ -2290,6 +2346,17 @@ export interface LinuxIOSchema {
       input: [request: JobListRequest];
       request: JobListRequest;
       result: JobSnapshot[];
+    };
+  };
+
+  monitoring: {
+    get_config: { input: []; request: void; result: MonitoringConfig };
+    get_status: { input: []; request: void; result: MonitoringStatus };
+    restart: { input: []; request: void; result: void };
+    set_config: {
+      input: [request: MonitoringConfigPatch];
+      request: MonitoringConfigPatch;
+      result: MonitoringConfigSetResult;
     };
   };
 

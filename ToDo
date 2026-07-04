@@ -1,6 +1,6 @@
 1 - Notifications!!!! See notifications.md
 
-2 - Implement monitoring
+
 
 3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
 - Checked 2026-06-22: `eslint-plugin-react` still needs the override. Latest 7.37.5 peers `eslint` through `^9.7`, not ESLint 10.
@@ -43,6 +43,7 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Remove dead single routes: filebrowser.copy/move/resource_delete + runCopyJob/runMoveJob/resourceDelete handlers + their recovery cases are no longer called by the frontend.
 - Optional: auto-rename on collision for batch copy ("name (copy)") instead of skip-and-report, if best-effort behavior proves annoying.
 
+Implement monitoring - DONE
 Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it
