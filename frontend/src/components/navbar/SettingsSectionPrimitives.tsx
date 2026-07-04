@@ -2,12 +2,15 @@ import { Icon } from "@iconify/react";
 import React from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppSwitch from "@/components/ui/AppSwitch";
+import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 export const StatusMetric: React.FC<{
-  label: string;
+  label: React.ReactNode;
   value: React.ReactNode;
   detail?: React.ReactNode;
 }> = ({ label, value, detail }) => {
@@ -53,12 +56,34 @@ export const StatusGroupLabel: React.FC<{ children: React.ReactNode }> = ({
 export const SectionCard: React.FC<{
   icon: string;
   title: string;
-  subtitle: string;
+  subtitle?: React.ReactNode;
   titleAdornment?: React.ReactNode;
   indicator?: React.ReactNode;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
   children: React.ReactNode;
-}> = ({ icon, title, subtitle, titleAdornment, indicator, children }) => {
+}> = ({
+  icon,
+  title,
+  subtitle,
+  titleAdornment,
+  indicator,
+  collapsible = false,
+  defaultCollapsed = false,
+  children,
+}) => {
   const theme = useAppTheme();
+  const contentId = React.useId();
+  const [expanded, setExpanded] = React.useState(!defaultCollapsed);
+  const headerGap = subtitle ? 2.75 : 1.5;
+  const content = collapsible ? (
+    <AppCollapse in={expanded} unmountOnExit>
+      {children}
+    </AppCollapse>
+  ) : (
+    children
+  );
+
   return (
     <FrostedCard style={{ padding: 12, position: "relative" }}>
       {indicator}
@@ -67,7 +92,7 @@ export const SectionCard: React.FC<{
           display: "flex",
           alignItems: "center",
           gap: theme.spacing(1.5),
-          marginBottom: theme.spacing(2.75),
+          marginBottom: expanded || !collapsible ? theme.spacing(headerGap) : 0,
         }}
       >
         <div
@@ -85,7 +110,7 @@ export const SectionCard: React.FC<{
         >
           <Icon height={22} icon={icon} width={22} />
         </div>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
               display: "flex",
@@ -98,12 +123,31 @@ export const SectionCard: React.FC<{
             </AppTypography>
             {titleAdornment}
           </div>
-          <AppTypography color="text.secondary" variant="caption">
-            {subtitle}
-          </AppTypography>
+          {subtitle ? (
+            <AppTypography color="text.secondary" variant="caption">
+              {subtitle}
+            </AppTypography>
+          ) : null}
         </div>
+        {collapsible ? (
+          <AppTooltip title={expanded ? "Collapse" : "Expand"}>
+            <AppIconButton
+              aria-controls={contentId}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${title}`}
+              onClick={() => setExpanded((value) => !value)}
+              size="small"
+            >
+              <Icon
+                height={18}
+                icon={expanded ? "mdi:chevron-up" : "mdi:chevron-down"}
+                width={18}
+              />
+            </AppIconButton>
+          </AppTooltip>
+        ) : null}
       </div>
-      {children}
+      {collapsible ? <div id={contentId}>{content}</div> : content}
     </FrostedCard>
   );
 };

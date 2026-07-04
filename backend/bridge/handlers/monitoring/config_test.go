@@ -79,6 +79,7 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 			"data": {
 				"version": 1,
 				"collector_interval": "15s",
+				"smart_refresh_interval": "1h",
 				"history": "cpu,mem",
 				"allow_remote_commands": true,
 				"cache_ttl": {"cpu": "2s"},
@@ -91,7 +92,10 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	if cfg.CollectorInterval != "15s" || cfg.History != "cpu,mem" || !cfg.AllowRemoteCommands {
+	if cfg.CollectorInterval != "15s" ||
+		cfg.SmartRefreshInterval != "1h" ||
+		cfg.History != "cpu,mem" ||
+		!cfg.AllowRemoteCommands {
 		t.Fatalf("config = %#v", cfg)
 	}
 	if cfg.CacheTTL["cpu"] != "2s" {
@@ -167,6 +171,38 @@ func TestUpdateConfigSendsPatchAndReadsRestartRequired(t *testing.T) {
 		t.Fatal("restartRequired = false, want true")
 	}
 	if cfg.CollectorInterval != "30s" {
+		t.Fatalf("config = %#v", cfg)
+	}
+}
+
+func TestUpdateConfigSendsSmartRefreshIntervalPatch(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		cmd := decodeCommandRequest(t, req)
+		if cmd.Command != "config.set" {
+			t.Fatalf("command = %q, want config.set", cmd.Command)
+		}
+		params := string(cmd.Params)
+		if !strings.Contains(params, `"smart_refresh_interval":"2h"`) {
+			t.Fatalf("params missing smart_refresh_interval: %s", params)
+		}
+		if strings.Contains(params, `"collector_interval"`) {
+			t.Fatalf("params included unset fields: %s", params)
+		}
+		return jsonResponse(http.StatusOK, `{
+			"ok": true,
+			"command": "config.set",
+			"data": {"version": 1, "collector_interval": "30s", "smart_refresh_interval": "2h", "history": "cpu", "cache_ttl": {}, "listeners": []}
+		}`), nil
+	})
+
+	interval := "2h"
+	cfg, _, err := UpdateConfig(context.Background(), apischema.MonitoringConfigPatch{
+		SmartRefreshInterval: &interval,
+	})
+	if err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+	if cfg.SmartRefreshInterval != "2h" {
 		t.Fatalf("config = %#v", cfg)
 	}
 }

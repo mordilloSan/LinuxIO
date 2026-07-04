@@ -608,11 +608,12 @@ type IndexerConfigPatch struct {
 
 // MonitoringConfigPatch mirrors the go-monitoring `config.set` command params.
 type MonitoringConfigPatch struct {
-	CollectorInterval   *string              `json:"collector_interval,omitempty"`
-	History             *string              `json:"history,omitempty"`
-	CacheTTL            map[string]string    `json:"cache_ttl,omitempty"`
-	AllowRemoteCommands *bool                `json:"allow_remote_commands,omitempty"`
-	Listeners           []MonitoringListener `json:"listeners,omitempty"`
+	CollectorInterval    *string              `json:"collector_interval,omitempty"`
+	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
+	History              *string              `json:"history,omitempty"`
+	CacheTTL             map[string]string    `json:"cache_ttl,omitempty"`
+	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
+	Listeners            []MonitoringListener `json:"listeners,omitempty"`
 }
 
 type JobListRequest struct {

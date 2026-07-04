@@ -11,6 +11,7 @@ import ThemeColorsSection from "./ThemeColorsSection";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
@@ -56,6 +57,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     setActiveTab("general");
     onClose();
   };
+  const sectionErrorFallback = (
+    <div style={{ padding: theme.spacing(1) }}>
+      <AppTypography color="error">
+        This settings section failed to render.
+      </AppTypography>
+    </div>
+  );
+
   return (
     <GeneralDialog
       fullWidth
@@ -117,58 +126,62 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           paddingBottom: 12,
         }}
       >
-        {effectiveTab === "general" ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: theme.spacing(1.5),
-            }}
-          >
-            <div>
-              <AppTypography fontWeight={600} variant="body1">
-                General
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Common app preferences.
-              </AppTypography>
-            </div>
-
-            <FrostedCard
-              hoverLift
-              onClick={(e) => {
-                const target = e.target as HTMLElement;
-                if (target.closest("button, input")) return;
-                (e.currentTarget as HTMLElement)
-                  .querySelector<HTMLButtonElement>("button")
-                  ?.click();
-              }}
+        <ErrorBoundary key={effectiveTab} fallback={sectionErrorFallback}>
+          {effectiveTab === "general" ? (
+            <div
               style={{
-                cursor: "pointer",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: theme.spacing(1.5),
+                flexDirection: "column",
+                gap: theme.spacing(1.5),
               }}
             >
               <div>
-                <AppTypography fontWeight={600} variant="body2">
-                  Primary color
+                <AppTypography fontWeight={600} variant="body1">
+                  General
                 </AppTypography>
                 <AppTypography color="text.secondary" variant="caption">
-                  Change the app accent color.
+                  Common app preferences.
                 </AppTypography>
               </div>
-              <NavbarCustomizer />
-            </FrostedCard>
-          </div>
-        ) : null}
-        {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
-        {effectiveTab === "capabilities" ? <CapabilityManagerSection /> : null}
-        {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
-        {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
-        {effectiveTab === "monitoring" ? <MonitoringSettingsSection /> : null}
-        {effectiveTab === "power" ? <PowerSettingsSection /> : null}
+
+              <FrostedCard
+                hoverLift
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest("button, input")) return;
+                  (e.currentTarget as HTMLElement)
+                    .querySelector<HTMLButtonElement>("button")
+                    ?.click();
+                }}
+                style={{
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: theme.spacing(1.5),
+                }}
+              >
+                <div>
+                  <AppTypography fontWeight={600} variant="body2">
+                    Primary color
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    Change the app accent color.
+                  </AppTypography>
+                </div>
+                <NavbarCustomizer />
+              </FrostedCard>
+            </div>
+          ) : null}
+          {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
+          {effectiveTab === "capabilities" ? (
+            <CapabilityManagerSection />
+          ) : null}
+          {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
+          {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
+          {effectiveTab === "monitoring" ? <MonitoringSettingsSection /> : null}
+          {effectiveTab === "power" ? <PowerSettingsSection /> : null}
+        </ErrorBoundary>
       </AppDialogContent>
     </GeneralDialog>
   );

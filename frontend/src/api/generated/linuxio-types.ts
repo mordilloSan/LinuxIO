@@ -1194,6 +1194,7 @@ export interface MonitoringConfig {
   allow_remote_commands: boolean;
   cache_ttl: Record<string, string>;
   collector_interval: string;
+  smart_refresh_interval: string;
   history: string;
   listeners: MonitoringListener[];
   version: number;
@@ -1210,6 +1211,7 @@ export interface MonitoringConfigMeta {
 
 export interface MonitoringConfigPatch {
   collector_interval?: string;
+  smart_refresh_interval?: string;
   history?: string;
   cache_ttl?: Record<string, string>;
   allow_remote_commands?: boolean;

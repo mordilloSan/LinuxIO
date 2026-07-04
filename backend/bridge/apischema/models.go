@@ -1020,12 +1020,13 @@ type MonitoringListener struct {
 }
 
 type MonitoringConfig struct {
-	AllowRemoteCommands bool                 `json:"allow_remote_commands"`
-	CacheTTL            map[string]string    `json:"cache_ttl"`
-	CollectorInterval   string               `json:"collector_interval"`
-	History             string               `json:"history"`
-	Listeners           []MonitoringListener `json:"listeners"`
-	Version             int                  `json:"version"`
+	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
+	CacheTTL             map[string]string    `json:"cache_ttl"`
+	CollectorInterval    string               `json:"collector_interval"`
+	SmartRefreshInterval string               `json:"smart_refresh_interval"`
+	History              string               `json:"history"`
+	Listeners            []MonitoringListener `json:"listeners"`
+	Version              int                  `json:"version"`
 }
 
 type MonitoringConfigSetResult struct {

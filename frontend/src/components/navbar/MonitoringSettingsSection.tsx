@@ -14,13 +14,11 @@ import {
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
   SectionCard,
-  StatusGroupLabel,
   StatusMetric,
   ToggleCard,
 } from "@/components/navbar/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -33,6 +31,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DraftConfig {
   collector_interval: string;
+  smart_refresh_interval: string;
   history: string;
   allow_remote_commands: boolean;
   cache_ttl: Record<string, string>;
@@ -41,12 +40,14 @@ interface DraftConfig {
 
 interface DraftErrors {
   collector_interval?: string;
+  smart_refresh_interval?: string;
   cache_ttl?: Partial<Record<string, string>>;
   listener_addresses?: Partial<Record<number, string>>;
 }
 
 const toDraft = (config: MonitoringConfig): DraftConfig => ({
   collector_interval: compactGoDuration(config.collector_interval),
+  smart_refresh_interval: compactGoDuration(config.smart_refresh_interval),
   history: config.history,
   allow_remote_commands: config.allow_remote_commands,
   cache_ttl: Object.fromEntries(
@@ -77,6 +78,9 @@ const toPatchPayload = (
 
   if (draft.collector_interval !== saved.collector_interval) {
     payload.collector_interval = draft.collector_interval.trim();
+  }
+  if (draft.smart_refresh_interval !== saved.smart_refresh_interval) {
+    payload.smart_refresh_interval = draft.smart_refresh_interval.trim();
   }
   if (draft.history !== saved.history) {
     payload.history = draft.history.trim();
@@ -123,6 +127,16 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
     errors.collector_interval = "Use a duration like 15s, 1m, or 5m.";
   }
 
+  const smartRefreshInterval = draft.smart_refresh_interval.trim();
+  if (!smartRefreshInterval) {
+    errors.smart_refresh_interval = "SMART refresh interval is required.";
+  } else if (
+    !isGoDuration(smartRefreshInterval) ||
+    smartRefreshInterval === "0"
+  ) {
+    errors.smart_refresh_interval = "Use a duration like 1h, 30m, or 12h.";
+  }
+
   const ttlErrors: Partial<Record<string, string>> = {};
   for (const [key, value] of Object.entries(draft.cache_ttl)) {
     if (!value.trim()) {
@@ -153,6 +167,7 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
 
 const hasErrors = (errors: DraftErrors) =>
   Boolean(errors.collector_interval) ||
+  Boolean(errors.smart_refresh_interval) ||
   Object.values(errors.cache_ttl ?? {}).some(Boolean) ||
   Object.values(errors.listener_addresses ?? {}).some(Boolean);
 
@@ -164,6 +179,42 @@ const formatTTLLabel = (key: string) =>
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+
+const getConfigSchemaError = (config: MonitoringConfig): string | null => {
+  const data = config as unknown as Record<string, unknown>;
+  const requiredDurations = ["collector_interval", "smart_refresh_interval"];
+  for (const key of requiredDurations) {
+    const value = data[key];
+    if (typeof value !== "string") {
+      return `monitoring.get_config is missing required string field "${key}".`;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return `monitoring.get_config field "${key}" must not be empty.`;
+    }
+    if (!isGoDuration(trimmed) || trimmed === "0") {
+      return `monitoring.get_config field "${key}" must be a positive Go duration string.`;
+    }
+  }
+
+  if (typeof data.history !== "string") {
+    return `monitoring.get_config is missing required string field "history".`;
+  }
+
+  if (!data.cache_ttl || typeof data.cache_ttl !== "object") {
+    return `monitoring.get_config is missing required object field "cache_ttl".`;
+  }
+  for (const [key, value] of Object.entries(data.cache_ttl)) {
+    if (typeof value !== "string") {
+      return `monitoring.get_config field "cache_ttl.${key}" must be a string.`;
+    }
+  }
+
+  if (!Array.isArray(data.listeners)) {
+    return `monitoring.get_config is missing required array field "listeners".`;
+  }
+  return null;
+};
 
 const MonitoringSettingsSection: React.FC = () => {
   const theme = useAppTheme();
@@ -200,7 +251,11 @@ const MonitoringSettingsSection: React.FC = () => {
   const setConfigMutation = linuxio.monitoring.set_config.useMutation();
   const restartMutation = linuxio.monitoring.restart.useMutation();
 
-  const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
+  const configSchemaError = config ? getConfigSchemaError(config) : null;
+  const savedDraft = useMemo(
+    () => (config && !configSchemaError ? toDraft(config) : null),
+    [config, configSchemaError],
+  );
   const draft = useMemo(
     () =>
       savedDraft
@@ -230,8 +285,8 @@ const MonitoringSettingsSection: React.FC = () => {
       }
       return { ...prev, [key]: value };
     });
-    if (key === "collector_interval") {
-      setErrors((prev) => ({ ...prev, collector_interval: undefined }));
+    if (key === "collector_interval" || key === "smart_refresh_interval") {
+      setErrors((prev) => ({ ...prev, [key]: undefined }));
     }
     setRestartRequired(false);
   };
@@ -364,6 +419,91 @@ const MonitoringSettingsSection: React.FC = () => {
     </div>
   );
 
+  const renderAgentStatusCard = () => (
+    <SectionCard
+      icon="mdi:chart-line"
+      indicator={
+        <StatusDot
+          absolute
+          color={theme.palette.success.main}
+          style={{ top: 16, right: 12 }}
+          tooltip="Agent healthy"
+        />
+      }
+      title="Agent Status"
+      titleAdornment={
+        agentStatus ? (
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            ({agentStatus.version})
+          </AppTypography>
+        ) : undefined
+      }
+    >
+      {statusError ? (
+        <AppAlert severity="warning">
+          <AppAlertTitle>Status unavailable</AppAlertTitle>
+          {statusError.message}
+        </AppAlert>
+      ) : agentStatus ? (
+        <>
+          {renderGrid(
+            <>
+              <StatusMetric label="Database" value={agentStatus.db_path} />
+              <StatusMetric
+                label={
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: theme.spacing(0.5),
+                    }}
+                  >
+                    Config
+                    <StatusDot
+                      color={
+                        agentStatus.config.source === "loaded"
+                          ? theme.palette.success.main
+                          : theme.palette.warning.main
+                      }
+                      size={7}
+                      tooltip={`Config ${agentStatus.config.source}`}
+                    />
+                  </span>
+                }
+                value={agentStatus.config.path}
+              />
+            </>,
+            240,
+            1,
+          )}
+          {agentStatus.listeners?.length ? (
+            <div style={{ marginTop: theme.spacing(1.5) }}>
+              {renderGrid(
+                agentStatus.listeners.map((listener) => (
+                  <StatusMetric
+                    key={listener.name}
+                    label={`Listener: ${listener.name}`}
+                    value={listener.effective_address || listener.address}
+                  />
+                )),
+                240,
+                1,
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div style={{ padding: theme.spacing(1) }}>
+          <ComponentLoader />
+        </div>
+      )}
+    </SectionCard>
+  );
+
   const header = (
     <div
       style={{
@@ -440,7 +580,44 @@ const MonitoringSettingsSection: React.FC = () => {
     );
   }
 
-  if (isPending || !draft) {
+  if (isPending) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1.5),
+        }}
+      >
+        {header}
+        <div style={{ padding: theme.spacing(3) }}>
+          <ComponentLoader />
+        </div>
+      </div>
+    );
+  }
+
+  if (configSchemaError) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1.5),
+        }}
+      >
+        {header}
+        {renderAgentStatusCard()}
+        <AppAlert severity="error">
+          <AppAlertTitle>Monitoring config contract mismatch</AppAlertTitle>
+          {configSchemaError} Update go-monitoring so its config API matches the
+          LinuxIO monitoring settings contract.
+        </AppAlert>
+      </div>
+    );
+  }
+
+  if (!draft) {
     return (
       <div
         style={{
@@ -499,97 +676,7 @@ const MonitoringSettingsSection: React.FC = () => {
         </AppAlert>
       ) : null}
 
-      <SectionCard
-        icon="mdi:chart-line"
-        indicator={
-          <StatusDot
-            absolute
-            color={theme.palette.success.main}
-            style={{ top: 16, right: 12 }}
-            tooltip="Agent healthy"
-          />
-        }
-        subtitle="Agent storage and listeners"
-        title="Agent Status"
-        titleAdornment={
-          agentStatus ? (
-            <Chip
-              color="primary"
-              label={agentStatus.version}
-              size="small"
-              variant="soft"
-            />
-          ) : undefined
-        }
-      >
-        {statusError ? (
-          <AppAlert severity="warning">
-            <AppAlertTitle>Status unavailable</AppAlertTitle>
-            {statusError.message}
-          </AppAlert>
-        ) : agentStatus ? (
-          <>
-            {renderGrid(
-              <>
-                <StatusMetric
-                  label="Collector interval"
-                  value={compactGoDuration(agentStatus.collector_interval)}
-                />
-                <StatusMetric
-                  label="SMART refresh"
-                  value={compactGoDuration(agentStatus.smart_refresh_interval)}
-                />
-              </>,
-              140,
-              1,
-            )}
-            <div style={{ marginTop: theme.spacing(1.5) }}>
-              <StatusGroupLabel>Storage</StatusGroupLabel>
-              <div style={{ marginTop: theme.spacing(0.5) }}>
-                {renderGrid(
-                  <>
-                    <StatusMetric
-                      detail={agentStatus.data_dir}
-                      label="Database"
-                      value={agentStatus.db_path}
-                    />
-                    <StatusMetric
-                      detail={agentStatus.config.source}
-                      label="Config"
-                      value={agentStatus.config.path}
-                    />
-                  </>,
-                  240,
-                  1,
-                )}
-              </div>
-            </div>
-            {agentStatus.listeners?.length ? (
-              <div style={{ marginTop: theme.spacing(1.5) }}>
-                <StatusGroupLabel>Listeners</StatusGroupLabel>
-                <div style={{ marginTop: theme.spacing(0.5) }}>
-                  {renderGrid(
-                    agentStatus.listeners.map((listener) => (
-                      <StatusMetric
-                        detail={listener.apis.join(", ")}
-                        key={listener.name}
-                        label={`Listener: ${listener.name}`}
-                        value={listener.effective_address || listener.address}
-                      />
-                    )),
-                    240,
-                    1,
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div style={{ padding: theme.spacing(1) }}>
-            <ComponentLoader />
-          </div>
-        )}
-      </SectionCard>
+      {renderAgentStatusCard()}
 
       <ToggleCard
         checked={draft.allow_remote_commands}
@@ -648,6 +735,20 @@ const MonitoringSettingsSection: React.FC = () => {
                 value={draft.collector_interval}
               />
             </AppTooltip>
+            <AppTooltip title="How often SMART data is refreshed">
+              <AppTextField
+                disabled={busy}
+                error={Boolean(errors.smart_refresh_interval)}
+                fullWidth
+                helperText={errors.smart_refresh_interval}
+                label="SMART refresh"
+                onChange={(event) =>
+                  updateDraft("smart_refresh_interval", event.target.value)
+                }
+                size="small"
+                value={draft.smart_refresh_interval}
+              />
+            </AppTooltip>
             <AppTooltip title="Comma-separated plugins to persist history for">
               <AppTextField
                 disabled={busy}
@@ -666,6 +767,8 @@ const MonitoringSettingsSection: React.FC = () => {
 
       {ttlKeys.length > 0 ? (
         <SectionCard
+          collapsible
+          defaultCollapsed
           icon="mdi:cached"
           subtitle="How long live readings are cached per plugin"
           title="Cache TTLs"
