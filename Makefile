@@ -794,6 +794,8 @@ _build-binaries: ensure-go check-c-build-deps
 
 build: generate test build-vite build-bridge _build-binaries
 
+build-nocheck build-no-check: generate build-vite build-bridge _build-binaries
+
 fastbuild: generate build-bridge _build-binaries
 
 generate: ensure-go
@@ -867,7 +869,8 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Full build (test + frontend + all binaries)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick build (skip tests)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-nocheck    $(COLOR_RESET) Full build without running tests"
+	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick binary build (skip tests and frontend)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
@@ -915,7 +918,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck build-no-check fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

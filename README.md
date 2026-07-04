@@ -193,6 +193,8 @@ make test-backend      # Run Go unit tests in backend
 
 ```bash
 make build             # Build everything (frontend + backend + bridge + auth worker)
+make build-nocheck     # Build everything without running tests
+make fastbuild         # Build binaries only, skipping tests and frontend
 make build-vite        # Build frontend only
 make build-backend     # Build backend only
 make build-bridge      # Build bridge only
