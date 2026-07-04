@@ -319,11 +319,11 @@ func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 	}
 }
 
-func TestInstallPackageCallsInstallPackagesAndWaits(t *testing.T) {
+func TestInstallPackageWithProgressCallsInstallPackagesAndWaits(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 
-	if err := InstallPackage(context.Background(), "demo;1.2.3;x86_64;repo"); err != nil {
-		t.Fatalf("InstallPackage: %v", err)
+	if err := installPackageWithProgress(context.Background(), "demo;1.2.3;x86_64;repo", nil); err != nil {
+		t.Fatalf("installPackageWithProgress: %v", err)
 	}
 	if got := service.installedPackages(); !slices.Equal(got, []string{"demo;1.2.3;x86_64;repo"}) {
 		t.Fatalf("installed = %#v", got)

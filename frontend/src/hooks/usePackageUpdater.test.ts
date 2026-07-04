@@ -4,7 +4,6 @@ import type { Stream } from "@/api";
 
 const apiMocks = vi.hoisted(() => ({
   cancelJob: vi.fn(),
-  installPackage: vi.fn(),
   openJobAttachStream: vi.fn(),
   updatePackages: vi.fn(),
 }));
@@ -27,14 +26,6 @@ vi.mock("@/api", async () => {
       packages: {
         ...actual.linuxio.packages,
         update: apiMocks.updatePackages,
-      },
-      updates: {
-        ...actual.linuxio.updates,
-        install_package: {
-          useMutation: () => ({
-            mutateAsync: apiMocks.installPackage,
-          }),
-        },
       },
     },
   };
@@ -74,10 +65,16 @@ async function flushMinimumVisibleProgress(promise: Promise<unknown>) {
 }
 
 describe("usePackageUpdater", () => {
-  it("updates one package, shows the package name, and waits before clearing progress", async () => {
+  it("updates one package through the job stream and drives the progress bar", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    apiMocks.installPackage.mockResolvedValue(undefined);
+    apiMocks.updatePackages.mockResolvedValue({ id: "job-1" });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamResultMocks.run.mockImplementation(async (options) => {
+      const stream = options.open();
+      options.onOpen?.(stream);
+      options.onProgress?.({ type: "percentage", percentage: 40 });
+    });
     const onComplete = vi.fn(async () => undefined);
     const { result } = renderHook(() => usePackageUpdater(onComplete));
 
@@ -88,14 +85,13 @@ describe("usePackageUpdater", () => {
     });
 
     expect(result.current.updatingPackage).toBe("nginx");
-    expect(result.current.status).toBe("Installing");
-    expect(result.current.eventLog).toEqual(["Installing: nginx"]);
-    expect(apiMocks.installPackage).toHaveBeenCalledWith({
-      packageId: "nginx;1.24.0;amd64;ubuntu",
-    });
+    expect(apiMocks.updatePackages).toHaveBeenCalledWith([
+      "nginx;1.24.0;amd64;ubuntu",
+    ]);
 
     await flushMinimumVisibleProgress(promise);
 
+    expect(result.current.progress).toBe(100);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
@@ -103,10 +99,7 @@ describe("usePackageUpdater", () => {
 
   it("reports single-package update failures with the package name", async () => {
     vi.useFakeTimers();
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    apiMocks.installPackage.mockRejectedValue(new Error("permission denied"));
+    apiMocks.updatePackages.mockRejectedValue(new Error("permission denied"));
     const { result } = renderHook(() => usePackageUpdater(vi.fn()));
 
     const promise = result.current.updateOne("curl;8.0;amd64;ubuntu");
@@ -116,10 +109,6 @@ describe("usePackageUpdater", () => {
       "Failed to update curl: permission denied",
     );
     expect(result.current.updatingPackage).toBeNull();
-    expect(consoleError).toHaveBeenCalledWith(
-      "Failed to update curl;8.0;amd64;ubuntu",
-      expect.any(Error),
-    );
   });
 
   it("drives update-all state from stream progress and keeps global progress monotonic", async () => {

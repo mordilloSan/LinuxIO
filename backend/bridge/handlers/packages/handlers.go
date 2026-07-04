@@ -11,7 +11,6 @@ import (
 var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
 	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
-	apischema.Job[apischema.PackageIDRequest, apischema.NoResponse]("updates.install_package").Handle(handleInstallPackage),
 	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
 	apischema.Job[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
 	apischema.Job[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
@@ -36,10 +35,6 @@ func handleGetUpdatesBasic(ctx context.Context, _ apischema.NoRequest, emit brid
 func handleGetUpdateDetail(ctx context.Context, req apischema.PackageIDRequest, emit bridgeipc.Events) error {
 	result, err := getSingleUpdateDetail(ctx, req.PackageID)
 	return bridgeipc.EmitResult(emit, result, err)
-}
-
-func handleInstallPackage(ctx context.Context, req apischema.PackageIDRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, InstallPackage(ctx, req.PackageID))
 }
 
 func handleGetAutoUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {

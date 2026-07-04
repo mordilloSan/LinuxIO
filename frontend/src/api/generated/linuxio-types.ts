@@ -2596,11 +2596,6 @@ export interface LinuxIOSchema {
       result: UpdateHistoryRow[];
     };
     get_updates_basic: { input: []; request: void; result: Update[] };
-    install_package: {
-      input: [packageId: string];
-      request: PackageIDRequest;
-      result: void;
-    };
     set_auto_updates: {
       input: [request: UpdatesSetAutoUpdatesRequest];
       request: UpdatesSetAutoUpdatesRequest;

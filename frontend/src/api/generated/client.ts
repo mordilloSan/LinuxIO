@@ -534,10 +534,6 @@ const linuxio = {
     get_updates_basic: createEndpoint("updates", "get_updates_basic", {
       kind: "none",
     }),
-    install_package: createEndpoint("updates", "install_package", {
-      kind: "field",
-      field: "packageId",
-    }),
     set_auto_updates: createEndpoint("updates", "set_auto_updates", {
       kind: "object",
     }),

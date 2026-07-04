@@ -50,9 +50,6 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const cancelledRef = useRef(false);
   const { run: runStreamResult } = useStreamResult();
 
-  const { mutateAsync: installPackage } =
-    linuxio.updates.install_package.useMutation();
-
   const appendEvent = useCallback((message: string) => {
     const trimmed = message.trim();
     if (!trimmed) {
@@ -68,33 +65,8 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
     });
   }, []);
 
-  const updateOne = useCallback(
-    async (pkg: string) => {
-      const startedAtMs = Date.now();
-      setEventLog([]);
-      setUpdatingPackage(extractPackageName(pkg));
-      setError(null);
-      setStatus("Installing");
-      appendEvent(`Installing: ${extractPackageName(pkg)}`);
-
-      try {
-        await installPackage({ packageId: pkg });
-        await onComplete();
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : "Update failed";
-        setError(`Failed to update ${extractPackageName(pkg)}: ${errorMsg}`);
-        console.error(`Failed to update ${pkg}`, err);
-      } finally {
-        await ensureMinimumVisible(startedAtMs);
-        setUpdatingPackage(null);
-        setStatus(null);
-      }
-    },
-    [appendEvent, installPackage, onComplete],
-  );
-
-  const updateAll = useCallback(
-    async (packages: string[]) => {
+  const runUpdate = useCallback(
+    async (packages: string[], initialLabel: string) => {
       const startedAtMs = Date.now();
       if (packages.length === 0) {
         console.log("No packages to update");
@@ -105,7 +77,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       setEventLog([]);
       setError(null);
       setStatus("Initializing");
-      setUpdatingPackage("Preparing updates...");
+      setUpdatingPackage(initialLabel);
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
 
@@ -195,7 +167,11 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         }
 
         const errorMsg = err instanceof Error ? err.message : "Update failed";
-        setError(errorMsg);
+        setError(
+          packages.length === 1
+            ? `Failed to update ${extractPackageName(packages[0])}: ${errorMsg}`
+            : errorMsg,
+        );
         setUpdatingPackage(null);
         setStatus(null);
       } finally {
@@ -205,6 +181,16 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       }
     },
     [appendEvent, onComplete, runStreamResult],
+  );
+
+  const updateOne = useCallback(
+    (pkg: string) => runUpdate([pkg], extractPackageName(pkg)),
+    [runUpdate],
+  );
+
+  const updateAll = useCallback(
+    (packages: string[]) => runUpdate(packages, "Preparing updates..."),
+    [runUpdate],
   );
 
   const cancelUpdate = useCallback(() => {
