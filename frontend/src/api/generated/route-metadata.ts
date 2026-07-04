@@ -208,6 +208,7 @@ export const ROUTE_MODES = {
   "updates.get_update_detail": "query",
   "updates.get_update_history": "query",
   "updates.get_updates_basic": "query",
+  "updates.refresh_cache": "job",
   "updates.set_auto_updates": "job",
   "virt.console_open": "duplex",
   "virt.create": "job",

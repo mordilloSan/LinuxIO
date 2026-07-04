@@ -14,6 +14,7 @@ var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
 	apischema.Job[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
 	apischema.Job[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
+	apischema.Job[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
 	apischema.Query[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history").Handle(handleGetUpdateHistory),
 )
 
@@ -57,6 +58,11 @@ func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdat
 func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
 	result, err := applyOfflineUpdates(ctx)
 	return bridgeipc.EmitResult(emit, result, err)
+}
+
+func handleRefreshUpdateCache(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+	err := RefreshUpdateCache(ctx)
+	return bridgeipc.EmitResult(emit, apischema.SuccessResponse{Success: true}, err)
 }
 
 func handleGetUpdateHistory(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {

@@ -33,6 +33,7 @@ type fakePackageKit struct {
 	details         map[string][]any
 	installed       []string
 	updated         []string
+	refreshes       int
 	offlineTriggers []string
 	triggerErr      *godbus.Error
 }
@@ -145,6 +146,12 @@ func (s *fakePackageKit) updatedPackages() []string {
 	return append([]string(nil), s.updated...)
 }
 
+func (s *fakePackageKit) refreshCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.refreshes
+}
+
 func (s *fakePackageKit) triggers() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,6 +159,11 @@ func (s *fakePackageKit) triggers() []string {
 }
 
 func (tx *fakeTransaction) RefreshCache(force bool) *godbus.Error {
+	tx.service.mu.Lock()
+	if force {
+		tx.service.refreshes++
+	}
+	tx.service.mu.Unlock()
 	tx.emitLater(func() {
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
@@ -298,6 +310,17 @@ func TestGetUpdatesBasicSanitizesOutOfRangePackageInfo(t *testing.T) {
 	}
 	if got[1].InfoEnum != 0 || got[2].InfoEnum != 0 {
 		t.Fatalf("out-of-range info enums = %d, %d; want 0, 0", got[1].InfoEnum, got[2].InfoEnum)
+	}
+}
+
+func TestRefreshUpdateCacheCallsRefreshCache(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+
+	if err := RefreshUpdateCache(context.Background()); err != nil {
+		t.Fatalf("RefreshUpdateCache: %v", err)
+	}
+	if got := service.refreshCount(); got != 1 {
+		t.Fatalf("refresh count = %d, want 1", got)
 	}
 }
 

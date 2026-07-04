@@ -2723,6 +2723,7 @@ export interface LinuxIOSchema {
       result: UpdateHistoryRow[];
     };
     get_updates_basic: { input: []; request: void; result: Update[] };
+    refresh_cache: { input: []; request: void; result: SuccessResponse };
     set_auto_updates: {
       input: [request: UpdatesSetAutoUpdatesRequest];
       request: UpdatesSetAutoUpdatesRequest;

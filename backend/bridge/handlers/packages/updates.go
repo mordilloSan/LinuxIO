@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -341,6 +342,35 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 		updates = make([]UpdateDetail, 0)
 	}
 	return updates, nil
+}
+
+// RefreshUpdateCache refreshes configured package repositories, matching the
+// PackageKit operation behind apt update / dnf makecache.
+func RefreshUpdateCache(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
+		}
+		defer pkgkit.LogClose(session.Context(), trans)
+
+		if err := trans.Call("RefreshCache", true); err != nil {
+			return err
+		}
+
+		waitCtx, cancel := context.WithTimeout(session.Context(), 2*time.Minute)
+		defer cancel()
+		if err := trans.AwaitFinished(waitCtx, "RefreshCache"); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("timeout refreshing package cache")
+			}
+			return err
+		}
+		return nil
+	})
 }
 
 // InstallByNameWithProgress is InstallByName but streams PackageKit progress

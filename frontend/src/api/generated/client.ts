@@ -552,6 +552,7 @@ const linuxio = {
     get_updates_basic: createEndpoint("updates", "get_updates_basic", {
       kind: "none",
     }),
+    refresh_cache: createEndpoint("updates", "refresh_cache", { kind: "none" }),
     set_auto_updates: createEndpoint("updates", "set_auto_updates", {
       kind: "object",
     }),
