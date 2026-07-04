@@ -98,6 +98,18 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: false },
   },
   {
+    wire: "monitoring",
+    state: "monitoringAvailable",
+    label: "Monitoring",
+    description: "Historical host metrics agent and API",
+    readyText: "go-monitoring agent is healthy.",
+    dependency: "go-monitoring",
+    icon: "mdi:chart-line",
+    reasonUnknown: "Monitoring availability is still being checked.",
+    reasonUnavailable: "go-monitoring agent is unavailable.",
+    installable: { requiresPackageKit: false },
+  },
+  {
     wire: "lm_sensors",
     state: "lmSensorsAvailable",
     label: "lm-sensors",

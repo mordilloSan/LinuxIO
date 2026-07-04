@@ -248,6 +248,7 @@ export interface CapabilitiesResponse {
   docker_available: boolean;
   watchtower_available: boolean;
   indexer_available: boolean;
+  monitoring_available: boolean;
   lm_sensors_available: boolean;
   memory_inventory_available: boolean;
   smartmontools_available: boolean;
@@ -263,6 +264,7 @@ export interface CapabilitiesResponse {
   docker_error?: string;
   watchtower_error?: string;
   indexer_error?: string;
+  monitoring_error?: string;
   lm_sensors_error?: string;
   memory_inventory_error?: string;
   smartmontools_error?: string;

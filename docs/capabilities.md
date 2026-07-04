@@ -43,7 +43,7 @@ The frontend collapses this into a tri-state per capability: `true` (available),
 | `capabilityRegistry` | `handlers/system/capabilities.go` | Source of truth: one `CapabilitySpec` per capability. |
 | `CapabilitySpec` | `handlers/system/capabilities.go` | `Name` (wire prefix), `LogName`, `Detect`, optional `Install`. |
 | `InstallSpec` | `handlers/system/capabilities.go` | Package/service to install per distro family. |
-| `capabilitiesResponse` | `handlers/system/capabilities.go` | Internal strongly-typed wire struct (string errors). |
+| `CapabilitiesAvailable` / `CapabilitiesError` | `common/session/session.go` | Shared wire/session capability fields. |
 | `setCapabilityField` | `handlers/system/capabilities.go` | Maps a wire name to its struct fields. |
 | `buildCapabilitiesResponse` | `handlers/system/capabilities.go` | Iterates the registry and fills the struct. |
 | `CapabilitySpecByName` | `handlers/system/capabilities.go` | Lookup used by the install runner. |
@@ -80,16 +80,15 @@ inlined for a plain binary check:
 ### Anti-drift test
 
 `TestCapabilityRegistryCoversWireFields` (`capabilities_test.go`) asserts that
-every `<prefix>_available` field on `capabilitiesResponse` has a matching
-registry entry and vice versa. `TestSetCapabilityFieldRoundTrips` checks that
-`setCapabilityField` writes only the intended capability's fields. Forgetting
-any of the three internal touch points (struct field, registry entry, switch
+every `<prefix>_available` field on `session.CapabilitiesAvailable` has a
+matching registry entry and vice versa. `TestSetCapabilityFieldRoundTrips`
+checks that `setCapabilityField` writes only the intended capability's fields.
+Forgetting any of the three touch points (struct field, registry entry, switch
 case) fails the build.
 
-> The test covers the **internal** `capabilitiesResponse` only. The exported
-> `apischema.CapabilitiesResponse` is kept in sync by hand and verified by
-> `make generate` + `make tsc-only` (the field must appear in the generated
-> contract).
+> The exported `apischema.CapabilitiesResponse` embeds the shared session
+> structs. `make generate` + `make tsc-only` verify the field appears in the
+> generated frontend contract.
 
 ## Install Flow
 
@@ -98,11 +97,14 @@ Installable capabilities set an `InstallSpec`. The runner
 does the work and streams per-stage progress:
 
 ```text
-resolve -> install_package -> [enable_service] -> [start_service] -> wait_service_active -> detect
+resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_service] -> wait_service_active -> detect
 ```
 
 - `detectDistroFamily()` reads `/etc/os-release` and classifies the host as
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
+- Optional LinuxIO-managed components (for example the indexer, Watchtower, or
+  go-monitoring) install through a component-specific asset/script step instead
+  of PackageKit.
 - Package installs go through PackageKit (`InstallByName`), so installable
   capabilities that have a package step require PackageKit to be available.
 - Service steps use `systemd.EnableUnit` / `StartUnit`, then `waitUnitActive`.
@@ -117,9 +119,11 @@ resolve -> install_package -> [enable_service] -> [start_service] -> wait_servic
 | `PackageDebian` / `PackageRHEL` | Package name per family (empty = no package step). |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
+| `OptionalComponent` | LinuxIO-managed non-package installer handled in `handlers/packages`. |
+| `RequiresDocker` | Optional-component prerequisite checked before install. |
 
 Omit `Install` entirely for capabilities with no UI install path (Docker, the
-LinuxIO indexer, PackageKit itself).
+PackageKit capability itself).
 
 ## Frontend Pieces
 
@@ -200,13 +204,13 @@ Worked example: the `wireguard` capability.
 
 1. **Detect** — reuse a `CheckXAvailability` in the feature package, or inline
    `checkDependencyCommand` for a plain binary.
-2. **Backend struct** — add `XAvailable bool` and `XError string` to
-   `capabilitiesResponse` in `handlers/system/capabilities.go`.
+2. **Backend struct** — add `XAvailable bool` and `XError *string` to
+   `session.CapabilitiesAvailable` / `session.CapabilitiesError`.
 3. **Backend registry** — add a `CapabilitySpec` (with `Install` if applicable)
    to `capabilityRegistry`.
 4. **Backend switch** — add a `case "<wire>":` to `setCapabilityField`.
-5. **API contract** — add `XAvailable bool` and `XError *string` to
-   `CapabilitiesResponse` in `apischema/models.go`.
+5. **API contract** — run generation so the embedded
+   `apischema.CapabilitiesResponse` fields appear in TypeScript.
 6. **Frontend manifest** — add a `CapabilityDef` to `CAPABILITIES` in
    `api/capabilities.ts`.
 7. **Gate** — add `requiredCapabilities: ["xAvailable"]` to the route, and/or

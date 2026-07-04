@@ -47,6 +47,18 @@ describe("capabilities helpers", () => {
     });
   });
 
+  it("defines monitoring as an installable optional component", () => {
+    const monitoring = CAPABILITIES.find(
+      (capability) => capability.wire === "monitoring",
+    );
+
+    expect(monitoring).toMatchObject({
+      dependency: "go-monitoring",
+      installable: { requiresPackageKit: false },
+      state: "monitoringAvailable",
+    });
+  });
+
   it("parses untrusted capability JSON safely", () => {
     expect(parseCapabilityState(null)).toEqual(emptyCapabilityState);
     expect(
