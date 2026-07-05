@@ -159,8 +159,48 @@ func TestFetchMemoryHistoryDecodesStats(t *testing.T) {
 		)), nil
 	})
 	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/api/v1/mem/history" {
-			t.Fatalf("path = %s, want /api/v1/mem/history", req.URL.Path)
+		switch req.URL.Path {
+		case "/api/v1/mem/history":
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000060000, "stats": {"memory_gb": 15.41, "memory_used_gb": 6.01, "memory_percent": 39.03, "memory_buffer_cache_gb": 8.44, "memory_cached_gb": 7.9, "memory_buffers_gb": 0.54}}]
+			}`), nil
+		case "/api/v1/containers/history":
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000060000, "stats": [{"name": "a", "memory_mb": 512}, {"name": "b", "memory_mb": 1024}]}]
+			}`), nil
+		default:
+			t.Fatalf("path = %s, want mem or containers history", req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	points, err := FetchMemoryHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if err != nil {
+		t.Fatalf("FetchMemoryHistory: %v", err)
+	}
+	if len(points) != 1 || points[0].UsedPercent != 39.03 || points[0].TotalGB != 15.41 {
+		t.Fatalf("points = %#v", points)
+	}
+	if points[0].CachedGB != 7.9 || points[0].BuffersGB != 0.54 {
+		t.Fatalf("split cache fields = %#v", points[0])
+	}
+	if points[0].DockerUsedGB != 1.5 {
+		t.Fatalf("DockerUsedGB = %v, want 1.5", points[0].DockerUsedGB)
+	}
+}
+
+func TestFetchMemoryHistoryToleratesMissingContainersHistory(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/api/v1/containers/history" {
+			return jsonResponse(http.StatusNotFound, `{"error": "history not enabled for plugin"}`), nil
 		}
 		return jsonResponse(http.StatusOK, `{
 			"resolution": "1m",
@@ -172,7 +212,7 @@ func TestFetchMemoryHistoryDecodesStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchMemoryHistory: %v", err)
 	}
-	if len(points) != 1 || points[0].UsedPercent != 39.03 || points[0].TotalGB != 15.41 {
+	if len(points) != 1 || points[0].DockerUsedGB != 0 {
 		t.Fatalf("points = %#v", points)
 	}
 }

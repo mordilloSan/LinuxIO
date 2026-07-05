@@ -1058,6 +1058,12 @@ type MonitoringMemoryHistoryPoint struct {
 	UsedPercent   float64 `json:"used_percent"`
 	BufferCacheGB float64 `json:"buffer_cache_gb"`
 	ZFSArcGB      float64 `json:"zfs_arc_gb,omitempty"`
+	// CachedGB and BuffersGB split BufferCacheGB; zero on agents older than v1.5.
+	CachedGB  float64 `json:"cached_gb,omitempty"`
+	BuffersGB float64 `json:"buffers_gb,omitempty"`
+	// DockerUsedGB sums container memory from the containers history plugin;
+	// zero when that plugin has no sample near the point's timestamp.
+	DockerUsedGB float64 `json:"docker_used_gb,omitempty"`
 }
 
 type MonitoringDiskIOHistoryPoint struct {

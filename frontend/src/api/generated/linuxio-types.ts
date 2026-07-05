@@ -1267,6 +1267,9 @@ export interface MonitoringMemoryHistoryPoint {
   used_percent: number;
   buffer_cache_gb: number;
   zfs_arc_gb?: number;
+  cached_gb?: number;
+  buffers_gb?: number;
+  docker_used_gb?: number;
 }
 
 export interface MonitoringNetworkHistoryPoint {

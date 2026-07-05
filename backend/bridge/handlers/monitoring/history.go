@@ -64,6 +64,15 @@ type memHistoryStats struct {
 	UsedPercent   float64 `json:"memory_percent"`
 	BufferCacheGB float64 `json:"memory_buffer_cache_gb"`
 	ZFSArcGB      float64 `json:"memory_zfs_arc_gb"`
+	// Split cache fields; absent (zero) on agents older than v1.5.
+	CachedGB  float64 `json:"memory_cached_gb"`
+	BuffersGB float64 `json:"memory_buffers_gb"`
+}
+
+// containerHistoryRecord is one container's entry inside a containers-plugin
+// history point, whose stats payload is an array of these records.
+type containerHistoryRecord struct {
+	MemMB float64 `json:"memory_mb"`
 }
 
 type diskIOHistoryStats struct {
@@ -90,7 +99,7 @@ func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest
 }
 
 func FetchMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringMemoryHistoryPoint, error) {
-	return fetchHistory(ctx, "mem", req, func(item historyItem, stats memHistoryStats) apischema.MonitoringMemoryHistoryPoint {
+	points, err := fetchHistory(ctx, "mem", req, func(item historyItem, stats memHistoryStats) apischema.MonitoringMemoryHistoryPoint {
 		return apischema.MonitoringMemoryHistoryPoint{
 			CapturedAtMs:  item.CapturedAt,
 			TotalGB:       stats.TotalGB,
@@ -98,8 +107,70 @@ func FetchMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequ
 			UsedPercent:   stats.UsedPercent,
 			BufferCacheGB: stats.BufferCacheGB,
 			ZFSArcGB:      stats.ZFSArcGB,
+			CachedGB:      stats.CachedGB,
+			BuffersGB:     stats.BuffersGB,
 		}
 	})
+	if err != nil {
+		return nil, err
+	}
+	mergeDockerMemHistory(ctx, req, points)
+	return points, nil
+}
+
+type dockerMemHistoryPoint struct {
+	capturedAtMs int64
+	usedGB       float64
+}
+
+// mergeDockerMemHistory annotates memory points with the summed container
+// memory captured nearest to each point, so the memory chart can carve a
+// Docker layer out of "used". Best-effort: the containers plugin may have
+// history disabled, so failures just leave DockerUsedGB zero.
+func mergeDockerMemHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, points []apischema.MonitoringMemoryHistoryPoint) {
+	if len(points) == 0 {
+		return
+	}
+	docker, err := fetchHistory(ctx, "containers", req, func(item historyItem, records []containerHistoryRecord) dockerMemHistoryPoint {
+		var memMB float64
+		for _, record := range records {
+			memMB += record.MemMB
+		}
+		return dockerMemHistoryPoint{capturedAtMs: item.CapturedAt, usedGB: memMB / 1024}
+	})
+	if err != nil || len(docker) == 0 {
+		return
+	}
+
+	// Both plugins snapshot on the same collector tick, but rollup buckets can
+	// land a little apart, so match each memory point to the nearest container
+	// sample within one resolution step. Both series are in ascending order.
+	tolerance := resolutionStepMs(req.Resolution)
+	j := 0
+	for i := range points {
+		t := points[i].CapturedAtMs
+		for j+1 < len(docker) && absInt64(docker[j+1].capturedAtMs-t) <= absInt64(docker[j].capturedAtMs-t) {
+			j++
+		}
+		if absInt64(docker[j].capturedAtMs-t) <= tolerance {
+			points[i].DockerUsedGB = docker[j].usedGB
+		}
+	}
+}
+
+func resolutionStepMs(resolution apischema.MonitoringHistoryResolution) int64 {
+	minutes, err := strconv.Atoi(strings.TrimSuffix(string(resolution), "m"))
+	if err != nil || minutes <= 0 {
+		return 60_000
+	}
+	return int64(minutes) * 60_000
+}
+
+func absInt64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func FetchDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringDiskIOHistoryPoint, error) {

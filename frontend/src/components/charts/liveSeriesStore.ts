@@ -7,8 +7,13 @@ import { TimeSeries } from "smoothie";
  * go-monitoring history (see backfillLiveSeries).
  */
 
-/** Chart scroll speed: ~60s visible in a ~350px-wide dashboard canvas. */
-export const LIVE_MILLIS_PER_PIXEL = 170;
+/**
+ * Chart scroll speed: ~18s visible in a ~350px-wide dashboard canvas.
+ * Keep this low: smoothie quantizes scrolling to whole pixels (render time is
+ * rounded down to millisPerPixel), so high values make the pan visibly step —
+ * at 50ms/px the chart advances 20×/s, which still reads as continuous.
+ */
+export const LIVE_MILLIS_PER_PIXEL = 50;
 /** How far back to seed from go-monitoring history (15s samples). */
 export const LIVE_BACKFILL_WINDOW_MS = 90_000;
 /** Buffers idle longer than this are cleared and re-seeded instead. */

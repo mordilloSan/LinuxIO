@@ -12,7 +12,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
-import { formatFileSize, formatThroughput } from "@/utils/formaters";
+import { formatThroughput } from "@/utils/formaters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 import "@/pages/main/hardware/hardware-history.css";
 
@@ -328,9 +328,14 @@ const useHistoryTimestampFormatter = (range: HardwareHistoryRange) =>
 
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 const formatPercentTick = (value: number): string => `${Math.round(value)}%`;
-const gbToBytes = (value: number): number => value * 1024 ** 3;
 const percentOfTotal = (value: number, total: number): number =>
   total > 0 ? (value / total) * 100 : 0;
+
+/** Netdata-style hue ramp: purple for the bottom band up to red at the top. */
+const stackBandColor = (index: number, count: number): string => {
+  const ratio = count <= 1 ? 0 : index / (count - 1);
+  return `hsl(${Math.round(280 - 280 * ratio)}, 70%, 55%)`;
+};
 
 const RangeSelect: React.FC<{
   value: HardwareHistoryRangeId;
@@ -476,18 +481,50 @@ export const CPUHistoryCard: React.FC<HistoryCardProps> = ({
     );
 
   const message = historyCardMessage(data, isPending, error, isEnabled, reason);
-  const series = useMemo(
-    () => [
+
+  // Most recent sample that reports per-core data decides the core count;
+  // older agents (or old rows) fall back to the single average series.
+  const coreCount = useMemo(() => {
+    const points = data ?? [];
+    for (let i = points.length - 1; i >= 0; i--) {
+      const cores = points[i].cores_percent;
+      if (cores && cores.length > 0) return cores.length;
+    }
+    return 0;
+  }, [data]);
+
+  const series = useMemo(() => {
+    const points = data ?? [];
+    if (coreCount > 1) {
+      // Each band is the core's share of total capacity (core% / cores), so
+      // the top of the stack traces the machine-wide usage percentage.
+      return Array.from({ length: coreCount }, (_, core) => ({
+        label: `Core ${core}`,
+        color: stackBandColor(core, coreCount),
+        points: points.map((point) => ({
+          t: point.captured_at_ms,
+          v: (point.cores_percent?.[core] ?? 0) / coreCount,
+        })),
+      }));
+    }
+    return [
       {
         label: "CPU",
         color: theme.palette.primary.main,
-        points: (data ?? []).map((point) => ({
+        points: points.map((point) => ({
           t: point.captured_at_ms,
           v: point.usage_percent,
         })),
       },
-    ],
-    [data, theme.palette.primary.main],
+    ];
+  }, [coreCount, data, theme.palette.primary.main]);
+
+  const formatCoreValue = useMemo(
+    () =>
+      coreCount > 1
+        ? (value: number) => formatPercent(value * coreCount)
+        : formatPercent,
+    [coreCount],
   );
 
   return (
@@ -500,9 +537,10 @@ export const CPUHistoryCard: React.FC<HistoryCardProps> = ({
       <HistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
-        formatValue={formatPercent}
+        formatValue={formatCoreValue}
         hoverTime={hoverTime}
         onHoverTimeChange={onHoverTimeChange}
+        stacked={coreCount > 1}
         windowMs={range.windowMs}
         series={series}
         yMax={100}
@@ -530,101 +568,57 @@ export const MemoryHistoryCard: React.FC<HistoryCardProps> = ({
         placeholderData: (previous) => previous,
       },
     );
-  const { data: liveMemory } = linuxio.system.get_memory_info.useQuery({
-    refetchInterval: 2000,
-  });
-
   const message = historyCardMessage(data, isPending, error, isEnabled, reason);
-  const cacheColor = theme.palette.warning.main;
   const zfsColor = theme.palette.success.main;
+  const dockerColor = theme.chart.rx;
+  const buffersColor = theme.chart.tx;
   const series = useMemo(() => {
     const points = data ?? [];
+    const hasDocker = points.some((point) => (point.docker_used_gb ?? 0) > 0);
+    const hasZfs = points.some((point) => (point.zfs_arc_gb ?? 0) > 0);
+    const hasBuffers = points.some((point) => (point.buffers_gb ?? 0) > 0);
+
+    const layer = (
+      label: string,
+      color: string,
+      valueGB: (point: (typeof points)[number]) => number,
+    ) => ({
+      label,
+      color,
+      points: points.map((point) => {
+        const gb = Math.max(valueGB(point), 0);
+        return {
+          t: point.captured_at_ms,
+          v: percentOfTotal(gb, point.total_gb),
+          detail: `${gb.toFixed(1)} GB`,
+        };
+      }),
+    });
+
+    // Bottom-up bands; the agent already excludes cache and ZFS ARC from
+    // "used", and Docker containers are carved out of it here.
     const memorySeries = [
-      {
-        label: "Used",
-        color: theme.palette.primary.main,
-        points: points.map((point) => ({
-          t: point.captured_at_ms,
-          v: point.used_percent,
-          detail: `${point.used_gb.toFixed(1)} / ${point.total_gb.toFixed(1)} GB`,
-        })),
-      },
+      layer("Apps", theme.palette.primary.main, (point) =>
+        hasDocker ? point.used_gb - (point.docker_used_gb ?? 0) : point.used_gb,
+      ),
     ];
-
-    if (points.some((point) => point.buffer_cache_gb > 0)) {
-      memorySeries.push({
-        label: "Cache",
-        color: cacheColor,
-        points: points.map((point) => ({
-          t: point.captured_at_ms,
-          v: percentOfTotal(point.buffer_cache_gb, point.total_gb),
-          detail: `${point.buffer_cache_gb.toFixed(1)} GB`,
-        })),
-      });
+    if (hasDocker) {
+      memorySeries.push(
+        layer("Docker", dockerColor, (point) => point.docker_used_gb ?? 0),
+      );
     }
-
-    if (points.some((point) => (point.zfs_arc_gb ?? 0) > 0)) {
-      memorySeries.push({
-        label: "ZFS ARC",
-        color: zfsColor,
-        points: points.map((point) => ({
-          t: point.captured_at_ms,
-          v: percentOfTotal(point.zfs_arc_gb ?? 0, point.total_gb),
-          detail: `${(point.zfs_arc_gb ?? 0).toFixed(1)} GB`,
-        })),
-      });
+    if (hasZfs) {
+      memorySeries.push(
+        layer("ZFS ARC", zfsColor, (point) => point.zfs_arc_gb ?? 0),
+      );
     }
-
+    if (hasBuffers) {
+      memorySeries.push(
+        layer("Buffers", buffersColor, (point) => point.buffers_gb ?? 0),
+      );
+    }
     return memorySeries;
-  }, [cacheColor, data, theme.palette.primary.main, zfsColor]);
-  const liveStats = useMemo(() => {
-    const swapTotal = liveMemory?.system?.swapTotal ?? 0;
-    const swapFree = liveMemory?.system?.swapFree ?? 0;
-    const swapUsed = Math.max(swapTotal - swapFree, 0);
-
-    return [
-      {
-        label: "Swap",
-        value:
-          liveMemory && swapTotal > 0
-            ? `${formatFileSize(swapUsed, 1)} / ${formatFileSize(swapTotal, 1)}`
-            : "0 Bytes",
-      },
-      {
-        label: "Docker",
-        value: liveMemory
-          ? formatFileSize(liveMemory.docker?.used ?? 0, 1)
-          : "—",
-      },
-    ];
-  }, [liveMemory]);
-
-  const latestMemory = data?.[data.length - 1];
-  const latestStats = useMemo(
-    () => [
-      {
-        label: "Used",
-        value: latestMemory
-          ? formatFileSize(gbToBytes(latestMemory.used_gb), 1)
-          : "—",
-      },
-      {
-        label: "Cache",
-        value: latestMemory
-          ? formatFileSize(gbToBytes(latestMemory.buffer_cache_gb), 1)
-          : "—",
-      },
-      {
-        label: "ZFS",
-        value:
-          latestMemory && (latestMemory.zfs_arc_gb ?? 0) > 0
-            ? formatFileSize(gbToBytes(latestMemory.zfs_arc_gb ?? 0), 1)
-            : "0 Bytes",
-      },
-    ],
-    [latestMemory],
-  );
-  const memoryStats = [...latestStats, ...liveStats];
+  }, [buffersColor, data, dockerColor, theme.palette.primary.main, zfsColor]);
 
   return (
     <HistoryCardShell
@@ -633,59 +627,17 @@ export const MemoryHistoryCard: React.FC<HistoryCardProps> = ({
       message={message ?? undefined}
       title="Memory"
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          minHeight: 0,
-        }}
-      >
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <HistoryAreaChart
-            formatTick={formatPercentTick}
-            formatTimestamp={formatTimestamp}
-            formatValue={formatPercent}
-            hoverTime={hoverTime}
-            onHoverTimeChange={onHoverTimeChange}
-            windowMs={range.windowMs}
-            series={series}
-            yMax={100}
-          />
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-            gap: 4,
-            paddingTop: 3,
-          }}
-        >
-          {memoryStats.map((stat) => (
-            <div key={stat.label} style={{ minWidth: 0 }}>
-              <AppTypography
-                color="text.secondary"
-                style={{
-                  display: "block",
-                  fontSize: "0.55rem",
-                  lineHeight: 1.1,
-                  textTransform: "uppercase",
-                }}
-                variant="caption"
-              >
-                {stat.label}
-              </AppTypography>
-              <AppTypography
-                noWrap
-                style={{ display: "block", fontSize: "0.65rem" }}
-                variant="caption"
-              >
-                {stat.value}
-              </AppTypography>
-            </div>
-          ))}
-        </div>
-      </div>
+      <HistoryAreaChart
+        formatTick={formatPercentTick}
+        formatTimestamp={formatTimestamp}
+        formatValue={formatPercent}
+        hoverTime={hoverTime}
+        onHoverTimeChange={onHoverTimeChange}
+        stacked
+        windowMs={range.windowMs}
+        series={series}
+        yMax={100}
+      />
     </HistoryCardShell>
   );
 };

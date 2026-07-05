@@ -38,6 +38,12 @@ interface HistoryAreaChartProps {
    * instead of stretching the data to fill the plot.
    */
   windowMs?: number;
+  /**
+   * Draw the series as cumulative bands (first series at the bottom) instead
+   * of overlapping areas. All series must share the same timestamps. The
+   * tooltip still reports each series' own value, listed top band first.
+   */
+  stacked?: boolean;
 }
 
 const MARGIN = { top: 6, right: 44, bottom: 18, left: 4 };
@@ -128,6 +134,7 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
   hoverTime,
   onHoverTimeChange,
   windowMs,
+  stacked = false,
 }) => {
   const theme = useAppTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -186,12 +193,24 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
   const timestamps = visibleSeries[0]?.points.map((point) => point.t) ?? [];
   const pointCount = timestamps.length;
 
+  // Values actually plotted: raw per series, or running totals when stacked
+  // so band i is drawn between the cumulative curves i-1 and i.
+  const plotValues = visibleSeries.map((s) => s.points.map((point) => point.v));
+  if (stacked) {
+    for (let i = 1; i < plotValues.length; i++) {
+      const below = plotValues[i - 1];
+      for (let k = 0; k < plotValues[i].length; k++) {
+        plotValues[i][k] += below[k] ?? 0;
+      }
+    }
+  }
+
   let axisMax = yMax ?? 0;
   if (typeof yMax !== "number") {
     let max = 0;
-    for (const s of visibleSeries) {
-      for (const point of s.points) {
-        if (point.v > max) max = point.v;
+    for (const values of plotValues) {
+      for (const value of values) {
+        if (value > max) max = value;
       }
     }
     axisMax = niceMax(max);
@@ -208,15 +227,25 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
   const yFor = (v: number): number =>
     plotTop + plotHeight - (Math.min(v, axisMax) / axisMax) * plotHeight;
 
-  const paths = visibleSeries.map((s) => {
+  const paths = visibleSeries.map((s, i) => {
     if (plotWidth <= 0 || plotHeight <= 0 || s.points.length === 0) {
       return { line: "", area: "" };
     }
-    const coords = s.points.map((point) => ({
+    const coords = s.points.map((point, k) => ({
       x: xFor(point.t),
-      y: yFor(point.v),
+      y: yFor(plotValues[i][k]),
     }));
     const line = smoothPath(coords);
+    if (stacked && i > 0) {
+      // Close the band against the curve below instead of the baseline.
+      const below = s.points
+        .map((point, k) => ({
+          x: xFor(point.t),
+          y: yFor(plotValues[i - 1][k]),
+        }))
+        .reverse();
+      return { line, area: `${line}L${smoothPath(below).slice(1)}Z` };
+    }
     const baseline = (plotTop + plotHeight).toFixed(1);
     const area =
       `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
@@ -270,9 +299,15 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
       ? {
           t: timestamps[hoverIndex],
           x: xFor(timestamps[hoverIndex]),
+          index: hoverIndex,
           values: visibleSeries.map((s) => s.points[hoverIndex]),
         }
       : null;
+  // Tooltip rows follow the visual order: top band first when stacked.
+  const tooltipRows = hover
+    ? hover.values.map((point, i) => ({ point, seriesIndex: i }))
+    : [];
+  if (stacked) tooltipRows.reverse();
   const tooltipOnLeft = hover !== null && hover.x > plotLeft + plotWidth / 2;
 
   const gridColor = alpha(theme.chart.neutral, 0.15);
@@ -343,14 +378,17 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
           ))}
           {visibleSeries.map((s, i) => (
             <g key={s.label}>
-              <path d={paths[i]?.area ?? ""} fill={alpha(s.color, 0.1)} />
+              <path
+                d={paths[i]?.area ?? ""}
+                fill={alpha(s.color, stacked ? 0.4 : 0.1)}
+              />
               <path
                 d={paths[i]?.line ?? ""}
                 fill="none"
                 stroke={s.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
+                strokeWidth={stacked ? 1.25 : 2}
               />
             </g>
           ))}
@@ -368,12 +406,12 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
                 point ? (
                   <circle
                     cx={hover.x}
-                    cy={yFor(point.v)}
+                    cy={yFor(plotValues[i][hover.index])}
                     fill={visibleSeries[i].color}
                     key={visibleSeries[i].label}
-                    r={4}
+                    r={stacked ? 3 : 4}
                     stroke={theme.palette.background.paper}
-                    strokeWidth={2}
+                    strokeWidth={stacked ? 1 : 2}
                   />
                 ) : null,
               )}
@@ -424,46 +462,54 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
           <div style={{ color: theme.palette.text.secondary }}>
             {formatTimestamp(hover.t)}
           </div>
-          {hover.values.map((point, i) =>
-            point ? (
-              <div
-                key={visibleSeries[i].label}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginTop: 2,
-                }}
-              >
-                <span
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: tooltipRows.length > 8 ? "1fr 1fr" : "1fr",
+              columnGap: 12,
+            }}
+          >
+            {tooltipRows.map(({ point, seriesIndex }) =>
+              point ? (
+                <div
+                  key={visibleSeries[seriesIndex].label}
                   style={{
-                    width: 10,
-                    height: 2,
-                    background: visibleSeries[i].color,
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    color: theme.palette.text.primary,
-                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 2,
                   }}
                 >
-                  {formatValue(point.v)}
-                </span>
-                {point.detail ? (
-                  <span style={{ color: theme.palette.text.secondary }}>
-                    {point.detail}
+                  <span
+                    style={{
+                      width: 10,
+                      height: 2,
+                      background: visibleSeries[seriesIndex].color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      color: theme.palette.text.primary,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {formatValue(point.v)}
                   </span>
-                ) : null}
-                {visibleSeries.length > 1 ? (
-                  <span style={{ color: theme.palette.text.secondary }}>
-                    {visibleSeries[i].label}
-                  </span>
-                ) : null}
-              </div>
-            ) : null,
-          )}
+                  {point.detail ? (
+                    <span style={{ color: theme.palette.text.secondary }}>
+                      {point.detail}
+                    </span>
+                  ) : null}
+                  {visibleSeries.length > 1 ? (
+                    <span style={{ color: theme.palette.text.secondary }}>
+                      {visibleSeries[seriesIndex].label}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null,
+            )}
+          </div>
         </div>
       )}
     </div>
