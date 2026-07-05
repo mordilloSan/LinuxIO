@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+
+import "@/components/charts/chart-tooltip.css";
 
 export interface HistoryChartPoint {
   /** Epoch milliseconds. */
@@ -169,89 +171,123 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
   const plotWidth = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotHeight = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
-  const lastDataT = series[0]?.points[series[0].points.length - 1]?.t;
-  const domainStart =
-    windowMs !== undefined && lastDataT !== undefined
-      ? lastDataT - windowMs
-      : undefined;
-  const windowedSeries =
-    domainStart === undefined
-      ? series
-      : series.map((s) => ({
-          ...s,
-          points: s.points.filter((point) => point.t >= domainStart),
-        }));
+  // Everything derived from data + plot size, independent of the hover
+  // position. Memoized so moving the crosshair (a re-render per pointer
+  // event) doesn't rebuild the smooth paths of every band — with per-core
+  // stacks that is dozens of series.
+  const {
+    visibleSeries,
+    timestamps,
+    pointCount,
+    plotValues,
+    axisMax,
+    domainStart,
+    t0,
+    t1,
+    xFor,
+    yFor,
+    paths,
+  } = useMemo(() => {
+    const lastDataT = series[0]?.points[series[0].points.length - 1]?.t;
+    const domainStart =
+      windowMs !== undefined && lastDataT !== undefined
+        ? lastDataT - windowMs
+        : undefined;
+    const windowedSeries =
+      domainStart === undefined
+        ? series
+        : series.map((s) => ({
+            ...s,
+            points: s.points.filter((point) => point.t >= domainStart),
+          }));
 
-  // ~1 point per 4px of plot; before the first measure fall back to a
-  // conservative budget so the initial render is already smooth.
-  const pointBudget = Math.max(40, Math.floor(plotWidth / 4));
-  const visibleSeries = windowedSeries.map((s) => ({
-    ...s,
-    points: downsamplePoints(s.points, pointBudget),
-  }));
-
-  const timestamps = visibleSeries[0]?.points.map((point) => point.t) ?? [];
-  const pointCount = timestamps.length;
-
-  // Values actually plotted: raw per series, or running totals when stacked
-  // so band i is drawn between the cumulative curves i-1 and i.
-  const plotValues = visibleSeries.map((s) => s.points.map((point) => point.v));
-  if (stacked) {
-    for (let i = 1; i < plotValues.length; i++) {
-      const below = plotValues[i - 1];
-      for (let k = 0; k < plotValues[i].length; k++) {
-        plotValues[i][k] += below[k] ?? 0;
-      }
-    }
-  }
-
-  let axisMax = yMax ?? 0;
-  if (typeof yMax !== "number") {
-    let max = 0;
-    for (const values of plotValues) {
-      for (const value of values) {
-        if (value > max) max = value;
-      }
-    }
-    axisMax = niceMax(max);
-  }
-
-  const t0 = domainStart ?? timestamps[0] ?? 0;
-  const t1 = lastDataT ?? timestamps[pointCount - 1] ?? 0;
-  const timeSpan = Math.max(1, t1 - t0);
-
-  const xFor = (t: number): number =>
-    pointCount < 2 && domainStart === undefined
-      ? plotLeft + plotWidth / 2
-      : plotLeft + ((t - t0) / timeSpan) * plotWidth;
-  const yFor = (v: number): number =>
-    plotTop + plotHeight - (Math.min(v, axisMax) / axisMax) * plotHeight;
-
-  const paths = visibleSeries.map((s, i) => {
-    if (plotWidth <= 0 || plotHeight <= 0 || s.points.length === 0) {
-      return { line: "", area: "" };
-    }
-    const coords = s.points.map((point, k) => ({
-      x: xFor(point.t),
-      y: yFor(plotValues[i][k]),
+    // ~1 point per 4px of plot; before the first measure fall back to a
+    // conservative budget so the initial render is already smooth.
+    const pointBudget = Math.max(40, Math.floor(plotWidth / 4));
+    const visibleSeries = windowedSeries.map((s) => ({
+      ...s,
+      points: downsamplePoints(s.points, pointBudget),
     }));
-    const line = smoothPath(coords);
-    if (stacked && i > 0) {
-      // Close the band against the curve below instead of the baseline.
-      const below = s.points
-        .map((point, k) => ({
-          x: xFor(point.t),
-          y: yFor(plotValues[i - 1][k]),
-        }))
-        .reverse();
-      return { line, area: `${line}L${smoothPath(below).slice(1)}Z` };
+
+    const timestamps = visibleSeries[0]?.points.map((point) => point.t) ?? [];
+    const pointCount = timestamps.length;
+
+    // Values actually plotted: raw per series, or running totals when stacked
+    // so band i is drawn between the cumulative curves i-1 and i.
+    const plotValues = visibleSeries.map((s) =>
+      s.points.map((point) => point.v),
+    );
+    if (stacked) {
+      for (let i = 1; i < plotValues.length; i++) {
+        const below = plotValues[i - 1];
+        for (let k = 0; k < plotValues[i].length; k++) {
+          plotValues[i][k] += below[k] ?? 0;
+        }
+      }
     }
-    const baseline = (plotTop + plotHeight).toFixed(1);
-    const area =
-      `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
-      `L${coords[0].x.toFixed(1)},${baseline}Z`;
-    return { line, area };
-  });
+
+    let axisMax = yMax ?? 0;
+    if (typeof yMax !== "number") {
+      let max = 0;
+      for (const values of plotValues) {
+        for (const value of values) {
+          if (value > max) max = value;
+        }
+      }
+      axisMax = niceMax(max);
+    }
+
+    const t0 = domainStart ?? timestamps[0] ?? 0;
+    const t1 = lastDataT ?? timestamps[pointCount - 1] ?? 0;
+    const timeSpan = Math.max(1, t1 - t0);
+
+    const xFor = (t: number): number =>
+      pointCount < 2 && domainStart === undefined
+        ? MARGIN.left + plotWidth / 2
+        : MARGIN.left + ((t - t0) / timeSpan) * plotWidth;
+    const yFor = (v: number): number =>
+      MARGIN.top + plotHeight - (Math.min(v, axisMax) / axisMax) * plotHeight;
+
+    const paths = visibleSeries.map((s, i) => {
+      if (plotWidth <= 0 || plotHeight <= 0 || s.points.length === 0) {
+        return { line: "", area: "" };
+      }
+      const coords = s.points.map((point, k) => ({
+        x: xFor(point.t),
+        y: yFor(plotValues[i][k]),
+      }));
+      const line = smoothPath(coords);
+      if (stacked && i > 0) {
+        // Close the band against the curve below instead of the baseline.
+        const below = s.points
+          .map((point, k) => ({
+            x: xFor(point.t),
+            y: yFor(plotValues[i - 1][k]),
+          }))
+          .reverse();
+        return { line, area: `${line}L${smoothPath(below).slice(1)}Z` };
+      }
+      const baseline = (MARGIN.top + plotHeight).toFixed(1);
+      const area =
+        `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
+        `L${coords[0].x.toFixed(1)},${baseline}Z`;
+      return { line, area };
+    });
+
+    return {
+      visibleSeries,
+      timestamps,
+      pointCount,
+      plotValues,
+      axisMax,
+      domainStart,
+      t0,
+      t1,
+      xFor,
+      yFor,
+      paths,
+    };
+  }, [series, yMax, windowMs, stacked, plotWidth, plotHeight]);
 
   const nearestIndexToTime = (t: number): number | null => {
     if (pointCount === 0) return null;
@@ -443,25 +479,18 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
       )}
       {hover && (
         <div
+          className="chart-tooltip-box"
           style={{
             position: "absolute",
             top: plotTop,
             ...(tooltipOnLeft
               ? { right: size.width - hover.x + 8 }
               : { left: hover.x + 8 }),
-            background: alpha(theme.palette.background.paper, 0.95),
-            border: `1px solid ${alpha(theme.chart.neutral, 0.25)}`,
-            borderRadius: 6,
-            padding: "4px 8px",
             pointerEvents: "none",
-            whiteSpace: "nowrap",
             zIndex: 2,
-            fontSize: 11,
           }}
         >
-          <div style={{ color: theme.palette.text.secondary }}>
-            {formatTimestamp(hover.t)}
-          </div>
+          <div className="chart-tooltip-time">{formatTimestamp(hover.t)}</div>
           <div
             style={{
               display: "grid",
@@ -472,37 +501,21 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
             {tooltipRows.map(({ point, seriesIndex }) =>
               point ? (
                 <div
+                  className="chart-tooltip-row"
                   key={visibleSeries[seriesIndex].label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginTop: 2,
-                  }}
                 >
                   <span
-                    style={{
-                      width: 10,
-                      height: 2,
-                      background: visibleSeries[seriesIndex].color,
-                      flexShrink: 0,
-                    }}
+                    className="chart-tooltip-chip"
+                    style={{ background: visibleSeries[seriesIndex].color }}
                   />
-                  <span
-                    style={{
-                      color: theme.palette.text.primary,
-                      fontWeight: 600,
-                    }}
-                  >
+                  <span className="chart-tooltip-value">
                     {formatValue(point.v)}
                   </span>
                   {point.detail ? (
-                    <span style={{ color: theme.palette.text.secondary }}>
-                      {point.detail}
-                    </span>
+                    <span className="chart-tooltip-label">{point.detail}</span>
                   ) : null}
                   {visibleSeries.length > 1 ? (
-                    <span style={{ color: theme.palette.text.secondary }}>
+                    <span className="chart-tooltip-label">
                       {visibleSeries[seriesIndex].label}
                     </span>
                   ) : null}

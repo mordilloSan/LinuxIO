@@ -7,6 +7,10 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import HardwareCard from "@/components/cards/HardwareCard";
 import HistoryAreaChart from "@/components/charts/HistoryAreaChart";
+import {
+  formatChartClock,
+  formatChartDay,
+} from "@/components/charts/timeFormat";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -311,20 +315,13 @@ const rangeById = (id: HardwareHistoryRangeId): HardwareHistoryRange =>
   HARDWARE_HISTORY_RANGES[0];
 
 const useHistoryTimestampFormatter = (range: HardwareHistoryRange) =>
-  useMemo(() => {
-    if (range.id === "7d" || range.id === "30d") {
-      return (t: number) =>
-        new Date(t).toLocaleDateString(undefined, {
-          month: "short",
-          day: "numeric",
-        });
-    }
-    return (t: number) =>
-      new Date(t).toLocaleTimeString(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-  }, [range.id]);
+  useMemo(
+    () =>
+      range.id === "7d" || range.id === "30d"
+        ? formatChartDay
+        : formatChartClock,
+    [range.id],
+  );
 
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 const formatPercentTick = (value: number): string => `${Math.round(value)}%`;

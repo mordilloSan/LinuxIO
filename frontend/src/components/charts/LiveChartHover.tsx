@@ -11,12 +11,12 @@ import {
   setLiveHoverRightPx,
   subscribeLiveHover,
 } from "@/components/charts/liveSeriesStore";
-import {
-  formatLiveTooltipTime,
-  type LiveTooltipRow,
-} from "@/components/charts/liveTooltip";
+import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
+import { formatChartClockWithSeconds } from "@/components/charts/timeFormat";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+
+import "@/components/charts/chart-tooltip.css";
 
 interface LiveChartHoverProps {
   /** The chart's streamTo render delay; needed to map pixels back to time. */
@@ -113,7 +113,7 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
           />
           {hoverTime !== null && rows.length > 0 && (
             <div
-              className="live-tooltip-box"
+              className="chart-tooltip-box"
               style={{
                 position: "absolute",
                 top: 4,
@@ -124,18 +124,18 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
                 zIndex: 2,
               }}
             >
-              <div className="live-tooltip-time">
-                {formatLiveTooltipTime(hoverTime)}
+              <div className="chart-tooltip-time">
+                {formatChartClockWithSeconds(hoverTime)}
               </div>
               {rows.map((row) => (
-                <div className="live-tooltip-row" key={row.label ?? row.color}>
+                <div className="chart-tooltip-row" key={row.label ?? row.color}>
                   <span
-                    className="live-tooltip-chip"
+                    className="chart-tooltip-chip"
                     style={{ background: row.color }}
                   />
-                  <span className="live-tooltip-value">{row.value}</span>
+                  <span className="chart-tooltip-value">{row.value}</span>
                   {row.label ? (
-                    <span className="live-tooltip-label">{row.label}</span>
+                    <span className="chart-tooltip-label">{row.label}</span>
                   ) : null}
                 </div>
               ))}
