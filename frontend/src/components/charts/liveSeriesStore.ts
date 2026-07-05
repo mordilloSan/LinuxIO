@@ -26,33 +26,39 @@ interface LiveSeriesEntry {
 
 const registry = new Map<string, LiveSeriesEntry>();
 
-export interface LiveSeriesHandle {
-  series: TimeSeries;
-  /** True when the buffer has no usable recent data (fresh or stale). */
-  needsBackfill: boolean;
-}
-
 /**
- * Get (or create) the persistent series for a chart. A buffer whose newest
- * sample is older than staleAfterMs is cleared so the chart doesn't draw a
- * line across the time we weren't sampling; backfill then refills it.
+ * Get (or create) the persistent series for a chart. Idempotent, so it is
+ * safe to call during render; the impure part — clearing stale buffers — is
+ * separated into resetStaleLiveSeries, meant for an effect (useLiveSeries).
  */
-export function acquireLiveSeries(
-  id: string,
-  staleAfterMs: number,
-): LiveSeriesHandle {
+export function getLiveSeries(id: string): TimeSeries {
   let entry = registry.get(id);
   if (!entry) {
     entry = { series: new TimeSeries(), lastAppendMs: 0 };
     registry.set(id, entry);
   }
+  return entry.series;
+}
+
+/**
+ * Clear a buffer whose newest sample is older than staleAfterMs, so the
+ * chart doesn't draw a line across the time we weren't sampling. Returns
+ * true when the series has no usable data (fresh or just cleared) and
+ * should be backfilled from history.
+ */
+export function resetStaleLiveSeries(
+  id: string,
+  staleAfterMs: number,
+): boolean {
+  const entry = registry.get(id);
+  if (!entry) return false;
   const stale =
     entry.lastAppendMs !== 0 && Date.now() - entry.lastAppendMs > staleAfterMs;
   if (stale) {
     entry.series.clear();
     entry.lastAppendMs = 0;
   }
-  return { series: entry.series, needsBackfill: entry.lastAppendMs === 0 };
+  return entry.lastAppendMs === 0;
 }
 
 /** Append a live sample and record when the buffer was last fed. */

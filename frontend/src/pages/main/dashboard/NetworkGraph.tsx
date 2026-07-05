@@ -1,19 +1,18 @@
-import React, { useEffect, useEffectEvent, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
-  acquireLiveSeries,
   appendLiveSample,
-  backfillLiveSeries,
-  LIVE_BACKFILL_WINDOW_MS,
   LIVE_MILLIS_PER_PIXEL,
-  LIVE_STALE_AFTER_MS,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
 import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
-import { useCapability } from "@/hooks/useCapabilities";
+import {
+  type LiveSeriesPoint,
+  useLiveSeries,
+} from "@/components/charts/useLiveSeries";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
@@ -37,13 +36,26 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rxId = `network:rx:${interfaceName}`;
   const txId = `network:tx:${interfaceName}`;
-  const [rxHandle] = useState(() =>
-    acquireLiveSeries(rxId, LIVE_STALE_AFTER_MS),
-  );
-  const [txHandle] = useState(() =>
-    acquireLiveSeries(txId, LIVE_STALE_AFTER_MS),
-  );
-  const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
+  // History arrives in bytes/s; the chart series (like the rx/tx props) are
+  // kB/s.
+  const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
+    const points = await linuxio.monitoring.get_network_history(request);
+    const rxPoints: LiveSeriesPoint[] = [];
+    const txPoints: LiveSeriesPoint[] = [];
+    for (const point of points) {
+      const rates = point.interfaces?.[interfaceName];
+      if (!rates) continue;
+      rxPoints.push({
+        t: point.captured_at_ms,
+        v: rates.recv_bytes_per_sec / 1024,
+      });
+      txPoints.push({
+        t: point.captured_at_ms,
+        v: rates.sent_bytes_per_sec / 1024,
+      });
+    }
+    return { [rxId]: rxPoints, [txId]: txPoints };
+  });
   const rxColor = theme.chart.rx;
   const txColor = theme.chart.tx;
   const chartNeutral = theme.chart.neutral;
@@ -52,47 +64,6 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
     appendLiveSample(rxId, rx);
     appendLiveSample(txId, tx);
   });
-
-  // Seed empty buffers from the agent's per-interface history so a refresh
-  // doesn't start the chart blank. Values arrive in bytes/s; the chart series
-  // (like the rx/tx props) are kB/s.
-  const shouldBackfill =
-    (rxHandle.needsBackfill || txHandle.needsBackfill) && monitoringEnabled;
-  useEffect(() => {
-    if (!shouldBackfill) return;
-    let cancelled = false;
-    linuxio.monitoring
-      .get_network_history({
-        resolution: "1m",
-        from_ms: Date.now() - LIVE_BACKFILL_WINDOW_MS,
-        limit: 40,
-      })
-      .then((points) => {
-        if (cancelled) return;
-        const rxPoints: { t: number; v: number }[] = [];
-        const txPoints: { t: number; v: number }[] = [];
-        for (const point of points) {
-          const rates = point.interfaces?.[interfaceName];
-          if (!rates) continue;
-          rxPoints.push({
-            t: point.captured_at_ms,
-            v: rates.recv_bytes_per_sec / 1024,
-          });
-          txPoints.push({
-            t: point.captured_at_ms,
-            v: rates.sent_bytes_per_sec / 1024,
-          });
-        }
-        backfillLiveSeries(rxId, rxPoints);
-        backfillLiveSeries(txId, txPoints);
-      })
-      .catch(() => {
-        // Best-effort seed; live samples still stream in.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldBackfill, interfaceName, rxId, txId]);
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -115,12 +86,12 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(rxHandle.series, {
+    chart.addTimeSeries(rxSeries, {
       strokeStyle: rxColor,
       fillStyle: alpha(rxColor, 0.09),
       lineWidth: 2,
     });
-    chart.addTimeSeries(txHandle.series, {
+    chart.addTimeSeries(txSeries, {
       strokeStyle: txColor,
       fillStyle: alpha(txColor, 0.09),
       lineWidth: 2,
@@ -136,7 +107,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [chartNeutral, rxColor, txColor, rxHandle.series, txHandle.series]);
+  }, [chartNeutral, rxColor, txColor, rxSeries, txSeries]);
 
   return (
     <div
@@ -160,7 +131,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
           delayMs={STREAM_DELAY_MS}
           rowsAt={(t) => {
             const rows: LiveTooltipRow[] = [];
-            const rxValue = sampleLiveSeries(rxHandle.series, t);
+            const rxValue = sampleLiveSeries(rxSeries, t);
             if (rxValue !== null) {
               rows.push({
                 color: rxColor,
@@ -168,7 +139,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
                 label: "Rx",
               });
             }
-            const txValue = sampleLiveSeries(txHandle.series, t);
+            const txValue = sampleLiveSeries(txSeries, t);
             if (txValue !== null) {
               rows.push({
                 color: txColor,

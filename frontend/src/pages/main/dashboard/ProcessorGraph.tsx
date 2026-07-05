@@ -1,18 +1,14 @@
-import React, { useEffect, useEffectEvent, useState } from "react";
+import React, { useEffect, useEffectEvent } from "react";
 import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
-  acquireLiveSeries,
   appendLiveSample,
-  backfillLiveSeries,
-  LIVE_BACKFILL_WINDOW_MS,
   LIVE_MILLIS_PER_PIXEL,
-  LIVE_STALE_AFTER_MS,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
-import { useCapability } from "@/hooks/useCapabilities";
+import { useLiveSeries } from "@/components/charts/useLiveSeries";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -25,10 +21,15 @@ const STREAM_DELAY_MS = 2000;
 
 const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [{ series, needsBackfill }] = useState(() =>
-    acquireLiveSeries(SERIES_ID, LIVE_STALE_AFTER_MS),
-  );
-  const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
+  const [series] = useLiveSeries([SERIES_ID], async (request) => {
+    const points = await linuxio.monitoring.get_cpu_history(request);
+    return {
+      [SERIES_ID]: points.map((point) => ({
+        t: point.captured_at_ms,
+        v: point.usage_percent,
+      })),
+    };
+  });
   const theme = useAppTheme();
   const color = theme.palette.primary.main;
   const neutral = theme.chart.neutral;
@@ -36,36 +37,6 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const appendLatestUsage = useEffectEvent(() => {
     appendLiveSample(SERIES_ID, usage);
   });
-
-  // Seed the empty buffer with the agent's recent samples so a refresh or a
-  // long absence doesn't start the chart from a blank canvas.
-  const shouldBackfill = needsBackfill && monitoringEnabled;
-  useEffect(() => {
-    if (!shouldBackfill) return;
-    let cancelled = false;
-    linuxio.monitoring
-      .get_cpu_history({
-        resolution: "1m",
-        from_ms: Date.now() - LIVE_BACKFILL_WINDOW_MS,
-        limit: 40,
-      })
-      .then((points) => {
-        if (cancelled) return;
-        backfillLiveSeries(
-          SERIES_ID,
-          points.map((point) => ({
-            t: point.captured_at_ms,
-            v: point.usage_percent,
-          })),
-        );
-      })
-      .catch(() => {
-        // Best-effort seed; live samples still stream in.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldBackfill]);
 
   // Initialize chart once on mount
   useEffect(() => {

@@ -1,19 +1,15 @@
-import React, { useEffect, useEffectEvent, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
-  acquireLiveSeries,
   appendLiveSample,
-  backfillLiveSeries,
-  LIVE_BACKFILL_WINDOW_MS,
   LIVE_MILLIS_PER_PIXEL,
-  LIVE_STALE_AFTER_MS,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
 import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
-import { useCapability } from "@/hooks/useCapabilities";
+import { useLiveSeries } from "@/components/charts/useLiveSeries";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
@@ -33,13 +29,22 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
 }) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [readHandle] = useState(() =>
-    acquireLiveSeries(READ_ID, LIVE_STALE_AFTER_MS),
+  const [readSeries, writeSeries] = useLiveSeries(
+    [READ_ID, WRITE_ID],
+    async (request) => {
+      const points = await linuxio.monitoring.get_diskio_history(request);
+      return {
+        [READ_ID]: points.map((point) => ({
+          t: point.captured_at_ms,
+          v: point.read_bytes_per_sec,
+        })),
+        [WRITE_ID]: points.map((point) => ({
+          t: point.captured_at_ms,
+          v: point.write_bytes_per_sec,
+        })),
+      };
+    },
   );
-  const [writeHandle] = useState(() =>
-    acquireLiveSeries(WRITE_ID, LIVE_STALE_AFTER_MS),
-  );
-  const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
   const readColor = theme.chart.rx;
   const writeColor = theme.chart.tx;
   const neutral = theme.chart.neutral;
@@ -48,45 +53,6 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
     appendLiveSample(READ_ID, readBytesPerSec);
     appendLiveSample(WRITE_ID, writeBytesPerSec);
   });
-
-  // Seed empty buffers with the agent's recent aggregate disk I/O samples so
-  // a refresh doesn't start the chart blank.
-  const shouldBackfill =
-    (readHandle.needsBackfill || writeHandle.needsBackfill) &&
-    monitoringEnabled;
-  useEffect(() => {
-    if (!shouldBackfill) return;
-    let cancelled = false;
-    linuxio.monitoring
-      .get_diskio_history({
-        resolution: "1m",
-        from_ms: Date.now() - LIVE_BACKFILL_WINDOW_MS,
-        limit: 40,
-      })
-      .then((points) => {
-        if (cancelled) return;
-        backfillLiveSeries(
-          READ_ID,
-          points.map((point) => ({
-            t: point.captured_at_ms,
-            v: point.read_bytes_per_sec,
-          })),
-        );
-        backfillLiveSeries(
-          WRITE_ID,
-          points.map((point) => ({
-            t: point.captured_at_ms,
-            v: point.write_bytes_per_sec,
-          })),
-        );
-      })
-      .catch(() => {
-        // Best-effort seed; live samples still stream in.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldBackfill]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -108,12 +74,12 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(readHandle.series, {
+    chart.addTimeSeries(readSeries, {
       strokeStyle: readColor,
       fillStyle: alpha(readColor, 0.09),
       lineWidth: 2,
     });
-    chart.addTimeSeries(writeHandle.series, {
+    chart.addTimeSeries(writeSeries, {
       strokeStyle: writeColor,
       fillStyle: alpha(writeColor, 0.09),
       lineWidth: 2,
@@ -129,7 +95,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [neutral, readColor, writeColor, readHandle.series, writeHandle.series]);
+  }, [neutral, readColor, writeColor, readSeries, writeSeries]);
 
   return (
     <div
@@ -153,7 +119,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
           delayMs={STREAM_DELAY_MS}
           rowsAt={(t) => {
             const rows: LiveTooltipRow[] = [];
-            const readValue = sampleLiveSeries(readHandle.series, t);
+            const readValue = sampleLiveSeries(readSeries, t);
             if (readValue !== null) {
               rows.push({
                 color: readColor,
@@ -161,7 +127,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
                 label: "Read",
               });
             }
-            const writeValue = sampleLiveSeries(writeHandle.series, t);
+            const writeValue = sampleLiveSeries(writeSeries, t);
             if (writeValue !== null) {
               rows.push({
                 color: writeColor,
