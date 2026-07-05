@@ -1,4 +1,9 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import {
   getLiveHoverRightPx,
@@ -36,21 +41,46 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
     getLiveHoverRightPx,
   );
 
+  const [width, setWidth] = useState(0);
+  const [nowMs, setNowMs] = useState(0);
+
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const measure = () => {
+      setWidth(overlay.getBoundingClientRect().width);
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      setWidth(entries[0]?.contentRect.width ?? 0);
+    });
+    observer.observe(overlay);
+
+    return () => observer.disconnect();
+  }, []);
+
   // While hovered, refresh once per second so the tooltip values track the
   // samples scrolling underneath the fixed crosshair.
-  const [, setTick] = useState(0);
   const hovering = hoverRightPx !== null;
   useEffect(() => {
     if (!hovering) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [hovering]);
 
-  const width = overlayRef.current?.getBoundingClientRect().width ?? 0;
   const visible = hoverRightPx !== null && width > 0 && hoverRightPx <= width;
   const hoverTime =
-    visible && hoverRightPx !== null
-      ? Date.now() - delayMs - hoverRightPx * LIVE_MILLIS_PER_PIXEL
+    visible && hoverRightPx !== null && nowMs > 0
+      ? nowMs - delayMs - hoverRightPx * LIVE_MILLIS_PER_PIXEL
       : null;
   const rows = hoverTime !== null ? rowsAt(hoverTime) : [];
   const tooltipOnLeft =
@@ -62,6 +92,7 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
       onPointerMove={(event) => {
         const rect = overlayRef.current?.getBoundingClientRect();
         if (!rect) return;
+        setNowMs(Date.now());
         setLiveHoverRightPx(rect.right - event.clientX);
       }}
       ref={overlayRef}

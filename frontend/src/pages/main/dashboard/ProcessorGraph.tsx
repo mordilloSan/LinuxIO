@@ -108,10 +108,20 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
 
   return (
     <div
-      style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
+      style={{
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        position: "relative",
+      }}
     >
       <div
-        style={{ flex: 1, minWidth: 0, height: "100%", position: "relative" }}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          height: "100%",
+          position: "relative",
+        }}
       >
         <canvas
           ref={canvasRef}
@@ -129,13 +139,18 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       </div>
       <div
         style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          paddingLeft: 4,
           fontSize: 9,
           color: alpha(theme.chart.neutral, 0.7),
           whiteSpace: "nowrap",
+          pointerEvents: "none",
+          textAlign: "right",
         }}
       >
         <span>100%</span>

@@ -3,7 +3,6 @@ import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
-import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
 import {
   acquireLiveSeries,
   appendLiveSample,
@@ -13,6 +12,7 @@ import {
   LIVE_STALE_AFTER_MS,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
+import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";

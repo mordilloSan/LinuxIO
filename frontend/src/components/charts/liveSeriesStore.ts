@@ -128,7 +128,10 @@ export function sampleLiveSeries(
       hi = mid;
     }
   }
-  if (lo > 0 && Math.abs(data[lo - 1][0] - tMs) <= Math.abs(data[lo][0] - tMs)) {
+  if (
+    lo > 0 &&
+    Math.abs(data[lo - 1][0] - tMs) <= Math.abs(data[lo][0] - tMs)
+  ) {
     lo -= 1;
   }
   return Math.abs(data[lo][0] - tMs) <= toleranceMs ? data[lo][1] : null;

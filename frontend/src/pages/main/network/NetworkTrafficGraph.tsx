@@ -94,9 +94,7 @@ const NetworkTrafficGraph = React.forwardRef<
     };
   }, [color, label, theme.chart.neutral]);
 
-  return (
-    <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
-  );
+  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
 });
 
 NetworkTrafficGraph.displayName = "NetworkTrafficGraph";
