@@ -126,7 +126,7 @@ func RenderTimer(timeOfDay string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf(`[Unit]
+	return fmt.Appendf(nil, `[Unit]
 Description=Run LinuxIO Watchtower container updates
 Documentation=https://github.com/nicholas-fedor/watchtower
 
@@ -137,7 +137,7 @@ Unit=%s
 
 [Install]
 WantedBy=timers.target
-`, normalized, UnitName)), nil
+`, normalized, UnitName), nil
 }
 
 func ParseTimer(data []byte) string {

@@ -1,31 +1,95 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
+import { linuxio } from "@/api";
+import {
+  acquireLiveSeries,
+  appendLiveSample,
+  backfillLiveSeries,
+  LIVE_BACKFILL_WINDOW_MS,
+  LIVE_MILLIS_PER_PIXEL,
+  LIVE_STALE_AFTER_MS,
+} from "@/components/charts/liveSeriesStore";
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
 
 interface NetworkGraphProps {
+  interfaceName: string;
+  /** kB/s */
   rx: number;
+  /** kB/s */
   tx: number;
 }
 
-const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
+const NetworkGraph: React.FC<NetworkGraphProps> = ({
+  interfaceName,
+  rx,
+  tx,
+}) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
-  const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
-  const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
+  const rxId = `network:rx:${interfaceName}`;
+  const txId = `network:tx:${interfaceName}`;
+  const [rxHandle] = useState(() =>
+    acquireLiveSeries(rxId, LIVE_STALE_AFTER_MS),
+  );
+  const [txHandle] = useState(() =>
+    acquireLiveSeries(txId, LIVE_STALE_AFTER_MS),
+  );
+  const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
   const rxColor = theme.chart.rx;
   const txColor = theme.chart.tx;
   const chartNeutral = theme.chart.neutral;
 
   const appendLatestTraffic = useEffectEvent(() => {
-    const now = Date.now();
-    rxSeriesRef.current.append(now, rx);
-    txSeriesRef.current.append(now, tx);
+    appendLiveSample(rxId, rx);
+    appendLiveSample(txId, tx);
   });
+
+  // Seed empty buffers from the agent's per-interface history so a refresh
+  // doesn't start the chart blank. Values arrive in bytes/s; the chart series
+  // (like the rx/tx props) are kB/s.
+  const shouldBackfill =
+    (rxHandle.needsBackfill || txHandle.needsBackfill) && monitoringEnabled;
+  useEffect(() => {
+    if (!shouldBackfill) return;
+    let cancelled = false;
+    linuxio.monitoring
+      .get_network_history({
+        resolution: "1m",
+        from_ms: Date.now() - LIVE_BACKFILL_WINDOW_MS,
+        limit: 40,
+      })
+      .then((points) => {
+        if (cancelled) return;
+        const rxPoints: { t: number; v: number }[] = [];
+        const txPoints: { t: number; v: number }[] = [];
+        for (const point of points) {
+          const rates = point.interfaces?.[interfaceName];
+          if (!rates) continue;
+          rxPoints.push({
+            t: point.captured_at_ms,
+            v: rates.recv_bytes_per_sec / 1024,
+          });
+          txPoints.push({
+            t: point.captured_at_ms,
+            v: rates.sent_bytes_per_sec / 1024,
+          });
+        }
+        backfillLiveSeries(rxId, rxPoints);
+        backfillLiveSeries(txId, txPoints);
+      })
+      .catch(() => {
+        // Best-effort seed; live samples still stream in.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldBackfill, interfaceName, rxId, txId]);
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -33,7 +97,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     if (!canvas) return;
 
     const chart = new SmoothieChart({
-      millisPerPixel: 40,
+      millisPerPixel: LIVE_MILLIS_PER_PIXEL,
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
@@ -63,12 +127,12 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(rxSeriesRef.current, {
+    chart.addTimeSeries(rxHandle.series, {
       strokeStyle: rxColor,
       fillStyle: alpha(rxColor, 0.09),
       lineWidth: 2,
     });
-    chart.addTimeSeries(txSeriesRef.current, {
+    chart.addTimeSeries(txHandle.series, {
       strokeStyle: txColor,
       fillStyle: alpha(txColor, 0.09),
       lineWidth: 2,
@@ -85,7 +149,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [chartNeutral, rxColor, txColor]);
+  }, [chartNeutral, rxColor, txColor, rxHandle.series, txHandle.series]);
 
   return (
     <div

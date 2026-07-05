@@ -29,7 +29,7 @@ const Processor: React.FC = () => {
     isPending,
     isError,
   } = linuxio.system.get_cpu_info.useQuery({
-    refetchInterval: 2000,
+    refetchInterval: 1000,
   });
 
   const [selectedSensor, setSelectedSensor] = useState<string | undefined>(

@@ -1273,6 +1273,12 @@ export interface MonitoringNetworkHistoryPoint {
   captured_at_ms: number;
   sent_bytes_per_sec: number;
   recv_bytes_per_sec: number;
+  interfaces?: Record<string, MonitoringNetworkRates>;
+}
+
+export interface MonitoringNetworkRates {
+  sent_bytes_per_sec: number;
+  recv_bytes_per_sec: number;
 }
 
 export interface MonitoringStatus {

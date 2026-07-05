@@ -114,7 +114,7 @@ func createCloudInitSeedISO(_ context.Context, req apischema.VMCreateRequest, pr
 	if userDataErr != nil {
 		return userDataErr
 	}
-	metaData := []byte(fmt.Sprintf("instance-id: linuxio-%s\nlocal-hostname: %s\n", cloudInitHostname(req), cloudInitHostname(req)))
+	metaData := fmt.Appendf(nil, "instance-id: linuxio-%s\nlocal-hostname: %s\n", cloudInitHostname(req), cloudInitHostname(req))
 	image, imageErr := buildCloudInitSeedImage([]seedImageFile{
 		{Name: "user-data", Data: userData},
 		{Name: "meta-data", Data: metaData},

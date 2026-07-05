@@ -1066,10 +1066,16 @@ type MonitoringDiskIOHistoryPoint struct {
 	WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
 }
 
-type MonitoringNetworkHistoryPoint struct {
-	CapturedAtMs    int64   `json:"captured_at_ms"`
+type MonitoringNetworkRates struct {
 	SentBytesPerSec float64 `json:"sent_bytes_per_sec"`
 	RecvBytesPerSec float64 `json:"recv_bytes_per_sec"`
+}
+
+type MonitoringNetworkHistoryPoint struct {
+	CapturedAtMs    int64                             `json:"captured_at_ms"`
+	SentBytesPerSec float64                           `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64                           `json:"recv_bytes_per_sec"`
+	Interfaces      map[string]MonitoringNetworkRates `json:"interfaces,omitempty"`
 }
 
 type MonitoringListenerStatus struct {

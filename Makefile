@@ -794,7 +794,7 @@ _build-binaries: ensure-go check-c-build-deps
 
 build: generate test build-vite build-bridge _build-binaries
 
-build-nocheck build-no-check: generate build-vite build-bridge _build-binaries
+build-nocheck: generate build-vite build-bridge _build-binaries
 
 fastbuild: generate build-bridge _build-binaries
 
@@ -918,7 +918,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck build-no-check fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

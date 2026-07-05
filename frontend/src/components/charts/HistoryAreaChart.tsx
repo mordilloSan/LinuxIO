@@ -43,6 +43,69 @@ interface HistoryAreaChartProps {
 const MARGIN = { top: 6, right: 44, bottom: 18, left: 4 };
 const Y_DIVISIONS = 4;
 
+/**
+ * Average consecutive samples into at most `budget` buckets. At full sample
+ * density a segment spans ~1px and no curve is visible; fewer, averaged
+ * points are what make the line read as smooth (same aggregation the agent's
+ * own rollups use).
+ */
+const downsamplePoints = (
+  points: HistoryChartPoint[],
+  budget: number,
+): HistoryChartPoint[] => {
+  if (points.length <= budget) return points;
+  const bucketSize = Math.ceil(points.length / budget);
+  const out: HistoryChartPoint[] = [];
+  for (let i = 0; i < points.length; i += bucketSize) {
+    const bucket = points.slice(i, i + bucketSize);
+    let tSum = 0;
+    let vSum = 0;
+    for (const point of bucket) {
+      tSum += point.t;
+      vSum += point.v;
+    }
+    out.push({
+      t: tSum / bucket.length,
+      v: vSum / bucket.length,
+      detail: bucket[Math.floor(bucket.length / 2)].detail,
+    });
+  }
+  return out;
+};
+
+/**
+ * Build a smooth cubic path through the points using monotone (Fritsch–
+ * Butland) interpolation: curved like a spline but without overshooting
+ * spikes, so the line never suggests values the data doesn't have.
+ */
+const smoothPath = (points: { x: number; y: number }[]): string => {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M${points[0].x},${points[0].y}`;
+
+  const slopes: number[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x;
+    slopes.push(dx === 0 ? 0 : (points[i + 1].y - points[i].y) / dx);
+  }
+  const tangents = points.map((_, i) => {
+    if (i === 0) return slopes[0];
+    if (i === points.length - 1) return slopes[slopes.length - 1];
+    const a = slopes[i - 1];
+    const b = slopes[i];
+    return a * b <= 0 ? 0 : (2 * a * b) / (a + b);
+  });
+
+  let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = (points[i + 1].x - points[i].x) / 3;
+    path +=
+      `C${(points[i].x + dx).toFixed(1)},${(points[i].y + tangents[i] * dx).toFixed(1)}` +
+      ` ${(points[i + 1].x - dx).toFixed(1)},${(points[i + 1].y - tangents[i + 1] * dx).toFixed(1)}` +
+      ` ${points[i + 1].x.toFixed(1)},${points[i + 1].y.toFixed(1)}`;
+  }
+  return path;
+};
+
 /** Round up to a clean axis maximum in the value's 1024-based display unit. */
 const niceMax = (value: number): number => {
   if (!Number.isFinite(value) || value <= 0) return 1;
@@ -94,12 +157,17 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  const plotLeft = MARGIN.left;
+  const plotTop = MARGIN.top;
+  const plotWidth = Math.max(0, size.width - MARGIN.left - MARGIN.right);
+  const plotHeight = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
+
   const lastDataT = series[0]?.points[series[0].points.length - 1]?.t;
   const domainStart =
     windowMs !== undefined && lastDataT !== undefined
       ? lastDataT - windowMs
       : undefined;
-  const visibleSeries =
+  const windowedSeries =
     domainStart === undefined
       ? series
       : series.map((s) => ({
@@ -107,13 +175,16 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
           points: s.points.filter((point) => point.t >= domainStart),
         }));
 
+  // ~1 point per 4px of plot; before the first measure fall back to a
+  // conservative budget so the initial render is already smooth.
+  const pointBudget = Math.max(40, Math.floor(plotWidth / 4));
+  const visibleSeries = windowedSeries.map((s) => ({
+    ...s,
+    points: downsamplePoints(s.points, pointBudget),
+  }));
+
   const timestamps = visibleSeries[0]?.points.map((point) => point.t) ?? [];
   const pointCount = timestamps.length;
-
-  const plotLeft = MARGIN.left;
-  const plotTop = MARGIN.top;
-  const plotWidth = Math.max(0, size.width - MARGIN.left - MARGIN.right);
-  const plotHeight = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
   let axisMax = yMax ?? 0;
   if (typeof yMax !== "number") {
@@ -141,14 +212,15 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
     if (plotWidth <= 0 || plotHeight <= 0 || s.points.length === 0) {
       return { line: "", area: "" };
     }
-    const coords = s.points.map(
-      (point) => `${xFor(point.t).toFixed(1)},${yFor(point.v).toFixed(1)}`,
-    );
-    const line = `M${coords.join("L")}`;
+    const coords = s.points.map((point) => ({
+      x: xFor(point.t),
+      y: yFor(point.v),
+    }));
+    const line = smoothPath(coords);
     const baseline = (plotTop + plotHeight).toFixed(1);
     const area =
-      `${line}L${xFor(s.points[s.points.length - 1].t).toFixed(1)},${baseline}` +
-      `L${xFor(s.points[0].t).toFixed(1)},${baseline}Z`;
+      `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
+      `L${coords[0].x.toFixed(1)},${baseline}Z`;
     return { line, area };
   });
 

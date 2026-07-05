@@ -1,7 +1,17 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
+import { linuxio } from "@/api";
+import {
+  acquireLiveSeries,
+  appendLiveSample,
+  backfillLiveSeries,
+  LIVE_BACKFILL_WINDOW_MS,
+  LIVE_MILLIS_PER_PIXEL,
+  LIVE_STALE_AFTER_MS,
+} from "@/components/charts/liveSeriesStore";
 import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
@@ -11,6 +21,9 @@ interface DriveGraphProps {
   writeBytesPerSec: number;
 }
 
+const READ_ID = "disk:read";
+const WRITE_ID = "disk:write";
+
 const DriveGraph: React.FC<DriveGraphProps> = ({
   readBytesPerSec,
   writeBytesPerSec,
@@ -18,24 +31,67 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
-  const readSeriesRef = useRef<TimeSeries>(new TimeSeries());
-  const writeSeriesRef = useRef<TimeSeries>(new TimeSeries());
+  const [readHandle] = useState(() =>
+    acquireLiveSeries(READ_ID, LIVE_STALE_AFTER_MS),
+  );
+  const [writeHandle] = useState(() =>
+    acquireLiveSeries(WRITE_ID, LIVE_STALE_AFTER_MS),
+  );
+  const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
   const readColor = theme.chart.rx;
   const writeColor = theme.chart.tx;
   const neutral = theme.chart.neutral;
 
   const appendLatestThroughput = useEffectEvent(() => {
-    const now = Date.now();
-    readSeriesRef.current.append(now, readBytesPerSec);
-    writeSeriesRef.current.append(now, writeBytesPerSec);
+    appendLiveSample(READ_ID, readBytesPerSec);
+    appendLiveSample(WRITE_ID, writeBytesPerSec);
   });
+
+  // Seed empty buffers with the agent's recent aggregate disk I/O samples so
+  // a refresh doesn't start the chart blank.
+  const shouldBackfill =
+    (readHandle.needsBackfill || writeHandle.needsBackfill) &&
+    monitoringEnabled;
+  useEffect(() => {
+    if (!shouldBackfill) return;
+    let cancelled = false;
+    linuxio.monitoring
+      .get_diskio_history({
+        resolution: "1m",
+        from_ms: Date.now() - LIVE_BACKFILL_WINDOW_MS,
+        limit: 40,
+      })
+      .then((points) => {
+        if (cancelled) return;
+        backfillLiveSeries(
+          READ_ID,
+          points.map((point) => ({
+            t: point.captured_at_ms,
+            v: point.read_bytes_per_sec,
+          })),
+        );
+        backfillLiveSeries(
+          WRITE_ID,
+          points.map((point) => ({
+            t: point.captured_at_ms,
+            v: point.write_bytes_per_sec,
+          })),
+        );
+      })
+      .catch(() => {
+        // Best-effort seed; live samples still stream in.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldBackfill]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const chart = new SmoothieChart({
-      millisPerPixel: 40,
+      millisPerPixel: LIVE_MILLIS_PER_PIXEL,
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
@@ -65,12 +121,12 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(readSeriesRef.current, {
+    chart.addTimeSeries(readHandle.series, {
       strokeStyle: readColor,
       fillStyle: alpha(readColor, 0.09),
       lineWidth: 2,
     });
-    chart.addTimeSeries(writeSeriesRef.current, {
+    chart.addTimeSeries(writeHandle.series, {
       strokeStyle: writeColor,
       fillStyle: alpha(writeColor, 0.09),
       lineWidth: 2,
@@ -87,7 +143,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [neutral, readColor, writeColor]);
+  }, [neutral, readColor, writeColor, readHandle.series, writeHandle.series]);
 
   return (
     <div

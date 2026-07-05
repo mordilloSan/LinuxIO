@@ -103,7 +103,10 @@ func TestFetchNetworkHistorySplitsBandwidth(t *testing.T) {
 		}
 		return jsonResponse(http.StatusOK, `{
 			"resolution": "10m",
-			"items": [{"captured_at": 1700000060000, "stats": {"bandwidth_bytes_per_second": [43926, 1080230]}}]
+			"items": [{"captured_at": 1700000060000, "stats": {
+				"bandwidth_bytes_per_second": [43926, 1080230],
+				"network_interfaces": {"enp2s0": [43442, 1079765, 37447544910, 447722329331], "wg0": [484, 465, 1262132312, 190750568]}
+			}}]
 		}`), nil
 	})
 
@@ -113,6 +116,12 @@ func TestFetchNetworkHistorySplitsBandwidth(t *testing.T) {
 	}
 	if len(points) != 1 || points[0].SentBytesPerSec != 43926 || points[0].RecvBytesPerSec != 1080230 {
 		t.Fatalf("points = %#v", points)
+	}
+	if len(points[0].Interfaces) != 2 {
+		t.Fatalf("interfaces = %#v", points[0].Interfaces)
+	}
+	if rates := points[0].Interfaces["enp2s0"]; rates.SentBytesPerSec != 43442 || rates.RecvBytesPerSec != 1079765 {
+		t.Fatalf("enp2s0 rates = %#v", rates)
 	}
 }
 

@@ -74,6 +74,8 @@ type diskIOHistoryStats struct {
 type networkHistoryStats struct {
 	// BandwidthBytesPerSec is [sent, received].
 	BandwidthBytesPerSec [2]float64 `json:"bandwidth_bytes_per_second"`
+	// NetworkInterfaces values are [sent/s, received/s, total sent, total received].
+	NetworkInterfaces map[string][4]float64 `json:"network_interfaces"`
 }
 
 func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringCPUHistoryPoint, error) {
@@ -112,11 +114,21 @@ func FetchDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequ
 
 func FetchNetworkHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringNetworkHistoryPoint, error) {
 	return fetchHistory(ctx, "network", req, func(item historyItem, stats networkHistoryStats) apischema.MonitoringNetworkHistoryPoint {
-		return apischema.MonitoringNetworkHistoryPoint{
+		point := apischema.MonitoringNetworkHistoryPoint{
 			CapturedAtMs:    item.CapturedAt,
 			SentBytesPerSec: stats.BandwidthBytesPerSec[0],
 			RecvBytesPerSec: stats.BandwidthBytesPerSec[1],
 		}
+		if len(stats.NetworkInterfaces) > 0 {
+			point.Interfaces = make(map[string]apischema.MonitoringNetworkRates, len(stats.NetworkInterfaces))
+			for name, rates := range stats.NetworkInterfaces {
+				point.Interfaces[name] = apischema.MonitoringNetworkRates{
+					SentBytesPerSec: rates[0],
+					RecvBytesPerSec: rates[1],
+				}
+			}
+		}
+		return point
 	})
 }
 
