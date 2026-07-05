@@ -189,12 +189,6 @@ func archiveExtractWorkers(jobSettings config.PersistedJobSettings) int {
 	return workers
 }
 
-type transferRequest struct {
-	source      string
-	destination string
-	overwrite   bool
-}
-
 type ChmodProgress struct {
 	Processed int64  `json:"processed"`
 	Total     int64  `json:"total"`
@@ -203,9 +197,10 @@ type ChmodProgress struct {
 }
 
 const (
-	routeArchive  = "filebrowser.archive"
-	routeDownload = "filebrowser.download"
-	routeUpload   = "filebrowser.upload"
+	routeArchive     = "filebrowser.archive"
+	routeDownload    = "filebrowser.download"
+	routeUpload      = "filebrowser.upload"
+	routeUploadBatch = "filebrowser.upload_batch"
 )
 
 var fileJobRoutes = fileJobBindings(nil).Routes()
@@ -221,18 +216,6 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 		apischema.Runner[apischema.FileExtractRequest, apischema.JobSnapshot]("filebrowser.extract").Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
 				return runExtractJob(ctx, job, store, req)
-			},
-			bridgejobs.ActionDefault,
-		),
-		apischema.Runner[apischema.SourceDestinationRequest, apischema.JobSnapshot]("filebrowser.copy").Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-				return runCopyJob(ctx, job, store, req)
-			},
-			bridgejobs.ActionDefault,
-		),
-		apischema.Runner[apischema.SourceDestinationRequest, apischema.JobSnapshot]("filebrowser.move").Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.SourceDestinationRequest) (any, error) {
-				return runMoveJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
@@ -254,6 +237,7 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 		),
 		apischema.Runner[apischema.OptionalPathRequest, apischema.JobSnapshot]("filebrowser.index").Run(runIndexerJob, bridgejobs.SingletonSystem),
 		apischema.Runner[apischema.FileUploadRequest, apischema.JobSnapshot](routeUpload).Run(runUploadJob, bridgejobs.StreamDefault),
+		apischema.Runner[apischema.FileUploadBatchRequest, apischema.JobSnapshot](routeUploadBatch).Run(runUploadBatchJob, bridgejobs.StreamDefault),
 		apischema.Runner[apischema.PathRequest, apischema.JobSnapshot](routeDownload).Run(runDownloadJob, bridgejobs.StreamDefault),
 		apischema.Runner[apischema.FileArchiveRequest, apischema.JobSnapshot](routeArchive).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
@@ -273,6 +257,7 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
 	fileJobBindings(store).Register(router)
 	bridgejobs.RegisterDataAttacher(routeUpload, attachFileTransferData)
+	bridgejobs.RegisterDataAttacher(routeUploadBatch, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(routeDownload, attachFileTransferData)
 	bridgejobs.RegisterDataAttacher(routeArchive, attachFileTransferData)
 }
@@ -429,18 +414,6 @@ func notifyExtractedFiles(destination string) {
 	})
 }
 
-func transferRequestFromAPI(req apischema.SourceDestinationRequest) (transferRequest, error) {
-	if req.Source == "" || req.Destination == "" {
-		return transferRequest{}, fmt.Errorf("missing source or destination")
-	}
-
-	return transferRequest{
-		source:      filepath.Clean(req.Source),
-		destination: filepath.Clean(req.Destination),
-		overwrite:   req.Overwrite != nil && *req.Overwrite,
-	}, nil
-}
-
 func parseChmodRequest(req apischema.FileChmodRequest) (path, modeStr, owner, group string, recursive bool, err error) {
 	if req.Path == "" || req.Mode == "" {
 		return "", "", "", "", false, fmt.Errorf("missing path or mode")
@@ -462,30 +435,6 @@ func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.PersistedJ
 			Phase:     phase,
 		})
 	}
-}
-
-func prepareTransfer(root *fsroot.FSRoot, req transferRequest) (transferRequest, error) {
-	sourceInfo, err := root.Root.Stat(fsroot.ToRel(req.source))
-	if err != nil {
-		return req, fmt.Errorf("source not found: %w", err)
-	}
-
-	destInfo, destErr := root.Root.Stat(fsroot.ToRel(req.destination))
-	if destErr == nil && destInfo.IsDir() {
-		req.destination = filepath.Join(req.destination, filepath.Base(req.source))
-		destInfo, destErr = root.Root.Stat(fsroot.ToRel(req.destination))
-	}
-
-	if destErr == nil {
-		if !req.overwrite {
-			return req, fmt.Errorf("destination exists")
-		}
-		if sourceInfo.IsDir() != destInfo.IsDir() {
-			return req, fmt.Errorf("type mismatch")
-		}
-	}
-
-	return req, nil
 }
 
 func runChmodJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
@@ -662,138 +611,6 @@ func runExtractJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 	slog.Info("extract complete", "archive", archivePath, "destination", destination)
 	return map[string]any{
 		"destination": destination,
-	}, nil
-}
-
-func runCopyJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
-	req, err := transferRequestFromAPI(apiReq)
-	if err != nil {
-		return nil, bridgejobs.NewError("missing source or destination", 400)
-	}
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return nil, bridgejobs.NewError("failed to access filesystem", 500)
-	}
-	defer root.Close()
-
-	sourceInfo, err := root.Root.Stat(fsroot.ToRel(req.source))
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("source not found: %v", err), 404)
-	}
-
-	destInfo, destErr := root.Root.Stat(fsroot.ToRel(req.destination))
-	if destErr == nil && destInfo.IsDir() {
-		req.destination = filepath.Join(req.destination, filepath.Base(req.source))
-		destInfo, destErr = root.Root.Stat(fsroot.ToRel(req.destination))
-	}
-
-	destExisted := destErr == nil
-	if destErr == nil {
-		if !req.overwrite {
-			return nil, bridgejobs.NewError("destination already exists", 409)
-		}
-		if sourceInfo.IsDir() != destInfo.IsDir() {
-			return nil, bridgejobs.NewError("source and destination types don't match", 400)
-		}
-	}
-
-	size := computeTransferSize(ctx, req.source, sourceInfo)
-	writeJobPhaseProgress(job, size.total, "preparing")
-
-	opts := newJobPhaseCallbacks(ctx, job, store, size.total, "copying")
-	err = services.CopyFileWithCallbacks(req.source, req.destination, req.overwrite, opts)
-	if err == ipc.ErrAborted {
-		slog.Info("copy aborted", "source", req.source, "destination", req.destination)
-		return nil, abortErr(ctx)
-	}
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("copy failed: %v", err), 500)
-	}
-
-	if info, err := root.Root.Stat(fsroot.ToRel(req.destination)); err == nil {
-		runDetachedIndexerUpdate("copy", func(ctx context.Context) error {
-			return addCopiedPathToIndexer(ctx, req.destination, info, size, destExisted && req.overwrite)
-		})
-	}
-
-	slog.Info("copy complete", "source", req.source, "destination", req.destination, "size", size.total)
-	return map[string]any{
-		"source":      req.source,
-		"destination": req.destination,
-		"size":        size.total,
-	}, nil
-}
-
-func runMoveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, apiReq apischema.SourceDestinationRequest) (any, error) {
-	req, err := transferRequestFromAPI(apiReq)
-	if err != nil {
-		return nil, bridgejobs.NewError("missing source or destination", 400)
-	}
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return nil, bridgejobs.NewError("failed to access filesystem", 500)
-	}
-	defer root.Close()
-
-	req, err = prepareTransfer(root, req)
-	if err != nil {
-		code := 409
-		message := err.Error()
-		switch {
-		case strings.Contains(message, "source not found"):
-			code = 404
-		case strings.Contains(message, "type mismatch"):
-			code = 400
-			message = "source and destination types don't match"
-		case strings.Contains(message, "destination exists"):
-			message = "destination already exists"
-		}
-		return nil, bridgejobs.NewError(message, code)
-	}
-
-	sourceInfo, err := root.Root.Stat(fsroot.ToRel(req.source))
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("source not found: %v", err), 404)
-	}
-	_, destStatErr := root.Root.Stat(fsroot.ToRel(req.destination))
-	destExisted := destStatErr == nil
-	if destStatErr != nil && !errors.Is(destStatErr, os.ErrNotExist) {
-		slog.Debug("failed to stat move destination before move", "destination", req.destination, "error", destStatErr)
-	}
-
-	size := computeTransferSize(ctx, req.source, sourceInfo)
-	writeJobPhaseProgress(job, size.total, "preparing")
-
-	opts := newJobPhaseCallbacks(ctx, job, store, size.total, "moving")
-	err = services.MoveFileWithCallbacks(req.source, req.destination, req.overwrite, opts, moveFileOptions(size))
-	if err == ipc.ErrAborted {
-		slog.Info("move aborted", "source", req.source, "destination", req.destination)
-		return nil, abortErr(ctx)
-	}
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("move failed: %v", err), 500)
-	}
-
-	destInfoAfterMove, statErr := root.Root.Stat(fsroot.ToRel(req.destination))
-	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		slog.Debug("failed to stat move destination", "destination", req.destination, "error", statErr)
-	}
-	runDetachedIndexerUpdate("move", func(ctx context.Context) error {
-		return movePathInIndexer(ctx, req.source, req.destination, size, destExisted && req.overwrite, func() (os.FileInfo, error) {
-			if destInfoAfterMove == nil {
-				return nil, os.ErrNotExist
-			}
-			return destInfoAfterMove, nil
-		})
-	})
-
-	slog.Info("move complete", "source", req.source, "destination", req.destination, "size", size.total)
-	return map[string]any{
-		"source":      req.source,
-		"destination": req.destination,
-		"size":        size.total,
 	}, nil
 }
 

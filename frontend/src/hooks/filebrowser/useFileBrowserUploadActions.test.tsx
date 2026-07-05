@@ -7,6 +7,7 @@ import { act, renderHook } from "@/test/render";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
+  info: vi.fn(),
   success: vi.fn(),
   warning: vi.fn(),
 }));
@@ -14,7 +15,7 @@ const toastMocks = vi.hoisted(() => ({
 vi.mock("sonner", () => ({
   toast: {
     error: toastMocks.error,
-    info: vi.fn(),
+    info: toastMocks.info,
     success: toastMocks.success,
     warning: toastMocks.warning,
   },
@@ -34,12 +35,14 @@ function setup(overrides: Partial<Params> = {}) {
     isUploadProcessing: false,
     normalizedPath: "/srv/data",
     onContextMenuClose: vi.fn(),
+    resolveCollisions: vi.fn(async (items: unknown[]) => ({
+      kept: items,
+      overwrite: false,
+    })) as unknown as Params["resolveCollisions"],
     setIsUploadProcessing: vi.fn(),
-    setOverwriteTargets: vi.fn(),
     setUploadDialogOpen: vi.fn(),
     setUploadEntries: vi.fn(),
     startUpload: vi.fn().mockResolvedValue({
-      conflicts: [],
       failures: [],
       uploaded: 0,
     }),
@@ -162,7 +165,6 @@ describe("useFileBrowserUploadActions", () => {
 
   it("uploads entries, refreshes the listing, and closes when there are no conflicts", async () => {
     const startUpload = vi.fn().mockResolvedValue({
-      conflicts: [],
       failures: [],
       uploaded: 2,
     });
@@ -172,35 +174,92 @@ describe("useFileBrowserUploadActions", () => {
       await result.current.handleStartUpload();
     });
 
-    expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data");
+    expect(params.resolveCollisions).toHaveBeenCalledWith(
+      [entry],
+      expect.any(Function),
+      "/srv/data",
+    );
+    const getDestPath = (params.resolveCollisions as ReturnType<typeof vi.fn>)
+      .mock.calls[0][1] as (item: DroppedEntry) => string;
+    expect(getDestPath(entry)).toBe("/srv/data/a.txt");
+    expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data", false);
     expect(params.invalidateListing).toHaveBeenCalledTimes(1);
     expect(params.setUploadDialogOpen).toHaveBeenCalledWith(false);
     expect(params.setUploadEntries).toHaveBeenCalledWith([]);
-    expect(params.setOverwriteTargets).not.toHaveBeenCalled();
     expect(params.setIsUploadProcessing).toHaveBeenNthCalledWith(1, true);
     expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
   });
 
-  it("surfaces conflicts and keeps the dialog open", async () => {
-    const conflicts: DroppedEntry[] = [entry];
-    const startUpload = vi.fn().mockResolvedValue({
-      conflicts,
-      failures: [],
-      uploaded: 0,
+  it("keeps the dialog open when the conflict prompt is cancelled", async () => {
+    const resolveCollisions = vi
+      .fn()
+      .mockResolvedValue(null) as unknown as Params["resolveCollisions"];
+    const startUpload = vi.fn();
+    const { result, params } = setup({
+      resolveCollisions,
+      startUpload,
+      uploadEntries: [entry],
     });
-    const { result, params } = setup({ startUpload, uploadEntries: [entry] });
 
     await act(async () => {
       await result.current.handleStartUpload();
     });
 
-    expect(params.setOverwriteTargets).toHaveBeenCalledWith(conflicts);
-    expect(toastMocks.warning).toHaveBeenCalledWith(
-      "1 item is already present. Overwrite them?",
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(params.setUploadDialogOpen).not.toHaveBeenCalled();
+    expect(params.setUploadEntries).not.toHaveBeenCalled();
+    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
+  });
+
+  it("sends only kept items with overwrite when the user resolves conflicts", async () => {
+    const other: DroppedEntry = {
+      file: new File(["y"], "b.txt"),
+      isDirectory: false,
+      relativePath: "b.txt",
+    };
+    const resolveCollisions = vi.fn().mockResolvedValue({
+      kept: [other],
+      overwrite: true,
+    }) as unknown as Params["resolveCollisions"];
+    const startUpload = vi.fn().mockResolvedValue({
+      failures: [],
+      uploaded: 1,
+    });
+    const { result } = setup({
+      resolveCollisions,
+      startUpload,
+      uploadEntries: [entry, other],
+    });
+
+    await act(async () => {
+      await result.current.handleStartUpload();
+    });
+
+    expect(startUpload).toHaveBeenCalledWith([other], "/srv/data", true);
+  });
+
+  it("does not start a job when every item is skipped", async () => {
+    const resolveCollisions = vi.fn().mockResolvedValue({
+      kept: [],
+      overwrite: false,
+    }) as unknown as Params["resolveCollisions"];
+    const startUpload = vi.fn();
+    const { result, params } = setup({
+      resolveCollisions,
+      startUpload,
+      uploadEntries: [entry],
+    });
+
+    await act(async () => {
+      await result.current.handleStartUpload();
+    });
+
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(toastMocks.info).toHaveBeenCalledWith(
+      "All items skipped",
       expect.anything(),
     );
-    expect(params.invalidateListing).not.toHaveBeenCalled();
-    expect(params.setUploadDialogOpen).not.toHaveBeenCalled();
+    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
   });
 
   it("reports a failed upload and always clears the processing flag", async () => {

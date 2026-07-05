@@ -50,9 +50,12 @@ export const useFileBrowserEditorActions = ({
 
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
+      // Saving replaces the file being edited by design; uploads otherwise
+      // never overwrite unless told to.
       const job = await linuxio.filebrowser.upload({
         targetPath: path,
         size: String(contentBytes.length),
+        overwrite: true,
       });
       await runChunkedStreamResult<void>({
         open: () => openJobDataStream(job.id, 0),

@@ -4,8 +4,10 @@ import { useCallback, useState } from "react";
 
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 
+import type { ResolveCollisionsFn } from "@/hooks/filebrowser/useFileConflicts";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { FileResource } from "@/types/filebrowser";
+import { joinPath } from "@/utils/path";
 
 import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
 
@@ -13,53 +15,30 @@ interface UseDragAndDropUploadParams {
   editingPath?: string | null;
   normalizedPath: string;
   onUploadComplete: () => void;
+  resolveCollisions: ResolveCollisionsFn;
   resource?: FileResource | null;
   startUpload: BackgroundJobsContextValue["startUpload"];
 }
 
 interface UseDragAndDropUploadResult {
-  handleCancelOverwrite: () => void;
-  handleConfirmOverwrite: () => Promise<void>;
   handleDragEnter: (event: React.DragEvent) => void;
   handleDragLeave: (event: React.DragEvent) => void;
   handleDragOver: (event: React.DragEvent) => void;
   handleDrop: (event: React.DragEvent) => Promise<void>;
   isDragOver: boolean;
-  overwriteTargets: DroppedEntry[] | null;
-  setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
 }
 
 export const useFileDragAndDrop = ({
   normalizedPath,
   resource,
   editingPath,
+  resolveCollisions,
   startUpload,
   onUploadComplete,
 }: UseDragAndDropUploadParams): UseDragAndDropUploadResult => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const [isDragOver, setIsDragOver] = useState(false);
-  const [overwriteTargets, setOverwriteTargets] = useState<
-    DroppedEntry[] | null
-  >(null);
   const extractDroppedEntries = useFileDroppedEntries();
-
-  const uploadDroppedFiles = useCallback(
-    async (entries: DroppedEntry[], options?: { override?: boolean }) => {
-      const override = options?.override ?? false;
-      if (!entries.length) {
-        return { conflicts: [] as DroppedEntry[], uploaded: 0, failures: [] };
-      }
-
-      const result = await startUpload(entries, normalizedPath, override);
-
-      if (result.uploaded > 0) {
-        onUploadComplete();
-      }
-
-      return result;
-    },
-    [normalizedPath, onUploadComplete, startUpload],
-  );
 
   const handleDragEnter = useCallback(
     (event: React.DragEvent) => {
@@ -118,49 +97,56 @@ export const useFileDragAndDrop = ({
           return;
         }
 
-        const { conflicts } = await uploadDroppedFiles(droppedEntries);
-        if (conflicts.length) {
-          setOverwriteTargets(conflicts);
-          toast.warning(
-            `${conflicts.length} item${conflicts.length === 1 ? " is" : "s are"} already present. Overwrite them?`,
-          );
+        // Uploads never overwrite silently: check the landing paths and ask
+        // the user per collision before any bytes move.
+        const resolution = await resolveCollisions(
+          droppedEntries.filter((entry) => !entry.isDirectory),
+          (entry) => joinPath(normalizedPath, entry.relativePath),
+          normalizedPath,
+        );
+        if (!resolution) {
+          return; // user cancelled the conflict prompt
+        }
+        const kept = new Set(resolution.kept);
+        const entriesToSend = droppedEntries.filter(
+          (entry) => entry.isDirectory || kept.has(entry),
+        );
+        if (!entriesToSend.length) {
+          toast.info("All items skipped");
+          return;
+        }
+
+        const result = await startUpload(
+          entriesToSend,
+          normalizedPath,
+          resolution.overwrite,
+        );
+        if (result.uploaded > 0) {
+          onUploadComplete();
         }
       } catch (err: any) {
         console.error("Failed to process drop", err);
         toast.error("Failed to upload dropped items");
       }
     },
-    [editingPath, resource, uploadDroppedFiles, extractDroppedEntries],
-  );
-
-  const handleConfirmOverwrite = useCallback(async () => {
-    if (!overwriteTargets || overwriteTargets.length === 0) return;
-    const files = overwriteTargets;
-    setOverwriteTargets(null);
-    await uploadDroppedFiles(files, { override: true });
-  }, [overwriteTargets, uploadDroppedFiles]);
-
-  const handleCancelOverwrite = useCallback(() => {
-    setOverwriteTargets(null);
-  }, []);
-
-  const setOverwriteTargetsForDialog = useCallback(
-    (targets: DroppedEntry[] | null) => {
-      setOverwriteTargets(targets);
-    },
-    [],
+    [
+      editingPath,
+      extractDroppedEntries,
+      normalizedPath,
+      onUploadComplete,
+      resolveCollisions,
+      resource,
+      startUpload,
+      toast,
+    ],
   );
 
   return {
     isDragOver,
-    overwriteTargets,
     handleDragEnter,
     handleDragOver,
     handleDragLeave,
     handleDrop,
-    handleConfirmOverwrite,
-    handleCancelOverwrite,
-    setOverwriteTargets: setOverwriteTargetsForDialog,
   };
 };
 

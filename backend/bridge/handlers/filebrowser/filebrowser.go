@@ -170,46 +170,37 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (any, error) {
 	return statData, nil
 }
 
-// resourceDelete deletes a resource.
-func resourceDelete(ctx context.Context, req apischema.PathRequest, emit bridgeipc.Events) (any, error) {
-	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+// existsBatch reports which of the requested paths already exist. Used as a
+// pre-flight check so transfers can ask the user about collisions before any
+// bytes move.
+func existsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema.ExistsBatchResponse, error) {
+	response := apischema.ExistsBatchResponse{Existing: []apischema.ExistsBatchItem{}}
+	if len(req.Paths) == 0 {
+		return response, nil
 	}
 
-	if req.Path == "/" {
-		return nil, fmt.Errorf("bad_request:cannot delete root")
-	}
-
-	isDir, err := deleteTargetIsDir(req.Path)
+	root, err := fsroot.Open()
 	if err != nil {
-		slog.Debug("error getting file info", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
+		slog.Debug("error opening filesystem root", "error", err)
+		return response, fmt.Errorf("bad_request:failed to access filesystem")
 	}
+	defer root.Close()
 
-	deleteOpts := deleteOptionsForPath(ctx, req.Path, isDir)
-	reportDeleteProgress(emit, 0, deleteOpts.Total, deleteOpts.Indeterminate, "preparing")
-	deleteOpts.Progress = newDeleteProgressReporter(emit)
-
-	processed, err := services.DeleteFilesWithProgress(ctx, req.Path, deleteOpts)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil, err
+	for _, raw := range req.Paths {
+		if err := ctx.Err(); err != nil {
+			return response, err
 		}
-		slog.Debug("error deleting file", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
+		path := utils.CleanAbsPath(raw)
+		info, statErr := root.Root.Lstat(fsroot.ToRel(path))
+		if statErr != nil {
+			continue
+		}
+		response.Existing = append(response.Existing, apischema.ExistsBatchItem{
+			Path:  path,
+			IsDir: info.IsDir(),
+		})
 	}
-
-	// Notify indexer about the deletion
-	if err := deleteFromIndexer(ctx, req.Path); err != nil {
-		slog.Debug("failed to update indexer after delete", "path", req.Path, "error", err)
-		// Don't fail the operation if indexer update fails
-	}
-	slog.Info("delete complete", "path", req.Path)
-
-	return map[string]any{
-		"message":   "deleted",
-		"processed": processed,
-	}, nil
+	return response, nil
 }
 
 func deleteTargetIsDir(path string) (bool, error) {
@@ -268,49 +259,6 @@ func shouldPrescanDeletePath(path string) bool {
 		return false
 	}
 	return ok
-}
-
-func newDeleteProgressReporter(emit bridgeipc.Events) func(processed, total int64, indeterminate bool) {
-	var lastProcessed int64 = -1
-	lastPct := -1
-	var lastAt time.Time
-	const minInterval = 250 * time.Millisecond
-
-	return func(processed, total int64, indeterminate bool) {
-		pct := deleteProgressPct(processed, total, indeterminate)
-		final := !indeterminate && total > 0 && processed >= total
-		firstItem := processed <= 1
-		now := time.Now()
-		if !final && !firstItem && !lastAt.IsZero() && now.Sub(lastAt) < minInterval {
-			return
-		}
-		if !final && processed == lastProcessed && pct == lastPct {
-			return
-		}
-		reportDeleteProgress(emit, processed, total, indeterminate, "deleting")
-		lastProcessed = processed
-		lastPct = pct
-		lastAt = now
-	}
-}
-
-func reportDeleteProgress(emit bridgeipc.Events, processed, total int64, indeterminate bool, phase string) {
-	if err := emit.Progress(DeleteProgress{
-		Processed:     processed,
-		Total:         total,
-		Pct:           deleteProgressPct(processed, total, indeterminate),
-		Phase:         phase,
-		Indeterminate: indeterminate,
-	}); err != nil {
-		slog.Debug("failed to write delete progress update", "phase", phase, "error", err)
-	}
-}
-
-func deleteProgressPct(processed, total int64, indeterminate bool) int {
-	if indeterminate || total <= 0 {
-		return 0
-	}
-	return min(int(processed*100/total), 100)
 }
 
 type resourcePostRequest struct {

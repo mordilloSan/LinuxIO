@@ -152,6 +152,7 @@ describe("useFileBrowserEditorActions", () => {
       });
 
       expect(apiMocks.upload).toHaveBeenCalledWith({
+        overwrite: true,
         size: "5",
         targetPath: "/srv/note.md",
       });

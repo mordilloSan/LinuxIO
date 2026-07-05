@@ -229,7 +229,6 @@ const linuxio = {
     archive: createEndpoint("filebrowser", "archive", { kind: "object" }),
     chmod: createEndpoint("filebrowser", "chmod", { kind: "object" }),
     compress: createEndpoint("filebrowser", "compress", { kind: "object" }),
-    copy: createEndpoint("filebrowser", "copy", { kind: "object" }),
     copy_batch: createEndpoint("filebrowser", "copy_batch", { kind: "object" }),
     delete_batch: createEndpoint("filebrowser", "delete_batch", {
       kind: "field",
@@ -243,17 +242,16 @@ const linuxio = {
       kind: "field",
       field: "path",
     }),
+    exists_batch: createEndpoint("filebrowser", "exists_batch", {
+      kind: "field",
+      field: "paths",
+    }),
     extract: createEndpoint("filebrowser", "extract", { kind: "object" }),
     index: createEndpoint("filebrowser", "index", { kind: "object" }),
     indexer_status: createEndpoint("filebrowser", "indexer_status", {
       kind: "none",
     }),
-    move: createEndpoint("filebrowser", "move", { kind: "object" }),
     move_batch: createEndpoint("filebrowser", "move_batch", { kind: "object" }),
-    resource_delete: createEndpoint("filebrowser", "resource_delete", {
-      kind: "field",
-      field: "path",
-    }),
     resource_get: createEndpoint("filebrowser", "resource_get", {
       kind: "object",
     }),
@@ -273,6 +271,9 @@ const linuxio = {
       field: "path",
     }),
     upload: createEndpoint("filebrowser", "upload", { kind: "object" }),
+    upload_batch: createEndpoint("filebrowser", "upload_batch", {
+      kind: "object",
+    }),
     users_groups: createEndpoint("filebrowser", "users_groups", {
       kind: "none",
     }),

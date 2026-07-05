@@ -2,10 +2,25 @@ import type { QueryKey } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 
+// Filebrowser listing caches. Route-level prefixes (no request element) so
+// TanStack's partial matching invalidates every path's listing query.
+const filebrowserListingKeys = (): QueryKey[] => [
+  ["linuxio", "filebrowser", "resource_get"],
+  ["linuxio", "filebrowser", "subfolders"],
+];
+
 // Query keys to invalidate when a job of the given type reaches a terminal state.
 // Only listed types are auto-invalidated; jobs claimed by a local handler
 // (registered via markJobLocallyHandled) are skipped.
 export const INVALIDATIONS_BY_JOB_TYPE: Record<string, () => QueryKey[]> = {
+  // Fresh filebrowser transfers refresh the listing via their onComplete
+  // handlers; these entries cover jobs that finish after a page reload.
+  "filebrowser.copy_batch": filebrowserListingKeys,
+  "filebrowser.move_batch": filebrowserListingKeys,
+  "filebrowser.delete_batch": filebrowserListingKeys,
+  "filebrowser.upload": filebrowserListingKeys,
+  "filebrowser.upload_batch": filebrowserListingKeys,
+
   "docker.start_container": () => [linuxio.docker.list_containers.queryKey()],
   "docker.stop_container": () => [linuxio.docker.list_containers.queryKey()],
   "docker.restart_container": () => [linuxio.docker.list_containers.queryKey()],

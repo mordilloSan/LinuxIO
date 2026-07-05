@@ -236,6 +236,8 @@ export function useRecoveredJobs(
               package_id?: string;
               files_indexed?: number;
               dirs_indexed?: number;
+              filesDone?: number;
+              filesTotal?: number;
               phase?: string;
               pct?: number;
               processed?: number;
@@ -249,6 +251,12 @@ export function useRecoveredJobs(
               ? `Upload waiting: ${name}`
               : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
+          case JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH: {
+            const filesTotal = data?.filesTotal ?? 0;
+            return data?.phase === "waiting_for_client"
+              ? `Upload waiting: ${filesTotal} file${filesTotal === 1 ? "" : "s"}`
+              : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          }
           case JobTypes.JOB_TYPE_FILE_DOWNLOAD: {
             const name = getName(requestString(request, "path"), "file");
             return data?.phase === "waiting_for_client"
@@ -261,14 +269,6 @@ export function useRecoveredJobs(
               : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           case JobTypes.JOB_TYPE_FILE_CHMOD:
             return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
-          case JobTypes.JOB_TYPE_FILE_DELETE: {
-            const name = getName(requestString(request, "path"), "item");
-            if (data?.indeterminate) {
-              const processed = data.processed ?? 0;
-              return `Deleting ${name} (${processed} item${processed === 1 ? "" : "s"})`;
-            }
-            return `Deleting ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
-          }
           case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
             const processed = data?.processed ?? 0;
             return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
@@ -440,18 +440,13 @@ export function useRecoveredJobs(
           });
           break;
         }
-        case JobTypes.JOB_TYPE_FILE_COPY:
         case JobTypes.JOB_TYPE_FILE_COPY_BATCH:
-        case JobTypes.JOB_TYPE_FILE_MOVE:
         case JobTypes.JOB_TYPE_FILE_MOVE_BATCH: {
-          const isMove =
-            job.type === JobTypes.JOB_TYPE_FILE_MOVE ||
-            job.type === JobTypes.JOB_TYPE_FILE_MOVE_BATCH;
+          const isMove = job.type === JobTypes.JOB_TYPE_FILE_MOVE_BATCH;
           const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
           if (activeIds.current.has(job.id)) return;
           const batchSources = requestStringArray(request, "sources");
-          const source =
-            batchSources[0] ?? requestString(request, "source") ?? "";
+          const source = batchSources[0] ?? "";
           const destination = requestString(request, "destination") ?? "";
           const labelBase =
             batchSources.length > 1
@@ -616,10 +611,10 @@ export function useRecoveredJobs(
         case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
         case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY:
         case JobTypes.JOB_TYPE_FILE_UPLOAD:
+        case JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH:
         case JobTypes.JOB_TYPE_FILE_DOWNLOAD:
         case JobTypes.JOB_TYPE_FILE_ARCHIVE:
         case JobTypes.JOB_TYPE_FILE_CHMOD:
-        case JobTypes.JOB_TYPE_FILE_DELETE:
         case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;

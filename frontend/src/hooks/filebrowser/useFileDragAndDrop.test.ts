@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ResolveCollisionsFn } from "@/hooks/filebrowser/useFileConflicts";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { FileResource } from "@/types/filebrowser";
 
@@ -9,6 +10,7 @@ const droppedEntriesMocks = vi.hoisted(() => ({
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
+  info: vi.fn(),
   warning: vi.fn(),
 }));
 
@@ -19,6 +21,7 @@ vi.mock("@/hooks/filebrowser/useFileDroppedEntries", () => ({
 vi.mock("sonner", () => ({
   toast: {
     error: toastMocks.error,
+    info: toastMocks.info,
     warning: toastMocks.warning,
   },
 }));
@@ -61,12 +64,20 @@ const droppedFile: DroppedEntry = {
   relativePath: "compose.yaml",
 };
 
+// Pass-through resolution: no collisions found, keep everything.
+const passthroughCollisions = () =>
+  vi.fn(async (items: unknown[]) => ({
+    kept: items,
+    overwrite: false,
+  })) as unknown as ResolveCollisionsFn;
+
 describe("useFileDragAndDrop", () => {
   it("marks directory file drops as drag-over and sets copy drop effect", () => {
     const { result } = renderHook(() =>
       useFileDragAndDrop({
         normalizedPath: "/srv/target",
         onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
         resource: directory,
         startUpload: vi.fn(),
       }),
@@ -87,6 +98,7 @@ describe("useFileDragAndDrop", () => {
         editingPath: "/srv/target/note.txt",
         normalizedPath: "/srv/target",
         onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
         resource: directory,
         startUpload: vi.fn(),
       }),
@@ -95,6 +107,7 @@ describe("useFileDragAndDrop", () => {
       useFileDragAndDrop({
         normalizedPath: "/srv/target/note.txt",
         onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
         resource: fileResource,
         startUpload: vi.fn(),
       }),
@@ -113,8 +126,8 @@ describe("useFileDragAndDrop", () => {
 
   it("uploads dropped entries and calls completion after successful uploads", async () => {
     droppedEntriesMocks.extract.mockResolvedValue([droppedFile]);
+    const resolveCollisions = passthroughCollisions();
     const startUpload = vi.fn(async () => ({
-      conflicts: [],
       failures: [],
       uploaded: 1,
     }));
@@ -123,6 +136,7 @@ describe("useFileDragAndDrop", () => {
       useFileDragAndDrop({
         normalizedPath: "/srv/target",
         onUploadComplete,
+        resolveCollisions,
         resource: directory,
         startUpload,
       }),
@@ -132,34 +146,31 @@ describe("useFileDragAndDrop", () => {
       await result.current.handleDrop(dragEvent());
     });
 
+    expect(resolveCollisions).toHaveBeenCalledWith(
+      [droppedFile],
+      expect.any(Function),
+      "/srv/target",
+    );
     expect(startUpload).toHaveBeenCalledWith(
       [droppedFile],
       "/srv/target",
       false,
     );
     expect(onUploadComplete).toHaveBeenCalledTimes(1);
-    expect(result.current.overwriteTargets).toBeNull();
   });
 
-  it("stores conflicts and can confirm or cancel overwrite", async () => {
+  it("does not upload when the conflict prompt is cancelled", async () => {
     droppedEntriesMocks.extract.mockResolvedValue([droppedFile]);
-    const conflict = { ...droppedFile, relativePath: "existing.yaml" };
-    const startUpload = vi
+    const resolveCollisions = vi
       .fn()
-      .mockResolvedValueOnce({
-        conflicts: [conflict],
-        failures: [],
-        uploaded: 0,
-      })
-      .mockResolvedValueOnce({
-        conflicts: [],
-        failures: [],
-        uploaded: 1,
-      });
+      .mockResolvedValue(null) as unknown as ResolveCollisionsFn;
+    const startUpload = vi.fn();
+    const onUploadComplete = vi.fn();
     const { result } = renderHook(() =>
       useFileDragAndDrop({
         normalizedPath: "/srv/target",
-        onUploadComplete: vi.fn(),
+        onUploadComplete,
+        resolveCollisions,
         resource: directory,
         startUpload,
       }),
@@ -169,26 +180,68 @@ describe("useFileDragAndDrop", () => {
       await result.current.handleDrop(dragEvent());
     });
 
-    expect(result.current.overwriteTargets).toEqual([conflict]);
-    expect(toastMocks.warning).toHaveBeenCalledWith(
-      "1 item is already present. Overwrite them?",
-      expect.anything(),
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(onUploadComplete).not.toHaveBeenCalled();
+  });
+
+  it("uploads only kept items with overwrite when the user resolves conflicts", async () => {
+    const second: DroppedEntry = {
+      file: new File(["other"], "notes.md"),
+      isDirectory: false,
+      relativePath: "notes.md",
+    };
+    droppedEntriesMocks.extract.mockResolvedValue([droppedFile, second]);
+    const resolveCollisions = vi.fn().mockResolvedValue({
+      kept: [second],
+      overwrite: true,
+    }) as unknown as ResolveCollisionsFn;
+    const startUpload = vi.fn(async () => ({
+      failures: [],
+      uploaded: 1,
+    }));
+    const { result } = renderHook(() =>
+      useFileDragAndDrop({
+        normalizedPath: "/srv/target",
+        onUploadComplete: vi.fn(),
+        resolveCollisions,
+        resource: directory,
+        startUpload,
+      }),
     );
 
     await act(async () => {
-      await result.current.handleConfirmOverwrite();
+      await result.current.handleDrop(dragEvent());
     });
 
-    expect(startUpload).toHaveBeenLastCalledWith(
-      [conflict],
-      "/srv/target",
-      true,
-    );
-    expect(result.current.overwriteTargets).toBeNull();
+    expect(startUpload).toHaveBeenCalledWith([second], "/srv/target", true);
+  });
 
-    act(() => result.current.setOverwriteTargets([conflict]));
-    act(() => result.current.handleCancelOverwrite());
-    expect(result.current.overwriteTargets).toBeNull();
+  it("does not start a job when every dropped item is skipped", async () => {
+    droppedEntriesMocks.extract.mockResolvedValue([droppedFile]);
+    const resolveCollisions = vi.fn().mockResolvedValue({
+      kept: [],
+      overwrite: false,
+    }) as unknown as ResolveCollisionsFn;
+    const startUpload = vi.fn();
+    const { result } = renderHook(() =>
+      useFileDragAndDrop({
+        normalizedPath: "/srv/target",
+        onUploadComplete: vi.fn(),
+        resolveCollisions,
+        resource: directory,
+        startUpload,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleDrop(dragEvent());
+    });
+
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(toastMocks.info).toHaveBeenCalledWith(
+      "All items skipped",
+      expect.anything(),
+    );
   });
 
   it("warns when a drop contains no readable entries", async () => {
@@ -198,6 +251,7 @@ describe("useFileDragAndDrop", () => {
       useFileDragAndDrop({
         normalizedPath: "/srv/target",
         onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
         resource: directory,
         startUpload,
       }),

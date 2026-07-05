@@ -775,6 +775,15 @@ export interface EnabledRequest {
   enabled: string;
 }
 
+export interface ExistsBatchItem {
+  path: string;
+  isDir: boolean;
+}
+
+export interface ExistsBatchResponse {
+  existing: ExistsBatchItem[];
+}
+
 export interface ExtendedFileInfo {
   name: string;
   size: number;
@@ -842,6 +851,18 @@ export interface FileSearchRequest {
   query: string;
   limit?: string;
   basePath?: string;
+}
+
+export interface FileUploadBatchEntry {
+  path: string;
+  size: string;
+}
+
+export interface FileUploadBatchRequest {
+  destination: string;
+  files: FileUploadBatchEntry[];
+  directories?: string[];
+  overwrite?: boolean;
 }
 
 export interface FileUploadRequest {
@@ -1593,12 +1614,6 @@ export interface Socket {
   unit_file_state: string;
 }
 
-export interface SourceDestinationRequest {
-  source: string;
-  destination: string;
-  overwrite?: boolean;
-}
-
 export interface StackNameRequest {
   stackName: string;
 }
@@ -2272,11 +2287,6 @@ export interface LinuxIOSchema {
       request: FileCompressRequest;
       result: JobSnapshot;
     };
-    copy: {
-      input: [request: SourceDestinationRequest];
-      request: SourceDestinationRequest;
-      result: JobSnapshot;
-    };
     copy_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
@@ -2297,6 +2307,11 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: JobSnapshot;
     };
+    exists_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: ExistsBatchResponse;
+    };
     extract: {
       input: [request: FileExtractRequest];
       request: FileExtractRequest;
@@ -2308,19 +2323,9 @@ export interface LinuxIOSchema {
       result: JobSnapshot;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
-    move: {
-      input: [request: SourceDestinationRequest];
-      request: SourceDestinationRequest;
-      result: JobSnapshot;
-    };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: JobSnapshot;
-    };
-    resource_delete: {
-      input: [path: string];
-      request: PathRequest;
       result: JobSnapshot;
     };
     resource_get: {
@@ -2356,6 +2361,11 @@ export interface LinuxIOSchema {
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
+      result: JobSnapshot;
+    };
+    upload_batch: {
+      input: [request: FileUploadBatchRequest];
+      request: FileUploadBatchRequest;
       result: JobSnapshot;
     };
     users_groups: { input: []; request: void; result: UsersGroupsResponse };

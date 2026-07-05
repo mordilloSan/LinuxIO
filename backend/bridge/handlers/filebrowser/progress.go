@@ -66,6 +66,19 @@ type FileProgress struct {
 	Phase string `json:"phase,omitempty"` // Optional phase description
 }
 
+// BatchUploadProgress reports aggregate byte progress for a batch upload plus
+// how many manifest files have been fully processed. Bytes doubles as the
+// client's flow-control ack watermark, so it counts stream bytes consumed
+// (including discarded bytes of failed items), not bytes durably written.
+type BatchUploadProgress struct {
+	Bytes      int64  `json:"bytes"`
+	Total      int64  `json:"total"`
+	Pct        int    `json:"pct"`
+	Phase      string `json:"phase,omitempty"`
+	FilesDone  int    `json:"filesDone"`
+	FilesTotal int    `json:"filesTotal"`
+}
+
 // DeleteProgress represents item-count progress for delete jobs.
 type DeleteProgress struct {
 	Processed     int64  `json:"processed"`
