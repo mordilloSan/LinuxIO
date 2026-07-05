@@ -463,7 +463,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	}
 	req.realSrc = utils.CleanAbsPath(req.src)
 
-	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
+	srcInfo, err := root.Root.Lstat(fsroot.ToRel(req.realSrc))
 	if err != nil {
 		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
 		return req, fmt.Errorf("bad_request:source not found")
@@ -475,7 +475,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 }
 
 func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, srcInfo os.FileInfo) error {
-	destInfo, err := root.Root.Stat(fsroot.ToRel(req.realDest))
+	destInfo, err := root.Root.Lstat(fsroot.ToRel(req.realDest))
 	destExists := err == nil
 	if err != nil && !os.IsNotExist(err) {
 		slog.Debug("error stating destination", "path", req.realDest, "error", err)
@@ -497,7 +497,14 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, src
 }
 
 func computeTransferSize(ctx context.Context, path string, info os.FileInfo) computedTransferSize {
+	if info != nil && info.Mode()&os.ModeSymlink != 0 {
+		return computedTransferSize{total: 0, known: true}
+	}
+
 	if info != nil && !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return computedTransferSize{total: 0, known: true}
+		}
 		return computedTransferSize{total: info.Size(), known: true}
 	}
 
@@ -607,14 +614,14 @@ func executeResourcePatch(req resourcePatchRequest, opts *ipc.OperationCallbacks
 func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest, size computedTransferSize, destExisted bool) {
 	switch req.action {
 	case "copy":
-		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
+		if info, err := root.Root.Lstat(fsroot.ToRel(req.realDest)); err == nil {
 			if err := addCopiedPathToIndexer(ctx, req.realDest, info, size, destExisted && req.overwrite); err != nil {
 				slog.Debug("failed to update indexer after copy", "path", req.realDest, "error", err)
 			}
 		}
 	case "rename", "move":
 		if err := movePathInIndexer(ctx, req.realSrc, req.realDest, size, destExisted && req.overwrite, func() (os.FileInfo, error) {
-			return root.Root.Stat(fsroot.ToRel(req.realDest))
+			return root.Root.Lstat(fsroot.ToRel(req.realDest))
 		}); err != nil {
 			slog.Debug("failed to update indexer after move", "source", req.realSrc, "destination", req.realDest, "error", err)
 		}
@@ -670,12 +677,12 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 		return nil, err
 	}
 
-	srcInfo, err := root.Root.Stat(fsroot.ToRel(patchReq.realSrc))
+	srcInfo, err := root.Root.Lstat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
 		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
 		return nil, fmt.Errorf("bad_request:source not found")
 	}
-	_, destStatErr := root.Root.Stat(fsroot.ToRel(patchReq.realDest))
+	_, destStatErr := root.Root.Lstat(fsroot.ToRel(patchReq.realDest))
 	destExisted := destStatErr == nil
 
 	size := computeTransferSize(ctx, patchReq.realSrc, srcInfo)

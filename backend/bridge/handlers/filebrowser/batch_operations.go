@@ -69,7 +69,7 @@ func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string,
 			failures = append(failures, batchItemFailure{Path: raw, Error: "cannot transfer root"})
 			continue
 		}
-		info, err := root.Root.Stat(fsroot.ToRel(src))
+		info, err := root.Root.Lstat(fsroot.ToRel(src))
 		if err != nil {
 			failures = append(failures, batchItemFailure{Path: raw, Error: "source not found"})
 			continue
@@ -77,7 +77,7 @@ func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string,
 
 		dest := filepath.Join(destDir, filepath.Base(src))
 		replaced := false
-		if destInfo, derr := root.Root.Stat(fsroot.ToRel(dest)); derr == nil {
+		if destInfo, derr := root.Root.Lstat(fsroot.ToRel(dest)); derr == nil {
 			if !overwrite {
 				failures = append(failures, batchItemFailure{Path: raw, Error: "destination already exists"})
 				continue
@@ -138,7 +138,7 @@ func runCopyBatchJob(ctx context.Context, job *bridgejobs.Job, store *config.Use
 		}
 		succeeded++
 
-		if info, statErr := root.Root.Stat(fsroot.ToRel(item.dest)); statErr == nil {
+		if info, statErr := root.Root.Lstat(fsroot.ToRel(item.dest)); statErr == nil {
 			dest, size, replaced := item.dest, item.size, item.replaced
 			runDetachedIndexerUpdate("copy_batch", func(ctx context.Context) error {
 				return addCopiedPathToIndexer(ctx, dest, info, size, replaced)
@@ -193,7 +193,7 @@ func runMoveBatchJob(ctx context.Context, job *bridgejobs.Job, store *config.Use
 		source, dest, size, replaced := item.source, item.dest, item.size, item.replaced
 		runDetachedIndexerUpdate("move_batch", func(ctx context.Context) error {
 			return movePathInIndexer(ctx, source, dest, size, replaced, func() (os.FileInfo, error) {
-				return root.Root.Stat(fsroot.ToRel(dest))
+				return root.Root.Lstat(fsroot.ToRel(dest))
 			})
 		})
 	}
