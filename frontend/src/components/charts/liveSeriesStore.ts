@@ -92,24 +92,62 @@ export function backfillLiveSeries(
 // ─── Shared crosshair ────────────────────────────────────────────────────────
 // The dashboard live charts share one hover position, measured in pixels from
 // the canvas' right edge: they all scroll at LIVE_MILLIS_PER_PIXEL, so the
-// same right-edge offset is the same moment in time on every chart.
+// same right-edge offset is the same moment in time on every chart. The store
+// also carries the clock the overlays render with: while a hover is active a
+// single shared ticker refreshes it every second, so tooltip values track the
+// samples scrolling underneath the crosshair while renders stay pure
+// (components read Date.now() from this snapshot, never directly).
 
 let hoverRightPx: number | null = null;
+let hoverNowMs = 0;
+let hoverTicker: ReturnType<typeof setInterval> | undefined;
 const hoverListeners = new Set<() => void>();
+
+function notifyHoverListeners(): void {
+  for (const listener of hoverListeners) listener();
+}
+
+function stopHoverTicker(): void {
+  if (hoverTicker === undefined) return;
+  clearInterval(hoverTicker);
+  hoverTicker = undefined;
+}
 
 export function setLiveHoverRightPx(px: number | null): void {
   if (px === hoverRightPx) return;
   hoverRightPx = px;
-  for (const listener of hoverListeners) listener();
+  if (px === null) {
+    stopHoverTicker();
+  } else {
+    hoverNowMs = Date.now();
+    hoverTicker ??= setInterval(() => {
+      hoverNowMs = Date.now();
+      notifyHoverListeners();
+    }, 1000);
+  }
+  notifyHoverListeners();
 }
 
 export function getLiveHoverRightPx(): number | null {
   return hoverRightPx;
 }
 
+/** Clock snapshot the hover overlays render with; see the section comment. */
+export function getLiveHoverNowMs(): number {
+  return hoverNowMs;
+}
+
 export function subscribeLiveHover(listener: () => void): () => void {
   hoverListeners.add(listener);
-  return () => hoverListeners.delete(listener);
+  return () => {
+    hoverListeners.delete(listener);
+    // Last overlay gone (e.g. route change mid-hover, where pointerleave
+    // never fires): drop the ticker and the ghost crosshair with it.
+    if (hoverListeners.size === 0) {
+      stopHoverTicker();
+      hoverRightPx = null;
+    }
+  };
 }
 
 /**

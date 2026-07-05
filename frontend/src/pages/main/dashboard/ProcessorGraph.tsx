@@ -108,28 +108,6 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
           }}
         />
       </div>
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          fontSize: 9,
-          color: alpha(theme.chart.neutral, 0.7),
-          whiteSpace: "nowrap",
-          pointerEvents: "none",
-          textAlign: "right",
-        }}
-      >
-        <span>100%</span>
-        <span>75%</span>
-        <span>50%</span>
-        <span>25%</span>
-        <span>0%</span>
-      </div>
     </div>
   );
 };

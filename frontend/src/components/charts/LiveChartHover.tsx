@@ -6,6 +6,7 @@ import React, {
 } from "react";
 
 import {
+  getLiveHoverNowMs,
   getLiveHoverRightPx,
   LIVE_MILLIS_PER_PIXEL,
   setLiveHoverRightPx,
@@ -41,46 +42,31 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
     getLiveHoverRightPx,
   );
 
+  // ResizeObserver delivers the initial size right after observe(), so no
+  // synchronous measurement is needed.
   const [width, setWidth] = useState(0);
-  const [nowMs, setNowMs] = useState(0);
-
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
-
-    const measure = () => {
-      setWidth(overlay.getBoundingClientRect().width);
-    };
-
-    measure();
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
-    }
-
     const observer = new ResizeObserver((entries) => {
       setWidth(entries[0]?.contentRect.width ?? 0);
     });
     observer.observe(overlay);
-
     return () => observer.disconnect();
   }, []);
 
-  // While hovered, refresh once per second so the tooltip values track the
-  // samples scrolling underneath the fixed crosshair.
-  const hovering = hoverRightPx !== null;
-  useEffect(() => {
-    if (!hovering) return;
-    setNowMs(Date.now());
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [hovering]);
+  // Clock snapshot from the store: its shared ticker refreshes it once per
+  // second while a hover is active, so the tooltip values track the samples
+  // scrolling underneath the fixed crosshair without impure render reads.
+  const hoverNowMs = useSyncExternalStore(
+    subscribeLiveHover,
+    getLiveHoverNowMs,
+  );
 
   const visible = hoverRightPx !== null && width > 0 && hoverRightPx <= width;
   const hoverTime =
-    visible && hoverRightPx !== null && nowMs > 0
-      ? nowMs - delayMs - hoverRightPx * LIVE_MILLIS_PER_PIXEL
+    visible && hoverRightPx !== null
+      ? hoverNowMs - delayMs - hoverRightPx * LIVE_MILLIS_PER_PIXEL
       : null;
   const rows = hoverTime !== null ? rowsAt(hoverTime) : [];
   const tooltipOnLeft =
@@ -92,7 +78,6 @@ const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
       onPointerMove={(event) => {
         const rect = overlayRef.current?.getBoundingClientRect();
         if (!rect) return;
-        setNowMs(Date.now());
         setLiveHoverRightPx(rect.right - event.clientX);
       }}
       ref={overlayRef}
