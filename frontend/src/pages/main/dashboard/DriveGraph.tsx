@@ -1,7 +1,9 @@
 import React, { useEffect, useEffectEvent, useRef, useState } from "react";
-import { SmoothieChart, TimeSeries } from "smoothie";
+import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
+import LiveChartHover from "@/components/charts/LiveChartHover";
+import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
 import {
   acquireLiveSeries,
   appendLiveSample,
@@ -9,8 +11,8 @@ import {
   LIVE_BACKFILL_WINDOW_MS,
   LIVE_MILLIS_PER_PIXEL,
   LIVE_STALE_AFTER_MS,
+  sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
-import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
@@ -23,6 +25,7 @@ interface DriveGraphProps {
 
 const READ_ID = "disk:read";
 const WRITE_ID = "disk:write";
+const STREAM_DELAY_MS = 1000;
 
 const DriveGraph: React.FC<DriveGraphProps> = ({
   readBytesPerSec,
@@ -30,7 +33,6 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
 }) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<SmoothieChart | null>(null);
   const [readHandle] = useState(() =>
     acquireLiveSeries(READ_ID, LIVE_STALE_AFTER_MS),
   );
@@ -101,21 +103,6 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
         borderVisible: false,
       },
       labels: { disabled: true },
-      tooltip: true,
-      tooltipLine: { strokeStyle: alpha(neutral, 0.4), lineWidth: 1 },
-      tooltipFormatter: (
-        _timestamp: number,
-        data: { series: TimeSeries; index: number; value: number }[],
-      ) => {
-        const labels = ["Read", "Write"];
-        const colors = [readColor, writeColor];
-        return data
-          .map(
-            (point, index) =>
-              `<span style="color:${colors[index]}; font-size: 13px; line-height: 1.3;">${labels[index]}: ${formatThroughput(point.value)}</span>`,
-          )
-          .join("<br/>");
-      },
       responsive: true,
       minValue: 0,
       maxValueScale: 1.15,
@@ -132,8 +119,7 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
       lineWidth: 2,
     });
 
-    chart.streamTo(canvas, 1000);
-    chartRef.current = chart;
+    chart.streamTo(canvas, STREAM_DELAY_MS);
 
     const intervalId = setInterval(() => {
       appendLatestThroughput();
@@ -156,11 +142,37 @@ const DriveGraph: React.FC<DriveGraphProps> = ({
         flexDirection: "column",
       }}
     >
-      <SmoothieCanvas
-        chartRef={chartRef}
-        ref={canvasRef}
-        style={{ width: "100%", flex: 1, minHeight: 0 }}
-      />
+      <div
+        style={{ width: "100%", flex: 1, minHeight: 0, position: "relative" }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "100%", display: "block" }}
+        />
+        <LiveChartHover
+          delayMs={STREAM_DELAY_MS}
+          rowsAt={(t) => {
+            const rows: LiveTooltipRow[] = [];
+            const readValue = sampleLiveSeries(readHandle.series, t);
+            if (readValue !== null) {
+              rows.push({
+                color: readColor,
+                value: formatThroughput(readValue),
+                label: "Read",
+              });
+            }
+            const writeValue = sampleLiveSeries(writeHandle.series, t);
+            if (writeValue !== null) {
+              rows.push({
+                color: writeColor,
+                value: formatThroughput(writeValue),
+                label: "Write",
+              });
+            }
+            return rows;
+          }}
+        />
+      </div>
       <div
         style={{
           display: "flex",

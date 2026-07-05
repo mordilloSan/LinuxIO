@@ -1,0 +1,47 @@
+/*
+ * One tooltip look for every live chart, mirroring HistoryAreaChart so live
+ * and history charts read as the same family. `.smoothie-chart-tooltip` is
+ * the <div> smoothie lazily appends to <body> (its only styling hook);
+ * `.live-tooltip-box` is the React-rendered tooltip of LiveChartHover.
+ */
+.smoothie-chart-tooltip,
+.live-tooltip-box {
+  z-index: 1500;
+  background: color-mix(
+    in srgb,
+    var(--app-palette-background-paper) 95%,
+    transparent
+  );
+  border: 1px solid var(--app-palette-divider);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: var(--app-font-family, Inter, sans-serif);
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--app-palette-text-primary);
+}
+
+.live-tooltip-time {
+  color: var(--app-palette-text-secondary);
+}
+
+.live-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.live-tooltip-chip {
+  width: 10px;
+  height: 2px;
+  flex-shrink: 0;
+}
+
+.live-tooltip-value {
+  font-weight: 600;
+}
+
+.live-tooltip-label {
+  color: var(--app-palette-text-secondary);
+}

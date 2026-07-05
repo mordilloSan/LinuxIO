@@ -82,3 +82,54 @@ export function backfillLiveSeries(
     }
   }
 }
+
+// ─── Shared crosshair ────────────────────────────────────────────────────────
+// The dashboard live charts share one hover position, measured in pixels from
+// the canvas' right edge: they all scroll at LIVE_MILLIS_PER_PIXEL, so the
+// same right-edge offset is the same moment in time on every chart.
+
+let hoverRightPx: number | null = null;
+const hoverListeners = new Set<() => void>();
+
+export function setLiveHoverRightPx(px: number | null): void {
+  if (px === hoverRightPx) return;
+  hoverRightPx = px;
+  for (const listener of hoverListeners) listener();
+}
+
+export function getLiveHoverRightPx(): number | null {
+  return hoverRightPx;
+}
+
+export function subscribeLiveHover(listener: () => void): () => void {
+  hoverListeners.add(listener);
+  return () => hoverListeners.delete(listener);
+}
+
+/**
+ * Nearest sample value at tMs, or null when the series has no point within
+ * toleranceMs (e.g. hovering a gap left by a stale-cleared buffer). Reaches
+ * into smoothie's untyped-but-stable `data` array of [timestamp, value].
+ */
+export function sampleLiveSeries(
+  series: TimeSeries,
+  tMs: number,
+  toleranceMs = 10_000,
+): number | null {
+  const data = (series as unknown as { data: [number, number][] }).data;
+  if (!data || data.length === 0) return null;
+  let lo = 0;
+  let hi = data.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (data[mid][0] < tMs) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  if (lo > 0 && Math.abs(data[lo - 1][0] - tMs) <= Math.abs(data[lo][0] - tMs)) {
+    lo -= 1;
+  }
+  return Math.abs(data[lo][0] - tMs) <= toleranceMs ? data[lo][1] : null;
+}

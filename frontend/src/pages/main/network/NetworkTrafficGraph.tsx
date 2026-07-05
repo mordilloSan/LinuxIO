@@ -6,7 +6,10 @@ import React, {
 } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
-import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
+import {
+  flipSmoothieTooltip,
+  liveTooltipHTML,
+} from "@/components/charts/liveTooltip";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -52,15 +55,19 @@ const NetworkTrafficGraph = React.forwardRef<
         lineWidth: 1,
       },
       tooltipFormatter: (
-        _timestamp: number,
+        timestamp: number,
         data: { series: TimeSeries; index: number; value: number }[],
-      ) =>
-        data
-          .map(
-            (d) =>
-              `<span style="color:${color}">${label}: ${(d.value / 1024).toFixed(1)} kB/s</span>`,
-          )
-          .join(""),
+      ) => {
+        flipSmoothieTooltip(chartRef.current);
+        return liveTooltipHTML(
+          timestamp,
+          data.map((d) => ({
+            color,
+            value: `${(d.value / 1024).toFixed(1)} kB/s`,
+            label,
+          })),
+        );
+      },
       responsive: true,
       minValue: 0,
       maxValueScale: 1.15,
@@ -88,11 +95,7 @@ const NetworkTrafficGraph = React.forwardRef<
   }, [color, label, theme.chart.neutral]);
 
   return (
-    <SmoothieCanvas
-      chartRef={chartRef}
-      ref={canvasRef}
-      style={{ width: "100%", height: "100%" }}
-    />
+    <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
   );
 });
 

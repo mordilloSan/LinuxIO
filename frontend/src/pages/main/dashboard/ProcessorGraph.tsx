@@ -1,7 +1,8 @@
 import React, { useEffect, useEffectEvent, useState } from "react";
-import { SmoothieChart, TimeSeries } from "smoothie";
+import { SmoothieChart } from "smoothie";
 
 import { linuxio } from "@/api";
+import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
   acquireLiveSeries,
   appendLiveSample,
@@ -9,8 +10,8 @@ import {
   LIVE_BACKFILL_WINDOW_MS,
   LIVE_MILLIS_PER_PIXEL,
   LIVE_STALE_AFTER_MS,
+  sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
-import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
@@ -20,10 +21,10 @@ interface CpuGraphProps {
 }
 
 const SERIES_ID = "cpu:usage";
+const STREAM_DELAY_MS = 2000;
 
 const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const chartRef = React.useRef<SmoothieChart | null>(null);
   const [{ series, needsBackfill }] = useState(() =>
     acquireLiveSeries(SERIES_ID, LIVE_STALE_AFTER_MS),
   );
@@ -82,22 +83,6 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
         borderVisible: false,
       },
       labels: { disabled: true },
-      tooltip: true,
-      tooltipLine: {
-        strokeStyle: alpha(neutral, 0.4),
-        lineWidth: 1,
-      },
-      tooltipFormatter: (
-        _timestamp: number,
-        data: { series: TimeSeries; index: number; value: number }[],
-      ) => {
-        return data
-          .map(
-            (d) =>
-              `<span style="color:${color}; font-size: 13px; line-height: 1.3;">CPU: ${d.value.toFixed(1)}%</span>`,
-          )
-          .join("");
-      },
       responsive: true,
       minValue: 0,
       maxValue: 100,
@@ -109,8 +94,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       lineWidth: 2,
     });
 
-    chart.streamTo(canvas, 2000);
-    chartRef.current = chart;
+    chart.streamTo(canvas, STREAM_DELAY_MS);
 
     const intervalId = setInterval(() => {
       appendLatestUsage();
@@ -126,11 +110,23 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     <div
       style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
     >
-      <SmoothieCanvas
-        chartRef={chartRef}
-        ref={canvasRef}
-        style={{ flex: 1, minWidth: 0, height: "100%" }}
-      />
+      <div
+        style={{ flex: 1, minWidth: 0, height: "100%", position: "relative" }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "100%", display: "block" }}
+        />
+        <LiveChartHover
+          delayMs={STREAM_DELAY_MS}
+          rowsAt={(t) => {
+            const value = sampleLiveSeries(series, t);
+            return value === null
+              ? []
+              : [{ color, value: `${value.toFixed(1)}%` }];
+          }}
+        />
+      </div>
       <div
         style={{
           display: "flex",
