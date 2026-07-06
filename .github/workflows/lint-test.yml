@@ -38,9 +38,9 @@ jobs:
             git diff -- .
             exit 1
           fi
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: "v2.11.4"
+          version: "latest"
           working-directory: backend
           install-mode: goinstall
 
