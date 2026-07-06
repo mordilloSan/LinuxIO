@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useLayoutEffect, useRef } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import AppCollapse from "@/components/ui/AppCollapse";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -37,14 +38,18 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   targetVersion,
 }) => {
   const theme = useAppTheme();
+  const outputId = useId();
   const outputEndRef = useRef<HTMLDivElement>(null);
+  const [outputExpanded, setOutputExpanded] = useState(false);
 
   // Auto-scroll to bottom when new output arrives (before paint to avoid a jump)
   useLayoutEffect(() => {
+    if (!outputExpanded) return;
+
     outputEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-  }, [output]);
+  }, [output, outputExpanded]);
   return (
     <GeneralDialog
       disableEscapeKeyDown={!canClose}
@@ -154,38 +159,74 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           {/* Output console */}
           {output.length > 0 && (
             <div>
-              <AppTypography
-                color="text.secondary"
-                gutterBottom
-                variant="body2"
-              >
-                Installation Output
-              </AppTypography>
-              <AppPaper
+              <button
+                aria-controls={outputId}
+                aria-expanded={outputExpanded}
+                onClick={() => setOutputExpanded((expanded) => !expanded)}
                 style={{
-                  maxHeight: 300,
-                  overflowY: "auto",
-                  backgroundColor: "var(--app-palette-grey-900)",
-                  color: "var(--app-palette-grey-100)",
-                  padding: 8,
-                  fontFamily: "monospace",
-                  fontSize: "0.875rem",
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: theme.spacing(1),
+                  padding: 0,
+                  margin: 0,
+                  border: 0,
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: "pointer",
+                  textAlign: "left",
                 }}
-                variant="outlined"
+                title={
+                  outputExpanded
+                    ? "Collapse installation output"
+                    : "Expand installation output"
+                }
+                type="button"
               >
-                {output.map((line, index) => (
-                  <div
-                    key={index}
+                <AppTypography
+                  color="text.secondary"
+                  component="span"
+                  variant="body2"
+                >
+                  Installation Output
+                </AppTypography>
+                <Icon
+                  aria-hidden="true"
+                  height={18}
+                  icon={outputExpanded ? "mdi:chevron-up" : "mdi:chevron-down"}
+                  width={18}
+                />
+              </button>
+              <div id={outputId}>
+                <AppCollapse in={outputExpanded} unmountOnExit>
+                  <AppPaper
                     style={{
-                      whiteSpace: "pre-wrap",
-                      marginBottom: theme.spacing(0.5),
+                      maxHeight: 300,
+                      overflowY: "auto",
+                      backgroundColor: "var(--app-palette-grey-900)",
+                      color: "var(--app-palette-grey-100)",
+                      padding: 8,
+                      fontFamily: "monospace",
+                      fontSize: "0.875rem",
                     }}
+                    variant="outlined"
                   >
-                    {line}
-                  </div>
-                ))}
-                <div ref={outputEndRef} />
-              </AppPaper>
+                    {output.map((line, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          marginBottom: theme.spacing(0.5),
+                        }}
+                      >
+                        {line}
+                      </div>
+                    ))}
+                    <div ref={outputEndRef} />
+                  </AppPaper>
+                </AppCollapse>
+              </div>
             </div>
           )}
         </div>
