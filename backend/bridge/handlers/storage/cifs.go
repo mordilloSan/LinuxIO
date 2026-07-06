@@ -266,6 +266,9 @@ func readCredentialsMeta(path string) (username, domain string) {
 			domain = strings.TrimSpace(val)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Debug("failed to read CIFS credentials metadata", "path", path, "error", err)
+	}
 	return username, domain
 }
 
