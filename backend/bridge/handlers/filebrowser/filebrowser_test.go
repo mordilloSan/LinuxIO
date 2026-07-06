@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
@@ -36,6 +37,29 @@ func TestExistsBatchReportsExistingPaths(t *testing.T) {
 	}
 	if resp.Existing[1].Path != sub || !resp.Existing[1].IsDir {
 		t.Fatalf("existing[1] = %+v", resp.Existing[1])
+	}
+}
+
+func TestGenerateUniquePathSkipsDanglingSymlink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "report.txt")
+	if err := os.WriteFile(source, []byte("report"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	if err := os.Symlink("missing.txt", filepath.Join(dir, "report (copy).txt")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	root, err := fsroot.Open()
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+
+	got := generateUniquePath(source, false, root)
+	want := filepath.Join(dir, "report (copy 2).txt")
+	if got != want {
+		t.Fatalf("generateUniquePath = %q, want %q", got, want)
 	}
 }
 

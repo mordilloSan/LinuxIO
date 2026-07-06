@@ -31,6 +31,58 @@ func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
 	assert.Equal(t, []int64{12345}, reported)
 }
 
+func TestMoveFileWithCallbacks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("move_file_success", func(t *testing.T) {
+		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("content"))
+		dstPath := filepath.Join(tmpDir, "destination.txt")
+
+		err := MoveFileWithCallbacks(srcFile, dstPath, false, nil, MoveFileOptions{})
+		require.NoError(t, err)
+
+		_, err = os.Stat(srcFile)
+		require.Error(t, err, "source file should be deleted after move")
+
+		content, err := os.ReadFile(dstPath)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("content"), content, "destination should have source content")
+	})
+
+	t.Run("move_file_to_different_directory", func(t *testing.T) {
+		srcFile := createTestFile(t, tmpDir, "file.txt", []byte("data"))
+		destDir := createTestDir(t, tmpDir, "subdir")
+		dstPath := filepath.Join(destDir, "file.txt")
+
+		err := MoveFileWithCallbacks(srcFile, dstPath, false, nil, MoveFileOptions{})
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(dstPath)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("data"), content)
+	})
+
+	t.Run("move_nonexistent_file", func(t *testing.T) {
+		srcPath := filepath.Join(tmpDir, "nonexistent.txt")
+		dstPath := filepath.Join(tmpDir, "dest.txt")
+
+		err := MoveFileWithCallbacks(srcPath, dstPath, false, nil, MoveFileOptions{})
+		require.Error(t, err, "should error when source doesn't exist")
+	})
+
+	t.Run("move_file_overwrites_existing", func(t *testing.T) {
+		srcFile := createTestFile(t, tmpDir, "src.txt", []byte("new"))
+		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
+
+		err := MoveFileWithCallbacks(srcFile, dstFile, true, nil, MoveFileOptions{})
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(dstFile)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("new"), content, "destination should be overwritten")
+	})
+}
+
 func TestCopyFileWithCallbacks(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -145,6 +197,22 @@ func TestCopyFileWithCallbacksPreservesTopLevelSymlink(t *testing.T) {
 	assertSymlinkTarget(t, destLink, "target.txt")
 }
 
+func TestCopyFileWithCallbacksRejectsSymlinkOntoOwnTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetPath := createTestFile(t, tmpDir, "target.txt", []byte("target"))
+	srcLink := filepath.Join(tmpDir, "source-link")
+	createSymlinkOrSkip(t, "target.txt", srcLink)
+
+	err := CopyFileWithCallbacks(srcLink, targetPath, true, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot copy symlink")
+
+	content, readErr := os.ReadFile(targetPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, []byte("target"), content)
+	assertSymlinkTarget(t, srcLink, "target.txt")
+}
+
 func TestCopyFileWithCallbacksRejectsFifo(t *testing.T) {
 	tmpDir := t.TempDir()
 	srcFIFO := filepath.Join(tmpDir, "source-fifo")
@@ -153,6 +221,19 @@ func TestCopyFileWithCallbacksRejectsFifo(t *testing.T) {
 	}
 
 	err := CopyFileWithCallbacks(srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot copy non-regular file")
+}
+
+func TestCopyFileWithCallbacksRejectsNestedFifo(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	srcFIFO := filepath.Join(srcDir, "source-fifo")
+	if err := syscall.Mkfifo(srcFIFO, 0o644); err != nil {
+		t.Skipf("mkfifo not supported: %v", err)
+	}
+
+	err := CopyFileWithCallbacks(srcDir, filepath.Join(tmpDir, "dest"), false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot copy non-regular file")
 }

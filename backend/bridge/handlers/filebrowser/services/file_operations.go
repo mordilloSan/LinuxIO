@@ -70,6 +70,12 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 		return err
 	}
 
+	if info.Mode()&os.ModeSymlink != 0 {
+		if err := validateSymlinkCopyDestination(root, source, dest); err != nil {
+			return err
+		}
+	}
+
 	if err := prepareDestination(root, info.IsDir(), dest, overwrite); err != nil {
 		return err
 	}
@@ -89,18 +95,28 @@ func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.Fi
 	case info.IsDir():
 		return copyDirectoryWithCallbacks(root, source, dest, opts)
 	case mode.IsRegular():
-		return copySingleFileWithCallbacks(root, source, dest, opts)
+		return copySingleFileWithCallbacks(root, source, dest, mode, opts)
 	default:
 		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
 	}
 }
 
-func copyEntryAtPathWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
-	info, err := root.Root.Lstat(relPath(source))
-	if err != nil {
-		return err
+func copyDirEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, entry os.DirEntry, opts *ipc.OperationCallbacks) error {
+	if isOperationCancelled(opts) {
+		return ipc.ErrAborted
 	}
-	return copyEntryWithCallbacks(root, source, dest, info, opts)
+
+	mode := entry.Type()
+	switch {
+	case mode&os.ModeSymlink != 0:
+		return copySymlink(root, source, dest)
+	case entry.IsDir():
+		return copyDirectoryWithCallbacks(root, source, dest, opts)
+	case mode == 0:
+		return copySingleFileWithCallbacks(root, source, dest, mode, opts)
+	default:
+		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
+	}
 }
 
 func copySymlink(root *fsroot.FSRoot, source, dest string) error {
@@ -125,18 +141,31 @@ func copySymlink(root *fsroot.FSRoot, source, dest string) error {
 	return root.Root.Symlink(target, destRel)
 }
 
+func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) error {
+	target, err := root.Root.Readlink(relPath(source))
+	if err != nil {
+		return err
+	}
+
+	targetPath := target
+	if !filepath.IsAbs(targetPath) {
+		targetPath = filepath.Join(filepath.Dir(source), targetPath)
+	}
+
+	if utils.CleanAbsPath(targetPath) == utils.CleanAbsPath(dest) {
+		return fmt.Errorf("cannot copy symlink %q onto its target %q", source, dest)
+	}
+	return nil
+}
+
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
-func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
+func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode os.FileMode, opts *ipc.OperationCallbacks) error {
 	if isOperationCancelled(opts) {
 		return ipc.ErrAborted
 	}
 
-	info, err := root.Root.Lstat(relPath(source))
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, info.Mode().Type())
+	if !mode.IsRegular() {
+		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
 	}
 
 	src, err := root.Root.Open(relPath(source))
@@ -214,7 +243,7 @@ func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *
 		srcPath := filepath.Join(source, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
 
-		if err := copyEntryAtPathWithCallbacks(root, srcPath, destPath, opts); err != nil {
+		if err := copyDirEntryWithCallbacks(root, srcPath, destPath, entry, opts); err != nil {
 			return err
 		}
 	}
@@ -309,8 +338,6 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 
 	if moved, err := tryRenameMove(root, src, dst, opts, moveOpts); moved {
 		return err
-	} else if err != nil {
-		return nil
 	}
 
 	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
