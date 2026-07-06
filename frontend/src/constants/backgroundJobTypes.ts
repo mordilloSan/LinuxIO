@@ -3,17 +3,15 @@
 
 export const JOB_TYPE_FILE_COMPRESS = "filebrowser.compress";
 export const JOB_TYPE_FILE_EXTRACT = "filebrowser.extract";
-export const JOB_TYPE_FILE_COPY = "filebrowser.copy";
-export const JOB_TYPE_FILE_MOVE = "filebrowser.move";
 export const JOB_TYPE_FILE_COPY_BATCH = "filebrowser.copy_batch";
 export const JOB_TYPE_FILE_MOVE_BATCH = "filebrowser.move_batch";
 export const JOB_TYPE_FILE_DELETE_BATCH = "filebrowser.delete_batch";
 export const JOB_TYPE_FILE_INDEXER = "filebrowser.index";
 export const JOB_TYPE_FILE_UPLOAD = "filebrowser.upload";
+export const JOB_TYPE_FILE_UPLOAD_BATCH = "filebrowser.upload_batch";
 export const JOB_TYPE_FILE_DOWNLOAD = "filebrowser.download";
 export const JOB_TYPE_FILE_ARCHIVE = "filebrowser.archive";
 export const JOB_TYPE_FILE_CHMOD = "filebrowser.chmod";
-export const JOB_TYPE_FILE_DELETE = "filebrowser.resource_delete";
 export const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
 export const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 export const JOB_TYPE_PACKAGE_UPDATE = "packages.update";

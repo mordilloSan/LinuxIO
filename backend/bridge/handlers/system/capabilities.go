@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
@@ -44,7 +45,17 @@ type InstallSpec struct {
 
 const (
 	OptionalComponentIndexer    = "indexer"
+	OptionalComponentMonitoring = "monitoring"
 	OptionalComponentWatchtower = "watchtower"
+)
+
+const monitoringHealthTimeout = 5 * time.Second
+
+var (
+	monitoringCLILookPath = exec.LookPath
+	monitoringCLIOutput   = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	}
 )
 
 var capabilityRegistry = []CapabilitySpec{
@@ -74,6 +85,19 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{
 			OptionalComponent: OptionalComponentIndexer,
+		},
+	},
+	{
+		Name:    "monitoring",
+		LogName: "go-monitoring agent",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(checkMonitoringAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			OptionalComponent: OptionalComponentMonitoring,
+			ServiceDebian:     "go-monitoring.service",
+			ServiceRHEL:       "go-monitoring.service",
+			EnableService:     true,
 		},
 	},
 	{
@@ -222,6 +246,26 @@ func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	return true, nil
 }
 
+func checkMonitoringAvailability(ctx context.Context) (bool, error) {
+	if _, err := monitoringCLILookPath("go-monitoring"); err != nil {
+		return false, fmt.Errorf("go-monitoring not found (missing go-monitoring dependency)")
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, monitoringHealthTimeout)
+	defer cancel()
+
+	output, err := monitoringCLIOutput(checkCtx, "go-monitoring", "health")
+	if err == nil {
+		return true, nil
+	}
+
+	message := strings.TrimSpace(string(output))
+	if message != "" {
+		return false, fmt.Errorf("go-monitoring health failed: %s", message)
+	}
+	return false, fmt.Errorf("go-monitoring health failed: %w", err)
+}
+
 func checkedCapability(ok bool, err error) (bool, string) {
 	return checkedCapabilityErr(ok, err, nil)
 }
@@ -268,6 +312,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.WatchtowerAvailable, out.WatchtowerError = ok, errPtr
 	case "indexer":
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
+	case "monitoring":
+		out.MonitoringAvailable, out.MonitoringError = ok, errPtr
 	case "lm_sensors":
 		out.LMSensorsAvailable, out.LMSensorsError = ok, errPtr
 	case "memory_inventory":

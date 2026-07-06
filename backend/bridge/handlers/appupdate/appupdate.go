@@ -391,7 +391,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 
 // downloadChecksum fetches the SHA256 checksum file from GitHub
 func downloadChecksum(ctx context.Context, client *http.Client, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -423,7 +423,7 @@ func downloadChecksum(ctx context.Context, client *http.Client, url string) (str
 
 // downloadScript fetches the install script from GitHub
 func downloadScript(ctx context.Context, client *http.Client, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}

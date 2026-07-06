@@ -1,30 +1,68 @@
 import React, { useEffect, useEffectEvent, useRef } from "react";
-import { SmoothieChart, TimeSeries } from "smoothie";
+import { SmoothieChart } from "smoothie";
 
-import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
+import { linuxio } from "@/api";
+import LiveChartHover from "@/components/charts/LiveChartHover";
+import {
+  appendLiveSample,
+  LIVE_MILLIS_PER_PIXEL,
+  sampleLiveSeries,
+} from "@/components/charts/liveSeriesStore";
+import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
+import {
+  type LiveSeriesPoint,
+  useLiveSeries,
+} from "@/components/charts/useLiveSeries";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
 
 interface NetworkGraphProps {
+  interfaceName: string;
+  /** kB/s */
   rx: number;
+  /** kB/s */
   tx: number;
 }
 
-const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
+const STREAM_DELAY_MS = 1000;
+
+const NetworkGraph: React.FC<NetworkGraphProps> = ({
+  interfaceName,
+  rx,
+  tx,
+}) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<SmoothieChart | null>(null);
-  const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
-  const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
+  const rxId = `network:rx:${interfaceName}`;
+  const txId = `network:tx:${interfaceName}`;
+  // History arrives in bytes/s; the chart series (like the rx/tx props) are
+  // kB/s.
+  const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
+    const points = await linuxio.monitoring.get_network_history(request);
+    const rxPoints: LiveSeriesPoint[] = [];
+    const txPoints: LiveSeriesPoint[] = [];
+    for (const point of points) {
+      const rates = point.interfaces?.[interfaceName];
+      if (!rates) continue;
+      rxPoints.push({
+        t: point.captured_at_ms,
+        v: rates.recv_bytes_per_sec / 1024,
+      });
+      txPoints.push({
+        t: point.captured_at_ms,
+        v: rates.sent_bytes_per_sec / 1024,
+      });
+    }
+    return { [rxId]: rxPoints, [txId]: txPoints };
+  });
   const rxColor = theme.chart.rx;
   const txColor = theme.chart.tx;
   const chartNeutral = theme.chart.neutral;
 
   const appendLatestTraffic = useEffectEvent(() => {
-    const now = Date.now();
-    rxSeriesRef.current.append(now, rx);
-    txSeriesRef.current.append(now, tx);
+    appendLiveSample(rxId, rx);
+    appendLiveSample(txId, tx);
   });
 
   // Initialize chart once on mount
@@ -33,7 +71,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     if (!canvas) return;
 
     const chart = new SmoothieChart({
-      millisPerPixel: 40,
+      millisPerPixel: LIVE_MILLIS_PER_PIXEL,
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
@@ -43,39 +81,23 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         borderVisible: false,
       },
       labels: { disabled: true },
-      tooltip: true,
-      tooltipLine: { strokeStyle: alpha(chartNeutral, 0.4), lineWidth: 1 },
-      tooltipFormatter: (
-        _timestamp: number,
-        data: { series: TimeSeries; index: number; value: number }[],
-      ) => {
-        const labels = ["Rx", "Tx"];
-        const colors = [rxColor, txColor];
-        return data
-          .map(
-            (d, i) =>
-              `<span style="color:${colors[i]}; font-size: 13px; line-height: 1.3;">${labels[i]}: ${formatThroughput(d.value * 1024)}</span>`,
-          )
-          .join("<br/>");
-      },
       responsive: true,
       minValue: 0,
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(rxSeriesRef.current, {
+    chart.addTimeSeries(rxSeries, {
       strokeStyle: rxColor,
       fillStyle: alpha(rxColor, 0.09),
       lineWidth: 2,
     });
-    chart.addTimeSeries(txSeriesRef.current, {
+    chart.addTimeSeries(txSeries, {
       strokeStyle: txColor,
       fillStyle: alpha(txColor, 0.09),
       lineWidth: 2,
     });
 
-    chart.streamTo(canvas, 1000);
-    chartRef.current = chart;
+    chart.streamTo(canvas, STREAM_DELAY_MS);
 
     const intervalId = setInterval(() => {
       appendLatestTraffic();
@@ -85,7 +107,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [chartNeutral, rxColor, txColor]);
+  }, [chartNeutral, rxColor, txColor, rxSeries, txSeries]);
 
   return (
     <div
@@ -98,11 +120,37 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         flexDirection: "column",
       }}
     >
-      <SmoothieCanvas
-        chartRef={chartRef}
-        ref={canvasRef}
-        style={{ width: "100%", flex: 1, minHeight: 0 }}
-      />
+      <div
+        style={{ width: "100%", flex: 1, minHeight: 0, position: "relative" }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "100%", display: "block" }}
+        />
+        <LiveChartHover
+          delayMs={STREAM_DELAY_MS}
+          rowsAt={(t) => {
+            const rows: LiveTooltipRow[] = [];
+            const rxValue = sampleLiveSeries(rxSeries, t);
+            if (rxValue !== null) {
+              rows.push({
+                color: rxColor,
+                value: formatThroughput(rxValue * 1024),
+                label: "Rx",
+              });
+            }
+            const txValue = sampleLiveSeries(txSeries, t);
+            if (txValue !== null) {
+              rows.push({
+                color: txColor,
+                value: formatThroughput(txValue * 1024),
+                label: "Tx",
+              });
+            }
+            return rows;
+          }}
+        />
+      </div>
       <div
         style={{
           display: "flex",

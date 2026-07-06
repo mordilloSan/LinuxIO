@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/vishvananda/netlink"
+
+	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 )
 
 type NetworkInterfaceInfo struct {

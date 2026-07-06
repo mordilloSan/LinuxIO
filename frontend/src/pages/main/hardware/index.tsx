@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
@@ -21,6 +21,7 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
+  type HardwareHistoryRangeId,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
@@ -112,6 +113,11 @@ const HardwarePage: React.FC = () => {
         .filter((group) => group.readings.length > 0),
     [sensorGroups],
   );
+
+  // ── history range & synchronized crosshair ──
+  const [historyRange, setHistoryRange] =
+    useState<HardwareHistoryRangeId>("1h");
+  const [historyHoverTime, setHistoryHoverTime] = useState<number | null>(null);
 
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
@@ -263,22 +269,42 @@ const HardwarePage: React.FC = () => {
         >
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <CPUHistoryCard />
+              <CPUHistoryCard
+                hoverTime={historyHoverTime}
+                onHoverTimeChange={setHistoryHoverTime}
+                onRangeChange={setHistoryRange}
+                rangeId={historyRange}
+              />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <MemoryHistoryCard />
+              <MemoryHistoryCard
+                hoverTime={historyHoverTime}
+                onHoverTimeChange={setHistoryHoverTime}
+                onRangeChange={setHistoryRange}
+                rangeId={historyRange}
+              />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <DiskIOHistoryCard />
+              <DiskIOHistoryCard
+                hoverTime={historyHoverTime}
+                onHoverTimeChange={setHistoryHoverTime}
+                onRangeChange={setHistoryRange}
+                rangeId={historyRange}
+              />
             </ErrorBoundary>
           </AppGrid>
           <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
             <ErrorBoundary>
-              <NetworkHistoryCard />
+              <NetworkHistoryCard
+                hoverTime={historyHoverTime}
+                onHoverTimeChange={setHistoryHoverTime}
+                onRangeChange={setHistoryRange}
+                rangeId={historyRange}
+              />
             </ErrorBoundary>
           </AppGrid>
         </AppGrid>
@@ -322,7 +348,7 @@ const HardwarePage: React.FC = () => {
               {visibleSensorGroups.map((group, idx) => (
                 <AppGrid
                   key={`${group.adapter}-${idx}`}
-                  size={{ xs: 12, sm: 6, lg: 4 }}
+                  size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
                 >
                   <SensorGroupCard group={group} />
                 </AppGrid>

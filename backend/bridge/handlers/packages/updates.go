@@ -344,6 +344,35 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 	return updates, nil
 }
 
+// RefreshUpdateCache refreshes configured package repositories, matching the
+// PackageKit operation behind apt update / dnf makecache.
+func RefreshUpdateCache(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
+		trans, err := session.CreateTransaction(20)
+		if err != nil {
+			return err
+		}
+		defer pkgkit.LogClose(session.Context(), trans)
+
+		if err := trans.Call("RefreshCache", true); err != nil {
+			return err
+		}
+
+		waitCtx, cancel := context.WithTimeout(session.Context(), 2*time.Minute)
+		defer cancel()
+		if err := trans.AwaitFinished(waitCtx, "RefreshCache"); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("timeout refreshing package cache")
+			}
+			return err
+		}
+		return nil
+	})
+}
+
 // InstallByNameWithProgress is InstallByName but streams PackageKit progress
 // signals (percentage/status) to the supplied reporter while the package
 // installs, so callers (e.g. capability install) can show a real progress bar.
@@ -637,40 +666,10 @@ func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []apische
 	return history
 }
 
-// InstallPackage installs a specific PackageKit package by package ID
-// (typically obtained from a previous Resolve or GetUpdates response).
-func InstallPackage(ctx context.Context, packageID string) error {
-	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
-		trans, err := session.CreateTransaction(20)
-		if err != nil {
-			return err
-		}
-		defer pkgkit.LogClose(session.Context(), trans)
-
-		if err := trans.Call("InstallPackages", uint64(0), []string{packageID}); err != nil {
-			return err
-		}
-
-		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
-		defer cancel()
-		return awaitPackageKitSignal(waitCtx, trans.Signals())
-	})
-}
-
-func awaitPackageKitSignal(ctx context.Context, sigCh <-chan *dbusclient.Signal) error {
-	if err := pkgkit.AwaitFinished(ctx, sigCh, ""); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("timeout waiting for PackageKit to finish install")
-		}
-		return err
-	}
-	return nil
-}
-
-// installPackageWithProgress installs a package ID like InstallPackage, but
-// drains the PackageKit signal stream through the shared update-signal handlers
-// so percentage/status progress reaches the reporter instead of being
-// discarded. A nil reporter behaves like InstallPackage (progress ignored).
+// installPackageWithProgress installs a package ID and drains the PackageKit
+// signal stream through the shared update-signal handlers so
+// percentage/status progress reaches the reporter. A nil reporter discards
+// progress.
 func installPackageWithProgress(ctx context.Context, packageID string, report pkgUpdateReporter) error {
 	if report == nil {
 		report = func(*PkgUpdateProgress) error { return nil }

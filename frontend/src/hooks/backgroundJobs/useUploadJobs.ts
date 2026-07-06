@@ -5,6 +5,7 @@ import type { Upload } from "@/types/backgroundJobs";
 
 import {
   bindStreamHandlers,
+  type FileUploadBatchRequest,
   isConnected,
   type JobSnapshot,
   linuxio,
@@ -13,9 +14,34 @@ import {
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
-import { ensureTrailingSlash, joinPath } from "@/utils/path";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
+
+// Progress frames of filebrowser.upload_batch: aggregate bytes plus how many
+// manifest files the bridge has fully processed.
+interface BatchUploadProgressFrame extends ProgressFrame {
+  filesDone?: number;
+  filesTotal?: number;
+}
+
+// Result payload of filebrowser.upload_batch (batchResult shape).
+interface BatchUploadResult {
+  total?: number;
+  succeeded?: number;
+  failed?: { path: string; error: string }[];
+}
+
+interface BatchStreamOutcome {
+  success: boolean;
+  cancelled?: boolean;
+  error?: string;
+  result?: BatchUploadResult;
+}
+
+interface UploadFileEntry {
+  file: File;
+  relativePath: string;
+}
 
 export function useUploadJobs(
   runtime: BackgroundJobRuntime,
@@ -57,34 +83,46 @@ export function useUploadJobs(
   );
 
   /**
-   * Job-backed single file upload implementation.
-   * The job owns progress and the server-side partial file; this stream only
-   * attaches browser-owned bytes while the frontend is connected.
+   * Job-backed batch upload: one bridge job and one data stream carry the
+   * whole selection. The manifest (paths + sizes) travels in the job request,
+   * so the stream is just every file's bytes back-to-back in manifest order —
+   * the bridge splits them on the manifest boundaries.
    */
-  const uploadFileViaStream = useCallback(
+  const uploadBatchViaStream = useCallback(
     async (
-      file: File,
-      targetPath: string,
+      files: UploadFileEntry[],
+      directories: string[],
+      destination: string,
+      overwrite: boolean,
       uploadId: string,
-      onProgress: (loaded: number, total: number) => void,
+      onProgress: (progress: BatchUploadProgressFrame) => void,
       abortSignal: AbortSignal,
-    ): Promise<{ success: boolean; error?: string; cancelled?: boolean }> => {
+    ): Promise<BatchStreamOutcome> => {
       if (!isConnected()) {
         return { success: false, error: "Stream connection not ready" };
       }
 
-      const pendingUploadKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_UPLOAD, {
-        targetPath,
-        size: String(file.size),
-      });
+      const request: FileUploadBatchRequest = {
+        destination,
+        files: files.map(({ file, relativePath }) => ({
+          path: relativePath,
+          size: String(file.size),
+        })),
+        // Falsy fields omitted so the identity key matches the Go-marshaled
+        // request (`directories` and `overwrite` are omitempty on the wire).
+        ...(directories.length ? { directories } : {}),
+        ...(overwrite ? { overwrite: true } : {}),
+      };
+
+      const pendingUploadKey = jobIdentityKey(
+        JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH,
+        request,
+      );
       pendingLocalJobKeysRef.current.add(pendingUploadKey);
 
       let job: JobSnapshot;
       try {
-        job = await linuxio.filebrowser.upload({
-          targetPath,
-          size: String(file.size),
-        });
+        job = await linuxio.filebrowser.upload_batch(request);
       } catch (error) {
         pendingLocalJobKeysRef.current.delete(pendingUploadKey);
         return {
@@ -108,26 +146,20 @@ export function useUploadJobs(
       // Store stream reference for cancellation (sync ref for immediate access)
       streamRefsRef.current.set(uploadId, stream);
 
-      return new Promise<{
-        success: boolean;
-        error?: string;
-        cancelled?: boolean;
-      }>((resolve) => {
+      return new Promise<BatchStreamOutcome>((resolve) => {
         let settled = false;
         let resultReceived = false;
 
-        // Flow control: track bytes in flight to allow meaningful cancellation
+        // Sequential pump over the manifest with flow control: the bridge's
+        // progress frames ack aggregate bytes, gating how far ahead we send.
         const reader = new FileReader();
-        let offset = 0;
+        let fileIndex = 0;
+        let offsetInFile = 0;
         let bytesSent = 0;
         let bytesAcked = 0;
         let pendingSend = false;
 
-        const resolveSafe = (result: {
-          success: boolean;
-          error?: string;
-          cancelled?: boolean;
-        }) => {
+        const resolveSafe = (outcome: BatchStreamOutcome) => {
           if (settled) return;
           settled = true;
           unbind();
@@ -139,7 +171,7 @@ export function useUploadJobs(
           // without an explicit cancel the job lingers and holds one of the
           // limited per-user upload slots. (User-cancelled uploads are already
           // cancelled by cancelUpload.)
-          if (!result.success && !result.cancelled) {
+          if (!outcome.success && !outcome.cancelled) {
             cancelBridgeJob(job.id);
           }
           setUploads((prev) =>
@@ -147,7 +179,7 @@ export function useUploadJobs(
               u.id === uploadId ? { ...u, stream: null, jobId: undefined } : u,
             ),
           );
-          resolve(result);
+          resolve(outcome);
         };
 
         const sendNextChunk = () => {
@@ -156,26 +188,33 @@ export function useUploadJobs(
             return;
           }
 
-          if (offset >= file.size) {
+          // Zero-size files contribute no bytes; the bridge finalizes them
+          // from the manifest alone.
+          while (fileIndex < files.length && files[fileIndex].file.size === 0) {
+            fileIndex += 1;
+          }
+
+          if (fileIndex >= files.length) {
             // Done sending - close stream to signal completion
             stream.close();
             return;
           }
 
-          // Flow control: wait if window is full (max ~2 chunks in flight)
+          // Flow control: wait if window is full
           if (bytesSent - bytesAcked >= uploadWindowSize) {
             pendingSend = true;
             return; // Will resume when onProgress fires
           }
 
-          const slice = file.slice(offset, offset + chunkSize);
+          const current = files[fileIndex].file;
+          const slice = current.slice(offsetInFile, offsetInFile + chunkSize);
           reader.readAsArrayBuffer(slice);
         };
 
         const unbind = bindStreamHandlers(stream, {
-          onProgress: (progress: ProgressFrame) => {
+          onProgress: (progress: BatchUploadProgressFrame) => {
             bytesAcked = progress.bytes;
-            onProgress(progress.bytes, progress.total);
+            onProgress(progress);
 
             // Window opened - resume sending if we were waiting
             if (pendingSend && bytesSent - bytesAcked < uploadWindowSize) {
@@ -191,7 +230,11 @@ export function useUploadJobs(
               return;
             }
             if (result.status === "ok") {
-              resolveSafe({ success: true });
+              resolveSafe({
+                success: true,
+                result: (result.data ?? undefined) as
+                  BatchUploadResult | undefined,
+              });
             } else {
               resolveSafe({
                 success: false,
@@ -225,15 +268,26 @@ export function useUploadJobs(
           const chunk = new Uint8Array(reader.result as ArrayBuffer);
           stream.write(chunk);
           bytesSent += chunk.length;
-          offset += chunk.length;
+          offsetInFile += chunk.length;
+          if (offsetInFile >= files[fileIndex].file.size) {
+            fileIndex += 1;
+            offsetInFile = 0;
+          }
 
           // Send next chunk (will check window)
           sendNextChunk();
         };
 
         reader.onerror = () => {
-          stream.close();
-          resolveSafe({ success: false, error: "Failed to read file" });
+          // The bridge expects this file's bytes next on the stream, so an
+          // unreadable file cannot be skipped client-side — abort the batch.
+          // Files already finalized server-side stay in place.
+          const name =
+            files[fileIndex]?.relativePath ||
+            files[fileIndex]?.file.name ||
+            "file";
+          stream.abort();
+          resolveSafe({ success: false, error: `Failed to read ${name}` });
         };
 
         // Start sending
@@ -259,22 +313,27 @@ export function useUploadJobs(
         isDirectory: boolean;
       }[],
       targetPath: string,
-      override?: boolean,
+      // Callers resolve collisions with the user first (conflict prompt) and
+      // pass overwrite only when the user explicitly chose it; without it the
+      // bridge skips existing destinations and reports them as failures.
+      overwrite?: boolean,
     ) => {
       if (!entries.length) {
-        return { conflicts: [], uploaded: 0, failures: [] };
+        return { uploaded: 0, failures: [] };
       }
 
       const uploadId = crypto.randomUUID();
       const abortController = new AbortController();
       const directories = entries
         .filter((item) => item.isDirectory)
-        .sort(
-          (a, b) =>
-            a.relativePath.split("/").length - b.relativePath.split("/").length,
-        );
-      const files = entries.filter((item) => !item.isDirectory);
+        .map((item) => item.relativePath.replace(/\/+$/, ""))
+        .filter(Boolean);
+      const files = entries.filter(
+        (item): item is UploadFileEntry & { isDirectory: boolean } =>
+          !item.isDirectory && !!item.file,
+      );
       const totalFiles = directories.length + files.length;
+      const totalBytes = files.reduce((sum, item) => sum + item.file.size, 0);
 
       const describeEntry = (
         entry: (typeof entries)[number] | undefined,
@@ -290,11 +349,19 @@ export function useUploadJobs(
         return entry.isDirectory ? "folder" : "file";
       };
 
-      const singleEntrySource = directories[0] ?? files[0] ?? entries[0];
+      const singleEntrySource =
+        entries.find((item) => item.isDirectory) ?? files[0] ?? entries[0];
       const isSingleUpload = totalFiles === 1;
       const singleEntryLabel = isSingleUpload
         ? describeEntry(singleEntrySource) || "item"
         : "";
+
+      const initialLabel =
+        isSingleUpload && singleEntryLabel
+          ? `Uploading ${singleEntryLabel} (0%)`
+          : files.length > 0
+            ? `Uploading 0/${files.length} files`
+            : `Creating ${directories.length} folder${directories.length === 1 ? "" : "s"}`;
 
       const upload: Upload = {
         id: uploadId,
@@ -303,10 +370,7 @@ export function useUploadJobs(
         completedFiles: 0,
         currentFile: "",
         progress: 0,
-        label:
-          isSingleUpload && singleEntryLabel
-            ? `Uploading ${singleEntryLabel} (0%)`
-            : `Uploading 0/${totalFiles} files`,
+        label: initialLabel,
         displayName:
           isSingleUpload && singleEntryLabel ? singleEntryLabel : undefined,
         speed: undefined,
@@ -316,154 +380,52 @@ export function useUploadJobs(
       setUploads((prev) => [...prev, upload]);
       primeTransferRate(uploadId, 0);
 
-      const conflicts: typeof entries = [];
-      let uploaded = 0;
-      let uploadedBytesTotal = 0;
       const failures: { path: string; message: string }[] = [];
+      let uploaded = 0;
 
-      const buildTargetPath = (base: string, relative: string) =>
-        joinPath(base, relative);
+      const onProgress = (progress: BatchUploadProgressFrame) => {
+        const filesDone = progress.filesDone ?? 0;
+        const pct =
+          totalBytes > 0
+            ? Math.min(100, Math.round((progress.bytes / totalBytes) * 100))
+            : progress.pct;
+        const speed = recordTransferRate(uploadId, progress.bytes);
+        const label =
+          isSingleUpload && singleEntryLabel
+            ? `Uploading ${singleEntryLabel} (${pct}%)`
+            : `Uploading ${Math.min(filesDone, files.length)}/${files.length} files (${pct}%)`;
+        updateUpload(uploadId, {
+          completedFiles: filesDone,
+          progress: pct,
+          label,
+          ...(speed !== undefined && { speed }),
+        });
+      };
 
       try {
-        // Create directories first
-        for (const { relativePath } of directories) {
-          if (abortController.signal.aborted) break;
+        const outcome = await uploadBatchViaStream(
+          files,
+          directories,
+          targetPath,
+          overwrite ?? false,
+          uploadId,
+          onProgress,
+          abortController.signal,
+        );
 
-          const targetBase = buildTargetPath(targetPath, relativePath);
-          const dirPath = ensureTrailingSlash(targetBase);
-
-          updateUpload(uploadId, {
-            currentFile: relativePath,
-            completedFiles: uploaded,
-            progress: Math.round((uploaded / totalFiles) * 100),
-            label: `Creating folder ${uploaded + 1}/${totalFiles}`,
-          });
-
-          try {
-            // Check if aborted before making the call
-            if (abortController.signal.aborted) break;
-            await linuxio.filebrowser.resource_post({
-              path: dirPath,
-              override: override || undefined,
-            });
-            uploaded += 1;
-          } catch (err: any) {
-            if (abortController.signal.aborted) break;
-            // 409 conflict - folder already exists
-            if (err.code === 409 && !override) {
-              continue;
-            }
-            const message = err.message || "Failed to create folder";
-            failures.push({ path: relativePath, message });
-          }
+        if (outcome.cancelled) {
+          recordTransferRate(uploadId, undefined);
+          removeUpload(uploadId);
+          return { uploaded, failures };
         }
 
-        // Upload files in parallel with concurrency limit
-        const fileProgress = new Map<number, number>(); // Track progress per file index
-        const fileBytes = new Map<number, number>(); // Track bytes per file for speed calculation
-        let fileIndex = 0;
-
-        const updateOverallProgress = (
-          bytesLoaded?: number,
-          fileIdx?: number,
-        ) => {
-          // Track bytes for speed calculation
-          if (bytesLoaded !== undefined && fileIdx !== undefined) {
-            fileBytes.set(fileIdx, bytesLoaded);
+        if (outcome.success) {
+          uploaded = outcome.result?.succeeded ?? totalFiles;
+          for (const failure of outcome.result?.failed ?? []) {
+            failures.push({ path: failure.path, message: failure.error });
           }
-
-          // Calculate total bytes uploaded so far
-          let totalBytesUploaded = uploadedBytesTotal;
-          fileBytes.forEach((bytes) => {
-            totalBytesUploaded += bytes;
-          });
-
-          // Calculate speed
-          const speed = recordTransferRate(uploadId, totalBytesUploaded);
-
-          // Sum progress of all files (completed = 100, in-progress = their %, pending = 0)
-          let totalProgress = uploaded * 100; // Completed files contribute 100% each
-          fileProgress.forEach((pct) => {
-            totalProgress += pct;
-          });
-          const overallPct = Math.round(totalProgress / files.length);
-          const activeCount = fileProgress.size;
-          const label =
-            isSingleUpload && singleEntryLabel
-              ? `Uploading ${singleEntryLabel} (${overallPct}%)`
-              : activeCount > 1
-                ? `Uploading ${activeCount} files (${overallPct}%)`
-                : `Uploading ${uploaded + activeCount}/${files.length} files (${overallPct}%)`;
-          updateUpload(uploadId, {
-            completedFiles: uploaded,
-            progress: overallPct,
-            label,
-            ...(speed !== undefined && { speed }),
-          });
-        };
-
-        const uploadSingleFile = async (
-          entry: { file?: File; relativePath: string },
-          idx: number,
-        ): Promise<void> => {
-          const { file, relativePath } = entry;
-          if (!file) return;
-
-          const targetFilePath = buildTargetPath(targetPath, relativePath);
-          fileProgress.set(idx, 0);
-          fileBytes.set(idx, 0);
-          updateOverallProgress(0, idx);
-
-          if (!isConnected()) {
-            failures.push({
-              path: relativePath,
-              message: "Stream connection not ready",
-            });
-            fileProgress.delete(idx);
-            fileBytes.delete(idx);
-            return;
-          }
-
-          const result = await uploadFileViaStream(
-            file,
-            targetFilePath,
-            uploadId,
-            (loaded, total) => {
-              const pct = Math.round((loaded / total) * 100);
-              fileProgress.set(idx, pct);
-              updateOverallProgress(loaded, idx);
-            },
-            abortController.signal,
-          );
-
-          // If cancelled, don't count as success or error
-          if (result.cancelled) {
-            return;
-          }
-
-          const uploadSuccess = result.success;
-          const uploadError = result.error;
-
-          // Remove from active progress tracking
-          fileProgress.delete(idx);
-          fileBytes.delete(idx);
-
-          if (uploadSuccess) {
-            uploaded += 1;
-            uploadedBytesTotal += file.size;
-          } else if (uploadError) {
-            failures.push({ path: relativePath, message: uploadError });
-          }
-          updateOverallProgress();
-        };
-
-        // Process files sequentially
-        for (const { file, relativePath } of files) {
-          if (abortController.signal.aborted) break;
-          if (!file) continue;
-
-          const idx = fileIndex++;
-          await uploadSingleFile({ file, relativePath }, idx);
+        } else if (outcome.error) {
+          failures.push({ path: targetPath, message: outcome.error });
         }
 
         if (uploaded > 0 && !abortController.signal.aborted) {
@@ -490,7 +452,7 @@ export function useUploadJobs(
         });
         recordTransferRate(uploadId, undefined);
         setTimeout(() => removeUpload(uploadId), 1000);
-        return { conflicts, uploaded, failures };
+        return { uploaded, failures };
       } catch (err: any) {
         if (err.name === "CanceledError") {
           console.log("Upload cancelled by user");
@@ -500,7 +462,7 @@ export function useUploadJobs(
         }
         recordTransferRate(uploadId, undefined);
         removeUpload(uploadId);
-        return { conflicts, uploaded, failures };
+        return { uploaded, failures };
       }
     },
     [
@@ -508,7 +470,7 @@ export function useUploadJobs(
       recordTransferRate,
       removeUpload,
       updateUpload,
-      uploadFileViaStream,
+      uploadBatchViaStream,
     ],
   );
 

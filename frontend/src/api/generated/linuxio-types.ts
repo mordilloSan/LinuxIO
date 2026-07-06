@@ -161,10 +161,7 @@ export interface AutoUpdateOptions {
 }
 
 export type AutoUpdateRebootPolicy =
-  | "never"
-  | "if_needed"
-  | "always"
-  | "schedule";
+  "never" | "if_needed" | "always" | "schedule";
 
 export type AutoUpdateScope = "security" | "updates" | "all";
 
@@ -251,6 +248,7 @@ export interface CapabilitiesResponse {
   docker_available: boolean;
   watchtower_available: boolean;
   indexer_available: boolean;
+  monitoring_available: boolean;
   lm_sensors_available: boolean;
   memory_inventory_available: boolean;
   smartmontools_available: boolean;
@@ -266,6 +264,7 @@ export interface CapabilitiesResponse {
   docker_error?: string;
   watchtower_error?: string;
   indexer_error?: string;
+  monitoring_error?: string;
   lm_sensors_error?: string;
   memory_inventory_error?: string;
   smartmontools_error?: string;
@@ -776,6 +775,15 @@ export interface EnabledRequest {
   enabled: string;
 }
 
+export interface ExistsBatchItem {
+  path: string;
+  isDir: boolean;
+}
+
+export interface ExistsBatchResponse {
+  existing: ExistsBatchItem[];
+}
+
 export interface ExtendedFileInfo {
   name: string;
   size: number;
@@ -843,6 +851,18 @@ export interface FileSearchRequest {
   query: string;
   limit?: string;
   basePath?: string;
+}
+
+export interface FileUploadBatchEntry {
+  path: string;
+  size: string;
+}
+
+export interface FileUploadBatchRequest {
+  destination: string;
+  files: FileUploadBatchEntry[];
+  directories?: string[];
+  overwrite?: boolean;
 }
 
 export interface FileUploadRequest {
@@ -1130,11 +1150,7 @@ export interface JobSnapshot {
 }
 
 export type JobState =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "canceled";
+  "queued" | "running" | "completed" | "failed" | "canceled";
 
 export interface LogicalVolume {
   attributes: string;
@@ -1193,6 +1209,111 @@ export interface ModifyUserRequest {
   homeDir?: string;
   shell?: string;
   groups?: string[];
+}
+
+export interface MonitoringCPUHistoryPoint {
+  captured_at_ms: number;
+  usage_percent: number;
+  breakdown_percent?: number[];
+  cores_percent?: number[];
+}
+
+export interface MonitoringConfig {
+  allow_remote_commands: boolean;
+  cache_ttl: Record<string, string>;
+  collector_interval: string;
+  smart_refresh_interval: string;
+  history: string;
+  listeners: MonitoringListener[];
+  version: number;
+}
+
+export interface MonitoringConfigMeta {
+  cache_ttl: Record<string, string>;
+  collector_interval: string;
+  history_plugins: string[];
+  path: string;
+  source: string;
+  version: number;
+}
+
+export interface MonitoringConfigPatch {
+  collector_interval?: string;
+  smart_refresh_interval?: string;
+  history?: string;
+  cache_ttl?: Record<string, string>;
+  allow_remote_commands?: boolean;
+  listeners?: MonitoringListener[];
+}
+
+export interface MonitoringConfigSetResult {
+  config: MonitoringConfig;
+  restart_required: boolean;
+}
+
+export interface MonitoringDiskIOHistoryPoint {
+  captured_at_ms: number;
+  read_bytes_per_sec: number;
+  write_bytes_per_sec: number;
+}
+
+export interface MonitoringHistoryRequest {
+  resolution: MonitoringHistoryResolution;
+  from_ms?: number;
+  to_ms?: number;
+  limit?: number;
+}
+
+export type MonitoringHistoryResolution =
+  "1m" | "10m" | "20m" | "120m" | "480m";
+
+export interface MonitoringListener {
+  address: string;
+  apis: string[];
+  name: string;
+}
+
+export interface MonitoringListenerStatus {
+  active: boolean;
+  address: string;
+  apis: string[];
+  effective_address: string;
+  name: string;
+}
+
+export interface MonitoringMemoryHistoryPoint {
+  captured_at_ms: number;
+  total_gb: number;
+  used_gb: number;
+  used_percent: number;
+  buffer_cache_gb: number;
+  zfs_arc_gb?: number;
+  cached_gb?: number;
+  buffers_gb?: number;
+  docker_used_gb?: number;
+}
+
+export interface MonitoringNetworkHistoryPoint {
+  captured_at_ms: number;
+  sent_bytes_per_sec: number;
+  recv_bytes_per_sec: number;
+  interfaces?: Record<string, MonitoringNetworkRates>;
+}
+
+export interface MonitoringNetworkRates {
+  sent_bytes_per_sec: number;
+  recv_bytes_per_sec: number;
+}
+
+export interface MonitoringStatus {
+  collector_interval: string;
+  config: MonitoringConfigMeta;
+  data_dir: string;
+  db_path: string;
+  listeners?: MonitoringListenerStatus[];
+  retention: Record<string, string>;
+  smart_refresh_interval: string;
+  version: string;
 }
 
 export interface MotherboardBIOS {
@@ -1493,12 +1614,6 @@ export interface Socket {
   unit_file_state: string;
 }
 
-export interface SourceDestinationRequest {
-  source: string;
-  destination: string;
-  overwrite?: boolean;
-}
-
 export interface StackNameRequest {
   stackName: string;
 }
@@ -1752,10 +1867,7 @@ export interface VMDisk {
 }
 
 export type VMImagePresetID =
-  | "home-assistant-os"
-  | "debian-server"
-  | "ubuntu-server"
-  | "fedora-cloud";
+  "home-assistant-os" | "debian-server" | "ubuntu-server" | "fedora-cloud";
 
 export interface VMManagedPaths {
   root: string;
@@ -2175,11 +2287,6 @@ export interface LinuxIOSchema {
       request: FileCompressRequest;
       result: JobSnapshot;
     };
-    copy: {
-      input: [request: SourceDestinationRequest];
-      request: SourceDestinationRequest;
-      result: JobSnapshot;
-    };
     copy_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
@@ -2200,6 +2307,11 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: JobSnapshot;
     };
+    exists_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: ExistsBatchResponse;
+    };
     extract: {
       input: [request: FileExtractRequest];
       request: FileExtractRequest;
@@ -2211,19 +2323,9 @@ export interface LinuxIOSchema {
       result: JobSnapshot;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
-    move: {
-      input: [request: SourceDestinationRequest];
-      request: SourceDestinationRequest;
-      result: JobSnapshot;
-    };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: JobSnapshot;
-    };
-    resource_delete: {
-      input: [path: string];
-      request: PathRequest;
       result: JobSnapshot;
     };
     resource_get: {
@@ -2259,6 +2361,11 @@ export interface LinuxIOSchema {
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
+      result: JobSnapshot;
+    };
+    upload_batch: {
+      input: [request: FileUploadBatchRequest];
+      request: FileUploadBatchRequest;
       result: JobSnapshot;
     };
     users_groups: { input: []; request: void; result: UsersGroupsResponse };
@@ -2298,6 +2405,37 @@ export interface LinuxIOSchema {
       input: [request: JobListRequest];
       request: JobListRequest;
       result: JobSnapshot[];
+    };
+  };
+
+  monitoring: {
+    get_config: { input: []; request: void; result: MonitoringConfig };
+    get_cpu_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringCPUHistoryPoint[];
+    };
+    get_diskio_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringDiskIOHistoryPoint[];
+    };
+    get_memory_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringMemoryHistoryPoint[];
+    };
+    get_network_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringNetworkHistoryPoint[];
+    };
+    get_status: { input: []; request: void; result: MonitoringStatus };
+    restart: { input: []; request: void; result: void };
+    set_config: {
+      input: [request: MonitoringConfigPatch];
+      request: MonitoringConfigPatch;
+      result: MonitoringConfigSetResult;
     };
   };
 
@@ -2604,11 +2742,7 @@ export interface LinuxIOSchema {
       result: UpdateHistoryRow[];
     };
     get_updates_basic: { input: []; request: void; result: Update[] };
-    install_package: {
-      input: [packageId: string];
-      request: PackageIDRequest;
-      result: void;
-    };
+    refresh_cache: { input: []; request: void; result: SuccessResponse };
     set_auto_updates: {
       input: [request: UpdatesSetAutoUpdatesRequest];
       request: UpdatesSetAutoUpdatesRequest;

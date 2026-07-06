@@ -48,24 +48,24 @@ func TestBuildDiskThroughputResponseAggregatesAndSortsDevices(t *testing.T) {
 
 	response := buildDiskThroughputResponse(previous, current, 2)
 
-	require.Equal(t, 400.0, response.ReadBytesPerSec)
-	require.Equal(t, 330.0, response.WriteBytesPerSec)
-	require.Equal(t, 19.0, response.ReadOpsPerSec)
-	require.Equal(t, 16.0, response.WriteOpsPerSec)
-	require.Equal(t, 2.0, response.IntervalSeconds)
+	require.InDelta(t, 400.0, response.ReadBytesPerSec, 0.000001)
+	require.InDelta(t, 330.0, response.WriteBytesPerSec, 0.000001)
+	require.InDelta(t, 19.0, response.ReadOpsPerSec, 0.000001)
+	require.InDelta(t, 16.0, response.WriteOpsPerSec, 0.000001)
+	require.InDelta(t, 2.0, response.IntervalSeconds, 0.000001)
 	require.Len(t, response.Devices, 3)
 
 	require.Equal(t, "nvme0n1", response.Devices[0].Name)
-	require.Equal(t, 100.0, response.Devices[0].ReadBytesPerSec)
-	require.Equal(t, 30.0, response.Devices[0].WriteBytesPerSec)
-	require.Equal(t, 4.0, response.Devices[0].ReadOpsPerSec)
-	require.Equal(t, 1.0, response.Devices[0].WriteOpsPerSec)
+	require.InDelta(t, 100.0, response.Devices[0].ReadBytesPerSec, 0.000001)
+	require.InDelta(t, 30.0, response.Devices[0].WriteBytesPerSec, 0.000001)
+	require.InDelta(t, 4.0, response.Devices[0].ReadOpsPerSec, 0.000001)
+	require.InDelta(t, 1.0, response.Devices[0].WriteOpsPerSec, 0.000001)
 
 	require.Equal(t, "sda", response.Devices[1].Name)
-	require.Equal(t, 300.0, response.Devices[1].ReadBytesPerSec)
-	require.Equal(t, 300.0, response.Devices[1].WriteBytesPerSec)
-	require.Equal(t, 15.0, response.Devices[1].ReadOpsPerSec)
-	require.Equal(t, 15.0, response.Devices[1].WriteOpsPerSec)
+	require.InDelta(t, 300.0, response.Devices[1].ReadBytesPerSec, 0.000001)
+	require.InDelta(t, 300.0, response.Devices[1].WriteBytesPerSec, 0.000001)
+	require.InDelta(t, 15.0, response.Devices[1].ReadOpsPerSec, 0.000001)
+	require.InDelta(t, 15.0, response.Devices[1].WriteOpsPerSec, 0.000001)
 
 	require.Equal(t, "vdb", response.Devices[2].Name)
 	require.Zero(t, response.Devices[2].ReadBytesPerSec)
@@ -127,7 +127,7 @@ func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
 
 	first, err := FetchDiskThroughput(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, 0.0, first.IntervalSeconds)
+	require.InDelta(t, 0.0, first.IntervalSeconds, 0.000001)
 	require.Len(t, first.Devices, 1)
 	require.Equal(t, "nvme0n1", first.Devices[0].Name)
 	require.Zero(t, first.Devices[0].ReadBytesPerSec)
@@ -137,18 +137,18 @@ func TestFetchDiskThroughputComputesRatesOnDemand(t *testing.T) {
 
 	second, err := FetchDiskThroughput(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, 1.0, second.IntervalSeconds)
+	require.InDelta(t, 1.0, second.IntervalSeconds, 0.000001)
 	require.Len(t, second.Devices, 1)
-	require.Equal(t, 3072.0, second.Devices[0].ReadBytesPerSec)
-	require.Equal(t, 4096.0, second.Devices[0].WriteBytesPerSec)
-	require.Equal(t, 8.0, second.Devices[0].ReadOpsPerSec)
-	require.Equal(t, 4.0, second.Devices[0].WriteOpsPerSec)
+	require.InDelta(t, 3072.0, second.Devices[0].ReadBytesPerSec, 0.000001)
+	require.InDelta(t, 4096.0, second.Devices[0].WriteBytesPerSec, 0.000001)
+	require.InDelta(t, 8.0, second.Devices[0].ReadOpsPerSec, 0.000001)
+	require.InDelta(t, 4.0, second.Devices[0].WriteOpsPerSec, 0.000001)
 }
 
 func TestCounterRateReturnsZeroForInvalidSamples(t *testing.T) {
 	require.Zero(t, counterRate(10, 20, 0))
 	require.Zero(t, counterRate(20, 10, 1))
-	require.Equal(t, 10.0, counterRate(10, 20, 1))
+	require.InDelta(t, 10.0, counterRate(10, 20, 1), 0.000001)
 }
 
 func TestIsPhysicalDiskCounterFiltersNonPhysicalDevices(t *testing.T) {

@@ -156,12 +156,6 @@ type PathRequest struct {
 	Path string `json:"path"`
 }
 
-type SourceDestinationRequest struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Overwrite   *bool  `json:"overwrite,omitempty"`
-}
-
 // BatchTransferRequest copies or moves many sources into a single destination
 // directory within one job. Each source's final name is its basename.
 type BatchTransferRequest struct {
@@ -173,6 +167,18 @@ type BatchTransferRequest struct {
 // BatchPathRequest deletes many paths within one job.
 type BatchPathRequest struct {
 	Paths []string `json:"paths"`
+}
+
+// ExistsBatchItem reports one existing path from an exists_batch pre-check.
+type ExistsBatchItem struct {
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+}
+
+// ExistsBatchResponse lists which of the requested paths already exist, so the
+// frontend can ask the user about collisions before starting a transfer.
+type ExistsBatchResponse struct {
+	Existing []ExistsBatchItem `json:"existing"`
 }
 
 type ActionSourceDestinationRequest struct {
@@ -522,7 +528,7 @@ type GeneralLogsFollowRequest struct {
 type DockerSystemPruneRequest struct {
 	Containers bool `json:"containers"`
 	Images     bool `json:"images"`
-	BuildCache bool `json:"buildCache"` //nolint:tagliatelle
+	BuildCache bool `json:"buildCache"`
 	Networks   bool `json:"networks"`
 	Volumes    bool `json:"volumes"`
 }
@@ -586,6 +592,28 @@ type FileUploadRequest struct {
 	Overwrite  *bool  `json:"overwrite,omitempty"`
 }
 
+// FileUploadBatchEntry is one file in a batch upload manifest. Path is
+// relative to the batch destination directory; Size is its exact byte count.
+type FileUploadBatchEntry struct {
+	Path string `json:"path"`
+	Size string `json:"size"`
+}
+
+// FileUploadBatchRequest uploads many files into one destination directory as
+// a single job. The client streams every file's bytes back-to-back in manifest
+// order over one data stream; the bridge derives file boundaries from the
+// manifest sizes, so the stream needs no in-band framing. Directories lists
+// folders to create relative to the destination (for empty directories —
+// parents of manifest files are created implicitly). Without Overwrite, a file
+// whose destination already exists is skipped and reported in the result's
+// failed list.
+type FileUploadBatchRequest struct {
+	Destination string                 `json:"destination"`
+	Files       []FileUploadBatchEntry `json:"files"`
+	Directories []string               `json:"directories,omitempty"`
+	Overwrite   *bool                  `json:"overwrite,omitempty"`
+}
+
 type IndexerConfigPatch struct {
 	IndexPath            *string `json:"index_path,omitempty"`
 	IndexName            *string `json:"index_name,omitempty"`
@@ -604,6 +632,16 @@ type IndexerConfigPatch struct {
 	SocketPath           *string `json:"socket_path,omitempty"`
 	ListenAddr           *string `json:"listen_addr,omitempty"`
 	Interval             *string `json:"interval,omitempty"`
+}
+
+// MonitoringConfigPatch mirrors the go-monitoring `config.set` command params.
+type MonitoringConfigPatch struct {
+	CollectorInterval    *string              `json:"collector_interval,omitempty"`
+	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
+	History              *string              `json:"history,omitempty"`
+	CacheTTL             map[string]string    `json:"cache_ttl,omitempty"`
+	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
+	Listeners            []MonitoringListener `json:"listeners,omitempty"`
 }
 
 type JobListRequest struct {

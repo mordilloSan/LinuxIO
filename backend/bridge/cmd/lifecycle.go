@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -25,19 +26,17 @@ var wg sync.WaitGroup
 
 // openClientConnection converts the inherited client file descriptor into the
 // net.Conn used by yamux.
-func openClientConnection() net.Conn {
+func openClientConnection() (net.Conn, error) {
 	clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
 	if clientFile == nil {
-		slog.Error("failed to open client connection", "fd", clientConnFD)
-		os.Exit(1)
+		return nil, fmt.Errorf("open client connection fd %d", clientConnFD)
 	}
 	clientConn, err := net.FileConn(clientFile)
 	clientFile.Close()
 	if err != nil {
-		slog.Error("failed to create client connection", "fd", clientConnFD, "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("create client connection from fd %d: %w", clientConnFD, err)
 	}
-	return clientConn
+	return clientConn, nil
 }
 
 // runBridge wires route registration, signal handling, request serving, and

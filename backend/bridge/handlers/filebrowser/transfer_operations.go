@@ -140,17 +140,17 @@ func awaitTransferOutcome(ctx context.Context, done <-chan transferOutcome, acti
 	}
 }
 
-func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, error) {
+func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, error) {
 	if req.TargetPath == "" || req.Size == "" {
-		return "", 0, fmt.Errorf("missing path or size")
+		return "", 0, false, fmt.Errorf("missing path or size")
 	}
 
 	expectedSize, err := strconv.ParseInt(req.Size, 10, 64)
 	if err != nil {
-		return "", 0, fmt.Errorf("invalid size: %w", err)
+		return "", 0, false, fmt.Errorf("invalid size: %w", err)
 	}
 
-	return req.TargetPath, expectedSize, nil
+	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, nil
 }
 
 func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
@@ -193,9 +193,25 @@ func notifyUploadedFile(path string, info os.FileInfo) {
 }
 
 func runUploadJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUploadRequest) (any, error) {
-	path, expectedSize, err := parseUploadRequest(req)
+	path, expectedSize, overwrite, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, bridgejobs.NewError(err.Error(), 400)
+	}
+
+	// Uploads never overwrite unless explicitly told to: fail the conflict
+	// before the client streams any bytes.
+	if !overwrite {
+		root, rootErr := fsroot.Open()
+		if rootErr != nil {
+			return nil, bridgejobs.NewError("failed to access filesystem", 500)
+		}
+		_, statErr := root.Root.Stat(fsroot.ToRel(filepath.Clean(path)))
+		if closeErr := root.Close(); closeErr != nil {
+			slog.Debug("failed to close filesystem root", "error", closeErr)
+		}
+		if statErr == nil {
+			return nil, bridgejobs.NewError("destination already exists", 409)
+		}
 	}
 
 	transfer := &uploadTransferJob{
@@ -329,6 +345,8 @@ func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net
 
 	switch active := transfer.(type) {
 	case *uploadTransferJob:
+		return active.attach(stream, req)
+	case *uploadBatchTransferJob:
 		return active.attach(stream, req)
 	case *downloadTransferJob:
 		return active.attach(stream, req)

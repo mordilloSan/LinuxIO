@@ -22,7 +22,7 @@ func TestCollectStatInfo(t *testing.T) {
 
 		// Collect stat info
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, stat)
 
 		// Verify basic properties
@@ -40,7 +40,7 @@ func TestCollectStatInfo(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, err := CollectStatInfo(testDir)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, stat)
 		assert.Equal(t, filepath.Base(testDir), stat.Name)
 		assert.NotEmpty(t, stat.Permissions)
@@ -48,7 +48,7 @@ func TestCollectStatInfo(t *testing.T) {
 
 	t.Run("nonexistent_path", func(t *testing.T) {
 		stat, err := CollectStatInfo(filepath.Join(tmpDir, "nonexistent"))
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, stat)
 	})
 
@@ -58,12 +58,12 @@ func TestCollectStatInfo(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, stat)
 		assert.NotEmpty(t, stat.Permissions)
 		// Verify it contains permission info (should mention read/write/execute)
-		assert.True(t,
-			len(stat.Permissions) > 0,
+		assert.NotEmpty(t,
+			stat.Permissions,
 			"permissions string should be populated",
 		)
 	})
@@ -75,16 +75,16 @@ func TestCollectStatInfo(t *testing.T) {
 
 		// Get stat info
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Parse the modification time
 		parsedTime, err := time.Parse(time.RFC3339, stat.Modified)
-		assert.NoError(t, err, "modified time should be valid RFC3339")
+		require.NoError(t, err, "modified time should be valid RFC3339")
 
 		// Verify it's close to now (within a few seconds)
 		now := time.Now()
-		assert.True(t,
-			now.Sub(parsedTime) < 5*time.Second,
+		assert.Less(t,
+			now.Sub(parsedTime), 5*time.Second,
 			"modification time should be recent",
 		)
 	})
@@ -95,11 +95,11 @@ func TestCollectStatInfo(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, stat.Mode, "mode should be populated")
 		// Mode should start with '-' for regular file or 'd' for directory
-		assert.True(t,
-			len(stat.Mode) > 0,
+		assert.NotEmpty(t,
+			stat.Mode,
 			"mode string should not be empty",
 		)
 	})
@@ -110,7 +110,7 @@ func TestCollectStatInfo(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, stat.Raw, "raw stat line should be populated")
 		// Raw should contain mode, owner, group, size, time, and path
 		assert.Contains(t, stat.Raw, filepath.Base(testFile), "raw stat should contain filename")
@@ -131,7 +131,7 @@ func TestCollectStatInfo(t *testing.T) {
 
 		// CollectStatInfo uses Lstat, so it should return info about the link itself
 		stat, err := CollectStatInfo(linkFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, stat)
 		assert.Equal(t, filepath.Base(linkFile), stat.Name)
 	})
@@ -142,7 +142,7 @@ func TestCollectStatInfo(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, err := CollectStatInfo(testFile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(0), stat.Size, "empty file should have size 0")
 	})
 
@@ -162,7 +162,7 @@ func TestCollectStatInfo(t *testing.T) {
 			require.NoError(t, err)
 
 			stat, err := CollectStatInfo(testFile)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, int64(len(f.content)), stat.Size, f.name+" should have correct size")
 		}
 	})

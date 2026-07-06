@@ -7,8 +7,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type wgQuickCall struct {

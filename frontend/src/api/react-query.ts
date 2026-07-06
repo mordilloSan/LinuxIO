@@ -77,9 +77,7 @@ function getRetryPolicy(
 }
 
 export type RequestShape =
-  | { kind: "none" }
-  | { kind: "object" }
-  | { kind: "field"; field: string };
+  { kind: "none" } | { kind: "object" } | { kind: "field"; field: string };
 
 // ============================================================================
 // Type-Safe API

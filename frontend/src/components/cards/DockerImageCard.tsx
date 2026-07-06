@@ -58,7 +58,6 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
             size="small"
           />
           <AppTypography
-            copyText={image.repo}
             fontWeight={700}
             noWrap
             title={image.repo}

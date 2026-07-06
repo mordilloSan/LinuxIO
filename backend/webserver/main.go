@@ -1,7 +1,11 @@
 package main
 
-import "github.com/mordilloSan/LinuxIO/backend/webserver/cmd"
+import (
+	"os"
+
+	"github.com/mordilloSan/LinuxIO/backend/webserver/cmd"
+)
 
 func main() {
-	cmd.StartLinuxIO()
+	os.Exit(cmd.Run(os.Args))
 }

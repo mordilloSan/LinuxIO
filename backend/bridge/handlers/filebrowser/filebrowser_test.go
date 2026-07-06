@@ -1,11 +1,67 @@
 package filebrowser
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
+
+func TestExistsBatchReportsExistingPaths(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "f.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("seed dir: %v", err)
+	}
+
+	resp, err := existsBatch(context.Background(), apischema.BatchPathRequest{
+		Paths: []string{file, sub, filepath.Join(dir, "missing")},
+	})
+	if err != nil {
+		t.Fatalf("existsBatch: %v", err)
+	}
+	if len(resp.Existing) != 2 {
+		t.Fatalf("existing = %+v, want 2 entries", resp.Existing)
+	}
+	if resp.Existing[0].Path != file || resp.Existing[0].IsDir {
+		t.Fatalf("existing[0] = %+v", resp.Existing[0])
+	}
+	if resp.Existing[1].Path != sub || !resp.Existing[1].IsDir {
+		t.Fatalf("existing[1] = %+v", resp.Existing[1])
+	}
+}
+
+func TestGenerateUniquePathSkipsDanglingSymlink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "report.txt")
+	if err := os.WriteFile(source, []byte("report"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	if err := os.Symlink("missing.txt", filepath.Join(dir, "report (copy).txt")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	root, err := fsroot.Open()
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+
+	got := generateUniquePath(source, false, root)
+	want := filepath.Join(dir, "report (copy 2).txt")
+	if got != want {
+		t.Fatalf("generateUniquePath = %q, want %q", got, want)
+	}
+}
 
 func TestExtendedFileInfoResponseMapsInternalFileInfo(t *testing.T) {
 	modified := time.Date(2026, 6, 21, 22, 15, 30, 123, time.UTC)

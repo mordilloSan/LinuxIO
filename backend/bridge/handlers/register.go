@@ -15,6 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
@@ -42,6 +43,7 @@ var Families = []Family{
 	{Name: "docker", Routes: docker.Routes, Register: docker.RegisterHandlers},
 	{Name: "filebrowser", Routes: filebrowser.Routes, Register: filebrowser.RegisterHandlers},
 	{Name: "indexer", Routes: indexer.Routes, Register: indexer.RegisterHandlers},
+	{Name: "monitoring", Routes: monitoring.Routes, Register: monitoring.RegisterHandlers},
 	{Name: "config", Routes: config.Routes, Register: config.RegisterHandlers},
 	{Name: "control", Routes: control.Routes, Register: control.RegisterHandlers},
 	{Name: "power", Routes: power.Routes, Register: power.RegisterHandlers},

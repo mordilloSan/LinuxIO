@@ -44,7 +44,6 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
           size="small"
         />
         <AppTypography
-          copyText={network.Name}
           fontWeight={700}
           noWrap
           title={network.Name}

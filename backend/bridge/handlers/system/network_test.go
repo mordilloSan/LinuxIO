@@ -89,8 +89,8 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 	second, err := FetchNetworks(context.Background())
 	require.NoError(t, err)
 	require.Len(t, second, 1)
-	require.Equal(t, 2.0, second[0].RXSpeed)
-	require.Equal(t, 4.0, second[0].TXSpeed)
+	require.InDelta(t, 2.0, second[0].RXSpeed, 0.000001)
+	require.InDelta(t, 4.0, second[0].TXSpeed, 0.000001)
 }
 
 func TestComputeSimpleNetRatesReturnsZeroForInvalidSamples(t *testing.T) {
@@ -117,6 +117,6 @@ func TestComputeSimpleNetRatesReturnsZeroForInvalidSamples(t *testing.T) {
 		"eth0": {BytesRecv: 1224, BytesSent: 2450},
 	}
 	rx, tx = computeSimpleNetRates("eth0", previous, validCurrent, 1)
-	require.Equal(t, 1.0, rx)
-	require.Equal(t, 2.001953125, tx)
+	require.InDelta(t, 1.0, rx, 0.000001)
+	require.InDelta(t, 2.001953125, tx, 0.000001)
 }

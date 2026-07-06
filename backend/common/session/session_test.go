@@ -142,7 +142,7 @@ func TestManager_WriteAndValidateCookie(t *testing.T) {
 	}
 
 	// Validate from request
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	cookieVal := firstCookieValue(rr.Header().Get("Set-Cookie"))
 	req.AddCookie(&http.Cookie{Name: m.CookieName(), Value: cookieVal})
 

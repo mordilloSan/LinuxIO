@@ -80,6 +80,7 @@ type CapabilitiesAvailable struct {
 	DockerAvailable          bool `json:"docker_available"`
 	WatchtowerAvailable      bool `json:"watchtower_available"`
 	IndexerAvailable         bool `json:"indexer_available"`
+	MonitoringAvailable      bool `json:"monitoring_available"`
 	LMSensorsAvailable       bool `json:"lm_sensors_available"`
 	MemoryInventoryAvailable bool `json:"memory_inventory_available"`
 	SmartmontoolsAvailable   bool `json:"smartmontools_available"`
@@ -98,6 +99,7 @@ type CapabilitiesError struct {
 	DockerError          *string `json:"docker_error,omitempty"`
 	WatchtowerError      *string `json:"watchtower_error,omitempty"`
 	IndexerError         *string `json:"indexer_error,omitempty"`
+	MonitoringError      *string `json:"monitoring_error,omitempty"`
 	LMSensorsError       *string `json:"lm_sensors_error,omitempty"`
 	MemoryInventoryError *string `json:"memory_inventory_error,omitempty"`
 	SmartmontoolsError   *string `json:"smartmontools_error,omitempty"`

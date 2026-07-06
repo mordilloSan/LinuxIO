@@ -185,13 +185,8 @@ export interface BackgroundJobsContextValue {
   startUpload: (
     entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,
-    override?: boolean,
+    overwrite?: boolean,
   ) => Promise<{
-    conflicts: {
-      file?: File;
-      relativePath: string;
-      isDirectory: boolean;
-    }[];
     uploaded: number;
     failures: { path: string; message: string }[];
   }>;

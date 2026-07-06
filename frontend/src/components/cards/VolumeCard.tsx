@@ -40,7 +40,6 @@ const VolumeCard: React.FC<VolumeCardProps> = ({
           size="small"
         />
         <AppTypography
-          copyText={volume.Name}
           fontWeight={700}
           noWrap
           title={volume.Name}

@@ -248,7 +248,6 @@ const DockerDashboard: React.FC<DockerDashboardProps> = ({
           >
             <DockerIcon alt={name} identifier={container.icon} size={22} />
             <AppTypography
-              copyText={name}
               fontWeight={500}
               noWrap
               title={name}
@@ -267,7 +266,6 @@ const DockerDashboard: React.FC<DockerDashboardProps> = ({
       cell: ({ row }) => (
         <AppTypography
           color="text.secondary"
-          copyText={row.original.Image}
           noWrap
           title={row.original.Image}
           toastMeta={DOCKER_TOAST_META}
@@ -329,7 +327,6 @@ const DockerDashboard: React.FC<DockerDashboardProps> = ({
           const { repo } = getImageTagParts(row.original.RepoTags);
           return (
             <AppTypography
-              copyText={repo}
               fontWeight={500}
               noWrap
               title={repo}
@@ -350,7 +347,6 @@ const DockerDashboard: React.FC<DockerDashboardProps> = ({
           return (
             <AppTypography
               color="text.secondary"
-              copyText={tag}
               noWrap
               title={tag}
               toastMeta={DOCKER_TOAST_META}

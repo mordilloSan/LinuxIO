@@ -1,8 +1,9 @@
 package apischema
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/shirou/gopsutil/v4/load"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type AutoUpdateFrequency string
@@ -10,6 +11,7 @@ type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
 type JobState string
+type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
@@ -21,6 +23,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
+	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
@@ -1010,6 +1013,103 @@ type IndexerDaemonStatus struct {
 	TotalSize       int64   `json:"total_size"`
 	WALSize         int64   `json:"wal_size"`
 	Warning         *string `json:"warning,omitempty"`
+}
+
+type MonitoringListener struct {
+	Address string   `json:"address"`
+	APIs    []string `json:"apis"`
+	Name    string   `json:"name"`
+}
+
+type MonitoringConfig struct {
+	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
+	CacheTTL             map[string]string    `json:"cache_ttl"`
+	CollectorInterval    string               `json:"collector_interval"`
+	SmartRefreshInterval string               `json:"smart_refresh_interval"`
+	History              string               `json:"history"`
+	Listeners            []MonitoringListener `json:"listeners"`
+	Version              int                  `json:"version"`
+}
+
+type MonitoringConfigSetResult struct {
+	Config          MonitoringConfig `json:"config"`
+	RestartRequired bool             `json:"restart_required"`
+}
+
+type MonitoringHistoryRequest struct {
+	Resolution MonitoringHistoryResolution `json:"resolution"`
+	FromMs     int64                       `json:"from_ms,omitempty"`
+	ToMs       int64                       `json:"to_ms,omitempty"`
+	Limit      int                         `json:"limit,omitempty"`
+}
+
+type MonitoringCPUHistoryPoint struct {
+	CapturedAtMs int64   `json:"captured_at_ms"`
+	UsagePercent float64 `json:"usage_percent"`
+	// BreakdownPercent is [user, system, iowait, steal, idle].
+	BreakdownPercent []float64 `json:"breakdown_percent,omitempty"`
+	CoresPercent     []float64 `json:"cores_percent,omitempty"`
+}
+
+type MonitoringMemoryHistoryPoint struct {
+	CapturedAtMs  int64   `json:"captured_at_ms"`
+	TotalGB       float64 `json:"total_gb"`
+	UsedGB        float64 `json:"used_gb"`
+	UsedPercent   float64 `json:"used_percent"`
+	BufferCacheGB float64 `json:"buffer_cache_gb"`
+	ZFSArcGB      float64 `json:"zfs_arc_gb,omitempty"`
+	// CachedGB and BuffersGB split BufferCacheGB; zero on agents older than v1.5.
+	CachedGB  float64 `json:"cached_gb,omitempty"`
+	BuffersGB float64 `json:"buffers_gb,omitempty"`
+	// DockerUsedGB sums container memory from the containers history plugin;
+	// zero when that plugin has no sample near the point's timestamp.
+	DockerUsedGB float64 `json:"docker_used_gb,omitempty"`
+}
+
+type MonitoringDiskIOHistoryPoint struct {
+	CapturedAtMs     int64   `json:"captured_at_ms"`
+	ReadBytesPerSec  float64 `json:"read_bytes_per_sec"`
+	WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
+}
+
+type MonitoringNetworkRates struct {
+	SentBytesPerSec float64 `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64 `json:"recv_bytes_per_sec"`
+}
+
+type MonitoringNetworkHistoryPoint struct {
+	CapturedAtMs    int64                             `json:"captured_at_ms"`
+	SentBytesPerSec float64                           `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64                           `json:"recv_bytes_per_sec"`
+	Interfaces      map[string]MonitoringNetworkRates `json:"interfaces,omitempty"`
+}
+
+type MonitoringListenerStatus struct {
+	Active           bool     `json:"active"`
+	Address          string   `json:"address"`
+	APIs             []string `json:"apis"`
+	EffectiveAddress string   `json:"effective_address"`
+	Name             string   `json:"name"`
+}
+
+type MonitoringConfigMeta struct {
+	CacheTTL          map[string]string `json:"cache_ttl"`
+	CollectorInterval string            `json:"collector_interval"`
+	HistoryPlugins    []string          `json:"history_plugins"`
+	Path              string            `json:"path"`
+	Source            string            `json:"source"`
+	Version           int               `json:"version"`
+}
+
+type MonitoringStatus struct {
+	CollectorInterval    string                     `json:"collector_interval"`
+	Config               MonitoringConfigMeta       `json:"config"`
+	DataDir              string                     `json:"data_dir"`
+	DBPath               string                     `json:"db_path"`
+	Listeners            []MonitoringListenerStatus `json:"listeners,omitempty"`
+	Retention            map[string]string          `json:"retention"`
+	SmartRefreshInterval string                     `json:"smart_refresh_interval"`
+	Version              string                     `json:"version"`
 }
 
 type DirectoryValidationResult struct {

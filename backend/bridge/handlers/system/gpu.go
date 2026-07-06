@@ -15,6 +15,7 @@ import (
 
 	"github.com/jaypipes/ghw/pkg/gpu"
 	"github.com/jaypipes/ghw/pkg/pci"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 

@@ -14,6 +14,7 @@ import { useFileBrowserItemActions } from "@/hooks/filebrowser/useFileBrowserIte
 import { useFileBrowserNavigation } from "@/hooks/filebrowser/useFileBrowserNavigation";
 import { useFileBrowserSearchAndSort } from "@/hooks/filebrowser/useFileBrowserSearchAndSort";
 import { useFileBrowserUploadActions } from "@/hooks/filebrowser/useFileBrowserUploadActions";
+import { useFileConflictResolution } from "@/hooks/filebrowser/useFileConflicts";
 import { useFileDialogs } from "@/hooks/filebrowser/useFileDialogs";
 import { useFileDragAndDrop } from "@/hooks/filebrowser/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
@@ -112,6 +113,15 @@ export function useFileBrowserController(): FileBrowserController {
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
 
+  // Collision handling shared by paste and uploads: pre-check destinations,
+  // prompt per conflicting item, never overwrite without an explicit choice.
+  const {
+    applyConflictDecisions,
+    cancelConflictPrompt,
+    conflictPrompt,
+    resolveCollisions,
+  } = useFileConflictResolution();
+
   const {
     createFile,
     createFolder,
@@ -126,6 +136,7 @@ export function useFileBrowserController(): FileBrowserController {
     normalizedPath,
     queryClient,
     onDeleteSuccess: () => setSelectedPaths(new Set()),
+    resolveCollisions,
   });
   const detailTargetCount = detailTarget?.length ?? 0;
   const hasSingleDetailTarget = detailTargetCount === 1;
@@ -299,18 +310,15 @@ export function useFileBrowserController(): FileBrowserController {
   }, [normalizedPath, queryClient]);
   const {
     isDragOver,
-    overwriteTargets,
     handleDragEnter,
     handleDragOver,
     handleDragLeave,
     handleDrop,
-    handleConfirmOverwrite,
-    handleCancelOverwrite,
-    setOverwriteTargets: setOverwriteTargetsForDialog,
   } = useFileDragAndDrop({
     normalizedPath,
     resource,
     editingPath,
+    resolveCollisions,
     startUpload,
     onUploadComplete: invalidateListing,
   });
@@ -330,8 +338,8 @@ export function useFileBrowserController(): FileBrowserController {
     isUploadProcessing,
     normalizedPath,
     onContextMenuClose: handleCloseContextMenu,
+    resolveCollisions,
     setIsUploadProcessing,
-    setOverwriteTargets: setOverwriteTargetsForDialog,
     setUploadDialogOpen,
     setUploadEntries,
     startUpload,
@@ -555,23 +563,26 @@ export function useFileBrowserController(): FileBrowserController {
       onCloseCompressFormatDialog: handleCloseCompressFormatDialog,
       onCloseUnsupportedEditDialog: handleCloseUnsupportedEditDialog,
       onConfirmCompressFormat: handleCompressConfirm,
-      onConfirmOverwrite: handleConfirmOverwrite,
       onConfirmUnsupportedEdit: handleConfirmUnsupportedEdit,
-      onOverwriteCancel: handleCancelOverwrite,
-      overwriteTargets,
       unsupportedEditPath,
     }),
     [
       compressFormatDialog,
-      handleCancelOverwrite,
       handleCloseCompressFormatDialog,
       handleCloseUnsupportedEditDialog,
       handleCompressConfirm,
-      handleConfirmOverwrite,
       handleConfirmUnsupportedEdit,
-      overwriteTargets,
       unsupportedEditPath,
     ],
+  );
+
+  const conflictDialog = useMemo(
+    () => ({
+      onCancel: cancelConflictPrompt,
+      onResolve: applyConflictDecisions,
+      prompt: conflictPrompt,
+    }),
+    [applyConflictDecisions, cancelConflictPrompt, conflictPrompt],
   );
 
   const contentSurface = useMemo(
@@ -699,6 +710,7 @@ export function useFileBrowserController(): FileBrowserController {
   const dialogsProps = useMemo(
     () => ({
       archive: archiveDialogs,
+      conflict: conflictDialog,
       contextMenu: contextMenuDialogs,
       create: createDialogs,
       deleteDialog: deleteDialogProps,
@@ -709,6 +721,7 @@ export function useFileBrowserController(): FileBrowserController {
     }),
     [
       archiveDialogs,
+      conflictDialog,
       contextMenuDialogs,
       createDialogs,
       deleteDialogProps,

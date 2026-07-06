@@ -4,9 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/shirou/gopsutil/v4/disk"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-	"github.com/shirou/gopsutil/v4/disk"
 )
 
 func FetchFileSystemInfo(ctx context.Context, includeAll bool) ([]apischema.FilesystemInfo, error) {

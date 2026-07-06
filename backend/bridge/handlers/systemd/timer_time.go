@@ -4,8 +4,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"golang.org/x/sys/unix"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
 const usecPerSecond = 1_000_000

@@ -17,6 +17,10 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import type {
+  ConflictDecision,
+  ConflictPrompt,
+} from "@/hooks/filebrowser/useFileConflicts";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
 import { useAppTheme } from "@/theme";
@@ -446,45 +450,139 @@ export const FileBrowserUploadDialog: React.FC<
   );
 };
 
-interface FileBrowserOverwriteDialogProps {
-  normalizedPath: string;
+interface FileBrowserConflictDialogProps {
   onCancel: () => void;
-  onConfirm: () => Promise<void> | void;
-  overwriteTargets: DroppedEntry[] | null;
+  onResolve: (decisions: Record<string, ConflictDecision>) => void;
+  prompt: ConflictPrompt | null;
 }
 
-export const FileBrowserOverwriteDialog: React.FC<
-  FileBrowserOverwriteDialogProps
-> = ({ normalizedPath, onCancel, onConfirm, overwriteTargets }) => {
+export const FileBrowserConflictDialog: React.FC<
+  FileBrowserConflictDialogProps
+> = ({ onCancel, onResolve, prompt }) => {
   const theme = useAppTheme();
+  // Decisions are stored together with the prompt they belong to, so a new
+  // prompt implicitly starts from the safe default (skip everything) — no
+  // effect-based state reset needed.
+  const [decisionState, setDecisionState] = React.useState<{
+    decisions: Record<string, ConflictDecision>;
+    prompt: ConflictPrompt | null;
+  }>({ decisions: {}, prompt: null });
+  const decisions =
+    decisionState.prompt === prompt ? decisionState.decisions : {};
+
+  const conflicts = prompt?.conflicts ?? [];
+  const decisionFor = (path: string): ConflictDecision =>
+    decisions[path] ?? "skip";
+  const setOne = (path: string, choice: ConflictDecision) =>
+    setDecisionState({ decisions: { ...decisions, [path]: choice }, prompt });
+  const setAll = (choice: ConflictDecision) =>
+    setDecisionState({
+      decisions: Object.fromEntries(conflicts.map((c) => [c.path, choice])),
+      prompt,
+    });
+  const handleContinue = () =>
+    onResolve(
+      Object.fromEntries(conflicts.map((c) => [c.path, decisionFor(c.path)])),
+    );
+
+  const choiceButton = (
+    path: string,
+    choice: ConflictDecision,
+    label: string,
+  ) => (
+    <AppButton
+      color={choice === "overwrite" ? "warning" : undefined}
+      onClick={() => setOne(path, choice)}
+      size="small"
+      variant={decisionFor(path) === choice ? "contained" : "outlined"}
+    >
+      {label}
+    </AppButton>
+  );
 
   return (
     <FileBrowserDialog
       fullWidth
       maxWidth="sm"
       onClose={onCancel}
-      open={Boolean(overwriteTargets?.length)}
+      open={Boolean(prompt)}
     >
-      <AppDialogTitle>Overwrite existing items?</AppDialogTitle>
+      <AppDialogTitle>
+        {conflicts.length} item{conflicts.length === 1 ? "" : "s"} already exist
+        {conflicts.length === 1 ? "s" : ""}
+      </AppDialogTitle>
       <AppDialogContent
         style={{ borderTop: `1px solid ${theme.palette.divider}` }}
       >
-        <AppTypography style={{ marginBottom: 4 }} variant="body2">
-          These items already exist in {normalizedPath}. Do you want to
-          overwrite them?
+        <AppTypography style={{ marginBottom: 8 }} variant="body2">
+          Choose what to do with each item in {prompt?.destination}. Skipped
+          items are left untouched.
         </AppTypography>
-        <ul style={{ margin: 0, paddingLeft: 20 }}>
-          {overwriteTargets?.map(({ relativePath }) => (
-            <li key={relativePath}>
-              <AppTypography variant="body2">{relativePath}</AppTypography>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <AppTypography color="text.secondary" variant="caption">
+            Apply to all:
+          </AppTypography>
+          <AppButton onClick={() => setAll("skip")} size="small">
+            Skip all
+          </AppButton>
+          <AppButton
+            color="warning"
+            onClick={() => setAll("overwrite")}
+            size="small"
+          >
+            Overwrite all
+          </AppButton>
+        </div>
+        <ul
+          className="custom-scrollbar"
+          style={{
+            listStyle: "none",
+            margin: 0,
+            maxHeight: 280,
+            overflowY: "auto",
+            padding: 0,
+          }}
+        >
+          {conflicts.map(({ path, name, isDir }) => (
+            <li
+              key={path}
+              style={{
+                alignItems: "center",
+                display: "flex",
+                gap: 8,
+                padding: "4px 0",
+              }}
+            >
+              <AppTypography
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                variant="body2"
+              >
+                {name}
+                {isDir ? "/" : ""}
+              </AppTypography>
+              {choiceButton(path, "skip", "Skip")}
+              {choiceButton(path, "overwrite", "Overwrite")}
             </li>
           ))}
         </ul>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onCancel}>Skip</AppButton>
-        <AppButton color="warning" onClick={onConfirm} variant="contained">
-          Overwrite
+        <AppButton onClick={onCancel}>Cancel</AppButton>
+        <AppButton onClick={handleContinue} variant="contained">
+          Continue
         </AppButton>
       </AppDialogActions>
     </FileBrowserDialog>

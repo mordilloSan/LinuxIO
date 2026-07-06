@@ -7,8 +7,9 @@ import (
 	"github.com/jaypipes/ghw/pkg/bios"
 	"github.com/jaypipes/ghw/pkg/chassis"
 	"github.com/jaypipes/ghw/pkg/product"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/shirou/gopsutil/v4/cpu"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func FetchCPUSummary(ctx context.Context) string {

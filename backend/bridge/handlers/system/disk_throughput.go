@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	gopsdisk "github.com/shirou/gopsutil/v4/disk"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 var (

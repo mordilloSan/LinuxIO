@@ -62,6 +62,11 @@ const getPlainText = (node: React.ReactNode): string => {
     return node.map(getPlainText).filter(Boolean).join(" ").trim();
   }
 
+  if (React.isValidElement(node)) {
+    const props = node.props as { children?: React.ReactNode };
+    return getPlainText(props.children);
+  }
+
   return "";
 };
 
@@ -75,7 +80,7 @@ export interface AppTypographyProps extends Omit<
   component?: React.ElementType;
   copyErrorMessage?: React.ReactNode;
   copySuccessMessage?: React.ReactNode;
-  copyText?: string;
+  copyText?: string | false;
   fontSize?: string | number;
   fontWeight?: number | string;
   gutterBottom?: boolean;
@@ -141,6 +146,12 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
     const showTruncatedTooltip = Boolean(
       noWrap && tooltipText && !isInsideTooltip,
     );
+    const resolvedCopyText =
+      copyText === false
+        ? undefined
+        : typeof copyText === "string"
+          ? copyText
+          : tooltipText;
     const tagProps = showTruncatedTooltip ? rest : { ...rest, title };
     const element = (
       <Tag className={cls} ref={ref} style={merged} {...tagProps}>
@@ -157,7 +168,7 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
         contentWidth
         copyErrorMessage={copyErrorMessage}
         copySuccessMessage={copySuccessMessage}
-        copyText={copyText}
+        copyText={resolvedCopyText}
         onlyWhenTruncated={tooltipOnlyWhenTruncated}
         title={tooltipText}
         toastMeta={toastMeta}

@@ -178,6 +178,8 @@ func installOptionalComponent(ctx context.Context, job *bridgejobs.Job, spec sys
 	switch spec.Install.OptionalComponent {
 	case system.OptionalComponentIndexer:
 		return installIndexer(ctx, job)
+	case system.OptionalComponentMonitoring:
+		return installMonitoring(ctx, job)
 	case system.OptionalComponentWatchtower:
 		return installWatchtower(ctx, job)
 	default:

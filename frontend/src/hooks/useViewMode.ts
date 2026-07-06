@@ -13,8 +13,7 @@ export function useViewMode(
   const setViewMode = useCallback(
     (
       next:
-        | TableCardViewMode
-        | ((prev: TableCardViewMode) => TableCardViewMode),
+        TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),
     ) => {
       setViewModes((prev) => {
         const prevModes = prev ?? {};

@@ -23,22 +23,27 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
-func RunServer(cfg ServerConfig) {
+func RunServer(cfg ServerConfig) error {
 	if err := logging.Configure("linuxio-webserver", cfg.Verbose); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	slog.Info("LinuxIO starting", "verbose", cfg.Verbose)
 
 	sm := newSessionManager()
-	srv, inFlight, lastHit := newHTTPServer(cfg, sm)
+	srv, inFlight, lastHit, err := newHTTPServer(cfg, sm)
+	if err != nil {
+		return err
+	}
 	quit, done := startHTTPServer(cfg, srv, sm, inFlight, lastHit)
 
-	waitForServerShutdown(quit, done)
-	shutdownHTTPServer(srv)
+	serverErr := waitForServerShutdown(quit, done)
+	if serverErr == nil {
+		shutdownHTTPServer(srv)
+	}
 	closeBridgeSessions(sm)
 	sm.Close()
 	slog.Info("server stopped")
+	return serverErr
 }
 
 func newSessionManager() *session.Manager {
@@ -56,11 +61,11 @@ func newSessionManager() *session.Manager {
 	return sm
 }
 
-func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic.Int64, *atomic.Int64) {
+func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic.Int64, *atomic.Int64, error) {
 	ui, err := web.UI()
 	if err != nil {
 		slog.Error("failed to mount embedded frontend", "error", err)
-		os.Exit(1)
+		return nil, nil, nil, fmt.Errorf("mount embedded frontend: %w", err)
 	}
 
 	router := web.BuildRouter(web.Config{
@@ -86,7 +91,7 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic
 		Addr:     fmt.Sprintf(":%d", cfg.Port),
 		Handler:  handler,
 		ErrorLog: log.New(web.HTTPErrorLogAdapter{}, "", 0),
-	}, &inFlight, &lastHit
+	}, &inFlight, &lastHit, nil
 }
 
 func startHTTPServer(
@@ -95,16 +100,18 @@ func startHTTPServer(
 	sm *session.Manager,
 	inFlight *atomic.Int64,
 	lastHit *atomic.Int64,
-) (chan os.Signal, chan struct{}) {
+) (chan os.Signal, chan error) {
 	quit := make(chan os.Signal, 1)
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		if serveWithSocketActivation(cfg, srv, sm, inFlight, lastHit, done) {
+		handled, err := serveWithSocketActivation(cfg, srv, sm, inFlight, lastHit)
+		if handled {
+			done <- err
 			return
 		}
-		serveWithSelfBind(cfg, srv, done)
+		done <- serveWithSelfBind(cfg, srv)
 	}()
 
 	return quit, done
@@ -116,21 +123,28 @@ func serveWithSocketActivation(
 	sm *session.Manager,
 	inFlight *atomic.Int64,
 	lastHit *atomic.Int64,
-	done chan struct{},
-) bool {
+) (bool, error) {
 	listeners, err := systemdListeners()
 	if err != nil {
 		slog.Warn("socket activation listener lookup failed", "error", err)
 	}
 	if len(listeners) == 0 {
-		return false
+		return false, nil
 	}
 
-	configureServerTLS(srv)
+	if err := configureServerTLS(srv); err != nil {
+		return true, err
+	}
 
 	var stopOnce sync.Once
 	servStopped := make(chan struct{})
-	stop := func() { stopOnce.Do(func() { close(servStopped) }) }
+	var serveErr error
+	stop := func(err error) {
+		stopOnce.Do(func() {
+			serveErr = err
+			close(servStopped)
+		})
+	}
 
 	for _, listener := range listeners {
 		go serveTLSListener(srv, web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
@@ -142,50 +156,55 @@ func serveWithSocketActivation(
 	)
 
 	<-servStopped
-	close(done)
-	return true
+	return true, serveErr
 }
 
-func serveWithSelfBind(cfg ServerConfig, srv *http.Server, done chan struct{}) {
-	configureServerTLS(srv)
+func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
+	if err := configureServerTLS(srv); err != nil {
+		return err
+	}
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		slog.Error("listen failed", "address", srv.Addr, "error", err)
-		os.Exit(1)
+		return fmt.Errorf("listen %s: %w", srv.Addr, err)
 	}
 	tlsListener := web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
 	slog.Info("HTTPS server listening", "address", fmt.Sprintf("https://localhost:%d", cfg.Port))
 	if err := srv.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("serve HTTPS: %w", err)
 	}
-	close(done)
+	return nil
 }
 
-func configureServerTLS(srv *http.Server) {
+func configureServerTLS(srv *http.Server) error {
 	cert, err := web.GenerateSelfSignedCert()
 	if err != nil {
 		slog.Error("failed to generate certificate", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("generate self-signed certificate: %w", err)
 	}
 	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+	return nil
 }
 
-func serveTLSListener(srv *http.Server, listener net.Listener, stop func(), errorPrefix string) {
+func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error), errorPrefix string) {
 	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 		slog.Error(errorPrefix, "error", err)
-		os.Exit(1)
+		stop(fmt.Errorf("%s: %w", errorPrefix, err))
+		return
 	}
-	stop()
+	stop(nil)
 }
 
-func waitForServerShutdown(quit <-chan os.Signal, done <-chan struct{}) {
+func waitForServerShutdown(quit <-chan os.Signal, done <-chan error) error {
 	select {
 	case <-quit:
 		slog.Info("shutdown signal received")
-	case <-done:
+		return nil
+	case err := <-done:
 		slog.Info("HTTP server stopped, beginning shutdown")
+		return err
 	}
 }
 

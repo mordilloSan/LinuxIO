@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -17,22 +18,22 @@ type ServerConfig struct {
 // test seam (override in tests)
 var runServerFunc = RunServer
 
-// StartLinuxIO is the CLI entrypoint (called from main.go).
-func StartLinuxIO() {
-	if len(os.Args) < 2 {
+// Run executes the LinuxIO webserver CLI and returns the process exit code.
+func Run(args []string) int {
+	if len(args) < 2 {
 		printGeneralUsage()
-		return
+		return 0
 	}
 
-	switch os.Args[1] {
+	switch args[1] {
 	case "-h", "--help", "help":
 		printGeneralUsage()
-		return
+		return 0
 	case "version", "-v", "--version":
 		fmt.Printf("LinuxIO Web Server %s\n", version.Version)
-		return
+		return 0
 	case "run":
-		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
+		runCmd := flag.NewFlagSet("run", flag.ContinueOnError)
 
 		var cfg ServerConfig
 		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
@@ -46,25 +47,31 @@ func StartLinuxIO() {
 			runCmd.PrintDefaults()
 		}
 
-		if err := runCmd.Parse(os.Args[2:]); err != nil {
-			// flag.ExitOnError handles most errors; ErrHelp means -h was used
-			return
+		if err := runCmd.Parse(args[2:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return 0
+			}
+			return 2
 		}
 
 		// Validate port (reject 0: server needs a fixed, known port for clients)
 		if cfg.Port <= 0 || cfg.Port > 65535 {
 			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
-			os.Exit(2)
+			return 2
 		}
 
-		runServerFunc(cfg)
+		if err := runServerFunc(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		return 0
 
 	default:
 		// Unknown subcommand → help
 		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", args[1])
 		printUsage()
-		return
+		return 0
 	}
 }
 

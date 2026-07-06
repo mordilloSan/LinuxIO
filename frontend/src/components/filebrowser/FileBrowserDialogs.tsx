@@ -1,9 +1,9 @@
 import React, { ReactNode } from "react";
 
 import {
+  FileBrowserConflictDialog,
   FileBrowserDetailsDialog,
   FileBrowserEditorDialog,
-  FileBrowserOverwriteDialog,
   FileBrowserUploadDialog,
   type MultiItemsStats,
 } from "./FileBrowserPanels";
@@ -15,6 +15,10 @@ import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import PermissionsDialog from "@/components/filebrowser/PermissionsDialog";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
+import type {
+  ConflictDecision,
+  ConflictPrompt,
+} from "@/hooks/filebrowser/useFileConflicts";
 import type { PermissionsDialogState } from "@/hooks/filebrowser/useFileDialogs";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
@@ -142,15 +146,19 @@ export interface FileBrowserArchiveDialogsProps {
   onCloseCompressFormatDialog: () => void;
   onCloseUnsupportedEditDialog: () => void;
   onConfirmCompressFormat: (format: "zip" | "tar.gz") => Promise<void> | void;
-  onConfirmOverwrite: () => Promise<void> | void;
   onConfirmUnsupportedEdit: () => void;
-  onOverwriteCancel: () => void;
-  overwriteTargets: DroppedEntry[] | null;
   unsupportedEditPath: string | null;
+}
+
+export interface FileBrowserConflictDialogProps {
+  onCancel: () => void;
+  onResolve: (decisions: Record<string, ConflictDecision>) => void;
+  prompt: ConflictPrompt | null;
 }
 
 export interface FileBrowserDialogsProps {
   archive: FileBrowserArchiveDialogsProps;
+  conflict: FileBrowserConflictDialogProps;
   contextMenu: FileBrowserContextMenuProps;
   create: FileBrowserCreateDialogsProps;
   deleteDialog: FileBrowserDeleteDialogProps;
@@ -162,6 +170,7 @@ export interface FileBrowserDialogsProps {
 
 const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
   archive,
+  conflict,
   contextMenu,
   create,
   deleteDialog,
@@ -302,11 +311,10 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
       uploadSummary={upload.summary}
     />
 
-    <FileBrowserOverwriteDialog
-      normalizedPath={upload.normalizedPath}
-      onCancel={archive.onOverwriteCancel}
-      onConfirm={archive.onConfirmOverwrite}
-      overwriteTargets={archive.overwriteTargets}
+    <FileBrowserConflictDialog
+      onCancel={conflict.onCancel}
+      onResolve={conflict.onResolve}
+      prompt={conflict.prompt}
     />
 
     <UnsavedChangesDialog

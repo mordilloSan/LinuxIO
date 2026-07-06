@@ -128,6 +128,7 @@ const NetworkInterfacesCard: React.FC = () => {
     ) : (
       <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
         <NetworkGraph
+          interfaceName={effectiveSelected}
           key={effectiveSelected}
           rx={selectedInterface.rx_speed}
           tx={selectedInterface.tx_speed}

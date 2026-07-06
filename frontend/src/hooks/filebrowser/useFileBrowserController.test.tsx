@@ -41,15 +41,11 @@ const mocks = vi.hoisted(() => ({
     setPermissionsDialog: vi.fn(),
   },
   dragAndDrop: {
-    handleCancelOverwrite: vi.fn(),
-    handleConfirmOverwrite: vi.fn(),
     handleDragEnter: vi.fn(),
     handleDragLeave: vi.fn(),
     handleDragOver: vi.fn(),
     handleDrop: vi.fn(),
     isDragOver: false,
-    overwriteTargets: null,
-    setOverwriteTargets: vi.fn(),
   },
   editor: {
     closeEditorDialog: false,
@@ -417,6 +413,9 @@ describe("useFileBrowserController", () => {
         normalizedPath: "/srv/projects",
         open: false,
       },
+      conflict: {
+        prompt: null,
+      },
     });
   });
 
@@ -463,8 +462,13 @@ describe("useFileBrowserController", () => {
     expect(uploadArgs).toMatchObject({
       isUploadProcessing: false,
       normalizedPath: "/srv/projects",
-      setOverwriteTargets: mocks.dragAndDrop.setOverwriteTargets,
     });
+
+    // Paste, upload, and drag-and-drop all share one collision resolver so a
+    // single dialog instance serves every flow.
+    expect(typeof uploadArgs.resolveCollisions).toBe("function");
+    expect(dragArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
+    expect(mutationArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
 
     act(() => mutationArgs.onDeleteSuccess());
 

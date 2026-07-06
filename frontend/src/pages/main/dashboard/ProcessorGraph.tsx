@@ -1,7 +1,14 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
-import { SmoothieChart, TimeSeries } from "smoothie";
+import React, { useEffect, useEffectEvent } from "react";
+import { SmoothieChart } from "smoothie";
 
-import SmoothieCanvas from "@/components/charts/SmoothieCanvas";
+import { linuxio } from "@/api";
+import LiveChartHover from "@/components/charts/LiveChartHover";
+import {
+  appendLiveSample,
+  LIVE_MILLIS_PER_PIXEL,
+  sampleLiveSeries,
+} from "@/components/charts/liveSeriesStore";
+import { useLiveSeries } from "@/components/charts/useLiveSeries";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -9,16 +16,26 @@ interface CpuGraphProps {
   usage: number;
 }
 
+const SERIES_ID = "cpu:usage";
+const STREAM_DELAY_MS = 2000;
+
 const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<SmoothieChart | null>(null);
-  const seriesRef = useRef<TimeSeries>(new TimeSeries());
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [series] = useLiveSeries([SERIES_ID], async (request) => {
+    const points = await linuxio.monitoring.get_cpu_history(request);
+    return {
+      [SERIES_ID]: points.map((point) => ({
+        t: point.captured_at_ms,
+        v: point.usage_percent,
+      })),
+    };
+  });
   const theme = useAppTheme();
   const color = theme.palette.primary.main;
   const neutral = theme.chart.neutral;
 
   const appendLatestUsage = useEffectEvent(() => {
-    seriesRef.current.append(Date.now(), usage);
+    appendLiveSample(SERIES_ID, usage);
   });
 
   // Initialize chart once on mount
@@ -27,7 +44,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     if (!canvas) return;
 
     const chart = new SmoothieChart({
-      millisPerPixel: 40,
+      millisPerPixel: LIVE_MILLIS_PER_PIXEL,
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
@@ -37,35 +54,18 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
         borderVisible: false,
       },
       labels: { disabled: true },
-      tooltip: true,
-      tooltipLine: {
-        strokeStyle: alpha(neutral, 0.4),
-        lineWidth: 1,
-      },
-      tooltipFormatter: (
-        _timestamp: number,
-        data: { series: TimeSeries; index: number; value: number }[],
-      ) => {
-        return data
-          .map(
-            (d) =>
-              `<span style="color:${color}; font-size: 13px; line-height: 1.3;">CPU: ${d.value.toFixed(1)}%</span>`,
-          )
-          .join("");
-      },
       responsive: true,
       minValue: 0,
       maxValue: 100,
     });
 
-    chart.addTimeSeries(seriesRef.current, {
+    chart.addTimeSeries(series, {
       strokeStyle: color,
       fillStyle: `${color}18`,
       lineWidth: 2,
     });
 
-    chart.streamTo(canvas, 2000);
-    chartRef.current = chart;
+    chart.streamTo(canvas, STREAM_DELAY_MS);
 
     const intervalId = setInterval(() => {
       appendLatestUsage();
@@ -75,33 +75,38 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [color, neutral]);
+  }, [color, neutral, series]);
 
   return (
     <div
-      style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
+      style={{
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        position: "relative",
+      }}
     >
-      <SmoothieCanvas
-        chartRef={chartRef}
-        ref={canvasRef}
-        style={{ flex: 1, minWidth: 0, height: "100%" }}
-      />
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          paddingLeft: 4,
-          fontSize: 9,
-          color: alpha(theme.chart.neutral, 0.7),
-          whiteSpace: "nowrap",
+          width: "100%",
+          minWidth: 0,
+          height: "100%",
+          position: "relative",
         }}
       >
-        <span>100%</span>
-        <span>75%</span>
-        <span>50%</span>
-        <span>25%</span>
-        <span>0%</span>
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "100%", display: "block" }}
+        />
+        <LiveChartHover
+          delayMs={STREAM_DELAY_MS}
+          rowsAt={(t) => {
+            const value = sampleLiveSeries(series, t);
+            return value === null
+              ? []
+              : [{ color, value: `${value.toFixed(1)}%` }];
+          }}
+        />
       </div>
     </div>
   );

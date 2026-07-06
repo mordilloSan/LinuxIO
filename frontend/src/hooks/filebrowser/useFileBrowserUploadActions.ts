@@ -10,7 +10,9 @@ import {
   buildEntriesFromFileList,
   mergeDroppedEntries,
 } from "@/utils/fileUpload";
+import { joinPath } from "@/utils/path";
 
+import type { ResolveCollisionsFn } from "./useFileConflicts";
 import type { DroppedEntry } from "./useFileDroppedEntries";
 import { useScopedToast } from "../useScopedToast";
 
@@ -21,8 +23,8 @@ interface UseFileBrowserUploadActionsParams {
   isUploadProcessing: boolean;
   normalizedPath: string;
   onContextMenuClose: () => void;
+  resolveCollisions: ResolveCollisionsFn;
   setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
-  setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
   setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;
   setUploadEntries: Dispatch<SetStateAction<DroppedEntry[]>>;
   startUpload: BackgroundJobsContextValue["startUpload"];
@@ -36,8 +38,8 @@ export const useFileBrowserUploadActions = ({
   isUploadProcessing,
   normalizedPath,
   onContextMenuClose,
+  resolveCollisions,
   setIsUploadProcessing,
-  setOverwriteTargets,
   setUploadDialogOpen,
   setUploadEntries,
   startUpload,
@@ -99,20 +101,35 @@ export const useFileBrowserUploadActions = ({
 
     setIsUploadProcessing(true);
     try {
-      const result = await startUpload(uploadEntries, normalizedPath);
-      if (result.conflicts.length) {
-        setOverwriteTargets(result.conflicts);
-        toast.warning(
-          `${result.conflicts.length} item${result.conflicts.length === 1 ? " is" : "s are"} already present. Overwrite them?`,
-        );
+      // Uploads never overwrite silently: check the landing paths and ask the
+      // user per collision before any bytes move.
+      const resolution = await resolveCollisions(
+        uploadEntries.filter((entry) => !entry.isDirectory),
+        (entry) => joinPath(normalizedPath, entry.relativePath),
+        normalizedPath,
+      );
+      if (!resolution) {
+        return; // user cancelled the conflict prompt; keep the dialog open
       }
+      const kept = new Set(resolution.kept);
+      const entriesToSend = uploadEntries.filter(
+        (entry) => entry.isDirectory || kept.has(entry),
+      );
+      if (!entriesToSend.length) {
+        toast.info("All items skipped");
+        return;
+      }
+
+      const result = await startUpload(
+        entriesToSend,
+        normalizedPath,
+        resolution.overwrite,
+      );
       if (result.uploaded > 0) {
         invalidateListing();
       }
-      if (!result.conflicts.length) {
-        setUploadDialogOpen(false);
-        setUploadEntries([]);
-      }
+      setUploadDialogOpen(false);
+      setUploadEntries([]);
     } catch (error) {
       console.error("Upload failed", error);
       toast.error("Upload failed");
@@ -122,8 +139,8 @@ export const useFileBrowserUploadActions = ({
   }, [
     invalidateListing,
     normalizedPath,
+    resolveCollisions,
     setIsUploadProcessing,
-    setOverwriteTargets,
     setUploadDialogOpen,
     setUploadEntries,
     startUpload,

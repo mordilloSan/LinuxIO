@@ -31,7 +31,7 @@ CC ?= cc
 
 # Pinned external component versions
 WATCHTOWER_REPO ?= nicholas-fedor/watchtower
-WATCHTOWER_VERSION ?= 1.18.1
+WATCHTOWER_VERSION ?= 1.19.0
 WATCHTOWER_UPDATE_CHECK ?= 1
 ifneq ($(WATCHTOWER_UPDATE_CHECK),0)
 RELEASE_PRE_PR_TARGETS += check-watchtower-update-for-pr
@@ -457,20 +457,23 @@ tsc-only:
 	@bash -c 'cd frontend && ./node_modules/.bin/tsc && echo "✅ TypeScript checks passed!"'
 
 golint-only:
+	@set -euo pipefail
 	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
-	@echo "   Running gofmt..."
+	@echo "   Running Go formatters..."
 ifneq ($(CI),)
-	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
+	@fmt_out="$$(cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt --diff 2>&1)"; \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then echo "$$fmt_out"; exit $$status; fi; \
+	if [ -n "$$fmt_out" ]; then echo "Go files need formatting:"; echo "$$fmt_out"; exit 1; fi
 else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt )
 endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
 	@echo "   Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
 test-backend: $(GO_BUILD_PREREQ)
@@ -484,9 +487,6 @@ test-backend: $(GO_BUILD_PREREQ)
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
 
-# Informational only: reports functions unreachable from any main or test entry
-# point. Never fails the build (see `make test`); triage/remove at your pace.
-# `-test` is required so legitimate test-only helpers are not reported as dead.
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
@@ -794,6 +794,8 @@ _build-binaries: ensure-go check-c-build-deps
 
 build: generate test build-vite build-bridge _build-binaries
 
+build-nocheck: generate build-vite build-bridge _build-binaries
+
 fastbuild: generate build-bridge _build-binaries
 
 generate: ensure-go
@@ -848,7 +850,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
@@ -867,7 +869,8 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Full build (test + frontend + all binaries)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick build (skip tests)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-nocheck    $(COLOR_RESET) Full build without running tests"
+	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick binary build (skip tests and frontend)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
@@ -915,7 +918,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

@@ -12,6 +12,10 @@ import {
   linuxio,
   openJobAttachStream,
 } from "@/api";
+import {
+  CONFLICT_PROMPT_CANCELLED,
+  type ResolveCollisionsFn,
+} from "@/hooks/filebrowser/useFileConflicts";
 import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -24,6 +28,7 @@ interface UseFileMutationsParams {
   normalizedPath: string;
   onDeleteSuccess?: () => void;
   queryClient?: QueryClient;
+  resolveCollisions?: ResolveCollisionsFn;
 }
 
 interface CompressPayload {
@@ -58,6 +63,7 @@ export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
   onDeleteSuccess,
+  resolveCollisions,
 }: UseFileMutationsParams) => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const queryClient = providedQueryClient ?? useQueryClient();
@@ -244,20 +250,60 @@ export const useFileMutations = ({
     [renameMutation],
   );
 
+  // Transfers never overwrite silently: pre-check the landing paths and ask
+  // the user per collision (overwrite/skip). Returns the sources to transfer
+  // plus whether any overwrite was chosen; throws CONFLICT_PROMPT_CANCELLED
+  // when the user dismissed the prompt, and returns null when every item was
+  // skipped (nothing to do).
+  const resolvePasteCollisions = useCallback(
+    async (
+      sourcePaths: string[],
+      destinationDir: string,
+    ): Promise<{ sources: string[]; overwrite: boolean } | null> => {
+      if (!resolveCollisions) {
+        return { sources: sourcePaths, overwrite: false };
+      }
+      const baseName = (path: string) =>
+        path.replace(/\/+$/, "").split("/").pop() || path;
+      const resolution = await resolveCollisions(
+        sourcePaths,
+        (path) => joinPath(destinationDir, baseName(path)),
+        destinationDir,
+      );
+      if (!resolution) {
+        throw CONFLICT_PROMPT_CANCELLED;
+      }
+      if (!resolution.kept.length) {
+        toast.info("All items skipped");
+        return null;
+      }
+      return { sources: resolution.kept, overwrite: resolution.overwrite };
+    },
+    [resolveCollisions, toast],
+  );
+
   const { mutateAsync: copyItems } = useMutation({
     mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
+      const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+      if (!plan) {
+        return;
+      }
       // One batch job copies the whole selection into destinationDir; the
       // bridge loops server-side and reports one aggregate progress bar.
       await startCopy({
-        sources: sourcePaths,
+        sources: plan.sources,
         destination: destinationDir,
+        overwrite: plan.overwrite || undefined,
         onComplete: invalidateListing,
       });
     },
     onError: (error: unknown) => {
+      if (error === CONFLICT_PROMPT_CANCELLED) {
+        return;
+      }
       toast.error(getMutationErrorMessage(error, "Failed to copy items"));
     },
   });
@@ -267,14 +313,22 @@ export const useFileMutations = ({
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
+      const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+      if (!plan) {
+        return;
+      }
       // One batch job moves the whole selection into destinationDir.
       await startMove({
-        sources: sourcePaths,
+        sources: plan.sources,
         destination: destinationDir,
+        overwrite: plan.overwrite || undefined,
         onComplete: invalidateListing,
       });
     },
     onError: (error: unknown) => {
+      if (error === CONFLICT_PROMPT_CANCELLED) {
+        return;
+      }
       toast.error(getMutationErrorMessage(error, "Failed to move items"));
     },
   });

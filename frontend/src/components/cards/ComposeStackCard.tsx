@@ -107,7 +107,6 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
         )}
         {project ? (
           <AppTypography
-            copyText={project.name}
             fontWeight={600}
             noWrap
             title={project.name}

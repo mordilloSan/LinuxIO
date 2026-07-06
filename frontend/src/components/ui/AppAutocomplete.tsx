@@ -52,8 +52,7 @@ type MultipleAutocompleteProps = BaseAutocompleteProps & {
 };
 
 export type AppAutocompleteProps =
-  | SingleAutocompleteProps
-  | MultipleAutocompleteProps;
+  SingleAutocompleteProps | MultipleAutocompleteProps;
 
 const defaultFilterOptions = (options: string[], state: FilterState) => {
   if (!state.inputValue) {

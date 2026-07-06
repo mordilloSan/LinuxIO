@@ -1,0 +1,9 @@
+/* Compact per-card history range dropdown: hug the value text to the caret. */
+.app-select--standard .app-select__input.history-range-select {
+  justify-content: flex-end;
+  padding-right: 15px;
+}
+
+.app-select--standard .history-range-select ~ .app-select__arrow {
+  right: -4px;
+}

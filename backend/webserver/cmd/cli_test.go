@@ -7,27 +7,22 @@ import (
 	"testing"
 )
 
-func withArgs(args []string, fn func()) {
-	old := os.Args
-	os.Args = args
-	defer func() { os.Args = old }()
-	fn()
-}
-
-func TestStartLinuxIO_Run_InvokesRunServer(t *testing.T) {
+func TestRun_InvokesRunServer(t *testing.T) {
 	called := false
 	var gotCfg ServerConfig
 
 	old := runServerFunc
-	runServerFunc = func(cfg ServerConfig) {
+	runServerFunc = func(cfg ServerConfig) error {
 		called = true
 		gotCfg = cfg
+		return nil
 	}
 	defer func() { runServerFunc = old }()
 
-	withArgs([]string{"linuxio", "run", "-port", "18090", "-verbose"}, func() {
-		StartLinuxIO()
-	})
+	code := Run([]string{"linuxio", "run", "-port", "18090", "-verbose"})
+	if code != 0 {
+		t.Fatalf("Run exit code = %d, want 0", code)
+	}
 
 	if !called {
 		t.Fatal("expected runServerFunc to be called")
@@ -37,7 +32,7 @@ func TestStartLinuxIO_Run_InvokesRunServer(t *testing.T) {
 	}
 }
 
-func TestStartLinuxIO_UnknownCommand_ShowsHelp(t *testing.T) {
+func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
 	var errb bytes.Buffer
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
@@ -49,7 +44,10 @@ func TestStartLinuxIO_UnknownCommand_ShowsHelp(t *testing.T) {
 		}
 	}()
 
-	withArgs([]string{"linuxio", "wat"}, func() { StartLinuxIO() })
+	code := Run([]string{"linuxio", "wat"})
+	if code != 0 {
+		t.Fatalf("Run exit code = %d, want 0", code)
+	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close write pipe: %v", err)
 	}

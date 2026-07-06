@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/moby/moby/client"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/shirou/gopsutil/v4/mem"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 // FetchMemoryInfo returns the system memory, docker usage, and ZFS ARC cache info.

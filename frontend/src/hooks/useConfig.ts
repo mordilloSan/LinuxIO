@@ -24,8 +24,7 @@ export function useConfigValue<K extends ConfigValueKey>(key: K) {
   const set = useCallback(
     (
       next:
-        | ConfigValueMap[K]
-        | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
+        ConfigValueMap[K] | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
     ) => {
       setKey(key, next);
     },

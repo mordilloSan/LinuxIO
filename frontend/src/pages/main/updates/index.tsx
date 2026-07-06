@@ -9,11 +9,14 @@ import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
+import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();
@@ -25,11 +28,13 @@ const Updates: React.FC = () => {
   const {
     data: rawUpdates,
     isPending: isLoading,
+    isFetching,
     refetch,
   } = linuxio.updates.get_updates_basic.useQuery({
     enabled: !packageKitUnavailable,
     refetchInterval: 50000,
   });
+  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
   const {
@@ -43,6 +48,18 @@ const Updates: React.FC = () => {
     error,
     clearError,
   } = usePackageUpdater(refetch);
+  const { mutate: refreshCache, isPending: isRefreshingCache } =
+    linuxio.updates.refresh_cache.useMutation({
+      onSuccess: async () => {
+        await refetch();
+        toast.success("Update sources refreshed");
+      },
+      onError: (err: Error) =>
+        toast.error(
+          getMutationErrorMessage(err, "Failed to refresh update sources"),
+        ),
+    });
+  const packageOperationPending = !!updatingPackage || isRefreshingCache;
 
   return (
     <>
@@ -81,6 +98,29 @@ const Updates: React.FC = () => {
                 }}
               >
                 {!packageKitUnavailable ? (
+                  <AppButton
+                    disabled={
+                      packageOperationPending || (isFetching && !isLoading)
+                    }
+                    onClick={() => refreshCache()}
+                    size="small"
+                    startIcon={
+                      isRefreshingCache ? (
+                        <AppCircularProgress color="inherit" size={16} />
+                      ) : (
+                        <Icon
+                          height={20}
+                          icon="mdi:database-refresh"
+                          width={20}
+                        />
+                      )
+                    }
+                    variant="outlined"
+                  >
+                    {isRefreshingCache ? "Refreshing" : "Refresh Sources"}
+                  </AppButton>
+                ) : null}
+                {!packageKitUnavailable ? (
                   <AppTooltip title="Update settings">
                     <AppIconButton
                       aria-label="Open update settings"
@@ -93,7 +133,7 @@ const Updates: React.FC = () => {
                 ) : null}
                 {!packageKitUnavailable && updates.length > 0 ? (
                   <AppButton
-                    disabled={!!updatingPackage || isLoading}
+                    disabled={packageOperationPending || isLoading}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                     size="small"
                     startIcon={

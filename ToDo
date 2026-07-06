@@ -1,9 +1,9 @@
 1 - Notifications!!!! See notifications.md
 
-2 - Implement monitoring
+2 - Revisit React Compiler backend once Rolldown/Vite exposes a native OXC integration: when `@vitejs/plugin-react`/Vite can run React Compiler through the OXC pass, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts`. Checked 2026-07-05: React Rust port PR facebook/react #36173 merged on 2026-06-09 and Oxc documents experimental standalone support, but Vite 8 / `@vitejs/plugin-react` 6.0.3 still exposes React Compiler via `reactCompilerPreset()` + `@rolldown/plugin-babel`, so keep the shim for now.
 
 3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
-- Checked 2026-06-22: `eslint-plugin-react` still needs the override. Latest 7.37.5 peers `eslint` through `^9.7`, not ESLint 10.
+- Checked 2026-07-05: `eslint-plugin-react` still needs the override. Latest 7.37.5 peers `eslint` through `^9.7`, not ESLint 10.
 
 4 - values fixed in router.go should be set in global settings file?
 
@@ -16,13 +16,9 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 
 8 - For go api generator we have 2 main files. Lets change this for better DX
 
-9 - Revisit React Compiler backend once Rolldown/Vite exposes a native OXC integration: when `@vitejs/plugin-react`/Vite can run React Compiler through the OXC pass, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts`. Checked 2026-06-22: React Rust port PR facebook/react #36173 merged on 2026-06-09 and Oxc documents experimental standalone support, but Vite 8 / `@vitejs/plugin-react` 6.0.2 still exposes React Compiler via `reactCompilerPreset()` + `@rolldown/plugin-babel`, so keep the shim for now.
+9 - Vitest and playwright
 
-10 - Vitest and playwright
-
-11 filebrowser copy function ignores symlinks? use rsync?
-
-12 - Generated JSON request decoders from Go API contracts:
+10 - Generated JSON request decoders from Go API contracts:
 - Keep JSON envelopes and Go structs as the source of truth.
 - Extend `linuxio-api-gen` to emit backend request decoders plus frontend TS.
 - Reject unknown fields, duplicate fields, missing required fields, and wrong scalar types.
@@ -30,19 +26,17 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Keep response encoding on `encoding/json` unless profiling proves it matters.
 - See `docs/api-contract.md` Generated Request Decoder Plan.
 
-13 - Docker update status persistence:
+11 - Docker update status persistence:
 - Bridge-side reader/store is only half of the feature; the missing piece is the scheduled producer.
 - Timer already starts `linuxio-watchtower.service`, but that service runs Watchtower directly and does not currently publish per-container JSON status.
 - Preferred direction: ask upstream/fork Watchtower for stable JSON update-check report output (for example `--porcelain json` or `/v1/status`), then systemd can write/publish `/var/lib/linuxio/docker-update-status.json`.
 - Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
 - Bridge should mostly read the JSON artifact and display update status.
 
-14 - Filebrowser batch operations follow-ups (see docs/filebrowser-batch-operations.md):
-- Batch uploads: copy/move/delete now run as one batch job, but upload is still one-job-per-file. Add a multi-file stream framing protocol so a folder uploads over a single job/stream (main remaining upgrade).
-- Post-reload listing refresh: add batch (and pre-existing single) copy/move/delete job types to INVALIDATIONS_BY_JOB_TYPE so a job finishing after a page reload refreshes the listing.
-- Remove dead single routes: filebrowser.copy/move/resource_delete + runCopyJob/runMoveJob/resourceDelete handlers + their recovery cases are no longer called by the frontend.
-- Optional: auto-rename on collision for batch copy ("name (copy)") instead of skip-and-report, if best-effort behavior proves annoying.
-
+filebrowser copy function ignores symlinks? - DONE
+Filebrowser batch operations follow-ups (see docs/filebrowser-batch-operations.md) - DONE
+Batch uploads: copy/move/delete now run as one batch job, but upload is still one-job-per-file - DONE
+Implement monitoring - DONE
 Implement virtual on logs and filebrowser.... DONE
 Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
 Migrate to tanstackrouter? Not Worth it
