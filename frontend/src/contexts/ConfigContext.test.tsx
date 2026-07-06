@@ -8,7 +8,7 @@ import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({
   configGetQueryOptions: vi.fn(),
-  configSetUseMutation: vi.fn(),
+  configSetUseJobAction: vi.fn(),
   dockerListComposeProjectsQueryKey: vi.fn(() => [
     "linuxio",
     "docker",
@@ -39,7 +39,7 @@ vi.mock("@/api", async () => {
           queryOptions: apiMocks.configGetQueryOptions,
         },
         set: {
-          useMutation: apiMocks.configSetUseMutation,
+          useJobAction: apiMocks.configSetUseJobAction,
         },
       },
       docker: {
@@ -117,6 +117,16 @@ function Probe() {
   );
 }
 
+interface CapturedJobActionConfig {
+  invalidates?:
+    | readonly (readonly unknown[])[]
+    | ((
+        result: unknown,
+        variables: unknown,
+      ) => readonly (readonly unknown[])[]);
+  success?: string | ((result: unknown, variables: unknown) => void);
+}
+
 function renderProvider({
   configQueryFn = async () => remoteConfig(),
   signOut = vi.fn(),
@@ -124,9 +134,7 @@ function renderProvider({
   configQueryFn?: () => Promise<AppConfig>;
   signOut?: () => Promise<void>;
 } = {}) {
-  const mutationOptions: Array<{
-    onSuccess?: (_result: unknown, patch: unknown) => void;
-  }> = [];
+  const jobActionConfigs: CapturedJobActionConfig[] = [];
   const queryClient = createTestQueryClient();
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -135,10 +143,29 @@ function renderProvider({
     queryKey: ["linuxio", "config", "get"],
     queryFn: configQueryFn,
   });
-  apiMocks.configSetUseMutation.mockImplementation((options) => {
-    mutationOptions.push(options);
+  apiMocks.configSetUseJobAction.mockImplementation((config) => {
+    jobActionConfigs.push(config);
     return { mutate: apiMocks.setConfigRemote };
   });
+
+  // Emulates useJobAction's success path: invalidates -> success, with the
+  // unwrapped job result (not a JobSnapshot).
+  const fireJobActionSuccess = (result: unknown, variables: unknown) => {
+    const config = jobActionConfigs.at(-1);
+    if (!config) return;
+    const keys =
+      typeof config.invalidates === "function"
+        ? config.invalidates(result, variables)
+        : config.invalidates;
+    for (const queryKey of keys ?? []) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+    if (typeof config.success === "function") {
+      config.success(result, variables);
+    } else if (config.success !== undefined) {
+      toastMocks.success(config.success);
+    }
+  };
 
   render(
     <QueryClientProvider client={queryClient}>
@@ -156,7 +183,13 @@ function renderProvider({
     </QueryClientProvider>,
   );
 
-  return { invalidateQueries, mutationOptions, queryClient, signOut };
+  return {
+    fireJobActionSuccess,
+    invalidateQueries,
+    jobActionConfigs,
+    queryClient,
+    signOut,
+  };
 }
 
 describe("ConfigProvider", () => {
@@ -194,7 +227,7 @@ describe("ConfigProvider", () => {
   });
 
   it("saves user changes only after a successful backend load", async () => {
-    const { mutationOptions } = renderProvider();
+    const { jobActionConfigs } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
@@ -206,20 +239,20 @@ describe("ConfigProvider", () => {
         theme: "DARK",
       },
     });
-    expect(mutationOptions.length).toBeGreaterThan(0);
+    expect(jobActionConfigs.length).toBeGreaterThan(0);
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
       '"theme":"DARK"',
     );
   });
 
   it("invalidates compose projects after persisted Docker folder changes", async () => {
-    const { invalidateQueries, mutationOptions } = renderProvider();
+    const { fireJobActionSuccess, invalidateQueries } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
       screen.getByRole("button", { name: "set folders" }).click();
     });
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+    fireJobActionSuccess(undefined, {
       docker: {
         folders: ["/opt/compose"],
       },
@@ -236,11 +269,11 @@ describe("ConfigProvider", () => {
   });
 
   it("shows a toast after Docker mount ordering changes are persisted", async () => {
-    const { mutationOptions } = renderProvider();
+    const { fireJobActionSuccess } = renderProvider();
 
     await screen.findByTestId("loaded");
 
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+    fireJobActionSuccess(undefined, {
       docker: {
         requireMountsForFolders: true,
       },
@@ -249,7 +282,7 @@ describe("ConfigProvider", () => {
       "Docker will wait for configured folder mounts.",
     );
 
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+    fireJobActionSuccess(undefined, {
       docker: {
         requireMountsForFolders: false,
       },

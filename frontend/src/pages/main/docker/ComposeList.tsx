@@ -1,11 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import {
-  jobSnapshotResult,
   linuxio,
   type ComposeProject,
   type ContainerInfo,
@@ -112,7 +110,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
   const theme = useAppTheme();
-  const queryClient = useQueryClient();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const filtered = useMemo(() => {
@@ -134,27 +131,15 @@ const ComposeList: React.FC<ComposeListProps> = ({
     );
   }, [projects]);
   const { mutateAsync: startContainer } =
-    linuxio.docker.start_container.useMutation();
+    linuxio.docker.start_container.useJobAction();
   const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useMutation();
+    linuxio.docker.stop_container.useJobAction();
   const { mutateAsync: restartContainer } =
-    linuxio.docker.restart_container.useMutation();
+    linuxio.docker.restart_container.useJobAction();
   const { mutateAsync: removeContainer } =
-    linuxio.docker.remove_container.useMutation();
+    linuxio.docker.remove_container.useJobAction();
   const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
-    linuxio.docker.update_container.useMutation();
-
-  const refreshContainerViews = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_containers.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_compose_projects.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_images.queryKey(),
-    });
-  }, [queryClient]);
+    linuxio.docker.update_container.useJobAction();
 
   const handleStartContainer = useCallback(
     async (container: ContainerInfo) => {
@@ -162,12 +147,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
       try {
         await startContainer({ containerId: container.Id });
         toast.success(`Container ${name} started`);
-        refreshContainerViews();
       } catch (error) {
         toast.error(getMutationErrorMessage(error, `Failed to start ${name}`));
       }
     },
-    [refreshContainerViews, startContainer, toast],
+    [startContainer, toast],
   );
 
   const handleStopContainer = useCallback(
@@ -176,12 +160,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
       try {
         await stopContainer({ containerId: container.Id });
         toast.success(`Container ${name} stopped`);
-        refreshContainerViews();
       } catch (error) {
         toast.error(getMutationErrorMessage(error, `Failed to stop ${name}`));
       }
     },
-    [refreshContainerViews, stopContainer, toast],
+    [stopContainer, toast],
   );
 
   const handleRestartContainer = useCallback(
@@ -190,14 +173,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
       try {
         await restartContainer({ containerId: container.Id });
         toast.success(`Container ${name} restarted`);
-        refreshContainerViews();
       } catch (error) {
         toast.error(
           getMutationErrorMessage(error, `Failed to restart ${name}`),
         );
       }
     },
-    [refreshContainerViews, restartContainer, toast],
+    [restartContainer, toast],
   );
 
   const handleRemoveContainer = useCallback(
@@ -206,31 +188,28 @@ const ComposeList: React.FC<ComposeListProps> = ({
       try {
         await removeContainer({ containerId: container.Id });
         toast.success(`Container ${name} removed`);
-        refreshContainerViews();
       } catch (error) {
         toast.error(getMutationErrorMessage(error, `Failed to remove ${name}`));
       }
     },
-    [refreshContainerViews, removeContainer, toast],
+    [removeContainer, toast],
   );
 
   const handleUpdateContainer = useCallback(
     async (container: ContainerInfo) => {
       const name = getContainerName(container);
       try {
-        const data = await updateContainer({ containerId: container.Id });
-        const result = jobSnapshotResult<{ updated: boolean }>(data);
+        const result = await updateContainer({ containerId: container.Id });
         toast.success(
           result.updated
             ? `Container ${name} updated`
             : `Container ${name} is already up to date`,
         );
-        refreshContainerViews();
       } catch (error) {
         toast.error(getMutationErrorMessage(error, `Failed to update ${name}`));
       }
     },
-    [refreshContainerViews, toast, updateContainer],
+    [toast, updateContainer],
   );
 
   const columns = useMemo<AppDataTableColumnDef<ComposeProject>[]>(

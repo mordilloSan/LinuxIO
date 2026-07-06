@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-import { CACHE_TTL_MS, jobSnapshotResult, linuxio, type NFSMount } from "@/api";
+import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -38,6 +38,9 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
+
 interface NFSMountsProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -340,7 +343,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -352,25 +355,18 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [loadingExports, setLoadingExports] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { mutate: mountNFS, isPending: isMounting } =
-    linuxio.storage.mount_nfs.useMutation({
-      onSuccess: (result) => {
-        const mountResult = jobSnapshotResult(result);
-        if (mountResult.warning) {
-          toast.warning(mountResult.warning);
+    linuxio.storage.mount_nfs.useJobAction({
+      success: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
         } else {
           toast.success(`NFS share mounted at ${mountpoint}`);
         }
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to mount NFS share"),
-        );
-      },
+      error: "Failed to mount NFS share",
+      toast: STORAGE_TOAST_META,
     });
   const fetchExports = useEffectEvent(async (serverAddress: string) => {
     setLoadingExports(true);
@@ -554,12 +550,10 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
   mount,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_nfs.useMutation({
-      onSuccess: (result) => {
-        const removeResult = jobSnapshotResult(result);
+    linuxio.storage.unmount_nfs.useJobAction({
+      success: (result) => {
         if (mount?.mounted) {
           toast.success(
             mount.inFstab
@@ -569,18 +563,14 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
         } else {
           toast.success(`Removed saved entry for ${mount?.mountpoint}`);
         }
-        if (removeResult.warning) {
-          toast.warning(removeResult.warning);
+        if (result.warning) {
+          toast.warning(result.warning);
         }
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
-        });
         onSuccess();
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to remove entry"));
-      },
+      error: "Failed to remove entry",
+      toast: STORAGE_TOAST_META,
     });
 
   const handleRemove = () => {
@@ -662,8 +652,7 @@ const EditNFSForm: React.FC<EditNFSFormProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   // Server, export path, and mountpoint are the mount's fixed identity.
   const server = mount.server || "";
   const exportPath = mount.exportPath || "";
@@ -705,25 +694,18 @@ const EditNFSForm: React.FC<EditNFSFormProps> = ({
     });
   };
   const { mutate: remountNFS, isPending: isRemounting } =
-    linuxio.storage.remount_nfs.useMutation({
-      onSuccess: (result) => {
-        const remountResult = jobSnapshotResult(result);
-        if (remountResult.warning) {
-          toast.warning(remountResult.warning);
+    linuxio.storage.remount_nfs.useJobAction({
+      success: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
         } else {
           toast.success(`NFS mount options updated`);
         }
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
-        });
         onSuccess();
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to update mount options"),
-        );
-      },
+      error: "Failed to update mount options",
+      toast: STORAGE_TOAST_META,
     });
   const buildOptions = () => {
     const opts: string[] = [];
@@ -922,7 +904,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -941,35 +923,36 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   } = linuxio.storage.list_nfs_mounts.useQuery({
     refetchInterval: 10000,
   });
-  const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useMutation({
-    onSuccess: (result) => {
-      const mountResult = jobSnapshotResult(result);
-      if (mountResult.warning) {
-        toast.warning(mountResult.warning);
-      } else {
-        toast.success("NFS entry mounted");
-      }
-      setMountingMountpoint(null);
-      refetch();
+  const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useJobAction(
+    {
+      success: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("NFS entry mounted");
+        }
+        setMountingMountpoint(null);
+        refetch();
+      },
+      error: (error) => {
+        setMountingMountpoint(null);
+        toast.error(
+          getMutationErrorMessage(error, "Failed to mount NFS entry"),
+        );
+      },
     },
-    onError: (error: Error) => {
-      setMountingMountpoint(null);
-      toast.error(getMutationErrorMessage(error, "Failed to mount NFS entry"));
-    },
-  });
-  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useMutation({
-    onSuccess: (result, variables) => {
-      const unmountResult = jobSnapshotResult(result);
-      if (unmountResult.warning) {
-        toast.warning(unmountResult.warning);
+  );
+  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useJobAction({
+    success: (result, variables) => {
+      if (result.warning) {
+        toast.warning(result.warning);
       } else {
         toast.success(`Unmounted ${variables.mountpoint}`);
       }
       refetch();
     },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to unmount"));
-    },
+    error: "Failed to unmount",
+    toast: STORAGE_TOAST_META,
   });
   const handleMountNFS = useCallback(() => {
     if (nfsUnavailable) {

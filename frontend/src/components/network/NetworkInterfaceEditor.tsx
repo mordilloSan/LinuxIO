@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { linuxio, type NetworkInterface as BaseNI } from "@/api";
@@ -11,7 +10,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const NETWORK_TOAST_META = { href: "/network", label: "Open network" };
 
 /* ================= helpers ================= */
 
@@ -88,12 +88,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onSave,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/network", label: "Open network" });
+  const toast = useScopedToast(NETWORK_TOAST_META);
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
   const [prevIfaceName, setPrevIfaceName] = useState(iface.name);
-  const queryClient = useQueryClient();
 
   // Keep mode in sync with iface (render-time state adjustment)
   if (iface.ipv4_method !== prevIpv4Method) {
@@ -109,67 +108,36 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.network.set_ipv4.useMutation({
-      onSuccess: () => {
+    linuxio.network.set_ipv4.useJobAction({
+      success: () => {
         toast.success("Switched to DHCP mode");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
         onSave(iface);
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to set DHCP configuration"),
-        );
-      },
+      error: "Failed to set DHCP configuration",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.network.set_ipv4_manual.useMutation({
-      onSuccess: () => {
+    linuxio.network.set_ipv4_manual.useJobAction({
+      success: () => {
         toast.success("Manual configuration saved");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
         onSave(iface);
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(
-            error,
-            "Failed to save network configuration",
-          ),
-        );
-      },
+      error: "Failed to save network configuration",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.network.enable_connection.useMutation({
-      onSuccess: () => {
-        toast.success("Connection enabled");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to enable connection"),
-        );
-      },
+    linuxio.network.enable_connection.useJobAction({
+      success: "Connection enabled",
+      error: "Failed to enable connection",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.network.disable_connection.useMutation({
-      onSuccess: () => {
-        toast.success("Connection disabled");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to disable connection"),
-        );
-      },
+    linuxio.network.disable_connection.useJobAction({
+      success: "Connection disabled",
+      error: "Failed to disable connection",
+      toast: NETWORK_TOAST_META,
     });
   const saving = isSettingIPv4 || isSettingIPv4Manual;
   const toggling = isEnabling || isDisabling;

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import "./power-settings.css";
 
-import { jobSnapshotResult, linuxio, type PowerStatus } from "@/api";
+import { linuxio, type PowerStatus } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -14,7 +14,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const setPowerStatusCache = (
   queryClient: ReturnType<typeof useQueryClient>,
@@ -79,38 +78,25 @@ const PowerSettingsSection: React.FC = () => {
     refetchInterval: 15000,
   });
 
-  const commonMutationOptions = {
-    onSuccess: (nextStatus: PowerStatus) => {
-      setPowerStatusCache(queryClient, jobSnapshotResult(nextStatus));
+  const powerActionConfig = (message: string) => ({
+    success: (nextStatus: PowerStatus) => {
+      setPowerStatusCache(queryClient, nextStatus);
+      toast.success(message);
     },
-    onError: (err: Error) => {
-      toast.error(getMutationErrorMessage(err, "Power action failed"));
-    },
-  };
-
-  const startMutation = linuxio.power.start.useMutation({
-    ...commonMutationOptions,
-    onSuccess: (nextStatus) => {
-      commonMutationOptions.onSuccess(nextStatus);
-      toast.success("TuneD started");
-    },
+    error: "Power action failed",
   });
 
-  const setProfileMutation = linuxio.power.set_profile.useMutation({
-    ...commonMutationOptions,
-    onSuccess: (nextStatus) => {
-      commonMutationOptions.onSuccess(nextStatus);
-      toast.success("Power profile applied");
-    },
-  });
+  const startMutation = linuxio.power.start.useJobAction(
+    powerActionConfig("TuneD started"),
+  );
 
-  const disableMutation = linuxio.power.disable.useMutation({
-    ...commonMutationOptions,
-    onSuccess: (nextStatus) => {
-      commonMutationOptions.onSuccess(nextStatus);
-      toast.success("TuneD tunings disabled");
-    },
-  });
+  const setProfileMutation = linuxio.power.set_profile.useJobAction(
+    powerActionConfig("Power profile applied"),
+  );
+
+  const disableMutation = linuxio.power.disable.useJobAction(
+    powerActionConfig("TuneD tunings disabled"),
+  );
 
   const resolvedProfile = useMemo(() => {
     if (!status) return selectedProfile;

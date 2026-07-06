@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useRef, useState } from "react";
 
 import { linuxio, type NFSClient, type NFSExport } from "@/api";
@@ -26,7 +25,8 @@ import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const SHARES_TOAST_META = { href: "/shares", label: "Open shares" };
 
 interface NFSSharesProps {
   onCreateHandler?: (handler: () => void) => void;
@@ -252,8 +252,7 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(SHARES_TOAST_META);
   const [path, setPath] = useState("");
   const [clients, setClients] = useState<ClientRow[]>([
     { host: "*", opts: { ...defaultOpts } },
@@ -261,20 +260,14 @@ export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const { mutate: createShare, isPending } =
-    linuxio.shares.create_nfs_share.useMutation({
-      onSuccess: () => {
+    linuxio.shares.create_nfs_share.useJobAction({
+      success: () => {
         toast.success(`NFS export created for ${path}`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.shares.list_nfs_shares.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to create NFS export"),
-        );
-      },
+      error: "Failed to create NFS export",
+      toast: SHARES_TOAST_META,
     });
 
   const handleCreate = () => {
@@ -385,8 +378,7 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
   share,
   onSuccess,
 }) => {
-  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(SHARES_TOAST_META);
   const [clients, setClients] = useState<ClientRow[]>(() =>
     share
       ? nfsClientsToRows(share.clients)
@@ -394,20 +386,14 @@ export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
   );
 
   const { mutate: updateShare, isPending } =
-    linuxio.shares.update_nfs_share.useMutation({
-      onSuccess: () => {
+    linuxio.shares.update_nfs_share.useJobAction({
+      success: () => {
         toast.success(`NFS export updated for ${share?.path}`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.shares.list_nfs_shares.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to update NFS export"),
-        );
-      },
+      error: "Failed to update NFS export",
+      toast: SHARES_TOAST_META,
     });
 
   const handleSave = () => {
@@ -514,23 +500,16 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
   share,
   onSuccess,
 }) => {
-  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(SHARES_TOAST_META);
   const { mutate: deleteShare, isPending } =
-    linuxio.shares.delete_nfs_share.useMutation({
-      onSuccess: () => {
+    linuxio.shares.delete_nfs_share.useJobAction({
+      success: () => {
         toast.success(`Removed NFS export for ${share?.path}`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.shares.list_nfs_shares.queryKey(),
-        });
         onSuccess();
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to remove NFS export"),
-        );
-      },
+      error: "Failed to remove NFS export",
+      toast: SHARES_TOAST_META,
     });
 
   const handleDelete = () => {
@@ -585,7 +564,7 @@ const NFSShares: React.FC<NFSSharesProps> = ({
   onCreateHandler,
   viewMode = "table",
 }) => {
-  const toast = useScopedToast({ href: "/shares", label: "Open shares" });
+  const toast = useScopedToast(SHARES_TOAST_META);
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";

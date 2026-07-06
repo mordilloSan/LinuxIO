@@ -11,7 +11,7 @@ import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
 
-import { jobSnapshotResult, linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -27,13 +27,15 @@ import { useViewMode } from "@/hooks/useViewMode";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
 
 const DockerPage: React.FC = () => {
   const theme = useAppTheme();
   const [searchParams] = useSearchParams();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
     useCapability("watchtowerAvailable");
@@ -59,46 +61,25 @@ const DockerPage: React.FC = () => {
     () => containers.filter((c) => c.State === "running"),
     [containers],
   );
-  const invalidateDockerUpdateViews = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_containers.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_compose_projects.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_images.queryKey(),
-    });
-  }, [queryClient]);
   const { mutate: checkUpdates, isPending: isCheckingUpdates } =
-    linuxio.docker.check_updates.useMutation({
-      onSuccess: (data) => {
-        const result =
-          jobSnapshotResult<{
-            checked?: number;
-            updates?: number;
-          }>(data) ?? {};
-        const checked = result.checked ?? 0;
-        const updates = result.updates ?? 0;
+    linuxio.docker.check_updates.useJobAction({
+      success: (result) => {
+        const checked = result?.checked ?? 0;
+        const updates = result?.updates ?? 0;
         toast.success(
           `Checked ${checked} container(s), found ${updates} update(s)`,
         );
-        invalidateDockerUpdateViews();
       },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, "Failed to check updates")),
+      error: "Failed to check updates",
+      toast: DOCKER_TOAST_META,
     });
   const { mutate: startAllStopped, isPending: isStartingAll } =
-    linuxio.docker.start_all_stopped.useMutation({
-      onSuccess: (data: any) => {
-        const result = jobSnapshotResult<{ started: number }>(data);
+    linuxio.docker.start_all_stopped.useJobAction({
+      success: (result) => {
         toast.success(`Started ${result.started} container(s)`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
       },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, "Failed to start containers")),
+      error: "Failed to start containers",
+      toast: DOCKER_TOAST_META,
     });
   const { mutateAsync: stopContainer } =
     linuxio.docker.stop_container.useMutation();
@@ -136,25 +117,13 @@ const DockerPage: React.FC = () => {
     }
   }, [queryClient, runningContainers, stopContainer, toast]);
   const { mutate: systemPrune, isPending: isPruning } =
-    linuxio.docker.system_prune.useMutation({
-      onSuccess: () => {
+    linuxio.docker.system_prune.useJobAction({
+      success: () => {
         toast.success("Docker prune completed");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_images.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_volumes.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_networks.queryKey(),
-        });
         setPruneDialogOpen(false);
       },
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, "Prune failed")),
+      error: "Prune failed",
+      toast: DOCKER_TOAST_META,
     });
   const [containerView, setContainerView] = useViewMode(
     "docker.containers",

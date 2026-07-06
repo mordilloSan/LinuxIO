@@ -1,10 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
 
-import { jobSnapshotResult, linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -18,7 +17,6 @@ import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = React.lazy(
@@ -78,7 +76,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const queryClient = useQueryClient();
 
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
@@ -95,93 +92,44 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 
   // ---- actions (start/stop/restart/remove) ----
   const { mutate: startContainer, isPending: isStartPending } =
-    linuxio.docker.start_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} started successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to start container ${name}`),
-        );
-      },
+    linuxio.docker.start_container.useJobAction({
+      success: `Container ${name} started successfully`,
+      error: `Failed to start container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: stopContainer, isPending: isStopPending } =
-    linuxio.docker.stop_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} stopped successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to stop container ${name}`),
-        );
-      },
+    linuxio.docker.stop_container.useJobAction({
+      success: `Container ${name} stopped successfully`,
+      error: `Failed to stop container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: restartContainer, isPending: isRestartPending } =
-    linuxio.docker.restart_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} restarted successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to restart container ${name}`),
-        );
-      },
+    linuxio.docker.restart_container.useJobAction({
+      success: `Container ${name} restarted successfully`,
+      error: `Failed to restart container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
-    linuxio.docker.remove_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} removed successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to remove container ${name}`),
-        );
-      },
+    linuxio.docker.remove_container.useJobAction({
+      success: `Container ${name} removed successfully`,
+      error: `Failed to remove container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
-
-  const invalidateDockerUpdateViews = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_containers.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_compose_projects.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_images.queryKey(),
-    });
-  }, [queryClient]);
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useMutation({
-      onSuccess: (data) => {
-        const result = jobSnapshotResult<{ updated: boolean }>(data);
+    linuxio.docker.update_container.useJobAction({
+      success: (result) => {
         toast.success(
           result.updated
             ? `Container ${name} updated successfully`
             : `Container ${name} is already up to date`,
         );
-        invalidateDockerUpdateViews();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to update container ${name}`),
-        );
-      },
+      error: `Failed to update container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const isActionPending =

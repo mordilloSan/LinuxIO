@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { linuxio, type Peer } from "@/api";
@@ -10,6 +9,9 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const WIREGUARD_TOAST_META = { href: "/wireguard", label: "Open WireGuard" };
+
 interface InterfaceDetailsProps {
   params: {
     id: string;
@@ -17,12 +19,11 @@ interface InterfaceDetailsProps {
 }
 
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
-  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
+  const toast = useScopedToast(WIREGUARD_TOAST_META);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
   const [isLoadingQrCode, setIsLoadingQrCode] = useState(false);
-  const queryClient = useQueryClient();
   const interfaceName = params.id;
 
   // Update current time every 3 seconds (matches refetchInterval)
@@ -43,15 +44,11 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   });
 
   // Mutations
-  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useMutation({
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: linuxio.wireguard.list_peers.queryKey(interfaceName),
-      });
-    },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to delete peer"));
-    },
+  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useJobAction({
+    success: (_result, variables) =>
+      toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
+    error: "Failed to delete peer",
+    toast: WIREGUARD_TOAST_META,
   });
   // Type-safe API returns Peer[] directly
   const peers: Peer[] = useMemo(() => peersData || [], [peersData]);
@@ -68,14 +65,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     });
   }, [peers, currentTime]);
   const handleDeletePeer = (peerName: string) => {
-    deletePeer(
-      { interfaceName, peerName },
-      {
-        onSuccess: () => {
-          toast.success(`WireGuard Peer '${peerName}' deleted`);
-        },
-      },
-    );
+    deletePeer({ interfaceName, peerName });
   };
   const handleDownloadConfig = async (peername: string) => {
     try {

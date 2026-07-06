@@ -114,17 +114,11 @@ const Page: React.FC = () => {
     [effectiveSelectedName, queryClient],
   );
 
-  const mutationOptions = useCallback(
-    (successText: string, fallback: string) => ({
-      onError: (err: Error) =>
-        toast.error(getMutationErrorMessage(err, fallback)),
-      onSuccess: () => {
-        toast.success(successText);
-        invalidateVMs();
-      },
-    }),
-    [invalidateVMs, toast],
-  );
+  const actionConfig = (successText: string, fallback: string) => ({
+    success: successText,
+    error: fallback,
+    toast: VM_TOAST,
+  });
 
   const createMutation = useMutation<VirtualMachine, Error, VMCreateRequest>({
     mutationFn: async (request) => {
@@ -194,23 +188,23 @@ const Page: React.FC = () => {
       });
     },
   });
-  const startMutation = linuxio.virt.start.useMutation(
-    mutationOptions("VM started", "Failed to start VM"),
+  const startMutation = linuxio.virt.start.useJobAction(
+    actionConfig("VM started", "Failed to start VM"),
   );
-  const shutdownMutation = linuxio.virt.shutdown.useMutation(
-    mutationOptions("VM shutdown requested", "Failed to shutdown VM"),
+  const shutdownMutation = linuxio.virt.shutdown.useJobAction(
+    actionConfig("VM shutdown requested", "Failed to shutdown VM"),
   );
-  const rebootMutation = linuxio.virt.reboot.useMutation(
-    mutationOptions("VM reboot requested", "Failed to reboot VM"),
+  const rebootMutation = linuxio.virt.reboot.useJobAction(
+    actionConfig("VM reboot requested", "Failed to reboot VM"),
   );
-  const forceOffMutation = linuxio.virt.force_off.useMutation(
-    mutationOptions("VM powered off", "Failed to force off VM"),
+  const forceOffMutation = linuxio.virt.force_off.useJobAction(
+    actionConfig("VM powered off", "Failed to force off VM"),
   );
-  const suspendMutation = linuxio.virt.suspend.useMutation(
-    mutationOptions("VM suspended", "Failed to suspend VM"),
+  const suspendMutation = linuxio.virt.suspend.useJobAction(
+    actionConfig("VM suspended", "Failed to suspend VM"),
   );
-  const resumeMutation = linuxio.virt.resume.useMutation(
-    mutationOptions("VM resumed", "Failed to resume VM"),
+  const resumeMutation = linuxio.virt.resume.useJobAction(
+    actionConfig("VM resumed", "Failed to resume VM"),
   );
 
   const actionPending =

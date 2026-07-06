@@ -14,7 +14,7 @@ import {
 } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
 
-import { linuxio, openJobAttachStream, type Stream, useStreamMux } from "@/api";
+import { linuxio, type Stream, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
   type AppDialogCloseEvent,
@@ -25,7 +25,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 
 interface ComposeOperationDialogProps {
@@ -55,9 +54,10 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const streamRef = useRef<Stream | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  const startRequestedRef = useRef(false);
+  const progressErrorRef = useRef(false);
   const closedByUserRef = useRef(false);
   const { isOpen: muxIsOpen } = useStreamMux();
-  const { run: runStreamResult } = useStreamResult();
 
   const closeJobStream = useCallback(() => {
     if (streamRef.current) {
@@ -65,7 +65,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       streamRef.current = null;
     }
     abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
   }, []);
 
   const resetState = useCallback(() => {
@@ -77,6 +76,9 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     setError(null);
     setSuccess(false);
     jobIdRef.current = null;
+    startRequestedRef.current = false;
+    progressErrorRef.current = false;
+    abortControllerRef.current = null;
     closedByUserRef.current = false;
   }, [closeJobStream]);
 
@@ -93,102 +95,91 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
   }, [open, closeJobStream]);
 
+  const { mutate: runComposeOperation } =
+    linuxio.docker.compose.useJobStreamAction<ComposeMessage, ComposeMessage>({
+      closeMessage: "Compose operation stream closed unexpectedly",
+      closeOnAbort: "none",
+      error: (streamError) => {
+        if (closedByUserRef.current || progressErrorRef.current) return;
+        const message =
+          streamError.message || "Failed to start compose operation";
+        setError(message);
+        toast.error(`Failed to ${action} stack: ${message}`);
+      },
+      invalidates: [
+        linuxio.docker.list_compose_projects.queryKey(),
+        linuxio.docker.list_containers.queryKey(),
+      ],
+      onJobStart: (job) => {
+        jobIdRef.current = job.id;
+      },
+      onOpen: (stream) => {
+        streamRef.current = stream;
+      },
+      onProgress: (msg) => {
+        switch (msg.type) {
+          case "progress": {
+            setTasks((prev) => mergeTask(prev, msg.progress));
+            // Keep the raw log meaningful and bounded: record milestones
+            // (status changes / completions), not every download tick.
+            const { text, status } = msg.progress;
+            if (
+              status === "Done" ||
+              (text !== "Downloading" && text !== "Extracting")
+            ) {
+              setOutput((prev) => [...prev, msg.message]);
+            }
+            break;
+          }
+          case "stdout":
+          case "stderr":
+            setOutput((prev) => [...prev, msg.message]);
+            break;
+          case "error":
+            progressErrorRef.current = true;
+            setError(msg.message);
+            setIsRunning(false);
+            toast.error(`Failed to ${action} stack: ${msg.message}`);
+            break;
+          case "complete":
+            setSuccess(true);
+            setIsRunning(false);
+            setOutput((prev) => [...prev, "✓ " + msg.message]);
+            break;
+        }
+      },
+      openErrorMessage: "Failed to attach compose operation",
+      options: {
+        onSettled: () => {
+          if (!closedByUserRef.current) {
+            setIsRunning(false);
+          }
+          streamRef.current = null;
+          abortControllerRef.current = null;
+          startRequestedRef.current = false;
+        },
+      },
+      signal: () => abortControllerRef.current?.signal,
+      success: (msg) => {
+        if (msg?.type === "complete") {
+          setSuccess(true);
+        }
+      },
+    });
+
   useEffect(() => {
     if (!open || !muxIsOpen) return;
-    if (streamRef.current || jobIdRef.current) return;
+    if (streamRef.current || jobIdRef.current || startRequestedRef.current) {
+      return;
+    }
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
     closedByUserRef.current = false;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const job = await linuxio.docker.compose({
-          action,
-          projectName,
-          composePath,
-        });
-        if (cancelled) {
-          return;
-        }
-        jobIdRef.current = job.id;
-
-        await runStreamResult<ComposeMessage, ComposeMessage>({
-          open: () => openJobAttachStream(job.id),
-          signal: abortController.signal,
-          closeOnAbort: "none",
-          openErrorMessage: "Failed to attach compose operation",
-          closeMessage: "Compose operation stream closed unexpectedly",
-          onOpen: (stream) => {
-            streamRef.current = stream;
-          },
-          onProgress: (msg) => {
-            switch (msg.type) {
-              case "progress": {
-                setTasks((prev) => mergeTask(prev, msg.progress));
-                // Keep the raw log meaningful and bounded: record milestones
-                // (status changes / completions), not every download tick.
-                const { text, status } = msg.progress;
-                if (
-                  status === "Done" ||
-                  (text !== "Downloading" && text !== "Extracting")
-                ) {
-                  setOutput((prev) => [...prev, msg.message]);
-                }
-                break;
-              }
-              case "stdout":
-              case "stderr":
-                setOutput((prev) => [...prev, msg.message]);
-                break;
-              case "error":
-                setError(msg.message);
-                setIsRunning(false);
-                toast.error(`Failed to ${action} stack: ${msg.message}`);
-                break;
-              case "complete":
-                setSuccess(true);
-                setIsRunning(false);
-                setOutput((prev) => [...prev, "✓ " + msg.message]);
-                break;
-            }
-          },
-          onSuccess: (msg) => {
-            if (msg?.type === "complete") {
-              setSuccess(true);
-            }
-          },
-        });
-      } catch (streamError) {
-        if (closedByUserRef.current) return;
-        const message =
-          streamError instanceof Error
-            ? streamError.message
-            : "Failed to start compose operation";
-        setError(message);
-        toast.error(`Failed to ${action} stack: ${message}`);
-      } finally {
-        if (!closedByUserRef.current) {
-          setIsRunning(false);
-        }
-        streamRef.current = null;
-        abortControllerRef.current = null;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    open,
-    action,
-    projectName,
-    composePath,
-    muxIsOpen,
-    runStreamResult,
-    toast,
-  ]);
+    progressErrorRef.current = false;
+    startRequestedRef.current = true;
+    runComposeOperation({ action, projectName, composePath });
+  }, [open, action, projectName, composePath, muxIsOpen, runComposeOperation]);
 
   const getActionLabel = () => {
     switch (action) {

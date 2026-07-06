@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import type { RowData } from "@tanstack/react-table";
 import { motion } from "framer-motion";
 import React from "react";
@@ -20,13 +19,11 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
 import AppVirtualGrid from "@/components/virtual/AppVirtualGrid";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type { UnitListItem } from "@/components/cards/UnitCard";
 export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -36,6 +33,7 @@ export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 const UNIT_CARD_GRID_GAP = 12;
 const UNIT_CARD_MIN_WIDTH = 360;
 const UNIT_CARD_ESTIMATE_HEIGHT = 150;
+const SERVICES_TOAST_META = { href: "/services", label: "Open services" };
 
 interface UnitTableViewProps<T> {
   data: T[];
@@ -234,50 +232,30 @@ export const UnitCardActions: React.FC<{
   unitFileState: string;
   info: UnitInfo | undefined;
 }> = ({ unitName, activeState, unitFileState, info }) => {
-  const toast = useScopedToast({ href: "/services", label: "Open services" });
-  const queryClient = useQueryClient();
-
-  const invalidateUnit = React.useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.systemd.list_services.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.systemd.get_unit_info.queryKey(unitName),
-    });
-  }, [queryClient, unitName]);
-
-  const makeHandlers = React.useCallback(
-    (verb: string) => ({
-      onSuccess: () => {
-        toast.success(`${unitName} ${verb}`);
-        invalidateUnit();
-      },
-      onError: (err: Error) =>
-        toast.error(
-          getMutationErrorMessage(err, `Failed to ${verb} ${unitName}`),
-        ),
-    }),
-    [unitName, invalidateUnit, toast],
-  );
+  const actionConfig = (verb: string) => ({
+    success: `${unitName} ${verb}`,
+    error: `Failed to ${verb} ${unitName}`,
+    toast: SERVICES_TOAST_META,
+  });
 
   const { mutate: startService, isPending: isStarting } =
-    linuxio.systemd.start_service.useMutation(makeHandlers("started"));
+    linuxio.systemd.start_service.useJobAction(actionConfig("started"));
   const { mutate: stopService, isPending: isStopping } =
-    linuxio.systemd.stop_service.useMutation(makeHandlers("stopped"));
+    linuxio.systemd.stop_service.useJobAction(actionConfig("stopped"));
   const { mutate: restartService, isPending: isRestarting } =
-    linuxio.systemd.restart_service.useMutation(makeHandlers("restarted"));
+    linuxio.systemd.restart_service.useJobAction(actionConfig("restarted"));
   const { mutate: reloadService, isPending: isReloading } =
-    linuxio.systemd.reload_service.useMutation(makeHandlers("reloaded"));
+    linuxio.systemd.reload_service.useJobAction(actionConfig("reloaded"));
   const { mutate: enableService, isPending: isEnabling } =
-    linuxio.systemd.enable_service.useMutation(makeHandlers("enabled"));
+    linuxio.systemd.enable_service.useJobAction(actionConfig("enabled"));
   const { mutate: disableService, isPending: isDisabling } =
-    linuxio.systemd.disable_service.useMutation(makeHandlers("disabled"));
+    linuxio.systemd.disable_service.useJobAction(actionConfig("disabled"));
   const { mutate: maskService, isPending: isMasking } =
-    linuxio.systemd.mask_service.useMutation(makeHandlers("masked"));
+    linuxio.systemd.mask_service.useJobAction(actionConfig("masked"));
   const { mutate: unmaskService, isPending: isUnmasking } =
-    linuxio.systemd.unmask_service.useMutation(makeHandlers("unmasked"));
+    linuxio.systemd.unmask_service.useJobAction(actionConfig("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    linuxio.systemd.reset_failed_service.useMutation(makeHandlers("reset"));
+    linuxio.systemd.reset_failed_service.useJobAction(actionConfig("reset"));
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";

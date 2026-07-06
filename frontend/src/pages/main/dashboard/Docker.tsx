@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -30,7 +29,6 @@ const DockerInfo: React.FC = () => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
-  const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
     id: string;
@@ -64,20 +62,14 @@ const DockerInfo: React.FC = () => {
     },
     [theme],
   );
-  const invalidateContainers = useCallback(
-    () =>
-      queryClient.invalidateQueries({
-        queryKey: linuxio.docker.list_containers.queryKey(),
-      }),
-    [queryClient],
-  );
   const { mutate: startContainer } =
-    linuxio.docker.start_container.useMutation();
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation();
+    linuxio.docker.start_container.useJobAction();
+  const { mutate: stopContainer } =
+    linuxio.docker.stop_container.useJobAction();
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useMutation();
+    linuxio.docker.restart_container.useJobAction();
   const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useMutation();
+    linuxio.docker.remove_container.useJobAction();
   const handleContextMenu = useCallback(
     (
       e: React.MouseEvent<HTMLElement>,
@@ -109,7 +101,6 @@ const DockerInfo: React.FC = () => {
           toast.success(
             `Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`,
           );
-          invalidateContainers();
         },
         onError: (e: Error) => {
           toast.error(
@@ -130,7 +121,6 @@ const DockerInfo: React.FC = () => {
       restartContainer,
       removeContainer,
       handleMenuClose,
-      invalidateContainers,
       toast,
     ],
   );

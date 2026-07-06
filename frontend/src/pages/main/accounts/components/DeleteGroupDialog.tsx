@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface DeleteGroupDialogProps {
   groupNames: string[];
@@ -29,16 +30,13 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
   onSuccess,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const queryClient = useQueryClient();
 
   const { mutateAsync: deleteGroup, isPending: isDeleting } =
-    linuxio.accounts.delete_group.useMutation({
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to delete group(s)"),
-        );
-      },
+    linuxio.accounts.delete_group.useJobAction({
+      error: "Failed to delete group(s)",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleDelete = async () => {

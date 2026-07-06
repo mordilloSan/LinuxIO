@@ -16,7 +16,8 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const UPDATES_TOAST_META = { href: "/updates", label: "Open updates" };
 
 const Updates: React.FC = () => {
   const theme = useAppTheme();
@@ -34,7 +35,7 @@ const Updates: React.FC = () => {
     enabled: !packageKitUnavailable,
     refetchInterval: 50000,
   });
-  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
+  const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
   const {
@@ -49,15 +50,13 @@ const Updates: React.FC = () => {
     clearError,
   } = usePackageUpdater(refetch);
   const { mutate: refreshCache, isPending: isRefreshingCache } =
-    linuxio.updates.refresh_cache.useMutation({
-      onSuccess: async () => {
+    linuxio.updates.refresh_cache.useJobAction({
+      success: async () => {
         await refetch();
         toast.success("Update sources refreshed");
       },
-      onError: (err: Error) =>
-        toast.error(
-          getMutationErrorMessage(err, "Failed to refresh update sources"),
-        ),
+      error: "Failed to refresh update sources",
+      toast: UPDATES_TOAST_META,
     });
   const packageOperationPending = !!updatingPackage || isRefreshingCache;
 

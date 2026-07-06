@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -15,7 +14,8 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const DASHBOARD_TOAST_META = { href: "/", label: "Open dashboard" };
 
 type TimeMode = "auto" | "custom" | "manual";
 
@@ -50,8 +50,7 @@ interface Props {
 
 const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/", label: "Open dashboard" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(DASHBOARD_TOAST_META);
 
   const { data: timezones = [] } = linuxio.system.get_timezones.useQuery({
     enabled: open,
@@ -112,25 +111,24 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
     setManualTime(toDatetimeLocal(serverTime));
   }
 
-  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useMutation({
-    onError: (e: Error) =>
-      toast.error(getMutationErrorMessage(e, "Failed to set timezone")),
+  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useJobAction({
+    error: "Failed to set timezone",
+    toast: DASHBOARD_TOAST_META,
   });
-  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useMutation({
-    onError: (e: Error) =>
-      toast.error(getMutationErrorMessage(e, "Failed to update NTP")),
+  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useJobAction({
+    error: "Failed to update NTP",
+    toast: DASHBOARD_TOAST_META,
   });
   const { mutateAsync: setServers } =
-    linuxio.datetime.set_ntp_servers.useMutation({
-      onError: (e: Error) =>
-        toast.error(getMutationErrorMessage(e, "Failed to set NTP servers")),
+    linuxio.datetime.set_ntp_servers.useJobAction({
+      error: "Failed to set NTP servers",
+      toast: DASHBOARD_TOAST_META,
     });
-  const { mutateAsync: setTime } = linuxio.datetime.set_server_time.useMutation(
-    {
-      onError: (e: Error) =>
-        toast.error(getMutationErrorMessage(e, "Failed to set server time")),
-    },
-  );
+  const { mutateAsync: setTime } =
+    linuxio.datetime.set_server_time.useJobAction({
+      error: "Failed to set server time",
+      toast: DASHBOARD_TOAST_META,
+    });
 
   const [isPending, setIsPending] = useState(false);
 
@@ -159,18 +157,6 @@ const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
         await setTime({ isoTime: new Date(manualTime).toISOString() });
       }
       toast.success("Date/time settings updated");
-      queryClient.invalidateQueries({
-        queryKey: linuxio.system.get_server_time.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: linuxio.datetime.get_ntp_status.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: linuxio.datetime.get_ntp_servers.queryKey(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: linuxio.datetime.get_timezone.queryKey(),
-      });
       onClose();
     } catch {
       // individual errors already toasted by mutation onError

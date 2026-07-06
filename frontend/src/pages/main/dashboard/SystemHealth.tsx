@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -99,7 +98,6 @@ function failedLoginDetail(
 const SystemHealth = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const [failedLoginsOpen, setFailedLoginsOpen] = React.useState(false);
 
@@ -123,21 +121,12 @@ const SystemHealth = () => {
   );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    linuxio.system.dismiss_unclean_shutdown.useMutation({
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: linuxio.system.get_health_summary.queryKey(),
-        });
-      },
-    });
+    linuxio.system.dismiss_unclean_shutdown.useJobAction();
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useMutation({
-      onSuccess: () => {
+    linuxio.system.dismiss_failed_login_alert.useJobAction({
+      success: () => {
         setFailedLoginsOpen(false);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.system.get_health_summary.queryKey(),
-        });
       },
     });
 

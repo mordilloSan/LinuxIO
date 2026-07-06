@@ -7,12 +7,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  CACHE_TTL_MS,
-  jobSnapshotResult,
-  linuxio,
-  type CIFSMount,
-} from "@/api";
+import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -39,7 +34,8 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
 
 interface CIFSMountsProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -79,7 +75,7 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [server, setServer] = useState("");
   const [share, setShare] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -94,25 +90,18 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { mutate: mountCIFS, isPending: isMounting } =
-    linuxio.storage.mount_cifs.useMutation({
-      onSuccess: (result) => {
-        const mountResult = jobSnapshotResult(result);
-        if (mountResult.warning) {
-          toast.warning(mountResult.warning);
+    linuxio.storage.mount_cifs.useJobAction({
+      success: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
         } else {
           toast.success(`SMB share mounted at ${mountpoint}`);
         }
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_cifs_mounts.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to mount SMB share"),
-        );
-      },
+      error: "Failed to mount SMB share",
+      toast: STORAGE_TOAST_META,
     });
 
   const fetchShares = useEffectEvent(async (serverAddress: string) => {
@@ -320,21 +309,19 @@ const RemoveCIFSDialog: React.FC<RemoveCIFSDialogProps> = ({
   mount,
   onSuccess,
 }) => {
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_cifs.useMutation({
-      onSuccess: (result) => {
-        const removeResult = jobSnapshotResult(result);
+    linuxio.storage.unmount_cifs.useJobAction({
+      success: (result) => {
         toast.success(`Removed ${mount?.mountpoint}`);
-        if (removeResult.warning) {
-          toast.warning(removeResult.warning);
+        if (result.warning) {
+          toast.warning(result.warning);
         }
         onSuccess();
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to remove entry"));
-      },
+      error: "Failed to remove entry",
+      toast: STORAGE_TOAST_META,
     });
 
   const handleRemove = () => {
@@ -397,7 +384,7 @@ const EditCIFSForm: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ mount, onClose, onSuccess }) => {
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [readOnly, setReadOnly] = useState(
     (mount.options ?? []).includes("ro"),
   );
@@ -406,22 +393,18 @@ const EditCIFSForm: React.FC<{
   );
 
   const { mutate: remountCIFS, isPending: isSaving } =
-    linuxio.storage.remount_cifs.useMutation({
-      onSuccess: (result) => {
-        const remountResult = jobSnapshotResult(result);
-        if (remountResult.warning) {
-          toast.warning(remountResult.warning);
+    linuxio.storage.remount_cifs.useJobAction({
+      success: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
         } else {
           toast.success("SMB mount options updated");
         }
         onSuccess();
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to update mount options"),
-        );
-      },
+      error: "Failed to update mount options",
+      toast: STORAGE_TOAST_META,
     });
 
   const handleSave = () => {
@@ -502,7 +485,7 @@ const EditCIFSForm: React.FC<{
 };
 
 const CIFSMounts: React.FC<CIFSMountsProps> = ({ onMountCreateHandler }) => {
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: cifsReason, status: cifsStatus } = useCapability(
     "sambaClientAvailable",
   );
@@ -521,34 +504,30 @@ const CIFSMounts: React.FC<CIFSMountsProps> = ({ onMountCreateHandler }) => {
     refetchInterval: 10000,
   });
 
-  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useMutation({
-    onSuccess: (result) => {
-      const mountResult = jobSnapshotResult(result);
-      if (mountResult.warning) {
-        toast.warning(mountResult.warning);
+  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useJobAction({
+    success: (result) => {
+      if (result.warning) {
+        toast.warning(result.warning);
       } else {
         toast.success("SMB entry mounted");
       }
       refetch();
     },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to mount SMB entry"));
-    },
+    error: "Failed to mount SMB entry",
+    toast: STORAGE_TOAST_META,
   });
 
-  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useMutation({
-    onSuccess: (result, variables) => {
-      const unmountResult = jobSnapshotResult(result);
-      if (unmountResult.warning) {
-        toast.warning(unmountResult.warning);
+  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useJobAction({
+    success: (result, variables) => {
+      if (result.warning) {
+        toast.warning(result.warning);
       } else {
         toast.success(`Unmounted ${variables.mountpoint}`);
       }
       refetch();
     },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to unmount"));
-    },
+    error: "Failed to unmount",
+    toast: STORAGE_TOAST_META,
   });
 
   const handleCreate = useCallback(() => {

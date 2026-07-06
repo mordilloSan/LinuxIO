@@ -101,6 +101,33 @@ vi.mock("@/api", async (importOriginal) => {
     },
     mutateAsync: fn,
   });
+  // Mirrors useJobAction: on success runs invalidates -> success ->
+  // options.onSuccess, with the unwrapped job result (undefined here).
+  const jobAction = (
+    fn: (request: unknown) => unknown,
+    config?: {
+      invalidates?:
+        unknown[] | ((result: unknown, variables: unknown) => unknown[]);
+      success?: string | ((result: unknown, variables: unknown) => void);
+      error?: string | ((error: unknown, variables: unknown) => void);
+      options?: { onSuccess?: (result: unknown, variables: unknown) => void };
+    },
+    result?: unknown,
+  ) => ({
+    isPending: false,
+    mutate: (request: unknown) => {
+      fn(request);
+      if (typeof config?.invalidates === "function") {
+        config.invalidates(result, request);
+      }
+      if (typeof config?.success === "function") {
+        config.success(result, request);
+      }
+      config?.options?.onSuccess?.(result, request);
+    },
+    mutateAsync: fn,
+  });
+  type JobActionConfig = Parameters<typeof jobAction>[1];
   const resourceGet = Object.assign(mocks.resourceGet, {
     queryKey: (request: { path: string }) => [
       "linuxio",
@@ -132,7 +159,8 @@ vi.mock("@/api", async (importOriginal) => {
             mutation(mocks.mutations.delete, options, {}),
         }),
         force_off: {
-          useMutation: () => mutation(mocks.mutations.forceOff),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.forceOff, config),
         },
         get: {
           queryKey: (name: string) => ["linuxio", "virt", "get", { name }],
@@ -152,19 +180,24 @@ vi.mock("@/api", async (importOriginal) => {
           useQuery: () => ({ data: mocks.preflight, refetch: vi.fn() }),
         },
         reboot: {
-          useMutation: () => mutation(mocks.mutations.reboot),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.reboot, config),
         },
         resume: {
-          useMutation: () => mutation(mocks.mutations.resume),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.resume, config),
         },
         shutdown: {
-          useMutation: () => mutation(mocks.mutations.shutdown),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.shutdown, config),
         },
         start: {
-          useMutation: () => mutation(mocks.mutations.start),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.start, config),
         },
         suspend: {
-          useMutation: () => mutation(mocks.mutations.suspend),
+          useJobAction: (config?: JobActionConfig) =>
+            jobAction(mocks.mutations.suspend, config),
         },
       },
     },

@@ -35,6 +35,8 @@ import {
 import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -134,25 +136,20 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
   onClose,
   existingNames,
 }) => {
-  const queryClient = useQueryClient();
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
 
   const { mutate: createNetwork, isPending: isCreating } =
-    linuxio.docker.create_network.useMutation({
-      onSuccess: () => {
+    linuxio.docker.create_network.useJobAction({
+      success: () => {
         toast.success(`Network "${networkName}" created successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_networks.queryKey(),
-        });
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to create network"));
-      },
+      error: "Failed to create network",
+      toast: DOCKER_TOAST_META,
     });
 
   const nameTaken = networkName && existingNames.includes(networkName);
@@ -255,7 +252,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
 
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
     linuxio.docker.delete_network.useMutation({

@@ -6,7 +6,6 @@ import {
   type AutoUpdateRebootPolicy,
   type AutoUpdateScope,
   type AutoUpdateState,
-  jobSnapshotResult,
   linuxio,
 } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -19,6 +18,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const UPDATES_TOAST_META = { href: "/updates", label: "Open updates" };
+
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
@@ -29,14 +31,11 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   },
 });
 export const useUpdateSettingsState = (enabled = true) => {
-  const {
-    data: rawServerState,
-    isPending: loading,
-    refetch,
-  } = linuxio.updates.get_auto_updates.useQuery({
-    enabled,
-  });
-  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
+  const { data: rawServerState, isPending: loading } =
+    linuxio.updates.get_auto_updates.useQuery({
+      enabled,
+    });
+  const toast = useScopedToast(UPDATES_TOAST_META);
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
@@ -62,25 +61,19 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride(null);
   };
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    linuxio.updates.set_auto_updates.useMutation({
-      onSuccess: () => {
+    linuxio.updates.set_auto_updates.useJobAction({
+      success: () => {
         reset();
-        refetch();
         toast.success("Automatic Updates Settings saved");
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to save auto-update settings"),
-        );
-      },
+      error: "Failed to save auto-update settings",
+      toast: UPDATES_TOAST_META,
     });
   const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
-    linuxio.updates.apply_offline_updates.useMutation({
-      onSuccess: (result) => {
-        const updateResult = jobSnapshotResult(result);
-        if (updateResult?.status && updateResult.status !== "ok") {
-          const errMsg =
-            updateResult.error || "Failed to schedule offline update";
+    linuxio.updates.apply_offline_updates.useJobAction({
+      success: (result) => {
+        if (result?.status && result.status !== "ok") {
+          const errMsg = result.error || "Failed to schedule offline update";
           if (
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")
@@ -91,7 +84,7 @@ export const useUpdateSettingsState = (enabled = true) => {
         }
         toast.success("Offline update scheduled for next reboot");
       },
-      onError: (error: Error) => {
+      error: (error) => {
         const errMsg = error?.message || String(error);
         if (
           errMsg.includes("no updates available") ||

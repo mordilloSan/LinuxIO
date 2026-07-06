@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -11,7 +10,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface ChangePasswordDialogProps {
   onClose: () => void;
@@ -24,25 +24,18 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   onClose,
   username,
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const { mutate: changePassword, isPending } =
-    linuxio.accounts.change_password.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.change_password.useJobAction({
+      success: () => {
         toast.success(`Password changed for "${username}"`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to change password"),
-        );
-      },
+      error: "Failed to change password",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleClose = () => {

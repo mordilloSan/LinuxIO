@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import DeleteUserDialog from "./DeleteUserDialog";
@@ -17,7 +16,8 @@ import {
 import AppTextField from "@/components/ui/AppTextField";
 import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface EditUserDialogProps {
   onClose: () => void;
@@ -30,8 +30,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onClose,
   user,
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const { user: currentUser } = useAuth();
   const [fullName, setFullName] = useState(user.gecos);
   const [homeDir, setHomeDir] = useState(user.homeDir);
@@ -51,17 +50,13 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   const groupsList = Array.isArray(groups) ? groups : [];
 
   const { mutate: modifyUser, isPending } =
-    linuxio.accounts.modify_user.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.modify_user.useJobAction({
+      success: () => {
         toast.success(`User "${user.username}" updated successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to update user"));
-      },
+      error: "Failed to update user",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleSubmit = () => {

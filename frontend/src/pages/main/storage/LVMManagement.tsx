@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 
 import {
@@ -31,7 +30,8 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
 
 interface LVMManagementProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -86,30 +86,20 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   volumeGroups,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const { mutate: createLV, isPending: isCreating } =
-    linuxio.storage.create_lv.useMutation({
-      onSuccess: () => {
+    linuxio.storage.create_lv.useJobAction({
+      success: () => {
         toast.success(`Logical volume ${lvName} created successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_lvs.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_vgs.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to create logical volume"),
-        );
-      },
+      error: "Failed to create logical volume",
+      toast: STORAGE_TOAST_META,
     });
   const handleCreate = () => {
     if (!vgName || !lvName || !size) {
@@ -215,30 +205,20 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [newSize, setNewSize] = useState(() =>
     lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
   );
   const [validationError, setValidationError] = useState<string | null>(null);
   const { mutate: resizeLV, isPending: isResizing } =
-    linuxio.storage.resize_lv.useMutation({
-      onSuccess: () => {
+    linuxio.storage.resize_lv.useJobAction({
+      success: () => {
         toast.success(`Logical volume ${lv?.name} resized successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_lvs.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_vgs.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to resize logical volume"),
-        );
-      },
+      error: "Failed to resize logical volume",
+      toast: STORAGE_TOAST_META,
     });
   const handleResize = () => {
     if (!lv || !newSize) {
@@ -325,26 +305,16 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: deleteLV, isPending: isDeleting } =
-    linuxio.storage.delete_lv.useMutation({
-      onSuccess: () => {
+    linuxio.storage.delete_lv.useJobAction({
+      success: () => {
         toast.success(`Logical volume ${lv?.name} deleted successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_lvs.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.storage.list_vgs.queryKey(),
-        });
         onSuccess();
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to delete logical volume"),
-        );
-      },
+      error: "Failed to delete logical volume",
+      toast: STORAGE_TOAST_META,
     });
   const handleDelete = () => {
     if (!lv) return;

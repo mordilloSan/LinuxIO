@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -11,7 +10,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const DASHBOARD_TOAST_META = { href: "/", label: "Open dashboard" };
 
 interface Props {
   current: string;
@@ -20,21 +20,16 @@ interface Props {
 }
 
 const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
-  const toast = useScopedToast({ href: "/", label: "Open dashboard" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(DASHBOARD_TOAST_META);
   const [hostname, setHostname] = useState(current);
 
-  const { mutate, isPending } = linuxio.hostname.set_hostname.useMutation({
-    onSuccess: () => {
+  const { mutate, isPending } = linuxio.hostname.set_hostname.useJobAction({
+    success: () => {
       toast.success("Hostname updated successfully");
-      queryClient.invalidateQueries({
-        queryKey: linuxio.system.get_host_info.queryKey(),
-      });
       onClose();
     },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to update hostname"));
-    },
+    error: "Failed to update hostname",
+    toast: DASHBOARD_TOAST_META,
   });
 
   const isValid = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(

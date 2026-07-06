@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -16,9 +15,9 @@ import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { responsiveTextStyles } from "@/theme/tableStyles";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -29,8 +28,6 @@ const UsersTab: React.FC<UsersTabProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({
     refetchInterval: 10000,
@@ -97,28 +94,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
     setPasswordDialogOpen(true);
   };
   const { mutate: lockUser, isPending: isLocking } =
-    linuxio.accounts.lock_user.useMutation({
-      onSuccess: () => {
-        toast.success("User locked successfully");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to lock user"));
-      },
+    linuxio.accounts.lock_user.useJobAction({
+      success: "User locked successfully",
+      error: "Failed to lock user",
+      toast: ACCOUNTS_TOAST_META,
     });
   const { mutate: unlockUser, isPending: isUnlocking } =
-    linuxio.accounts.unlock_user.useMutation({
-      onSuccess: () => {
-        toast.success("User unlocked successfully");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to unlock user"));
-      },
+    linuxio.accounts.unlock_user.useJobAction({
+      success: "User unlocked successfully",
+      error: "Failed to unlock user",
+      toast: ACCOUNTS_TOAST_META,
     });
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;

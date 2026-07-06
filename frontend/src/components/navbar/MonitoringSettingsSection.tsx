@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import {
   CACHE_TTL_MS,
-  jobSnapshotResult,
   linuxio,
   type MonitoringConfig,
   type MonitoringConfigPatch,
@@ -248,8 +247,16 @@ const MonitoringSettingsSection: React.FC = () => {
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
-  const setConfigMutation = linuxio.monitoring.set_config.useMutation();
-  const restartMutation = linuxio.monitoring.restart.useMutation();
+  const setConfigMutation = linuxio.monitoring.set_config.useJobAction();
+  const restartMutation = linuxio.monitoring.restart.useJobAction({
+    success: () => {
+      setRestartRequired(false);
+      toast.success("go-monitoring restarted");
+      void refetch();
+      void refetchStatus();
+    },
+    error: "Failed to restart go-monitoring",
+  });
 
   const configSchemaError = config ? getConfigSchemaError(config) : null;
   const savedDraft = useMemo(
@@ -355,9 +362,7 @@ const MonitoringSettingsSection: React.FC = () => {
     if (Object.keys(payload).length === 0) return;
 
     try {
-      const result = jobSnapshotResult(
-        await setConfigMutation.mutateAsync(payload),
-      );
+      const result = await setConfigMutation.mutateAsync(payload);
       queryClient.setQueryData(
         linuxio.monitoring.get_config.queryKey(),
         result.config,
@@ -387,19 +392,7 @@ const MonitoringSettingsSection: React.FC = () => {
   };
 
   const handleRestart = () => {
-    restartMutation.mutate(undefined, {
-      onSuccess: () => {
-        setRestartRequired(false);
-        toast.success("go-monitoring restarted");
-        void refetch();
-        void refetchStatus();
-      },
-      onError: (err) => {
-        toast.error(
-          getMutationErrorMessage(err, "Failed to restart go-monitoring"),
-        );
-      },
-    });
+    restartMutation.mutate();
   };
 
   const renderGrid = (

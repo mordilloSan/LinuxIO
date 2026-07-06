@@ -62,7 +62,7 @@ For request routes:
 | File | Role |
 |------|------|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
-| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks, query keys/options, route mode checks, retry policy, request shaping. |
+| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks (`useQuery`, `useJobAction`, `useMutation`), query keys/options, route mode checks, retry policy, request shaping. |
 | `frontend/src/api/linuxio-core.ts` | Low-level JSON request path over the stream multiplexer. API internals only. |
 | `frontend/src/api/linuxio.ts` | Stream utilities, connection hooks, stream openers, and job-backed stream wrappers. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
@@ -104,7 +104,12 @@ const { data: unit } = linuxio.systemd.get_unit_info.useQuery("ssh.service", {
   refetchInterval: 2000,
 });
 
-const startContainer = linuxio.docker.start_container.useMutation();
+const startContainer = linuxio.docker.start_container.useJobAction({
+  invalidates: [linuxio.docker.list_containers.queryKey()],
+  success: "Container started",
+  error: "Failed to start container",
+  toast: { href: "/docker", label: "Open Docker" },
+});
 startContainer.mutate({ containerId });
 ```
 
@@ -114,11 +119,14 @@ Every generated endpoint exposes:
 |--------|-----|
 | `endpoint(...input)` | Framework-agnostic Promise call. |
 | `endpoint.useQuery(...input, options?)` | React Query hook for query routes. |
-| `endpoint.useMutation(options?)` | React Query hook for job routes. |
+| `endpoint.useJobAction(config?)` | React Query hook for job routes: awaits job completion, unwraps the job result, declarative invalidation/toasts. |
+| `endpoint.useMutation(options?)` | Low-level React Query hook for job routes (escape hatch; resolves with the raw terminal `JobSnapshot`). |
 | `endpoint.queryKey(...input)` | Stable React Query key. |
 | `endpoint.queryOptions(...input, options?)` | Options for `queryClient.fetchQuery()` / `ensureQueryData()`. |
 
-`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data.
+`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data. `useJobAction` instead takes a `JobActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
+
+Query invalidation is manifest-driven: `frontend/src/constants/routeInvalidations.ts` maps each job route to the query caches it makes stale, and is the single source of truth for both lifecycles — `useJobAction`/`useJobStreamAction` use it as the default `invalidates` for locally awaited jobs, and the recovered-jobs stream applies it to jobs that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). A guard test (`frontend/src/constants/routeInvalidations.test.ts`) keeps ad-hoc `queryClient.invalidateQueries` calls out of feature code.
 
 Input is generated from the Go request contract:
 
@@ -128,11 +136,11 @@ Input is generated from the Go request contract:
 | one required JSON field | `linuxio.filebrowser.dir_size(path)` | `{ "path": path }` |
 | multi-field or optional object | `linuxio.docker.system_prune(request)` | `request` |
 
-React Query mutations use the full generated request object as their mutation variable:
+Job actions and mutations use the full generated request object as their mutation variable:
 
 ```typescript
-linuxio.jobs.cancel.useMutation().mutate({ jobId });
-linuxio.docker.start_container.useMutation().mutate({ containerId });
+linuxio.jobs.cancel.useJobAction().mutate({ jobId });
+linuxio.docker.start_container.useJobAction().mutate({ containerId });
 ```
 
 ## Backend Handler Shapes
@@ -202,6 +210,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 ## Jobs
 
 All actions are jobs, including fast atomic mutations. If a job completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle streams.
+
+On the frontend, `useJobAction` (and the lower-level `useMutation`) awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them.
 
 Built-in job routes:
 
@@ -310,7 +320,7 @@ The dispatcher checks the authenticated session before running the route. Handle
 
 ## Remaining Plan
 
-The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. The remaining cleanup is about making that boundary easier to reason about, not changing the public frontend API again.
+The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. The remaining cleanup is about making that boundary easier to reason about; frontend hook-surface refinements (like `useJobAction`) live in `react-query.ts` and do not touch the generated contract.
 
 ### 1. Keep Reflection Generator-Only
 
@@ -520,13 +530,13 @@ Current shape:
 await linuxio.system.get_cpu_info();
 await linuxio.jobs.cancel(jobId);
 linuxio.system.get_cpu_info.useQuery();
-linuxio.docker.start_container.useMutation();
+linuxio.docker.start_container.useJobAction({ invalidates, success, error });
 ```
 
 Remaining cleanup:
 
 1. Keep `frontend/src/api/generated/*` generated only.
-2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for direct calls and React Query hooks.
+2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for direct calls and React Query hooks (including `useJobAction`).
 3. Keep stream helpers in `frontend/src/api/linuxio.ts` because streams are not normal request/response endpoints.
 4. Avoid adding another hand-written typed API layer.
 

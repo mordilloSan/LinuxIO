@@ -26,7 +26,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
 const DEFAULT_OPTIONS: DockerContainerAutoUpdateOptions = {
   cleanup: false,
@@ -58,7 +59,7 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
   watchtowerReason,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast(DOCKER_TOAST_META);
   const queryClient = useQueryClient();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
@@ -70,8 +71,8 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
     enabled: open,
     staleTime: CACHE_TTL_MS.TWO_SECONDS,
   });
-  const saveMutation = linuxio.docker.set_container_auto_update.useMutation({
-    onSuccess: (state) => {
+  const saveMutation = linuxio.docker.set_container_auto_update.useJobAction({
+    success: (state) => {
       toast.success("Container auto-update settings saved");
       setDraftOverrides(null);
       setContainerNamesOverride(null);
@@ -79,17 +80,9 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
         linuxio.docker.get_container_auto_update.queryKey(),
         state,
       );
-      queryClient.invalidateQueries({
-        queryKey: linuxio.docker.get_container_auto_update.queryKey(),
-      });
     },
-    onError: (err: Error) =>
-      toast.error(
-        getMutationErrorMessage(
-          err,
-          "Failed to save container auto-update settings",
-        ),
-      ),
+    error: "Failed to save container auto-update settings",
+    toast: DOCKER_TOAST_META,
   });
 
   const serverState = autoUpdateQuery.data;

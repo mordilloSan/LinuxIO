@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import {
@@ -16,7 +15,8 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface EditGroupMembersDialogProps {
   group: AccountGroup;
@@ -29,8 +29,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,
   );
@@ -40,22 +39,13 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   const usersList = Array.isArray(users) ? users : [];
 
   const { mutate: modifyGroupMembers, isPending } =
-    linuxio.accounts.modify_group_members.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.modify_group_members.useJobAction({
+      success: () => {
         toast.success(`Group "${group.name}" members updated`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_groups.queryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to update group members"),
-        );
-      },
+      error: "Failed to update group members",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleSubmit = () => {

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -536,7 +535,6 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
   username,
 }) => {
   const theme = useAppTheme();
-  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const {
     data: details,
@@ -562,26 +560,17 @@ export const UserActivityCard: React.FC<{ username: string }> = ({
   const autoDismissFailedLoginAlert =
     searchParams.get("autoDismissFailedLoginAlert") === "1";
   const { mutate: dismissFailedLoginAlert } =
-    linuxio.system.dismiss_failed_login_alert.useMutation({
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: linuxio.system.get_health_summary.queryKey(),
-        });
-      },
-    });
+    linuxio.system.dismiss_failed_login_alert.useJobAction();
   const [pendingKillSession, setPendingKillSession] =
     useState<AccountActiveSession | null>(null);
   const [killError, setKillError] = useState<string>("");
   const { mutate: terminateSession, isPending: terminateIsPending } =
-    linuxio.accounts.terminate_session.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.terminate_session.useJobAction({
+      success: () => {
         setPendingKillSession(null);
         setKillError("");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.get_user_details.queryKey(username),
-        });
       },
-      onError: (error) => {
+      error: (error) => {
         setKillError(
           error instanceof Error
             ? error.message

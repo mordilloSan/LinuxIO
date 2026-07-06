@@ -10,11 +10,12 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const WIREGUARD_TOAST_META = { href: "/wireguard", label: "Open WireGuard" };
 
 const WireGuardDashboard: React.FC = () => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/wireguard", label: "Open WireGuard" });
+  const toast = useScopedToast(WIREGUARD_TOAST_META);
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
@@ -26,99 +27,59 @@ const WireGuardDashboard: React.FC = () => {
     isPending: isLoading,
     isError,
     error,
-    refetch,
   } = linuxio.wireguard.list_interfaces.useQuery({
     refetchInterval: 10000,
   });
 
+  const interfaceActionConfig = (verb: string, fallback: string) => ({
+    success: (_result: void, variables: { name: string }) =>
+      toast.success(`WireGuard interface "${variables.name}" ${verb}`),
+    error: fallback,
+    toast: WIREGUARD_TOAST_META,
+  });
+
   // Mutations
   const { mutate: removeInterface } =
-    linuxio.wireguard.remove_interface.useMutation({
-      onSuccess: (_, variables) => {
-        const interfaceName = variables.name;
-        toast.success(`WireGuard interface '${interfaceName}' deleted`);
+    linuxio.wireguard.remove_interface.useJobAction({
+      success: (_result, variables) => {
+        toast.success(`WireGuard interface '${variables.name}' deleted`);
         setSelectedInterface(null);
-        refetch();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(
-            error,
-            "Failed to remove WireGuard interface",
-          ),
-        );
-      },
+      error: "Failed to remove WireGuard interface",
+      toast: WIREGUARD_TOAST_META,
     });
 
-  const { mutate: addPeer } = linuxio.wireguard.add_peer.useMutation({
-    onSuccess: (_, variables) => {
-      const interfaceName = variables.interfaceName;
-      toast.success(`Peer added to '${interfaceName}'`);
-      refetch();
-    },
-    onError: (error: Error) => {
-      toast.error(getMutationErrorMessage(error, "Failed to add peer"));
-    },
+  const { mutate: addPeer } = linuxio.wireguard.add_peer.useJobAction({
+    success: (_result, variables) =>
+      toast.success(`Peer added to '${variables.interfaceName}'`),
+    error: "Failed to add peer",
+    toast: WIREGUARD_TOAST_META,
   });
 
-  const { mutate: upInterface } = linuxio.wireguard.up_interface.useMutation({
-    onSuccess: (_, variables) => {
-      const interfaceName = variables.name;
-      toast.success(`WireGuard interface "${interfaceName}" turned on.`);
-      refetch();
-    },
-    onError: (error: Error) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to bring interface up"),
-      );
-    },
-  });
+  const { mutate: upInterface } = linuxio.wireguard.up_interface.useJobAction(
+    interfaceActionConfig("turned on.", "Failed to bring interface up"),
+  );
 
   const { mutate: downInterface } =
-    linuxio.wireguard.down_interface.useMutation({
-      onSuccess: (_, variables) => {
-        const interfaceName = variables.name;
-        toast.success(`WireGuard interface "${interfaceName}" turned off.`);
-        refetch();
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to bring interface down"),
-        );
-      },
-    });
+    linuxio.wireguard.down_interface.useJobAction(
+      interfaceActionConfig("turned off.", "Failed to bring interface down"),
+    );
 
   const { mutate: enableInterface } =
-    linuxio.wireguard.enable_interface.useMutation({
-      onSuccess: (_, variables) => {
-        const interfaceName = variables.name;
-        toast.success(
-          `WireGuard interface "${interfaceName}" enabled for boot persistence.`,
-        );
-        refetch();
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to enable boot persistence"),
-        );
-      },
-    });
+    linuxio.wireguard.enable_interface.useJobAction(
+      interfaceActionConfig(
+        "enabled for boot persistence.",
+        "Failed to enable boot persistence",
+      ),
+    );
 
   const { mutate: disableInterface } =
-    linuxio.wireguard.disable_interface.useMutation({
-      onSuccess: (_, variables) => {
-        const interfaceName = variables.name;
-        toast.success(
-          `WireGuard interface "${interfaceName}" disabled for boot persistence.`,
-        );
-        refetch();
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to disable boot persistence"),
-        );
-      },
-    });
+    linuxio.wireguard.disable_interface.useJobAction(
+      interfaceActionConfig(
+        "disabled for boot persistence.",
+        "Failed to disable boot persistence",
+      ),
+    );
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 

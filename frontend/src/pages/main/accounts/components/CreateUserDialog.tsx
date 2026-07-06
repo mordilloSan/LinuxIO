@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import { type CreateUserRequest, linuxio } from "@/api";
@@ -15,7 +14,8 @@ import {
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface CreateUserDialogProps {
   onClose: () => void;
@@ -26,8 +26,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   open,
   onClose,
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -44,17 +43,13 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   const groupsList = Array.isArray(groups) ? groups : [];
 
   const { mutate: createUser, isPending } =
-    linuxio.accounts.create_user.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.create_user.useJobAction({
+      success: () => {
         toast.success(`User "${username}" created successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_users.queryKey(),
-        });
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to create user"));
-      },
+      error: "Failed to create user",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleClose = () => {

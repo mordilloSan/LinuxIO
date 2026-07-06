@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -22,7 +21,6 @@ import { parseSizeToBytes } from "./utils";
 import {
   type ApiDisk,
   type FilesystemInfo,
-  jobSnapshotResult,
   linuxio,
   openJobAttachStream,
   type Stream,
@@ -40,6 +38,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
 
 interface DriveDetailsProps {
   drive: DriveInfo;
@@ -85,7 +85,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   smartmontoolsReason,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
@@ -412,8 +412,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 const DiskOverview: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/storage", label: "Open storage" });
+  const toast = useScopedToast(STORAGE_TOAST_META);
   const expanded = searchParams.get("drive");
   const selectedMountpoint = searchParams.get("fs");
   const [creatingSubvolumeMountpoint, setCreatingSubvolumeMountpoint] =
@@ -450,55 +449,37 @@ const DiskOverview: React.FC = () => {
     [nfsMountsData],
   );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    linuxio.storage.unmount_filesystem.useMutation({
-      onSuccess: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: linuxio.system.get_fs_info.queryKey(),
-          }),
-        ]);
+    linuxio.storage.unmount_filesystem.useJobAction({
+      success: () => {
         toast.success("Filesystem unmounted");
         setSearchParams((prev) => {
           prev.delete("fs");
           return prev;
         });
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to unmount filesystem"),
-        );
-      },
+      error: "Failed to unmount filesystem",
+      toast: STORAGE_TOAST_META,
     });
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    linuxio.storage.create_btrfs_subvolume.useMutation({
-      onSuccess: async (result) => {
-        const subvolumeResult = jobSnapshotResult(result);
-        await queryClient.invalidateQueries({
-          queryKey: linuxio.system.get_fs_info.queryKey(),
-        });
-        if (subvolumeResult.path) {
-          toast.success(`Created subvolume at ${subvolumeResult.path}`);
+    linuxio.storage.create_btrfs_subvolume.useJobAction({
+      success: (result) => {
+        if (result.path) {
+          toast.success(`Created subvolume at ${result.path}`);
         } else {
           toast.success("Subvolume created");
         }
-        if (subvolumeResult.mountpoint) {
+        if (result.mountpoint) {
           setSubvolumeDrafts((prev) => {
             const next = {
               ...prev,
             };
-            delete next[subvolumeResult.mountpoint!];
+            delete next[result.mountpoint!];
             return next;
           });
         }
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to create btrfs subvolume"),
-        );
-      },
+      error: "Failed to create btrfs subvolume",
+      toast: STORAGE_TOAST_META,
     });
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

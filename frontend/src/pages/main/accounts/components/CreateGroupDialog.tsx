@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import { type CreateGroupRequest, linuxio } from "@/api";
@@ -11,7 +10,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface CreateGroupDialogProps {
   onClose: () => void;
@@ -22,23 +22,18 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   open,
   onClose,
 }) => {
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [name, setName] = useState("");
   const [gid, setGid] = useState("");
 
   const { mutate: createGroup, isPending } =
-    linuxio.accounts.create_group.useMutation({
-      onSuccess: () => {
+    linuxio.accounts.create_group.useJobAction({
+      success: () => {
         toast.success(`Group "${name}" created successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.accounts.list_groups.queryKey(),
-        });
         handleClose();
       },
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to create group"));
-      },
+      error: "Failed to create group",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleClose = () => {

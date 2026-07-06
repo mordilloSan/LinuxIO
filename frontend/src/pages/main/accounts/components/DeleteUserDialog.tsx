@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 
 interface DeleteUserDialogProps {
   onClose: () => void;
@@ -29,14 +30,13 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   onSuccess,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/accounts", label: "Open accounts" });
+  const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const queryClient = useQueryClient();
 
   const { mutateAsync: deleteUser, isPending: isDeleting } =
-    linuxio.accounts.delete_user.useMutation({
-      onError: (error: Error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to delete user(s)"));
-      },
+    linuxio.accounts.delete_user.useJobAction({
+      error: "Failed to delete user(s)",
+      toast: ACCOUNTS_TOAST_META,
     });
 
   const handleDelete = async () => {

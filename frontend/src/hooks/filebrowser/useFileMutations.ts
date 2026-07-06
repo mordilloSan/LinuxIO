@@ -24,6 +24,8 @@ import { joinPath } from "@/utils/path";
 import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
 import { useStreamResult } from "../useStreamResult";
 
+const FILES_TOAST_META = { href: "/filebrowser", label: "Open files" };
+
 interface UseFileMutationsParams {
   normalizedPath: string;
   onDeleteSuccess?: () => void;
@@ -65,7 +67,7 @@ export const useFileMutations = ({
   onDeleteSuccess,
   resolveCollisions,
 }: UseFileMutationsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast(FILES_TOAST_META);
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundJobActions();
@@ -80,14 +82,13 @@ export const useFileMutations = ({
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);
 
-  const createFileMutation = linuxio.filebrowser.resource_post.useMutation({
-    onSuccess: () => {
+  const createFileMutation = linuxio.filebrowser.resource_post.useJobAction({
+    success: () => {
       invalidateListing();
       toast.success("File created successfully");
     },
-    onError: (error: unknown) => {
-      toast.error(getMutationErrorMessage(error, "Failed to create file"));
-    },
+    error: "Failed to create file",
+    toast: FILES_TOAST_META,
   });
 
   const createFile = useCallback(
@@ -98,14 +99,13 @@ export const useFileMutations = ({
     [createFileMutation, normalizedPath],
   );
 
-  const createFolderMutation = linuxio.filebrowser.resource_post.useMutation({
-    onSuccess: () => {
+  const createFolderMutation = linuxio.filebrowser.resource_post.useJobAction({
+    success: () => {
       invalidateListing();
       toast.success("Folder created successfully");
     },
-    onError: (error: unknown) => {
-      toast.error(getMutationErrorMessage(error, "Failed to create folder"));
-    },
+    error: "Failed to create folder",
+    toast: FILES_TOAST_META,
   });
 
   const createFolder = useCallback(
@@ -225,14 +225,13 @@ export const useFileMutations = ({
     [changePermissionsAsync],
   );
 
-  const renameMutation = linuxio.filebrowser.resource_patch.useMutation({
-    onSuccess: () => {
+  const renameMutation = linuxio.filebrowser.resource_patch.useJobAction({
+    success: () => {
       invalidateListing();
       toast.success("Item renamed successfully");
     },
-    onError: (error: unknown) => {
-      toast.error(getMutationErrorMessage(error, "Failed to rename item"));
-    },
+    error: "Failed to rename item",
+    toast: FILES_TOAST_META,
   });
 
   const renameItem = useCallback(

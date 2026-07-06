@@ -2,10 +2,9 @@
  * LinuxIO API - Unified Entry Point
  *
  * JSON API (generated, Go-owned request/response contracts):
- *   await linuxio.system.get_cpu_info()
- *   await linuxio.jobs.cancel(jobId)
  *   linuxio.system.get_cpu_info.useQuery()
- *   linuxio.docker.start_container.useMutation()
+ *   linuxio.docker.start_container.useJobAction({ invalidates, success, error })
+ *   linuxio.docker.compose.useJobStreamAction({ onProgress })
  *
  * Streaming API (persistent/long-lived streams):
  *   const stream = openTerminalStream(cols, rows);
@@ -15,6 +14,7 @@
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
 export { CACHE_TTL_MS } from "./react-query";
+export type { JobActionConfig, JobStreamActionConfig } from "./react-query";
 export {
   ROUTE_MODES,
   getRouteMode,
