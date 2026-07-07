@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -28,6 +29,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const queryClient = useQueryClient();
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =
@@ -110,8 +112,11 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     setIsValidating(true);
     try {
       // Validate the directory with the backend
-      const result = await linuxio.docker.validate_stack_directory(
-        workingDir.trim(),
+      const result = await queryClient.fetchQuery(
+        linuxio.docker.validate_stack_directory.queryOptions(
+          workingDir.trim(),
+          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
+        ),
       );
       if (!result.valid) {
         setErrors({

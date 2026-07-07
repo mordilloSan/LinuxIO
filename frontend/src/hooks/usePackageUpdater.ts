@@ -1,8 +1,7 @@
 // src/hooks/usePackageUpdater.ts
 import { useCallback, useRef, useState } from "react";
 
-import { linuxio, openJobAttachStream, type Stream } from "@/api";
-import { useStreamResult } from "@/hooks/useStreamResult";
+import { linuxio, type Stream } from "@/api";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
 
@@ -48,7 +47,8 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const streamRef = useRef<Stream | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
-  const { run: runStreamResult } = useStreamResult();
+  // Cancels are fire-and-forget; a plain job action reports nothing.
+  const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
 
   const appendEvent = useCallback((message: string) => {
     const trimmed = message.trim();
@@ -64,6 +64,73 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       return next.slice(-8);
     });
   }, []);
+
+  // Drive the overall bar from the global transaction percentage only,
+  // clamped to [0,100] and kept monotonic so interleaved frames can't pull
+  // it backwards. Per-package item_pct is intentionally NOT used here — it
+  // resets every package and every download/install phase.
+  const bumpProgress = useCallback((pct?: number) => {
+    if (pct === undefined || pct > 100) return;
+    setProgress((prev) => Math.max(prev, pct));
+  }, []);
+
+  const { mutateAsync: startUpdateJob } =
+    linuxio.packages.update.useJobStreamAction<void, PkgUpdateProgress>({
+      closeOnAbort: "none",
+      closeMessage: "Update stream closed unexpectedly",
+      onJobStart: (job) => {
+        jobIdRef.current = job.id;
+      },
+      onOpen: (stream) => {
+        streamRef.current = stream;
+      },
+      onProgress: (data) => {
+        switch (data.type) {
+          case "item_progress":
+            // item_pct is a per-package / per-phase sub-percentage, not a
+            // global value — use it only to track the current package and
+            // status, never to set the overall bar.
+            if (data.package_id) {
+              setUpdatingPackage(extractPackageName(data.package_id));
+            }
+            if (data.status) {
+              setStatus(data.status);
+            }
+            break;
+          case "package":
+            if (data.package_id) {
+              const packageName = extractPackageName(data.package_id);
+              setUpdatingPackage(packageName);
+              if (data.status) {
+                appendEvent(`${data.status}: ${packageName}`);
+              }
+            }
+            if (data.status) {
+              setStatus(data.status);
+            }
+            break;
+          case "status":
+            if (data.status) {
+              setStatus(data.status);
+              appendEvent(data.status);
+            }
+            bumpProgress(data.percentage);
+            break;
+          case "percentage":
+            bumpProgress(data.percentage);
+            break;
+          case "message":
+            if (data.message) {
+              setStatus(data.message);
+              appendEvent(data.message);
+            } else if (data.status) {
+              setStatus(data.status);
+              appendEvent(data.status);
+            }
+            break;
+        }
+      },
+    });
 
   const runUpdate = useCallback(
     async (packages: string[], initialLabel: string) => {
@@ -81,73 +148,8 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
 
-      // Drive the overall bar from the global transaction percentage only,
-      // clamped to [0,100] and kept monotonic so interleaved frames can't pull
-      // it backwards. Per-package item_pct is intentionally NOT used here — it
-      // resets every package and every download/install phase.
-      const bumpProgress = (pct?: number) => {
-        if (pct === undefined || pct > 100) return;
-        setProgress((prev) => Math.max(prev, pct));
-      };
-
       try {
-        const job = await linuxio.packages.update(packages);
-        jobIdRef.current = job.id;
-
-        await runStreamResult<void, PkgUpdateProgress>({
-          open: () => openJobAttachStream(job.id),
-          closeOnAbort: "none",
-          onOpen: (stream) => {
-            streamRef.current = stream;
-          },
-          onProgress: (data) => {
-            switch (data.type) {
-              case "item_progress":
-                // item_pct is a per-package / per-phase sub-percentage, not a
-                // global value — use it only to track the current package and
-                // status, never to set the overall bar.
-                if (data.package_id) {
-                  setUpdatingPackage(extractPackageName(data.package_id));
-                }
-                if (data.status) {
-                  setStatus(data.status);
-                }
-                break;
-              case "package":
-                if (data.package_id) {
-                  const packageName = extractPackageName(data.package_id);
-                  setUpdatingPackage(packageName);
-                  if (data.status) {
-                    appendEvent(`${data.status}: ${packageName}`);
-                  }
-                }
-                if (data.status) {
-                  setStatus(data.status);
-                }
-                break;
-              case "status":
-                if (data.status) {
-                  setStatus(data.status);
-                  appendEvent(data.status);
-                }
-                bumpProgress(data.percentage);
-                break;
-              case "percentage":
-                bumpProgress(data.percentage);
-                break;
-              case "message":
-                if (data.message) {
-                  setStatus(data.message);
-                  appendEvent(data.message);
-                } else if (data.status) {
-                  setStatus(data.status);
-                  appendEvent(data.status);
-                }
-                break;
-            }
-          },
-          closeMessage: "Update stream closed unexpectedly",
-        });
+        await startUpdateJob({ packageIds: packages });
 
         if (cancelledRef.current) {
           return;
@@ -180,7 +182,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         cancelledRef.current = false;
       }
     },
-    [appendEvent, onComplete, runStreamResult],
+    [appendEvent, onComplete, startUpdateJob],
   );
 
   const updateOne = useCallback(
@@ -199,14 +201,14 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       streamRef.current?.abort();
       streamRef.current = null;
       if (jobIdRef.current) {
-        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
+        cancelJob({ jobId: jobIdRef.current });
         jobIdRef.current = null;
       }
       setUpdatingPackage(null);
       setStatus(null);
       setError("Update cancelled");
     }
-  }, []);
+  }, [cancelJob]);
 
   const clearError = useCallback(() => setError(null), []);
 

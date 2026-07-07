@@ -1,8 +1,9 @@
 /**
  * LinuxIO Core API - internal JSON request bridge.
  *
- * App code should use generated endpoints, such as `linuxio.system.get_cpu_info()`.
- *
+ * App code should use the generated endpoint hooks (`useQuery`,
+ * `useJobAction`, `useJobStreamAction`) or `queryClient.fetchQuery` with
+ * `endpoint.queryOptions(...)`; see docs/api-contract.md.
  */
 
 import { waitForStreamResult } from "./stream-helpers";

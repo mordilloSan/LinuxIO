@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 
 export type ConflictDecision = "overwrite" | "skip";
 
@@ -42,6 +43,7 @@ const displayName = (destPath: string, destination: string): string => {
  * Transfers never overwrite unless the user explicitly chose to.
  */
 export function useFileConflictResolution() {
+  const queryClient = useQueryClient();
   const [conflictPrompt, setConflictPrompt] = useState<ConflictPrompt | null>(
     null,
   );
@@ -85,8 +87,12 @@ export function useFileConflictResolution() {
 
       let existingByPath: Map<string, { isDir: boolean }>;
       try {
-        const response = await linuxio.filebrowser.exists_batch(
-          items.map(getDestPath),
+        // Collision pre-checks must reflect the live filesystem — never cache.
+        const response = await queryClient.fetchQuery(
+          linuxio.filebrowser.exists_batch.queryOptions(
+            items.map(getDestPath),
+            { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
+          ),
         );
         existingByPath = new Map(
           (response.existing ?? []).map((entry) => [

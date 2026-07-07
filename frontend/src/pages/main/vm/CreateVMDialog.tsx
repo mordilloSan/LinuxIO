@@ -23,7 +23,7 @@ import type {
   VMPresetID,
 } from "./vmShared";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -193,7 +193,13 @@ export default function CreateVMDialog({
     { enabled: open, refetchInterval: open ? 5000 : false },
   );
   const createISOFolderMutation =
-    linuxio.filebrowser.resource_post.useMutation();
+    linuxio.filebrowser.resource_post.useJobAction({
+      invalidates: (_result, variables) => [
+        linuxio.filebrowser.resource_get.queryKey({
+          path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
+        }),
+      ],
+    });
   const managedISOPath =
     preflight.data?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
   const managedCloudPath =
@@ -260,7 +266,12 @@ export default function CreateVMDialog({
     if (!folder || folder === "/") return;
 
     try {
-      const stat = await linuxio.filebrowser.resource_stat(folder);
+      const stat = await queryClient.fetchQuery(
+        linuxio.filebrowser.resource_stat.queryOptions(folder, {
+          staleTime: CACHE_TTL_MS.NONE,
+          gcTime: CACHE_TTL_MS.NONE,
+        }),
+      );
       if (stat.mode && !stat.mode.startsWith("d")) {
         toast.error(`${folder} exists but is not a directory.`);
       }
@@ -279,11 +290,6 @@ export default function CreateVMDialog({
         path: ensureTrailingSlash(folder),
       });
       toast.success(`Created ISO folder ${folder}`);
-      queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get.queryKey({
-          path: ensureTrailingSlash(parentDirectory(folder) || "/"),
-        }),
-      });
       void preflight.refetch();
     } catch (error) {
       toast.error(

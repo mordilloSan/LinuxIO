@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -46,15 +45,11 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   imageTags,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  // Per-item outcomes are tallied below; errors surface as one batch toast.
   const { mutateAsync: deleteImage, isPending: isDeleting } =
-    linuxio.docker.delete_image.useMutation({
-      onError: () => {
-        // Suppress global error handler - errors handled manually in handleDelete
-      },
-    });
+    linuxio.docker.delete_image.useJobAction();
   const handleDelete = async () => {
     // Delete images sequentially, tracking successes and failures
     const results = await Promise.all(
@@ -89,9 +84,6 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           : `Could not delete ${failed.length} images (likely in use)`;
       toast.error(failMessage);
     }
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_images.queryKey(),
-    });
     onSuccess();
     handleClose();
   };

@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
-import { linuxio, type Peer } from "@/api";
+import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -20,6 +21,7 @@ interface InterfaceDetailsProps {
 
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
+  const queryClient = useQueryClient();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
@@ -69,10 +71,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   };
   const handleDownloadConfig = async (peername: string) => {
     try {
-      const result = await linuxio.wireguard.peer_config_download({
-        interfaceName,
-        peerName: peername,
-      });
+      const result = await queryClient.fetchQuery(
+        linuxio.wireguard.peer_config_download.queryOptions(
+          { interfaceName, peerName: peername },
+          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
+        ),
+      );
       const blob = new Blob([result.content], {
         type: "text/plain",
       });
@@ -92,10 +96,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleViewQrCode = async (peername: string) => {
     setIsLoadingQrCode(true);
     try {
-      const result = await linuxio.wireguard.peer_qrcode({
-        interfaceName,
-        peerName: peername,
-      });
+      const result = await queryClient.fetchQuery(
+        linuxio.wireguard.peer_qrcode.queryOptions(
+          { interfaceName, peerName: peername },
+          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
+        ),
+      );
       setQrCode(result.qrcode);
       setOpenDialog(true);
       toast.success(`QR code for '${peername}' loaded successfully`);

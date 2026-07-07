@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -39,7 +38,6 @@ const DockerPage: React.FC = () => {
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
     useCapability("watchtowerAvailable");
-  const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
   const stopAllInFlightRef = useRef(false);
@@ -81,8 +79,9 @@ const DockerPage: React.FC = () => {
       error: "Failed to start containers",
       toast: DOCKER_TOAST_META,
     });
+  // Per-container outcomes are toasted in the loop below.
   const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useMutation();
+    linuxio.docker.stop_container.useJobAction();
   const isStoppingAll = stoppingContainerIds.size > 0;
   const handleStopAllRunning = useCallback(async () => {
     if (stopAllInFlightRef.current || runningContainers.length === 0) return;
@@ -107,15 +106,11 @@ const DockerPage: React.FC = () => {
           });
         }
       }
-
-      queryClient.invalidateQueries({
-        queryKey: linuxio.docker.list_containers.queryKey(),
-      });
     } finally {
       stopAllInFlightRef.current = false;
       setStoppingContainerIds(new Set());
     }
-  }, [queryClient, runningContainers, stopContainer, toast]);
+  }, [runningContainers, stopContainer, toast]);
   const { mutate: systemPrune, isPending: isPruning } =
     linuxio.docker.system_prune.useJobAction({
       success: () => {

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
   useEffect,
@@ -8,7 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -72,8 +73,12 @@ const validateDraftFolders = (
 
 const DockerFolderSettingsSection: React.FC = () => {
   const theme = useAppTheme();
+  const queryClient = useQueryClient();
   const { privileged } = useAuth();
   const { config, updateConfig } = useConfig();
+  // Errors and toasts are handled by handleSave's try/catch.
+  const { mutateAsync: createDockerFolder } =
+    linuxio.filebrowser.resource_post.useJobAction();
   const dockerFolders = config.docker.folders;
   const requireMountsForFolders = Boolean(
     config.docker.requireMountsForFolders,
@@ -191,8 +196,12 @@ const DockerFolderSettingsSection: React.FC = () => {
     try {
       for (let index = 0; index < folders.length; index += 1) {
         const folder = folders[index];
-        const validation =
-          await linuxio.docker.validate_stack_directory(folder);
+        const validation = await queryClient.fetchQuery(
+          linuxio.docker.validate_stack_directory.queryOptions(folder, {
+            staleTime: CACHE_TTL_MS.NONE,
+            gcTime: CACHE_TTL_MS.NONE,
+          }),
+        );
         if (!validation.valid) {
           setErrorTexts((prev) => {
             const next = [...prev];
@@ -209,7 +218,7 @@ const DockerFolderSettingsSection: React.FC = () => {
             return;
           }
 
-          await linuxio.filebrowser.resource_post({
+          await createDockerFolder({
             path: ensureTrailingSlash(folder),
           });
           toast.success("Docker folder created.");
@@ -228,7 +237,13 @@ const DockerFolderSettingsSection: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [askCreatePrompt, drafts, setDockerFolders]);
+  }, [
+    askCreatePrompt,
+    createDockerFolder,
+    drafts,
+    queryClient,
+    setDockerFolders,
+  ]);
 
   const folderIconStyle: React.CSSProperties = {
     display: "inline-flex",

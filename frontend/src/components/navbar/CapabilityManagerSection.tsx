@@ -19,7 +19,6 @@ import {
   type CapabilityValueKey,
   type InstallCapabilityResult,
   linuxio,
-  openJobAttachStream,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -34,7 +33,6 @@ import {
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
-import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface InstallCapabilityProgress {
   message: string;
@@ -73,7 +71,26 @@ const CapabilityManagerSection: React.FC = () => {
   const [installStatus, setInstallStatus] = useState<string | null>(null);
   const [installPercent, setInstallPercent] = useState<number | null>(null);
   const mountedRef = useRef(true);
-  const { run: runStreamResult } = useStreamResult();
+  // Progress is rendered locally, but the completion toast and app-wide
+  // capability refresh stay owned by the global background-job handler
+  // (useRecoveredJobs) so they still fire if this panel closes mid-install —
+  // hence markHandled: false and no success/error config.
+  const { mutateAsync: installCapability } =
+    linuxio.system.install_capability.useJobStreamAction<
+      InstallCapabilityResult,
+      InstallCapabilityProgress
+    >({
+      markHandled: false,
+      onProgress: (progress) => {
+        if (!mountedRef.current) return;
+        if (typeof progress?.percentage === "number") {
+          setInstallPercent(progress.percentage);
+        }
+        if (progress?.message) {
+          setInstallStatus(progress.message);
+        }
+      },
+    });
 
   const packageKitAvailable =
     latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
@@ -143,22 +160,7 @@ const CapabilityManagerSection: React.FC = () => {
       setInstallStatus("Starting…");
       setInstallPercent(null);
       try {
-        const job = await linuxio.system.install_capability(wire);
-        const result = await runStreamResult<
-          InstallCapabilityResult,
-          InstallCapabilityProgress
-        >({
-          open: () => openJobAttachStream(job.id),
-          onProgress: (progress) => {
-            if (!mountedRef.current) return;
-            if (typeof progress?.percentage === "number") {
-              setInstallPercent(progress.percentage);
-            }
-            if (progress?.message) {
-              setInstallStatus(progress.message);
-            }
-          },
-        });
+        const result = await installCapability({ capability: wire });
         if (!mountedRef.current) return;
         // Optimistically reflect the result while the panel is open. The
         // completion toast and app-wide capability refresh are owned by the
@@ -180,7 +182,7 @@ const CapabilityManagerSection: React.FC = () => {
         }
       }
     },
-    [runStreamResult],
+    [installCapability],
   );
 
   useEffect(

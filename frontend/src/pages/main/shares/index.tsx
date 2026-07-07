@@ -423,8 +423,8 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   });
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useMutation();
-  const nfsCreate = linuxio.shares.create_nfs_share.useMutation();
+  const sambaCreate = linuxio.shares.create_samba_share.useJobAction();
+  const nfsCreate = linuxio.shares.create_nfs_share.useJobAction();
 
   const isPending = sambaCreate.isPending || nfsCreate.isPending;
   const resolvedName = sambaName.trim() || inferShareName(path);
@@ -701,12 +701,12 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useMutation();
-  const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
-  const sambaDelete = linuxio.shares.delete_samba_share.useMutation();
-  const nfsCreate = linuxio.shares.create_nfs_share.useMutation();
-  const nfsUpdate = linuxio.shares.update_nfs_share.useMutation();
-  const nfsDelete = linuxio.shares.delete_nfs_share.useMutation();
+  const sambaCreate = linuxio.shares.create_samba_share.useJobAction();
+  const sambaUpdate = linuxio.shares.update_samba_share.useJobAction();
+  const sambaDelete = linuxio.shares.delete_samba_share.useJobAction();
+  const nfsCreate = linuxio.shares.create_nfs_share.useJobAction();
+  const nfsUpdate = linuxio.shares.update_nfs_share.useJobAction();
+  const nfsDelete = linuxio.shares.delete_nfs_share.useJobAction();
 
   const isPending =
     sambaCreate.isPending ||

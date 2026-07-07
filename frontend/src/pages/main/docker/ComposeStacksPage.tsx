@@ -7,8 +7,8 @@ import {
   CACHE_TTL_MS,
   isConnected,
   linuxio,
-  openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
+  uploadContent,
   type ComposeProject,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -31,7 +31,6 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -49,7 +48,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     (config.appSettings.chunkSizeMB ?? 0) > 0
       ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
       : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
-  const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Setup dialog state
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -103,8 +101,9 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   });
   const projects = useMemo(() => rawProjects ?? [], [rawProjects]);
 
+  // Success/error toasts are composed per delete option in handleDeleteConfirm.
   const { mutateAsync: deleteStack } =
-    linuxio.docker.delete_stack.useMutation();
+    linuxio.docker.delete_stack.useJobAction();
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
@@ -178,8 +177,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
               : `Stack ${projectName} and compose file deleted successfully`;
           toast.success(successMsg);
 
-          refetch();
-
           setDeleteDialogOpen(false);
           setDeleteDialogProject(null);
         }
@@ -191,7 +188,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, deleteStack, refetch, toast],
+    [deleteDialogProject, deleteStack, toast],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -288,7 +285,12 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await linuxio.docker.validate_compose(content);
+        const result = await queryClient.fetchQuery(
+          linuxio.docker.validate_compose.queryOptions(content, {
+            staleTime: CACHE_TTL_MS.NONE,
+            gcTime: CACHE_TTL_MS.NONE,
+          }),
+        );
         return result;
       } catch (error) {
         return {
@@ -303,7 +305,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         };
       }
     },
-    [],
+    [queryClient],
   );
 
   // Internal save function that performs the actual save
@@ -321,20 +323,9 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
-      const contentSize = contentBytes.length;
-      const job = await linuxio.filebrowser.upload({
-        targetPath: filePath,
-        size: String(contentSize),
+      await uploadContent(filePath, contentBytes, {
+        chunkSize,
         overwrite: override || undefined,
-      });
-
-      await runChunkedStreamResult<void>({
-        open: () => openJobDataStream(job.id, 0),
-        openErrorMessage: "Failed to open save stream",
-        data: contentBytes,
-        chunkSize: chunkSize,
-        yieldMs: 0,
-        closeMessage: "Stream closed unexpectedly",
       });
 
       toast.success("Compose file saved successfully");
@@ -362,7 +353,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [chunkSize, projects, refetch, runChunkedStreamResult, toast],
+    [chunkSize, projects, refetch, toast],
   );
 
   // Save compose file with overwrite protection

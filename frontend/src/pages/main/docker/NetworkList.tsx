@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetworkContainer } from "@/api";
@@ -250,13 +249,12 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   networkIds,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
-    linuxio.docker.delete_network.useMutation({
-      onError: (error: Error) => {
+    linuxio.docker.delete_network.useJobAction({
+      error: (error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to delete network(s)"),
         );
@@ -273,9 +271,6 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
         ? `Network "${networkNames[0]}" deleted successfully`
         : `${networkNames.length} networks deleted successfully`;
     toast.success(successMessage);
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_networks.queryKey(),
-    });
     onSuccess();
     handleClose();
   };

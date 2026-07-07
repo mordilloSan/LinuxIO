@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import ConsoleDialog from "./ConsoleDialog";
@@ -21,22 +21,8 @@ import {
   VMPreflightCard,
 } from "./VMTabs";
 
-import {
-  isJobSnapshot,
-  LinuxIOError,
-  linuxio,
-  openJobAttachStream,
-  openVMConsoleStream,
-  waitForStreamResult,
-} from "@/api";
-import type {
-  JobSnapshot,
-  VMCreateRequest,
-  VMCreateProgress,
-  VMDeleteRequest,
-  VMDeleteResult,
-  VirtualMachine,
-} from "@/api";
+import { linuxio, openVMConsoleStream } from "@/api";
+import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -46,16 +32,6 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useTabUrlState } from "@/hooks/useTabUrlState";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-
-async function expectJobSnapshot(
-  started: Promise<unknown>,
-): Promise<JobSnapshot> {
-  const job = await started;
-  if (isJobSnapshot(job)) {
-    return job;
-  }
-  throw new LinuxIOError("VM job did not return a job snapshot", "invalid_job");
-}
 
 const Page: React.FC = () => {
   const theme = useAppTheme();
@@ -102,41 +78,31 @@ const Page: React.FC = () => {
     vms.find((vm) => vm.name === effectiveSelectedName) ??
     null;
 
-  const invalidateVMs = useCallback(
-    (name: string | null = effectiveSelectedName) => {
-      queryClient.invalidateQueries({ queryKey: linuxio.virt.list.queryKey() });
-      if (name) {
-        queryClient.invalidateQueries({
-          queryKey: linuxio.virt.get.queryKey(name),
-        });
-      }
-    },
-    [effectiveSelectedName, queryClient],
-  );
-
   const actionConfig = (successText: string, fallback: string) => ({
     success: successText,
     error: fallback,
     toast: VM_TOAST,
   });
 
-  const createMutation = useMutation<VirtualMachine, Error, VMCreateRequest>({
-    mutationFn: async (request) => {
-      setCreateProgress({
-        message: "Starting VM create job",
-        phase: "starting",
-      });
-      const job = await expectJobSnapshot(linuxio.virt.create(request));
-      return await waitForStreamResult<VirtualMachine, VMCreateProgress>(
-        openJobAttachStream(job.id),
-        {
-          closeMessage:
-            "VM create connection closed before final result. Refresh the VM list to check whether creation completed.",
-          onProgress: (progress) => setCreateProgress(progress),
-        },
-      );
+  const createMutation = linuxio.virt.create.useJobStreamAction<
+    VirtualMachine,
+    VMCreateProgress
+  >({
+    closeMessage:
+      "VM create connection closed before final result. Refresh the VM list to check whether creation completed.",
+    onProgress: (progress) => setCreateProgress(progress),
+    invalidates: (vm) => [
+      linuxio.virt.list.queryKey(),
+      linuxio.virt.get.queryKey(vm.name),
+    ],
+    success: (vm) => {
+      toast.success(`Created ${vm.name}`);
+      setCreateProgress(null);
+      setCreateOpen(false);
+      setSelectedName(vm.name);
+      setActiveTab("machines");
     },
-    onError: (err: Error) => {
+    error: (err) => {
       const message = getMutationErrorMessage(err, "Failed to create VM");
       setCreateProgress({
         message,
@@ -144,50 +110,42 @@ const Page: React.FC = () => {
       });
       toast.error(message);
     },
-    onSuccess: (vm) => {
-      toast.success(`Created ${vm.name}`);
-      setCreateProgress(null);
-      setCreateOpen(false);
-      setSelectedName(vm.name);
-      setActiveTab("machines");
-      invalidateVMs(vm.name);
+    options: {
+      onMutate: () => {
+        setCreateProgress({
+          message: "Starting VM create job",
+          phase: "starting",
+        });
+      },
     },
   });
-  const deleteMutation = useMutation<VMDeleteResult, Error, VMDeleteRequest>({
-    mutationFn: async (request) => {
-      const job = await expectJobSnapshot(linuxio.virt.delete(request));
-      return await waitForStreamResult<VMDeleteResult>(
-        openJobAttachStream(job.id),
-        {
-          closeMessage:
-            "VM delete connection closed before final result. Refresh the VM list to check whether deletion completed.",
-        },
-      );
+  const deleteMutation = linuxio.virt.delete.useJobStreamAction<VMDeleteResult>(
+    {
+      closeMessage:
+        "VM delete connection closed before final result. Refresh the VM list to check whether deletion completed.",
+      // Only virt.list: invalidating virt.get for the deleted VM would refetch
+      // a missing domain and surface a spurious "domain not found" error toast.
+      invalidates: [linuxio.virt.list.queryKey()],
+      success: (result, request) => {
+        const deleteResult = normalizeVMDeleteResult(result);
+        const diskText =
+          deleteResult.removed.length > 0
+            ? ` Removed ${deleteResult.removed.length} disk(s).`
+            : "";
+        toast.success(`Deleted ${request.name}.${diskText}`);
+        setDeleteOpen(false);
+        setSelectedName(null);
+        // The domain is gone. Optimistically drop it from the cached list so
+        // the detail query stops targeting it while the refetch is in flight.
+        queryClient.setQueryData<VirtualMachine[]>(
+          linuxio.virt.list.queryKey(),
+          (current) => current?.filter((vm) => vm.name !== request.name),
+        );
+      },
+      error: (err) =>
+        toast.error(getMutationErrorMessage(err, "Failed to delete VM")),
     },
-    onError: (err: Error) =>
-      toast.error(getMutationErrorMessage(err, "Failed to delete VM")),
-    onSuccess: (result: VMDeleteResult, request: VMDeleteRequest) => {
-      const deleteResult = normalizeVMDeleteResult(result);
-      const diskText =
-        deleteResult.removed.length > 0
-          ? ` Removed ${deleteResult.removed.length} disk(s).`
-          : "";
-      toast.success(`Deleted ${request.name}.${diskText}`);
-      setDeleteOpen(false);
-      setSelectedName(null);
-      // The domain is gone. Optimistically drop it from the cached list so the
-      // detail query stops targeting it. Invalidating virt.get for the deleted
-      // VM (as invalidateVMs does) would refetch a missing domain and surface a
-      // spurious "domain not found" error toast.
-      queryClient.setQueryData<VirtualMachine[]>(
-        linuxio.virt.list.queryKey(),
-        (current) => current?.filter((vm) => vm.name !== request.name),
-      );
-      queryClient.invalidateQueries({
-        queryKey: linuxio.virt.list.queryKey(),
-      });
-    },
-  });
+  );
   const startMutation = linuxio.virt.start.useJobAction(
     actionConfig("VM started", "Failed to start VM"),
   );

@@ -74,6 +74,8 @@ export {
   streamWriteChunks,
 } from "./stream-helpers";
 export type * from "./stream-helpers";
+export { uploadContent } from "./uploads";
+export type { UploadContentOptions } from "./uploads";
 export {
   createStreamMessageChannel,
   StreamMessageChannel,

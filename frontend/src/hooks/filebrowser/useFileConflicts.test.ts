@@ -1,3 +1,5 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
@@ -12,7 +14,16 @@ vi.mock("@/api", async (importOriginal) => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        exists_batch: apiMocks.exists_batch,
+        exists_batch: Object.assign(apiMocks.exists_batch, {
+          queryOptions: (
+            paths: string[],
+            options?: Record<string, unknown>,
+          ) => ({
+            queryKey: ["linuxio", "filebrowser", "exists_batch", { paths }],
+            queryFn: () => apiMocks.exists_batch(paths),
+            ...options,
+          }),
+        }),
       },
     },
   };
@@ -20,7 +31,15 @@ vi.mock("@/api", async (importOriginal) => {
 
 const { useFileConflictResolution } =
   await import("@/hooks/filebrowser/useFileConflicts");
-const { act, renderHook } = await import("@/test/render");
+const { act, createTestQueryClient, renderHook } =
+  await import("@/test/render");
+
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(
+    QueryClientProvider,
+    { client: createTestQueryClient() },
+    children,
+  );
 
 const items = ["/src/a.txt", "/src/sub/b.txt"];
 const getDestPath = (source: string) =>
@@ -29,7 +48,9 @@ const getDestPath = (source: string) =>
 describe("useFileConflictResolution", () => {
   it("passes items through untouched when nothing exists at the destination", async () => {
     apiMocks.exists_batch.mockResolvedValue({ existing: [] });
-    const { result } = renderHook(() => useFileConflictResolution());
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
 
     let resolution;
     await act(async () => {
@@ -52,7 +73,9 @@ describe("useFileConflictResolution", () => {
     apiMocks.exists_batch.mockResolvedValue({
       existing: [{ isDir: false, path: "/dest/a.txt" }],
     });
-    const { result } = renderHook(() => useFileConflictResolution());
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
 
     let resolutionPromise!: ReturnType<
       typeof result.current.resolveCollisions<string>
@@ -86,7 +109,9 @@ describe("useFileConflictResolution", () => {
     apiMocks.exists_batch.mockResolvedValue({
       existing: [{ isDir: false, path: "/dest/a.txt" }],
     });
-    const { result } = renderHook(() => useFileConflictResolution());
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
 
     let resolutionPromise!: ReturnType<
       typeof result.current.resolveCollisions<string>
@@ -114,7 +139,9 @@ describe("useFileConflictResolution", () => {
     apiMocks.exists_batch.mockResolvedValue({
       existing: [{ isDir: false, path: "/dest/a.txt" }],
     });
-    const { result } = renderHook(() => useFileConflictResolution());
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
 
     let resolutionPromise!: ReturnType<
       typeof result.current.resolveCollisions<string>
@@ -138,7 +165,9 @@ describe("useFileConflictResolution", () => {
 
   it("proceeds without overwriting when the pre-check itself fails", async () => {
     apiMocks.exists_batch.mockRejectedValue(new Error("offline"));
-    const { result } = renderHook(() => useFileConflictResolution());
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
 
     let resolution;
     await act(async () => {

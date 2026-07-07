@@ -1,7 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useEffectEvent } from "react";
 import { SmoothieChart } from "smoothie";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
   appendLiveSample,
@@ -21,8 +22,16 @@ const STREAM_DELAY_MS = 2000;
 
 const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const queryClient = useQueryClient();
   const [series] = useLiveSeries([SERIES_ID], async (request) => {
-    const points = await linuxio.monitoring.get_cpu_history(request);
+    // One-shot backfill: the request carries a rolling from_ms, so caching
+    // the entry would only pollute the cache.
+    const points = await queryClient.fetchQuery(
+      linuxio.monitoring.get_cpu_history.queryOptions(request, {
+        staleTime: CACHE_TTL_MS.NONE,
+        gcTime: CACHE_TTL_MS.NONE,
+      }),
+    );
     return {
       [SERIES_ID]: points.map((point) => ({
         t: point.captured_at_ms,

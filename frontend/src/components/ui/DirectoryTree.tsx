@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
   useEffect,
@@ -196,6 +197,7 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
   onSelect,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [
     { name: rootPath, path: rootPath, kind: "directory", loaded: false },
   ]);
@@ -210,9 +212,9 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
       if (node.loaded || node.kind !== "directory") return;
 
       try {
-        const resource = await linuxio.filebrowser.resource_get({
-          path: node.path,
-        });
+        const resource = await queryClient.fetchQuery(
+          linuxio.filebrowser.resource_get.queryOptions({ path: node.path }),
+        );
 
         const children = resourceChildren(resource, node.path, {
           fileFilter,
@@ -224,7 +226,7 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
         setRoots((prev) => updateNode(prev, node.path, []));
       }
     },
-    [fileFilter, includeFiles],
+    [fileFilter, includeFiles, queryClient],
   );
 
   // Keyboard: press a letter to jump to the first visible folder starting with it

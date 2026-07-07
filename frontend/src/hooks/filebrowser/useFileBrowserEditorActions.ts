@@ -9,13 +9,12 @@ import {
 import {
   isConnected,
   linuxio,
-  openJobDataStream,
   STREAM_MULTIPLEXER_CONFIG,
+  uploadContent,
 } from "@/api";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import { useConfig } from "@/hooks/useConfig";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface UseFileBrowserEditorActionsParams {
   editingPath: string | null;
@@ -42,7 +41,6 @@ export const useFileBrowserEditorActions = ({
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const { config } = useConfig();
   const queryClient = useQueryClient();
-  const { runChunked: runChunkedStreamResult } = useStreamResult();
   const chunkSize =
     (config.appSettings.chunkSizeMB ?? 0) > 0
       ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
@@ -52,21 +50,9 @@ export const useFileBrowserEditorActions = ({
     async (path: string, contentBytes: Uint8Array) => {
       // Saving replaces the file being edited by design; uploads otherwise
       // never overwrite unless told to.
-      const job = await linuxio.filebrowser.upload({
-        targetPath: path,
-        size: String(contentBytes.length),
-        overwrite: true,
-      });
-      await runChunkedStreamResult<void>({
-        open: () => openJobDataStream(job.id, 0),
-        openErrorMessage: "Failed to open save stream",
-        data: contentBytes,
-        chunkSize,
-        yieldMs: 0,
-        closeMessage: "Stream closed unexpectedly",
-      });
+      await uploadContent(path, contentBytes, { chunkSize, overwrite: true });
     },
-    [chunkSize, runChunkedStreamResult],
+    [chunkSize],
   );
 
   const invalidateEditedFile = useCallback(

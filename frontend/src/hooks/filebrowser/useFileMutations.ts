@@ -1,16 +1,11 @@
-import {
-  QueryClient,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { useCallback } from "react";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
   type FileChmodRequest,
   type FileExtractRequest,
   linuxio,
-  openJobAttachStream,
 } from "@/api";
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -22,7 +17,6 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 import { joinPath } from "@/utils/path";
 
 import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
-import { useStreamResult } from "../useStreamResult";
 
 const FILES_TOAST_META = { href: "/filebrowser", label: "Open files" };
 
@@ -71,7 +65,8 @@ export const useFileMutations = ({
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundJobActions();
-  const { run: runStreamResult } = useStreamResult();
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
@@ -116,78 +111,100 @@ export const useFileMutations = ({
     [createFolderMutation, normalizedPath],
   );
 
-  const { mutate: deleteItems } = useMutation({
-    mutationFn: async (paths: string[]) => {
-      if (!paths.length) return;
-      // One batch job deletes the whole selection; the bridge loops
-      // server-side and reports per-item failures in the result.
-      const job = await linuxio.filebrowser.delete_batch(paths);
-      const result = await runStreamResult<BatchJobResult>({
-        open: () => openJobAttachStream(job.id),
-        closeMessage: "Delete job stream closed before completion",
-      });
-      const failed = result?.failed ?? [];
-      if (failed.length > 0) {
-        throw new Error(
-          `Failed to delete ${failed.length} item${failed.length === 1 ? "" : "s"}`,
-        );
-      }
-    },
-    onSuccess: () => {
-      invalidateListing();
-      onDeleteSuccess?.();
-      toast.success("Items deleted successfully");
-    },
-    onError: (error: unknown) => {
-      toast.error(getMutationErrorMessage(error, "Failed to delete items"));
-    },
-  });
+  // One batch job deletes the whole selection; the bridge loops server-side
+  // and reports per-item failures in the result.
+  const deleteBatchAction =
+    linuxio.filebrowser.delete_batch.useJobStreamAction<BatchJobResult>({
+      closeMessage: "Delete job stream closed before completion",
+      // invalidateListing below is more precise than the manifest entry.
+      invalidates: [],
+      success: (result) => {
+        const failed = result?.failed ?? [];
+        if (failed.length > 0) {
+          toast.error(
+            `Failed to delete ${failed.length} item${failed.length === 1 ? "" : "s"}`,
+          );
+          return;
+        }
+        invalidateListing();
+        onDeleteSuccess?.();
+        toast.success("Items deleted successfully");
+      },
+      error: (error) => {
+        toast.error(getMutationErrorMessage(error, "Failed to delete items"));
+      },
+    });
 
-  const { mutateAsync: compressItems, isPending: isCompressing } = useMutation({
-    mutationFn: async ({
-      paths,
-      archiveName,
-      destination,
-    }: CompressPayload) => {
+  const deleteItems = useCallback(
+    (paths: string[]) => {
+      if (!paths.length) return;
+      deleteBatchAction.mutate({ paths });
+    },
+    [deleteBatchAction],
+  );
+
+  const compressItems = useCallback(
+    async ({ paths, archiveName, destination }: CompressPayload) => {
       if (!paths.length) {
         throw new Error("No paths provided for compression");
       }
-      // Pass invalidateListing as onComplete - called when stream actually completes
-      await startCompression({
-        paths,
-        archiveName: archiveName || "archive.zip",
-        destination: destination || normalizedPath,
-        onComplete: invalidateListing,
-      });
+      setIsCompressing(true);
+      try {
+        // Pass invalidateListing as onComplete - called when stream actually completes
+        await startCompression({
+          paths,
+          archiveName: archiveName || "archive.zip",
+          destination: destination || normalizedPath,
+          onComplete: invalidateListing,
+        });
+      } finally {
+        setIsCompressing(false);
+      }
     },
-  });
+    [invalidateListing, normalizedPath, startCompression],
+  );
 
-  const { mutateAsync: extractArchive, isPending: isExtracting } = useMutation({
-    mutationFn: async ({ archivePath, destination }: ExtractPayload) => {
+  const extractArchive = useCallback(
+    async ({ archivePath, destination }: ExtractPayload) => {
       if (!archivePath) {
         throw new Error("No archive selected");
       }
-      // Pass invalidateListing as onComplete - called when stream actually completes
-      await startExtraction({
-        archivePath,
-        destination,
-        onComplete: invalidateListing,
-      });
+      setIsExtracting(true);
+      try {
+        // Pass invalidateListing as onComplete - called when stream actually completes
+        await startExtraction({
+          archivePath,
+          destination,
+          onComplete: invalidateListing,
+        });
+      } catch (error) {
+        // Note: errors are also handled by BackgroundJobsContext
+        toast.error(
+          getMutationErrorMessage(error, "Failed to extract archive"),
+        );
+        throw error;
+      } finally {
+        setIsExtracting(false);
+      }
     },
-    onError: (error: unknown) => {
-      // Note: errors are also handled by BackgroundJobsContext
-      toast.error(getMutationErrorMessage(error, "Failed to extract archive"));
+    [invalidateListing, startExtraction, toast],
+  );
+
+  const changePermissionsAction = linuxio.filebrowser.chmod.useJobStreamAction({
+    closeMessage: "Permissions job stream closed before completion",
+    success: () => {
+      invalidateListing();
+      toast.success("Permissions changed successfully");
+    },
+    error: (error) => {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to change permissions"),
+      );
     },
   });
 
-  const { mutateAsync: changePermissionsAsync } = useMutation({
-    mutationFn: async ({
-      path,
-      mode,
-      recursive,
-      owner,
-      group,
-    }: ChmodPayload) => {
+  const changePermissions = useCallback(
+    async ({ path, mode, recursive, owner, group }: ChmodPayload) => {
       if (!path) {
         throw new Error("No path provided");
       }
@@ -201,28 +218,9 @@ export const useFileMutations = ({
         group: group || "",
         recursive: recursive || undefined,
       };
-      const job = await linuxio.filebrowser.chmod(request);
-      await runStreamResult({
-        open: () => openJobAttachStream(job.id),
-        closeMessage: "Permissions job stream closed before completion",
-      });
+      await changePermissionsAction.mutateAsync(request);
     },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Permissions changed successfully");
-    },
-    onError: (error: unknown) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to change permissions"),
-      );
-    },
-  });
-
-  const changePermissions = useCallback(
-    async (payload: ChmodPayload) => {
-      await changePermissionsAsync(payload);
-    },
-    [changePermissionsAsync],
+    [changePermissionsAction],
   );
 
   const renameMutation = linuxio.filebrowser.resource_patch.useJobAction({
@@ -281,56 +279,60 @@ export const useFileMutations = ({
     [resolveCollisions, toast],
   );
 
-  const { mutateAsync: copyItems } = useMutation({
-    mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
-      if (!sourcePaths.length) {
-        throw new Error("No paths provided");
+  const copyItems = useCallback(
+    async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      try {
+        if (!sourcePaths.length) {
+          throw new Error("No paths provided");
+        }
+        const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+        if (!plan) {
+          return;
+        }
+        // One batch job copies the whole selection into destinationDir; the
+        // bridge loops server-side and reports one aggregate progress bar.
+        await startCopy({
+          sources: plan.sources,
+          destination: destinationDir,
+          overwrite: plan.overwrite || undefined,
+          onComplete: invalidateListing,
+        });
+      } catch (error) {
+        if (error !== CONFLICT_PROMPT_CANCELLED) {
+          toast.error(getMutationErrorMessage(error, "Failed to copy items"));
+        }
+        throw error;
       }
-      const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
-      if (!plan) {
-        return;
-      }
-      // One batch job copies the whole selection into destinationDir; the
-      // bridge loops server-side and reports one aggregate progress bar.
-      await startCopy({
-        sources: plan.sources,
-        destination: destinationDir,
-        overwrite: plan.overwrite || undefined,
-        onComplete: invalidateListing,
-      });
     },
-    onError: (error: unknown) => {
-      if (error === CONFLICT_PROMPT_CANCELLED) {
-        return;
-      }
-      toast.error(getMutationErrorMessage(error, "Failed to copy items"));
-    },
-  });
+    [invalidateListing, resolvePasteCollisions, startCopy, toast],
+  );
 
-  const { mutateAsync: moveItems } = useMutation({
-    mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
-      if (!sourcePaths.length) {
-        throw new Error("No paths provided");
+  const moveItems = useCallback(
+    async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      try {
+        if (!sourcePaths.length) {
+          throw new Error("No paths provided");
+        }
+        const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+        if (!plan) {
+          return;
+        }
+        // One batch job moves the whole selection into destinationDir.
+        await startMove({
+          sources: plan.sources,
+          destination: destinationDir,
+          overwrite: plan.overwrite || undefined,
+          onComplete: invalidateListing,
+        });
+      } catch (error) {
+        if (error !== CONFLICT_PROMPT_CANCELLED) {
+          toast.error(getMutationErrorMessage(error, "Failed to move items"));
+        }
+        throw error;
       }
-      const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
-      if (!plan) {
-        return;
-      }
-      // One batch job moves the whole selection into destinationDir.
-      await startMove({
-        sources: plan.sources,
-        destination: destinationDir,
-        overwrite: plan.overwrite || undefined,
-        onComplete: invalidateListing,
-      });
     },
-    onError: (error: unknown) => {
-      if (error === CONFLICT_PROMPT_CANCELLED) {
-        return;
-      }
-      toast.error(getMutationErrorMessage(error, "Failed to move items"));
-    },
-  });
+    [invalidateListing, resolvePasteCollisions, startMove, toast],
+  );
 
   return {
     createFile,

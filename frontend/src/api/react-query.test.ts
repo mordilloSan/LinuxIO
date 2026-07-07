@@ -103,7 +103,7 @@ describe("createEndpoint", () => {
     ).toThrow(/not query/);
 
     expect(() =>
-      createEndpoint("system", "get_cpu_info", { kind: "none" }).useMutation(),
+      createEndpoint("system", "get_cpu_info", { kind: "none" }).useJobAction(),
     ).toThrow(/not mutation\/job/);
   });
 });

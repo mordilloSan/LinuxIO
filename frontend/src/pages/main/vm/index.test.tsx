@@ -60,8 +60,6 @@ const mocks = vi.hoisted(() => {
     managedISOPath,
     listVMs: [alpha],
     mutations: {
-      create: vi.fn(),
-      delete: vi.fn(),
       forceOff: vi.fn(),
       reboot: vi.fn(),
       resume: vi.fn(),
@@ -87,20 +85,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const mutation = (
-    fn: (request: unknown) => unknown,
-    options?: { onSuccess?: (result: unknown) => void },
-    successResult?: unknown,
-  ) => ({
-    isPending: false,
-    mutate: (request: unknown) => {
-      fn(request);
-      if (successResult !== undefined) {
-        options?.onSuccess?.(successResult);
-      }
-    },
-    mutateAsync: fn,
-  });
+  const { useState } = await import("react");
   // Mirrors useJobAction: on success runs invalidates -> success ->
   // options.onSuccess, with the unwrapped job result (undefined here).
   const jobAction = (
@@ -128,6 +113,63 @@ vi.mock("@/api", async (importOriginal) => {
     mutateAsync: fn,
   });
   type JobActionConfig = Parameters<typeof jobAction>[1];
+  // Mirrors useJobStreamAction: submit -> onJobStart -> attach -> progress
+  // frames -> result, driven by the openJobAttachStream/waitForStreamResult
+  // mocks so tests control the job stream.
+  interface JobStreamActionConfig extends NonNullable<JobActionConfig> {
+    onJobStart?: (job: unknown, variables: unknown) => void;
+    onOpen?: (stream: unknown, job: unknown, variables: unknown) => void;
+    onProgress?: (progress: unknown, job: unknown, variables: unknown) => void;
+    options?: {
+      onMutate?: (variables: unknown) => void;
+      onSettled?: () => void;
+      onSuccess?: (result: unknown, variables: unknown) => void;
+    };
+  }
+  // Called during component render, so it can hold pending state in a hook.
+  const jobStreamAction = (
+    submit: (request: unknown) => Promise<{ id: string }>,
+    config?: JobStreamActionConfig,
+  ) => {
+    const [isPending, setIsPending] = useState(false);
+    const run = async (request: unknown) => {
+      setIsPending(true);
+      config?.options?.onMutate?.(request);
+      try {
+        const job = await submit(request);
+        config?.onJobStart?.(job, request);
+        const stream = mocks.openJobAttachStream(job.id);
+        config?.onOpen?.(stream, job, request);
+        const result = await mocks.waitForStreamResult(stream, {
+          onProgress: (progress: unknown) =>
+            config?.onProgress?.(progress, job, request),
+        });
+        if (typeof config?.invalidates === "function") {
+          config.invalidates(result, request);
+        }
+        if (typeof config?.success === "function") {
+          config.success(result, request);
+        }
+        config?.options?.onSuccess?.(result, request);
+        return result;
+      } catch (error) {
+        if (typeof config?.error === "function") {
+          config.error(error, request);
+        }
+        throw error;
+      } finally {
+        setIsPending(false);
+        config?.options?.onSettled?.();
+      }
+    };
+    return {
+      isPending,
+      mutate: (request: unknown) => {
+        void run(request).catch(() => undefined);
+      },
+      mutateAsync: run,
+    };
+  };
   const resourceGet = Object.assign(mocks.resourceGet, {
     queryKey: (request: { path: string }) => [
       "linuxio",
@@ -135,9 +177,21 @@ vi.mock("@/api", async (importOriginal) => {
       "resource_get",
       request,
     ],
+    queryOptions: (request: { path: string }) => ({
+      queryKey: ["linuxio", "filebrowser", "resource_get", request],
+      queryFn: () => mocks.resourceGet(request),
+    }),
   });
   const resourcePost = Object.assign(mocks.resourcePost, {
-    useMutation: () => mutation(mocks.resourcePost),
+    useJobAction: (config?: JobActionConfig) =>
+      jobAction(mocks.resourcePost, config),
+  });
+  const resourceStat = Object.assign(mocks.resourceStat, {
+    queryOptions: (path: string, options?: Record<string, unknown>) => ({
+      queryKey: ["linuxio", "filebrowser", "resource_stat", { path }],
+      queryFn: () => mocks.resourceStat(path),
+      ...options,
+    }),
   });
 
   return {
@@ -148,15 +202,16 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.filebrowser,
         resource_get: resourceGet,
         resource_post: resourcePost,
-        resource_stat: mocks.resourceStat,
+        resource_stat: resourceStat,
       },
       virt: {
         create: Object.assign(mocks.virtCreate, {
-          useMutation: () => mutation(mocks.mutations.create),
+          useJobStreamAction: (config?: JobStreamActionConfig) =>
+            jobStreamAction(mocks.virtCreate, config),
         }),
         delete: Object.assign(mocks.virtDelete, {
-          useMutation: (options?: { onSuccess?: (result: unknown) => void }) =>
-            mutation(mocks.mutations.delete, options, {}),
+          useJobStreamAction: (config?: JobStreamActionConfig) =>
+            jobStreamAction(mocks.virtDelete, config),
         }),
         force_off: {
           useJobAction: (config?: JobActionConfig) =>

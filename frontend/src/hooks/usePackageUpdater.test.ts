@@ -14,6 +14,11 @@ const streamResultMocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  interface StreamActionConfig {
+    onJobStart?: (job: unknown, variables: unknown) => void;
+    onOpen?: (stream: unknown, job: unknown, variables: unknown) => void;
+    onProgress?: (progress: unknown, job: unknown, variables: unknown) => void;
+  }
   return {
     ...actual,
     openJobAttachStream: apiMocks.openJobAttachStream,
@@ -21,21 +26,45 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       jobs: {
         ...actual.linuxio.jobs,
-        cancel: apiMocks.cancelJob,
+        cancel: {
+          useJobAction: () => ({
+            isPending: false,
+            mutate: (request: unknown) => apiMocks.cancelJob(request),
+            mutateAsync: apiMocks.cancelJob,
+          }),
+        },
       },
       packages: {
         ...actual.linuxio.packages,
-        update: apiMocks.updatePackages,
+        update: {
+          // Mirrors useJobStreamAction: submit -> onJobStart -> attach ->
+          // stream result, with the stream lifecycle driven by
+          // streamResultMocks.run so tests control progress frames.
+          useJobStreamAction: (config?: StreamActionConfig) => {
+            const run = async (request: unknown) => {
+              const job = await apiMocks.updatePackages(request);
+              config?.onJobStart?.(job, request);
+              return streamResultMocks.run({
+                open: () => apiMocks.openJobAttachStream(job.id),
+                onOpen: (stream: unknown) =>
+                  config?.onOpen?.(stream, job, request),
+                onProgress: (progress: unknown) =>
+                  config?.onProgress?.(progress, job, request),
+              });
+            };
+            return {
+              isPending: false,
+              mutate: (request: unknown) => {
+                void run(request).catch(() => undefined);
+              },
+              mutateAsync: run,
+            };
+          },
+        },
       },
     },
   };
 });
-
-vi.mock("@/hooks/useStreamResult", () => ({
-  useStreamResult: () => ({
-    run: streamResultMocks.run,
-  }),
-}));
 
 const { usePackageUpdater } = await import("@/hooks/usePackageUpdater");
 const { act, renderHook } = await import("@/test/render");
@@ -85,9 +114,9 @@ describe("usePackageUpdater", () => {
     });
 
     expect(result.current.updatingPackage).toBe("nginx");
-    expect(apiMocks.updatePackages).toHaveBeenCalledWith([
-      "nginx;1.24.0;amd64;ubuntu",
-    ]);
+    expect(apiMocks.updatePackages).toHaveBeenCalledWith({
+      packageIds: ["nginx;1.24.0;amd64;ubuntu"],
+    });
 
     await flushMinimumVisibleProgress(promise);
 
@@ -141,10 +170,9 @@ describe("usePackageUpdater", () => {
     ]);
     await flushMinimumVisibleProgress(promise);
 
-    expect(apiMocks.updatePackages).toHaveBeenCalledWith([
-      "nginx;1.24.0;amd64;ubuntu",
-      "curl;8.0;amd64;ubuntu",
-    ]);
+    expect(apiMocks.updatePackages).toHaveBeenCalledWith({
+      packageIds: ["nginx;1.24.0;amd64;ubuntu", "curl;8.0;amd64;ubuntu"],
+    });
     expect(apiMocks.openJobAttachStream).toHaveBeenCalledWith("job-1");
     expect(result.current.progress).toBe(100);
     expect(result.current.eventLog).toEqual([
@@ -177,7 +205,7 @@ describe("usePackageUpdater", () => {
     act(() => result.current.cancelUpdate());
 
     expect(stream.abort).toHaveBeenCalledTimes(1);
-    expect(apiMocks.cancelJob).toHaveBeenCalledWith("job-2");
+    expect(apiMocks.cancelJob).toHaveBeenCalledWith({ jobId: "job-2" });
     expect(result.current.error).toBe("Update cancelled");
     expect(result.current.updatingPackage).toBeNull();
   });

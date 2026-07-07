@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
@@ -22,7 +21,6 @@ const CreateInterfaceButton = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
-  const queryClient = useQueryClient();
 
   // Fetch network info via stream API
   const {
@@ -34,20 +32,17 @@ const CreateInterfaceButton = () => {
   // Fetch existing WireGuard interfaces via stream API
   const { data: wgInterfaces } = linuxio.wireguard.list_interfaces.useQuery();
 
-  // Mutation for adding interface
+  // Job action for adding an interface; invalidation comes from the
+  // ROUTE_INVALIDATIONS manifest.
   const { mutate: addInterface, isPending: isAddingInterface } =
-    linuxio.wireguard.add_interface.useMutation({
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: linuxio.wireguard.list_interfaces.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        const msg = getMutationErrorMessage(
-          error,
-          "Failed to create WireGuard interface",
+    linuxio.wireguard.add_interface.useJobAction({
+      error: (error) => {
+        setError(
+          getMutationErrorMessage(
+            error,
+            "Failed to create WireGuard interface",
+          ),
         );
-        setError(msg);
       },
     });
 

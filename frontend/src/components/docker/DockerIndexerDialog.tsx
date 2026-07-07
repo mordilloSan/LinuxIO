@@ -1,17 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  type ComposeProject,
-  linuxio,
-  openJobAttachStream,
-  type Stream,
-  useStreamMux,
-} from "@/api";
+import { type ComposeProject, linuxio, type Stream, useStreamMux } from "@/api";
 import IndexerStatusDialog, {
   type IndexerStat,
   type IndexerStatSection,
 } from "@/components/dialog/IndexerStatusDialog";
-import { useStreamResult } from "@/hooks/useStreamResult";
 
 const normalizeIndexedPath = (path: string) => {
   const trimmed = path.trim();
@@ -89,9 +82,57 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   const jobIdRef = useRef<string | null>(null);
   const hasCompletedRef = useRef(false);
   const closedByUserRef = useRef(false);
-  const { run: runStreamResult } = useStreamResult();
 
   const { isOpen: muxIsOpen } = useStreamMux();
+
+  // Cancels are fire-and-forget; a plain job action reports nothing.
+  const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
+
+  const { mutate: runIndexer } = linuxio.docker.indexer.useJobStreamAction<
+    IndexerResult,
+    IndexerProgress
+  >({
+    signal: () => abortControllerRef.current?.signal,
+    closeOnAbort: "none",
+    openErrorMessage: "Failed to attach indexer operation",
+    closeMessage: "Indexer stream closed unexpectedly",
+    onJobStart: (job) => {
+      // The dialog may have been closed while the job was being created;
+      // cancel the orphaned job instead of tracking it.
+      if (abortControllerRef.current?.signal.aborted !== false) {
+        cancelJob({ jobId: job.id });
+        return;
+      }
+      jobIdRef.current = job.id;
+    },
+    onOpen: (stream) => {
+      streamRef.current = stream;
+      closedByUserRef.current = false;
+    },
+    onProgress: (progressData) => {
+      setProgress(progressData);
+    },
+    success: (indexerResult) => {
+      hasCompletedRef.current = true;
+      setResult(indexerResult);
+      setSuccess(true);
+      onComplete?.();
+    },
+    error: (err) => {
+      if (closedByUserRef.current || err.name === "AbortError") {
+        return;
+      }
+      hasCompletedRef.current = true;
+      setError(err.message || "Indexing failed");
+    },
+    options: {
+      onSettled: () => {
+        streamRef.current = null;
+        abortControllerRef.current = null;
+        setIsRunning(false);
+      },
+    },
+  });
 
   const { data: composeProjects = [], isPending: composeProjectsPending } =
     linuxio.docker.list_compose_projects.useQuery({
@@ -129,7 +170,7 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     }
   }, [open, closeStream]);
 
-  // Open stream when dialog opens.
+  // Start the indexer job when the dialog opens.
   useEffect(() => {
     if (!open || !muxIsOpen) {
       return;
@@ -140,62 +181,14 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       return;
     }
 
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const job = await linuxio.docker.indexer();
-        if (cancelled) {
-          void linuxio.jobs.cancel(job.id).catch(() => undefined);
-          return;
-        }
-        jobIdRef.current = job.id;
-        await runStreamResult<IndexerResult, IndexerProgress>({
-          open: () => openJobAttachStream(job.id),
-          signal: abortController.signal,
-          closeOnAbort: "none",
-          openErrorMessage: "Failed to attach indexer operation",
-          closeMessage: "Indexer stream closed unexpectedly",
-          onOpen: (stream) => {
-            streamRef.current = stream;
-            closedByUserRef.current = false;
-          },
-          onProgress: (progressData) => {
-            setProgress(progressData);
-          },
-          onSuccess: (indexerResult) => {
-            hasCompletedRef.current = true;
-            setResult(indexerResult);
-            setSuccess(true);
-            onComplete?.();
-          },
-        });
-      } catch (err: unknown) {
-        if (closedByUserRef.current) {
-          return;
-        }
-        hasCompletedRef.current = true;
-        const errorMessage =
-          err instanceof Error ? err.message : "Indexing failed";
-        setError(errorMessage);
-      } finally {
-        streamRef.current = null;
-        abortControllerRef.current = null;
-        setIsRunning(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [muxIsOpen, open, onComplete, runStreamResult]);
+    abortControllerRef.current = new AbortController();
+    runIndexer(undefined);
+  }, [muxIsOpen, open, runIndexer]);
 
   const handleClose = () => {
     if (isRunning) {
       if (jobIdRef.current) {
-        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
+        cancelJob({ jobId: jobIdRef.current });
       }
       closeStream();
     }

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -45,12 +44,11 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   volumeNames,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useMutation({
-      onError: (error: Error) => {
+    linuxio.docker.delete_volume.useJobAction({
+      error: (error) => {
         toast.error(
           getMutationErrorMessage(error, "Failed to delete volume(s)"),
         );
@@ -66,9 +64,6 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         ? `Volume "${volumeNames[0]}" deleted successfully`
         : `${volumeNames.length} volumes deleted successfully`;
     toast.success(successMessage);
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_volumes.queryKey(),
-    });
     onSuccess();
     handleClose();
   };

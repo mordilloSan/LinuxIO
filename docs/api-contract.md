@@ -62,7 +62,7 @@ For request routes:
 | File | Role |
 |------|------|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
-| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks (`useQuery`, `useJobAction`, `useMutation`), query keys/options, route mode checks, retry policy, request shaping. |
+| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks (`useQuery`, `useJobAction`, `useJobStreamAction`), query keys/options, route mode checks, retry policy, request shaping. |
 | `frontend/src/api/linuxio-core.ts` | Low-level JSON request path over the stream multiplexer. API internals only. |
 | `frontend/src/api/linuxio.ts` | Stream utilities, connection hooks, stream openers, and job-backed stream wrappers. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
@@ -96,13 +96,14 @@ Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for 
 ```typescript
 import { linuxio } from "@/api";
 
-const cpu = await linuxio.system.get_cpu_info();
-const size = await linuxio.filebrowser.dir_size("/srv/data");
-const job = await linuxio.jobs.cancel("job-123");
-
 const { data: unit } = linuxio.systemd.get_unit_info.useQuery("ssh.service", {
   refetchInterval: 2000,
 });
+
+// Imperative reads go through the React Query cache, not bare endpoint calls:
+const size = await queryClient.fetchQuery(
+  linuxio.filebrowser.dir_size.queryOptions("/srv/data"),
+);
 
 const startContainer = linuxio.docker.start_container.useJobAction({
   invalidates: [linuxio.docker.list_containers.queryKey()],
@@ -117,12 +118,14 @@ Every generated endpoint exposes:
 
 | Member | Use |
 |--------|-----|
-| `endpoint(...input)` | Framework-agnostic Promise call. |
+| `endpoint(...input)` | Framework-agnostic Promise call. API/jobs infrastructure only — feature code uses the hooks or `queryOptions`. |
 | `endpoint.useQuery(...input, options?)` | React Query hook for query routes. |
 | `endpoint.useJobAction(config?)` | React Query hook for job routes: awaits job completion, unwraps the job result, declarative invalidation/toasts. |
-| `endpoint.useMutation(options?)` | Low-level React Query hook for job routes (escape hatch; resolves with the raw terminal `JobSnapshot`). |
+| `endpoint.useJobStreamAction(config?)` | Job-route hook with live progress: starts the job, attaches to its stream, and surfaces `onJobStart`/`onOpen`/`onProgress` plus the `useJobAction` config. |
 | `endpoint.queryKey(...input)` | Stable React Query key. |
-| `endpoint.queryOptions(...input, options?)` | Options for `queryClient.fetchQuery()` / `ensureQueryData()`. |
+| `endpoint.queryOptions(...input, options?)` | Options for `queryClient.fetchQuery()` / `ensureQueryData()` — the sanctioned path for imperative reads. |
+
+Feature code (`pages/`, `components/`, `contexts/`, non-jobs `hooks/`) never calls endpoints as bare promises and never imports `useMutation` from React Query: reads go through `useQuery`/`queryOptions`, writes go through `useJobAction`/`useJobStreamAction` or the background-jobs layer. The primitives live in `src/api/` and `src/hooks/backgroundJobs/`; a guard test (`frontend/src/constants/apiLayering.test.ts`) enforces the boundary.
 
 `useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data. `useJobAction` instead takes a `JobActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
 
@@ -136,7 +139,7 @@ Input is generated from the Go request contract:
 | one required JSON field | `linuxio.filebrowser.dir_size(path)` | `{ "path": path }` |
 | multi-field or optional object | `linuxio.docker.system_prune(request)` | `request` |
 
-Job actions and mutations use the full generated request object as their mutation variable:
+Job actions use the full generated request object as their mutation variable:
 
 ```typescript
 linuxio.jobs.cancel.useJobAction().mutate({ jobId });
@@ -211,7 +214,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 All actions are jobs, including fast atomic mutations. If a job completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle streams.
 
-On the frontend, `useJobAction` (and the lower-level `useMutation`) awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them.
+On the frontend, `useJobAction` awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them; `useJobStreamAction` accepts `markHandled: false` when the recovered-jobs stream should keep ownership of completion (progress rendered locally, toasts owned globally).
 
 Built-in job routes:
 

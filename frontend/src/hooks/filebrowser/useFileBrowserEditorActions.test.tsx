@@ -13,11 +13,8 @@ const toastMocks = vi.hoisted(() => ({
 
 const apiMocks = vi.hoisted(() => ({
   isConnected: vi.fn(),
-  openJobDataStream: vi.fn(),
-  upload: vi.fn(),
+  uploadContent: vi.fn(),
 }));
-
-const runChunkedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("sonner", () => ({
   toast: {
@@ -33,23 +30,12 @@ vi.mock("@/api", async () => {
   return {
     ...actual,
     isConnected: apiMocks.isConnected,
-    linuxio: {
-      ...actual.linuxio,
-      filebrowser: {
-        ...actual.linuxio.filebrowser,
-        upload: apiMocks.upload,
-      },
-    },
-    openJobDataStream: apiMocks.openJobDataStream,
+    uploadContent: apiMocks.uploadContent,
   };
 });
 
 vi.mock("@/hooks/useConfig", () => ({
   useConfig: () => ({ config: { appSettings: { chunkSizeMB: 1 } } }),
-}));
-
-vi.mock("@/hooks/useStreamResult", () => ({
-  useStreamResult: () => ({ runChunked: runChunkedMock }),
 }));
 
 type Params = Parameters<typeof useFileBrowserEditorActions>[0];
@@ -94,8 +80,7 @@ describe("useFileBrowserEditorActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.isConnected.mockReturnValue(true);
-    apiMocks.upload.mockResolvedValue({ id: "job-1" });
-    runChunkedMock.mockResolvedValue(undefined);
+    apiMocks.uploadContent.mockResolvedValue(undefined);
   });
 
   describe("close flow", () => {
@@ -151,15 +136,11 @@ describe("useFileBrowserEditorActions", () => {
         await result.current.handleSaveFile();
       });
 
-      expect(apiMocks.upload).toHaveBeenCalledWith({
-        overwrite: true,
-        size: "5",
-        targetPath: "/srv/note.md",
-      });
-      expect(runChunkedMock).toHaveBeenCalledTimes(1);
-      expect(runChunkedMock.mock.calls[0][0]).toMatchObject({
-        chunkSize: 1024 * 1024,
-      });
+      expect(apiMocks.uploadContent).toHaveBeenCalledTimes(1);
+      const [path, bytes, options] = apiMocks.uploadContent.mock.calls[0];
+      expect(path).toBe("/srv/note.md");
+      expect(bytes).toHaveLength(5);
+      expect(options).toEqual({ chunkSize: 1024 * 1024, overwrite: true });
       expect(toastMocks.success).toHaveBeenCalledWith(
         "File saved successfully!",
         expect.anything(),
@@ -182,7 +163,7 @@ describe("useFileBrowserEditorActions", () => {
         "Stream connection not ready",
         expect.anything(),
       );
-      expect(apiMocks.upload).not.toHaveBeenCalled();
+      expect(apiMocks.uploadContent).not.toHaveBeenCalled();
       expect(params.setIsSavingFile).not.toHaveBeenCalled();
     });
 
@@ -193,12 +174,12 @@ describe("useFileBrowserEditorActions", () => {
         await result.current.handleSaveFile();
       });
 
-      expect(apiMocks.upload).not.toHaveBeenCalled();
+      expect(apiMocks.uploadContent).not.toHaveBeenCalled();
       expect(params.setIsSavingFile).not.toHaveBeenCalled();
     });
 
     it("surfaces a save error and clears the saving flag", async () => {
-      runChunkedMock.mockRejectedValue(new Error("stream broke"));
+      apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
       const { result, params } = setup();
 
       await act(async () => {

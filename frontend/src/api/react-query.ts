@@ -150,6 +150,13 @@ export interface JobStreamActionConfig<
   TResult,
   TProgress = ProgressFrame,
 > extends JobActionConfig<TRequest, TResult> {
+  /**
+   * By default a locally awaited job is marked handled so the recovered-jobs
+   * stream skips its completion toasts/invalidations. Pass `false` when the
+   * global handler should keep ownership of completion — e.g. progress is
+   * rendered locally but the toast must still fire if the caller unmounts.
+   */
+  markHandled?: boolean;
   /** Abort signal for this run, or a callback that derives one from variables. */
   signal?: StreamSignal<TRequest>;
   /** Action to perform on abort signal. Defaults to aborting the stream. */
@@ -215,18 +222,7 @@ export interface CommandEndpoint<
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
 
   /**
-   * React Query hook for mutations
-   *
-   * @example
-   * const { mutate } = useMutation();
-   * mutate({ containerId });
-   */
-  useMutation: (
-    options?: MutationOptions<TRequest, TResult>,
-  ) => UseMutationResult<TResult, LinuxIOError, TRequest>;
-
-  /**
-   * Higher-level mutation hook for job routes: awaits job completion,
+   * Mutation hook for job routes: awaits job completion,
    * unwraps the job result, and handles invalidation + toasts declaratively.
    *
    * @example
@@ -373,7 +369,10 @@ async function waitForJobStreamAction<
     );
   }
 
-  markJobLocallyHandled(snapshot.id);
+  const markHandled = config?.markHandled !== false;
+  if (markHandled) {
+    markJobLocallyHandled(snapshot.id);
+  }
   config?.onOpen?.(attach, snapshot, variables);
 
   const mapResult = config?.mapResult;
@@ -390,7 +389,9 @@ async function waitForJobStreamAction<
       signal,
     });
   } finally {
-    unmarkJobLocallyHandled(snapshot.id);
+    if (markHandled) {
+      unmarkJobLocallyHandled(snapshot.id);
+    }
   }
 }
 
@@ -453,33 +454,6 @@ export function createEndpoint<TResult>(
       enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
     });
   }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQuery"];
-
-  endpoint.useMutation = (options?: MutationOptions<unknown, TResult>) => {
-    const route = routeName(handler, command);
-    const mode = getRouteMode(route);
-    if (mode && mode !== "job") {
-      throw new LinuxIOError(
-        `Route ${route} is ${mode}, not mutation/job`,
-        "invalid_route_mode",
-      );
-    }
-
-    return useMutation<TResult, LinuxIOError, unknown>({
-      mutationFn: async (request: unknown) => {
-        const result = await core.request<TResult>(
-          handler,
-          command,
-          requestForWire(requestShape, request),
-          { retryPolicy },
-        );
-        if (isJobSnapshot(result)) {
-          return (await waitForJobCompletion(result)) as TResult;
-        }
-        return result;
-      },
-      ...options,
-    });
-  };
 
   endpoint.useJobAction = (config?: JobActionConfig<unknown, TResult>) => {
     const route = routeName(handler, command);

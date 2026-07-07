@@ -31,23 +31,16 @@ function NavbarUserDropdown() {
     setMenuOpen(false),
   );
 
-  // Mutations for power actions
-  const { mutate: reboot } = linuxio.control.reboot.useMutation({
-    onSuccess: () => {
-      // Server may die before responding - this is expected
-    },
-    onError: (error: Error) => {
-      // Server may die before responding - this is expected, so we don't show error
+  // Power actions: the server may die before responding, so errors are
+  // expected and only logged.
+  const { mutate: reboot } = linuxio.control.reboot.useJobAction({
+    error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },
   });
 
-  const { mutate: powerOff } = linuxio.control.power_off.useMutation({
-    onSuccess: () => {
-      // Server may die before responding - this is expected
-    },
-    onError: (error: Error) => {
-      // Server may die before responding - this is expected, so we don't show error
+  const { mutate: powerOff } = linuxio.control.power_off.useJobAction({
+    error: (error) => {
       console.warn("Power off error (may be expected):", error);
     },
   });

@@ -7,7 +7,6 @@ import {
   CACHE_TTL_MS,
   type IndexerConfig,
   type IndexerDaemonStatus,
-  jobSnapshotResult,
   linuxio,
   type UnitInfo,
 } from "@/api";
@@ -314,8 +313,10 @@ const IndexerSettingsSection: React.FC = () => {
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
-  const setConfigMutation = linuxio.indexer.set_config.useMutation();
-  const setTimerMutation = linuxio.indexer.set_timer_interval.useMutation();
+  const setConfigMutation = linuxio.indexer.set_config.useJobAction();
+  const setTimerMutation = linuxio.indexer.set_timer_interval.useJobAction({
+    invalidates: [linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT)],
+  });
 
   const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
   const draft = useMemo(
@@ -374,23 +375,16 @@ const IndexerSettingsSection: React.FC = () => {
       let nextRestartRequired = false;
 
       if (hasConfigChanges) {
-        const configResult = jobSnapshotResult(
-          await setConfigMutation.mutateAsync(payload),
-        );
+        const configResult = await setConfigMutation.mutateAsync(payload);
         nextConfig = configResult.config;
         nextRestartRequired = configResult.restart_required;
       }
 
       if (hasTimerChange) {
-        const timerResult = jobSnapshotResult(
-          await setTimerMutation.mutateAsync({
-            interval: draft.interval.trim(),
-          }),
-        );
-        nextConfig = timerResult.config;
-        void queryClient.invalidateQueries({
-          queryKey: linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT),
+        const timerResult = await setTimerMutation.mutateAsync({
+          interval: draft.interval.trim(),
         });
+        nextConfig = timerResult.config;
       }
 
       if (nextConfig) {

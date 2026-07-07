@@ -1,10 +1,11 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { ROUTE_MODES } from "@/api/generated/route-metadata";
 import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
+import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
 const MODES = ROUTE_MODES as Record<string, string>;
 
@@ -51,51 +52,26 @@ const ALLOWED_INVALIDATE_FILES = new Set([
   // Core invalidation appliers.
   "api/react-query.ts",
   "hooks/backgroundJobs/useRecoveredJobs.ts",
-  // Imperative multi-item flows still on the raw useMutation escape hatch.
-  "components/navbar/IndexerSettingsSection.tsx",
+  // Imperative flows whose invalidation is more precise than a manifest
+  // entry (current-path listing refresh, conditional cache targeting).
   "hooks/filebrowser/useFileBrowserController.tsx",
   "hooks/filebrowser/useFileBrowserEditorActions.ts",
   "hooks/filebrowser/useFileMutations.ts",
   "pages/main/accounts/components/DeleteGroupDialog.tsx",
   "pages/main/accounts/components/DeleteUserDialog.tsx",
-  "pages/main/docker/ImageList.tsx",
-  "pages/main/docker/index.tsx",
-  "pages/main/docker/NetworkList.tsx",
-  "pages/main/docker/VolumeList.tsx",
-  "pages/main/vm/CreateVMDialog.tsx",
-  "pages/main/vm/index.tsx",
-  "pages/main/wireguard/CreateInterfaceButton.tsx",
 ]);
-
-// Vitest runs from frontend/ (the setup-file path in vitest.config depends on it).
-const SRC_ROOT = join(process.cwd(), "src/");
-
-function sourceFiles(dir: string, files: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name !== "generated") sourceFiles(full, files);
-    } else if (
-      /\.(ts|tsx)$/.test(entry.name) &&
-      !entry.name.includes(".test.")
-    ) {
-      files.push(full);
-    }
-  }
-  return files;
-}
 
 describe("invalidation guard", () => {
   it("keeps queryClient.invalidateQueries out of feature code", () => {
-    const violations = sourceFiles(SRC_ROOT)
+    const violations = sourceFiles()
       .filter((file) => {
-        const rel = file.slice(SRC_ROOT.length).replaceAll("\\", "/");
+        const rel = relativeToSrc(file);
         return (
           !ALLOWED_INVALIDATE_FILES.has(rel) &&
           readFileSync(file, "utf8").includes("invalidateQueries(")
         );
       })
-      .map((file) => file.slice(SRC_ROOT.length));
+      .map(relativeToSrc);
 
     expect(
       violations,
