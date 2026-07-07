@@ -15,7 +15,7 @@ const apiMocks = vi.hoisted(() => ({
     "list_compose_projects",
   ]),
   setConfigRemote: vi.fn(),
-  waitForStreamMux: vi.fn(),
+  useStreamMux: vi.fn(),
 }));
 
 const toastMocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
-    waitForStreamMux: apiMocks.waitForStreamMux,
+    useStreamMux: apiMocks.useStreamMux,
     linuxio: {
       ...actual.linuxio,
       config: {
@@ -94,6 +94,8 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
+const onSavedSpy = vi.fn();
+
 function Probe() {
   const { config, isLoaded, setKey, updateConfig } = useConfig();
   return (
@@ -112,6 +114,16 @@ function Probe() {
         }
       >
         set folders
+      </button>
+      <button
+        onClick={() =>
+          updateConfig(
+            { docker: { requireMountsForFolders: true } },
+            onSavedSpy,
+          )
+        }
+      >
+        set mounts
       </button>
     </div>
   );
@@ -138,7 +150,11 @@ function renderProvider({
   const queryClient = createTestQueryClient();
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
-  apiMocks.waitForStreamMux.mockResolvedValue(true);
+  apiMocks.useStreamMux.mockReturnValue({
+    status: "open",
+    isOpen: true,
+    getStream: () => null,
+  });
   apiMocks.configGetFetch.mockImplementation(() => configQueryFn());
   apiMocks.configSetUseJobAction.mockImplementation((config) => {
     jobActionConfigs.push(config);
@@ -199,7 +215,6 @@ describe("ConfigProvider", () => {
       "/srv/docker",
     );
 
-    expect(apiMocks.waitForStreamMux).toHaveBeenCalledWith(250);
     expect(apiMocks.configGetFetch).toHaveBeenCalledWith({
       staleTime: 0,
     });
@@ -265,28 +280,21 @@ describe("ConfigProvider", () => {
     });
   });
 
-  it("shows a toast after Docker mount ordering changes are persisted", async () => {
-    const { fireJobActionSuccess } = renderProvider();
+  it("invokes onSaved only after the backend confirms the save", async () => {
+    renderProvider();
 
     await screen.findByTestId("loaded");
-
-    fireJobActionSuccess(undefined, {
-      docker: {
-        requireMountsForFolders: true,
-      },
+    await act(async () => {
+      screen.getByRole("button", { name: "set mounts" }).click();
     });
-    expect(toastMocks.success).toHaveBeenCalledWith(
-      "Docker will wait for configured folder mounts.",
-    );
 
-    fireJobActionSuccess(undefined, {
-      docker: {
-        requireMountsForFolders: false,
-      },
-    });
-    expect(toastMocks.success).toHaveBeenCalledWith(
-      "Docker folder mount ordering disabled.",
-    );
+    // The per-save callback is forwarded as the mutate call's onSuccess and
+    // must not fire before the mutation succeeds.
+    expect(onSavedSpy).not.toHaveBeenCalled();
+    const [patch, mutateOptions] = apiMocks.setConfigRemote.mock.lastCall ?? [];
+    expect(patch).toEqual({ docker: { requireMountsForFolders: true } });
+    (mutateOptions as { onSuccess: () => void }).onSuccess();
+    expect(onSavedSpy).toHaveBeenCalledTimes(1);
   });
 
   it("signs out and does not render children on auth failures", async () => {

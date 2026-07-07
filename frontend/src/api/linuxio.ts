@@ -8,7 +8,11 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { JobSnapshot } from "./generated/linuxio-types";
+import type {
+  JobSnapshot,
+  LinuxIOStreamSchema,
+  StreamRouteName,
+} from "./generated/linuxio-types";
 
 import { isTerminalJobState } from "./job-state";
 import { request as bridgeRequest } from "./linuxio-core";
@@ -43,6 +47,21 @@ function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
       request: request ?? {},
     }),
   );
+}
+
+/**
+ * Argument tuple for opening a stream route: nothing when the route takes no
+ * request, otherwise the Go-generated wire request — so route names and
+ * request shapes are checked against the backend contract.
+ */
+type StreamRouteArgs<R extends StreamRouteName> =
+  LinuxIOStreamSchema[R] extends void ? [] : [request: LinuxIOStreamSchema[R]];
+
+function openRouteStream<R extends StreamRouteName>(
+  route: R,
+  ...args: StreamRouteArgs<R>
+): Stream | null {
+  return openMuxStream(route, streamOpenPayload(route, args[0]));
 }
 
 let nextJobBackedStreamID = -1;
@@ -225,9 +244,9 @@ class JobBackedDataStream implements Stream {
   }
 }
 
-function openJobBackedDataStream(
-  route: string,
-  request: unknown,
+function openJobBackedDataStream<R extends StreamRouteName>(
+  route: R,
+  request: LinuxIOStreamSchema[R],
 ): Stream | null {
   if (!isConnected()) {
     return null;
@@ -341,8 +360,7 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 // ============================================================================
 
 export function openTerminalStream(cols: number, rows: number): Stream | null {
-  const route = "terminal.open";
-  return openMuxStream(route, streamOpenPayload(route, { cols, rows }));
+  return openRouteStream("terminal.open", { cols, rows });
 }
 
 export function openContainerStream(
@@ -351,27 +369,24 @@ export function openContainerStream(
   cols: number,
   rows: number,
 ): Stream | null {
-  const route = "container.open";
-  return openMuxStream(
-    route,
-    streamOpenPayload(route, { containerId, shell, cols, rows }),
-  );
+  return openRouteStream("container.open", { containerId, shell, cols, rows });
 }
 
 export function openDockerLogsStream(
   containerId: string,
   tail: string = "100",
 ): Stream | null {
-  const route = "docker.logs.follow";
-  return openJobBackedDataStream(route, { containerId, tail });
+  return openJobBackedDataStream("docker.logs.follow", { containerId, tail });
 }
 
 export function openServiceLogsStream(
   serviceName: string,
   lines: string = "100",
 ): Stream | null {
-  const route = "logs.service.follow";
-  return openJobBackedDataStream(route, { serviceName, lines });
+  return openJobBackedDataStream("logs.service.follow", {
+    serviceName,
+    lines,
+  });
 }
 
 export function openGeneralLogsStream(
@@ -381,8 +396,7 @@ export function openGeneralLogsStream(
   identifier: string = "",
   fieldFilters: string[] = [],
 ): Stream | null {
-  const route = "logs.general.follow";
-  return openJobBackedDataStream(route, {
+  return openJobBackedDataStream("logs.general.follow", {
     lines,
     timePeriod,
     priority,
@@ -395,31 +409,24 @@ export function openAppUpdateStream(
   runId: string,
   version?: string,
 ): Stream | null {
-  const route = "control.app_update";
-  return openJobBackedDataStream(route, { runId, version });
+  return openJobBackedDataStream("control.app_update", { runId, version });
 }
 
 export function openJobAttachStream(jobId: string): Stream | null {
-  const route = "jobs.attach";
-  return openMuxStream(route, streamOpenPayload(route, { jobId }));
+  return openRouteStream("jobs.attach", { jobId });
 }
 
 export function openJobDataStream(
   jobId: string,
   offset: number = 0,
 ): Stream | null {
-  const route = "jobs.data";
-  return openMuxStream(
-    route,
-    streamOpenPayload(route, { jobId, offset: String(offset) }),
-  );
+  return openRouteStream("jobs.data", { jobId, offset: String(offset) });
 }
 
 export function openVMConsoleStream(name: string): Stream | null {
-  const route = "virt.console_open";
-  return openMuxStream(route, streamOpenPayload(route, { name }));
+  return openRouteStream("virt.console_open", { name });
 }
 
 export function openJobEventsStream(): Stream | null {
-  return openMuxStream("jobs.events", streamOpenPayload("jobs.events"));
+  return openRouteStream("jobs.events");
 }

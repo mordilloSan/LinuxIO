@@ -44,6 +44,67 @@ const ALLOWED_BARE_CALL_FILES = new Set([
 // third property follows instead of a call.
 const BARE_ENDPOINT_CALL = /\blinuxio\.\w+\.\w+\(/;
 
+// Byte/mux-level transport primitives. Feature code talks streams through
+// the stream openers (openTerminalStream, ...) and the lifecycle hooks; only
+// the sanctioned low-level consumers below may import these from @/api.
+const STREAM_PRIMITIVES = [
+  "initStreamMux",
+  "closeStreamMux",
+  "waitForStreamMux",
+  "getStreamMux",
+  "encodeString",
+  "decodeString",
+  "configureStreamMultiplexer",
+  "bindStreamHandlers",
+  "waitForStreamResult",
+  "streamWriteChunks",
+  "createStreamMessageChannel",
+  "StreamMessageChannel",
+  "STREAM_MULTIPLEXER_CONFIG",
+];
+
+// Files allowed to import stream primitives: mux bootstrap, stream-lifecycle
+// hooks, and a few legacy page-level consumers. Shrink this list over time;
+// never grow it without a structural reason.
+const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
+  // Mux bootstrap owns init/close across sign-in/sign-out.
+  "contexts/AuthContext.tsx",
+  // App-update stream lifecycle (mux handle + frame decoding).
+  "contexts/UpdateContext.tsx",
+  // Upload window sizing from the transport default.
+  "contexts/BackgroundJobsContext.tsx",
+  "hooks/useUploadChunkSize.ts",
+  // Stream-lifecycle hooks — the sanctioned way pages consume streams.
+  "hooks/useLiveStream.ts",
+  "hooks/useLogStream.ts",
+  "hooks/useStreamResult.ts",
+  "hooks/useXtermStreamTerminal.ts",
+  "hooks/useTerminalContextMenu.ts",
+  // Legacy page-level consumers — move these behind lifecycle hooks.
+  "pages/main/terminal/Terminal.tsx",
+  "pages/main/logs/GeneralLogsPage.tsx",
+  "pages/main/vm/ConsoleDialog.tsx",
+]);
+
+const API_IMPORT_GROUP =
+  /import\s+(?:type\s+)?{([^}]+)}\s*from\s*["']@\/api["']/g;
+
+function importedStreamPrimitives(source: string): string[] {
+  const found: string[] = [];
+  for (const match of source.matchAll(API_IMPORT_GROUP)) {
+    for (const rawName of match[1].split(",")) {
+      const name = rawName
+        .replace(/^\s*type\s+/, "")
+        .trim()
+        .split(/\s+as\s+/)[0];
+      if (STREAM_PRIMITIVES.includes(name)) {
+        found.push(name);
+      }
+    }
+  }
+  return found;
+}
+
 const USE_MUTATION_IMPORT =
   /import\s*(?:type\s*)?{[^}]*\buseMutation\b[^}]*}\s*from\s*["']@tanstack\/react-query["']/;
 
@@ -133,6 +194,45 @@ describe("API layering guard", () => {
       violations,
       "Mutations belong on the typed endpoint surface " +
         "(useJobAction / useJobStreamAction), not raw useMutation.",
+    ).toEqual([]);
+  });
+
+  it("keeps stream/mux primitives out of feature code", () => {
+    const violations = sourceFiles()
+      .map(relativeToSrc)
+      .flatMap((rel) => {
+        if (isSanctioned(rel)) return [];
+        if (STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES.has(rel)) return [];
+        const names = importedStreamPrimitives(
+          readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
+        );
+        return names.length > 0 ? [`${rel}: ${names.join(", ")}`] : [];
+      });
+
+    expect(
+      violations,
+      "Feature code must not import byte/mux-level primitives from @/api. " +
+        "Consume streams via the open*Stream factories and the stream " +
+        "lifecycle hooks (useLiveStream/useLogStream/useStreamResult), or " +
+        "add a sanctioned low-level consumer deliberately.",
+    ).toEqual([]);
+  });
+
+  it("stream-primitive allowlist entries still exist and still import primitives", () => {
+    const stale = [...STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES].filter((rel) => {
+      try {
+        return (
+          importedStreamPrimitives(
+            readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
+          ).length === 0
+        );
+      } catch {
+        return true;
+      }
+    });
+    expect(
+      stale,
+      "Remove cleaned-up files from STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES",
     ).toEqual([]);
   });
 

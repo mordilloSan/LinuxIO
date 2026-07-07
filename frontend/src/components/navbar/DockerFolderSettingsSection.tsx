@@ -89,7 +89,13 @@ const DockerFolderSettingsSection: React.FC = () => {
   );
   const setRequireMountsForFolders = useCallback(
     (enabled: boolean) =>
-      updateConfig({ docker: { requireMountsForFolders: enabled } }),
+      updateConfig({ docker: { requireMountsForFolders: enabled } }, () =>
+        toast.success(
+          enabled
+            ? "Docker will wait for configured folder mounts."
+            : "Docker folder mount ordering disabled.",
+        ),
+      ),
     [updateConfig],
   );
   const configuredFolders = useMemo(

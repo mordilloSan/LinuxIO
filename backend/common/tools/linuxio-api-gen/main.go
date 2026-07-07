@@ -163,7 +163,30 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	schema.WriteString("export type CommandResult<\n")
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
-	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n")
+	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n\n")
+
+	schema.WriteString("/**\n")
+	schema.WriteString(" * Wire request contracts for stream-consumed routes: duplex opens and job\n")
+	schema.WriteString(" * routes attached via job data streams (routes with no query/job endpoint).\n")
+	schema.WriteString(" * `void` marks routes opened without a request payload.\n")
+	schema.WriteString(" */\n")
+	schema.WriteString("export interface LinuxIOStreamSchema {\n")
+	streamRoutes := make([]apischema.RouteSpec, 0, len(routes))
+	for _, route := range routes {
+		if route.Endpoint() {
+			continue
+		}
+		streamRoutes = append(streamRoutes, route)
+	}
+	sort.Slice(streamRoutes, func(i, j int) bool {
+		return streamRoutes[i].Route < streamRoutes[j].Route
+	})
+	for _, route := range streamRoutes {
+		fmt.Fprintf(&schema, "  %q: %s;\n", route.Route, renderer.requestRef(route.RequestSpec()))
+	}
+	schema.WriteString("}\n\n")
+	schema.WriteString("/** Route names opened as streams rather than called as endpoints */\n")
+	schema.WriteString("export type StreamRouteName = keyof LinuxIOStreamSchema;\n")
 
 	for _, spec := range apischema.ExtraTypes {
 		renderer.typeRef(spec)

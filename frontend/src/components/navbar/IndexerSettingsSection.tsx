@@ -1,5 +1,4 @@
-import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { toast } from "sonner";
 
 import {
@@ -11,17 +10,20 @@ import {
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
+  SettingsGrid,
+  SettingsSaveFooter,
+  SettingsSectionShell,
+  useSettingsDraft,
+} from "@/components/navbar/SettingsSectionForm";
+import {
   SectionCard,
   StatusMetric,
   ToggleCard,
 } from "@/components/navbar/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
-import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useCapability } from "@/hooks/useCapabilities";
 import { type AppTheme, useAppTheme } from "@/theme";
@@ -202,9 +204,6 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
 
 const hasErrors = (errors: DraftErrors) => Object.values(errors).some(Boolean);
 
-const draftsEqual = (left: DraftConfig | null, right: DraftConfig | null) =>
-  JSON.stringify(left) === JSON.stringify(right);
-
 const formatCount = (value?: number | null) =>
   typeof value === "number" ? value.toLocaleString() : "Unknown";
 
@@ -278,9 +277,6 @@ const IndexerSettingsSection: React.FC = () => {
     status: indexerStatus,
     reason: indexerReason,
   } = useCapability("indexerAvailable");
-  const [draftPatch, setDraftPatch] = useState<Partial<DraftConfig>>({});
-  const [errors, setErrors] = useState<DraftErrors>({});
-  const [restartRequired, setRestartRequired] = useState(false);
 
   const {
     data: config,
@@ -320,11 +316,18 @@ const IndexerSettingsSection: React.FC = () => {
   });
 
   const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
-  const draft = useMemo(
-    () => (savedDraft ? { ...savedDraft, ...draftPatch } : null),
-    [draftPatch, savedDraft],
-  );
-  const isDirty = !draftsEqual(draft, savedDraft);
+  const {
+    draft,
+    draftPatch,
+    setDraftPatch,
+    errors,
+    setErrors,
+    restartRequired,
+    setRestartRequired,
+    isDirty,
+    patchKey,
+    reset: handleReset,
+  } = useSettingsDraft<DraftConfig, DraftErrors>(savedDraft);
   const busy =
     isFetching || setConfigMutation.isPending || setTimerMutation.isPending;
   const refreshing = busy || isStatusFetching || isTimerFetching;
@@ -336,23 +339,8 @@ const IndexerSettingsSection: React.FC = () => {
   }, [draft, savedDraft]);
 
   const updateDraft = <K extends DraftKey>(key: K, value: DraftConfig[K]) => {
-    setDraftPatch((prev) => {
-      if (!savedDraft) return prev;
-      if (Object.is(savedDraft[key], value)) {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      }
-      return { ...prev, [key]: value };
-    });
+    patchKey(key, value);
     setErrors((prev) => ({ ...prev, [key]: undefined }));
-    setRestartRequired(false);
-  };
-
-  const handleReset = () => {
-    setDraftPatch({});
-    setErrors({});
-    setRestartRequired(false);
   };
 
   const saveChanges = async () => {
@@ -420,23 +408,6 @@ const IndexerSettingsSection: React.FC = () => {
     void refetchTimer();
   };
 
-  const renderGrid = (
-    children: React.ReactNode,
-    minColumnWidth = 220,
-    rowGap = 1.5,
-  ) => (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(auto-fit, minmax(${minColumnWidth}px, 1fr))`,
-        columnGap: theme.spacing(1.5),
-        rowGap: theme.spacing(rowGap),
-      }}
-    >
-      {children}
-    </div>
-  );
-
   const renderStatusGrid = (children: React.ReactNode) => (
     <div
       className="indexer-status-grid"
@@ -450,50 +421,18 @@ const IndexerSettingsSection: React.FC = () => {
     </div>
   );
 
-  const header = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.spacing(1.5),
-      }}
-    >
-      <div>
-        <AppTypography fontWeight={600} variant="body1">
-          Indexer
-        </AppTypography>
-        <AppTypography color="text.secondary" variant="caption">
-          Filesystem search, folder sizes, and index storage.
-        </AppTypography>
-      </div>
-      <AppTooltip title={refreshing ? "Refreshing" : "Refresh"}>
-        <AppIconButton
-          aria-label="Refresh indexer settings"
-          disabled={refreshing || !indexerEnabled}
-          onClick={handleRefresh}
-          size="small"
-        >
-          <Icon
-            height={18}
-            icon={refreshing ? "mdi:loading" : "mdi:refresh"}
-            width={18}
-          />
-        </AppIconButton>
-      </AppTooltip>
-    </div>
-  );
+  const shellProps = {
+    title: "Indexer",
+    subtitle: "Filesystem search, folder sizes, and index storage.",
+    refreshAriaLabel: "Refresh indexer settings",
+    refreshing,
+    refreshDisabled: !indexerEnabled,
+    onRefresh: handleRefresh,
+  };
 
   if (!indexerEnabled) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <AppAlert severity={indexerStatus === "unknown" ? "info" : "warning"}>
           <AppAlertTitle>
             {indexerStatus === "unknown"
@@ -502,55 +441,33 @@ const IndexerSettingsSection: React.FC = () => {
           </AppAlertTitle>
           {indexerReason}
         </AppAlert>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
   if (error) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <AppAlert severity="error">
           <AppAlertTitle>Indexer settings unavailable</AppAlertTitle>
           {error.message}
         </AppAlert>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
   if (isPending || !draft) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <div style={{ padding: theme.spacing(3) }}>
           <ComponentLoader />
         </div>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: theme.spacing(1.5),
-      }}
-    >
-      {header}
-
+    <SettingsSectionShell {...shellProps}>
       {restartRequired ? (
         <AppAlert severity="info">
           <AppAlertTitle>Restart required</AppAlertTitle>
@@ -656,7 +573,7 @@ const IndexerSettingsSection: React.FC = () => {
         subtitle="Root path, index name, and retention"
         title="Index Scope"
       >
-        {renderGrid(
+        <SettingsGrid minColumnWidth={180}>
           <>
             <AppTooltip title="Absolute filesystem path">
               <AppTextField
@@ -701,9 +618,8 @@ const IndexerSettingsSection: React.FC = () => {
                 value={draft.keep_indexes}
               />
             </AppTooltip>
-          </>,
-          180,
-        )}
+          </>
+        </SettingsGrid>
       </SectionCard>
 
       <SectionCard
@@ -721,7 +637,7 @@ const IndexerSettingsSection: React.FC = () => {
         subtitle={INDEXER_TIMER_UNIT}
         title="Auto-Index Timer"
       >
-        {renderGrid(
+        <SettingsGrid minColumnWidth={160}>
           <>
             <AppTooltip title="Systemd timer cadence; use 0 to disable">
               <AppTextField
@@ -765,9 +681,8 @@ const IndexerSettingsSection: React.FC = () => {
                 />
               </>
             ) : null}
-          </>,
-          160,
-        )}
+          </>
+        </SettingsGrid>
         {timerError ? (
           <div style={{ marginTop: theme.spacing(1.5) }}>
             <AppAlert severity="warning">
@@ -787,7 +702,7 @@ const IndexerSettingsSection: React.FC = () => {
         subtitle="Local socket and optional TCP listener"
         title="Daemon Access"
       >
-        {renderGrid(
+        <SettingsGrid>
           <>
             <AppTextField
               disabled={busy}
@@ -813,8 +728,8 @@ const IndexerSettingsSection: React.FC = () => {
               size="small"
               value={draft.listen_addr}
             />
-          </>,
-        )}
+          </>
+        </SettingsGrid>
       </SectionCard>
 
       <SectionCard
@@ -822,7 +737,7 @@ const IndexerSettingsSection: React.FC = () => {
         subtitle="SQLite path, durability, and connection pool."
         title="Database"
       >
-        {renderGrid(
+        <SettingsGrid minColumnWidth={220} rowGap={2.75}>
           <>
             <AppTextField
               disabled={busy}
@@ -927,37 +842,19 @@ const IndexerSettingsSection: React.FC = () => {
                 </option>
               ))}
             </AppSelect>
-          </>,
-          220,
-          2.75,
-        )}
+          </>
+        </SettingsGrid>
       </SectionCard>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: theme.spacing(1.5),
-          paddingTop: theme.spacing(0.5),
-        }}
-      >
-        <AppButton disabled={!isDirty || busy} onClick={handleReset}>
-          Reset
-        </AppButton>
-        <AppButton
-          disabled={!isDirty || busy || hasErrors(errors)}
-          onClick={handleSave}
-          startIcon={
-            <Icon height={18} icon="mdi:content-save-outline" width={18} />
-          }
-          variant="contained"
-        >
-          {setConfigMutation.isPending || setTimerMutation.isPending
-            ? "Saving..."
-            : "Save"}
-        </AppButton>
-      </div>
-    </div>
+      <SettingsSaveFooter
+        busy={busy}
+        isDirty={isDirty}
+        onReset={handleReset}
+        onSave={handleSave}
+        saveDisabled={hasErrors(errors)}
+        saving={setConfigMutation.isPending || setTimerMutation.isPending}
+      />
+    </SettingsSectionShell>
   );
 };
 

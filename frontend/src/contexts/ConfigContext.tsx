@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
@@ -19,7 +20,7 @@ import {
   linuxio,
   LinuxIOError,
   type TableCardViewMode,
-  waitForStreamMux,
+  useStreamMux,
 } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
@@ -300,6 +301,11 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
   undefined,
 );
 
+// Config state is deliberately layered: the sessionStorage cache seeds the
+// initial render synchronously (no theme flash before the mux is up), the
+// useState mirror is the live copy feature code reads, and the backend is the
+// durable store. Saves are optimistic — local state updates immediately and a
+// failed persist surfaces via the action's error toast.
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const { signOut, user } = useAuth();
   const username = user?.id;
@@ -309,48 +315,34 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [isLoaded, setLoaded] = useState(false);
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
+  const { isOpen: isMuxOpen } = useStreamMux();
   const fetchConfigSettings = linuxio.config.get.useFetcher();
   const { mutate: setConfigRemote } = linuxio.config.set.useJobAction({
+    error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
         ? [linuxio.docker.list_compose_projects.queryKey()]
         : [],
-    success: (_result, patch) => {
-      if (patch.docker?.requireMountsForFolders !== undefined) {
-        toast.success(
-          patch.docker.requireMountsForFolders
-            ? "Docker will wait for configured folder mounts."
-            : "Docker folder mount ordering disabled.",
-        );
-      }
-    },
   });
 
   useEffect(() => {
     let cancelled = false;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    // If the mux never opens, render with cached/default config after 2.5s;
+    // saving stays disabled until a backend load succeeds.
+    const giveUp = setTimeout(() => {
+      if (!cancelled) {
+        console.warn("Stream mux not ready, using cached/default config");
+        setLoaded(true);
+      }
+    }, 2_500);
 
-    const fetchConfig = async (attempt = 1): Promise<void> => {
-      if (cancelled) return;
+    const fetchConfig = async (): Promise<void> => {
+      // The effect re-runs when the mux opens (same gating the endpoint
+      // hooks get from `enabled`), so a slow startup never leaves saving
+      // disabled forever.
+      if (!isMuxOpen) return;
 
       try {
-        // Wait for stream mux to be ready (250ms per attempt, up to 5 attempts = 2.5s total)
-        const muxReady = await waitForStreamMux(250);
-        if (cancelled) return;
-
-        if (!muxReady) {
-          // Mux not ready - retry quickly (100ms delay between attempts)
-          if (attempt < 5) {
-            retryTimeout = setTimeout(() => fetchConfig(attempt + 1), 100);
-            return;
-          }
-          // After 5 attempts, use cached/default config but don't allow saving
-          console.warn("Stream mux not ready, using cached/default config");
-          setLoaded(true);
-          // canSave stays false - prevent overwriting backend config with defaults
-          return;
-        }
-
         if (readConfigCache(username)) {
           setCanSave(true);
           setLoaded(true);
@@ -394,22 +386,37 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     };
 
-    // One-shot async config load (stream mux + query-cache fetcher), not a
-    // synchronous external store — useSyncExternalStore can't express async
-    // loading, so this rule misfires here.
-    // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
-    fetchConfig();
+    // Async config load (mux-gated, query-cache fetcher), not a synchronous
+    // external store — useSyncExternalStore can't express async loading, so
+    // this rule misfires here.
+
+    void fetchConfig();
 
     return () => {
       cancelled = true;
-      if (retryTimeout) clearTimeout(retryTimeout);
+      clearTimeout(giveUp);
     };
-  }, [fetchConfigSettings, signOut, username]);
+  }, [fetchConfigSettings, isMuxOpen, signOut, username]);
 
+  // Warn once per unreachable period, not on every discarded change.
+  const warnedUnsavedRef = useRef(false);
   const save = useCallback(
-    (patch: ConfigPatch) => {
-      if (!canSave) return; // Only save if we successfully loaded from backend
-      setConfigRemote(patch);
+    (patch: ConfigPatch, onSaved?: () => void) => {
+      if (!canSave) {
+        // Startup never reached the backend: the change stays local so the
+        // UI keeps working, but the user must know it will not survive.
+        if (!warnedUnsavedRef.current) {
+          warnedUnsavedRef.current = true;
+          toast.warning("Settings are not being saved (backend unreachable).");
+        }
+        return;
+      }
+      warnedUnsavedRef.current = false;
+      if (onSaved) {
+        setConfigRemote(patch, { onSuccess: onSaved });
+      } else {
+        setConfigRemote(patch);
+      }
     },
     [canSave, setConfigRemote],
   );
@@ -432,12 +439,12 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   );
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
-    (patch) => {
+    (patch, onSaved) => {
       setConfig((prev) => {
         const partial = typeof patch === "function" ? patch(prev) : patch;
         const next = mergeConfig(prev, partial);
         if (canSave) writeConfigCache(username, next);
-        save(partial);
+        save(partial, onSaved);
         return next;
       });
     },

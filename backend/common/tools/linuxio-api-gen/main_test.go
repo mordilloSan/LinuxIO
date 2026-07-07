@@ -181,6 +181,9 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 		"scalar: { input: [request: GoldenScalarRequest]; request: GoldenScalarRequest; result: GoldenResponse };",
 		"nested: { input: [request: GoldenNestedRequest]; request: GoldenNestedRequest; result: GoldenResponse };",
 		"runner: { input: [servers: string[]]; request: NTPServersRequest; result: JobSnapshot };",
+		"export interface LinuxIOStreamSchema",
+		"\"golden.stream\": void;",
+		"export type StreamRouteName = keyof LinuxIOStreamSchema;",
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated Go-contract types missing %s\n%s", expected, out)

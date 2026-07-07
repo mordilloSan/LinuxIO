@@ -149,6 +149,11 @@ export interface AppSettings {
   viewModes?: Record<string, TableCardViewMode>;
 }
 
+export interface AppUpdateRequest {
+  runId: string;
+  version?: string;
+}
+
 export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
 
 export interface AutoUpdateOptions {
@@ -475,6 +480,13 @@ export interface ContainerNetworkSettings {
   Networks?: Record<string, ContainerEndpoint>;
 }
 
+export interface ContainerOpenRequest {
+  containerId: string;
+  shell: string;
+  cols: number;
+  rows: number;
+}
+
 export interface ContainerPort {
   IP?: string;
   PrivatePort: number;
@@ -649,6 +661,11 @@ export interface DockerImage {
   RepoTags: string[];
   Size: number;
   updateAvailable?: boolean;
+}
+
+export interface DockerLogsFollowRequest {
+  containerId: string;
+  tail?: string;
 }
 
 export interface DockerNetwork {
@@ -886,6 +903,14 @@ export interface FilesystemInfo {
   usedPercent: number;
 }
 
+export interface GeneralLogsFollowRequest {
+  lines?: string;
+  timePeriod?: string;
+  priority?: string;
+  identifier?: string;
+  fieldFilters?: string[];
+}
+
 export interface GpuDevice {
   actual_freq_mhz?: number;
   address: string;
@@ -1096,6 +1121,11 @@ export interface InterfaceStats {
 
 export interface IntervalRequest {
   interval: string;
+}
+
+export interface JobDataRequest {
+  jobId: string;
+  offset?: string;
 }
 
 export interface JobError {
@@ -1576,6 +1606,11 @@ export interface Service {
   unit_file_state: string;
 }
 
+export interface ServiceLogsFollowRequest {
+  serviceName: string;
+  lines?: string;
+}
+
 export interface ServiceNameRequest {
   serviceName: string;
 }
@@ -1707,6 +1742,11 @@ export interface SystemLastLogin {
 }
 
 export type TableCardViewMode = "card" | "table";
+
+export interface TerminalOpenRequest {
+  cols: number;
+  rows: number;
+}
 
 export interface TerminateSessionRequest {
   sessionId: string;
@@ -2861,3 +2901,28 @@ export type CommandResult<
   H extends HandlerName,
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;
+
+/**
+ * Wire request contracts for stream-consumed routes: duplex opens and job
+ * routes attached via job data streams (routes with no query/job endpoint).
+ * `void` marks routes opened without a request payload.
+ */
+export interface LinuxIOStreamSchema {
+  "container.open": ContainerOpenRequest;
+  "control.app_update": AppUpdateRequest;
+  "docker.delete_compose_stack": ProjectNameRequest;
+  "docker.logs.follow": DockerLogsFollowRequest;
+  "docker.normalize_compose": ContentRequest;
+  "docker.reindex_docker_folders": void;
+  "jobs.attach": JobIDRequest;
+  "jobs.data": JobDataRequest;
+  "jobs.events": void;
+  "logs.general.follow": GeneralLogsFollowRequest;
+  "logs.service.follow": ServiceLogsFollowRequest;
+  "system.get_services": void;
+  "terminal.open": TerminalOpenRequest;
+  "virt.console_open": NameRequest;
+}
+
+/** Route names opened as streams rather than called as endpoints */
+export type StreamRouteName = keyof LinuxIOStreamSchema;

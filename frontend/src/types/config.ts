@@ -26,8 +26,14 @@ export interface ConfigContextType {
     key: K,
     value: ConfigValueMap[K] | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
   ) => void;
+  /**
+   * Apply a patch locally and persist it. `onSaved` fires only after the
+   * backend confirms the save — domain-specific feedback (toasts,
+   * follow-ups) belongs there, at the call site, not in the provider.
+   */
   updateConfig: (
     patch: ConfigPatch | ((prev: AppConfig) => ConfigPatch),
+    onSaved?: () => void,
   ) => void;
 }
 

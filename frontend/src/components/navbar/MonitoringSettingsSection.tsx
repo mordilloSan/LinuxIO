@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { toast } from "sonner";
 
 import {
@@ -11,13 +11,18 @@ import {
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
+  SettingsGrid,
+  SettingsSaveFooter,
+  SettingsSectionShell,
+  useSettingsDraft,
+} from "@/components/navbar/SettingsSectionForm";
+import {
   SectionCard,
   StatusMetric,
   ToggleCard,
 } from "@/components/navbar/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -168,8 +173,14 @@ const hasErrors = (errors: DraftErrors) =>
   Object.values(errors.cache_ttl ?? {}).some(Boolean) ||
   Object.values(errors.listener_addresses ?? {}).some(Boolean);
 
-const draftsEqual = (left: DraftConfig | null, right: DraftConfig | null) =>
-  JSON.stringify(left) === JSON.stringify(right);
+const mergeMonitoringDraft = (
+  saved: DraftConfig,
+  patch: Partial<DraftConfig>,
+): DraftConfig => ({
+  ...saved,
+  ...patch,
+  cache_ttl: { ...saved.cache_ttl, ...patch.cache_ttl },
+});
 
 const formatTTLLabel = (key: string) =>
   key
@@ -221,9 +232,6 @@ const MonitoringSettingsSection: React.FC = () => {
     status: monitoringStatus,
     reason: monitoringReason,
   } = useCapability("monitoringAvailable");
-  const [draftPatch, setDraftPatch] = useState<Partial<DraftConfig>>({});
-  const [errors, setErrors] = useState<DraftErrors>({});
-  const [restartRequired, setRestartRequired] = useState(false);
 
   const {
     data: config,
@@ -244,6 +252,26 @@ const MonitoringSettingsSection: React.FC = () => {
     enabled: monitoringEnabled,
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
+
+  const configSchemaError = config ? getConfigSchemaError(config) : null;
+  const savedDraft = useMemo(
+    () => (config && !configSchemaError ? toDraft(config) : null),
+    [config, configSchemaError],
+  );
+  const {
+    draft,
+    setDraftPatch,
+    errors,
+    setErrors,
+    restartRequired,
+    setRestartRequired,
+    isDirty,
+    patchKey,
+    reset: handleReset,
+  } = useSettingsDraft<DraftConfig, DraftErrors>(
+    savedDraft,
+    mergeMonitoringDraft,
+  );
 
   const setConfigMutation = linuxio.monitoring.set_config.useJobAction({
     success: (result) => {
@@ -269,23 +297,6 @@ const MonitoringSettingsSection: React.FC = () => {
     error: "Failed to restart go-monitoring",
   });
 
-  const configSchemaError = config ? getConfigSchemaError(config) : null;
-  const savedDraft = useMemo(
-    () => (config && !configSchemaError ? toDraft(config) : null),
-    [config, configSchemaError],
-  );
-  const draft = useMemo(
-    () =>
-      savedDraft
-        ? {
-            ...savedDraft,
-            ...draftPatch,
-            cache_ttl: { ...savedDraft.cache_ttl, ...draftPatch.cache_ttl },
-          }
-        : null,
-    [draftPatch, savedDraft],
-  );
-  const isDirty = !draftsEqual(draft, savedDraft);
   const busy =
     isFetching || setConfigMutation.isPending || restartMutation.isPending;
   const refreshing = busy || isStatusFetching;
@@ -294,19 +305,10 @@ const MonitoringSettingsSection: React.FC = () => {
     key: K,
     value: DraftConfig[K],
   ) => {
-    setDraftPatch((prev) => {
-      if (!savedDraft) return prev;
-      if (Object.is(savedDraft[key], value)) {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      }
-      return { ...prev, [key]: value };
-    });
+    patchKey(key, value);
     if (key === "collector_interval" || key === "smart_refresh_interval") {
       setErrors((prev) => ({ ...prev, [key]: undefined }));
     }
-    setRestartRequired(false);
   };
 
   const updateCacheTTL = (key: string, value: string) => {
@@ -355,12 +357,6 @@ const MonitoringSettingsSection: React.FC = () => {
     setRestartRequired(false);
   };
 
-  const handleReset = () => {
-    setDraftPatch({});
-    setErrors({});
-    setRestartRequired(false);
-  };
-
   // Success/error handling lives in the setConfigMutation ActionConfig.
   const handleSave = () => {
     if (!draft || !savedDraft) return;
@@ -384,23 +380,6 @@ const MonitoringSettingsSection: React.FC = () => {
   const handleRestart = () => {
     restartMutation.mutate();
   };
-
-  const renderGrid = (
-    children: React.ReactNode,
-    minColumnWidth = 220,
-    rowGap = 1.5,
-  ) => (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(auto-fit, minmax(${minColumnWidth}px, 1fr))`,
-        columnGap: theme.spacing(1.5),
-        rowGap: theme.spacing(rowGap),
-      }}
-    >
-      {children}
-    </div>
-  );
 
   const renderAgentStatusCard = () => (
     <SectionCard
@@ -433,7 +412,7 @@ const MonitoringSettingsSection: React.FC = () => {
         </AppAlert>
       ) : agentStatus ? (
         <>
-          {renderGrid(
+          <SettingsGrid minColumnWidth={240} rowGap={1}>
             <>
               <StatusMetric label="Database" value={agentStatus.db_path} />
               <StatusMetric
@@ -459,23 +438,19 @@ const MonitoringSettingsSection: React.FC = () => {
                 }
                 value={agentStatus.config.path}
               />
-            </>,
-            240,
-            1,
-          )}
+            </>
+          </SettingsGrid>
           {agentStatus.listeners?.length ? (
             <div style={{ marginTop: theme.spacing(1.5) }}>
-              {renderGrid(
-                agentStatus.listeners.map((listener) => (
+              <SettingsGrid minColumnWidth={240} rowGap={1}>
+                {agentStatus.listeners.map((listener) => (
                   <StatusMetric
                     key={listener.name}
                     label={`Listener: ${listener.name}`}
                     value={listener.effective_address || listener.address}
                   />
-                )),
-                240,
-                1,
-              )}
+                ))}
+              </SettingsGrid>
             </div>
           ) : null}
         </>
@@ -487,50 +462,18 @@ const MonitoringSettingsSection: React.FC = () => {
     </SectionCard>
   );
 
-  const header = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.spacing(1.5),
-      }}
-    >
-      <div>
-        <AppTypography fontWeight={600} variant="body1">
-          Monitoring
-        </AppTypography>
-        <AppTypography color="text.secondary" variant="caption">
-          Historical host metrics agent (go-monitoring).
-        </AppTypography>
-      </div>
-      <AppTooltip title={refreshing ? "Refreshing" : "Refresh"}>
-        <AppIconButton
-          aria-label="Refresh monitoring settings"
-          disabled={refreshing || !monitoringEnabled}
-          onClick={handleRefresh}
-          size="small"
-        >
-          <Icon
-            height={18}
-            icon={refreshing ? "mdi:loading" : "mdi:refresh"}
-            width={18}
-          />
-        </AppIconButton>
-      </AppTooltip>
-    </div>
-  );
+  const shellProps = {
+    title: "Monitoring",
+    subtitle: "Historical host metrics agent (go-monitoring).",
+    refreshAriaLabel: "Refresh monitoring settings",
+    refreshing,
+    refreshDisabled: !monitoringEnabled,
+    onRefresh: handleRefresh,
+  };
 
   if (!monitoringEnabled) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <AppAlert
           severity={monitoringStatus === "unknown" ? "info" : "warning"}
         >
@@ -541,79 +484,41 @@ const MonitoringSettingsSection: React.FC = () => {
           </AppAlertTitle>
           {monitoringReason}
         </AppAlert>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
   if (error) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <AppAlert severity="error">
           <AppAlertTitle>Monitoring settings unavailable</AppAlertTitle>
           {error.message}
         </AppAlert>
-      </div>
-    );
-  }
-
-  if (isPending) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
-        <div style={{ padding: theme.spacing(3) }}>
-          <ComponentLoader />
-        </div>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
   if (configSchemaError) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         {renderAgentStatusCard()}
         <AppAlert severity="error">
           <AppAlertTitle>Monitoring config contract mismatch</AppAlertTitle>
           {configSchemaError} Update go-monitoring so its config API matches the
           LinuxIO monitoring settings contract.
         </AppAlert>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
-  if (!draft) {
+  if (isPending || !draft) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {header}
+      <SettingsSectionShell {...shellProps}>
         <div style={{ padding: theme.spacing(3) }}>
           <ComponentLoader />
         </div>
-      </div>
+      </SettingsSectionShell>
     );
   }
 
@@ -623,15 +528,7 @@ const MonitoringSettingsSection: React.FC = () => {
     .filter(({ listener }) => listener.apis.includes("metrics"));
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: theme.spacing(1.5),
-      }}
-    >
-      {header}
-
+    <SettingsSectionShell {...shellProps}>
       {restartRequired ? (
         <AppAlert severity="info">
           <AppAlertTitle>Restart required</AppAlertTitle>
@@ -675,8 +572,8 @@ const MonitoringSettingsSection: React.FC = () => {
           subtitle="Metrics API bind addresses"
           title="Listeners"
         >
-          {renderGrid(
-            editableListeners.map(({ listener, index }) => (
+          <SettingsGrid>
+            {editableListeners.map(({ listener, index }) => (
               <AppTextField
                 disabled={busy}
                 error={Boolean(errors.listener_addresses?.[index])}
@@ -692,8 +589,8 @@ const MonitoringSettingsSection: React.FC = () => {
                 size="small"
                 value={listener.address}
               />
-            )),
-          )}
+            ))}
+          </SettingsGrid>
         </SectionCard>
       ) : null}
 
@@ -702,7 +599,7 @@ const MonitoringSettingsSection: React.FC = () => {
         subtitle="Sampling cadence and history retention plugins"
         title="Collector"
       >
-        {renderGrid(
+        <SettingsGrid>
           <>
             <AppTooltip title="How often metrics are sampled">
               <AppTextField
@@ -744,8 +641,8 @@ const MonitoringSettingsSection: React.FC = () => {
                 value={draft.history}
               />
             </AppTooltip>
-          </>,
-        )}
+          </>
+        </SettingsGrid>
       </SectionCard>
 
       {ttlKeys.length > 0 ? (
@@ -756,8 +653,8 @@ const MonitoringSettingsSection: React.FC = () => {
           subtitle="How long live readings are cached per plugin"
           title="Cache TTLs"
         >
-          {renderGrid(
-            ttlKeys.map((key) => (
+          <SettingsGrid minColumnWidth={140} rowGap={2.75}>
+            {ttlKeys.map((key) => (
               <AppTextField
                 disabled={busy}
                 error={Boolean(errors.cache_ttl?.[key])}
@@ -769,36 +666,20 @@ const MonitoringSettingsSection: React.FC = () => {
                 size="small"
                 value={draft.cache_ttl[key]}
               />
-            )),
-            140,
-            2.75,
-          )}
+            ))}
+          </SettingsGrid>
         </SectionCard>
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: theme.spacing(1.5),
-          paddingTop: theme.spacing(0.5),
-        }}
-      >
-        <AppButton disabled={!isDirty || busy} onClick={handleReset}>
-          Reset
-        </AppButton>
-        <AppButton
-          disabled={!isDirty || busy || hasErrors(errors)}
-          onClick={handleSave}
-          startIcon={
-            <Icon height={18} icon="mdi:content-save-outline" width={18} />
-          }
-          variant="contained"
-        >
-          {setConfigMutation.isPending ? "Saving..." : "Save"}
-        </AppButton>
-      </div>
-    </div>
+      <SettingsSaveFooter
+        busy={busy}
+        isDirty={isDirty}
+        onReset={handleReset}
+        onSave={handleSave}
+        saveDisabled={hasErrors(errors)}
+        saving={setConfigMutation.isPending}
+      />
+    </SettingsSectionShell>
   );
 };
 
