@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useState,
@@ -75,7 +74,7 @@ export const useFileBrowserItemActions = ({
   startDownload,
 }: UseFileBrowserItemActionsParams) => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
-  const queryClient = useQueryClient();
+  const fetchResourceStat = linuxio.filebrowser.resource_stat.useFetcher();
   const { joinPath, getParentPath } = useFilePathUtilities();
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
@@ -178,11 +177,9 @@ export const useFileBrowserItemActions = ({
       (item) => item.type === "directory",
     );
     try {
-      const stat = await queryClient.fetchQuery(
-        linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
-          staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-        }),
-      );
+      const stat = await fetchResourceStat(selectedPath, {
+        staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+      });
       const mode = stat.mode || "0644";
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
       const owner = stat.owner || undefined;
@@ -202,8 +199,8 @@ export const useFileBrowserItemActions = ({
       toast.error("Failed to fetch file permissions");
     }
   }, [
+    fetchResourceStat,
     onContextMenuClose,
-    queryClient,
     selectedItems,
     selectedPaths,
     setPermissionsDialog,

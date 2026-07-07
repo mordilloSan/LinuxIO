@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
@@ -9,7 +8,6 @@ import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const WIREGUARD_TOAST_META = { href: "/wireguard", label: "Open WireGuard" };
 
@@ -21,11 +19,9 @@ interface InterfaceDetailsProps {
 
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
-  const queryClient = useQueryClient();
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [openDialog, setOpenDialog] = useState(false);
+  // Peer whose QR code dialog is open; opening the dialog drives the fetch.
+  const [qrPeer, setQrPeer] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
-  const [isLoadingQrCode, setIsLoadingQrCode] = useState(false);
   const interfaceName = params.id;
 
   // Update current time every 3 seconds (matches refetchInterval)
@@ -69,48 +65,35 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleDeletePeer = (peerName: string) => {
     deletePeer({ interfaceName, peerName });
   };
-  const handleDownloadConfig = async (peername: string) => {
-    try {
-      const result = await queryClient.fetchQuery(
-        linuxio.wireguard.peer_config_download.queryOptions(
-          { interfaceName, peerName: peername },
-          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
-        ),
-      );
-      const blob = new Blob([result.content], {
-        type: "text/plain",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${peername}.conf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success(`Config for '${peername}' downloaded successfully`);
-    } catch (error) {
-      toast.error(getMutationErrorMessage(error, "Failed to download config"));
-    }
-  };
-  const handleViewQrCode = async (peername: string) => {
-    setIsLoadingQrCode(true);
-    try {
-      const result = await queryClient.fetchQuery(
-        linuxio.wireguard.peer_qrcode.queryOptions(
-          { interfaceName, peerName: peername },
-          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
-        ),
-      );
-      setQrCode(result.qrcode);
-      setOpenDialog(true);
-      toast.success(`QR code for '${peername}' loaded successfully`);
-    } catch (error) {
-      toast.error(getMutationErrorMessage(error, "Failed to load QR code"));
-    } finally {
-      setIsLoadingQrCode(false);
-    }
-  };
+
+  const { mutate: downloadConfig } =
+    linuxio.wireguard.peer_config_download.useAction({
+      success: (result, { peerName }) => {
+        const blob = new Blob([result.content], {
+          type: "text/plain",
+        });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `${peerName}.conf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        toast.success(`Config for '${peerName}' downloaded successfully`);
+      },
+      error: "Failed to download config",
+      toast: WIREGUARD_TOAST_META,
+    });
+
+  const qrQuery = linuxio.wireguard.peer_qrcode.useQuery(
+    { interfaceName, peerName: qrPeer ?? "" },
+    {
+      enabled: qrPeer !== null,
+      staleTime: CACHE_TTL_MS.NONE,
+      gcTime: CACHE_TTL_MS.NONE,
+    },
+  );
   if (isLoading) return <PageLoader />;
   if (isError)
     return (
@@ -140,8 +123,10 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               <WireguardPeerCard
                 isOnline={peer.isOnline}
                 onDelete={() => handleDeletePeer(peer.name)}
-                onDownloadConfig={() => handleDownloadConfig(peer.name)}
-                onViewQrCode={() => handleViewQrCode(peer.name)}
+                onDownloadConfig={() =>
+                  downloadConfig({ interfaceName, peerName: peer.name })
+                }
+                onViewQrCode={() => setQrPeer(peer.name)}
                 peer={peer}
               />
             </AppGrid>
@@ -149,20 +134,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         )}
       </AppGrid>
 
-      <GeneralDialog
-        onClose={() => {
-          setOpenDialog(false);
-          setQrCode(null);
-        }}
-        open={openDialog}
-      >
+      <GeneralDialog onClose={() => setQrPeer(null)} open={qrPeer !== null}>
         <AppDialogContent>
-          {isLoadingQrCode ? (
+          {qrQuery.isLoading ? (
             <AppTypography>Loading QR code...</AppTypography>
-          ) : qrCode ? (
+          ) : qrQuery.data?.qrcode ? (
             <img
               alt="QR Code"
-              src={qrCode}
+              src={qrQuery.data.qrcode}
               style={{
                 width: 300,
                 height: 300,

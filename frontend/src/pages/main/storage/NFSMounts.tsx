@@ -1,11 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
@@ -342,7 +335,6 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
@@ -351,9 +343,8 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [mountAtBoot, setMountAtBoot] = useState(false);
   const [customOptions, setCustomOptions] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [exports, setExports] = useState<string[]>([]);
-  const [loadingExports, setLoadingExports] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounced server whose exports are being browsed; "" disables the query.
+  const [browseServer, setBrowseServer] = useState("");
   const { mutate: mountNFS, isPending: isMounting } =
     linuxio.storage.mount_nfs.useJobAction({
       success: (result) => {
@@ -368,43 +359,23 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       error: "Failed to mount NFS share",
       toast: STORAGE_TOAST_META,
     });
-  const fetchExports = useEffectEvent(async (serverAddress: string) => {
-    setLoadingExports(true);
-    try {
-      const result = await queryClient.fetchQuery(
-        linuxio.storage.list_nfs_exports.queryOptions(serverAddress, {
-          staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-        }),
-      );
-      setExports(result || []);
-    } catch {
-      setExports([]);
-    } finally {
-      setLoadingExports(false);
-    }
-  });
-
-  // Fetch exports when server changes (debounced)
+  // Browse exports for the debounced server value.
   useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(
-      () => {
-        if (!server || server.length < 3) {
-          setExports([]);
-        } else {
-          fetchExports(server);
-        }
-      },
-      !server || server.length < 3 ? 0 : 500,
+    const invalid = !server || server.length < 3;
+    const timeout = setTimeout(
+      () => setBrowseServer(invalid ? "" : server),
+      invalid ? 0 : 500,
     );
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
+    return () => clearTimeout(timeout);
   }, [server]);
+
+  // Browsing is best-effort; on error the field falls back to free text.
+  const exportsQuery = linuxio.storage.list_nfs_exports.useQuery(browseServer, {
+    enabled: browseServer !== "",
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
+  const exports = exportsQuery.data ?? [];
+  const loadingExports = browseServer !== "" && exportsQuery.isLoading;
   const buildOptions = () => {
     const opts: string[] = [];
     opts.push(readOnly ? "ro" : "rw");
@@ -442,7 +413,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     setReadOnly(false);
     setMountAtBoot(false);
     setCustomOptions("");
-    setExports([]);
+    setBrowseServer("");
     setValidationError(null);
     onClose();
   };

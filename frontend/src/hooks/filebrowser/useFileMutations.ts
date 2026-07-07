@@ -1,4 +1,3 @@
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import {
@@ -11,7 +10,7 @@ import {
   CONFLICT_PROMPT_CANCELLED,
   type ResolveCollisionsFn,
 } from "@/hooks/filebrowser/useFileConflicts";
-import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
+import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 import { joinPath } from "@/utils/path";
@@ -23,7 +22,6 @@ const FILES_TOAST_META = { href: "/filebrowser", label: "Open files" };
 interface UseFileMutationsParams {
   normalizedPath: string;
   onDeleteSuccess?: () => void;
-  queryClient?: QueryClient;
   resolveCollisions?: ResolveCollisionsFn;
 }
 
@@ -57,25 +55,16 @@ interface BatchJobResult {
 
 export const useFileMutations = ({
   normalizedPath,
-  queryClient: providedQueryClient,
   onDeleteSuccess,
   resolveCollisions,
 }: UseFileMutationsParams) => {
   const toast = useScopedToast(FILES_TOAST_META);
-  const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundJobActions();
   const [isCompressing, setIsCompressing] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
 
-  const invalidateListing = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.filebrowser.resource_get.queryKey({
-        path: normalizedPath,
-      }),
-    });
-    clearFileSubfoldersCache(queryClient);
-  }, [normalizedPath, queryClient]);
+  const invalidateListing = useListingInvalidation(normalizedPath);
 
   const createFileMutation = linuxio.filebrowser.resource_post.useJobAction({
     success: () => {

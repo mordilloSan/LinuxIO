@@ -19,10 +19,8 @@ vi.mock("@/api", async (importOriginal) => {
       filebrowser: {
         ...actual.linuxio.filebrowser,
         resource_get: Object.assign(mocks.resourceGet, {
-          queryOptions: (request: { path: string }) => ({
-            queryKey: ["linuxio", "filebrowser", "resource_get", request],
-            queryFn: () => mocks.resourceGet(request),
-          }),
+          useFetcher: () => (request: { path: string }) =>
+            mocks.resourceGet(request),
         }),
       },
     },

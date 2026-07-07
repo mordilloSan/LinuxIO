@@ -1,5 +1,4 @@
 // src/contexts/ConfigContext.tsx
-import { useQueryClient } from "@tanstack/react-query";
 import React, {
   createContext,
   useCallback,
@@ -310,7 +309,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [isLoaded, setLoaded] = useState(false);
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
-  const queryClient = useQueryClient();
+  const fetchConfigSettings = linuxio.config.get.useFetcher();
   const { mutate: setConfigRemote } = linuxio.config.set.useJobAction({
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
@@ -358,9 +357,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const settings = await queryClient.fetchQuery<AppConfig>(
-          linuxio.config.get.queryOptions({ staleTime: CACHE_TTL_MS.NONE }),
-        );
+        const settings = await fetchConfigSettings({
+          staleTime: CACHE_TTL_MS.NONE,
+        });
 
         if (!cancelled) {
           const nextConfig = applyDefaults(settings);
@@ -395,7 +394,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     };
 
-    // One-shot async config load (stream mux + react-query fetchQuery), not a
+    // One-shot async config load (stream mux + query-cache fetcher), not a
     // synchronous external store — useSyncExternalStore can't express async
     // loading, so this rule misfires here.
     // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
@@ -405,7 +404,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       cancelled = true;
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [queryClient, signOut, username]);
+  }, [fetchConfigSettings, signOut, username]);
 
   const save = useCallback(
     (patch: ConfigPatch) => {

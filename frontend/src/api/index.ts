@@ -14,7 +14,11 @@
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
 export { CACHE_TTL_MS } from "./react-query";
-export type { JobActionConfig, JobStreamActionConfig } from "./react-query";
+export type {
+  ActionConfig,
+  EndpointCache,
+  JobStreamActionConfig,
+} from "./react-query";
 export {
   ROUTE_MODES,
   getRouteMode,

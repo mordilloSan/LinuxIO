@@ -1,7 +1,6 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -29,12 +28,10 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
-  const queryClient = useQueryClient();
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =
     useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [errors, setErrors] = useState<{
     stackName?: string;
     workingDir?: string;
@@ -105,38 +102,28 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-  const handleConfirm = async () => {
+  // Validate the directory with the backend, then proceed to the editor.
+  const { mutate: validateWorkingDir, isPending: isValidating } =
+    linuxio.docker.validate_stack_directory.useAction({
+      success: (result) => {
+        if (!result.valid) {
+          setErrors((prev) => ({
+            ...prev,
+            workingDir: result.error || "Invalid directory",
+          }));
+          toast.error(result.error || "Invalid directory");
+          return;
+        }
+        onConfirm(stackName.trim(), workingDir.trim());
+      },
+      error: "Failed to validate directory",
+      toast: { href: "/docker", label: "Open Docker" },
+    });
+  const handleConfirm = () => {
     if (!validate()) {
       return;
     }
-    setIsValidating(true);
-    try {
-      // Validate the directory with the backend
-      const result = await queryClient.fetchQuery(
-        linuxio.docker.validate_stack_directory.queryOptions(
-          workingDir.trim(),
-          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
-        ),
-      );
-      if (!result.valid) {
-        setErrors({
-          ...errors,
-          workingDir: result.error || "Invalid directory",
-        });
-        toast.error(result.error || "Invalid directory");
-        setIsValidating(false);
-        return;
-      }
-
-      // Directory is valid, proceed
-      onConfirm(stackName.trim(), workingDir.trim());
-    } catch (error) {
-      toast.error(
-        `Failed to validate directory: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    } finally {
-      setIsValidating(false);
-    }
+    validateWorkingDir({ dirPath: workingDir.trim() });
   };
   return (
     <GeneralDialog

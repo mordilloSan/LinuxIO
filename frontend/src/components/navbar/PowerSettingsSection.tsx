@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -14,13 +13,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-
-const setPowerStatusCache = (
-  queryClient: ReturnType<typeof useQueryClient>,
-  status: PowerStatus,
-) => {
-  queryClient.setQueryData(linuxio.power.get_status.queryKey(), status);
-};
 
 const profileExists = (status: PowerStatus, profile: string) =>
   status.profiles.some((item) => item.name === profile);
@@ -68,7 +60,7 @@ const InfoMetric: React.FC<{ label: string; value: React.ReactNode }> = ({
 );
 
 const PowerSettingsSection: React.FC = () => {
-  const queryClient = useQueryClient();
+  const powerStatusCache = linuxio.power.get_status.useCache();
   const [selectedProfile, setSelectedProfile] = useState("");
   const {
     data: status,
@@ -80,7 +72,7 @@ const PowerSettingsSection: React.FC = () => {
 
   const powerActionConfig = (message: string) => ({
     success: (nextStatus: PowerStatus) => {
-      setPowerStatusCache(queryClient, nextStatus);
+      powerStatusCache.set(nextStatus);
       toast.success(message);
     },
     error: "Power action failed",

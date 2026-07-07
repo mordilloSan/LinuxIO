@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -64,9 +63,8 @@ const stateWithOptions = (
 };
 
 export const useContainerAutoUpdateControls = () => {
-  const queryClient = useQueryClient();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const queryKey = linuxio.docker.get_container_auto_update.queryKey();
+  const autoUpdateCache = linuxio.docker.get_container_auto_update.useCache();
   const [confirmedOptions, setConfirmedOptions] =
     useState<DockerContainerAutoUpdateOptions | null>(null);
   const confirmedOptionsRef = useRef<DockerContainerAutoUpdateOptions | null>(
@@ -127,12 +125,9 @@ export const useContainerAutoUpdateControls = () => {
       desiredOptions &&
       optionsKey(query.data.options) !== optionsKey(desiredOptions)
     ) {
-      queryClient.setQueryData(
-        queryKey,
-        stateWithOptions(query.data, desiredOptions),
-      );
+      autoUpdateCache.set(stateWithOptions(query.data, desiredOptions));
     }
-  }, [query.data, queryClient, queryKey]);
+  }, [autoUpdateCache, query.data]);
 
   useEffect(
     () => () => {
@@ -164,8 +159,7 @@ export const useContainerAutoUpdateControls = () => {
 
           confirmedOptionsRef.current = savedOptions;
           setConfirmedOptions(savedOptions);
-          queryClient.setQueryData(
-            queryKey,
+          autoUpdateCache.set(
             optionsKey(savedOptions) === optionsKey(desiredOptions)
               ? savedState
               : stateWithOptions(savedState, desiredOptions),
@@ -186,13 +180,9 @@ export const useContainerAutoUpdateControls = () => {
 
           const confirmed = confirmedOptionsRef.current ?? DEFAULT_OPTIONS;
           desiredOptionsRef.current = confirmed;
-          const current =
-            queryClient.getQueryData<DockerContainerAutoUpdateState>(queryKey);
+          const current = autoUpdateCache.get();
           if (current) {
-            queryClient.setQueryData(
-              queryKey,
-              stateWithOptions(current, confirmed),
-            );
+            autoUpdateCache.set(stateWithOptions(current, confirmed));
           }
           toast.error(
             getMutationErrorMessage(
@@ -205,7 +195,7 @@ export const useContainerAutoUpdateControls = () => {
     } finally {
       saveLoopRunningRef.current = false;
     }
-  }, [queryClient, queryKey, saveAutoUpdateOptions, toast]);
+  }, [autoUpdateCache, saveAutoUpdateOptions, toast]);
 
   const scheduleSave = useCallback(
     (options: DockerContainerAutoUpdateOptions) => {
@@ -225,8 +215,7 @@ export const useContainerAutoUpdateControls = () => {
 
   const toggleContainer = useCallback(
     (name: string) => {
-      const state =
-        queryClient.getQueryData<DockerContainerAutoUpdateState>(queryKey);
+      const state = autoUpdateCache.get();
       if (!state) return;
       const options = state.options ?? DEFAULT_OPTIONS;
 
@@ -243,11 +232,11 @@ export const useContainerAutoUpdateControls = () => {
       });
 
       desiredOptionsRef.current = nextOptions;
-      void queryClient.cancelQueries({ queryKey });
-      queryClient.setQueryData(queryKey, stateWithOptions(state, nextOptions));
+      void autoUpdateCache.cancel();
+      autoUpdateCache.set(stateWithOptions(state, nextOptions));
       scheduleSave(nextOptions);
     },
-    [queryClient, queryKey, scheduleSave],
+    [autoUpdateCache, scheduleSave],
   );
 
   return {

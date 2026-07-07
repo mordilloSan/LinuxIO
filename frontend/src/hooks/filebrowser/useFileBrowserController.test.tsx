@@ -25,7 +25,6 @@ const mocks = vi.hoisted(() => ({
     isEnabled: true,
     status: "available",
   },
-  clearFileSubfoldersCache: vi.fn(),
   dialogs: {
     createFileDialog: false,
     createFolderDialog: true,
@@ -98,6 +97,7 @@ const mocks = vi.hoisted(() => ({
     renamingPath: null,
     unsupportedEditPath: null,
   },
+  invalidateListing: vi.fn(),
   mutations: {
     changePermissions: vi.fn(),
     compressItems: vi.fn(),
@@ -202,12 +202,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api", () => ({
   linuxio: {
     filebrowser: {
-      resource_get: {
-        queryKey: ({ path }: { path: string }) => [
-          "filebrowser",
-          "resource",
-          path,
-        ],
+      exists_batch: {
+        useFetcher: () => () => Promise.resolve({ existing: [] }),
       },
     },
   },
@@ -273,16 +269,16 @@ vi.mock("@/hooks/filebrowser/useFileSelection", () => ({
   useFileSelection: mocks.useFileSelection,
 }));
 
-vi.mock("@/hooks/filebrowser/useFileSubfolders", () => ({
-  clearFileSubfoldersCache: mocks.clearFileSubfoldersCache,
-}));
-
 vi.mock("@/hooks/filebrowser/useFileUpload", () => ({
   useFileUpload: mocks.useFileUpload,
 }));
 
 vi.mock("@/hooks/filebrowser/useFileViewState", () => ({
   useFileViewState: mocks.useFileViewState,
+}));
+
+vi.mock("@/hooks/filebrowser/useListingInvalidation", () => ({
+  useListingInvalidation: () => mocks.invalidateListing,
 }));
 
 vi.mock("@/hooks/useCapabilities", () => ({
@@ -445,15 +441,13 @@ describe("useFileBrowserController", () => {
   });
 
   it("wires cross-domain callbacks for selection clearing and listing invalidation", () => {
-    const { queryClient } = setup();
-    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    setup();
     const mutationArgs = mocks.useFileMutations.mock.calls[0]?.[0];
     const dragArgs = mocks.useFileDragAndDrop.mock.calls[0]?.[0];
     const uploadArgs = mocks.useFileBrowserUploadActions.mock.calls[0]?.[0];
 
     expect(mutationArgs).toMatchObject({
       normalizedPath: "/srv/projects",
-      queryClient,
     });
     expect(dragArgs).toMatchObject({
       normalizedPath: "/srv/projects",
@@ -480,9 +474,7 @@ describe("useFileBrowserController", () => {
     act(() => dragArgs.onUploadComplete());
     act(() => uploadArgs.invalidateListing());
 
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ["filebrowser", "resource", "/srv/projects"],
-    });
-    expect(mocks.clearFileSubfoldersCache).toHaveBeenCalledWith(queryClient);
+    // Both flows share the one useListingInvalidation callback.
+    expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
   });
 });

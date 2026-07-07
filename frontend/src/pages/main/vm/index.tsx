@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 
 import ConsoleDialog from "./ConsoleDialog";
@@ -37,7 +36,7 @@ const Page: React.FC = () => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const queryClient = useQueryClient();
+  const vmListCache = linuxio.virt.list.useCache();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
     useCapability("libvirtAvailable");
@@ -137,9 +136,8 @@ const Page: React.FC = () => {
         setSelectedName(null);
         // The domain is gone. Optimistically drop it from the cached list so
         // the detail query stops targeting it while the refetch is in flight.
-        queryClient.setQueryData<VirtualMachine[]>(
-          linuxio.virt.list.queryKey(),
-          (current) => current?.filter((vm) => vm.name !== request.name),
+        vmListCache.set((current) =>
+          current?.filter((vm) => vm.name !== request.name),
         );
       },
       error: (err) =>

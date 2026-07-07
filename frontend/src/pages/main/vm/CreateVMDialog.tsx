@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -163,7 +162,7 @@ export default function CreateVMDialog({
 }) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const queryClient = useQueryClient();
+  const fetchResourceStat = linuxio.filebrowser.resource_stat.useFetcher();
   const toast = useScopedToast(VM_TOAST);
   const [name, setName] = useState("");
   const [vcpus, setVCPUs] = useState("2");
@@ -266,12 +265,10 @@ export default function CreateVMDialog({
     if (!folder || folder === "/") return;
 
     try {
-      const stat = await queryClient.fetchQuery(
-        linuxio.filebrowser.resource_stat.queryOptions(folder, {
-          staleTime: CACHE_TTL_MS.NONE,
-          gcTime: CACHE_TTL_MS.NONE,
-        }),
-      );
+      const stat = await fetchResourceStat(folder, {
+        staleTime: CACHE_TTL_MS.NONE,
+        gcTime: CACHE_TTL_MS.NONE,
+      });
       if (stat.mode && !stat.mode.startsWith("d")) {
         toast.error(`${folder} exists but is not a directory.`);
       }
@@ -298,9 +295,9 @@ export default function CreateVMDialog({
     }
   }, [
     createISOFolderMutation,
+    fetchResourceStat,
     isoPath,
     preflight,
-    queryClient,
     toast,
     usesISO,
   ]);

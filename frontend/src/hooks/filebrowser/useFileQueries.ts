@@ -1,13 +1,6 @@
-import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import {
-  CACHE_TTL_MS,
-  linuxio,
-  LinuxIOError,
-  useIsUpdating,
-  useStreamMux,
-} from "@/api";
+import { CACHE_TTL_MS, linuxio, LinuxIOError } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
 import { FileResource } from "@/types/filebrowser";
@@ -27,8 +20,6 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
-  const { isOpen } = useStreamMux();
-  const isUpdating = useIsUpdating();
   const {
     data: resourceData,
     isPending,
@@ -99,20 +90,14 @@ export const useFileQueries = ({
     hasMultipleDetailTargets && detailTarget !== null && detailTarget.length > 1
       ? detailTarget
       : [];
-  const areMultipleResourcesEnabled =
-    isOpen && !isUpdating && multipleDetailTargets.length > 1;
 
-  const multipleResourceQueries = useQueries({
-    queries: multipleDetailTargets.map((path) => ({
-      ...linuxio.filebrowser.resource_get.queryOptions(
-        { path },
-        {
-          staleTime: CACHE_TTL_MS.NONE,
-        },
-      ),
-      enabled: areMultipleResourcesEnabled,
-    })),
-  });
+  const multipleResourceQueries = linuxio.filebrowser.resource_get.useQueries(
+    multipleDetailTargets.map((path) => ({ path })),
+    {
+      staleTime: CACHE_TTL_MS.NONE,
+      enabled: multipleDetailTargets.length > 1,
+    },
+  );
 
   const multipleResourceData = multipleResourceQueries.map((q) => q.data);
 

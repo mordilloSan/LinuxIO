@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 
 import {
@@ -60,7 +59,7 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const queryClient = useQueryClient();
+  const autoUpdateCache = linuxio.docker.get_container_auto_update.useCache();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
   const [containerNamesOverride, setContainerNamesOverride] = useState<
@@ -76,10 +75,7 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
       toast.success("Container auto-update settings saved");
       setDraftOverrides(null);
       setContainerNamesOverride(null);
-      queryClient.setQueryData(
-        linuxio.docker.get_container_auto_update.queryKey(),
-        state,
-      );
+      autoUpdateCache.set(state);
     },
     error: "Failed to save container auto-update settings",
     toast: DOCKER_TOAST_META,

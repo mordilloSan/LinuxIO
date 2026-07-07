@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -31,7 +30,6 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
-  const queryClient = useQueryClient();
 
   const { mutateAsync: deleteUser, isPending: isDeleting } =
     linuxio.accounts.delete_user.useJobAction({
@@ -48,9 +46,6 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
         ? `User "${usernames[0]}" deleted successfully`
         : `${usernames.length} users deleted successfully`;
     toast.success(successMessage);
-    queryClient.invalidateQueries({
-      queryKey: linuxio.accounts.list_users.queryKey(),
-    });
     onSuccess();
     onClose();
   };

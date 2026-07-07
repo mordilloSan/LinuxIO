@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { ReactNode, useCallback, useMemo } from "react";
 
-import { linuxio } from "@/api";
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
@@ -21,9 +19,9 @@ import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileMutations } from "@/hooks/filebrowser/useFileMutations";
 import { useFileQueries } from "@/hooks/filebrowser/useFileQueries";
 import { useFileSelection } from "@/hooks/filebrowser/useFileSelection";
-import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
+import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
 import { useCapability } from "@/hooks/useCapabilities";
 import { ViewMode } from "@/types/filebrowser";
 
@@ -108,7 +106,6 @@ export function useFileBrowserController(): FileBrowserController {
   const { handleOpenDirectory, normalizedPath } = useFileBrowserNavigation({
     onPathChange: handlePathChange,
   });
-  const queryClient = useQueryClient();
   const { startDownload, startUpload } = useBackgroundJobActions();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
@@ -134,7 +131,6 @@ export function useFileBrowserController(): FileBrowserController {
     renameItem,
   } = useFileMutations({
     normalizedPath,
-    queryClient,
     onDeleteSuccess: () => setSelectedPaths(new Set()),
     resolveCollisions,
   });
@@ -300,14 +296,7 @@ export function useFileBrowserController(): FileBrowserController {
     setIsEditorDirty,
     setIsSavingFile,
   });
-  const invalidateListing = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.filebrowser.resource_get.queryKey({
-        path: normalizedPath,
-      }),
-    });
-    clearFileSubfoldersCache(queryClient);
-  }, [normalizedPath, queryClient]);
+  const invalidateListing = useListingInvalidation(normalizedPath);
   const {
     isDragOver,
     handleDragEnter,

@@ -1,10 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 
 import ComposeList from "./ComposeList";
 
 import {
-  CACHE_TTL_MS,
   isConnected,
   linuxio,
   STREAM_MULTIPLEXER_CONFIG,
@@ -41,7 +39,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
-  const queryClient = useQueryClient();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { config } = useConfig();
   const chunkSize =
@@ -104,6 +101,15 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   // Success/error toasts are composed per delete option in handleDeleteConfirm.
   const { mutateAsync: deleteStack } =
     linuxio.docker.delete_stack.useJobAction();
+
+  // Event-driven commands behind the editor flow; error handling stays with
+  // the calling workflow, so no declarative toast config here.
+  const { mutateAsync: loadComposeFile } =
+    linuxio.filebrowser.resource_get.useAction();
+  const { mutateAsync: validateCompose } =
+    linuxio.docker.validate_compose.useAction();
+  const { mutateAsync: resolveComposeFilePath } =
+    linuxio.docker.get_compose_file_path.useAction();
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
@@ -220,21 +226,19 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateStack);
 
-  // Edit stack handler
-  const handleEditStack = useCallback(
-    async (projectName: string, configPath: string) => {
+  // Open the editor with a stack's compose file loaded (read-only previews).
+  const openStackEditor = useCallback(
+    async (projectName: string, configPath: string, readOnly: boolean) => {
       try {
-        // Fetch file content
-        const result = await queryClient.fetchQuery(
-          linuxio.filebrowser.resource_get.queryOptions(
-            { path: configPath, unused: "", getContent: "true" },
-            { staleTime: CACHE_TTL_MS.NONE },
-          ),
-        );
+        const result = await loadComposeFile({
+          path: configPath,
+          unused: "",
+          getContent: "true",
+        });
 
         if (result && result.content) {
           setEditorMode("edit");
-          setEditorReadOnly(false);
+          setEditorReadOnly(readOnly);
           setEditingStackName(projectName);
           setEditingFilePath(configPath);
           setEditingContent(result.content);
@@ -248,50 +252,26 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [queryClient, toast],
+    [loadComposeFile, toast],
   );
 
-  // Preview stack handler (read-only)
-  const handlePreviewStack = useCallback(
-    async (projectName: string, configPath: string) => {
-      try {
-        const result = await queryClient.fetchQuery(
-          linuxio.filebrowser.resource_get.queryOptions(
-            { path: configPath, unused: "", getContent: "true" },
-            { staleTime: CACHE_TTL_MS.NONE },
-          ),
-        );
+  const handleEditStack = useCallback(
+    (projectName: string, configPath: string) =>
+      openStackEditor(projectName, configPath, false),
+    [openStackEditor],
+  );
 
-        if (result && result.content) {
-          setEditorMode("edit");
-          setEditorReadOnly(true);
-          setEditingStackName(projectName);
-          setEditingFilePath(configPath);
-          setEditingContent(result.content);
-          setEditorOpen(true);
-        } else {
-          toast.error("Failed to load compose file content");
-        }
-      } catch (error) {
-        toast.error(
-          `Failed to load compose file: ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
-      }
-    },
-    [queryClient, toast],
+  const handlePreviewStack = useCallback(
+    (projectName: string, configPath: string) =>
+      openStackEditor(projectName, configPath, true),
+    [openStackEditor],
   );
 
   // Validate compose file
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await queryClient.fetchQuery(
-          linuxio.docker.validate_compose.queryOptions(content, {
-            staleTime: CACHE_TTL_MS.NONE,
-            gcTime: CACHE_TTL_MS.NONE,
-          }),
-        );
-        return result;
+        return await validateCompose({ content });
       } catch (error) {
         return {
           valid: false,
@@ -305,7 +285,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         };
       }
     },
-    [queryClient],
+    [validateCompose],
   );
 
   // Internal save function that performs the actual save
@@ -364,11 +344,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       try {
         // Get the file path (either from existing file or build new one)
         if (editorMode === "create") {
-          const pathInfo = await queryClient.fetchQuery(
-            linuxio.docker.get_compose_file_path.queryOptions(stackName, {
-              staleTime: CACHE_TTL_MS.NONE,
-            }),
-          );
+          const pathInfo = await resolveComposeFilePath({ stackName });
           filePath = pathInfo.path;
         }
 
@@ -392,7 +368,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, performSave, queryClient, toast],
+    [editorMode, performSave, resolveComposeFilePath, toast],
   );
 
   // Handle overwrite confirmation

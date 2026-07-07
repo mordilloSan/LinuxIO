@@ -1,9 +1,9 @@
 /**
  * LinuxIO Core API - internal JSON request bridge.
  *
- * App code should use the generated endpoint hooks (`useQuery`,
- * `useJobAction`, `useJobStreamAction`) or `queryClient.fetchQuery` with
- * `endpoint.queryOptions(...)`; see docs/api-contract.md.
+ * App code should use the generated endpoint hooks (`useQuery`, `useAction`,
+ * `useJobAction`, `useJobStreamAction`, `useFetcher`); see
+ * docs/api-contract.md.
  */
 
 import { waitForStreamResult } from "./stream-helpers";

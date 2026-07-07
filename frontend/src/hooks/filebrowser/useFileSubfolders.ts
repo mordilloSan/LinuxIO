@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { linuxio, type SubfolderData } from "@/api";
@@ -84,17 +83,6 @@ export const useFileSubfolders = (
     error: derivedError,
     isUnavailable,
   };
-};
-
-// Function to clear the subfolder cache
-export const clearFileSubfoldersCache = (
-  queryClient?: ReturnType<typeof useQueryClient>,
-) => {
-  if (queryClient) {
-    queryClient.removeQueries({
-      queryKey: ["linuxio", "filebrowser", "subfolders"],
-    });
-  }
 };
 
 // Helper function to get subfolder size from the map

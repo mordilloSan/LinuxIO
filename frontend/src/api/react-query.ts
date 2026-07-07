@@ -2,9 +2,13 @@
  * LinuxIO API Usage Guidelines:
  *
  * 1. TYPE-SAFE API (preferred for built-in handlers):
- *    linuxio.docker.start_container.useJobAction({ invalidates, success, error })
- *    linuxio.docker.compose.useJobStreamAction({ onProgress })
- *    linuxio.filebrowser.resource_get.useQuery()
+ *    Render-driven reads:    linuxio.filebrowser.resource_get.useQuery()
+ *                            linuxio.filebrowser.dir_size.useQueries(paths)
+ *    Event-driven commands:  linuxio.docker.validate_compose.useAction({ error })
+ *    Job routes:             linuxio.docker.start_container.useJobAction({ invalidates, success, error })
+ *                            linuxio.docker.compose.useJobStreamAction({ onProgress })
+ *    Loader/effect reads:    linuxio.jobs.list.useFetcher()
+ *    Cache surgery:          linuxio.virt.list.useCache().set(updater)
  *
  * 2. STREAMING API (for progress tracking):
  *    openTerminalStream(), openJobDataStream(), etc. from @/api
@@ -15,10 +19,13 @@ import {
   useMutation,
   type UseMutationResult,
   type UseMutationOptions,
+  useQueries,
   useQuery,
   useQueryClient,
   type UseQueryOptions,
+  type UseQueryResult,
 } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import type {
@@ -108,13 +115,13 @@ type MutationOptions<TRequest, TResult> = Omit<
 >;
 
 /**
- * Declarative config for `useJobAction`.
+ * Declarative config shared by `useAction` and `useJobAction`.
  *
- * Unlike `useMutation`, job actions resolve with the job's unwrapped result
- * (`JobSnapshot.result`), so `success` and `invalidates` callbacks receive the
- * actual `TResult` — no manual `jobSnapshotResult()` needed.
+ * Unlike raw `useMutation`, job actions resolve with the job's unwrapped
+ * result (`JobSnapshot.result`), so `success` and `invalidates` callbacks
+ * receive the actual `TResult` — no manual `jobSnapshotResult()` needed.
  */
-export interface JobActionConfig<TRequest, TResult> {
+export interface ActionConfig<TRequest, TResult> {
   /**
    * Query keys to invalidate after success (static, or derived from
    * result/variables). Defaults to the route's `ROUTE_INVALIDATIONS` manifest
@@ -149,7 +156,7 @@ export interface JobStreamActionConfig<
   TRequest,
   TResult,
   TProgress = ProgressFrame,
-> extends JobActionConfig<TRequest, TResult> {
+> extends ActionConfig<TRequest, TResult> {
   /**
    * By default a locally awaited job is marked handled so the recovered-jobs
    * stream skips its completion toasts/invalidations. Pass `false` when the
@@ -197,6 +204,29 @@ type QueryOptionsArgs<
   : [...input: TInput, options?: QueryOptions<TResult, TData>];
 
 /**
+ * Typed cache handle for one endpoint (see `useCache`): entry-level `get`/
+ * `set`, and `invalidate`/`remove`/`cancel` that target one request's entry —
+ * or, called with no input, every entry of the endpoint.
+ */
+export interface EndpointCache<TInput extends readonly unknown[], TResult> {
+  /** Cached result for one request, if present. */
+  get: (...input: TInput) => TResult | undefined;
+  /** Write one request's cache entry: a value, or an updater of the old one. */
+  set: (
+    ...args: [
+      ...TInput,
+      TResult | ((old: TResult | undefined) => TResult | undefined),
+    ]
+  ) => void;
+  /** Mark entries stale and refetch the active ones. */
+  invalidate: (...input: TInput | []) => Promise<void>;
+  /** Drop entries from the cache. */
+  remove: (...input: TInput | []) => void;
+  /** Cancel in-flight fetches (before an optimistic `set`). */
+  cancel: (...input: TInput | []) => Promise<void>;
+}
+
+/**
  * Command endpoint interface
  */
 export interface CommandEndpoint<
@@ -214,12 +244,72 @@ export interface CommandEndpoint<
   queryKey: (...args: TInput) => QueryKey;
 
   /**
-   * React Query options for `queryClient.fetchQuery/ensureQueryData`
-   * and non-hook integration points.
+   * React Query options for API-layer plumbing (route preloads, the
+   * `useFetcher` implementation). Feature code uses the hooks instead.
    */
   queryOptions: <TData = TResult>(
     ...params: QueryOptionsArgs<TInput, TResult, TData>
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
+
+  /**
+   * `useQuery` over a dynamic list of inputs for this endpoint — one query
+   * per input, sharing the singular hook's cache entries and stream-mux
+   * gating. Options apply to every entry.
+   *
+   * @example
+   * const sizes = linuxio.filebrowser.dir_size.useQueries(paths, {
+   *   staleTime: CACHE_TTL_MS.ONE_MINUTE,
+   * });
+   */
+  useQueries: <TData = TResult>(
+    inputs: readonly TInput[0][],
+    options?: QueryOptions<TResult, TData>,
+  ) => UseQueryResult<TData, LinuxIOError>[];
+
+  /**
+   * Hook returning an imperative fetch through the query cache — for
+   * loaders and effects that need data at call time rather than render
+   * time (chart backfill, lazy tree loads, workflow pre-checks). Same
+   * input shape, cache keys, and options as `useQuery`; the returned
+   * function is referentially stable.
+   *
+   * @example
+   * const fetchStat = linuxio.filebrowser.resource_stat.useFetcher();
+   * const stat = await fetchStat(path, { staleTime: CACHE_TTL_MS.NONE });
+   */
+  useFetcher: () => (
+    ...params: QueryOptionsArgs<TInput, TResult>
+  ) => Promise<TResult>;
+
+  /**
+   * Hook returning a typed, referentially stable cache handle bound to this
+   * endpoint's key scheme — for optimistic updates and for seeding query
+   * data from an action's result, without touching the query client.
+   *
+   * @example
+   * const vmList = linuxio.virt.list.useCache();
+   * vmList.set((vms) => vms?.filter((vm) => vm.name !== deleted));
+   */
+  useCache: () => EndpointCache<TInput, TResult>;
+
+  /**
+   * Mutation hook for query routes used as event-driven commands
+   * (validation, download generation, path resolution): imperative
+   * `mutate`/`mutateAsync` with pending state and the same declarative
+   * invalidation/toast config as `useJobAction`. No query caching — use
+   * `useQuery` or `useFetcher` when the result is data to display.
+   *
+   * @example
+   * const { mutate: downloadConfig } =
+   *   linuxio.wireguard.peer_config_download.useAction({
+   *     success: (result) => saveBlob(result.content),
+   *     error: "Failed to download config",
+   *   });
+   * downloadConfig({ interfaceName, peerName });
+   */
+  useAction: (
+    config?: ActionConfig<TRequest, TResult>,
+  ) => UseMutationResult<TResult, LinuxIOError, TRequest>;
 
   /**
    * Mutation hook for job routes: awaits job completion,
@@ -235,7 +325,7 @@ export interface CommandEndpoint<
    * mutate({ containerId });
    */
   useJobAction: (
-    config?: JobActionConfig<TRequest, TResult>,
+    config?: ActionConfig<TRequest, TResult>,
   ) => UseMutationResult<TResult, LinuxIOError, TRequest>;
 
   /**
@@ -299,6 +389,16 @@ function queryRequestAndOptions<TOptions>(
   };
 }
 
+function assertRouteMode(route: string, expected: "query" | "job"): void {
+  const mode = getRouteMode(route);
+  if (mode && mode !== expected) {
+    throw new LinuxIOError(
+      `Route ${route} is ${mode}, not ${expected === "job" ? "mutation/job" : "query"}`,
+      "invalid_route_mode",
+    );
+  }
+}
+
 function buildQueryOptions<TResult, TData = TResult>(
   handler: string,
   command: string,
@@ -307,13 +407,7 @@ function buildQueryOptions<TResult, TData = TResult>(
   options?: QueryOptions<TResult, TData>,
 ): UseQueryOptions<TResult, LinuxIOError, TData> {
   const route = routeName(handler, command);
-  const mode = getRouteMode(route);
-  if (mode && mode !== "query") {
-    throw new LinuxIOError(
-      `Route ${route} is ${mode}, not query`,
-      "invalid_route_mode",
-    );
-  }
+  assertRouteMode(route, "query");
   const wireRequest = requestForWire(requestShape, request);
 
   return {
@@ -334,6 +428,57 @@ function resolveSignal<TRequest>(
   variables: TRequest,
 ): AbortSignal | undefined {
   return typeof signal === "function" ? signal(variables) : signal;
+}
+
+/**
+ * Shared mutation lifecycle behind `useAction`, `useJobAction`, and
+ * `useJobStreamAction`: runs `mutationFn` through React Query and applies the
+ * declarative `ActionConfig` handling — manifest-driven invalidation,
+ * success/error toasts or callbacks, and the raw-options escape hatch (its
+ * handlers run after the config ones).
+ */
+function useActionMutation<TResult>(
+  route: string,
+  mutationFn: (request: unknown) => Promise<TResult>,
+  config: ActionConfig<unknown, TResult> | undefined,
+): UseMutationResult<TResult, LinuxIOError, unknown> {
+  const queryClient = useQueryClient();
+  const {
+    invalidates,
+    success,
+    error,
+    toast: toastMeta,
+    options,
+  } = config ?? {};
+  const toastOpts = toastMeta ? { meta: toastMeta } : undefined;
+
+  return useMutation<TResult, LinuxIOError, unknown>({
+    mutationFn,
+    ...options,
+    onSuccess: (result, variables, onMutateResult, context) => {
+      const keys =
+        typeof invalidates === "function"
+          ? invalidates(result, variables)
+          : (invalidates ?? ROUTE_INVALIDATIONS[route] ?? []);
+      for (const queryKey of keys) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+      if (typeof success === "function") {
+        success(result, variables);
+      } else if (success !== undefined) {
+        toast.success(success, toastOpts);
+      }
+      options?.onSuccess?.(result, variables, onMutateResult, context);
+    },
+    onError: (err, variables, onMutateResult, context) => {
+      if (typeof error === "function") {
+        error(err, variables);
+      } else if (error !== undefined) {
+        toast.error(getMutationErrorMessage(err, error), toastOpts);
+      }
+      options?.onError?.(err, variables, onMutateResult, context);
+    },
+  });
 }
 
 async function waitForJobStreamAction<
@@ -455,28 +600,80 @@ export function createEndpoint<TResult>(
     });
   }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQuery"];
 
-  endpoint.useJobAction = (config?: JobActionConfig<unknown, TResult>) => {
-    const route = routeName(handler, command);
-    const mode = getRouteMode(route);
-    if (mode && mode !== "job") {
-      throw new LinuxIOError(
-        `Route ${route} is ${mode}, not mutation/job`,
-        "invalid_route_mode",
-      );
-    }
+  endpoint.useQueries = (<TData = TResult>(
+    inputs: readonly unknown[],
+    options?: QueryOptions<TResult, TData>,
+  ) => {
+    const { isOpen } = useStreamMux();
+    const isUpdating = useIsUpdating();
+    const enabled =
+      isOpen && !isUpdating && (options?.enabled ?? true) === true;
+    return useQueries({
+      queries: inputs.map((input) => ({
+        ...buildQueryOptions<TResult, TData>(
+          handler,
+          command,
+          requestShape,
+          input,
+          options,
+        ),
+        enabled,
+      })),
+    });
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQueries"];
 
+  endpoint.useFetcher = (() => {
     const queryClient = useQueryClient();
-    const {
-      invalidates,
-      success,
-      error,
-      toast: toastMeta,
-      options,
-    } = config ?? {};
-    const toastOpts = toastMeta ? { meta: toastMeta } : undefined;
+    return useCallback(
+      (...params: unknown[]) =>
+        queryClient.fetchQuery(queryOptions<TResult>(...params)),
+      [queryClient],
+    );
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useFetcher"];
 
-    return useMutation<TResult, LinuxIOError, unknown>({
-      mutationFn: async (request: unknown) => {
+  endpoint.useCache = (() => {
+    const queryClient = useQueryClient();
+    return useMemo(() => {
+      const filterKey = (input: [] | [unknown]) =>
+        input.length > 0
+          ? queryKey(...input)
+          : (["linuxio", handler, command] as QueryKey);
+      return {
+        get: (...input: [] | [unknown]) =>
+          queryClient.getQueryData<TResult>(queryKey(...input)),
+        set: (...args: unknown[]) => {
+          const input = args.slice(0, -1) as [] | [unknown];
+          const updater = args.at(-1) as
+            TResult | ((old: TResult | undefined) => TResult | undefined);
+          queryClient.setQueryData<TResult>(queryKey(...input), updater);
+        },
+        invalidate: (...input: [] | [unknown]) =>
+          queryClient.invalidateQueries({ queryKey: filterKey(input) }),
+        remove: (...input: [] | [unknown]) => {
+          queryClient.removeQueries({ queryKey: filterKey(input) });
+        },
+        cancel: (...input: [] | [unknown]) =>
+          queryClient.cancelQueries({ queryKey: filterKey(input) }),
+      };
+    }, [queryClient]);
+  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useCache"];
+
+  endpoint.useAction = (config?: ActionConfig<unknown, TResult>) => {
+    const route = routeName(handler, command);
+    assertRouteMode(route, "query");
+    return useActionMutation<TResult>(
+      route,
+      (request: unknown) => execute(request),
+      config,
+    );
+  };
+
+  endpoint.useJobAction = (config?: ActionConfig<unknown, TResult>) => {
+    const route = routeName(handler, command);
+    assertRouteMode(route, "job");
+    return useActionMutation<TResult>(
+      route,
+      async (request: unknown) => {
         const result = await core.request<TResult>(
           handler,
           command,
@@ -488,31 +685,8 @@ export function createEndpoint<TResult>(
         }
         return result;
       },
-      ...options,
-      onSuccess: (result, variables, onMutateResult, context) => {
-        const keys =
-          typeof invalidates === "function"
-            ? invalidates(result, variables)
-            : (invalidates ?? ROUTE_INVALIDATIONS[route] ?? []);
-        for (const queryKey of keys) {
-          void queryClient.invalidateQueries({ queryKey });
-        }
-        if (typeof success === "function") {
-          success(result, variables);
-        } else if (success !== undefined) {
-          toast.success(success, toastOpts);
-        }
-        options?.onSuccess?.(result, variables, onMutateResult, context);
-      },
-      onError: (err, variables, onMutateResult, context) => {
-        if (typeof error === "function") {
-          error(err, variables);
-        } else if (error !== undefined) {
-          toast.error(getMutationErrorMessage(err, error), toastOpts);
-        }
-        options?.onError?.(err, variables, onMutateResult, context);
-      },
-    });
+      config,
+    );
   };
 
   endpoint.useJobStreamAction = (<
@@ -522,26 +696,10 @@ export function createEndpoint<TResult>(
     config?: JobStreamActionConfig<unknown, TStreamResult, TProgress>,
   ) => {
     const route = routeName(handler, command);
-    const mode = getRouteMode(route);
-    if (mode && mode !== "job") {
-      throw new LinuxIOError(
-        `Route ${route} is ${mode}, not mutation/job`,
-        "invalid_route_mode",
-      );
-    }
-
-    const queryClient = useQueryClient();
-    const {
-      invalidates,
-      success,
-      error,
-      toast: toastMeta,
-      options,
-    } = config ?? {};
-    const toastOpts = toastMeta ? { meta: toastMeta } : undefined;
-
-    return useMutation<TStreamResult, LinuxIOError, unknown>({
-      mutationFn: async (request: unknown) => {
+    assertRouteMode(route, "job");
+    return useActionMutation<TStreamResult>(
+      route,
+      async (request: unknown) => {
         const signal = resolveSignal(config?.signal, request);
         const result = await core.request<TResult>(
           handler,
@@ -559,31 +717,8 @@ export function createEndpoint<TResult>(
         }
         return result as unknown as TStreamResult;
       },
-      ...options,
-      onSuccess: (result, variables, onMutateResult, context) => {
-        const keys =
-          typeof invalidates === "function"
-            ? invalidates(result, variables)
-            : (invalidates ?? ROUTE_INVALIDATIONS[route] ?? []);
-        for (const queryKey of keys) {
-          void queryClient.invalidateQueries({ queryKey });
-        }
-        if (typeof success === "function") {
-          success(result, variables);
-        } else if (success !== undefined) {
-          toast.success(success, toastOpts);
-        }
-        options?.onSuccess?.(result, variables, onMutateResult, context);
-      },
-      onError: (err, variables, onMutateResult, context) => {
-        if (typeof error === "function") {
-          error(err, variables);
-        } else if (error !== undefined) {
-          toast.error(getMutationErrorMessage(err, error), toastOpts);
-        }
-        options?.onError?.(err, variables, onMutateResult, context);
-      },
-    });
+      config,
+    );
   }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useJobStreamAction"];
 
   return endpoint;

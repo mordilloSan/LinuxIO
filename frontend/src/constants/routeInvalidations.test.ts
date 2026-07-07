@@ -49,16 +49,10 @@ describe("ROUTE_INVALIDATIONS", () => {
 // explicit `invalidates` config. Shrink this list over time; never grow it
 // without a reason a manifest entry cannot express.
 const ALLOWED_INVALIDATE_FILES = new Set([
-  // Core invalidation appliers.
+  // Core invalidation appliers. Feature code that needs path-precise
+  // invalidation uses `endpoint.useCache().invalidate(...)` instead.
   "api/react-query.ts",
   "hooks/backgroundJobs/useRecoveredJobs.ts",
-  // Imperative flows whose invalidation is more precise than a manifest
-  // entry (current-path listing refresh, conditional cache targeting).
-  "hooks/filebrowser/useFileBrowserController.tsx",
-  "hooks/filebrowser/useFileBrowserEditorActions.ts",
-  "hooks/filebrowser/useFileMutations.ts",
-  "pages/main/accounts/components/DeleteGroupDialog.tsx",
-  "pages/main/accounts/components/DeleteUserDialog.tsx",
 ]);
 
 describe("invalidation guard", () => {

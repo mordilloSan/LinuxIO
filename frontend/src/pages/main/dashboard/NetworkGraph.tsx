@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
@@ -35,7 +34,8 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
 }) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const queryClient = useQueryClient();
+  const fetchNetworkHistory =
+    linuxio.monitoring.get_network_history.useFetcher();
   const rxId = `network:rx:${interfaceName}`;
   const txId = `network:tx:${interfaceName}`;
   // History arrives in bytes/s; the chart series (like the rx/tx props) are
@@ -43,12 +43,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
   const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
     // One-shot backfill: the request carries a rolling from_ms, so caching
     // the entry would only pollute the cache.
-    const points = await queryClient.fetchQuery(
-      linuxio.monitoring.get_network_history.queryOptions(request, {
-        staleTime: CACHE_TTL_MS.NONE,
-        gcTime: CACHE_TTL_MS.NONE,
-      }),
-    );
+    const points = await fetchNetworkHistory(request, {
+      staleTime: CACHE_TTL_MS.NONE,
+      gcTime: CACHE_TTL_MS.NONE,
+    });
     const rxPoints: LiveSeriesPoint[] = [];
     const txPoints: LiveSeriesPoint[] = [];
     for (const point of points) {

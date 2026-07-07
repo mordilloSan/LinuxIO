@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   type Dispatch,
@@ -40,7 +39,7 @@ export const useFileBrowserEditorActions = ({
 }: UseFileBrowserEditorActionsParams) => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const { config } = useConfig();
-  const queryClient = useQueryClient();
+  const resourceCache = linuxio.filebrowser.resource_get.useCache();
   const chunkSize =
     (config.appSettings.chunkSizeMB ?? 0) > 0
       ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
@@ -57,15 +56,13 @@ export const useFileBrowserEditorActions = ({
 
   const invalidateEditedFile = useCallback(
     (path: string) => {
-      queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get.queryKey({
-          path,
-          unused: "",
-          getContent: "true",
-        }),
+      void resourceCache.invalidate({
+        path,
+        unused: "",
+        getContent: "true",
       });
     },
-    [queryClient],
+    [resourceCache],
   );
 
   const saveCurrentEditor = useCallback(async () => {

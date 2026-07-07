@@ -127,7 +127,7 @@ vi.mock("@/api", async (importOriginal) => {
     };
   }
   // Called during component render, so it can hold pending state in a hook.
-  const jobStreamAction = (
+  const useJobStreamActionMock = (
     submit: (request: unknown) => Promise<{ id: string }>,
     config?: JobStreamActionConfig,
   ) => {
@@ -177,21 +177,14 @@ vi.mock("@/api", async (importOriginal) => {
       "resource_get",
       request,
     ],
-    queryOptions: (request: { path: string }) => ({
-      queryKey: ["linuxio", "filebrowser", "resource_get", request],
-      queryFn: () => mocks.resourceGet(request),
-    }),
+    useFetcher: () => (request: { path: string }) => mocks.resourceGet(request),
   });
   const resourcePost = Object.assign(mocks.resourcePost, {
     useJobAction: (config?: JobActionConfig) =>
       jobAction(mocks.resourcePost, config),
   });
   const resourceStat = Object.assign(mocks.resourceStat, {
-    queryOptions: (path: string, options?: Record<string, unknown>) => ({
-      queryKey: ["linuxio", "filebrowser", "resource_stat", { path }],
-      queryFn: () => mocks.resourceStat(path),
-      ...options,
-    }),
+    useFetcher: () => (path: string) => mocks.resourceStat(path),
   });
 
   return {
@@ -207,11 +200,11 @@ vi.mock("@/api", async (importOriginal) => {
       virt: {
         create: Object.assign(mocks.virtCreate, {
           useJobStreamAction: (config?: JobStreamActionConfig) =>
-            jobStreamAction(mocks.virtCreate, config),
+            useJobStreamActionMock(mocks.virtCreate, config),
         }),
         delete: Object.assign(mocks.virtDelete, {
           useJobStreamAction: (config?: JobStreamActionConfig) =>
-            jobStreamAction(mocks.virtDelete, config),
+            useJobStreamActionMock(mocks.virtDelete, config),
         }),
         force_off: {
           useJobAction: (config?: JobActionConfig) =>
@@ -225,6 +218,7 @@ vi.mock("@/api", async (importOriginal) => {
         },
         list: {
           queryKey: () => ["linuxio", "virt", "list"],
+          useCache: () => ({ set: vi.fn() }),
           useQuery: () => ({
             data: mocks.listVMs,
             isLoading: false,

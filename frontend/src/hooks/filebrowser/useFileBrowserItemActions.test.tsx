@@ -32,10 +32,7 @@ vi.mock("@/api", async () => {
         ...actual.linuxio.filebrowser,
         resource_stat: {
           ...actual.linuxio.filebrowser.resource_stat,
-          queryOptions: (path: string) => ({
-            queryFn: () => statMock(path),
-            queryKey: ["resource_stat", path],
-          }),
+          useFetcher: () => (path: string) => statMock(path),
         },
       },
     },

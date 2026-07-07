@@ -7,7 +7,7 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({
-  configGetQueryOptions: vi.fn(),
+  configGetFetch: vi.fn(),
   configSetUseJobAction: vi.fn(),
   dockerListComposeProjectsQueryKey: vi.fn(() => [
     "linuxio",
@@ -36,7 +36,7 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       config: {
         get: {
-          queryOptions: apiMocks.configGetQueryOptions,
+          useFetcher: () => apiMocks.configGetFetch,
         },
         set: {
           useJobAction: apiMocks.configSetUseJobAction,
@@ -139,10 +139,7 @@ function renderProvider({
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
   apiMocks.waitForStreamMux.mockResolvedValue(true);
-  apiMocks.configGetQueryOptions.mockReturnValue({
-    queryKey: ["linuxio", "config", "get"],
-    queryFn: configQueryFn,
-  });
+  apiMocks.configGetFetch.mockImplementation(() => configQueryFn());
   apiMocks.configSetUseJobAction.mockImplementation((config) => {
     jobActionConfigs.push(config);
     return { mutate: apiMocks.setConfigRemote };
@@ -203,7 +200,7 @@ describe("ConfigProvider", () => {
     );
 
     expect(apiMocks.waitForStreamMux).toHaveBeenCalledWith(250);
-    expect(apiMocks.configGetQueryOptions).toHaveBeenCalledWith({
+    expect(apiMocks.configGetFetch).toHaveBeenCalledWith({
       staleTime: 0,
     });
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
@@ -223,7 +220,7 @@ describe("ConfigProvider", () => {
     expect(await screen.findByTestId("docker-folders")).toHaveTextContent(
       "/cached",
     );
-    expect(apiMocks.configGetQueryOptions).not.toHaveBeenCalled();
+    expect(apiMocks.configGetFetch).not.toHaveBeenCalled();
   });
 
   it("saves user changes only after a successful backend load", async () => {

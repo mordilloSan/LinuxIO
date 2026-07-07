@@ -15,14 +15,7 @@ vi.mock("@/api", async (importOriginal) => {
       filebrowser: {
         ...actual.linuxio.filebrowser,
         exists_batch: Object.assign(apiMocks.exists_batch, {
-          queryOptions: (
-            paths: string[],
-            options?: Record<string, unknown>,
-          ) => ({
-            queryKey: ["linuxio", "filebrowser", "exists_batch", { paths }],
-            queryFn: () => apiMocks.exists_batch(paths),
-            ...options,
-          }),
+          useFetcher: () => (paths: string[]) => apiMocks.exists_batch(paths),
         }),
       },
     },

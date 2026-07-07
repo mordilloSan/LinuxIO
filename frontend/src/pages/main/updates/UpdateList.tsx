@@ -1,13 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 interface Props {
   currentPackage?: string | null;
   isLoading?: boolean;
@@ -22,45 +19,30 @@ const UpdateList: React.FC<Props> = ({
   currentPackage,
   isLoading,
 }) => {
-  const queryClient = useQueryClient();
-  const toast = useScopedToast({ href: "/updates", label: "Open updates" });
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-  const [changelogs, setChangelogs] = useState<Record<string, string>>({});
-  const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const handleFetchChangelog = useCallback(
-    async (packageId: string) => {
-      if (changelogs[packageId]) return; // Already loaded
-
-      setLoadingChangelog(packageId);
-      try {
-        const detail = await queryClient.fetchQuery(
-          linuxio.updates.get_update_detail.queryOptions(packageId, {
-            staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-          }),
-        );
-        setChangelogs((prev) => ({
-          ...prev,
-          [packageId]: detail.changelog || "No changelog available",
-        }));
-      } catch (error) {
-        setChangelogs((prev) => ({
-          ...prev,
-          [packageId]: "Failed to load changelog",
-        }));
-        toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
-      } finally {
-        setLoadingChangelog(null);
-      }
-    },
-    [changelogs, queryClient, toast],
+  // Kept across collapse so the changelog stays visible during the collapse
+  // animation; expanding a card drives the fetch.
+  const [changelogPackageId, setChangelogPackageId] = useState<string | null>(
+    null,
   );
+  const containerRef = useRef<HTMLDivElement>(null);
+  const changelogQuery = linuxio.updates.get_update_detail.useQuery(
+    changelogPackageId ?? "",
+    {
+      enabled: changelogPackageId !== null,
+      staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+      select: (detail) => detail.changelog || "No changelog available",
+    },
+  );
+  const changelog = changelogQuery.isError
+    ? "Failed to load changelog"
+    : changelogQuery.data;
   const toggleExpanded = (index: number, packageId: string) => {
     if (index === expandedIdx) {
       setExpandedIdx(null);
     } else {
       setExpandedIdx(index);
-      handleFetchChangelog(packageId);
+      setChangelogPackageId(packageId);
     }
   };
   useEffect(() => {
@@ -104,10 +86,15 @@ const UpdateList: React.FC<Props> = ({
       {updates.map((update, idx) => (
         <AppGrid key={idx} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
           <UpdateCard
-            changelog={changelogs[update.package_id]}
+            changelog={
+              update.package_id === changelogPackageId ? changelog : undefined
+            }
             isCurrentPackage={currentPackage === update.package_id}
             isExpanded={expandedIdx === idx}
-            isLoadingChangelog={loadingChangelog === update.package_id}
+            isLoadingChangelog={
+              update.package_id === changelogPackageId &&
+              changelogQuery.isLoading
+            }
             isUpdating={!!isUpdating}
             onToggleChangelog={() => toggleExpanded(idx, update.package_id)}
             onUpdate={() => onUpdateClick(update.package_id)}

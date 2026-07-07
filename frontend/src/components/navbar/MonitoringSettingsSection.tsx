@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -217,7 +216,7 @@ const getConfigSchemaError = (config: MonitoringConfig): string | null => {
 
 const MonitoringSettingsSection: React.FC = () => {
   const theme = useAppTheme();
-  const queryClient = useQueryClient();
+  const monitoringConfigCache = linuxio.monitoring.get_config.useCache();
   const {
     isEnabled: monitoringEnabled,
     status: monitoringStatus,
@@ -363,10 +362,7 @@ const MonitoringSettingsSection: React.FC = () => {
 
     try {
       const result = await setConfigMutation.mutateAsync(payload);
-      queryClient.setQueryData(
-        linuxio.monitoring.get_config.queryKey(),
-        result.config,
-      );
+      monitoringConfigCache.set(result.config);
       setDraftPatch({});
       setErrors({});
       setRestartRequired(result.restart_required);

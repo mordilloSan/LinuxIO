@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -274,7 +273,7 @@ const getStatusColor = (
 
 const IndexerSettingsSection: React.FC = () => {
   const theme = useAppTheme();
-  const queryClient = useQueryClient();
+  const indexerConfigCache = linuxio.indexer.get_config.useCache();
   const {
     isEnabled: indexerEnabled,
     status: indexerStatus,
@@ -388,10 +387,7 @@ const IndexerSettingsSection: React.FC = () => {
       }
 
       if (nextConfig) {
-        queryClient.setQueryData(
-          linuxio.indexer.get_config.queryKey(),
-          nextConfig,
-        );
+        indexerConfigCache.set(nextConfig);
       }
       setDraftPatch({});
       setErrors({});

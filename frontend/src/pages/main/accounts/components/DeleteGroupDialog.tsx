@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -31,7 +30,6 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
-  const queryClient = useQueryClient();
 
   const { mutateAsync: deleteGroup, isPending: isDeleting } =
     linuxio.accounts.delete_group.useJobAction({
@@ -48,9 +46,6 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
         ? `Group "${groupNames[0]}" deleted successfully`
         : `${groupNames.length} groups deleted successfully`;
     toast.success(successMessage);
-    queryClient.invalidateQueries({
-      queryKey: linuxio.accounts.list_groups.queryKey(),
-    });
     onSuccess();
     onClose();
   };

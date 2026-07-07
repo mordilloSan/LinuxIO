@@ -21,6 +21,9 @@ vi.mock("@/api/linuxio", async (importOriginal) => {
   return {
     ...actual,
     openJobAttachStream: vi.fn(),
+    // useQuery/useQueries gate on the stream mux; tests run with it "open".
+    useStreamMux: () => ({ isOpen: true, status: "open" }),
+    useIsUpdating: () => false,
   };
 });
 
@@ -335,6 +338,201 @@ describe("useJobAction", () => {
       { containerId: "abc" },
     );
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAction", () => {
+  it("rejects job and duplex routes", () => {
+    expect(() =>
+      createEndpoint("docker", "start_container", {
+        kind: "field",
+        field: "containerId",
+      }).useAction(),
+    ).toThrow(/not query/);
+
+    expect(() =>
+      createEndpoint("container", "open", { kind: "object" }).useAction(),
+    ).toThrow(/not query/);
+  });
+
+  it("runs the command with mutation ergonomics and toasts success", async () => {
+    const { toast } = await import("sonner");
+    const request = vi
+      .spyOn(core, "request")
+      .mockResolvedValue({ valid: true });
+    const endpoint = createEndpoint<{ valid: boolean }>(
+      "docker",
+      "validate_compose",
+      { kind: "field", field: "content" },
+    );
+
+    const { result, invalidateSpy } = renderJobAction(() =>
+      endpoint.useAction({ success: "Compose file is valid" }),
+    );
+
+    act(() => result.current.mutate({ content: "services: {}" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual({ valid: true });
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "validate_compose",
+      { content: "services: {}" },
+      { retryPolicy: "connection_closed" },
+    );
+    // Query routes have no ROUTE_INVALIDATIONS entry, so nothing invalidates.
+    expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith(
+      "Compose file is valid",
+      undefined,
+    );
+  });
+
+  it("prefers the server error message over the config fallback", async () => {
+    const { toast } = await import("sonner");
+    vi.spyOn(core, "request").mockRejectedValue(new LinuxIOError("bad yaml"));
+    const endpoint = createEndpoint("docker", "validate_compose", {
+      kind: "field",
+      field: "content",
+    });
+
+    const { result } = renderJobAction(() =>
+      endpoint.useAction({ error: "Validation failed" }),
+    );
+
+    act(() => result.current.mutate({ content: "nope" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toast.error).toHaveBeenCalledWith("bad yaml", undefined);
+  });
+});
+
+describe("useFetcher", () => {
+  it("fetches through the query cache with the endpoint's key scheme", async () => {
+    const request = vi.spyOn(core, "request").mockResolvedValue({ ok: true });
+    const endpoint = createEndpoint<{ ok: boolean }>("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+
+    const { result } = renderJobAction(() => endpoint.useFetcher());
+
+    await expect(
+      result.current("job-1", { staleTime: Infinity }),
+    ).resolves.toEqual({ ok: true });
+    // A second call inside staleTime is served from the cache.
+    await expect(
+      result.current("job-1", { staleTime: Infinity }),
+    ).resolves.toEqual({ ok: true });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(
+      "jobs",
+      "get",
+      { jobId: "job-1" },
+      { retryPolicy: "none" },
+    );
+  });
+
+  it("returns a referentially stable function", () => {
+    const endpoint = createEndpoint("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+    const { result, rerender } = renderJobAction(() => endpoint.useFetcher());
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
+  });
+});
+
+describe("useQueries", () => {
+  it("runs one cached query per input with the endpoint's key scheme", async () => {
+    const request = vi
+      .spyOn(core, "request")
+      .mockImplementation((_handler, _command, wireRequest) =>
+        Promise.resolve(wireRequest),
+      );
+    const endpoint = createEndpoint<{ jobId: string }>("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+
+    const { result } = renderJobAction(() =>
+      endpoint.useQueries(["a", "b"], { staleTime: Infinity }),
+    );
+
+    await waitFor(() =>
+      expect(result.current.every((query) => query.isSuccess)).toBe(true),
+    );
+    expect(result.current.map((query) => query.data)).toEqual([
+      { jobId: "a" },
+      { jobId: "b" },
+    ]);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("honors the enabled option across every entry", () => {
+    const request = vi.spyOn(core, "request").mockResolvedValue({});
+    const endpoint = createEndpoint("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+
+    renderJobAction(() => endpoint.useQueries(["a"], { enabled: false }));
+
+    expect(request).not.toHaveBeenCalled();
+  });
+});
+
+describe("useCache", () => {
+  it("reads, writes, and clears entries through the endpoint key scheme", () => {
+    const endpoint = createEndpoint<{ n: number }>("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+
+    const { result } = renderJobAction(() => endpoint.useCache());
+
+    result.current.set("job-1", { n: 1 });
+    expect(result.current.get("job-1")).toEqual({ n: 1 });
+
+    result.current.set("job-1", (old) => ({ n: (old?.n ?? 0) + 1 }));
+    expect(result.current.get("job-1")).toEqual({ n: 2 });
+
+    // No input targets every entry of the endpoint.
+    result.current.remove();
+    expect(result.current.get("job-1")).toBeUndefined();
+  });
+
+  it("invalidates one entry or the whole endpoint", async () => {
+    const endpoint = createEndpoint("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+
+    const { result, invalidateSpy } = renderJobAction(() =>
+      endpoint.useCache(),
+    );
+
+    await result.current.invalidate("job-1");
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["linuxio", "jobs", "get", { jobId: "job-1" }],
+    });
+
+    await result.current.invalidate();
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["linuxio", "jobs", "get"],
+    });
+  });
+
+  it("returns a referentially stable handle", () => {
+    const endpoint = createEndpoint("jobs", "get", {
+      kind: "field",
+      field: "jobId",
+    });
+    const { result, rerender } = renderJobAction(() => endpoint.useCache());
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
   });
 });
 

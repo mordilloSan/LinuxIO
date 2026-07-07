@@ -1,11 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import React, {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -74,7 +67,6 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const queryClient = useQueryClient();
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [server, setServer] = useState("");
   const [share, setShare] = useState("");
@@ -85,9 +77,8 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
   const [readOnly, setReadOnly] = useState(false);
   const [customOptions, setCustomOptions] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [shares, setShares] = useState<string[]>([]);
-  const [loadingShares, setLoadingShares] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounced server whose shares are being browsed; "" disables the query.
+  const [browseServer, setBrowseServer] = useState("");
 
   const { mutate: mountCIFS, isPending: isMounting } =
     linuxio.storage.mount_cifs.useJobAction({
@@ -104,42 +95,22 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
       toast: STORAGE_TOAST_META,
     });
 
-  const fetchShares = useEffectEvent(async (serverAddress: string) => {
-    setLoadingShares(true);
-    try {
-      const result = await queryClient.fetchQuery(
-        linuxio.storage.list_cifs_shares.queryOptions(serverAddress, {
-          staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-        }),
-      );
-      setShares(result || []);
-    } catch {
-      setShares([]); // browsing is best-effort; fall back to free-text
-    } finally {
-      setLoadingShares(false);
-    }
-  });
-
   useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(
-      () => {
-        if (!server || server.length < 3) {
-          setShares([]);
-        } else {
-          fetchShares(server);
-        }
-      },
-      !server || server.length < 3 ? 0 : 500,
+    const invalid = !server || server.length < 3;
+    const timeout = setTimeout(
+      () => setBrowseServer(invalid ? "" : server),
+      invalid ? 0 : 500,
     );
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
+    return () => clearTimeout(timeout);
   }, [server]);
+
+  // Browsing is best-effort; on error the field falls back to free text.
+  const sharesQuery = linuxio.storage.list_cifs_shares.useQuery(browseServer, {
+    enabled: browseServer !== "",
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
+  const shares = sharesQuery.data ?? [];
+  const loadingShares = browseServer !== "" && sharesQuery.isLoading;
 
   const buildOptions = () => {
     const opts: string[] = [readOnly ? "ro" : "rw"];
@@ -180,7 +151,7 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
     setDomain("");
     setReadOnly(false);
     setCustomOptions("");
-    setShares([]);
+    setBrowseServer("");
     setValidationError(null);
     onClose();
   };
