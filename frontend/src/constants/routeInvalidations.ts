@@ -127,19 +127,33 @@ export const ROUTE_INVALIDATIONS: Record<string, QueryKey[]> = {
   "shares.update_samba_share": [key("shares.list_samba_shares")],
   "shares.delete_samba_share": [key("shares.list_samba_shares")],
 
-  "storage.mount_cifs": [key("storage.list_cifs_mounts")],
-  "storage.unmount_cifs": [key("storage.list_cifs_mounts")],
+  "storage.mount_cifs": [
+    key("storage.list_cifs_mounts"),
+    key("system.get_fs_info"),
+  ],
+  "storage.unmount_cifs": [
+    key("storage.list_cifs_mounts"),
+    key("system.get_fs_info"),
+  ],
   "storage.remount_cifs": [key("storage.list_cifs_mounts")],
-  "storage.mount_nfs": [key("storage.list_nfs_mounts")],
-  "storage.unmount_nfs": [key("storage.list_nfs_mounts")],
+  "storage.mount_nfs": [
+    key("storage.list_nfs_mounts"),
+    key("system.get_fs_info"),
+  ],
+  "storage.unmount_nfs": [
+    key("storage.list_nfs_mounts"),
+    key("system.get_fs_info"),
+  ],
   "storage.remount_nfs": [key("storage.list_nfs_mounts")],
   "storage.create_lv": [key("storage.list_lvs"), key("storage.list_vgs")],
   "storage.resize_lv": [key("storage.list_lvs"), key("storage.list_vgs")],
   "storage.delete_lv": [key("storage.list_lvs"), key("storage.list_vgs")],
   "storage.unmount_filesystem": [
     key("storage.list_nfs_mounts"),
+    key("storage.list_cifs_mounts"),
     key("system.get_fs_info"),
   ],
+  "storage.run_smart_test": [key("storage.get_drive_info")],
   "storage.create_btrfs_subvolume": [key("system.get_fs_info")],
 
   "updates.set_auto_updates": [key("updates.get_auto_updates")],

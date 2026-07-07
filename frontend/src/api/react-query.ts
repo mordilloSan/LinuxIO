@@ -25,7 +25,7 @@ import {
   type UseQueryOptions,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
 import type {
@@ -132,6 +132,13 @@ export interface ActionConfig<TRequest, TResult> {
   /** Success toast message, or a callback for custom success handling. */
   success?: string | ((result: TResult, variables: TRequest) => void);
   /**
+   * Extract a warning from a successful result (e.g. `result.warning`). When
+   * it returns a non-empty string, a warning toast fires and replaces the
+   * string-form success toast; invalidation and a callback-form `success`
+   * still run — a warning is still a success.
+   */
+  warning?: (result: TResult, variables: TRequest) => string | null | undefined;
+  /**
    * Error toast fallback message — the server error message still wins
    * (`getMutationErrorMessage` semantics) — or a callback for custom handling.
    */
@@ -194,6 +201,21 @@ export interface JobStreamActionConfig<
     variables: TRequest,
   ) => TResult;
 }
+
+/**
+ * Result of `useJobStreamAction`: a normal mutation plus `attach`, which
+ * adopts an already-running job (e.g. found by `useActiveJobRecovery` after a
+ * page reload) into the same config lifecycle — progress frames, toasts,
+ * invalidation, and pending state behave exactly as if `mutate(variables)`
+ * had started the job.
+ */
+export type JobStreamActionResult<TRequest, TResult> = UseMutationResult<
+  TResult,
+  LinuxIOError,
+  TRequest
+> & {
+  attach: (job: JobSnapshot, variables: TRequest) => void;
+};
 
 type QueryOptionsArgs<
   TInput extends readonly unknown[],
@@ -330,6 +352,9 @@ export interface CommandEndpoint<
 
   /**
    * Higher-level mutation hook for job routes with live progress streaming.
+   * The returned mutation also exposes `attach(job, variables)` to adopt an
+   * already-running job (page-reload recovery) into the same config
+   * lifecycle.
    *
    * @example
    * const compose = linuxio.docker.compose.useJobStreamAction({
@@ -340,7 +365,7 @@ export interface CommandEndpoint<
    */
   useJobStreamAction: <TStreamResult = TResult, TProgress = ProgressFrame>(
     config?: JobStreamActionConfig<TRequest, TStreamResult, TProgress>,
-  ) => UseMutationResult<TStreamResult, LinuxIOError, TRequest>;
+  ) => JobStreamActionResult<TRequest, TStreamResult>;
 
   /**
    * React Query hook for fetching data
@@ -431,6 +456,21 @@ function resolveSignal<TRequest>(
 }
 
 /**
+ * Compose the API-layer gate (mux open, not updating) with a caller-supplied
+ * `enabled`, preserving React Query v5's function form instead of collapsing
+ * it to a boolean comparison.
+ */
+function gatedEnabled<TResult, TData>(
+  gate: boolean,
+  enabled: UseQueryOptions<TResult, LinuxIOError, TData>["enabled"],
+): UseQueryOptions<TResult, LinuxIOError, TData>["enabled"] {
+  if (typeof enabled === "function") {
+    return (query) => gate && enabled(query);
+  }
+  return gate && (enabled ?? true);
+}
+
+/**
  * Shared mutation lifecycle behind `useAction`, `useJobAction`, and
  * `useJobStreamAction`: runs `mutationFn` through React Query and applies the
  * declarative `ActionConfig` handling — manifest-driven invalidation,
@@ -446,6 +486,7 @@ function useActionMutation<TResult>(
   const {
     invalidates,
     success,
+    warning,
     error,
     toast: toastMeta,
     options,
@@ -463,9 +504,13 @@ function useActionMutation<TResult>(
       for (const queryKey of keys) {
         void queryClient.invalidateQueries({ queryKey });
       }
+      const warningMessage = warning?.(result, variables);
+      if (warningMessage) {
+        toast.warning(warningMessage, toastOpts);
+      }
       if (typeof success === "function") {
         success(result, variables);
-      } else if (success !== undefined) {
+      } else if (success !== undefined && !warningMessage) {
         toast.success(success, toastOpts);
       }
       options?.onSuccess?.(result, variables, onMutateResult, context);
@@ -596,7 +641,7 @@ export function createEndpoint<TResult>(
     const baseOptions = queryOptions<TData>(...params);
     return useQuery<TResult, LinuxIOError, TData>({
       ...baseOptions,
-      enabled: isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
+      enabled: gatedEnabled(isOpen && !isUpdating, baseOptions.enabled),
     });
   }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQuery"];
 
@@ -606,8 +651,10 @@ export function createEndpoint<TResult>(
   ) => {
     const { isOpen } = useStreamMux();
     const isUpdating = useIsUpdating();
-    const enabled =
-      isOpen && !isUpdating && (options?.enabled ?? true) === true;
+    const enabled = gatedEnabled<TResult, TData>(
+      isOpen && !isUpdating,
+      options?.enabled,
+    );
     return useQueries({
       queries: inputs.map((input) => ({
         ...buildQueryOptions<TResult, TData>(
@@ -697,16 +744,21 @@ export function createEndpoint<TResult>(
   ) => {
     const route = routeName(handler, command);
     assertRouteMode(route, "job");
-    return useActionMutation<TStreamResult>(
+    const attachJobRef = useRef<JobSnapshot | null>(null);
+    const mutation = useActionMutation<TStreamResult>(
       route,
       async (request: unknown) => {
         const signal = resolveSignal(config?.signal, request);
-        const result = await core.request<TResult>(
-          handler,
-          command,
-          requestForWire(requestShape, request),
-          { retryPolicy },
-        );
+        const attachJob = attachJobRef.current;
+        attachJobRef.current = null;
+        const result = attachJob
+          ? attachJob
+          : await core.request<TResult>(
+              handler,
+              command,
+              requestForWire(requestShape, request),
+              { retryPolicy },
+            );
         if (isJobSnapshot(result)) {
           return waitForJobStreamAction<unknown, TStreamResult, TProgress>(
             result,
@@ -719,6 +771,15 @@ export function createEndpoint<TResult>(
       },
       config,
     );
+    const { mutate } = mutation;
+    const attach = useCallback(
+      (job: JobSnapshot, variables: unknown) => {
+        attachJobRef.current = job;
+        mutate(variables);
+      },
+      [mutate],
+    );
+    return { ...mutation, attach };
   }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useJobStreamAction"];
 
   return endpoint;

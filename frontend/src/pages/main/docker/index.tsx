@@ -24,7 +24,6 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
@@ -79,7 +78,7 @@ const DockerPage: React.FC = () => {
       error: "Failed to start containers",
       toast: DOCKER_TOAST_META,
     });
-  // Per-container outcomes are toasted in the loop below.
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: stopContainer } =
     linuxio.docker.stop_container.useJobAction();
   const isStoppingAll = stoppingContainerIds.size > 0;
@@ -90,14 +89,13 @@ const DockerPage: React.FC = () => {
     stopAllInFlightRef.current = true;
     setStoppingContainerIds(new Set(targets.map((container) => container.Id)));
 
+    const failures: string[] = [];
     try {
       for (const container of targets) {
-        const name = getContainerName(container);
         try {
           await stopContainer({ containerId: container.Id });
-          toast.success(`Container ${name} stopped`);
-        } catch (err) {
-          toast.error(getMutationErrorMessage(err, `Failed to stop ${name}`));
+        } catch {
+          failures.push(getContainerName(container));
         } finally {
           setStoppingContainerIds((previous) => {
             const next = new Set(previous);
@@ -109,6 +107,13 @@ const DockerPage: React.FC = () => {
     } finally {
       stopAllInFlightRef.current = false;
       setStoppingContainerIds(new Set());
+    }
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to stop ${failures.length} of ${targets.length} container${targets.length === 1 ? "" : "s"}`,
+      );
+    } else {
+      toast.success(`Stopped ${targets.length} container(s)`);
     }
   }, [runningContainers, stopContainer, toast]);
   const { mutate: systemPrune, isPending: isPruning } =

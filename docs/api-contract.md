@@ -129,7 +129,7 @@ Every generated endpoint exposes:
 | `endpoint.useQueries(inputs, options?)` | `useQuery` over a dynamic list of inputs — one query per input, sharing the singular hook's cache entries and stream-mux gating. |
 | `endpoint.useAction(config?)` | Mutation-style hook for query routes used as event-driven commands (validation, download generation, path resolution): `mutate`/`mutateAsync` with pending state and declarative toasts, no query caching. |
 | `endpoint.useJobAction(config?)` | React Query hook for job routes: awaits job completion, unwraps the job result, declarative invalidation/toasts. |
-| `endpoint.useJobStreamAction(config?)` | Job-route hook with live progress: starts the job, attaches to its stream, and surfaces `onJobStart`/`onOpen`/`onProgress` plus the `useJobAction` config. |
+| `endpoint.useJobStreamAction(config?)` | Job-route hook with live progress: starts the job, attaches to its stream, and surfaces `onJobStart`/`onOpen`/`onProgress` plus the `useJobAction` config. The returned mutation also exposes `attach(job, variables)`, which adopts an already-running job (page-reload recovery via `useActiveJobRecovery`) into the same config lifecycle — progress, toasts, invalidation, and pending state behave exactly as if `mutate(variables)` had started it. |
 | `endpoint.useFetcher()` | Hook returning a stable imperative fetch through the query cache — for loaders and effects that need data at call time (chart backfill, lazy tree loads, workflow pre-checks). Same input shape and options as `useQuery`. |
 | `endpoint.useCache()` | Hook returning a stable typed cache handle: `get`/`set` for one request's entry (optimistic updates, seeding an action's result), `invalidate`/`remove`/`cancel` for one entry or — with no input — the whole endpoint. |
 | `endpoint.queryKey(...input)` | Stable React Query key. |
@@ -137,7 +137,22 @@ Every generated endpoint exposes:
 
 Feature code (`pages/`, `components/`, `contexts/`, non-jobs `hooks/`) never imports `@tanstack/react-query` at all: render-driven reads go through `useQuery`/`useQueries`, event-driven commands through `useAction`, writes through `useJobAction`/`useJobStreamAction` or the background-jobs layer, imperative loader/effect reads through `useFetcher`, and cache manipulation through `useCache`. The primitives live in `src/api/` and `src/hooks/backgroundJobs/` (with routing preloads and the provider as the only other React Query touchpoints); guard tests (`frontend/src/constants/apiLayering.test.ts`) enforce the boundary.
 
-`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data. `useAction` and `useJobAction` instead take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
+`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data. `useAction` and `useJobAction` instead take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
+
+### Choosing a member (decision table)
+
+| Situation | Use |
+|-----------|-----|
+| Data rendered by this component | `useQuery` (list of inputs: `useQueries`) — even for on-demand panels: gate with `enabled` and state instead of fetching imperatively. |
+| Data needed inside an effect, loader, or event handler, then handed to something else (chart backfill, editor content, lazy tree loads) | `useFetcher` — add `staleTime/gcTime: CACHE_TTL_MS.NONE` when the read must not be cached. |
+| Query route invoked as a command (validate, generate download, resolve path) where the result is consumed by the flow, not displayed | `useAction` — declarative toasts + `isPending`; omit the config when a surrounding workflow owns error handling (say so in a comment). |
+| Single mutation triggered by one user action | `useJobAction` with declarative config (`success`/`warning`/`error` strings; side effects via a `success` callback or `options.onSettled`). Fire with `mutate`. |
+| Mutation whose live progress the UI renders, or that must survive page reload via re-attach | `useJobStreamAction` (+ `attach` with `useActiveJobRecovery` for recovery). Don't pick it just to customize an error string. |
+| Several mutations sequenced or looped in one flow (batch delete, multi-step save) | Create the actions **configless** with a comment, `await mutateAsync` per step/item inside `try/catch`, and aggregate the outcome into one toast. The catch owns flow control only — never re-toast an error a config already toasted. |
+| Long-running transfer that must outlive the page and show in the navbar | The background-jobs layer (`useBackgroundJobActions`), not a job action. |
+| Optimistic updates / seeding cache from a result | `useCache` handles; pair `cancel` before an optimistic `set`. |
+
+Refreshes after mutations come from the invalidation manifest by default — do not add `refetch()` calls or `onSuccess` refresh props on top of it; if a list does not refresh, fix the manifest entry instead.
 
 Query invalidation is manifest-driven: `frontend/src/constants/routeInvalidations.ts` maps each job route to the query caches it makes stale, and is the single source of truth for both lifecycles — `useJobAction`/`useJobStreamAction` use it as the default `invalidates` for locally awaited jobs, and the recovered-jobs stream applies it to jobs that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). A guard test (`frontend/src/constants/routeInvalidations.test.ts`) keeps ad-hoc `queryClient.invalidateQueries` calls out of feature code.
 
@@ -224,7 +239,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 All actions are jobs, including fast atomic mutations. If a job completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle streams.
 
-On the frontend, `useJobAction` awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them; `useJobStreamAction` accepts `markHandled: false` when the recovered-jobs stream should keep ownership of completion (progress rendered locally, toasts owned globally).
+On the frontend, `useJobAction` awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. If the attach stream cannot be opened (mux dropped between job start and attach), `waitForJobCompletion` falls back to polling `jobs.get` until the job is terminal — it never resolves mid-job; `useJobStreamAction` instead fails fast in that situation because it promises live progress, and the recovered-jobs stream picks the job up. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them; `useJobStreamAction` accepts `markHandled: false` when the recovered-jobs stream should keep ownership of completion (progress rendered locally, toasts owned globally).
 
 Built-in job routes:
 

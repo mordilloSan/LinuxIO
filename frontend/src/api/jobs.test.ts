@@ -102,11 +102,36 @@ describe("jobs helpers", () => {
     ).rejects.toMatchObject({ message: "failed", code: 500 });
   });
 
-  it("returns the original active snapshot when attach is unavailable", async () => {
-    const active = snapshot();
+  it("polls to completion when attach is unavailable", async () => {
+    const finalSnapshot = snapshot({ state: "completed", result: "polled" });
     mocks.openJobAttachStream.mockReturnValue(null);
+    mocks.request
+      .mockResolvedValueOnce(snapshot())
+      .mockResolvedValueOnce(finalSnapshot);
 
-    await expect(waitForJobCompletion(active)).resolves.toBe(active);
+    vi.useFakeTimers();
+    const completion = waitForJobCompletion(snapshot());
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(completion).resolves.toBe(finalSnapshot);
+    expect(mocks.request).toHaveBeenCalledWith(
+      "jobs",
+      "get",
+      { jobId: "job-1" },
+      { retryPolicy: "connection_closed" },
+    );
+    expect(mocks.waitForStreamResult).not.toHaveBeenCalled();
+  });
+
+  it("throws when the polled job ends in a failed state", async () => {
+    mocks.openJobAttachStream.mockReturnValue(null);
+    mocks.request.mockResolvedValue(
+      snapshot({ state: "failed", error: { code: 500, message: "boom" } }),
+    );
+
+    await expect(waitForJobCompletion(snapshot())).rejects.toMatchObject({
+      message: "boom",
+      code: 500,
+    });
   });
 
   it("attaches active jobs, refetches final snapshots, and clears local handling", async () => {

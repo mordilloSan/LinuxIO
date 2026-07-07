@@ -18,13 +18,7 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
-import {
-  type ApiDisk,
-  type FilesystemInfo,
-  linuxio,
-  openJobAttachStream,
-  type Stream,
-} from "@/api";
+import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -37,7 +31,6 @@ import { JOB_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundJobTypes";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useStreamResult } from "@/hooks/useStreamResult";
 import { useAppTheme } from "@/theme";
 
 const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
@@ -46,7 +39,6 @@ interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;
   rawDrive: ApiDisk | null;
-  refetchDrives: () => void;
   smartmontoolsAvailable: boolean;
   smartmontoolsReason: string;
 }
@@ -81,7 +73,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   drive,
   expanded,
   rawDrive,
-  refetchDrives,
   smartmontoolsAvailable,
   smartmontoolsReason,
 }) => {
@@ -94,75 +85,75 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const [testProgress, setTestProgress] =
     useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
-  const { run: runStreamResult } = useStreamResult();
-  const { mutate: runSmartTest } =
-    linuxio.storage.run_smart_test.useJobStreamAction<
-      SmartTestResult,
-      SmartTestProgressEvent
-    >({
-      closeMessage: "SMART self-test stream closed unexpectedly",
-      onOpen: (stream) => {
-        streamRef.current = stream;
+  // One config drives both lifecycles: fresh runs via smartTest.mutate() and
+  // page-reload recovery via smartTest.attach() (see useActiveJobRecovery
+  // below). Drive-info refresh comes from the invalidation manifest.
+  const smartTest = linuxio.storage.run_smart_test.useJobStreamAction<
+    SmartTestResult,
+    SmartTestProgressEvent
+  >({
+    closeMessage: "SMART self-test stream closed unexpectedly",
+    onOpen: (stream) => {
+      streamRef.current = stream;
+    },
+    onProgress: (data, _job, variables) => {
+      const testType: "short" | "long" =
+        variables.testType === "long" ? "long" : "short";
+      setTestProgress((prev) => ({
+        ...(prev || {}),
+        ...data,
+        test_type: data.test_type ?? prev?.test_type ?? testType,
+        device: data.device ?? prev?.device ?? variables.device,
+      }));
+    },
+    success: (data, variables) => {
+      const testType: "short" | "long" =
+        variables.testType === "long" ? "long" : "short";
+      const finalStatus = data?.status ?? "completed";
+      setTestProgress((prev) => ({
+        ...(prev || {}),
+        type: "status",
+        status: finalStatus as SmartTestProgressEvent["status"],
+        message: data?.message ?? prev?.message,
+        test_type: data?.test_type ?? prev?.test_type ?? testType,
+        device: data?.device ?? prev?.device ?? variables.device,
+      }));
+      const label = testType === "short" ? "Short" : "Extended";
+      if (finalStatus === "completed") {
+        toast.success(
+          `${label} self-test completed on /dev/${variables.device}`,
+        );
+      } else if (finalStatus === "aborted") {
+        toast.error(`${label} self-test aborted on /dev/${variables.device}`);
+      } else {
+        const detail = data?.message ? `: ${data.message}` : "";
+        toast.error(
+          `${label} self-test failed on /dev/${variables.device}${detail}`,
+        );
+      }
+    },
+    error: (error, variables) => {
+      if (error.name === "AbortError") return;
+      const testType: "short" | "long" =
+        variables.testType === "long" ? "long" : "short";
+      const errorMessage = error.message || "SMART self-test failed";
+      setTestProgress((prev) => ({
+        ...(prev || {}),
+        type: "status",
+        status: "error",
+        message: errorMessage,
+        test_type: prev?.test_type ?? testType,
+        device: prev?.device ?? variables.device,
+      }));
+      toast.error(errorMessage);
+    },
+    options: {
+      onSettled: () => {
+        streamRef.current = null;
+        setStartPending(null);
       },
-      onProgress: (data, _job, variables) => {
-        const testType: "short" | "long" =
-          variables.testType === "long" ? "long" : "short";
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          ...data,
-          test_type: data.test_type ?? prev?.test_type ?? testType,
-          device: data.device ?? prev?.device ?? variables.device,
-        }));
-      },
-      success: (data, variables) => {
-        const testType: "short" | "long" =
-          variables.testType === "long" ? "long" : "short";
-        const finalStatus = data?.status ?? "completed";
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          type: "status",
-          status: finalStatus as SmartTestProgressEvent["status"],
-          message: data?.message ?? prev?.message,
-          test_type: data?.test_type ?? prev?.test_type ?? testType,
-          device: data?.device ?? prev?.device ?? variables.device,
-        }));
-        const label = testType === "short" ? "Short" : "Extended";
-        if (finalStatus === "completed") {
-          toast.success(
-            `${label} self-test completed on /dev/${variables.device}`,
-          );
-        } else if (finalStatus === "aborted") {
-          toast.error(`${label} self-test aborted on /dev/${variables.device}`);
-        } else {
-          const detail = data?.message ? `: ${data.message}` : "";
-          toast.error(
-            `${label} self-test failed on /dev/${variables.device}${detail}`,
-          );
-        }
-        refetchDrives();
-      },
-      error: (error, variables) => {
-        if (error.name === "AbortError") return;
-        const testType: "short" | "long" =
-          variables.testType === "long" ? "long" : "short";
-        const errorMessage = error.message || "SMART self-test failed";
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          type: "status",
-          status: "error",
-          message: errorMessage,
-          test_type: prev?.test_type ?? testType,
-          device: prev?.device ?? variables.device,
-        }));
-        toast.error(errorMessage);
-      },
-      options: {
-        onSettled: () => {
-          streamRef.current = null;
-          setStartPending(null);
-        },
-      },
-    });
+    },
+  });
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -173,8 +164,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   }, []);
 
   // Refresh recovery: if a SMART self-test job for this drive is already running
-  // (e.g. user refreshed the page mid-test), find it and re-attach so the UI
-  // keeps the buttons disabled and progress bar updating.
+  // (e.g. user refreshed the page mid-test), adopt it into the same action —
+  // progress, toasts, and cleanup all come from the shared config above.
   useActiveJobRecovery({
     type: JOB_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
@@ -196,54 +187,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         device: deviceName,
         message: "Resuming SMART self-test",
       });
-      const label = testType === "short" ? "Short" : "Extended";
-      void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
-        open: () => openJobAttachStream(job.id),
-        onOpen: (stream) => {
-          streamRef.current = stream;
-        },
-        onProgress: (data) => {
-          setTestProgress((prev) => ({
-            ...(prev || {}),
-            ...data,
-            test_type: data.test_type ?? prev?.test_type ?? testType,
-            device: data.device ?? prev?.device ?? deviceName,
-          }));
-        },
-        closeMessage: "SMART self-test stream closed unexpectedly",
-      })
-        .then((data) => {
-          const finalStatus = data?.status ?? "completed";
-          setTestProgress((prev) => ({
-            ...(prev || {}),
-            type: "status",
-            status: finalStatus as SmartTestProgressEvent["status"],
-            message: data?.message ?? prev?.message,
-            test_type: data?.test_type ?? prev?.test_type ?? testType,
-            device: data?.device ?? prev?.device ?? deviceName,
-          }));
-          if (finalStatus === "completed") {
-            toast.success(`${label} self-test completed on /dev/${deviceName}`);
-          } else if (finalStatus === "aborted") {
-            toast.error(`${label} self-test aborted on /dev/${deviceName}`);
-          } else {
-            const detail = data?.message ? `: ${data.message}` : "";
-            toast.error(
-              `${label} self-test failed on /dev/${deviceName}${detail}`,
-            );
-          }
-          return;
-        })
-        .catch((error: unknown) => {
-          if (error instanceof Error && error.name === "AbortError") return;
-          const errorMessage =
-            error instanceof Error ? error.message : "SMART self-test failed";
-          toast.error(errorMessage);
-        })
-        .finally(() => {
-          streamRef.current = null;
-          setStartPending(null);
-        });
+      smartTest.attach(job, { device: deviceName, testType });
     },
   });
 
@@ -264,7 +208,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     if (streamRef.current) {
       streamRef.current.close();
     }
-    runSmartTest({ device: rawDrive.name, testType });
+    smartTest.mutate({ device: rawDrive.name, testType });
   };
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
@@ -371,13 +315,10 @@ const DiskOverview: React.FC = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const {
-    data: rawDrivesData,
-    isPending: drivesLoading,
-    refetch: refetchDrives,
-  } = linuxio.storage.get_drive_info.useQuery({
-    refetchInterval: 30000,
-  });
+  const { data: rawDrivesData, isPending: drivesLoading } =
+    linuxio.storage.get_drive_info.useQuery({
+      refetchInterval: 30000,
+    });
   const { data: filesystemsData, isPending: fsLoading } =
     linuxio.system.get_fs_info.useQuery({
       refetchInterval: 10000,
@@ -604,7 +545,6 @@ const DiskOverview: React.FC = () => {
                           rawDrive={
                             rawDrives.find((d) => d.name === drive.name) || null
                           }
-                          refetchDrives={refetchDrives}
                           smartmontoolsAvailable={smartmontoolsAvailable}
                           smartmontoolsReason={smartmontoolsReason}
                         />

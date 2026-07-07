@@ -27,7 +27,6 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
-import { getMutationErrorMessage } from "@/utils/mutations";
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -46,24 +45,30 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useJobAction({
-      error: (error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to delete volume(s)"),
-        );
-      },
-    });
+    linuxio.docker.delete_volume.useJobAction();
   const handleDelete = async () => {
     // Delete volumes sequentially
+    const failures: string[] = [];
     for (const name of volumeNames) {
-      await deleteVolume({ name });
+      try {
+        await deleteVolume({ name });
+      } catch {
+        failures.push(name);
+      }
     }
-    const successMessage =
-      volumeNames.length === 1
-        ? `Volume "${volumeNames[0]}" deleted successfully`
-        : `${volumeNames.length} volumes deleted successfully`;
-    toast.success(successMessage);
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to delete ${failures.length} of ${volumeNames.length} volume${volumeNames.length === 1 ? "" : "s"}`,
+      );
+    } else {
+      const successMessage =
+        volumeNames.length === 1
+          ? `Volume "${volumeNames[0]}" deleted successfully`
+          : `${volumeNames.length} volumes deleted successfully`;
+      toast.success(successMessage);
+    }
     onSuccess();
     handleClose();
   };

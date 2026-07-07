@@ -37,21 +37,18 @@ interface CIFSMountsProps {
 interface MountCIFSDialogProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
 interface RemoveCIFSDialogProps {
   mount: CIFSMount | null;
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
 interface EditCIFSDialogProps {
   mount: CIFSMount | null;
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
 function getStatusLabel(mount: CIFSMount): string {
@@ -62,12 +59,7 @@ function getAuthLabel(mount: CIFSMount): string {
   return mount.username ? `User: ${mount.username}` : "Guest";
 }
 
-const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
-  open,
-  onClose,
-  onSuccess,
-}) => {
-  const toast = useScopedToast(STORAGE_TOAST_META);
+const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({ open, onClose }) => {
   const [server, setServer] = useState("");
   const [share, setShare] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -82,17 +74,11 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({
 
   const { mutate: mountCIFS, isPending: isMounting } =
     linuxio.storage.mount_cifs.useJobAction({
-      success: (result) => {
-        if (result.warning) {
-          toast.warning(result.warning);
-        } else {
-          toast.success(`SMB share mounted at ${mountpoint}`);
-        }
-        onSuccess();
-        handleClose();
-      },
+      success: `SMB share mounted at ${mountpoint}`,
+      warning: (result) => result.warning,
       error: "Failed to mount SMB share",
       toast: STORAGE_TOAST_META,
+      options: { onSuccess: () => handleClose() },
     });
 
   useEffect(() => {
@@ -278,21 +264,14 @@ const RemoveCIFSDialog: React.FC<RemoveCIFSDialogProps> = ({
   open,
   onClose,
   mount,
-  onSuccess,
 }) => {
-  const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: removeEntry, isPending: isRemoving } =
     linuxio.storage.unmount_cifs.useJobAction({
-      success: (result) => {
-        toast.success(`Removed ${mount?.mountpoint}`);
-        if (result.warning) {
-          toast.warning(result.warning);
-        }
-        onSuccess();
-        onClose();
-      },
+      success: `Removed ${mount?.mountpoint}`,
+      warning: (result) => result.warning,
       error: "Failed to remove entry",
       toast: STORAGE_TOAST_META,
+      options: { onSuccess: () => onClose() },
     });
 
   const handleRemove = () => {
@@ -335,17 +314,11 @@ const EditCIFSDialog: React.FC<EditCIFSDialogProps> = ({
   open,
   onClose,
   mount,
-  onSuccess,
 }) => (
   <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
     <AppDialogTitle>Edit SMB Mount Options</AppDialogTitle>
     {open && mount ? (
-      <EditCIFSForm
-        key={mount.mountpoint}
-        mount={mount}
-        onClose={onClose}
-        onSuccess={onSuccess}
-      />
+      <EditCIFSForm key={mount.mountpoint} mount={mount} onClose={onClose} />
     ) : null}
   </GeneralDialog>
 );
@@ -353,9 +326,7 @@ const EditCIFSDialog: React.FC<EditCIFSDialogProps> = ({
 const EditCIFSForm: React.FC<{
   mount: CIFSMount;
   onClose: () => void;
-  onSuccess: () => void;
-}> = ({ mount, onClose, onSuccess }) => {
-  const toast = useScopedToast(STORAGE_TOAST_META);
+}> = ({ mount, onClose }) => {
   const [readOnly, setReadOnly] = useState(
     (mount.options ?? []).includes("ro"),
   );
@@ -365,17 +336,11 @@ const EditCIFSForm: React.FC<{
 
   const { mutate: remountCIFS, isPending: isSaving } =
     linuxio.storage.remount_cifs.useJobAction({
-      success: (result) => {
-        if (result.warning) {
-          toast.warning(result.warning);
-        } else {
-          toast.success("SMB mount options updated");
-        }
-        onSuccess();
-        onClose();
-      },
+      success: "SMB mount options updated",
+      warning: (result) => result.warning,
       error: "Failed to update mount options",
       toast: STORAGE_TOAST_META,
+      options: { onSuccess: () => onClose() },
     });
 
   const handleSave = () => {
@@ -467,36 +432,27 @@ const CIFSMounts: React.FC<CIFSMountsProps> = ({ onMountCreateHandler }) => {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
 
-  const {
-    data: mounts = [],
-    isPending: loading,
-    refetch,
-  } = linuxio.storage.list_cifs_mounts.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: mounts = [], isPending: loading } =
+    linuxio.storage.list_cifs_mounts.useQuery({
+      refetchInterval: 10000,
+    });
 
   const { mutate: mountExisting } = linuxio.storage.mount_cifs.useJobAction({
-    success: (result) => {
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success("SMB entry mounted");
-      }
-      refetch();
-    },
+    success: "SMB entry mounted",
+    warning: (result) => result.warning,
     error: "Failed to mount SMB entry",
     toast: STORAGE_TOAST_META,
   });
 
   const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useJobAction({
+    // The message needs `variables`, so the toast stays in a callback; the
+    // warning affordance still owns the warning case.
     success: (result, variables) => {
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
+      if (!result.warning) {
         toast.success(`Unmounted ${variables.mountpoint}`);
       }
-      refetch();
     },
+    warning: (result) => result.warning,
     error: "Failed to unmount",
     toast: STORAGE_TOAST_META,
   });
@@ -732,21 +688,18 @@ const CIFSMounts: React.FC<CIFSMountsProps> = ({ onMountCreateHandler }) => {
 
       <MountCIFSDialog
         onClose={() => setMountDialogOpen(false)}
-        onSuccess={() => refetch()}
         open={mountDialogOpen}
       />
 
       <EditCIFSDialog
         mount={selectedMount}
         onClose={() => setEditDialogOpen(false)}
-        onSuccess={() => refetch()}
         open={editDialogOpen}
       />
 
       <RemoveCIFSDialog
         mount={selectedMount}
         onClose={() => setRemoveDialogOpen(false)}
-        onSuccess={() => refetch()}
         open={removeDialogOpen}
       />
     </div>

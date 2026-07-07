@@ -31,21 +31,30 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteUser, isPending: isDeleting } =
-    linuxio.accounts.delete_user.useJobAction({
-      error: "Failed to delete user(s)",
-      toast: ACCOUNTS_TOAST_META,
-    });
+    linuxio.accounts.delete_user.useJobAction();
 
   const handleDelete = async () => {
+    const failures: string[] = [];
     for (const username of usernames) {
-      await deleteUser({ username });
+      try {
+        await deleteUser({ username });
+      } catch {
+        failures.push(username);
+      }
     }
-    const successMessage =
-      usernames.length === 1
-        ? `User "${usernames[0]}" deleted successfully`
-        : `${usernames.length} users deleted successfully`;
-    toast.success(successMessage);
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to delete ${failures.length} of ${usernames.length} user${usernames.length === 1 ? "" : "s"}`,
+      );
+    } else {
+      const successMessage =
+        usernames.length === 1
+          ? `User "${usernames[0]}" deleted successfully`
+          : `${usernames.length} users deleted successfully`;
+      toast.success(successMessage);
+    }
     onSuccess();
     onClose();
   };

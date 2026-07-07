@@ -12,7 +12,6 @@ const toastMocks = vi.hoisted(() => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
-  isConnected: vi.fn(),
   uploadContent: vi.fn(),
 }));
 
@@ -29,14 +28,9 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
-    isConnected: apiMocks.isConnected,
     uploadContent: apiMocks.uploadContent,
   };
 });
-
-vi.mock("@/hooks/useConfig", () => ({
-  useConfig: () => ({ config: { appSettings: { chunkSizeMB: 1 } } }),
-}));
 
 type Params = Parameters<typeof useFileBrowserEditorActions>[0];
 
@@ -79,7 +73,6 @@ function setup(overrides: Partial<Params> = {}, client?: QueryClient) {
 describe("useFileBrowserEditorActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.isConnected.mockReturnValue(true);
     apiMocks.uploadContent.mockResolvedValue(undefined);
   });
 
@@ -151,22 +144,6 @@ describe("useFileBrowserEditorActions", () => {
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("aborts the save when the stream is not connected", async () => {
-      apiMocks.isConnected.mockReturnValue(false);
-      const { result, params } = setup();
-
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
-
-      expect(toastMocks.error).toHaveBeenCalledWith(
-        "Stream connection not ready",
-        expect.anything(),
-      );
-      expect(apiMocks.uploadContent).not.toHaveBeenCalled();
-      expect(params.setIsSavingFile).not.toHaveBeenCalled();
-    });
-
     it("does nothing when there is no editor or path", async () => {
       const { result, params } = setup({ editingPath: null });
 
@@ -207,7 +184,7 @@ describe("useFileBrowserEditorActions", () => {
     });
 
     it("stays open when the save fails", async () => {
-      apiMocks.isConnected.mockReturnValue(false);
+      apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
       const { result, params } = setup();
 
       await act(async () => {

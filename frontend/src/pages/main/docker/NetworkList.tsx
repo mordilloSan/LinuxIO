@@ -32,7 +32,6 @@ import {
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { alpha } from "@/utils/color";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
@@ -252,25 +251,31 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
-    linuxio.docker.delete_network.useJobAction({
-      error: (error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to delete network(s)"),
-        );
-      },
-    });
+    linuxio.docker.delete_network.useJobAction();
 
   const handleDelete = async () => {
     // Delete networks sequentially
-    for (const id of networkIds) {
-      await deleteNetwork({ id });
+    const failures: string[] = [];
+    for (const [index, id] of networkIds.entries()) {
+      try {
+        await deleteNetwork({ id });
+      } catch {
+        failures.push(networkNames[index] ?? id);
+      }
     }
-    const successMessage =
-      networkNames.length === 1
-        ? `Network "${networkNames[0]}" deleted successfully`
-        : `${networkNames.length} networks deleted successfully`;
-    toast.success(successMessage);
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to delete ${failures.length} of ${networkIds.length} network${networkIds.length === 1 ? "" : "s"}`,
+      );
+    } else {
+      const successMessage =
+        networkNames.length === 1
+          ? `Network "${networkNames[0]}" deleted successfully`
+          : `${networkNames.length} networks deleted successfully`;
+      toast.success(successMessage);
+    }
     onSuccess();
     handleClose();
   };

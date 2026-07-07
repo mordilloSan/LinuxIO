@@ -27,7 +27,6 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { type AppTheme, useAppTheme } from "@/theme";
 import { compactGoDuration, isGoDuration } from "@/utils/durations";
 import { formatDate, formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import "./indexer-settings-section.css";
 
@@ -312,8 +311,11 @@ const IndexerSettingsSection: React.FC = () => {
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
-  const setConfigMutation = linuxio.indexer.set_config.useJobAction();
+  const setConfigMutation = linuxio.indexer.set_config.useJobAction({
+    error: "Failed to save indexer settings",
+  });
   const setTimerMutation = linuxio.indexer.set_timer_interval.useJobAction({
+    error: "Failed to save indexer timer",
     invalidates: [linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT)],
   });
 
@@ -402,10 +404,9 @@ const IndexerSettingsSection: React.FC = () => {
       }
       void refetchStatus();
       void refetchTimer();
-    } catch (err) {
-      toast.error(
-        getMutationErrorMessage(err, "Failed to save indexer settings"),
-      );
+    } catch {
+      // Error toasts are owned by the ActionConfig `error` strings; the catch
+      // only stops the sequence so a failed step keeps the draft dirty.
     }
   };
 

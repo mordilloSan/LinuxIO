@@ -3,9 +3,9 @@ import React, { Suspense, useCallback, useMemo, useState } from "react";
 import ComposeList from "./ComposeList";
 
 import {
-  isConnected,
+  CACHE_TTL_MS,
   linuxio,
-  STREAM_MULTIPLEXER_CONFIG,
+  LinuxIOError,
   uploadContent,
   type ComposeProject,
 } from "@/api";
@@ -29,6 +29,7 @@ import {
 import { useConfig } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -41,10 +42,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 }) => {
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { config } = useConfig();
-  const chunkSize =
-    (config.appSettings.chunkSizeMB ?? 0) > 0
-      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
+  const chunkSize = useUploadChunkSize();
 
   // Setup dialog state
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -102,10 +100,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const { mutateAsync: deleteStack } =
     linuxio.docker.delete_stack.useJobAction();
 
+  // Loader-style read: the file content feeds the editor, fetched fresh on
+  // every open (no cache entry wanted).
+  const fetchComposeFile = linuxio.filebrowser.resource_get.useFetcher();
   // Event-driven commands behind the editor flow; error handling stays with
   // the calling workflow, so no declarative toast config here.
-  const { mutateAsync: loadComposeFile } =
-    linuxio.filebrowser.resource_get.useAction();
   const { mutateAsync: validateCompose } =
     linuxio.docker.validate_compose.useAction();
   const { mutateAsync: resolveComposeFilePath } =
@@ -230,11 +229,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   const openStackEditor = useCallback(
     async (projectName: string, configPath: string, readOnly: boolean) => {
       try {
-        const result = await loadComposeFile({
-          path: configPath,
-          unused: "",
-          getContent: "true",
-        });
+        const result = await fetchComposeFile(
+          { path: configPath, unused: "", getContent: "true" },
+          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
+        );
 
         if (result && result.content) {
           setEditorMode("edit");
@@ -252,7 +250,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [loadComposeFile, toast],
+    [fetchComposeFile, toast],
   );
 
   const handleEditStack = useCallback(
@@ -296,11 +294,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       filePath: string,
       override: boolean = false,
     ) => {
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        throw new Error("Stream connection not ready");
-      }
-
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
       await uploadContent(filePath, contentBytes, {
@@ -351,11 +344,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         // Try to save without override first
         await performSave(content, stackName, filePath, false);
       } catch (error) {
-        // Check if error is due to file already existing
-        if (
-          error instanceof Error &&
-          error.message.includes("file already exists")
-        ) {
+        // The upload job reports an existing destination as a structured 409.
+        if (error instanceof LinuxIOError && error.code === 409) {
           // Store pending save data and show confirmation dialog
           setPendingSaveData({ content, stackName, filePath });
           setOverwriteDialogOpen(true);

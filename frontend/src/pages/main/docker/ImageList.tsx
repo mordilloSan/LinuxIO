@@ -47,42 +47,29 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
 }) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
-  // Per-item outcomes are tallied below; errors surface as one batch toast.
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useJobAction();
   const handleDelete = async () => {
-    // Delete images sequentially, tracking successes and failures
-    const results = await Promise.all(
-      imageIds.map(async (id, index) => {
-        try {
-          await deleteImage({ imageId: id });
-          return {
-            success: true,
-            tag: imageTags[index],
-          };
-        } catch {
-          return {
-            success: false,
-            tag: imageTags[index],
-          };
-        }
-      }),
-    );
-    const succeeded = results.filter((r) => r.success);
-    const failed = results.filter((r) => !r.success);
-    if (succeeded.length > 0) {
-      const successMessage =
-        succeeded.length === 1
-          ? `Image "${succeeded[0].tag}" deleted successfully`
-          : `${succeeded.length} images deleted successfully`;
-      toast.success(successMessage);
+    // Delete images sequentially
+    const failures: string[] = [];
+    for (const [index, id] of imageIds.entries()) {
+      try {
+        await deleteImage({ imageId: id });
+      } catch {
+        failures.push(imageTags[index] ?? id);
+      }
     }
-    if (failed.length > 0) {
-      const failMessage =
-        failed.length === 1
-          ? `Could not delete "${failed[0].tag}" (likely in use)`
-          : `Could not delete ${failed.length} images (likely in use)`;
-      toast.error(failMessage);
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to delete ${failures.length} of ${imageIds.length} image${imageIds.length === 1 ? "" : "s"} (likely in use)`,
+      );
+    } else {
+      const successMessage =
+        imageIds.length === 1
+          ? `Image "${imageTags[0]}" deleted successfully`
+          : `${imageIds.length} images deleted successfully`;
+      toast.success(successMessage);
     }
     onSuccess();
     handleClose();

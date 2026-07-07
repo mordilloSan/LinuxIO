@@ -18,6 +18,7 @@ export type {
   ActionConfig,
   EndpointCache,
   JobStreamActionConfig,
+  JobStreamActionResult,
 } from "./react-query";
 export {
   ROUTE_MODES,

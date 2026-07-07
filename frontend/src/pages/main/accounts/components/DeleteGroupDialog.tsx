@@ -31,21 +31,30 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
+  // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteGroup, isPending: isDeleting } =
-    linuxio.accounts.delete_group.useJobAction({
-      error: "Failed to delete group(s)",
-      toast: ACCOUNTS_TOAST_META,
-    });
+    linuxio.accounts.delete_group.useJobAction();
 
   const handleDelete = async () => {
+    const failures: string[] = [];
     for (const name of groupNames) {
-      await deleteGroup({ groupName: name });
+      try {
+        await deleteGroup({ groupName: name });
+      } catch {
+        failures.push(name);
+      }
     }
-    const successMessage =
-      groupNames.length === 1
-        ? `Group "${groupNames[0]}" deleted successfully`
-        : `${groupNames.length} groups deleted successfully`;
-    toast.success(successMessage);
+    if (failures.length > 0) {
+      toast.error(
+        `Failed to delete ${failures.length} of ${groupNames.length} group${groupNames.length === 1 ? "" : "s"}`,
+      );
+    } else {
+      const successMessage =
+        groupNames.length === 1
+          ? `Group "${groupNames[0]}" deleted successfully`
+          : `${groupNames.length} groups deleted successfully`;
+      toast.success(successMessage);
+    }
     onSuccess();
     onClose();
   };

@@ -9,7 +9,7 @@ interface Props {
   currentPackage?: string | null;
   isLoading?: boolean;
   isUpdating?: boolean;
-  onUpdateClick: (pkg: string) => Promise<void>;
+  onUpdateClick: (pkg: string) => void;
   updates: Update[];
 }
 const UpdateList: React.FC<Props> = ({

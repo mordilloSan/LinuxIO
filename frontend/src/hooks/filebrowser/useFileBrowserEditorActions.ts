@@ -5,15 +5,10 @@ import {
   type SetStateAction,
 } from "react";
 
-import {
-  isConnected,
-  linuxio,
-  STREAM_MULTIPLEXER_CONFIG,
-  uploadContent,
-} from "@/api";
+import { linuxio, uploadContent } from "@/api";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
-import { useConfig } from "@/hooks/useConfig";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 
 interface UseFileBrowserEditorActionsParams {
   editingPath: string | null;
@@ -38,12 +33,8 @@ export const useFileBrowserEditorActions = ({
   setIsSavingFile,
 }: UseFileBrowserEditorActionsParams) => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
-  const { config } = useConfig();
   const resourceCache = linuxio.filebrowser.resource_get.useCache();
-  const chunkSize =
-    (config.appSettings.chunkSizeMB ?? 0) > 0
-      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
+  const chunkSize = useUploadChunkSize();
 
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
@@ -67,10 +58,6 @@ export const useFileBrowserEditorActions = ({
 
   const saveCurrentEditor = useCallback(async () => {
     if (!editorRef.current || !editingPath) return false;
-    if (!isConnected()) {
-      toast.error("Stream connection not ready");
-      return false;
-    }
 
     setIsSavingFile(true);
     try {

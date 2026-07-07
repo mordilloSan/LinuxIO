@@ -25,7 +25,6 @@ import StatusDot from "@/components/ui/StatusDot";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { compactGoDuration, isGoDuration } from "@/utils/durations";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DraftConfig {
   collector_interval: string;
@@ -246,7 +245,20 @@ const MonitoringSettingsSection: React.FC = () => {
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   });
 
-  const setConfigMutation = linuxio.monitoring.set_config.useJobAction();
+  const setConfigMutation = linuxio.monitoring.set_config.useJobAction({
+    success: (result) => {
+      monitoringConfigCache.set(result.config);
+      setDraftPatch({});
+      setErrors({});
+      setRestartRequired(result.restart_required);
+      toast.success("Monitoring settings saved");
+      if (result.restart_required) {
+        toast.info("Restart go-monitoring to apply listener changes.");
+      }
+      void refetchStatus();
+    },
+    error: "Failed to save monitoring settings",
+  });
   const restartMutation = linuxio.monitoring.restart.useJobAction({
     success: () => {
       setRestartRequired(false);
@@ -349,7 +361,8 @@ const MonitoringSettingsSection: React.FC = () => {
     setRestartRequired(false);
   };
 
-  const saveChanges = async () => {
+  // Success/error handling lives in the setConfigMutation ActionConfig.
+  const handleSave = () => {
     if (!draft || !savedDraft) return;
     const nextErrors = validateDraft(draft);
     if (hasErrors(nextErrors)) {
@@ -360,26 +373,7 @@ const MonitoringSettingsSection: React.FC = () => {
     const payload = toPatchPayload(draft, savedDraft);
     if (Object.keys(payload).length === 0) return;
 
-    try {
-      const result = await setConfigMutation.mutateAsync(payload);
-      monitoringConfigCache.set(result.config);
-      setDraftPatch({});
-      setErrors({});
-      setRestartRequired(result.restart_required);
-      toast.success("Monitoring settings saved");
-      if (result.restart_required) {
-        toast.info("Restart go-monitoring to apply listener changes.");
-      }
-      void refetchStatus();
-    } catch (err) {
-      toast.error(
-        getMutationErrorMessage(err, "Failed to save monitoring settings"),
-      );
-    }
-  };
-
-  const handleSave = () => {
-    void saveChanges();
+    setConfigMutation.mutate(payload);
   };
 
   const handleRefresh = () => {

@@ -169,10 +169,10 @@ describe("useFileBrowserArchiveActions", () => {
     expect(params.compressItems).not.toHaveBeenCalled();
   });
 
-  it("surfaces a 409 conflict error from the compress mutation", async () => {
-    const compressItems = vi.fn().mockRejectedValue({
-      response: { data: { error: "archive.zip already exists" }, status: 409 },
-    });
+  it("surfaces the error message from a failed compress", async () => {
+    const compressItems = vi
+      .fn()
+      .mockRejectedValue(new Error("archive.zip already exists"));
     const { result } = setup({
       compressItems,
       selectedItems: [fileItem("a.txt"), fileItem("b.txt")],
@@ -190,7 +190,7 @@ describe("useFileBrowserArchiveActions", () => {
     );
   });
 
-  it("falls back to a generic message for non-conflict compress errors", async () => {
+  it("falls back to a generic message for non-Error compress rejections", async () => {
     const compressItems = vi.fn().mockRejectedValue({});
     const { result } = setup({
       compressItems,
@@ -210,9 +210,9 @@ describe("useFileBrowserArchiveActions", () => {
   });
 
   it("stays silent when a compress is cancelled", async () => {
-    const compressItems = vi
-      .fn()
-      .mockRejectedValue({ name: "CanceledError", message: "canceled" });
+    const abortError = new Error("Operation cancelled");
+    abortError.name = "AbortError";
+    const compressItems = vi.fn().mockRejectedValue(abortError);
     const { result } = setup({
       compressItems,
       selectedItems: [fileItem("a.txt")],
