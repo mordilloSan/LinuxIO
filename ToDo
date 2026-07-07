@@ -37,6 +37,12 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Bundle is healthy (budgets pass); no Zustand/store migration.
 - See docs/frontend-rerender-plan.md. Related to #6.
 
+13 - UI-architecture cleanups left after the 2026-07 API migration (the API surface itself is done — decision table in docs/api-contract.md, guard tests enforce it):
+- Filebrowser controller prop-drilling, dialog-owned job-stream ref machines (→ useJobStreamAction attach()), container auto-update dual-writer, three legacy stream consumers on the apiLayering allowlist.
+- See docs/frontend-ui-architecture-followups.md. Overlaps with #12 on the filebrowser controller.
+
+14 - Backend: filebrowser.chmod_batch route. Multi-select chmod fans out N sequential bridge jobs client-side (one job + one toast per item). Mirror delete_batch: one job over the selection, aggregate result {total, succeeded, failed[]}, then collapse handleConfirmPermissions to a single job-stream action. See docs/frontend-ui-architecture-followups.md §5.
+
 useJobAction/useJobStreamAction on CommandEndpoint  - DONE
 filebrowser copy function ignores symlinks? - DONE
 Filebrowser batch operations follow-ups (see docs/filebrowser-batch-operations.md) - DONE

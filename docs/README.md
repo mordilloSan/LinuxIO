@@ -13,6 +13,14 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | The four binaries (CLI, webserver, auth, bridge), systemd socket activation, `linuxio.target`, and privilege separation. |
 | [Server Yamux Protocol](./server-yamux-protocol.md) | Lower-level WebSocket/yamux byte relay and mux framing. |
 
+## Frontend
+
+| Doc | Use |
+|-----|-----|
+| [UI-Architecture Follow-ups](./frontend-ui-architecture-followups.md) | Remaining cleanups after the API migration: controller prop-drilling, dialog job streams → `attach()`, auto-update dual writer, allowlisted stream consumers, `chmod_batch`. ToDo #13/#14. |
+| [Rerender Plan](./frontend-rerender-plan.md) | Profiler-confirmed rerender hotspots and the fix order. ToDo #12. |
+| [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
+
 ## Product Areas
 
 | Doc | Use |
