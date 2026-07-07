@@ -15,7 +15,7 @@ export interface UpdateCardProps {
   isLoadingChangelog: boolean;
   isUpdating: boolean;
   onToggleChangelog: () => void;
-  onUpdate: () => Promise<void>;
+  onUpdate: () => void;
   update: Update;
 }
 

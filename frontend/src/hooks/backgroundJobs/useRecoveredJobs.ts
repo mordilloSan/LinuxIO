@@ -11,11 +11,7 @@ import { toast } from "sonner";
 import type {
   ActiveIndexer,
   BackgroundJob,
-  Compression,
-  Copy,
-  Extraction,
   Indexer,
-  Move,
 } from "@/types/backgroundJobs";
 
 import {
@@ -37,10 +33,7 @@ import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
-import {
-  createProgressSpeedCalculator,
-  jobIdentityKey,
-} from "@/utils/backgroundJobs";
+import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
@@ -58,29 +51,12 @@ function requestString(
   return typeof value === "string" ? value : undefined;
 }
 
-function requestStringArray(
-  request: Record<string, unknown>,
-  key: string,
-): string[] {
-  const value = request[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 interface RecoveredJobControls {
-  archives: {
-    setCompressions: Dispatch<SetStateAction<Compression[]>>;
-    setExtractions: Dispatch<SetStateAction<Extraction[]>>;
-    removeCompression: (id: string) => void;
-    removeExtraction: (id: string) => void;
-  };
-  copyMove: {
-    setCopies: Dispatch<SetStateAction<Copy[]>>;
-    setMoves: Dispatch<SetStateAction<Move[]>>;
-    removeCopy: (id: string) => void;
-    removeMove: (id: string) => void;
-  };
+  /**
+   * Adopt a running transfer job (compress/extract/copy/move) into the
+   * navbar via the transfer engine; returns false for other job types.
+   */
+  recoverTransfer: (job: JobSnapshot) => boolean;
   genericJobs: {
     setBackgroundJobs: Dispatch<SetStateAction<BackgroundJob[]>>;
     removeBackgroundJob: (id: string) => void;
@@ -147,26 +123,15 @@ export function useRecoveredJobs(
     [refreshCapabilities],
   );
   const {
-    activeCompressionIdsRef,
-    activeExtractionIdsRef,
     activeIndexerIdsRef,
-    activeCopyIdsRef,
-    activeMoveIdsRef,
     activeBackgroundJobIdsRef,
     activeFileTransferJobIdsRef,
     recoveringJobIdsRef,
     pendingLocalJobKeysRef,
     streamRefsRef,
-    allocateDownloadLabelBase,
   } = runtime;
   const {
-    archives: {
-      setCompressions,
-      setExtractions,
-      removeCompression,
-      removeExtraction,
-    },
-    copyMove: { setCopies, setMoves, removeCopy, removeMove },
+    recoverTransfer,
     indexers: {
       setIndexers,
       setIsIndexerDialogOpen,
@@ -194,15 +159,12 @@ export function useRecoveredJobs(
       }
 
       const request = requestObject(job.request);
-      const progress = job.progress as ProgressFrame | undefined;
-      const initialPct = Math.min(99, progress?.pct ?? 0);
       const getName = (path: string | undefined, fallback: string) => {
         const trimmed = (path ?? "").replace(/\/+$/, "");
         if (!trimmed) return fallback;
         const parts = trimmed.split("/");
         return parts[parts.length - 1] || fallback;
       };
-      const getSpeed = createProgressSpeedCalculator();
       const abortController = new AbortController();
       const genericProgressPct = (value: unknown) => {
         const data = value as
@@ -333,196 +295,13 @@ export function useRecoveredJobs(
       };
 
       switch (job.type) {
-        case JobTypes.JOB_TYPE_FILE_COMPRESS: {
-          if (activeCompressionIdsRef.current.has(job.id)) return;
-          const destination = requestString(request, "targetPath") ?? "";
-          const labelBase = allocateDownloadLabelBase(
-            getName(destination, "archive"),
-            job.id,
-          );
-          activeCompressionIdsRef.current.add(job.id);
-          setCompressions((prev) => [
-            ...prev,
-            {
-              id: job.id,
-              type: "compression",
-              archiveName: labelBase,
-              destination,
-              paths: requestStringArray(request, "paths"),
-              progress: initialPct,
-              label: `Compressing ${labelBase} (${initialPct}%)`,
-              bytes: progress?.bytes,
-              total: progress?.total,
-              abortController,
-            },
-          ]);
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              setCompressions((prev) =>
-                prev.map((item) =>
-                  item.id === job.id
-                    ? {
-                        ...item,
-                        progress: Math.max(item.progress, pct),
-                        label: `Compressing ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                        bytes: nextProgress.bytes,
-                        total: nextProgress.total,
-                        ...(speed !== undefined && { speed }),
-                      }
-                    : item,
-                ),
-              );
-            },
-            onSuccess: () => toast.success(`Created ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error ? error.message : "Compression failed",
-                );
-              }
-            },
-            onFinally: () => removeCompression(job.id),
-          });
-          break;
-        }
-        case JobTypes.JOB_TYPE_FILE_EXTRACT: {
-          if (activeExtractionIdsRef.current.has(job.id)) return;
-          const archivePath = requestString(request, "archivePath") ?? "";
-          const labelBase = allocateDownloadLabelBase(
-            getName(archivePath, "archive"),
-            job.id,
-          );
-          activeExtractionIdsRef.current.add(job.id);
-          setExtractions((prev) => [
-            ...prev,
-            {
-              id: job.id,
-              type: "extraction",
-              archivePath,
-              destination: requestString(request, "destination") ?? "",
-              progress: initialPct,
-              label: `Extracting ${labelBase} (${initialPct}%)`,
-              bytes: progress?.bytes,
-              total: progress?.total,
-              abortController,
-            },
-          ]);
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              setExtractions((prev) =>
-                prev.map((item) =>
-                  item.id === job.id
-                    ? {
-                        ...item,
-                        progress: Math.max(item.progress, pct),
-                        label: `Extracting ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                        bytes: nextProgress.bytes,
-                        total: nextProgress.total,
-                        ...(speed !== undefined && { speed }),
-                      }
-                    : item,
-                ),
-              );
-            },
-            onSuccess: () => toast.success(`Extracted ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error ? error.message : "Extraction failed",
-                );
-              }
-            },
-            onFinally: () => removeExtraction(job.id),
-          });
-          break;
-        }
+        case JobTypes.JOB_TYPE_FILE_COMPRESS:
+        case JobTypes.JOB_TYPE_FILE_EXTRACT:
         case JobTypes.JOB_TYPE_FILE_COPY_BATCH:
         case JobTypes.JOB_TYPE_FILE_MOVE_BATCH: {
-          const isMove = job.type === JobTypes.JOB_TYPE_FILE_MOVE_BATCH;
-          const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
-          if (activeIds.current.has(job.id)) return;
-          const batchSources = requestStringArray(request, "sources");
-          const source = batchSources[0] ?? "";
-          const destination = requestString(request, "destination") ?? "";
-          const labelBase =
-            batchSources.length > 1
-              ? `${batchSources.length} items`
-              : getName(source, "item");
-          activeIds.current.add(job.id);
-          if (isMove) {
-            setMoves((prev) => [
-              ...prev,
-              {
-                id: job.id,
-                type: "move",
-                source,
-                destination,
-                progress: initialPct,
-                label: `Moving ${labelBase} (${initialPct}%)`,
-                bytes: progress?.bytes,
-                total: progress?.total,
-                abortController,
-              },
-            ]);
-          } else {
-            setCopies((prev) => [
-              ...prev,
-              {
-                id: job.id,
-                type: "copy",
-                source,
-                destination,
-                progress: initialPct,
-                label: `Copying ${labelBase} (${initialPct}%)`,
-                bytes: progress?.bytes,
-                total: progress?.total,
-                abortController,
-              },
-            ]);
-          }
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              const update = (item: Copy | Move) => ({
-                ...item,
-                progress: Math.max(item.progress, pct),
-                label: `${isMove ? "Moving" : "Copying"} ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                bytes: nextProgress.bytes,
-                total: nextProgress.total,
-                ...(speed !== undefined && { speed }),
-              });
-              if (isMove) {
-                setMoves((prev) =>
-                  prev.map((item) =>
-                    item.id === job.id ? (update(item) as Move) : item,
-                  ),
-                );
-              } else {
-                setCopies((prev) =>
-                  prev.map((item) =>
-                    item.id === job.id ? (update(item) as Copy) : item,
-                  ),
-                );
-              }
-            },
-            onSuccess: () =>
-              toast.success(`${isMove ? "Moved" : "Copied"} ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : `${isMove ? "Move" : "Copy"} failed`,
-                );
-              }
-            },
-            onFinally: () => (isMove ? removeMove(job.id) : removeCopy(job.id)),
-          });
+          // The transfer engine rebuilds the navbar item and re-attaches with
+          // the same lifecycle used for fresh starts.
+          recoverTransfer(job);
           break;
         }
         case JobTypes.JOB_TYPE_FILE_INDEXER: {
@@ -533,6 +312,7 @@ export function useRecoveredJobs(
             ...prev,
             {
               id: job.id,
+              jobId: job.id,
               type: "indexer",
               path: requestString(request, "path") ?? "/",
               filesIndexed: 0,
@@ -627,6 +407,7 @@ export function useRecoveredJobs(
             ...prev,
             {
               id: job.id,
+              jobId: job.id,
               type: "job",
               jobType: job.type,
               progress: initialProgress,
@@ -701,11 +482,7 @@ export function useRecoveredJobs(
       }
     },
     [
-      allocateDownloadLabelBase,
-      removeCompression,
-      removeExtraction,
-      removeCopy,
-      removeMove,
+      recoverTransfer,
       removeIndexer,
       removeBackgroundJob,
       runStreamResult,

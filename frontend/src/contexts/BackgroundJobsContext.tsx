@@ -13,13 +13,12 @@ import {
   BackgroundJobsStateContext,
   type BackgroundJobsStateContextValue,
 } from "@/contexts/JobsStateContext";
-import { useArchiveJobs } from "@/hooks/backgroundJobs/useArchiveJobs";
 import { useBackgroundJobRuntime } from "@/hooks/backgroundJobs/useBackgroundJobRuntime";
-import { useCopyMoveJobs } from "@/hooks/backgroundJobs/useCopyMoveJobs";
 import { useDownloadJobs } from "@/hooks/backgroundJobs/useDownloadJobs";
 import { useGenericBackgroundJobs } from "@/hooks/backgroundJobs/useGenericBackgroundJobs";
 import { useIndexerJobs } from "@/hooks/backgroundJobs/useIndexerJobs";
 import { useRecoveredJobs } from "@/hooks/backgroundJobs/useRecoveredJobs";
+import { useTransferJobs } from "@/hooks/backgroundJobs/useTransferJobs";
 import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 import type { BackgroundJobItem } from "@/types/backgroundJobs";
@@ -40,12 +39,15 @@ export const BackgroundJobsProvider: React.FC<{
   const {
     compressions,
     extractions,
+    copies,
+    moves,
     startCompression,
-    cancelCompression,
     startExtraction,
-    cancelExtraction,
-    recoveryControls: archiveRecoveryControls,
-  } = useArchiveJobs(runtime);
+    startCopy,
+    startMove,
+    cancelTransfer,
+    recoverTransfer,
+  } = useTransferJobs(runtime);
   const {
     indexers,
     startIndexer,
@@ -62,19 +64,9 @@ export const BackgroundJobsProvider: React.FC<{
     cancelJob,
     recoveryControls: genericJobRecoveryControls,
   } = useGenericBackgroundJobs(runtime);
-  const {
-    copies,
-    moves,
-    startCopy,
-    cancelCopy,
-    startMove,
-    cancelMove,
-    recoveryControls: copyMoveRecoveryControls,
-  } = useCopyMoveJobs(runtime);
 
   useRecoveredJobs(runtime, {
-    archives: archiveRecoveryControls,
-    copyMove: copyMoveRecoveryControls,
+    recoverTransfer,
     indexers: indexerRecoveryControls,
     genericJobs: genericJobRecoveryControls,
   });
@@ -84,13 +76,18 @@ export const BackgroundJobsProvider: React.FC<{
       for (const v of values) if (v) ids.add(v);
     };
     const localTransferIds = new Set<string>();
-    for (const d of downloads) addIds(localTransferIds, d.id);
-    for (const u of uploads) addIds(localTransferIds, u.id, u.jobId);
-    for (const c of compressions) addIds(localTransferIds, c.id);
-    for (const e of extractions) addIds(localTransferIds, e.id);
-    for (const i of indexers) addIds(localTransferIds, i.id);
-    for (const c of copies) addIds(localTransferIds, c.id);
-    for (const m of moves) addIds(localTransferIds, m.id);
+    const localItems: { id: string; jobId?: string }[] = [
+      ...downloads,
+      ...uploads,
+      ...compressions,
+      ...extractions,
+      ...indexers,
+      ...copies,
+      ...moves,
+    ];
+    for (const item of localItems) {
+      addIds(localTransferIds, item.id, item.jobId);
+    }
     return [
       ...downloads,
       ...uploads,
@@ -125,10 +122,10 @@ export const BackgroundJobsProvider: React.FC<{
       startUpload,
       cancelDownload,
       cancelUpload,
-      cancelCompression,
-      cancelExtraction,
-      cancelCopy,
-      cancelMove,
+      cancelCompression: cancelTransfer,
+      cancelExtraction: cancelTransfer,
+      cancelCopy: cancelTransfer,
+      cancelMove: cancelTransfer,
       cancelJob,
     }),
     [
@@ -143,10 +140,7 @@ export const BackgroundJobsProvider: React.FC<{
       startUpload,
       cancelDownload,
       cancelUpload,
-      cancelCompression,
-      cancelExtraction,
-      cancelCopy,
-      cancelMove,
+      cancelTransfer,
       cancelJob,
     ],
   );

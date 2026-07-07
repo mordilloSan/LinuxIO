@@ -100,6 +100,7 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
 
       const indexerTask: ActiveIndexer = {
         id,
+        jobId: id,
         type: "indexer",
         path,
         filesIndexed: 0,

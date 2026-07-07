@@ -13,62 +13,45 @@ export type ExtractionStartOptions = FileExtractRequest & {
   onComplete?: () => void;
 };
 
-export interface Download {
+interface TrackedJobItem<TType extends string> {
   abortController: AbortController;
-  bytes?: number;
   id: string;
   jobId?: string;
   label: string;
-  paths: string[];
   progress: number;
-  speed?: number;
-  stream?: Stream | null; // For stream-based downloads
-  total?: number;
-  type: "download";
+  stream?: Stream | null;
+  type: TType;
 }
 
-export interface Upload {
-  abortController: AbortController;
+interface ByteTrackedJobItem<
+  TType extends string,
+> extends TrackedJobItem<TType> {
+  bytes?: number;
+  speed?: number;
+  total?: number;
+}
+
+export interface Download extends ByteTrackedJobItem<"download"> {
+  paths: string[];
+}
+
+export interface Upload extends TrackedJobItem<"upload"> {
   completedFiles: number;
   currentFile: string;
   displayName?: string;
-  id: string;
-  jobId?: string;
-  label: string;
-  progress: number;
   speed?: number;
-  stream?: Stream | null; // For stream-based uploads
   totalFiles: number;
-  type: "upload";
 }
 
-export interface Compression {
-  abortController: AbortController;
+export interface Compression extends ByteTrackedJobItem<"compression"> {
   archiveName: string;
-  bytes?: number;
   destination: string;
-  id: string;
-  label: string;
   paths: string[];
-  progress: number;
-  speed?: number;
-  stream?: Stream | null;
-  total?: number;
-  type: "compression";
 }
 
-export interface Extraction {
-  abortController: AbortController;
+export interface Extraction extends ByteTrackedJobItem<"extraction"> {
   archivePath: string;
-  bytes?: number;
   destination: string;
-  id: string;
-  label: string;
-  progress: number;
-  speed?: number;
-  stream?: Stream | null;
-  total?: number;
-  type: "extraction";
 }
 
 export interface Indexer {
@@ -87,65 +70,33 @@ export interface Indexer {
   type?: "indexer";
 }
 
-export type ActiveIndexer = Indexer & {
-  id: string;
-  type: "indexer";
-  currentPath: string;
-  phase: string;
-  progress: number;
-  label: string;
-  abortController: AbortController;
-};
+export type ActiveIndexer = Indexer &
+  TrackedJobItem<"indexer"> & {
+    currentPath: string;
+    phase: string;
+  };
 
-export interface Copy {
-  abortController: AbortController;
-  bytes?: number;
+export interface Copy extends ByteTrackedJobItem<"copy"> {
   destination: string;
-  id: string;
-  label: string;
-  progress: number;
   source: string;
-  speed?: number;
-  stream?: Stream | null;
-  total?: number;
-  type: "copy";
 }
 
-export interface Move {
-  abortController: AbortController;
-  bytes?: number;
+export interface Move extends ByteTrackedJobItem<"move"> {
   destination: string;
-  id: string;
-  label: string;
-  progress: number;
   source: string;
-  speed?: number;
-  stream?: Stream | null;
-  total?: number;
-  type: "move";
 }
 
-export interface BackgroundJob {
-  abortController: AbortController;
-  id: string;
+export interface BackgroundJob extends TrackedJobItem<"job"> {
   indeterminate?: boolean;
   jobType: string;
-  label: string;
   processed?: number;
-  progress: number;
-  stream?: Stream | null;
-  type: "job";
 }
 
+/** The four bridge-job transfers driven by one descriptor-based engine. */
+export type TransferItem = Compression | Extraction | Copy | Move;
+
 export type BackgroundJobItem =
-  | Download
-  | Upload
-  | Compression
-  | Extraction
-  | ActiveIndexer
-  | Copy
-  | Move
-  | BackgroundJob;
+  Download | Upload | TransferItem | ActiveIndexer | BackgroundJob;
 
 export interface BackgroundJobsContextValue {
   backgroundJobs: BackgroundJob[];

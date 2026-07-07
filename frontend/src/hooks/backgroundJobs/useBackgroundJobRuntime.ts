@@ -13,12 +13,8 @@ interface TransferRateSample {
 
 export interface BackgroundJobRuntime {
   activeBackgroundJobIdsRef: RefObject<Set<string>>;
-  activeCompressionIdsRef: RefObject<Set<string>>;
-  activeCopyIdsRef: RefObject<Set<string>>;
-  activeExtractionIdsRef: RefObject<Set<string>>;
   activeFileTransferJobIdsRef: RefObject<Set<string>>;
   activeIndexerIdsRef: RefObject<Set<string>>;
-  activeMoveIdsRef: RefObject<Set<string>>;
   allocateDownloadLabelBase: (base: string, id: string) => string;
   cancelBridgeJob: (id: string) => void;
   pendingLocalJobKeysRef: RefObject<CountedSet>;
@@ -34,11 +30,7 @@ export interface BackgroundJobRuntime {
 }
 
 export function useBackgroundJobRuntime(): BackgroundJobRuntime {
-  const activeCompressionIdsRef = useRef<Set<string>>(new Set());
-  const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const activeIndexerIdsRef = useRef<Set<string>>(new Set());
-  const activeCopyIdsRef = useRef<Set<string>>(new Set());
-  const activeMoveIdsRef = useRef<Set<string>>(new Set());
   const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
   const recoveringJobIdsRef = useRef<Set<string>>(new Set());
@@ -137,11 +129,7 @@ export function useBackgroundJobRuntime(): BackgroundJobRuntime {
 
   return useMemo(
     () => ({
-      activeCompressionIdsRef,
-      activeExtractionIdsRef,
       activeIndexerIdsRef,
-      activeCopyIdsRef,
-      activeMoveIdsRef,
       activeBackgroundJobIdsRef,
       activeFileTransferJobIdsRef,
       recoveringJobIdsRef,
@@ -156,12 +144,8 @@ export function useBackgroundJobRuntime(): BackgroundJobRuntime {
     }),
     [
       activeBackgroundJobIdsRef,
-      activeCompressionIdsRef,
-      activeCopyIdsRef,
-      activeExtractionIdsRef,
       activeFileTransferJobIdsRef,
       activeIndexerIdsRef,
-      activeMoveIdsRef,
       allocateDownloadLabelBase,
       cancelBridgeJob,
       pendingLocalJobKeysRef,
