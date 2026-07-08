@@ -824,8 +824,8 @@ export interface FileArchiveRequest {
   paths: string[];
 }
 
-export interface FileChmodRequest {
-  path: string;
+export interface FileChmodBatchRequest {
+  paths: string[];
   mode: string;
   owner: string;
   group: string;
@@ -2317,9 +2317,9 @@ export interface LinuxIOSchema {
       request: FileArchiveRequest;
       result: JobSnapshot;
     };
-    chmod: {
-      input: [request: FileChmodRequest];
-      request: FileChmodRequest;
+    chmod_batch: {
+      input: [request: FileChmodBatchRequest];
+      request: FileChmodBatchRequest;
       result: JobSnapshot;
     };
     compress: {

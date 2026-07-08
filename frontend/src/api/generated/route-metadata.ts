@@ -82,7 +82,7 @@ export const ROUTE_MODES = {
   "docker.validate_compose": "query",
   "docker.validate_stack_directory": "query",
   "filebrowser.archive": "job",
-  "filebrowser.chmod": "job",
+  "filebrowser.chmod_batch": "job",
   "filebrowser.compress": "job",
   "filebrowser.copy_batch": "job",
   "filebrowser.delete_batch": "job",

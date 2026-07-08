@@ -1,6 +1,6 @@
 # Frontend UI-Architecture Follow-ups (post API migration)
 
-Status: open. ToDo #13 and #14.
+Status: open. ToDo #13. (#14, `filebrowser.chmod_batch`, is done — see §5.)
 
 The 2026-07 API migration is complete: feature code talks to the backend
 through the typed endpoint surface only (decision table in
@@ -100,33 +100,22 @@ is left behind. The stream *openers* (`openTerminalStream`, …) stay public —
 the factory-prop idiom (`createStream={(tail) => openDockerLogsStream(id, tail)}`)
 is the blessed way pages consume streams.
 
-## 5. Backend: `filebrowser.chmod_batch` (ToDo #14)
+## 5. Backend: `filebrowser.chmod_batch` (ToDo #14) — DONE
 
-Multi-select chmod is the last batch flow the backend doesn't cover:
-`hooks/filebrowser/useFileBrowserItemActions.ts` runs
-`Promise.all(paths.map((path) => changePermissions(...)))`, spawning one
-bridge job + attach stream + success toast **per item** — a 10-item
-selection produces 10 jobs and 10 toasts.
-
-`filebrowser.delete_batch` is the model: one job over the whole selection,
-server-side loop, aggregate result (`{ total, succeeded, failed: [{path, error}] }`),
-one progress stream. Steps:
-
-1. Add a `chmod_batch` runner in
-   `backend/bridge/handlers/filebrowser/` taking
-   `{ paths, mode, owner, group, recursive }`, reusing the per-item chmod
-   logic and reporting per-item failures in the result.
-2. Add the route to `ROUTE_INVALIDATIONS` (same keys as `filebrowser.chmod`).
-3. `make generate`, then switch `handleConfirmPermissions` to a single
-   `useJobStreamAction` call with an aggregate success/warning toast
-   (`warning: (r) => r.failed?.length ? \`Failed on ${r.failed.length} of ${r.total} items\` : undefined`).
-4. Delete the client-side fan-out loop.
+Done 2026-07-08. `filebrowser.chmod_batch` replaced `filebrowser.chmod`
+outright, mirroring how `delete_batch` replaced the single-item delete: one
+job over the whole selection (`{ paths, mode, owner, group, recursive }`),
+server-side loop in `backend/bridge/handlers/filebrowser/batch_operations.go`
+with owner/group resolved once per job, aggregate result
+(`{ total, succeeded, failed: [{path, error}] }`), and an indeterminate
+running entry count for progress. `handleConfirmPermissions` is a single
+`useJobStreamAction` call; partial failures surface as one aggregate error
+toast.
 
 ---
 
 ### Ordering suggestion
 
-Items 2 and 4 are small and independent — good warm-ups. Item 5 needs a
-backend change first but its frontend half is trivial afterwards. Items 1
+Items 2 and 4 are small and independent — good warm-ups. Items 1
 and ToDo #12 should be planned together (same files, same context-identity
 concerns); do them last and as one design.

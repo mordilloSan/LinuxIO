@@ -3,9 +3,12 @@ package filebrowser
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -259,4 +262,116 @@ func runDeleteBatchJob(ctx context.Context, job *bridgejobs.Job, req apischema.B
 
 	slog.Info("batch delete complete", "total", len(req.Paths), "succeeded", succeeded, "failed", len(failures), "processed", processed)
 	return batchResult(len(req.Paths), succeeded, failures), nil
+}
+
+func parseChmodBatchRequest(req apischema.FileChmodBatchRequest) (paths []string, mode os.FileMode, owner, group string, recursive bool, err error) {
+	if len(req.Paths) == 0 || req.Mode == "" {
+		return nil, 0, "", "", false, fmt.Errorf("missing paths or mode")
+	}
+	parsed, err := strconv.ParseInt(req.Mode, 8, 32)
+	if err != nil {
+		return nil, 0, "", "", false, fmt.Errorf("invalid mode: %v", err)
+	}
+	return req.Paths, os.FileMode(parsed), req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
+}
+
+// chmodBatchReporter accumulates a running processed-entry count across all
+// items and phases of a chmod batch job, throttled by one shared limiter.
+type chmodBatchReporter struct {
+	job       *bridgejobs.Job
+	limiter   *countProgressLimiter
+	processed int64
+}
+
+func (r *chmodBatchReporter) phase(phase string) func(processed, total int64) {
+	base := r.processed
+	return func(processed, _ int64) {
+		r.processed = base + processed
+		count, _, ok := r.limiter.Set(r.processed, 0)
+		if !ok {
+			return
+		}
+		r.job.ReportProgress(ChmodProgress{
+			Processed:     count,
+			Phase:         phase,
+			Indeterminate: true,
+		})
+	}
+}
+
+type batchOwnership struct {
+	uid int
+	gid int
+}
+
+// resolveChmodOwnership resolves owner/group once for the whole batch, so a
+// bad owner or group fails the job before any item is touched. Returns nil
+// when no ownership change was requested.
+func resolveChmodOwnership(owner, group string) (*batchOwnership, error) {
+	if strings.TrimSpace(owner) == "" && strings.TrimSpace(group) == "" {
+		return nil, nil
+	}
+	uid, err := resolveUserID(owner)
+	if err != nil {
+		slog.Debug("error resolving owner", "owner", owner, "error", err)
+		return nil, err
+	}
+	gid, err := resolveGroupID(group)
+	if err != nil {
+		slog.Debug("error resolving group", "group", group, "error", err)
+		return nil, err
+	}
+	return &batchOwnership{uid: uid, gid: gid}, nil
+}
+
+// chmodBatchItem applies the mode, and the ownership when requested, to one
+// path.
+func chmodBatchItem(ctx context.Context, path string, mode os.FileMode, ownership *batchOwnership, recursive bool, reporter *chmodBatchReporter) error {
+	if err := services.ChangePermissionsCtx(ctx, path, mode, recursive, reporter.phase("chmod")); err != nil {
+		return err
+	}
+	if ownership == nil {
+		return nil
+	}
+	return services.ChangeOwnershipCtx(ctx, path, ownership.uid, ownership.gid, recursive, reporter.phase("chown"))
+}
+
+// runChmodBatchJob changes permissions (and optionally ownership) of many
+// paths as a single job, reporting a running processed-entry count.
+func runChmodBatchJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodBatchRequest) (any, error) {
+	paths, mode, owner, group, recursive, err := parseChmodBatchRequest(req)
+	if err != nil {
+		return nil, bridgejobs.NewError(err.Error(), 400)
+	}
+	ownership, err := resolveChmodOwnership(owner, group)
+	if err != nil {
+		return nil, bridgejobs.NewError(err.Error(), 400)
+	}
+
+	job.ReportProgress(ChmodProgress{Phase: "preparing"})
+	reporter := &chmodBatchReporter{
+		job:     job,
+		limiter: newCountProgressLimiter(jobSettingsForJob(ctx, job, store)),
+	}
+
+	succeeded := 0
+	failures := make([]batchItemFailure, 0)
+	for _, raw := range paths {
+		if ctx.Err() != nil {
+			return nil, context.Canceled
+		}
+		path := utils.CleanAbsPath(raw)
+		if err := chmodBatchItem(ctx, path, mode, ownership, recursive, reporter); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil, context.Canceled
+			}
+			slog.Debug("batch chmod item failed", "path", path, "error", err)
+			failures = append(failures, batchItemFailure{Path: raw, Error: err.Error()})
+			continue
+		}
+		succeeded++
+	}
+
+	slog.Info("batch chmod complete", "total", len(paths), "succeeded", succeeded, "failed", len(failures))
+	return batchResult(len(paths), succeeded, failures), nil
 }

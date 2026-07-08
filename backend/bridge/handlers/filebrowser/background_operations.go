@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -189,13 +188,6 @@ func archiveExtractWorkers(jobSettings config.PersistedJobSettings) int {
 	return workers
 }
 
-type ChmodProgress struct {
-	Processed int64  `json:"processed"`
-	Total     int64  `json:"total"`
-	Pct       int    `json:"pct"`
-	Phase     string `json:"phase,omitempty"`
-}
-
 const (
 	routeArchive     = "filebrowser.archive"
 	routeDownload    = "filebrowser.download"
@@ -245,9 +237,9 @@ func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgejobs.StreamDefault,
 		),
-		apischema.Runner[apischema.FileChmodRequest, apischema.JobSnapshot]("filebrowser.chmod").Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
-				return runChmodJob(ctx, job, store, req)
+		apischema.Runner[apischema.FileChmodBatchRequest, apischema.JobSnapshot]("filebrowser.chmod_batch").Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodBatchRequest) (any, error) {
+				return runChmodBatchJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
@@ -412,87 +404,6 @@ func notifyExtractedFiles(destination string) {
 		}
 		return nil
 	})
-}
-
-func parseChmodRequest(req apischema.FileChmodRequest) (path, modeStr, owner, group string, recursive bool, err error) {
-	if req.Path == "" || req.Mode == "" {
-		return "", "", "", "", false, fmt.Errorf("missing path or mode")
-	}
-	return req.Path, req.Mode, req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
-}
-
-func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.PersistedJobSettings, phase string) func(processed, total int64) {
-	limiter := newCountProgressLimiter(jobSettings)
-	return func(processed, total int64) {
-		processed, pct, ok := limiter.Set(processed, total)
-		if !ok {
-			return
-		}
-		job.ReportProgress(ChmodProgress{
-			Processed: processed,
-			Total:     total,
-			Pct:       pct,
-			Phase:     phase,
-		})
-	}
-}
-
-func runChmodJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
-	path, modeStr, owner, group, recursive, err := parseChmodRequest(req)
-	if err != nil {
-		return nil, bridgejobs.NewError(err.Error(), 400)
-	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, context.Canceled
-	}
-
-	mode, err := strconv.ParseInt(modeStr, 8, 32)
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("invalid mode: %v", err), 400)
-	}
-
-	realPath := filepath.Clean(path)
-	settings := jobSettingsForJob(ctx, job, store)
-	job.ReportProgress(ChmodProgress{Phase: "preparing"})
-
-	if err := services.ChangePermissionsCtx(ctx, realPath, os.FileMode(mode), recursive, newChmodProgressReporter(job, settings, "chmod")); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil, context.Canceled
-		}
-		slog.Debug("error changing permissions", "path", realPath, "error", err)
-		return nil, bridgejobs.NewError(err.Error(), 400)
-	}
-
-	if strings.TrimSpace(owner) != "" || strings.TrimSpace(group) != "" {
-		if err := ctx.Err(); err != nil {
-			return nil, context.Canceled
-		}
-		uid, err := resolveUserID(owner)
-		if err != nil {
-			slog.Debug("error resolving owner", "owner", owner, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-		gid, err := resolveGroupID(group)
-		if err != nil {
-			slog.Debug("error resolving group", "group", group, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-		if err := services.ChangeOwnershipCtx(ctx, realPath, uid, gid, recursive, newChmodProgressReporter(job, settings, "chown")); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil, context.Canceled
-			}
-			slog.Debug("error changing ownership", "path", realPath, "owner", owner, "group", group, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-	}
-
-	return map[string]any{
-		"message": "permissions changed",
-		"path":    path,
-		"mode":    fmt.Sprintf("%04o", mode),
-		"owner":   owner,
-		"group":   group,
-	}, nil
 }
 
 func runCompressJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {

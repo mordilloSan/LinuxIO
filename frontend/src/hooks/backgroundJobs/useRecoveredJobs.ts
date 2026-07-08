@@ -229,8 +229,10 @@ export function useRecoveredJobs(
             return data?.phase === "waiting_for_client"
               ? "Archive download waiting"
               : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
-          case JobTypes.JOB_TYPE_FILE_CHMOD:
-            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JobTypes.JOB_TYPE_FILE_CHMOD_BATCH: {
+            const processed = data?.processed ?? 0;
+            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}: ${processed} item${processed === 1 ? "" : "s"}`;
+          }
           case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
             const processed = data?.processed ?? 0;
             return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
@@ -394,7 +396,7 @@ export function useRecoveredJobs(
         case JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH:
         case JobTypes.JOB_TYPE_FILE_DOWNLOAD:
         case JobTypes.JOB_TYPE_FILE_ARCHIVE:
-        case JobTypes.JOB_TYPE_FILE_CHMOD:
+        case JobTypes.JOB_TYPE_FILE_CHMOD_BATCH:
         case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;

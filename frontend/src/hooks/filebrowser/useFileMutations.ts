@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
-  type FileChmodRequest,
+  type FileChmodBatchRequest,
   type FileExtractRequest,
   linuxio,
 } from "@/api";
@@ -33,8 +33,11 @@ interface CompressPayload {
 
 type ExtractPayload = FileExtractRequest;
 
-type ChmodPayload = Pick<FileChmodRequest, "mode" | "path" | "recursive"> &
-  Partial<Pick<FileChmodRequest, "group" | "owner">>;
+type ChmodPayload = Pick<
+  FileChmodBatchRequest,
+  "mode" | "paths" | "recursive"
+> &
+  Partial<Pick<FileChmodBatchRequest, "group" | "owner">>;
 
 interface CopyMovePayload {
   destinationDir: string;
@@ -46,7 +49,7 @@ interface RenamePayload {
   from: string;
 }
 
-// Result returned by the batch copy/move/delete bridge jobs.
+// Result returned by the batch copy/move/delete/chmod bridge jobs.
 interface BatchJobResult {
   total?: number;
   succeeded?: number;
@@ -179,29 +182,41 @@ export const useFileMutations = ({
     [invalidateListing, startExtraction, toast],
   );
 
-  const changePermissionsAction = linuxio.filebrowser.chmod.useJobStreamAction({
-    closeMessage: "Permissions job stream closed before completion",
-    success: () => {
-      invalidateListing();
-      toast.success("Permissions changed successfully");
-    },
-    error: (error) => {
-      toast.error(
-        getMutationErrorMessage(error, "Failed to change permissions"),
-      );
-    },
-  });
+  // One batch job changes permissions of the whole selection; the bridge
+  // loops server-side and reports per-item failures in the result.
+  const changePermissionsAction =
+    linuxio.filebrowser.chmod_batch.useJobStreamAction<BatchJobResult>({
+      closeMessage: "Permissions job stream closed before completion",
+      // invalidateListing below is more precise than the manifest entry.
+      invalidates: [],
+      success: (result) => {
+        invalidateListing();
+        const failed = result?.failed ?? [];
+        if (failed.length > 0) {
+          toast.error(
+            `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
+          );
+          return;
+        }
+        toast.success("Permissions changed successfully");
+      },
+      error: (error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to change permissions"),
+        );
+      },
+    });
 
   const changePermissions = useCallback(
-    async ({ path, mode, recursive, owner, group }: ChmodPayload) => {
-      if (!path) {
-        throw new Error("No path provided");
+    async ({ paths, mode, recursive, owner, group }: ChmodPayload) => {
+      if (!paths.length) {
+        throw new Error("No paths provided");
       }
       if (!mode) {
         throw new Error("No mode provided");
       }
-      const request: FileChmodRequest = {
-        path,
+      const request: FileChmodBatchRequest = {
+        paths,
         mode,
         owner: owner || "",
         group: group || "",

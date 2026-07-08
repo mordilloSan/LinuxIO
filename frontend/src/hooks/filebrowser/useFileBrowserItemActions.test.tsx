@@ -410,7 +410,7 @@ describe("useFileBrowserItemActions", () => {
       expect(params.setPermissionsDialog).not.toHaveBeenCalled();
     });
 
-    it("applies permissions to every path in the dialog", async () => {
+    it("applies permissions to the whole selection in one call", async () => {
       const { result, params } = setup({
         permissionsDialog: {
           isDirectory: false,
@@ -430,12 +430,12 @@ describe("useFileBrowserItemActions", () => {
         );
       });
 
-      expect(params.changePermissions).toHaveBeenCalledTimes(2);
+      expect(params.changePermissions).toHaveBeenCalledTimes(1);
       expect(params.changePermissions).toHaveBeenCalledWith({
         group: "grp",
         mode: "0600",
         owner: "me",
-        path: "/srv/projects/a",
+        paths: ["/srv/projects/a", "/srv/projects/b"],
         recursive: true,
       });
       expect(params.setPermissionsDialog).toHaveBeenCalledWith(null);

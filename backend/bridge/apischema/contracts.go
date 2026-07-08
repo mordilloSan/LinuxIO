@@ -546,12 +546,14 @@ type FileArchiveRequest struct {
 	Paths  []string `json:"paths"`
 }
 
-type FileChmodRequest struct {
-	Path      string `json:"path"`
-	Mode      string `json:"mode"`
-	Owner     string `json:"owner"`
-	Group     string `json:"group"`
-	Recursive *bool  `json:"recursive,omitempty"`
+// FileChmodBatchRequest changes permissions (and optionally ownership) of
+// many paths within one job.
+type FileChmodBatchRequest struct {
+	Paths     []string `json:"paths"`
+	Mode      string   `json:"mode"`
+	Owner     string   `json:"owner"`
+	Group     string   `json:"group"`
+	Recursive *bool    `json:"recursive,omitempty"`
 }
 
 type FileCompressRequest struct {

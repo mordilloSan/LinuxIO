@@ -5,7 +5,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import { CACHE_TTL_MS, type FileChmodRequest, linuxio } from "@/api";
+import { CACHE_TTL_MS, type FileChmodBatchRequest, linuxio } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -16,10 +16,10 @@ import { useFilePathUtilities } from "./useFilePathUtilities";
 import { useScopedToast } from "../useScopedToast";
 
 type ChangePermissionsPayload = Pick<
-  FileChmodRequest,
-  "mode" | "path" | "recursive"
+  FileChmodBatchRequest,
+  "mode" | "paths" | "recursive"
 > &
-  Partial<Pick<FileChmodRequest, "group" | "owner">>;
+  Partial<Pick<FileChmodBatchRequest, "group" | "owner">>;
 
 interface RenamePayload {
   destination: string;
@@ -311,17 +311,13 @@ export const useFileBrowserItemActions = ({
     ) => {
       if (!permissionsDialog) return;
       try {
-        await Promise.all(
-          permissionsDialog.paths.map((path) =>
-            changePermissions({
-              path,
-              mode,
-              recursive,
-              owner,
-              group,
-            }),
-          ),
-        );
+        await changePermissions({
+          paths: permissionsDialog.paths,
+          mode,
+          recursive,
+          owner,
+          group,
+        });
         setPermissionsDialog(null);
       } catch {
         // Errors are surfaced via toast in the mutation.

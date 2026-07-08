@@ -227,7 +227,9 @@ const linuxio = {
   },
   filebrowser: {
     archive: createEndpoint("filebrowser", "archive", { kind: "object" }),
-    chmod: createEndpoint("filebrowser", "chmod", { kind: "object" }),
+    chmod_batch: createEndpoint("filebrowser", "chmod_batch", {
+      kind: "object",
+    }),
     compress: createEndpoint("filebrowser", "compress", { kind: "object" }),
     copy_batch: createEndpoint("filebrowser", "copy_batch", { kind: "object" }),
     delete_batch: createEndpoint("filebrowser", "delete_batch", {
