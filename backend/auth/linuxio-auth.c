@@ -1100,6 +1100,44 @@ static int user_in_group(uid_t uid, gid_t target_gid)
   return gret == -1 ? -1 : found;
 }
 
+// Returns 1 if the peer's actual supplementary groups as recorded by the
+// kernel at connect time include target_gid, 0 if not, -1 if the kernel
+// lacks SO_PEERGROUPS (pre-4.10) or the query failed. Race-free, unlike
+// parsing /proc/<pid>/status (SO_PEERCRED's pid can be recycled).
+#ifndef SO_PEERGROUPS
+#define SO_PEERGROUPS 59
+#endif
+static int peer_in_group_kernel(int fd, gid_t target_gid)
+{
+  gid_t probe; // len 0: kernel only reports the needed size, never writes
+  socklen_t len = 0;
+  if (getsockopt(fd, SOL_SOCKET, SO_PEERGROUPS, &probe, &len) == 0)
+    return 0; // peer has no supplementary groups
+  if (errno != ERANGE || len == 0)
+    return -1; // ENOPROTOOPT on old kernels, or other failure
+
+  gid_t *groups = malloc(len);
+  if (!groups)
+    return -1;
+  if (getsockopt(fd, SOL_SOCKET, SO_PEERGROUPS, groups, &len) != 0)
+  {
+    free(groups);
+    return -1;
+  }
+
+  int found = 0;
+  for (size_t i = 0; i < len / sizeof(gid_t); i++)
+  {
+    if (groups[i] == target_gid)
+    {
+      found = 1;
+      break;
+    }
+  }
+  free(groups);
+  return found;
+}
+
 static int check_peer_creds(int fd)
 {
   struct ucred cred;
@@ -1116,10 +1154,6 @@ static int check_peer_creds(int fd)
     return 0;
 
   // Allow if peer's primary GID matches linuxio-bridge-socket.
-  // Edge case: supplementary group membership won't match here. We use
-  // getgrouplist() to check the user's configured groups. Caveat: this reflects
-  // the user's configured groups, not necessarily the process's current group
-  // set. For strict "current groups," parse /proc/<pid>/status Groups: instead.
   struct group *gr = getgrnam(AUTH_SOCKET_GROUP);
   if (!gr)
   {
@@ -1130,7 +1164,14 @@ static int check_peer_creds(int fd)
   if (cred.gid == gr->gr_gid)
     return 0;
 
-  int in_group = user_in_group(cred.uid, gr->gr_gid);
+  // Supplementary groups: prefer the kernel's connect-time record
+  // (SO_PEERGROUPS, Linux 4.10+); on older kernels fall back to configured
+  // membership from the user database. The fallback reflects what the uid
+  // is entitled to rather than the process's current group set - acceptable
+  // because a member uid can acquire its own group at will anyway.
+  int in_group = peer_in_group_kernel(fd, gr->gr_gid);
+  if (in_group < 0)
+    in_group = user_in_group(cred.uid, gr->gr_gid);
   if (in_group > 0)
     return 0;
   if (in_group < 0)
