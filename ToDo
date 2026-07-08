@@ -31,16 +31,11 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
 - Bridge should mostly read the JSON artifact and display update status.
 
-12 - Frontend rerender performance (profiler-confirmed 2026-07-07): transfers rerender the whole filebrowser per progress frame (61 commits, ~71ms each, 97% in FileBrowser):
-- Root cause: cancel callbacks close over state arrays → BackgroundJobsActionsContext identity churns per frame.
-- Fix order: stable cancels (useLatestRef) > toast history localStorage churn > log buffer cap > download double-progress > chunk-size/ConfigContext decoupling > useFileQueries spread deps > drop global refetchIntervalInBackground.
-- Bundle is healthy (budgets pass); no Zustand/store migration.
-- See docs/frontend-rerender-plan.md. Related to #6.
-
 13 - UI-architecture cleanups left after the 2026-07 API migration (the API surface itself is done — decision table in docs/api-contract.md, guard tests enforce it):
 - Filebrowser controller prop-drilling, dialog-owned job-stream ref machines (→ useJobStreamAction attach()), container auto-update dual-writer, three legacy stream consumers on the apiLayering allowlist.
 - See docs/frontend-ui-architecture-followups.md. Overlaps with #12 on the filebrowser controller.
 
+Frontend rerender performance (profiler-confirmed 2026-07-07): transfers rerender the whole filebrowser per progress frame (61 commits, ~71ms each, 97% in FileBrowser) DONE
 Backend: filebrowser.chmod_batch route replacing filebrowser.chmod; one job over the selection with aggregate result, handleConfirmPermissions collapsed to a single job-stream action - DONE
 useJobAction/useJobStreamAction on CommandEndpoint  - DONE
 filebrowser copy function ignores symlinks? - DONE
