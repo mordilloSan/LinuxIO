@@ -17,7 +17,7 @@ export interface SidebarProps {
   items: SidebarItemsType[];
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ items }) => {
+const Sidebar = ({ items }: SidebarProps) => {
   const theme = useAppTheme();
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();

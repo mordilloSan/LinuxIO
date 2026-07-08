@@ -80,12 +80,12 @@ const getUsageColor = (usedPct: number): "primary" | "warning" | "error" => {
   return "primary";
 };
 
-const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
+const CreateLVDialog = ({
   open,
   onClose,
   volumeGroups,
   onSuccess,
-}) => {
+}: CreateLVDialogProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
@@ -199,12 +199,12 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
     </GeneralDialog>
   );
 };
-const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
+const ResizeLVDialog = ({
   open,
   onClose,
   lv,
   onSuccess,
-}) => {
+}: ResizeLVDialogProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [newSize, setNewSize] = useState(() =>
     lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
@@ -299,12 +299,12 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
     </GeneralDialog>
   );
 };
-const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
+const DeleteLVDialog = ({
   open,
   onClose,
   lv,
   onSuccess,
-}) => {
+}: DeleteLVDialogProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: deleteLV, isPending: isDeleting } =
     linuxio.storage.delete_lv.useJobAction({
@@ -367,9 +367,7 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
     </GeneralDialog>
   );
 };
-const PVTable: React.FC<{
-  data: PhysicalVolume[];
-}> = ({ data }) => {
+const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
   const columns: AppDataTableColumnDef<PhysicalVolume>[] = [
     {
       accessorKey: "name",
@@ -417,9 +415,7 @@ const PVTable: React.FC<{
     />
   );
 };
-const VGTable: React.FC<{
-  data: VolumeGroup[];
-}> = ({ data }) => {
+const VGTable = ({ data }: { data: VolumeGroup[] }) => {
   const columns: AppDataTableColumnDef<VolumeGroup>[] = [
     {
       accessorKey: "name",
@@ -468,7 +464,7 @@ interface LVTableProps {
   onDelete: (lv: LogicalVolume) => void;
   onResize: (lv: LogicalVolume) => void;
 }
-const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
+const LVTable = ({ data, onResize, onDelete }: LVTableProps) => (
   <AppDataTable
     ariaLabel="LVM logical volumes"
     columns={[
@@ -577,9 +573,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
     variant="embedded"
   />
 );
-const LVMManagement: React.FC<LVMManagementProps> = ({
-  onMountCreateHandler,
-}) => {
+const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
   const [expanded, setExpanded] = useState<LVMSectionId | false>("lvs");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [resizeDialogOpen, setResizeDialogOpen] = useState(false);

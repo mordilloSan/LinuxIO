@@ -56,13 +56,13 @@ interface ContainerListProps {
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 
-const ContainerList: React.FC<ContainerListProps> = ({
+const ContainerList = ({
   checkingUpdates = false,
   containerAutoUpdate,
   editMode,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
-}) => {
+}: ContainerListProps) => {
   const theme = useAppTheme();
   const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));

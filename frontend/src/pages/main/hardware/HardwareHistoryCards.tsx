@@ -50,7 +50,7 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
 
 // ─── Info cards ───────────────────────────────────────────────────────────────
 
-export const MotherboardInfoCard: React.FC = () => {
+export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({
@@ -95,7 +95,7 @@ export const MotherboardInfoCard: React.FC = () => {
   );
 };
 
-export const CPUDetailsCard: React.FC = () => {
+export const CPUDetailsCard = () => {
   const theme = useAppTheme();
   const { data: cpuInfo } = linuxio.system.get_cpu_info.useQuery({
     staleTime: 300_000,
@@ -136,7 +136,7 @@ export const CPUDetailsCard: React.FC = () => {
   );
 };
 
-export const BIOSInfoCard: React.FC = () => {
+export const BIOSInfoCard = () => {
   const theme = useAppTheme();
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({
@@ -179,7 +179,7 @@ export const BIOSInfoCard: React.FC = () => {
   );
 };
 
-export const GPUInfoCard: React.FC = () => {
+export const GPUInfoCard = () => {
   const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
   const { data: gpus } = linuxio.system.get_gpu_info.useQuery({
@@ -334,10 +334,13 @@ const stackBandColor = (index: number, count: number): string => {
   return `hsl(${Math.round(280 - 280 * ratio)}, 70%, 55%)`;
 };
 
-const RangeSelect: React.FC<{
+const RangeSelect = ({
+  value,
+  onChange,
+}: {
   value: HardwareHistoryRangeId;
   onChange: (id: HardwareHistoryRangeId) => void;
-}> = ({ value, onChange }) => {
+}) => {
   const theme = useAppTheme();
 
   return (
@@ -369,13 +372,19 @@ const RangeSelect: React.FC<{
   );
 };
 
-const HistoryCardShell: React.FC<{
+const HistoryCardShell = ({
+  title,
+  avatarIcon,
+  headerRight,
+  message,
+  children,
+}: {
   title: string;
   avatarIcon: string;
   headerRight?: React.ReactNode;
   message?: string;
   children?: React.ReactNode;
-}> = ({ title, avatarIcon, headerRight, message, children }) => {
+}) => {
   const theme = useAppTheme();
 
   return (
@@ -457,12 +466,12 @@ const historyCardMessage = (
   return null;
 };
 
-export const CPUHistoryCard: React.FC<HistoryCardProps> = ({
+export const CPUHistoryCard = ({
   rangeId,
   onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}) => {
+}: HistoryCardProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -546,12 +555,12 @@ export const CPUHistoryCard: React.FC<HistoryCardProps> = ({
   );
 };
 
-export const MemoryHistoryCard: React.FC<HistoryCardProps> = ({
+export const MemoryHistoryCard = ({
   rangeId,
   onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}) => {
+}: HistoryCardProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -639,12 +648,12 @@ export const MemoryHistoryCard: React.FC<HistoryCardProps> = ({
   );
 };
 
-export const DiskIOHistoryCard: React.FC<HistoryCardProps> = ({
+export const DiskIOHistoryCard = ({
   rangeId,
   onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}) => {
+}: HistoryCardProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -703,12 +712,12 @@ export const DiskIOHistoryCard: React.FC<HistoryCardProps> = ({
   );
 };
 
-export const NetworkHistoryCard: React.FC<HistoryCardProps> = ({
+export const NetworkHistoryCard = ({
   rangeId,
   onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}) => {
+}: HistoryCardProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);

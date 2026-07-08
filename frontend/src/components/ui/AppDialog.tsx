@@ -39,7 +39,7 @@ export interface AppDialogProps {
   style?: React.CSSProperties;
 }
 
-export const AppDialog: React.FC<AppDialogProps> = ({
+export const AppDialog = ({
   open,
   onClose,
   maxWidth = "sm",
@@ -52,7 +52,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   paperClassName,
   backdropStyle,
   slotProps,
-}) => {
+}: AppDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const prevOpen = useRef(open);

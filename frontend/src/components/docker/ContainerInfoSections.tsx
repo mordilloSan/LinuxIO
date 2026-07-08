@@ -50,9 +50,7 @@ const formatPort = (port: ContainerPort) =>
     ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
     : `${port.PrivatePort}/${port.Type}`;
 
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => (
+const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   <AppTypography fontWeight={700} style={{ margin: 0 }} variant="subtitle2">
     {children}
   </AppTypography>
@@ -65,7 +63,7 @@ const emptyText = (text: string) => (
 );
 
 /** Single-line value that truncates and exposes the full text via a copy tooltip. */
-const TruncatedValue: React.FC<{ text: string }> = ({ text }) => (
+const TruncatedValue = ({ text }: { text: string }) => (
   <AppTypography
     component="div"
     fontSize="0.75rem"
@@ -88,10 +86,10 @@ interface ContainerInfoSectionsProps {
  * Shared by the selected container card (config sections) and the monitoring
  * panel so the two stay in sync.
  */
-const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
+const ContainerInfoSections = ({
   container,
   sections,
-}) => {
+}: ContainerInfoSectionsProps) => {
   const theme = useAppTheme();
 
   const ports = useMemo(() => getPorts(container), [container]);

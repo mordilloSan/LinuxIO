@@ -19,7 +19,7 @@ import { useAppTheme } from "@/theme";
 
 const UPDATES_TOAST_META = { href: "/updates", label: "Open updates" };
 
-const Updates: React.FC = () => {
+const Updates = () => {
   const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { status: packageKitStatus, reason: packageKitReason } = useCapability(

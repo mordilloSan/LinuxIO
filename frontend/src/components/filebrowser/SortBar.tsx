@@ -13,7 +13,7 @@ export interface SortBarProps {
   sortOrder: SortOrder;
 }
 
-const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
+const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
   const theme = useAppTheme();
   const [hoveredField, setHoveredField] = React.useState<SortField | null>(
     null,

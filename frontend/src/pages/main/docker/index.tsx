@@ -31,7 +31,7 @@ const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
 
-const DockerPage: React.FC = () => {
+const DockerPage = () => {
   const theme = useAppTheme();
   const [searchParams] = useSearchParams();
   const toast = useScopedToast(DOCKER_TOAST_META);

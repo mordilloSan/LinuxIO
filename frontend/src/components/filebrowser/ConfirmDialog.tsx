@@ -16,7 +16,7 @@ interface ConfirmDialogProps {
   title: string;
 }
 
-const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+const ConfirmDialog = ({
   open,
   title,
   message,
@@ -24,7 +24,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelText = "Cancel",
   onClose,
   onConfirm,
-}) => {
+}: ConfirmDialogProps) => {
   const theme = useAppTheme();
 
   const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {

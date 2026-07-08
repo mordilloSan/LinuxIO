@@ -19,7 +19,7 @@ interface TimerCardsViewProps {
   timers: Timer[];
 }
 
-const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => (
+const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
   <UnitStatusRows
     activeEnterTimestamp={timer.active_enter_timestamp}
     activeState={timer.active_state}
@@ -29,7 +29,7 @@ const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => (
   />
 );
 
-const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
+const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
     refetchInterval: 2000,
   });
@@ -60,7 +60,7 @@ const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
   );
 };
 
-const TimerActionsWrapper: React.FC<{ timer: Timer }> = ({ timer }) => {
+const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
     refetchInterval: 2000,
   });
@@ -74,12 +74,12 @@ const TimerActionsWrapper: React.FC<{ timer: Timer }> = ({ timer }) => {
   );
 };
 
-const TimerCardsView: React.FC<TimerCardsViewProps> = ({
+const TimerCardsView = ({
   timers,
   expanded,
   onExpand,
   renderDetailPanel,
-}) => (
+}: TimerCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No timers found."
     expanded={expanded}

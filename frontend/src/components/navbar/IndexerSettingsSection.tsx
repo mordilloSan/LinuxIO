@@ -269,7 +269,7 @@ const getStatusColor = (
   return theme.palette.warning.main;
 };
 
-const IndexerSettingsSection: React.FC = () => {
+const IndexerSettingsSection = () => {
   const theme = useAppTheme();
   const indexerConfigCache = linuxio.indexer.get_config.useCache();
   const {

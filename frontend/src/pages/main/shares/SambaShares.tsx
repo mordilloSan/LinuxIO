@@ -91,10 +91,13 @@ function propsToAccessOpts(
 // Access options dropdown — same dot-toggle pattern as NFS
 // ============================================================================
 
-const AccessOptionsDropdown: React.FC<{
+const AccessOptionsDropdown = ({
+  opts,
+  onChange,
+}: {
   opts: AccessOptions;
   onChange: (next: AccessOptions) => void;
-}> = ({ opts, onChange }) => {
+}) => {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -183,11 +186,11 @@ interface CreateDialogProps {
   open: boolean;
 }
 
-export const CreateSambaShareDialog: React.FC<CreateDialogProps> = ({
+export const CreateSambaShareDialog = ({
   open,
   onClose,
   onSuccess,
-}) => {
+}: CreateDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
@@ -304,12 +307,12 @@ interface EditDialogProps {
   share: SambaShare | null;
 }
 
-export const EditSambaShareDialog: React.FC<EditDialogProps> = ({
+export const EditSambaShareDialog = ({
   open,
   onClose,
   share,
   onSuccess,
-}) => {
+}: EditDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const p = share?.properties;
   const [path, setPath] = useState(() => p?.["path"] || "");
@@ -421,12 +424,12 @@ interface DeleteDialogProps {
   share: SambaShare | null;
 }
 
-export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
+export const DeleteSambaShareDialog = ({
   open,
   onClose,
   share,
   onSuccess,
-}) => {
+}: DeleteDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const { mutate: deleteShare, isPending } =
     linuxio.shares.delete_samba_share.useJobAction({
@@ -486,10 +489,10 @@ export const DeleteSambaShareDialog: React.FC<DeleteDialogProps> = ({
 // Samba Shares Component
 // ============================================================================
 
-const SambaShares: React.FC<SambaSharesProps> = ({
+const SambaShares = ({
   onCreateHandler,
   viewMode = "table",
-}) => {
+}: SambaSharesProps) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);

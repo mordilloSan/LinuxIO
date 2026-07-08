@@ -59,7 +59,7 @@ function getAuthLabel(mount: CIFSMount): string {
   return mount.username ? `User: ${mount.username}` : "Guest";
 }
 
-const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({ open, onClose }) => {
+const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
   const [server, setServer] = useState("");
   const [share, setShare] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -260,11 +260,7 @@ const MountCIFSDialog: React.FC<MountCIFSDialogProps> = ({ open, onClose }) => {
   );
 };
 
-const RemoveCIFSDialog: React.FC<RemoveCIFSDialogProps> = ({
-  open,
-  onClose,
-  mount,
-}) => {
+const RemoveCIFSDialog = ({ open, onClose, mount }: RemoveCIFSDialogProps) => {
   const { mutate: removeEntry, isPending: isRemoving } =
     linuxio.storage.unmount_cifs.useJobAction({
       success: `Removed ${mount?.mountpoint}`,
@@ -310,11 +306,7 @@ const RemoveCIFSDialog: React.FC<RemoveCIFSDialogProps> = ({
 
 // EditCIFSDialog is a thin shell; the form is keyed by mountpoint so its state
 // initializes once per mount (no set-state-during-render).
-const EditCIFSDialog: React.FC<EditCIFSDialogProps> = ({
-  open,
-  onClose,
-  mount,
-}) => (
+const EditCIFSDialog = ({ open, onClose, mount }: EditCIFSDialogProps) => (
   <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
     <AppDialogTitle>Edit SMB Mount Options</AppDialogTitle>
     {open && mount ? (
@@ -323,10 +315,13 @@ const EditCIFSDialog: React.FC<EditCIFSDialogProps> = ({
   </GeneralDialog>
 );
 
-const EditCIFSForm: React.FC<{
+const EditCIFSForm = ({
+  mount,
+  onClose,
+}: {
   mount: CIFSMount;
   onClose: () => void;
-}> = ({ mount, onClose }) => {
+}) => {
   const [readOnly, setReadOnly] = useState(
     (mount.options ?? []).includes("ro"),
   );
@@ -420,7 +415,7 @@ const EditCIFSForm: React.FC<{
   );
 };
 
-const CIFSMounts: React.FC<CIFSMountsProps> = ({ onMountCreateHandler }) => {
+const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: cifsReason, status: cifsStatus } = useCapability(
     "sambaClientAvailable",

@@ -7,7 +7,7 @@ import LVMManagement from "./LVMManagement";
 import { TabContainer } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 
-const StoragePage: React.FC = () => {
+const StoragePage = () => {
   const [createLVHandler, setCreateLVHandler] = useState<(() => void) | null>(
     null,
   );

@@ -11,13 +11,13 @@ export interface FolderShareCardProps {
   protocolSummary: React.ReactNode;
 }
 
-const FolderShareCard: React.FC<FolderShareCardProps> = ({
+const FolderShareCard = ({
   name,
   path,
   comment,
   actions,
   protocolSummary,
-}) => (
+}: FolderShareCardProps) => (
   <FrostedCard style={{ padding: 10 }}>
     {/* Header: name + actions */}
     <div

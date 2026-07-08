@@ -64,7 +64,7 @@ const defaultFilterOptions = (options: string[], state: FilterState) => {
   return options.filter((option) => option.toLowerCase().includes(lowerValue));
 };
 
-const AppAutocomplete: React.FC<AppAutocompleteProps> = (props) => {
+const AppAutocomplete = (props: AppAutocompleteProps) => {
   const {
     options,
     label,

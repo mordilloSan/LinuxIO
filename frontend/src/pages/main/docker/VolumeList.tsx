@@ -37,12 +37,12 @@ interface DeleteVolumeDialogProps {
   open: boolean;
   volumeNames: string[];
 }
-const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
+const DeleteVolumeDialog = ({
   open,
   onClose,
   volumeNames,
   onSuccess,
-}) => {
+}: DeleteVolumeDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
@@ -132,10 +132,10 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
     </GeneralDialog>
   );
 };
-const VolumeList: React.FC<VolumeListProps> = ({
+const VolumeList = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: VolumeListProps) => {
   const theme = useAppTheme();
   const { data: rawVolumes } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,

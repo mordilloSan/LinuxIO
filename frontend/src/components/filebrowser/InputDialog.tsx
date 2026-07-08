@@ -20,7 +20,7 @@ interface InputDialogProps {
   title: string;
 }
 
-const InputDialog: React.FC<InputDialogProps> = ({
+const InputDialog = ({
   open,
   title,
   label,
@@ -28,7 +28,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
   onClose,
   onConfirm,
   confirmText = "Create",
-}) => {
+}: InputDialogProps) => {
   const [dialogState, setDialogState] = useState({
     open,
     defaultValue,

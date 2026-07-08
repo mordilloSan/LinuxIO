@@ -27,11 +27,7 @@ interface NetworkGraphProps {
 
 const STREAM_DELAY_MS = 1000;
 
-const NetworkGraph: React.FC<NetworkGraphProps> = ({
-  interfaceName,
-  rx,
-  tx,
-}) => {
+const NetworkGraph = ({ interfaceName, rx, tx }: NetworkGraphProps) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fetchNetworkHistory =

@@ -18,7 +18,7 @@ interface SocketCardsViewProps {
   sockets: Socket[];
 }
 
-const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => (
+const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
   <UnitStatusRows
     activeEnterTimestamp={socket.active_enter_timestamp}
     activeState={socket.active_state}
@@ -28,7 +28,7 @@ const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => (
   />
 );
 
-const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
+const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
     refetchInterval: 2000,
   });
@@ -60,7 +60,7 @@ const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
   );
 };
 
-const SocketActionsWrapper: React.FC<{ socket: Socket }> = ({ socket }) => {
+const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
     refetchInterval: 2000,
   });
@@ -74,12 +74,12 @@ const SocketActionsWrapper: React.FC<{ socket: Socket }> = ({ socket }) => {
   );
 };
 
-const SocketCardsView: React.FC<SocketCardsViewProps> = ({
+const SocketCardsView = ({
   sockets,
   expanded,
   onExpand,
   renderDetailPanel,
-}) => (
+}: SocketCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No sockets found."
     expanded={expanded}

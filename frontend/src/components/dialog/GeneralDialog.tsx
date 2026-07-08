@@ -9,11 +9,11 @@ interface GeneralDialogProps extends AppDialogProps {
   paperStyle?: React.CSSProperties;
 }
 
-const GeneralDialog: React.FC<GeneralDialogProps> = ({
+const GeneralDialog = ({
   children,
   paperStyle,
   ...dialogProps
-}) => {
+}: GeneralDialogProps) => {
   const theme = useAppTheme();
 
   return (

@@ -36,10 +36,10 @@ interface ComposeStacksPageProps {
   viewMode?: "table" | "card";
 }
 
-const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
+const ComposeStacksPage = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: ComposeStacksPageProps) => {
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const { config } = useConfig();
   const chunkSize = useUploadChunkSize();

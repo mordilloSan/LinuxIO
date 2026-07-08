@@ -18,10 +18,7 @@ interface CreateGroupDialogProps {
   open: boolean;
 }
 
-const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
-  open,
-  onClose,
-}) => {
+const CreateGroupDialog = ({ open, onClose }: CreateGroupDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [name, setName] = useState("");
   const [gid, setGid] = useState("");

@@ -19,7 +19,7 @@ interface CpuGraphProps {
 const SERIES_ID = "cpu:usage";
 const STREAM_DELAY_MS = 2000;
 
-const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
+const CpuGraph = ({ usage }: CpuGraphProps) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const fetchCpuHistory = linuxio.monitoring.get_cpu_history.useFetcher();
   const [series] = useLiveSeries([SERIES_ID], async (request) => {

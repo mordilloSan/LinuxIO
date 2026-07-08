@@ -5,7 +5,7 @@ import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import useAuth from "@/hooks/useAuth";
 
-export const PrivilegedGuard: React.FC<PropsWithChildren> = ({ children }) => {
+export const PrivilegedGuard = ({ children }: PropsWithChildren) => {
   const { isAuthenticated, isInitialized, privileged } = useAuth();
 
   // Wait for initialization

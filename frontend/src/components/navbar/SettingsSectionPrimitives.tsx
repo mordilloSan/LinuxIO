@@ -9,11 +9,15 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-export const StatusMetric: React.FC<{
+export const StatusMetric = ({
+  label,
+  value,
+  detail,
+}: {
   label: React.ReactNode;
   value: React.ReactNode;
   detail?: React.ReactNode;
-}> = ({ label, value, detail }) => {
+}) => {
   const title =
     typeof value === "string" || typeof value === "number"
       ? String(value)
@@ -40,8 +44,10 @@ export const StatusMetric: React.FC<{
   );
 };
 
-export const StatusGroupLabel: React.FC<{ children: React.ReactNode }> = ({
+export const StatusGroupLabel = ({
   children,
+}: {
+  children: React.ReactNode;
 }) => (
   <AppTypography
     color="text.secondary"
@@ -53,16 +59,7 @@ export const StatusGroupLabel: React.FC<{ children: React.ReactNode }> = ({
   </AppTypography>
 );
 
-export const SectionCard: React.FC<{
-  icon: string;
-  title: string;
-  subtitle?: React.ReactNode;
-  titleAdornment?: React.ReactNode;
-  indicator?: React.ReactNode;
-  collapsible?: boolean;
-  defaultCollapsed?: boolean;
-  children: React.ReactNode;
-}> = ({
+export const SectionCard = ({
   icon,
   title,
   subtitle,
@@ -71,6 +68,15 @@ export const SectionCard: React.FC<{
   collapsible = false,
   defaultCollapsed = false,
   children,
+}: {
+  icon: string;
+  title: string;
+  subtitle?: React.ReactNode;
+  titleAdornment?: React.ReactNode;
+  indicator?: React.ReactNode;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  children: React.ReactNode;
 }) => {
   const theme = useAppTheme();
   const contentId = React.useId();
@@ -152,13 +158,19 @@ export const SectionCard: React.FC<{
   );
 };
 
-export const ToggleCard: React.FC<{
+export const ToggleCard = ({
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
   label: string;
   description: string;
   checked: boolean;
   disabled: boolean;
   onChange: (checked: boolean) => void;
-}> = ({ label, description, checked, disabled, onChange }) => {
+}) => {
   const theme = useAppTheme();
   return (
     <FrostedCard

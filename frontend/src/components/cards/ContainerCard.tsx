@@ -63,7 +63,7 @@ interface ContainerCardProps {
   selected?: boolean;
 }
 
-const ContainerCard: React.FC<ContainerCardProps> = ({
+const ContainerCard = ({
   actionPending = false,
   autoUpdateDisabled = false,
   autoUpdatePending = false,
@@ -73,7 +73,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   onSelect,
   onToggleAutoUpdate,
   selected = false,
-}) => {
+}: ContainerCardProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 

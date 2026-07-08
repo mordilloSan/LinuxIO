@@ -21,8 +21,10 @@ export const PowerActionContext = createContext<
   PowerActionContextType | undefined
 >(undefined);
 
-export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
+export const PowerActionProvider = ({
   children,
+}: {
+  children: React.ReactNode;
 }) => {
   const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);

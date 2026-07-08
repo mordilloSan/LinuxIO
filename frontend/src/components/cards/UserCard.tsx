@@ -47,10 +47,13 @@ const selectedRowLabelStyle: React.CSSProperties = {
   width: 90,
 };
 
-const CompactGroupChips: React.FC<{
+const CompactGroupChips = ({
+  username,
+  groups,
+}: {
   username: string;
   groups: string[];
-}> = ({ username, groups }) => {
+}) => {
   const measureRef = useRef<HTMLDivElement | null>(null);
   const [firstRowCount, setFirstRowCount] = useState(groups.length);
 
@@ -143,7 +146,7 @@ const CompactGroupChips: React.FC<{
   );
 };
 
-const SelectedSummaryRows: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => (
+const SelectedSummaryRows = ({ rows }: { rows: SummaryRow[] }) => (
   <div
     style={{
       display: "flex",
@@ -184,7 +187,7 @@ export interface UserCardProps {
   user: AccountUser;
 }
 
-const UserCard: React.FC<UserCardProps> = ({
+const UserCard = ({
   user,
   currentUsername,
   isLocking,
@@ -194,7 +197,7 @@ const UserCard: React.FC<UserCardProps> = ({
   onEdit,
   onChangePassword,
   onToggleLock,
-}) => {
+}: UserCardProps) => {
   const theme = useAppTheme();
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;

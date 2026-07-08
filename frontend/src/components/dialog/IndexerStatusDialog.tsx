@@ -40,7 +40,7 @@ interface IndexerStatusDialogProps {
   summaryTitle?: string;
   title: string;
 }
-const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
+const IndexerStatusDialog = ({
   open,
   onClose,
   onExited,
@@ -57,7 +57,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   detailSections = [],
   summaryTitle,
   summaryStats = [],
-}) => {
+}: IndexerStatusDialogProps) => {
   const theme = useAppTheme();
   const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;

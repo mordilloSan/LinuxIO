@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import { linuxio } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -20,7 +19,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   }
   return result;
 };
-const UpdateHistory: React.FC = () => {
+const UpdateHistory = () => {
   const theme = useAppTheme();
   const { data: rows = [] } = linuxio.updates.get_update_history.useQuery();
   const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [

@@ -63,7 +63,7 @@ const getHealthColor = (
   return "warning";
 };
 
-const DriveCard: React.FC<DriveCardProps> = ({
+const DriveCard = ({
   name,
   model,
   transport,
@@ -72,7 +72,7 @@ const DriveCard: React.FC<DriveCardProps> = ({
   expanded,
   onClick,
   children,
-}) => {
+}: DriveCardProps) => {
   const theme = useAppTheme();
   const temperature = getTemperature(smart);
 

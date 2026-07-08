@@ -13,13 +13,13 @@ interface QuickActionButtonProps {
   onClick: () => void;
 }
 
-const QuickActionButton: React.FC<QuickActionButtonProps> = ({
+const QuickActionButton = ({
   icon,
   label,
   onClick,
   disabled,
   ariaLabel,
-}) => {
+}: QuickActionButtonProps) => {
   const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
 

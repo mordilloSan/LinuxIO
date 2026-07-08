@@ -21,7 +21,7 @@ interface DeleteStackDialogProps {
   projectName: string;
   workingDir: string;
 }
-const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
+const DeleteStackDialog = ({
   open,
   onClose,
   onConfirm,
@@ -29,7 +29,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   configFiles,
   workingDir,
   isLoading = false,
-}) => {
+}: DeleteStackDialogProps) => {
   const theme = useAppTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
 

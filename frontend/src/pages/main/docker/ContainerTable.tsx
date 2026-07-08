@@ -940,7 +940,7 @@ interface ContainerDialogTarget {
   name: string;
 }
 
-const ContainerTable: React.FC<ContainerTableProps> = ({
+const ContainerTable = ({
   autoUpdateDisabled,
   autoUpdatePendingNames,
   autoUpdateReason,
@@ -950,7 +950,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
   editMode = false,
   onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
-}) => {
+}: ContainerTableProps) => {
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
   );

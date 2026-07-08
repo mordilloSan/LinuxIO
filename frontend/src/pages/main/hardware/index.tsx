@@ -43,12 +43,17 @@ const defaultHwSections = {
 
 // ─── section header ──────────────────────────────────────────────────────────
 
-const SectionHeader: React.FC<{
+const SectionHeader = ({
+  title,
+  expanded,
+  onClick,
+  extras,
+}: {
   title: string;
   expanded: boolean;
   onClick: () => void;
   extras?: React.ReactNode;
-}> = ({ title, expanded, onClick, extras }) => (
+}) => (
   <div
     className="dd-section-header"
     onClick={onClick}
@@ -91,7 +96,7 @@ const SectionHeader: React.FC<{
 
 // ─── main component ──────────────────────────────────────────────────────────
 
-const HardwarePage: React.FC = () => {
+const HardwarePage = () => {
   // ── data ──
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,

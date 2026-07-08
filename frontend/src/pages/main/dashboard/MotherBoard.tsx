@@ -8,7 +8,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 
-const MotherBoardInfo: React.FC = () => {
+const MotherBoardInfo = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const { data: motherboardInfo } =

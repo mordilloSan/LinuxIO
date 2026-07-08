@@ -43,7 +43,7 @@ export interface FileListRowProps {
 const COLUMN_TEMPLATE =
   "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
 
-const FileListRow: React.FC<FileListRowProps> = React.memo(
+const FileListRow = React.memo<FileListRowProps>(
   ({
     name,
     path,

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import type { ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -35,7 +34,7 @@ interface ContainerDetailsPanelProps {
   withHeader?: boolean;
 }
 
-const ContainerDetailsPanel: React.FC<ContainerDetailsPanelProps> = ({
+const ContainerDetailsPanel = ({
   container,
   onClose,
   sections = ["monitoring"],
@@ -43,7 +42,7 @@ const ContainerDetailsPanel: React.FC<ContainerDetailsPanelProps> = ({
   subtitle = "Live metrics",
   title,
   withHeader = true,
-}) => {
+}: ContainerDetailsPanelProps) => {
   const theme = useAppTheme();
   const name = getContainerName(container);
   const displayState = getDisplayState(container);

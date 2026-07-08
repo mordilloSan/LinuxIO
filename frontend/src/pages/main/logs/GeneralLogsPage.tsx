@@ -189,7 +189,7 @@ const resolveUnitTarget = (
   return null;
 };
 
-const GeneralLogsPage: React.FC = () => {
+const GeneralLogsPage = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
   const [liveMode, setLiveMode] = useState(true);

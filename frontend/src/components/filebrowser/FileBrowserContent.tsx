@@ -83,13 +83,13 @@ export interface FileBrowserContentProps {
   surface: FileBrowserSurfaceProps;
 }
 
-const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
+const FileBrowserContent = ({
   chrome,
   data,
   file,
   listing,
   surface,
-}) => {
+}: FileBrowserContentProps) => {
   const theme = useAppTheme();
 
   return (

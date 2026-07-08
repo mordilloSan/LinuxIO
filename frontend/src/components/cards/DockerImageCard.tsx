@@ -1,5 +1,3 @@
-import React from "react";
-
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -27,11 +25,11 @@ export interface DockerImageCardProps {
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
-const DockerImageCard: React.FC<DockerImageCardProps> = ({
+const DockerImageCard = ({
   image,
   selected,
   onSelect,
-}) => {
+}: DockerImageCardProps) => {
   const theme = useAppTheme();
 
   return (

@@ -13,11 +13,11 @@ interface AppCollapseProps {
   unmountOnExit?: boolean;
 }
 
-const AppCollapse: React.FC<AppCollapseProps> = ({
+const AppCollapse = ({
   in: isOpen,
   unmountOnExit = false,
   children,
-}) => {
+}: AppCollapseProps) => {
   const [mounted, setMounted] = useState(isOpen);
 
   useEffect(() => {

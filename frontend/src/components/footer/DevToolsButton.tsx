@@ -6,7 +6,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 
-const DevToolsButton: React.FC = () => {
+const DevToolsButton = () => {
   const theme = useAppTheme();
   const [isOpen, setIsOpen] = React.useState(false);
 

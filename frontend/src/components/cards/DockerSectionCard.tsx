@@ -12,13 +12,13 @@ export interface DockerSectionCardProps {
   title: string;
 }
 
-const DockerSectionCard: React.FC<DockerSectionCardProps> = ({
+const DockerSectionCard = ({
   icon,
   title,
   subtitle,
   children,
   fullHeight,
-}) => (
+}: DockerSectionCardProps) => (
   <FrostedCard
     style={{ padding: GAP_SM, ...(fullHeight ? { height: "100%" } : {}) }}
   >

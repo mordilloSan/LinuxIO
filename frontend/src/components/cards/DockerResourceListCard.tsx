@@ -16,14 +16,14 @@ export interface DockerResourceListCardProps {
   title: string;
 }
 
-const DockerResourceListCard: React.FC<DockerResourceListCardProps> = ({
+const DockerResourceListCard = ({
   icon,
   title,
   subtitle,
   onViewAll,
   children,
   footerText,
-}) => (
+}: DockerResourceListCardProps) => (
   <FrostedCard>
     <CardIconHeader
       icon={icon}

@@ -1,11 +1,10 @@
-import React from "react";
 import { Outlet } from "react-router-dom";
 
 import { AppThemeProvider, useAppMediaQuery, useAppTheme } from "@/theme";
 import authTheme from "@/theme/authTheme";
 import { alpha } from "@/utils/color";
 
-const Auth: React.FC = () => {
+const Auth = () => {
   return (
     <AppThemeProvider value={authTheme}>
       <AuthContent />
@@ -13,7 +12,7 @@ const Auth: React.FC = () => {
   );
 };
 
-const AuthContent: React.FC = () => {
+const AuthContent = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
 

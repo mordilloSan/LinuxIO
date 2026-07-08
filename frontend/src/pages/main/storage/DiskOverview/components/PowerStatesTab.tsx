@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { DiskPowerData } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -38,7 +36,7 @@ const powerStateColumns: AppDataTableColumnDef<PowerStateRow>[] = [
   },
 ];
 
-export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
+export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
   const theme = useAppTheme();
   return (
     <>

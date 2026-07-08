@@ -1,5 +1,3 @@
-import React from "react";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -36,7 +34,7 @@ interface CreateInterfaceDialogProps {
   setServerName: (name: string) => void;
 }
 
-const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
+const CreateInterfaceDialog = ({
   open,
   onClose,
   onCreate,
@@ -58,7 +56,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   existingCIDRs,
   dns,
   setDns,
-}) => {
+}: CreateInterfaceDialogProps) => {
   const theme = useAppTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken =

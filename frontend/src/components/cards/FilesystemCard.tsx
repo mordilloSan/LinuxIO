@@ -38,7 +38,7 @@ interface FilesystemCardDetailsProps {
   subvolumeName: string;
 }
 
-const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
+const FilesystemCardDetails = ({
   filesystem,
   backingDrive,
   nfsMount,
@@ -50,7 +50,7 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
-}) => {
+}: FilesystemCardDetailsProps) => {
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
   return (
@@ -274,7 +274,7 @@ export interface FilesystemCardProps {
   subvolumeName: string;
 }
 
-const FilesystemCard: React.FC<FilesystemCardProps> = ({
+const FilesystemCard = ({
   filesystem,
   selected,
   backingDrive,
@@ -288,7 +288,7 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
-}) => (
+}: FilesystemCardProps) => (
   <FrostedCard
     aria-label={`Toggle details for ${filesystem.mountpoint}`}
     hoverLift={!selected}

@@ -67,7 +67,7 @@ const getVerticalOffset = (origin: VerticalOrigin, height: number) => {
   }
 };
 
-const AppPopover: React.FC<AppPopoverProps> = ({
+const AppPopover = ({
   open,
   onClose,
   anchorEl,
@@ -82,7 +82,7 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   paperStyle,
   paperRef,
   zIndex = 1400,
-}) => {
+}: AppPopoverProps) => {
   const internalPaperRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: -9999, left: -9999 });
 

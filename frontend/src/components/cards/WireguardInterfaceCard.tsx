@@ -28,7 +28,7 @@ interface InterfaceCardProps {
   selectedInterface: string | null;
 }
 
-const InterfaceCard: React.FC<InterfaceCardProps> = ({
+const InterfaceCard = ({
   iface,
   selectedInterface,
   selectedCardRef,
@@ -37,7 +37,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   handleToggleBootPersistence,
   handleDelete,
   handleAddPeer,
-}) => {
+}: InterfaceCardProps) => {
   const theme = useAppTheme();
   const color = "primary";
   const activeAccentColor =

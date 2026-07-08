@@ -17,7 +17,7 @@ interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
+const Navbar = ({ onDrawerToggle }: NavbarProps) => {
   const theme = useAppTheme();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
 

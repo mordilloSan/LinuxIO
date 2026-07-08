@@ -39,7 +39,7 @@ interface FolderItemProps {
   viewMode: ViewMode;
 }
 
-const FolderItem: React.FC<FolderItemProps> = React.memo(
+const FolderItem = React.memo<FolderItemProps>(
   ({
     folder,
     selected,
@@ -110,7 +110,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
 
 FolderItem.displayName = "FolderItem";
 
-const FoldersList: React.FC<FoldersListProps> = React.memo(
+const FoldersList = React.memo<FoldersListProps>(
   ({
     folders,
     selectedPaths,

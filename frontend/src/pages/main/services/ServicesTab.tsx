@@ -1,5 +1,3 @@
-import React from "react";
-
 import ServiceCardsView from "./ServiceCardsView";
 import ServiceTableView from "./ServiceTableView";
 import UnitListTab from "./UnitListTab";
@@ -29,7 +27,7 @@ function useServicesQuery(viewMode: TableCardViewMode) {
   });
 }
 
-const ServicesTab: React.FC = () => {
+const ServicesTab = () => {
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const { data, isPending, isError, error } = useServicesQuery(viewMode);
 

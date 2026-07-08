@@ -35,13 +35,13 @@ const driveInfoColumns: AppDataTableColumnDef<DriveInfoRow>[] = [
   },
 ];
 
-export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
+export const DriveInfoTab = ({
   drive,
   rawDriveSize,
   smartData,
   deviceInfo,
   smartHealth,
-}) => {
+}: DriveInfoTabProps) => {
   const isNvme = drive.transport === "nvme";
   const rows: DriveInfoRow[] = [
     { property: "Model", value: drive.model || "N/A" },

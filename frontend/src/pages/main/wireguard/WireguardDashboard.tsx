@@ -13,7 +13,7 @@ import { useAppTheme } from "@/theme";
 
 const WIREGUARD_TOAST_META = { href: "/wireguard", label: "Open WireGuard" };
 
-const WireGuardDashboard: React.FC = () => {
+const WireGuardDashboard = () => {
   const theme = useAppTheme();
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   const [selectedInterface, setSelectedInterface] = useState<string | null>(

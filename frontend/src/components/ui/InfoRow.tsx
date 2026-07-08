@@ -10,12 +10,12 @@ interface InfoRowProps {
   wrap?: boolean;
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({
+const InfoRow = ({
   label,
   children,
   noBorder = false,
   wrap = false,
-}) => (
+}: InfoRowProps) => (
   <div
     className="info-row"
     style={{

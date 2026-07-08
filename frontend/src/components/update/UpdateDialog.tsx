@@ -25,7 +25,7 @@ interface UpdateDialogProps {
   updateComplete?: boolean;
   updateSuccess?: boolean;
 }
-const UpdateDialog: React.FC<UpdateDialogProps> = ({
+const UpdateDialog = ({
   open,
   status,
   progress,
@@ -36,7 +36,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   updateSuccess = false,
   onContinue,
   targetVersion,
-}) => {
+}: UpdateDialogProps) => {
   const theme = useAppTheme();
   const outputId = useId();
   const outputEndRef = useRef<HTMLDivElement>(null);

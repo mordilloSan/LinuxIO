@@ -40,7 +40,7 @@ interface DirectoryListingProps {
   viewMode: ViewMode;
 }
 
-const DirectoryListing: React.FC<DirectoryListingProps> = ({
+const DirectoryListing = ({
   resource,
   showHiddenFiles,
   viewMode,
@@ -57,7 +57,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onStartRename,
   onConfirmRename,
   onCancelRename,
-}) => {
+}: DirectoryListingProps) => {
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;

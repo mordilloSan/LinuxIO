@@ -19,7 +19,7 @@ interface Props {
   open: boolean;
 }
 
-const SetHostnameDialog: React.FC<Props> = ({ open, current, onClose }) => {
+const SetHostnameDialog = ({ open, current, onClose }: Props) => {
   const toast = useScopedToast(DASHBOARD_TOAST_META);
   const [hostname, setHostname] = useState(current);
 

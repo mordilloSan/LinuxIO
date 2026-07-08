@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import { type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -39,7 +38,7 @@ export interface NetworkInterfaceCardProps {
   setEditForm: (form: Record<string, any>) => void;
 }
 
-const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
+const NetworkInterfaceCard = ({
   iface,
   expanded,
   editForm,
@@ -47,7 +46,7 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
   onToggle,
   onClose,
   onSave,
-}) => {
+}: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
 

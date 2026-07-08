@@ -10,13 +10,13 @@ interface StatusDotProps {
   tooltip?: string;
 }
 
-const StatusDot: React.FC<StatusDotProps> = ({
+const StatusDot = ({
   color,
   size = 10,
   absolute = false,
   tooltip,
   style,
-}) => {
+}: StatusDotProps) => {
   const dot = (
     <span
       style={{

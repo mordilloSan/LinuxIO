@@ -20,10 +20,7 @@ interface UpdateBannerProps {
   updateInfo: UpdateInfo;
 }
 
-const UpdateBanner: React.FC<UpdateBannerProps> = ({
-  updateInfo,
-  onDismiss,
-}) => {
+const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const {

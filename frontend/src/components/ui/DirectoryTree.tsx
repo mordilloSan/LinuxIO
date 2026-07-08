@@ -43,15 +43,7 @@ interface TreeNodeData {
 // TreeNode (single row)
 // ============================================================================
 
-const TreeNode: React.FC<{
-  node: TreeNodeData;
-  depth: number;
-  isSelectable: (node: TreeNodeData) => boolean;
-  onBrowsePathChange?: (path: string) => void;
-  selectedPath?: string;
-  onSelect: (path: string) => void;
-  onToggle: (node: TreeNodeData) => Promise<void>;
-}> = ({
+const TreeNode = ({
   node,
   depth,
   isSelectable,
@@ -59,6 +51,14 @@ const TreeNode: React.FC<{
   selectedPath,
   onSelect,
   onToggle,
+}: {
+  node: TreeNodeData;
+  depth: number;
+  isSelectable: (node: TreeNodeData) => boolean;
+  onBrowsePathChange?: (path: string) => void;
+  selectedPath?: string;
+  onSelect: (path: string) => void;
+  onToggle: (node: TreeNodeData) => Promise<void>;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -186,7 +186,7 @@ function joinFilePath(parent: string, name: string): string {
   return joinPathUtil(parent, name).replace(/\/{2,}/g, "/");
 }
 
-const DirectoryTree: React.FC<DirectoryTreeProps> = ({
+const DirectoryTree = ({
   fileFilter,
   includeFiles = false,
   onBrowsePathChange,
@@ -194,7 +194,7 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
   selectableTypes = ["directory"],
   selectedPath,
   onSelect,
-}) => {
+}: DirectoryTreeProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fetchResource = linuxio.filebrowser.resource_get.useFetcher();
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [

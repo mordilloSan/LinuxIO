@@ -62,7 +62,7 @@ const allCards = [
   { id: "drive", label: "Drive", component: MemoDriveInfo },
 ];
 
-const Dashboard: React.FC = () => {
+const Dashboard = () => {
   const theme = useAppTheme();
   const { dockerAvailable } = useAuth();
   const [editMode, setEditMode] = useState(false);

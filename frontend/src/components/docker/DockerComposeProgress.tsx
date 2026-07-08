@@ -24,7 +24,7 @@ const isError = (t: ComposeTask) => t.status === "Error";
 
 // LayerRow renders a single pull layer: short id, current action, a determinate
 // bar (Docker gives us `percent`), and a humanized size while downloading.
-const LayerRow: React.FC<{ task: ComposeTask }> = ({ task }) => {
+const LayerRow = ({ task }: { task: ComposeTask }) => {
   const theme = useAppTheme();
   const done = isDone(task);
   const showSize = !done && !!task.total && task.total > 0;
@@ -102,13 +102,13 @@ interface GroupHeaderProps {
 // GroupHeader renders a collapsible Image/Container/… section header. When
 // collapsed it shows a compact summary bar so the section state stays visible;
 // when expanded the per-layer rows below carry the detail instead.
-const GroupHeader: React.FC<GroupHeaderProps> = ({
+const GroupHeader = ({
   task,
   percent,
   expanded,
   hasLayers,
   onToggle,
-}) => {
+}: GroupHeaderProps) => {
   const theme = useAppTheme();
   const done = isDone(task);
 
@@ -193,9 +193,7 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
   );
 };
 
-const DockerComposeProgress: React.FC<DockerComposeProgressProps> = ({
-  tasks,
-}) => {
+const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
   const theme = useAppTheme();
   // Per-group user override of expansion. Absent => collapsed by default; the
   // user expands a section on demand.

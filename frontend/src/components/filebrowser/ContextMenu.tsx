@@ -30,7 +30,7 @@ interface ContextMenuProps {
   onUpload: () => void;
 }
 
-const ContextMenu: React.FC<ContextMenuProps> = ({
+const ContextMenu = ({
   anchorPosition,
   hasSelection,
   hasClipboard = false,
@@ -54,7 +54,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   canRename,
   onOpenContainingFolder = () => {},
   canOpenContainingFolder = false,
-}) => {
+}: ContextMenuProps) => {
   const detailsDisabled =
     canShowDetails === undefined ? !hasSelection : !canShowDetails;
   const compressDisabled =

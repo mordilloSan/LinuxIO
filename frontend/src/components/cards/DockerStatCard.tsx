@@ -10,12 +10,12 @@ export interface DockerStatCardProps {
   value: React.ReactNode;
 }
 
-const DockerStatCard: React.FC<DockerStatCardProps> = ({
+const DockerStatCard = ({
   label,
   value,
   detail,
   onClick,
-}) => (
+}: DockerStatCardProps) => (
   <FrostedCard
     className="fc-opacity-hover"
     onClick={onClick}

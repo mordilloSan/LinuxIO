@@ -13,7 +13,7 @@ import { useUpdateInfo } from "@/hooks/useUpdateInfo";
 import { useSidebarItems } from "@/routing/useSidebarItems";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
-const Dashboard: React.FC = () => {
+const Dashboard = () => {
   const location = useLocation();
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));

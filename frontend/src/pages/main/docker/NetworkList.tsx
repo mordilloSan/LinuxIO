@@ -129,11 +129,11 @@ interface CreateNetworkDialogProps {
   open: boolean;
 }
 
-const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
+const CreateNetworkDialog = ({
   open,
   onClose,
   existingNames,
-}) => {
+}: CreateNetworkDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const [networkName, setNetworkName] = useState("");
@@ -241,13 +241,13 @@ interface DeleteNetworkDialogProps {
   open: boolean;
 }
 
-const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
+const DeleteNetworkDialog = ({
   open,
   onClose,
   networkNames,
   networkIds,
   onSuccess,
-}) => {
+}: DeleteNetworkDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
@@ -336,10 +336,10 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   );
 };
 
-const NetworkList: React.FC<NetworkListProps> = ({
+const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: NetworkListProps) => {
   const theme = useAppTheme();
   const { data: rawNetworks } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,

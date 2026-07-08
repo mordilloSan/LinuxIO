@@ -32,7 +32,7 @@ const ServiceStatusRows = React.memo<{ service: Service }>(({ service }) => (
 ));
 ServiceStatusRows.displayName = "ServiceStatusRows";
 
-const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
+const ServiceInfoRows = ({ service }: { service: Service }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(service.name, {
     refetchInterval: 2000,
   });
@@ -83,7 +83,7 @@ const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-const ServiceActionsWrapper: React.FC<{ service: Service }> = ({ service }) => {
+const ServiceActionsWrapper = ({ service }: { service: Service }) => {
   const { data: info } = linuxio.systemd.get_unit_info.useQuery(service.name, {
     refetchInterval: 2000,
   });
@@ -97,12 +97,12 @@ const ServiceActionsWrapper: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
+const ServiceCardsView = ({
   services,
   expanded,
   onExpand,
   renderDetailPanel,
-}) => (
+}: ServiceCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No services found."
     expanded={expanded}

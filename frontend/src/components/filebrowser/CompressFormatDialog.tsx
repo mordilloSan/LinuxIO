@@ -39,11 +39,11 @@ interface CompressFormatDialogProps {
   open: boolean;
 }
 
-const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
+const CompressFormatDialog = ({
   open,
   onClose,
   onConfirm,
-}) => {
+}: CompressFormatDialogProps) => {
   const theme = useAppTheme();
   const [selected, setSelected] = useState<CompressFormat>("zip");
 

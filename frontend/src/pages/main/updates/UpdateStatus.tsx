@@ -1,5 +1,3 @@
-import React from "react";
-
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
 
@@ -18,7 +16,7 @@ interface UpdateStatusProps {
   updatingPackage: string | null;
 }
 
-const UpdateStatus: React.FC<UpdateStatusProps> = ({
+const UpdateStatus = ({
   updates,
   isLoading,
   onUpdateOne,
@@ -29,7 +27,7 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
   error,
   onClearError,
   onCancel,
-}) => {
+}: UpdateStatusProps) => {
   return (
     <div>
       <UpdateActions

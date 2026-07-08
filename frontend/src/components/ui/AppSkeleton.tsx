@@ -35,14 +35,14 @@ export interface AppSkeletonProps {
   width?: number | string;
 }
 
-const AppSkeleton: React.FC<AppSkeletonProps> = ({
+const AppSkeleton = ({
   variant = "text",
   textVariant,
   width,
   height,
   className,
   style,
-}) => (
+}: AppSkeletonProps) => (
   <span
     aria-hidden="true"
     className={[

@@ -1,5 +1,3 @@
-import React from "react";
-
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 
@@ -8,7 +6,7 @@ interface ErrorStateProps {
   onReset?: () => void;
 }
 
-const ErrorState: React.FC<ErrorStateProps> = ({ message, onReset }) => {
+const ErrorState = ({ message, onReset }: ErrorStateProps) => {
   return (
     <AppAlert
       action={

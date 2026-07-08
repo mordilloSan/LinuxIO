@@ -24,10 +24,10 @@ interface UsersTabProps {
   setViewMode?: (next: "table" | "card") => void;
   viewMode?: "table" | "card";
 }
-const UsersTab: React.FC<UsersTabProps> = ({
+const UsersTab = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: UsersTabProps) => {
   const { user: currentUser } = useAuth();
   const { data: users = [] } = linuxio.accounts.list_users.useQuery({
     refetchInterval: 10000,

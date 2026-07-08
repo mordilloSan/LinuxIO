@@ -1,4 +1,3 @@
-// src/components/NavbarThemeToggle.tsx
 import { Icon } from "@iconify/react";
 import React from "react";
 

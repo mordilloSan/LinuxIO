@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
 
@@ -14,10 +13,7 @@ interface UpdateSettingsDialogProps {
   onClose: () => void;
   open: boolean;
 }
-const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
-  open,
-  onClose,
-}) => {
+const UpdateSettingsDialog = ({ open, onClose }: UpdateSettingsDialogProps) => {
   const theme = useAppTheme();
   const settingsState = useUpdateSettingsState(open);
   return (

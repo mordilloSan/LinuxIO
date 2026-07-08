@@ -25,11 +25,7 @@ interface EditUserDialogProps {
   user: AccountUser;
 }
 
-const EditUserDialog: React.FC<EditUserDialogProps> = ({
-  open,
-  onClose,
-  user,
-}) => {
+const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const { user: currentUser } = useAuth();
   const [fullName, setFullName] = useState(user.gecos);

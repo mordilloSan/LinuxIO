@@ -1,12 +1,10 @@
-import React from "react";
-
 import LoginComponent from "@/components/auth/Login";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 import "./login-page.css";
 
-const Login: React.FC = () => {
+const Login = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const paperRadius = Number(theme.shape.borderRadius) * 4;

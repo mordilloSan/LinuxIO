@@ -32,7 +32,7 @@ import { useTabUrlState } from "@/hooks/useTabUrlState";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-const Page: React.FC = () => {
+const Page = () => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));

@@ -91,7 +91,7 @@ const getTotalContainers = (project: ComposeProject) => {
   );
 };
 
-const ComposeList: React.FC<ComposeListProps> = ({
+const ComposeList = ({
   projects,
   onStart,
   onStop,
@@ -102,7 +102,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   isLoading = false,
   isPending = false,
   viewMode = "table",
-}) => {
+}: ComposeListProps) => {
   const [search, setSearch] = useState("");
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
     null,

@@ -79,14 +79,14 @@ interface Props {
   onSave: (iface: BaseNI) => void;
   setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
-const NetworkInterfaceEditor: React.FC<Props> = ({
+const NetworkInterfaceEditor = ({
   iface,
   expanded,
   editForm,
   setEditForm,
   onClose,
   onSave,
-}) => {
+}: Props) => {
   const theme = useAppTheme();
   const toast = useScopedToast(NETWORK_TOAST_META);
   const [mode, setMode] = useState<"auto" | "manual">("auto");

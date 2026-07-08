@@ -1,7 +1,5 @@
-import React from "react";
-
 import Terminal from "./Terminal";
 
-const TerminalPage: React.FC = () => <Terminal />;
+const TerminalPage = () => <Terminal />;
 
 export default TerminalPage;

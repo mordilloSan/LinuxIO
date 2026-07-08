@@ -244,17 +244,7 @@ function getNFSOptionValue(options: string[], keys: string[]): string {
   return "";
 }
 
-const MountEntryActions: React.FC<{
-  mount: NFSMount;
-  mountingMountpoint: string | null;
-  onEdit: (mount: NFSMount) => void;
-  onMount: (mount: NFSMount) => void;
-  onUnmount: (mount: NFSMount) => void;
-  onRemove: (mount: NFSMount) => void;
-  nfsClientAvailable: boolean;
-  nfsReason: string;
-  stopPropagation?: boolean;
-}> = ({
+const MountEntryActions = ({
   mount,
   mountingMountpoint,
   onEdit,
@@ -264,6 +254,16 @@ const MountEntryActions: React.FC<{
   nfsClientAvailable,
   nfsReason,
   stopPropagation = false,
+}: {
+  mount: NFSMount;
+  mountingMountpoint: string | null;
+  onEdit: (mount: NFSMount) => void;
+  onMount: (mount: NFSMount) => void;
+  onUnmount: (mount: NFSMount) => void;
+  onRemove: (mount: NFSMount) => void;
+  nfsClientAvailable: boolean;
+  nfsReason: string;
+  stopPropagation?: boolean;
 }) => {
   const wrapClick =
     (handler: (mount: NFSMount) => void) =>
@@ -325,7 +325,7 @@ const MountEntryActions: React.FC<{
   );
 };
 
-const MountNFSDialog: React.FC<MountNFSDialogProps> = ({ open, onClose }) => {
+const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [mountpoint, setMountpoint] = useState("");
@@ -499,11 +499,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({ open, onClose }) => {
     </GeneralDialog>
   );
 };
-const RemoveDialog: React.FC<RemoveDialogProps> = ({
-  open,
-  onClose,
-  mount,
-}) => {
+const RemoveDialog = ({ open, onClose, mount }: RemoveDialogProps) => {
   const removedMessage = mount?.mounted
     ? mount.inFstab
       ? `Removed ${mount.mountpoint}`
@@ -572,11 +568,7 @@ const RemoveDialog: React.FC<RemoveDialogProps> = ({
 // is keyed by mountpoint and only mounted while the dialog is open, so its lazy
 // state initializers re-run with the current mount on every open (no effect-based
 // prop syncing needed).
-const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
-  open,
-  onClose,
-  mount,
-}) => {
+const EditNFSDialog = ({ open, onClose, mount }: EditNFSDialogProps) => {
   return (
     <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
       <AppDialogTitle>Edit NFS Mount Options</AppDialogTitle>
@@ -586,7 +578,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     </GeneralDialog>
   );
 };
-const EditNFSForm: React.FC<EditNFSFormProps> = ({ mount, onClose }) => {
+const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
   // Server, export path, and mountpoint are the mount's fixed identity.
   const server = mount.server || "";
   const exportPath = mount.exportPath || "";
@@ -828,10 +820,10 @@ const EditNFSForm: React.FC<EditNFSFormProps> = ({ mount, onClose }) => {
     </>
   );
 };
-const NFSMounts: React.FC<NFSMountsProps> = ({
+const NFSMounts = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: NFSMountsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");

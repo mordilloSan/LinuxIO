@@ -22,10 +22,7 @@ interface CreateUserDialogProps {
   open: boolean;
 }
 
-const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
-  open,
-  onClose,
-}) => {
+const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

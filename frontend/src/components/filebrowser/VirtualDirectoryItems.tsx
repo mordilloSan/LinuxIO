@@ -140,8 +140,8 @@ function buildRows({
   return rows;
 }
 
-const SectionHeader: React.FC<{ label: string; viewMode: ViewMode }> =
-  React.memo(({ label, viewMode }) => (
+const SectionHeader = React.memo<{ label: string; viewMode: ViewMode }>(
+  ({ label, viewMode }) => (
     <h6
       style={{
         color: "inherit",
@@ -154,11 +154,12 @@ const SectionHeader: React.FC<{ label: string; viewMode: ViewMode }> =
     >
       {label}
     </h6>
-  ));
+  ),
+);
 
 SectionHeader.displayName = "VirtualDirectorySectionHeader";
 
-const DirectoryItem: React.FC<DirectoryItemProps> = React.memo(
+const DirectoryItem = React.memo<DirectoryItemProps>(
   ({
     item,
     itemKind,
@@ -252,7 +253,7 @@ const DirectoryItem: React.FC<DirectoryItemProps> = React.memo(
 
 DirectoryItem.displayName = "VirtualDirectoryItem";
 
-const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
+const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
   files,
@@ -275,7 +276,7 @@ const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
   selectionBox,
   subfoldersMap,
   viewMode,
-}) => {
+}: VirtualDirectoryItemsProps) => {
   "use no memo";
 
   const theme = useAppTheme();

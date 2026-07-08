@@ -17,7 +17,7 @@ interface InterfaceDetailsProps {
   };
 }
 
-const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
+const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   // Peer whose QR code dialog is open; opening the dialog drives the fetch.
   const [qrPeer, setQrPeer] = useState<string | null>(null);

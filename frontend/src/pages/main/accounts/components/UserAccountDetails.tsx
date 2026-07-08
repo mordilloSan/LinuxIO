@@ -177,7 +177,7 @@ function loginEventKey(login: AccountUserLogin): string {
   );
 }
 
-const LoadingRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
+const LoadingRows = ({ rows = 4 }: { rows?: number }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     {Array.from({ length: rows }).map((_, index) => (
       <div
@@ -192,7 +192,7 @@ const LoadingRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
   </div>
 );
 
-const InlineError: React.FC<{ message: string }> = ({ message }) => (
+const InlineError = ({ message }: { message: string }) => (
   <AppAlert severity="warning">{message}</AppAlert>
 );
 
@@ -201,13 +201,19 @@ const topCardHeaderStyle: React.CSSProperties = {
   marginBottom: 12,
 };
 
-const TopCardHeader: React.FC<{
+const TopCardHeader = ({
+  icon,
+  iconColor,
+  title,
+  subtitle,
+  right,
+}: {
   icon: string;
   iconColor: string;
   title: string;
   subtitle: string;
   right?: React.ReactNode;
-}> = ({ icon, iconColor, title, subtitle, right }) => (
+}) => (
   <div
     style={{
       display: "flex",
@@ -255,11 +261,15 @@ const TopCardHeader: React.FC<{
   </div>
 );
 
-const DetailText: React.FC<{
+const DetailText = ({
+  children,
+  color,
+  nowrap,
+}: {
   children: React.ReactNode;
   color?: string;
   nowrap?: boolean;
-}> = ({ children, color, nowrap }) => (
+}) => (
   <span
     style={{
       fontSize: "0.75rem",
@@ -280,17 +290,7 @@ interface ActivityHeader {
   onClick?: () => void;
 }
 
-const ActivitySection: React.FC<{
-  title: string;
-  subtitle: string;
-  icon?: string;
-  iconColor?: string;
-  headers: ActivityHeader[];
-  gridClassName: string;
-  metaText: string;
-  className?: string;
-  children: React.ReactNode;
-}> = ({
+const ActivitySection = ({
   title,
   subtitle,
   icon,
@@ -300,6 +300,16 @@ const ActivitySection: React.FC<{
   metaText,
   className,
   children,
+}: {
+  title: string;
+  subtitle: string;
+  icon?: string;
+  iconColor?: string;
+  headers: ActivityHeader[];
+  gridClassName: string;
+  metaText: string;
+  className?: string;
+  children: React.ReactNode;
 }) => (
   <FrostedCard
     className={`account-activity-card ${className || ""}`.trim()}
@@ -375,9 +385,7 @@ const ActivitySection: React.FC<{
   </FrostedCard>
 );
 
-const ActivityEmpty: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => (
+const ActivityEmpty = ({ children }: { children: React.ReactNode }) => (
   <div style={{ paddingBlock: 14, textAlign: "center" }}>
     <AppTypography color="text.secondary" variant="body2">
       {children}
@@ -385,16 +393,13 @@ const ActivityEmpty: React.FC<{ children: React.ReactNode }> = ({
   </div>
 );
 
-const ActivityLoading: React.FC<{ rows?: number }> = ({ rows }) => (
+const ActivityLoading = ({ rows }: { rows?: number }) => (
   <div style={{ paddingBlock: 12 }}>
     <LoadingRows rows={rows} />
   </div>
 );
 
-export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
-  user,
-  onClose,
-}) => {
+export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
   const theme = useAppTheme();
   const {
     data: details,
@@ -531,9 +536,7 @@ export const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
   );
 };
 
-export const UserActivityCard: React.FC<{ username: string }> = ({
-  username,
-}) => {
+export const UserActivityCard = ({ username }: { username: string }) => {
   const theme = useAppTheme();
   const [searchParams] = useSearchParams();
   const {
@@ -924,9 +927,7 @@ function sshStatus(ssh: AccountSSHAccess | undefined): string {
   return `${ssh.authorizedKeysCount} authorized keys`;
 }
 
-const HomeAndSSHCard: React.FC<{ details: AccountUserDetails }> = ({
-  details,
-}) => {
+const HomeAndSSHCard = ({ details }: { details: AccountUserDetails }) => {
   const theme = useAppTheme();
 
   return (
@@ -984,9 +985,7 @@ const PROCESS_DEFAULT_DIRECTION: Record<ProcessSortField, SortDirection> = {
 
 const EMPTY_PROCESS_TOP: AccountUserProcess[] = [];
 
-const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
-  details,
-}) => {
+const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
   const theme = useAppTheme();
   const [sortField, setSortField] = React.useState<ProcessSortField>("cpu");
   const [sortDirection, setSortDirection] = React.useState<SortDirection>(
@@ -1083,9 +1082,7 @@ const ProcessCard: React.FC<{ details: AccountUserDetails }> = ({
   );
 };
 
-export const UserHomeSSHPanel: React.FC<{ username: string }> = ({
-  username,
-}) => {
+export const UserHomeSSHPanel = ({ username }: { username: string }) => {
   const {
     data: details,
     isPending,
@@ -1118,9 +1115,7 @@ export const UserHomeSSHPanel: React.FC<{ username: string }> = ({
   return <HomeAndSSHCard details={details} />;
 };
 
-export const UserProcessPanel: React.FC<{ username: string }> = ({
-  username,
-}) => {
+export const UserProcessPanel = ({ username }: { username: string }) => {
   const {
     data: details,
     isPending,
@@ -1153,9 +1148,7 @@ export const UserProcessPanel: React.FC<{ username: string }> = ({
   return <ProcessCard details={details} />;
 };
 
-export const UserSupplementalCards: React.FC<{ username: string }> = ({
-  username,
-}) => {
+export const UserSupplementalCards = ({ username }: { username: string }) => {
   const {
     data: details,
     isPending,
@@ -1218,7 +1211,7 @@ export const UserSupplementalCards: React.FC<{ username: string }> = ({
   );
 };
 
-export const UserDetailsStack: React.FC<UserDetailsPanelProps> = (props) => (
+export const UserDetailsStack = (props: UserDetailsPanelProps) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <UserDetailsPanel {...props} />
     <UserSupplementalCards username={props.user.username} />

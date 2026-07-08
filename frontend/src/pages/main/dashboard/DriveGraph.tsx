@@ -23,10 +23,7 @@ const READ_ID = "disk:read";
 const WRITE_ID = "disk:write";
 const STREAM_DELAY_MS = 1000;
 
-const DriveGraph: React.FC<DriveGraphProps> = ({
-  readBytesPerSec,
-  writeBytesPerSec,
-}) => {
+const DriveGraph = ({ readBytesPerSec, writeBytesPerSec }: DriveGraphProps) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fetchDiskHistory = linuxio.monitoring.get_diskio_history.useFetcher();

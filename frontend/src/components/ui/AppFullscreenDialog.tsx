@@ -16,7 +16,7 @@ export interface AppFullscreenDialogProps {
 
 const OVERLAY_ROOT_SELECTOR = ".app-dialog-root, .app-fullscreen-dialog-root";
 
-const AppFullscreenDialog: React.FC<AppFullscreenDialogProps> = ({
+const AppFullscreenDialog = ({
   open,
   onClose,
   disableEscapeKeyDown = false,
@@ -25,7 +25,7 @@ const AppFullscreenDialog: React.FC<AppFullscreenDialogProps> = ({
   style,
   contentClassName,
   contentStyle,
-}) => {
+}: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
   const previousBodyOverflow = useRef<string>("");

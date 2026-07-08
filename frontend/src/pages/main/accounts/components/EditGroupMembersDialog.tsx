@@ -24,11 +24,11 @@ interface EditGroupMembersDialogProps {
   open: boolean;
 }
 
-const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
+const EditGroupMembersDialog = ({
   open,
   onClose,
   group,
-}) => {
+}: EditGroupMembersDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,

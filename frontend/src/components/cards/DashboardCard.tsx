@@ -97,7 +97,7 @@ export type DashboardCardProps = SelectProps & {
   onIconTextSelect?: (value: string) => void;
 };
 
-const DashboardCard: React.FC<DashboardCardProps> = ({
+const DashboardCard = ({
   title,
   titleColor,
   stats,
@@ -114,7 +114,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   iconTextSelectOptions,
   selectedIconTextOption,
   onIconTextSelect,
-}) => {
+}: DashboardCardProps) => {
   const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
   const [hovered, setHovered] = useState(false);

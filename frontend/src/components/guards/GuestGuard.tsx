@@ -3,7 +3,7 @@ import { Navigate, useSearchParams } from "react-router-dom";
 
 import useAuth from "@/hooks/useAuth";
 
-export const GuestGuard: React.FC<PropsWithChildren> = ({ children }) => {
+export const GuestGuard = ({ children }: PropsWithChildren) => {
   const { isAuthenticated, isInitialized } = useAuth();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";

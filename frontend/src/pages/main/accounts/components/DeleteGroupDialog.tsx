@@ -1,5 +1,3 @@
-import React from "react";
-
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -22,12 +20,12 @@ interface DeleteGroupDialogProps {
   open: boolean;
 }
 
-const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
+const DeleteGroupDialog = ({
   open,
   onClose,
   groupNames,
   onSuccess,
-}) => {
+}: DeleteGroupDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 

@@ -19,10 +19,13 @@ interface FileDetailProps {
   resource?: FileResource;
   statData?: ResourceStatData | null;
 }
-const DetailRow: React.FC<{
+const DetailRow = ({
+  label,
+  value,
+}: {
   label: string;
   value: React.ReactNode;
-}> = ({ label, value }) => {
+}) => {
   const theme = useAppTheme();
   return (
     <div
@@ -54,13 +57,13 @@ const DetailRow: React.FC<{
     </div>
   );
 };
-const FileDetail: React.FC<FileDetailProps> = ({
+const FileDetail = ({
   resource,
   onDownload,
   onEdit,
   statData,
   isLoadingStat,
-}) => {
+}: FileDetailProps) => {
   const theme = useAppTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";

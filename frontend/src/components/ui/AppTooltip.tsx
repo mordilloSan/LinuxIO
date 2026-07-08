@@ -115,7 +115,7 @@ function hasTruncatedContent(element: Element): boolean {
   return Array.from(element.children).some(hasTruncatedContent);
 }
 
-const AppTooltip: React.FC<AppTooltipProps> = ({
+const AppTooltip = ({
   title,
   children,
   arrow = false,
@@ -127,7 +127,7 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
   copyErrorMessage = "Failed to copy",
   onlyWhenTruncated = false,
   toastMeta,
-}) => {
+}: AppTooltipProps) => {
   const [visible, setVisible] = useState(false);
   const [canCopy, setCanCopy] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});

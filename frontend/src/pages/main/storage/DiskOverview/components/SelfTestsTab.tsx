@@ -1,5 +1,3 @@
-import React from "react";
-
 import { getSmartNumber, getSmartString } from "../utils";
 
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -118,7 +116,7 @@ const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
   },
 ];
 
-export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
+export const SelfTestsTab = ({
   startPending,
   percentage,
   onRunTest,
@@ -126,7 +124,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   nvmeSelfTestLog,
   smartmontoolsAvailable,
   smartmontoolsReason,
-}) => {
+}: SelfTestsTabProps) => {
   const theme = useAppTheme();
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   const displayPercent =

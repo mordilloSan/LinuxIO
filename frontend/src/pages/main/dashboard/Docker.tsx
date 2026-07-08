@@ -25,7 +25,7 @@ const getStatusLabel = (status: string, state: string): string => {
 };
 const getCollectionCount = <T,>(items: T[] | null | undefined) =>
   items?.length ?? 0;
-const DockerInfo: React.FC = () => {
+const DockerInfo = () => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));

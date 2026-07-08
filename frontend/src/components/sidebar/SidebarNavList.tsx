@@ -14,7 +14,7 @@ interface SidebarNavListItemProps {
   title: string;
 }
 
-const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
+const SidebarNavList = React.memo<SidebarNavListItemProps>(
   ({
     href,
     title,

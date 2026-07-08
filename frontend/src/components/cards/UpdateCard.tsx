@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { Update } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -19,7 +17,7 @@ export interface UpdateCardProps {
   update: Update;
 }
 
-const UpdateCard: React.FC<UpdateCardProps> = ({
+const UpdateCard = ({
   update,
   isExpanded,
   isUpdating,
@@ -28,7 +26,7 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
   isLoadingChangelog,
   onToggleChangelog,
   onUpdate,
-}) => (
+}: UpdateCardProps) => (
   <FrostedCard hoverLift>
     <AppCardContent>
       {/* Title */}

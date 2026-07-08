@@ -30,7 +30,7 @@ interface LogDialogProps {
   /** Replaces the text title (e.g. a search field). Should grow to fill available space. */
   titleContent?: React.ReactNode;
 }
-const LogDialog: React.FC<LogDialogProps> = ({
+const LogDialog = ({
   open,
   onClose,
   title,
@@ -44,7 +44,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
   logsBoxRef,
   onExited,
   maxWidth = "md",
-}) => {
+}: LogDialogProps) => {
   const theme = useAppTheme();
   return (
     <GeneralDialog

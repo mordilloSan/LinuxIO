@@ -8,7 +8,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-const NetworkInterfacesCard: React.FC = () => {
+const NetworkInterfacesCard = () => {
   const theme = useAppTheme();
   const { data: rawInterfaces = [], isPending: isLoading } =
     linuxio.system.get_network_info.useQuery({

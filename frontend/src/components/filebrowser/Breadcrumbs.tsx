@@ -239,13 +239,13 @@ const buildBreadcrumbs = (
   return breadcrumbs;
 };
 
-const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
+const FilebrowserBreadcrumbs = ({
   path,
   onNavigate,
   showGallerySize = false,
   gallerySize = 4,
   onGallerySizeChange,
-}) => {
+}: FilebrowserBreadcrumbsProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const normalizedPath = normalizePath(path);

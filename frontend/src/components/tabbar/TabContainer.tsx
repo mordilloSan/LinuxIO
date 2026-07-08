@@ -39,14 +39,14 @@ import { TabContainerProps } from "@/types/tabcontainer";
  * />
  * ```
  */
-const TabContainer: React.FC<TabContainerProps> = ({
+const TabContainer = ({
   tabs,
   defaultTab,
   urlParam = "tab",
   fadeTimeout = 300,
   containerStyle = {},
   errorFallback,
-}) => {
+}: TabContainerProps) => {
   // Sync tab state with URL query parameter
   const [activeTab, setActiveTab] = useTabUrlState(defaultTab, urlParam);
 

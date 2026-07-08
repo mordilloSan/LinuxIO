@@ -20,12 +20,12 @@ interface StackSetupDialogProps {
   onConfirm: (stackName: string, workingDir: string) => void;
   open: boolean;
 }
-const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
+const StackSetupDialog = ({
   open,
   onClose,
   onConfirm,
   defaultWorkingDir,
-}) => {
+}: StackSetupDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [stackName, setStackName] = useState("");

@@ -32,11 +32,15 @@ const labelStyle: React.CSSProperties = {
   width: 90,
 };
 
-export const DetailRow: React.FC<{
+export const DetailRow = ({
+  label,
+  children,
+  noBorder,
+}: {
   label: string;
   children: React.ReactNode;
   noBorder?: boolean;
-}> = ({ label, children, noBorder }) => (
+}) => (
   <div
     className="svc-detail-row"
     style={{

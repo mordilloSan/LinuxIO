@@ -65,15 +65,7 @@ export function useSettingsDraft<TDraft extends object, TErrors extends object>(
 }
 
 /** Section column with the title/subtitle header and refresh button. */
-export const SettingsSectionShell: React.FC<{
-  title: string;
-  subtitle: string;
-  refreshAriaLabel: string;
-  refreshing: boolean;
-  refreshDisabled?: boolean;
-  onRefresh: () => void;
-  children: React.ReactNode;
-}> = ({
+export const SettingsSectionShell = ({
   title,
   subtitle,
   refreshAriaLabel,
@@ -81,6 +73,14 @@ export const SettingsSectionShell: React.FC<{
   refreshDisabled,
   onRefresh,
   children,
+}: {
+  title: string;
+  subtitle: string;
+  refreshAriaLabel: string;
+  refreshing: boolean;
+  refreshDisabled?: boolean;
+  onRefresh: () => void;
+  children: React.ReactNode;
 }) => {
   const theme = useAppTheme();
   return (
@@ -128,11 +128,15 @@ export const SettingsSectionShell: React.FC<{
 };
 
 /** Responsive auto-fit form grid used inside SectionCards. */
-export const SettingsGrid: React.FC<{
+export const SettingsGrid = ({
+  children,
+  minColumnWidth = 220,
+  rowGap = 1.5,
+}: {
   children: React.ReactNode;
   minColumnWidth?: number;
   rowGap?: number;
-}> = ({ children, minColumnWidth = 220, rowGap = 1.5 }) => {
+}) => {
   const theme = useAppTheme();
   return (
     <div
@@ -149,14 +153,21 @@ export const SettingsGrid: React.FC<{
 };
 
 /** Reset/Save button row for draft-form sections. */
-export const SettingsSaveFooter: React.FC<{
+export const SettingsSaveFooter = ({
+  isDirty,
+  busy,
+  saveDisabled,
+  saving,
+  onReset,
+  onSave,
+}: {
   isDirty: boolean;
   busy: boolean;
   saveDisabled?: boolean;
   saving: boolean;
   onReset: () => void;
   onSave: () => void;
-}> = ({ isDirty, busy, saveDisabled, saving, onReset, onSave }) => {
+}) => {
   const theme = useAppTheme();
   return (
     <div

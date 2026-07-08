@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
@@ -19,7 +18,7 @@ interface UpdateActionsProps {
   status?: string | null;
 }
 
-const UpdateActions: React.FC<UpdateActionsProps> = ({
+const UpdateActions = ({
   isUpdating,
   currentPackage,
   progress,
@@ -28,7 +27,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   error,
   onClearError,
   onCancel,
-}) => {
+}: UpdateActionsProps) => {
   const theme = useAppTheme();
   // Build the status text: "Status: packageName" or just "Status" or "Preparing..."
   const getStatusText = () => {

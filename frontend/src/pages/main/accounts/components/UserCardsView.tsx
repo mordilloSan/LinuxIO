@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import React from "react";
 
 import {
   UserActivityCard,
@@ -26,7 +25,7 @@ interface UserCardsViewProps {
   users: AccountUser[];
 }
 
-const UserCardsView: React.FC<UserCardsViewProps> = ({
+const UserCardsView = ({
   users,
   selectedUser,
   currentUsername,
@@ -36,7 +35,7 @@ const UserCardsView: React.FC<UserCardsViewProps> = ({
   onEdit,
   onChangePassword,
   onToggleLock,
-}) => {
+}: UserCardsViewProps) => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const enterFromSide = {

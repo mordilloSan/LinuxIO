@@ -23,12 +23,12 @@ interface Props {
   onClose: () => void;
   open: boolean;
 }
-const TerminalDialog: React.FC<Props> = ({
+const TerminalDialog = ({
   open,
   onClose,
   containerId,
   containerName,
-}) => {
+}: Props) => {
   const { streamRef, openStream, closeStream } = useLiveStream();
   const handleClose = useCallback(() => {
     onClose();

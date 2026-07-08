@@ -70,7 +70,7 @@ const validateDraftFolders = (
   return { folders, errors };
 };
 
-const DockerFolderSettingsSection: React.FC = () => {
+const DockerFolderSettingsSection = () => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
   const { config, updateConfig } = useConfig();

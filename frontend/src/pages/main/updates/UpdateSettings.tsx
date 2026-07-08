@@ -144,10 +144,10 @@ interface UpdateSettingsProps {
   disablePadding?: boolean;
   state: ReturnType<typeof useUpdateSettingsState>;
 }
-const UpdateSettings: React.FC<UpdateSettingsProps> = ({
+const UpdateSettings = ({
   disablePadding = false,
   state,
-}) => {
+}: UpdateSettingsProps) => {
   const theme = useAppTheme();
   const {
     loading,

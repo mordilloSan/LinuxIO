@@ -1,5 +1,3 @@
-import React from "react";
-
 import ServicesTab from "./ServicesTab";
 import SocketsTab from "./SocketsTab";
 import TimersTab from "./TimersTab";
@@ -7,7 +5,7 @@ import UnitViewToggle from "./UnitViewToggle";
 
 import TabContainer from "@/components/tabbar/TabContainer";
 
-const ServicesPage: React.FC = () => {
+const ServicesPage = () => {
   const tabs = [
     {
       value: "services",

@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import { openServiceLogsStream, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -18,11 +17,7 @@ interface UnitLogsCardProps {
   unitName?: string;
 }
 
-const UnitLogsCard: React.FC<UnitLogsCardProps> = ({
-  unitName,
-  title,
-  createStream,
-}) => {
+const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => {
   const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({

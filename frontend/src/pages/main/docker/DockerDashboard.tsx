@@ -26,11 +26,15 @@ import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
-const StateChip: React.FC<{
+const StateChip = ({
+  state,
+  status,
+  stopping = false,
+}: {
   state: string;
   status: string;
   stopping?: boolean;
-}> = ({ state, status, stopping = false }) => {
+}) => {
   if (stopping) {
     return (
       <Chip
@@ -90,9 +94,9 @@ interface DockerDashboardProps {
   stoppingContainerIds?: ReadonlySet<string>;
 }
 
-const DockerDashboard: React.FC<DockerDashboardProps> = ({
+const DockerDashboard = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
-}) => {
+}: DockerDashboardProps) => {
   const theme = useAppTheme();
   const [, setSearchParams] = useSearchParams();
   const { data: rawContainers } = linuxio.docker.list_containers.useQuery({

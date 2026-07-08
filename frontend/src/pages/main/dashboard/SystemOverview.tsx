@@ -35,7 +35,7 @@ interface OverviewRow {
   value: string;
 }
 
-const SystemOverview: React.FC = () => {
+const SystemOverview = () => {
   const theme = useAppTheme();
 
   const { data: hostInfo } = linuxio.system.get_host_info.useQuery({

@@ -37,13 +37,13 @@ interface ComposeOperationDialogProps {
   projectName: string;
 }
 
-const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
+const ComposeOperationDialog = ({
   open,
   onClose,
   action,
   projectName,
   composePath,
-}) => {
+}: ComposeOperationDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   const [output, setOutput] = useState<string[]>([]);

@@ -13,7 +13,7 @@ import {
   hasGpuValue,
 } from "@/utils/gpu";
 
-const GpuInfo: React.FC = () => {
+const GpuInfo = () => {
   const theme = useAppTheme();
   const {
     data: gpus,

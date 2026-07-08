@@ -20,14 +20,14 @@ interface TabSelectorProps {
   value: string;
 }
 
-const TabSelector: React.FC<TabSelectorProps> = ({
+const TabSelector = ({
   value,
   onChange,
   options,
   rightContent,
   className,
   style,
-}) => {
+}: TabSelectorProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);

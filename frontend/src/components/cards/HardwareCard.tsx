@@ -12,7 +12,7 @@ export type SummaryRow = {
   noWrap?: boolean;
 };
 
-export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
+export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => {
   const theme = useAppTheme();
 
   return (
@@ -79,14 +79,21 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
   );
 };
 
-const HardwareCard: React.FC<{
+const HardwareCard = ({
+  title,
+  subtitle,
+  avatarIcon,
+  accentColor,
+  rows,
+  actions,
+}: {
   title: string;
   subtitle: string;
   avatarIcon: string;
   accentColor: string;
   rows: SummaryRow[];
   actions?: React.ReactNode;
-}> = ({ title, subtitle, avatarIcon, accentColor, rows, actions }) => (
+}) => (
   <FrostedCard
     hoverLift
     style={{

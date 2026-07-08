@@ -130,7 +130,7 @@ const permissionsToOctal = (perms: PermissionBits): string => {
     (perms.others.execute ? 1 : 0);
   return `${ownerBits}${groupBits}${othersBits}`;
 };
-const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
+const PermissionsDialog = ({
   open,
   pathLabel,
   currentMode,
@@ -139,7 +139,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   group,
   onClose,
   onConfirm,
-}) => {
+}: PermissionsDialogProps) => {
   const [permissions, setPermissions] = useState<PermissionBits>(() =>
     parseMode(currentMode),
   );

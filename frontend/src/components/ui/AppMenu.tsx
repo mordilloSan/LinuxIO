@@ -28,7 +28,7 @@ export interface AppMenuItemProps extends Omit<
 
 const focusableSelector = '[role="menuitem"]:not(:disabled)';
 
-const AppMenu: React.FC<AppMenuProps> = ({
+const AppMenu = ({
   open,
   onClose,
   anchorEl,
@@ -40,7 +40,7 @@ const AppMenu: React.FC<AppMenuProps> = ({
   children,
   className,
   style,
-}) => {
+}: AppMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

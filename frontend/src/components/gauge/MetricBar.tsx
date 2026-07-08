@@ -15,14 +15,14 @@ interface MetricBarProps {
   tooltip?: string;
 }
 
-const MetricBar: React.FC<MetricBarProps> = ({
+const MetricBar = ({
   label,
   percent,
   color,
   tooltip,
   rightLabel,
   icon,
-}) => {
+}: MetricBarProps) => {
   const theme = useAppTheme();
 
   return (

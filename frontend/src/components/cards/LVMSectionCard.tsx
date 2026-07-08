@@ -18,7 +18,7 @@ export interface LVMSectionCardProps {
   title: string;
 }
 
-const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
+const LVMSectionCard = ({
   title,
   subtitle,
   count,
@@ -27,7 +27,7 @@ const LVMSectionCard: React.FC<LVMSectionCardProps> = ({
   expanded,
   onToggle,
   children,
-}) => (
+}: LVMSectionCardProps) => (
   <FrostedCard style={{ padding: GAP_SM }}>
     <div
       onClick={onToggle}

@@ -39,9 +39,9 @@ interface IndexerUnavailableAlertProps {
   status: string;
 }
 
-export const IndexerUnavailableAlert: React.FC<
-  IndexerUnavailableAlertProps
-> = ({ status }) => (
+export const IndexerUnavailableAlert = ({
+  status,
+}: IndexerUnavailableAlertProps) => (
   <AppAlert
     severity="info"
     style={{
@@ -74,9 +74,7 @@ interface FileDropOverlayProps {
   normalizedPath: string;
 }
 
-export const FileDropOverlay: React.FC<FileDropOverlayProps> = ({
-  normalizedPath,
-}) => {
+export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
   const theme = useAppTheme();
 
   return (
@@ -123,9 +121,7 @@ interface FileBrowserEditorDialogProps {
   viewMode: ViewMode;
 }
 
-export const FileBrowserEditorDialog: React.FC<
-  FileBrowserEditorDialogProps
-> = ({
+export const FileBrowserEditorDialog = ({
   editingFileResource,
   editingPath,
   editorRef,
@@ -143,7 +139,7 @@ export const FileBrowserEditorDialog: React.FC<
   showQuickSave,
   viewIcon,
   viewMode,
-}) => {
+}: FileBrowserEditorDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -235,9 +231,7 @@ interface FileBrowserDetailsDialogProps {
   statData?: ResourceStatData | null;
 }
 
-export const FileBrowserDetailsDialog: React.FC<
-  FileBrowserDetailsDialogProps
-> = ({
+export const FileBrowserDetailsDialog = ({
   detailError,
   detailResource,
   detailTarget,
@@ -250,7 +244,7 @@ export const FileBrowserDetailsDialog: React.FC<
   onEdit,
   shouldShowDetailLoader,
   statData,
-}) => {
+}: FileBrowserDetailsDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -329,9 +323,7 @@ interface FileBrowserUploadDialogProps {
   uploadSummary: UploadSummary;
 }
 
-export const FileBrowserUploadDialog: React.FC<
-  FileBrowserUploadDialogProps
-> = ({
+export const FileBrowserUploadDialog = ({
   fileInputRef,
   folderInputRef,
   isUploadProcessing,
@@ -345,7 +337,7 @@ export const FileBrowserUploadDialog: React.FC<
   open,
   uploadEntries,
   uploadSummary,
-}) => {
+}: FileBrowserUploadDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -456,9 +448,11 @@ interface FileBrowserConflictDialogProps {
   prompt: ConflictPrompt | null;
 }
 
-export const FileBrowserConflictDialog: React.FC<
-  FileBrowserConflictDialogProps
-> = ({ onCancel, onResolve, prompt }) => {
+export const FileBrowserConflictDialog = ({
+  onCancel,
+  onResolve,
+  prompt,
+}: FileBrowserConflictDialogProps) => {
   const theme = useAppTheme();
   // Decisions are stored together with the prompt they belong to, so a new
   // prompt implicitly starts from the safe default (skip everything) — no

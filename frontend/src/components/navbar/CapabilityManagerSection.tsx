@@ -59,7 +59,7 @@ const formatLastChecked = (value: Date | null) => {
   });
 };
 
-const CapabilityManagerSection: React.FC = () => {
+const CapabilityManagerSection = () => {
   const auth = useAuth();
   const { refreshCapabilities } = auth;
 

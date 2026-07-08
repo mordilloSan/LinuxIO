@@ -220,9 +220,7 @@ export interface ToastHistoryContextValue {
 export const ToastHistoryContext =
   createContext<ToastHistoryContextValue | null>(null);
 
-export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const { toasts } = useSonner();
   const history = useSyncExternalStore(subscribeToHistory, getHistorySnapshot);
 

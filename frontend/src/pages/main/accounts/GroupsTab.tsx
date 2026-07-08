@@ -21,10 +21,10 @@ interface GroupsTabProps {
   viewMode?: "table" | "card";
 }
 
-const GroupsTab: React.FC<GroupsTabProps> = ({
+const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: GroupsTabProps) => {
   const { data: groups = [] } = linuxio.accounts.list_groups.useQuery({
     refetchInterval: 10000,
   });

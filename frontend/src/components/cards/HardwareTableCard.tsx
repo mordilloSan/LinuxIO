@@ -6,7 +6,7 @@ export interface HardwareTableCardProps {
   children: React.ReactNode;
 }
 
-const HardwareTableCard: React.FC<HardwareTableCardProps> = ({ children }) => (
+const HardwareTableCard = ({ children }: HardwareTableCardProps) => (
   <FrostedCard style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}>
     {children}
   </FrostedCard>

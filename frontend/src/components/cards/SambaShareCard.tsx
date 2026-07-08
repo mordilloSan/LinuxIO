@@ -1,5 +1,3 @@
-import React from "react";
-
 import { type SambaShare } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -19,11 +17,7 @@ export interface SambaShareCardProps {
   share: SambaShare;
 }
 
-const SambaShareCard: React.FC<SambaShareCardProps> = ({
-  share,
-  onEdit,
-  onRemove,
-}) => (
+const SambaShareCard = ({ share, onEdit, onRemove }: SambaShareCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Name */}
     <AppTypography fontWeight={700} style={{ marginBottom: 2 }} variant="body2">

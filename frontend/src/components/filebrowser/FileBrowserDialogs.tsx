@@ -168,7 +168,7 @@ export interface FileBrowserDialogsProps {
   upload: FileBrowserUploadDialogProps;
 }
 
-const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
+const FileBrowserDialogs = ({
   archive,
   conflict,
   contextMenu,
@@ -178,7 +178,7 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
   editor,
   permissions,
   upload,
-}) => (
+}: FileBrowserDialogsProps) => (
   <>
     <FileBrowserEditorDialog
       editingFileResource={editor.editingFileResource}

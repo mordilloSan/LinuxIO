@@ -14,11 +14,7 @@ interface SortableCardProps {
   id: string;
 }
 
-const SortableCard: React.FC<SortableCardProps> = ({
-  id,
-  editMode,
-  children,
-}) => {
+const SortableCard = ({ id, editMode, children }: SortableCardProps) => {
   const theme = useAppTheme();
   const {
     attributes,

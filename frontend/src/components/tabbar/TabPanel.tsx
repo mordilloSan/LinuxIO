@@ -27,13 +27,13 @@ interface TabPanelProps {
  * - Provides smooth fade transitions
  * - Uses absolute positioning for proper animations
  */
-const TabPanel: React.FC<TabPanelProps> = ({
+const TabPanel = ({
   value,
   activeTab,
   timeout,
   errorFallback,
   children,
-}) => {
+}: TabPanelProps) => {
   const isActive = activeTab === value;
   const [isPresent, setIsPresent] = useState(false);
   const shouldRender = isActive || isPresent;

@@ -318,7 +318,7 @@ export const ConfigAccessorContext =
 // useState mirror is the live copy feature code reads, and the backend is the
 // durable store. Saves are optimistic — local state updates immediately and a
 // failed persist surfaces via the action's error toast.
-export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
+export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const { signOut, user } = useAuth();
   const username = user?.id;
   const [config, setConfig] = useState<AppConfig>(() =>

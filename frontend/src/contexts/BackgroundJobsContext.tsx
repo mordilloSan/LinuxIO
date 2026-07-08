@@ -22,9 +22,11 @@ import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
 import { useUploadChunkSizeGetter } from "@/hooks/useUploadChunkSize";
 import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
-export const BackgroundJobsProvider: React.FC<{
+export const BackgroundJobsProvider = ({
+  children,
+}: {
   children: React.ReactNode;
-}> = ({ children }) => {
+}) => {
   const getUploadChunkSize = useUploadChunkSizeGetter();
 
   const runtime = useBackgroundJobRuntime();

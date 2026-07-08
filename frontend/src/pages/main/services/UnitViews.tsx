@@ -226,12 +226,17 @@ const buttonIcon = (pending: boolean, iconName: string) =>
     <Icon height={16} icon={iconName} width={16} />
   );
 
-export const UnitCardActions: React.FC<{
+export const UnitCardActions = ({
+  unitName,
+  activeState,
+  unitFileState,
+  info,
+}: {
   unitName: string;
   activeState: string;
   unitFileState: string;
   info: UnitInfo | undefined;
-}> = ({ unitName, activeState, unitFileState, info }) => {
+}) => {
   const actionConfig = (verb: string) => ({
     success: `${unitName} ${verb}`,
     error: `Failed to ${verb} ${unitName}`,

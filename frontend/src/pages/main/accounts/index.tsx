@@ -11,7 +11,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
-const AccountsPage: React.FC = () => {
+const AccountsPage = () => {
   const [createUserHandler, setCreateUserHandler] = useState<
     (() => void) | null
   >(null);

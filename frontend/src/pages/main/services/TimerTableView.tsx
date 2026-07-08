@@ -1,5 +1,3 @@
-import React from "react";
-
 import { formatUsec, statusDot, UnitTableView } from "./UnitViews";
 
 import type { Timer } from "@/api";
@@ -42,12 +40,12 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
-const TimerTableView: React.FC<TimerTableViewProps> = ({
+const TimerTableView = ({
   timers,
   selected,
   onSelect,
   onDoubleClick,
-}) => (
+}: TimerTableViewProps) => (
   <UnitTableView
     data={timers}
     desktopColumns={desktopColumns}

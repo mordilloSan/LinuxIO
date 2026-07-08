@@ -44,11 +44,15 @@ interface MultiFileDetailProps {
   totalSize?: number | null;
 }
 
-const DetailRow: React.FC<{
+const DetailRow = ({
+  label,
+  value,
+  isLoading = false,
+}: {
   label: string;
   value: React.ReactNode;
   isLoading?: boolean;
-}> = ({ label, value, isLoading = false }) => {
+}) => {
   const theme = useAppTheme();
 
   return (
@@ -90,10 +94,13 @@ const DetailRow: React.FC<{
   );
 };
 
-const MultiFileItemRow: React.FC<{
+const MultiFileItemRow = ({
+  item,
+  onDownload,
+}: {
   item: MultiFileDetailItem;
   onDownload: (path: string) => void;
-}> = ({ item, onDownload }) => {
+}) => {
   const theme = useAppTheme();
   const baseBorderRadius =
     typeof theme.shape.borderRadius === "number"
@@ -170,12 +177,12 @@ const MultiFileItemRow: React.FC<{
   );
 };
 
-const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
+const MultiFileDetail = ({
   multiItems,
   onDownload,
   totalSize,
   isLoadingDetails,
-}) => {
+}: MultiFileDetailProps) => {
   const theme = useAppTheme();
 
   if (!multiItems?.length) {

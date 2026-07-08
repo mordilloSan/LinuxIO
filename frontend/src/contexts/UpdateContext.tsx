@@ -70,9 +70,7 @@ UpdateContext.displayName = "UpdateContext";
 export const UpdateNavigationContext = createContext<boolean | null>(null);
 UpdateNavigationContext.displayName = "UpdateNavigationContext";
 
-export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const UpdateProvider = ({ children }: { children: React.ReactNode }) => {
   const value = useUpdateController();
   useUpdateNavigationGuard(value.isUpdating);
 

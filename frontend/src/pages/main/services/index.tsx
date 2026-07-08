@@ -1,7 +1,5 @@
-import React from "react";
-
 import ServicesPage from "./ServicesPage";
 
-const ServicesList: React.FC = () => <ServicesPage />;
+const ServicesList = () => <ServicesPage />;
 
 export default ServicesList;

@@ -46,7 +46,7 @@ function parseSizeToBytes(input: string | undefined | null): number {
   return Math.floor(value * Math.pow(1024, pow));
 }
 
-const Drive: React.FC = () => {
+const Drive = () => {
   const theme = useAppTheme();
   const {
     data: rawDrives = [],

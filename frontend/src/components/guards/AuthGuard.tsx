@@ -8,7 +8,7 @@ const AuthenticatedRuntimeProvider = lazy(
   () => import("@/contexts/AuthRuntimeProvider"),
 );
 
-export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
+export const AuthGuard = ({ children }: PropsWithChildren) => {
   const { isAuthenticated, isInitialized, user } = useAuth();
   const location = useLocation();
 

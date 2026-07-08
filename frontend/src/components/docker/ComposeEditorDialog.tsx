@@ -42,7 +42,7 @@ interface ComposeEditorDialogProps {
 const FileEditor = React.lazy(
   () => import("@/components/filebrowser/FileEditor"),
 );
-const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
+const ComposeEditorDialog = ({
   open,
   mode,
   readOnly = false,
@@ -52,7 +52,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   onClose,
   onSave,
   onValidate,
-}) => {
+}: ComposeEditorDialogProps) => {
   const theme = useAppTheme();
   const editorRef = useRef<FileEditorHandle>(null);
   const [stackName, setStackName] = useState(initialStackName);

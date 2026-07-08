@@ -8,11 +8,7 @@ interface TabPanelProps {
   value: number;
 }
 
-export const TabPanel: React.FC<TabPanelProps> = ({
-  children,
-  value,
-  index,
-}) => {
+export const TabPanel = ({ children, value, index }: TabPanelProps) => {
   const theme = useAppTheme();
 
   return (

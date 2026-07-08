@@ -1,5 +1,3 @@
-import React from "react";
-
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -7,9 +5,7 @@ interface LogoDisplayDarkProps {
   showText?: boolean;
 }
 
-const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
-  showText = false,
-}) => {
+const LogoDisplayDark = ({ showText = false }: LogoDisplayDarkProps) => {
   const theme = useAppTheme();
 
   return (

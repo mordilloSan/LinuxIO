@@ -1,5 +1,3 @@
-import React from "react";
-
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
 import AppButton from "@/components/ui/AppButton";
@@ -14,13 +12,13 @@ interface UnsavedChangesDialogProps {
   open: boolean;
 }
 
-const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
+const UnsavedChangesDialog = ({
   open,
   onKeepEditing,
   onDiscardAndExit,
   onSaveAndExit,
   isSaving = false,
-}) => {
+}: UnsavedChangesDialogProps) => {
   const theme = useAppTheme();
 
   return (

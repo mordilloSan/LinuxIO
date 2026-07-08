@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { DriveInfo } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
@@ -10,7 +8,7 @@ interface OverviewTabProps {
   drive: DriveInfo;
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
+export const OverviewTab = ({ drive }: OverviewTabProps) => {
   const smart = drive.smart;
   const power = drive.power;
   const isNvme = drive.transport === "nvme";

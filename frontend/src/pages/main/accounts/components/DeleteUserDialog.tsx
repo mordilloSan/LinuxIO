@@ -1,5 +1,3 @@
-import React from "react";
-
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -22,12 +20,12 @@ interface DeleteUserDialogProps {
   usernames: string[];
 }
 
-const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
+const DeleteUserDialog = ({
   open,
   onClose,
   usernames,
   onSuccess,
-}) => {
+}: DeleteUserDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 

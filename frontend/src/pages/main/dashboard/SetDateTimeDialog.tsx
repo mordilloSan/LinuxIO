@@ -48,7 +48,7 @@ interface Props {
   open: boolean;
 }
 
-const SetDateTimeDialog: React.FC<Props> = ({ open, onClose }) => {
+const SetDateTimeDialog = ({ open, onClose }: Props) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DASHBOARD_TOAST_META);
 

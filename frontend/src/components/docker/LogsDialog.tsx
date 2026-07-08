@@ -25,12 +25,12 @@ interface LogsDialogProps {
   open: boolean;
 }
 
-const LogsDialog: React.FC<LogsDialogProps> = ({
+const LogsDialog = ({
   open,
   onClose,
   containerName,
   containerId,
-}) => {
+}: LogsDialogProps) => {
   const [search, setSearch] = useState("");
   const [tailLines, setTailLines] = useState("100");
 

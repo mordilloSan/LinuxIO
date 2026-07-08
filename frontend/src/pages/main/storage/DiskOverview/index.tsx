@@ -69,13 +69,13 @@ const findBackingDrive = (
   );
 };
 
-const DriveDetails: React.FC<DriveDetailsProps> = ({
+const DriveDetails = ({
   drive,
   expanded,
   rawDrive,
   smartmontoolsAvailable,
   smartmontoolsReason,
-}) => {
+}: DriveDetailsProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [tabIndex, setTabIndex] = useState(0);
@@ -302,7 +302,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   );
 };
 
-const DiskOverview: React.FC = () => {
+const DiskOverview = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useScopedToast(STORAGE_TOAST_META);

@@ -123,10 +123,13 @@ function nfsClientsToRows(clients: NFSClient[]): ClientRow[] {
 // Options dropdown — read-only input that opens a popover with dot toggles
 // ============================================================================
 
-const OptionsDropdown: React.FC<{
+const OptionsDropdown = ({
+  opts,
+  onChange,
+}: {
   opts: ClientOptions;
   onChange: (next: ClientOptions) => void;
-}> = ({ opts, onChange }) => {
+}) => {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -209,13 +212,19 @@ const OptionsDropdown: React.FC<{
 // Client row — host input + options dropdown + remove button
 // ============================================================================
 
-const ClientRowEditor: React.FC<{
+const ClientRowEditor = ({
+  client,
+  index,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
   client: ClientRow;
   index: number;
   canRemove: boolean;
   onChange: (index: number, next: ClientRow) => void;
   onRemove: (index: number) => void;
-}> = ({ client, index, canRemove, onChange, onRemove }) => (
+}) => (
   <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
     <AppTextField
       label="Host"
@@ -247,11 +256,11 @@ interface CreateDialogProps {
   open: boolean;
 }
 
-export const CreateNFSShareDialog: React.FC<CreateDialogProps> = ({
+export const CreateNFSShareDialog = ({
   open,
   onClose,
   onSuccess,
-}) => {
+}: CreateDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const [path, setPath] = useState("");
   const [clients, setClients] = useState<ClientRow[]>([
@@ -372,12 +381,12 @@ interface EditDialogProps {
   share: NFSExport | null;
 }
 
-export const EditNFSShareDialog: React.FC<EditDialogProps> = ({
+export const EditNFSShareDialog = ({
   open,
   onClose,
   share,
   onSuccess,
-}) => {
+}: EditDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const [clients, setClients] = useState<ClientRow[]>(() =>
     share
@@ -494,12 +503,12 @@ interface DeleteDialogProps {
   share: NFSExport | null;
 }
 
-export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
+export const DeleteNFSShareDialog = ({
   open,
   onClose,
   share,
   onSuccess,
-}) => {
+}: DeleteDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const { mutate: deleteShare, isPending } =
     linuxio.shares.delete_nfs_share.useJobAction({
@@ -560,10 +569,7 @@ export const DeleteNFSShareDialog: React.FC<DeleteDialogProps> = ({
 // NFS Shares Component
 // ============================================================================
 
-const NFSShares: React.FC<NFSSharesProps> = ({
-  onCreateHandler,
-  viewMode = "table",
-}) => {
+const NFSShares = ({ onCreateHandler, viewMode = "table" }: NFSSharesProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");

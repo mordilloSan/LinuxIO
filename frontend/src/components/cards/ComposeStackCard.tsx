@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -30,7 +28,7 @@ type ComposeStackCardProps =
       isLoading?: boolean;
     };
 
-const ComposeStackCard: React.FC<ComposeStackCardProps> = (props) => {
+const ComposeStackCard = (props: ComposeStackCardProps) => {
   // The card chrome (shell, layout, divider) is rendered unconditionally;
   // only the data-bearing leaves fall back to skeletons while pending.
   const loaded = props.isPending ? null : props;

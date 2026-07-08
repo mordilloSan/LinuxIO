@@ -318,10 +318,13 @@ function renderProtocolSummary(group: ShareGroup): React.ReactNode {
   );
 }
 
-const NFSOptionsDropdown: React.FC<{
+const NFSOptionsDropdown = ({
+  options,
+  onChange,
+}: {
   options: ClientOptions;
   onChange: (next: ClientOptions) => void;
-}> = ({ options, onChange }) => {
+}) => {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -398,11 +401,11 @@ const NFSOptionsDropdown: React.FC<{
   );
 };
 
-const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
+const CreateFolderShareDialog = ({
   open,
   onClose,
   onSuccess,
-}) => {
+}: CreateFolderShareDialogProps) => {
   const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
@@ -666,12 +669,12 @@ const CreateFolderShareDialog: React.FC<CreateFolderShareDialogProps> = ({
   );
 };
 
-const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
+const EditFolderShareDialog = ({
   open,
   onClose,
   onSuccess,
   group,
-}) => {
+}: EditFolderShareDialogProps) => {
   const toast = useScopedToast({ href: "/shares", label: "Open shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
@@ -966,12 +969,17 @@ const EditFolderShareDialog: React.FC<EditFolderShareDialogProps> = ({
   );
 };
 
-const FolderShareCardActions: React.FC<{
+const FolderShareCardActions = ({
+  group,
+  onEditShare,
+  onDeleteSamba,
+  onDeleteNFS,
+}: {
   group: ShareGroup;
   onEditShare: (group: ShareGroup) => void;
   onDeleteSamba: (share: SambaShare) => void;
   onDeleteNFS: (share: NFSExport) => void;
-}> = ({ group, onEditShare, onDeleteSamba, onDeleteNFS }) => {
+}) => {
   const [removeAnchor, setRemoveAnchor] = useState<HTMLButtonElement | null>(
     null,
   );
@@ -1130,7 +1138,7 @@ function renderExpandedContent(
   );
 }
 
-const SharesPage: React.FC = () => {
+const SharesPage = () => {
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";

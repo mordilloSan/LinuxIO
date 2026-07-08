@@ -1,5 +1,3 @@
-import React from "react";
-
 import { statusDot, UnitTableView } from "./UnitViews";
 
 import type { Service } from "@/api";
@@ -47,12 +45,12 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
-const ServiceTableView: React.FC<ServiceTableViewProps> = ({
+const ServiceTableView = ({
   services,
   selected,
   onSelect,
   onDoubleClick,
-}) => (
+}: ServiceTableViewProps) => (
   <UnitTableView
     data={services}
     desktopColumns={desktopColumns}

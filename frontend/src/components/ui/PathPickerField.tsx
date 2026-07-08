@@ -30,7 +30,7 @@ interface PathPickerFieldProps {
   value: string;
 }
 
-const PathPickerField: React.FC<PathPickerFieldProps> = ({
+const PathPickerField = ({
   value,
   onChange,
   label = "Directory Path",
@@ -51,7 +51,7 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
   browsePath,
   onPickerClose,
   style,
-}) => {
+}: PathPickerFieldProps) => {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
   const anchorRef = useRef<HTMLDivElement>(null);

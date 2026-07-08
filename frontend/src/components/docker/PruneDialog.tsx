@@ -33,12 +33,12 @@ interface PruneDialogProps {
   onConfirm: (opts: PruneOptions) => void;
   open: boolean;
 }
-const PruneDialog: React.FC<PruneDialogProps> = ({
+const PruneDialog = ({
   open,
   onClose,
   onConfirm,
   isLoading = false,
-}) => {
+}: PruneDialogProps) => {
   const [opts, setOpts] = useState<PruneOptions>(defaultOptions);
   const toggle = (key: keyof PruneOptions) =>
     setOpts((prev) => ({

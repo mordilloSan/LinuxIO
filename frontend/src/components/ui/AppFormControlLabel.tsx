@@ -12,14 +12,14 @@ export interface AppFormControlLabelProps {
   value?: string;
 }
 
-const AppFormControlLabel: React.FC<AppFormControlLabelProps> = ({
+const AppFormControlLabel = ({
   control,
   label,
   style,
   className,
   disabled,
   value,
-}) => {
+}: AppFormControlLabelProps) => {
   const cls = ["app-form-control-label", className].filter(Boolean).join(" ");
 
   const clonedControl = React.cloneElement(control, {

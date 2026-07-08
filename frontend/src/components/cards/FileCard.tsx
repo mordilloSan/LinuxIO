@@ -62,7 +62,7 @@ export interface FileCardProps {
   type: string;
 }
 
-const FileCard: React.FC<FileCardProps> = React.memo(
+const FileCard = React.memo<FileCardProps>(
   ({
     name,
     path,

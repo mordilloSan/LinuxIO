@@ -14,14 +14,14 @@ export interface CardIconHeaderProps {
   titleSuffix?: React.ReactNode;
 }
 
-const CardIconHeader: React.FC<CardIconHeaderProps> = ({
+const CardIconHeader = ({
   icon,
   title,
   subtitle,
   titleSuffix,
   right,
   style,
-}) => (
+}: CardIconHeaderProps) => (
   <div
     style={{
       display: "flex",

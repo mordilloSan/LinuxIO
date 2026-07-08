@@ -21,9 +21,9 @@ export interface AppAlertProps extends Omit<
   severity?: AlertSeverity;
 }
 
-export const AppAlertTitle: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => <div className="app-alert__title">{children}</div>;
+export const AppAlertTitle = ({ children }: { children: React.ReactNode }) => (
+  <div className="app-alert__title">{children}</div>
+);
 
 const AppAlert = React.forwardRef<HTMLDivElement, AppAlertProps>(
   (

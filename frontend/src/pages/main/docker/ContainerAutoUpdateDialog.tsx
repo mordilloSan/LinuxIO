@@ -34,13 +34,13 @@ interface ContainerAutoUpdateDialogProps {
   watchtowerReason?: string;
 }
 
-const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
+const ContainerAutoUpdateDialog = ({
   autoUpdate,
   onClose,
   open,
   watchtowerEnabled,
   watchtowerReason,
-}) => {
+}: ContainerAutoUpdateDialogProps) => {
   const theme = useAppTheme();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);

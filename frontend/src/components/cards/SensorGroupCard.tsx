@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import type { SensorGroup, SensorReading } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
@@ -115,7 +114,7 @@ const sensorChipColor = (
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
+const SensorGroupCard = ({ group }: { group: SensorGroup }) => {
   const theme = useAppTheme();
   const visibleReadings = group.readings.filter(isPrimarySensorReading);
   const temps = visibleReadings.filter(isTemperatureReading);

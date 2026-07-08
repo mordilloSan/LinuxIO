@@ -60,12 +60,12 @@ interface MultiValueGaugeProps {
   values: { value: number; color: string; label?: string }[];
 }
 
-export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
+export const MultiValueCircularGauge = ({
   values,
   size = 120,
   thickness = 8,
   gap = 2,
-}) => {
+}: MultiValueGaugeProps) => {
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
@@ -190,13 +190,13 @@ interface GradientGaugeProps {
   value: number;
 }
 
-export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
+export const GradientCircularGauge = ({
   value,
   gradientColors,
   size = 120,
   thickness = 12,
   showPercentage = true,
-}) => {
+}: GradientGaugeProps) => {
   const pct = clamp(value, 0, 100);
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;

@@ -1,5 +1,3 @@
-import React from "react";
-
 import { type DockerVolume } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -15,11 +13,7 @@ export interface VolumeCardProps {
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
-const VolumeCard: React.FC<VolumeCardProps> = ({
-  volume,
-  selected,
-  onSelect,
-}) => (
+const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div

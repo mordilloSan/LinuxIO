@@ -21,7 +21,7 @@ const formatLoadAverage = (loadAverage?: {
     ? `${loadAverage.load1.toFixed(2)} / ${loadAverage.load5.toFixed(2)} / ${loadAverage.load15.toFixed(2)}`
     : "N/A";
 
-const Processor: React.FC = () => {
+const Processor = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const {

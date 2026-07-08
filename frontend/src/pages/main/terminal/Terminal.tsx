@@ -16,7 +16,7 @@ const MIN_FONT = 10;
 const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
 
-const TerminalXTerm: React.FC = () => {
+const TerminalXTerm = () => {
   const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();

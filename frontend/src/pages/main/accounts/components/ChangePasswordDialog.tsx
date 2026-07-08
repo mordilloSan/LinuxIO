@@ -19,11 +19,11 @@ interface ChangePasswordDialogProps {
   username: string;
 }
 
-const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
+const ChangePasswordDialog = ({
   open,
   onClose,
   username,
-}) => {
+}: ChangePasswordDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

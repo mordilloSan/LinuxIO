@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -9,7 +8,7 @@ interface UnitViewToggleProps {
   viewModeKey: string;
 }
 
-const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
+const UnitViewToggle = ({ viewModeKey }: UnitViewToggleProps) => {
   const [viewMode, setViewMode] = useViewMode(viewModeKey, "table");
 
   return (

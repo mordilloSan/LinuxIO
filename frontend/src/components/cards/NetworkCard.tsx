@@ -1,5 +1,3 @@
-import React from "react";
-
 import { type DockerNetwork } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -19,11 +17,7 @@ export interface NetworkCardProps {
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
-const NetworkCard: React.FC<NetworkCardProps> = ({
-  network,
-  selected,
-  onSelect,
-}) => (
+const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div

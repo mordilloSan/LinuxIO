@@ -224,7 +224,7 @@ const getConfigSchemaError = (config: MonitoringConfig): string | null => {
   return null;
 };
 
-const MonitoringSettingsSection: React.FC = () => {
+const MonitoringSettingsSection = () => {
   const theme = useAppTheme();
   const monitoringConfigCache = linuxio.monitoring.get_config.useCache();
   const {

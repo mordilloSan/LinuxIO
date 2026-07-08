@@ -14,12 +14,12 @@ interface SearchBarProps {
   value: string;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({
+const SearchBar = ({
   value,
   onChange,
   placeholder = "Search files...",
   disabled = false,
-}) => {
+}: SearchBarProps) => {
   const theme = useAppTheme();
   const [isFocused, setIsFocused] = useState(false);
 

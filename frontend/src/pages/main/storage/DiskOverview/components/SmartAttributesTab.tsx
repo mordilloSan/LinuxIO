@@ -82,13 +82,13 @@ const ataAttributeColumns: AppDataTableColumnDef<SmartAttribute>[] = [
   },
 ];
 
-export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
+export const SmartAttributesTab = ({
   isNvme,
   smartData,
   smartError,
   nvmeHealthRaw,
   ataAttrs,
-}) => {
+}: SmartAttributesTabProps) => {
   if (isNvme && (nvmeHealthRaw || smartData)) {
     const rows: SmartSummaryRow[] = [];
     const addNumberRow = (

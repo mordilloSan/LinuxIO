@@ -1,5 +1,3 @@
-import React from "react";
-
 import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -7,7 +5,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
-const FsInfoCard: React.FC = () => {
+const FsInfoCard = () => {
   const { data: fsInfo, isPending } = linuxio.system.get_fs_info.useQuery({
     refetchInterval: 2000,
   });

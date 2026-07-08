@@ -19,7 +19,7 @@ interface FilesListProps {
   viewMode: ViewMode;
 }
 
-const FilesList: React.FC<FilesListProps> = React.memo(
+const FilesList = React.memo<FilesListProps>(
   ({
     files,
     selectedPaths,

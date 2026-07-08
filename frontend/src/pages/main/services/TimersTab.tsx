@@ -1,5 +1,3 @@
-import React from "react";
-
 import TimerCardsView from "./TimerCardsView";
 import TimerTableView from "./TimerTableView";
 import UnitListTab from "./UnitListTab";
@@ -52,7 +50,7 @@ function buildTimerInfoRows(
   ];
 }
 
-const TimersTab: React.FC = () => {
+const TimersTab = () => {
   const [viewMode, setViewMode] = useViewMode("timers.list", "table");
   const { data, isPending, isError, error } = useTimersQuery(viewMode);
 

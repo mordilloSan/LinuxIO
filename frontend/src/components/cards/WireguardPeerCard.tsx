@@ -59,12 +59,12 @@ interface PeerCardRowProps {
   wrap?: boolean;
 }
 
-const PeerCardRow: React.FC<PeerCardRowProps> = ({
+const PeerCardRow = ({
   label,
   value,
   wrap = false,
   noDivider = false,
-}) => (
+}: PeerCardRowProps) => (
   <div
     style={{
       display: "flex",
@@ -114,13 +114,13 @@ export interface WireguardPeerCardProps {
   peer: Peer;
 }
 
-const WireguardPeerCard: React.FC<WireguardPeerCardProps> = ({
+const WireguardPeerCard = ({
   peer,
   isOnline,
   onDelete,
   onDownloadConfig,
   onViewQrCode,
-}) => (
+}: WireguardPeerCardProps) => (
   <FrostedCard>
     <AppCardContent>
       {/* Header: name + status + actions */}

@@ -1,5 +1,3 @@
-import React from "react";
-
 import { statusDot, UnitTableView } from "./UnitViews";
 
 import type { Socket } from "@/api";
@@ -49,12 +47,12 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
-const SocketTableView: React.FC<SocketTableViewProps> = ({
+const SocketTableView = ({
   sockets,
   selected,
   onSelect,
   onDoubleClick,
-}) => {
+}: SocketTableViewProps) => {
   const theme = useAppTheme();
 
   return (

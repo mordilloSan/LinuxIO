@@ -30,16 +30,19 @@ const preferredProfile = (status: PowerStatus) => {
   return status.profiles[0]?.name ?? "";
 };
 
-const PowerBadge: React.FC<{
+const PowerBadge = ({
+  label,
+  tone,
+}: {
   label: string;
   tone: "info" | "success" | "warning" | "error";
-}> = ({ label, tone }) => (
+}) => (
   <span className={`power-settings-badge power-settings-badge--${tone}`}>
     {label}
   </span>
 );
 
-const StatusBadge: React.FC<{ status: PowerStatus }> = ({ status }) => {
+const StatusBadge = ({ status }: { status: PowerStatus }) => {
   if (!status.tuned_available) {
     return <PowerBadge label="Unavailable" tone="warning" />;
   }
@@ -49,9 +52,12 @@ const StatusBadge: React.FC<{ status: PowerStatus }> = ({ status }) => {
   return <PowerBadge label="Running" tone="success" />;
 };
 
-const InfoMetric: React.FC<{ label: string; value: React.ReactNode }> = ({
+const InfoMetric = ({
   label,
   value,
+}: {
+  label: string;
+  value: React.ReactNode;
 }) => (
   <div className="power-settings-metric">
     <span className="power-settings-metric__label">{label}</span>
@@ -59,7 +65,7 @@ const InfoMetric: React.FC<{ label: string; value: React.ReactNode }> = ({
   </div>
 );
 
-const PowerSettingsSection: React.FC = () => {
+const PowerSettingsSection = () => {
   const powerStatusCache = linuxio.power.get_status.useCache();
   const [selectedProfile, setSelectedProfile] = useState("");
   const {

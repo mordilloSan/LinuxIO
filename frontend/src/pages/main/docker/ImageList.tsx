@@ -38,13 +38,13 @@ interface DeleteImageDialogProps {
   onSuccess: () => void;
   open: boolean;
 }
-const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
+const DeleteImageDialog = ({
   open,
   onClose,
   imageIds,
   imageTags,
   onSuccess,
-}) => {
+}: DeleteImageDialogProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
@@ -134,10 +134,10 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     </GeneralDialog>
   );
 };
-const ImageList: React.FC<ImageListProps> = ({
+const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
-}) => {
+}: ImageListProps) => {
   const theme = useAppTheme();
   const { data: rawImages } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,

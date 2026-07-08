@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -14,13 +13,13 @@ export interface LVMMetricCardProps {
   value: string;
 }
 
-const LVMMetricCard: React.FC<LVMMetricCardProps> = ({
+const LVMMetricCard = ({
   title,
   value,
   subtitle,
   icon,
   color,
-}) => (
+}: LVMMetricCardProps) => (
   <FrostedCard style={{ padding: GAP_SM, minWidth: 0 }}>
     <CardIconHeader
       icon={<Icon color={color} height={22} icon={icon} width={22} />}

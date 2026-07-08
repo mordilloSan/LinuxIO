@@ -14,12 +14,12 @@ export interface NFSMountCardProps {
   statusLabel: string;
 }
 
-const NFSMountCard: React.FC<NFSMountCardProps> = ({
+const NFSMountCard = ({
   mount,
   statusLabel,
   persistenceLabel,
   actions,
-}) => (
+}: NFSMountCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: mountpoint + actions */}
     <div

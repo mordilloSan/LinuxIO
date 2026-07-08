@@ -32,7 +32,7 @@ interface SettingsDialogProps {
   onClose: () => void;
   open: boolean;
 }
-const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
+const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");

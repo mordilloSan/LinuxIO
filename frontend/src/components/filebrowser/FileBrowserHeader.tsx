@@ -32,7 +32,7 @@ interface FileBrowserHeaderProps {
   viewIcon: ReactNode;
   viewMode: ViewMode;
 }
-const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
+const FileBrowserHeader = ({
   showHiddenFiles,
   showQuickSave = false,
   onSwitchView,
@@ -46,7 +46,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   isDirty = false,
   searchQuery = "",
   onSearchChange = () => {},
-}) => {
+}: FileBrowserHeaderProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const [actionsAnchorEl, setActionsAnchorEl] =

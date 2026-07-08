@@ -19,8 +19,10 @@ export const SidebarContext = createContext<SidebarContextType | undefined>(
   undefined,
 );
 
-export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
+export const SidebarProvider = ({
   children,
+}: {
+  children: React.ReactNode;
 }) => {
   const isDesktop = useAppMediaQuery(`(min-width:${breakpoints.values.md}px)`);
 

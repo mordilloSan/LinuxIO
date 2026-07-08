@@ -1,5 +1,3 @@
-import React from "react";
-
 import SocketCardsView from "./SocketCardsView";
 import SocketTableView from "./SocketTableView";
 import UnitListTab from "./UnitListTab";
@@ -57,7 +55,7 @@ function buildSocketInfoRows(
   ];
 }
 
-const SocketsTab: React.FC = () => {
+const SocketsTab = () => {
   const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
   const { data, isPending, isError, error } = useSocketsQuery(viewMode);
 

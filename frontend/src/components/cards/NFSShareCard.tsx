@@ -1,5 +1,3 @@
-import React from "react";
-
 import { type NFSExport } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -12,11 +10,7 @@ export interface NFSShareCardProps {
   share: NFSExport;
 }
 
-const NFSShareCard: React.FC<NFSShareCardProps> = ({
-  share,
-  onEdit,
-  onRemove,
-}) => (
+const NFSShareCard = ({ share, onEdit, onRemove }: NFSShareCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Path + active indicator */}
     <div

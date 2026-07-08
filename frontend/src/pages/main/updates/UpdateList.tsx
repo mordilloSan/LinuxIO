@@ -12,13 +12,13 @@ interface Props {
   onUpdateClick: (pkg: string) => void;
   updates: Update[];
 }
-const UpdateList: React.FC<Props> = ({
+const UpdateList = ({
   updates,
   onUpdateClick,
   isUpdating,
   currentPackage,
   isLoading,
-}) => {
+}: Props) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   // Kept across collapse so the changelog stays visible during the collapse
   // animation; expanding a card drives the fetch.
