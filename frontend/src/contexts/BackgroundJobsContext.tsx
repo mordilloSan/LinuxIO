@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 
-import { STREAM_MULTIPLEXER_CONFIG } from "@/api";
 import {
   BackgroundJobsIndexerContext,
   type BackgroundJobsIndexerContextValue,
@@ -20,22 +19,20 @@ import { useIndexerJobs } from "@/hooks/backgroundJobs/useIndexerJobs";
 import { useRecoveredJobs } from "@/hooks/backgroundJobs/useRecoveredJobs";
 import { useTransferJobs } from "@/hooks/backgroundJobs/useTransferJobs";
 import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
-import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
+import { useUploadChunkSizeGetter } from "@/hooks/useUploadChunkSize";
 import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
 export const BackgroundJobsProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
-  const chunkSize = useUploadChunkSize();
-  const uploadWindowSize =
-    chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;
+  const getUploadChunkSize = useUploadChunkSizeGetter();
 
   const runtime = useBackgroundJobRuntime();
   const { downloads, startDownload, cancelDownload } = useDownloadJobs(runtime);
-  const { uploads, startUpload, cancelUpload } = useUploadJobs(runtime, {
-    chunkSize,
-    uploadWindowSize,
-  });
+  const { uploads, startUpload, cancelUpload } = useUploadJobs(
+    runtime,
+    getUploadChunkSize,
+  );
   const {
     compressions,
     extractions,

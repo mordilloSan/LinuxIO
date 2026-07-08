@@ -71,8 +71,7 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "contexts/AuthContext.tsx",
   // App-update stream lifecycle (mux handle + frame decoding).
   "contexts/UpdateContext.tsx",
-  // Upload window sizing from the transport default.
-  "contexts/BackgroundJobsContext.tsx",
+  // Upload chunk sizing from the transport default.
   "hooks/useUploadChunkSize.ts",
   // Stream-lifecycle hooks — the sanctioned way pages consume streams.
   "hooks/useLiveStream.ts",

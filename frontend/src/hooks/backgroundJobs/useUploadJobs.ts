@@ -11,8 +11,10 @@ import {
   linuxio,
   openJobDataStream,
   type ProgressFrame,
+  STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
@@ -45,12 +47,13 @@ interface UploadFileEntry {
 
 export function useUploadJobs(
   runtime: BackgroundJobRuntime,
-  {
-    chunkSize,
-    uploadWindowSize,
-  }: { chunkSize: number; uploadWindowSize: number },
+  // Getter, not a value: reading the chunk size at upload start keeps
+  // BackgroundJobsProvider (and the actions context identity) decoupled from
+  // config changes.
+  getChunkSize: () => number,
 ) {
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const uploadsRef = useLatestRef(uploads);
   const {
     activeFileTransferJobIdsRef,
     pendingLocalJobKeysRef,
@@ -101,6 +104,10 @@ export function useUploadJobs(
       if (!isConnected()) {
         return { success: false, error: "Stream connection not ready" };
       }
+
+      const chunkSize = getChunkSize();
+      const uploadWindowSize =
+        chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;
 
       const request: FileUploadBatchRequest = {
         destination,
@@ -297,11 +304,10 @@ export function useUploadJobs(
     [
       activeFileTransferJobIdsRef,
       cancelBridgeJob,
-      chunkSize,
+      getChunkSize,
       pendingLocalJobKeysRef,
       streamRefsRef,
       updateUpload,
-      uploadWindowSize,
     ],
   );
 
@@ -476,7 +482,7 @@ export function useUploadJobs(
 
   const cancelUpload = useCallback(
     (id: string) => {
-      const upload = uploads.find((u) => u.id === id);
+      const upload = uploadsRef.current.find((u) => u.id === id);
       if (upload) {
         // Abort stream if using stream-based upload (RST for immediate cancel)
         // Use ref first (synchronous) then fallback to state
@@ -499,7 +505,7 @@ export function useUploadJobs(
       cancelBridgeJob,
       removeUpload,
       streamRefsRef,
-      uploads,
+      uploadsRef,
     ],
   );
 

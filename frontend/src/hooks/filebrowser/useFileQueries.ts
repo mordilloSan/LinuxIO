@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { CACHE_TTL_MS, linuxio, LinuxIOError } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
-import { FileResource } from "@/types/filebrowser";
 
 interface useFileQueriesParams {
   detailTarget: string[] | null;
@@ -99,45 +98,35 @@ export const useFileQueries = ({
     },
   );
 
-  const multipleResourceData = multipleResourceQueries.map((q) => q.data);
+  // Plain guarded derivation, not useMemo: memoizing would need a
+  // variable-length dep array (hooks-contract violation) and the query
+  // result array is fresh every render anyway. The map's identity churn is
+  // safe downstream — useFileMultipleDirectoryDetails keys its queries by
+  // path string, so it cannot cause refetch loops.
+  const hasAllMultipleResources =
+    multipleDetailTargets.length > 1 &&
+    multipleResourceQueries.every((query) => query.data !== undefined);
 
-  const multipleFileResources = useMemo(() => {
-    if (multipleDetailTargets.length <= 1) return undefined;
-    if (multipleResourceData.some((data) => data === undefined)) {
-      return undefined;
-    }
-
-    return multipleDetailTargets.reduce(
-      (acc, path, index) => {
-        const queryData = multipleResourceData[index];
-        if (queryData === undefined) {
-          return acc;
-        }
-        acc[path] = normalizeResource(queryData);
-        return acc;
-      },
-      {} as Record<string, FileResource>,
-    );
-  }, [multipleDetailTargets, ...multipleResourceData]);
+  const fileResourceMap: Record<
+    string,
+    { name: string; type: string; size: number }
+  > = {};
+  if (hasAllMultipleResources) {
+    multipleDetailTargets.forEach((path, index) => {
+      const data = multipleResourceQueries[index]?.data;
+      if (data === undefined) return;
+      const resource = normalizeResource(data);
+      fileResourceMap[path] = {
+        name: resource.name,
+        type: resource.type,
+        size: resource.size ?? 0,
+      };
+    });
+  }
 
   const isMultipleFilesPending =
     multipleDetailTargets.length > 1 &&
     multipleResourceQueries.some((query) => query.isPending);
-
-  const fileResourceMap = useMemo(() => {
-    if (!multipleFileResources) return {};
-    return Object.entries(multipleFileResources).reduce(
-      (acc, [path, resource]) => {
-        acc[path] = {
-          name: resource.name,
-          type: resource.type,
-          size: resource.size ?? 0,
-        };
-        return acc;
-      },
-      {} as Record<string, { name: string; type: string; size: number }>,
-    );
-  }, [multipleFileResources]);
 
   const multiItemsStats = useFileMultipleDirectoryDetails(
     detailTarget || [],

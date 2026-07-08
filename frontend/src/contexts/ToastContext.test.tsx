@@ -24,7 +24,8 @@ vi.mock("sonner", () => ({
   }),
 }));
 
-const { ToastProvider } = await import("@/contexts/ToastContext");
+const { __resetToastHistoryStore, ToastProvider } =
+  await import("@/contexts/ToastContext");
 const { useClearToastHistory, useToastHistory } =
   await import("@/hooks/useToastHistory");
 const { act, render, screen } = await import("@/test/render");
@@ -61,11 +62,13 @@ function renderProvider(limit?: number) {
 
 describe("ToastProvider", () => {
   beforeEach(() => {
+    __resetToastHistoryStore();
     sonnerMocks.toasts = [];
     sonnerMocks.getHistory.mockReturnValue([]);
   });
 
-  it("records active sonner toasts into history and localStorage", () => {
+  it("records active sonner toasts into history and persists after the debounce", () => {
+    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     sonnerMocks.toasts = [
       {
@@ -82,6 +85,13 @@ describe("ToastProvider", () => {
     expect(screen.getByTestId("history")).toHaveTextContent(
       "Started:Compose stack is up:success:/docker",
     );
+    // Persist is debounced: nothing hits localStorage until the timer fires.
+    expect(localStorage.getItem("linuxio.toastHistory")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
     expect(localStorage.getItem("linuxio.toastHistory")).toContain("Started");
   });
 

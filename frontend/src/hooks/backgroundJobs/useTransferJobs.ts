@@ -19,6 +19,7 @@ import {
   type ProgressFrame,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import {
   createProgressSpeedCalculator,
@@ -228,6 +229,7 @@ function extractionLabelBase(archivePath: string): string {
  */
 export function useTransferJobs(runtime: BackgroundJobRuntime) {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
+  const transfersRef = useLatestRef(transfers);
   const activeTransferIdsRef = useRef<Set<string>>(new Set());
   const { run: runStreamResult } = useStreamResult();
   const {
@@ -438,7 +440,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
 
   const cancelTransfer = useCallback(
     (id: string) => {
-      const item = transfers.find((transfer) => transfer.id === id);
+      const item = transfersRef.current.find((transfer) => transfer.id === id);
       if (!item) {
         return;
       }
@@ -452,7 +454,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       toast.info(`${capitalize(DESCRIPTORS[item.type].noun)} cancelled`);
       removeTransfer(id);
     },
-    [cancelBridgeJob, removeTransfer, streamRefsRef, transfers],
+    [cancelBridgeJob, removeTransfer, streamRefsRef, transfersRef],
   );
 
   const startCompression = useCallback(

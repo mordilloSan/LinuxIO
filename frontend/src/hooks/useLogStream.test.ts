@@ -122,6 +122,25 @@ describe("useLogStream", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
+  it("caps the accumulated buffer and trims to a whole line", async () => {
+    const harness = setupOpenStream();
+    const { result } = renderHook(() =>
+      useLogStream({ createStream: () => createStream(), open: true }),
+    );
+
+    const cap = 512 * 1024;
+    const bigLine = `${"x".repeat(cap - 10)}\n`;
+    await act(async () => {
+      harness.handlers.onData?.(new TextEncoder().encode(bigLine));
+      harness.handlers.onData?.(new TextEncoder().encode("older line\n"));
+      harness.handlers.onData?.(new TextEncoder().encode("newest line\n"));
+    });
+
+    expect(result.current.logs.length).toBeLessThanOrEqual(cap);
+    expect(result.current.logs.startsWith("older line\n")).toBe(true);
+    expect(result.current.logs.endsWith("newest line\n")).toBe(true);
+  });
+
   it("clears loading after initial stream silence", () => {
     vi.useFakeTimers();
     setupOpenStream();

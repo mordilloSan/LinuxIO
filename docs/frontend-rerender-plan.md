@@ -1,5 +1,11 @@
 # Frontend Rerender Performance Plan
 
+Status: implemented 2026-07-08 (all seven fixes below). Remaining
+verification: the profiler re-run and the manual cancel pass per job kind —
+unit suite is green. `BackgroundJobsContext.tsx` also came off the
+stream-primitive allowlist (the transport-config import moved into
+`useUploadJobs`).
+
 ## Summary
 
 Profiler-confirmed (2026-07-07): while any background transfer runs, every job

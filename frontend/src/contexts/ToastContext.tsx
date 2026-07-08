@@ -3,7 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
 import { toast, Toaster, type ToastT, useSonner } from "sonner";
 
@@ -23,6 +23,7 @@ export interface ToastHistoryItem {
 
 const STORAGE_KEY = "linuxio.toastHistory";
 const MAX_STORED_TOASTS = 50;
+const PERSIST_DEBOUNCE_MS = 1_000;
 
 const isBrowser = typeof window !== "undefined";
 const sessionId = `${Date.now().toString(36)}-${
@@ -95,13 +96,9 @@ const coerceText = (
 const buildHistorySnapshot = (
   currentHistory: ToastHistoryItem[],
   toasts: ToastT[],
-  minCreatedAt = 0,
 ): ToastHistoryItem[] => {
   const now = Date.now();
-  const baseHistory = minCreatedAt
-    ? currentHistory.filter((item) => item.createdAt >= minCreatedAt)
-    : currentHistory;
-  const existingById = new Map(baseHistory.map((item) => [item.id, item]));
+  const existingById = new Map(currentHistory.map((item) => [item.id, item]));
   const fromSonner = toasts.filter(
     (item): item is ToastT => !("dismiss" in item),
   );
@@ -128,11 +125,91 @@ const buildHistorySnapshot = (
     [],
   );
   const nextIds = new Set(nextFromSonner.map((item) => item.id));
-  const carryOver = baseHistory.filter((item) => !nextIds.has(item.id));
+  const carryOver = currentHistory.filter((item) => !nextIds.has(item.id));
   const merged = [...nextFromSonner, ...carryOver]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, MAX_STORED_TOASTS);
   return merged;
+};
+
+// --- history store ----------------------------------------------------------
+// Toast history is external state: it is shared with localStorage and fed by
+// sonner, and it must survive across renders without living in React state
+// (deriving it in render or an effect trips the compiler lint rules). So it
+// lives in a tiny module store — effects push sonner changes in, React reads
+// it back through useSyncExternalStore. localStorage is parsed once (lazy)
+// and only written back, debounced, with a pagehide flush.
+
+let inMemoryHistory: ToastHistoryItem[] | null = null;
+let persistTimer: number | undefined;
+const historyListeners = new Set<() => void>();
+
+const getHistorySnapshot = (): ToastHistoryItem[] =>
+  (inMemoryHistory ??= parseStoredHistory());
+
+const subscribeToHistory = (listener: () => void): (() => void) => {
+  historyListeners.add(listener);
+  return () => {
+    historyListeners.delete(listener);
+  };
+};
+
+const flushPersist = () => {
+  if (persistTimer === undefined) return;
+  window.clearTimeout(persistTimer);
+  persistTimer = undefined;
+  persist(getHistorySnapshot());
+};
+
+if (isBrowser) {
+  window.addEventListener("pagehide", flushPersist);
+}
+
+const schedulePersist = () => {
+  if (!isBrowser) return;
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = undefined;
+    persist(getHistorySnapshot());
+  }, PERSIST_DEBOUNCE_MS);
+};
+
+const sameHistory = (a: ToastHistoryItem[], b: ToastHistoryItem[]): boolean =>
+  a.length === b.length &&
+  a.every((item, index) => {
+    const other = b[index];
+    return (
+      item.id === other.id &&
+      item.title === other.title &&
+      item.description === other.description &&
+      item.type === other.type &&
+      item.createdAt === other.createdAt &&
+      item.meta === other.meta
+    );
+  });
+
+const setHistoryStore = (next: ToastHistoryItem[]) => {
+  inMemoryHistory = next;
+  for (const listener of historyListeners) {
+    listener();
+  }
+};
+
+// Fold a sonner change into the merged history. Idempotent (entries are
+// keyed by id), so re-runs with the same toasts leave the store untouched.
+const foldSonnerToasts = (toasts: ToastT[]) => {
+  const current = getHistorySnapshot();
+  const next = buildHistorySnapshot(current, toasts);
+  if (sameHistory(current, next)) return;
+  setHistoryStore(next);
+  schedulePersist();
+};
+
+// Test-only: drop the in-memory store so each test re-reads localStorage.
+export const __resetToastHistoryStore = () => {
+  inMemoryHistory = null;
+  if (isBrowser) window.clearTimeout(persistTimer);
+  persistTimer = undefined;
 };
 
 export interface ToastHistoryContextValue {
@@ -146,17 +223,12 @@ export const ToastHistoryContext =
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [lastClearedAt, setLastClearedAt] = useState(0);
   const { toasts } = useSonner();
-
-  const history = useMemo(() => {
-    const storedHistory = parseStoredHistory();
-    return buildHistorySnapshot(storedHistory, toasts, lastClearedAt);
-  }, [toasts, lastClearedAt]);
+  const history = useSyncExternalStore(subscribeToHistory, getHistorySnapshot);
 
   useEffect(() => {
-    persist(history);
-  }, [history]);
+    foldSonnerToasts(toasts);
+  }, [toasts]);
 
   const clearHistory = useCallback(() => {
     const activeToasts = toast
@@ -166,7 +238,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
     });
     persist([]);
-    setLastClearedAt(Date.now());
+    setHistoryStore([]);
     toast.dismiss();
   }, []);
 

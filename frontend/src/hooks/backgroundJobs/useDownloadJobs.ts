@@ -12,6 +12,7 @@ import {
   type ProgressFrame,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import {
   createProgressSpeedCalculator,
@@ -23,6 +24,7 @@ import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
 export function useDownloadJobs(runtime: BackgroundJobRuntime) {
   const [downloads, setDownloads] = useState<Download[]>([]);
+  const downloadsRef = useLatestRef(downloads);
   const { run: runStreamResult } = useStreamResult();
   const {
     activeFileTransferJobIdsRef,
@@ -72,13 +74,13 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
     async (
       paths: string[],
       reqId: string,
-      _downloadLabelBase: string,
       downloadJob: JobSnapshot,
       abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
         options?: { percent?: number; name?: string },
       ) => string,
+      markDataProgress: () => void,
     ) => {
       const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
       const chunks: Uint8Array[] = [];
@@ -95,6 +97,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
           chunks.push(data);
         },
         onProgress: (progress) => {
+          markDataProgress();
           const speed = getSpeed(progress.bytes);
 
           let phaseLabel: string;
@@ -209,6 +212,12 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         };
 
         setDownloads((prev) => [...prev, download]);
+        // Both streams receive the job's progress frames. Once the data
+        // stream is delivering them, the attach stream stays silent so each
+        // frame updates the item once; attach keeps covering the phases
+        // before bytes flow to the client (preparing, compressing,
+        // waiting_for_client).
+        let dataStreamHasProgress = false;
         const getJobSpeed = createProgressSpeedCalculator();
         void runStreamResult<unknown, ProgressFrame>({
           open: () => openJobAttachStream(activeDownloadJob.id),
@@ -217,6 +226,9 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
           openErrorMessage: "Failed to attach download job",
           closeMessage: "Download job stream closed unexpectedly",
           onProgress: (progress) => {
+            if (dataStreamHasProgress) {
+              return;
+            }
             const speed = getJobSpeed(progress.bytes);
             let phaseLabel: string;
             switch (progress.phase) {
@@ -254,10 +266,12 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         const blob = await startStreamBasedDownload(
           paths,
           reqId,
-          downloadLabelBase,
           activeDownloadJob,
           abortController.signal,
           formatDownloadLabel,
+          () => {
+            dataStreamHasProgress = true;
+          },
         );
 
         updateDownload(reqId, {
@@ -315,7 +329,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
 
   const cancelDownload = useCallback(
     (id: string) => {
-      const download = downloads.find((d) => d.id === id);
+      const download = downloadsRef.current.find((d) => d.id === id);
       if (download) {
         download.abortController.abort();
         // Abort stream if using stream-based download (RST for immediate cancel)
@@ -332,7 +346,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         removeDownload(id);
       }
     },
-    [downloads, cancelBridgeJob, removeDownload, streamRefsRef],
+    [downloadsRef, cancelBridgeJob, removeDownload, streamRefsRef],
   );
 
   return {

@@ -32,6 +32,21 @@ export interface UseLogStreamResult {
 
 const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
 
+// A live stream is unbounded; without a cap the buffer grows forever and
+// every appended frame pays an O(buffer) string copy. Oldest lines fall off
+// the top, trimmed to the next newline so the buffer starts on a whole line.
+const MAX_LOG_BUFFER_CHARS = 512 * 1024;
+
+function appendLogs(prev: string, text: string): string {
+  const next = prev + text;
+  if (next.length <= MAX_LOG_BUFFER_CHARS) {
+    return next;
+  }
+  const trimmed = next.slice(next.length - MAX_LOG_BUFFER_CHARS);
+  const newlineIndex = trimmed.indexOf("\n");
+  return newlineIndex === -1 ? trimmed : trimmed.slice(newlineIndex + 1);
+}
+
 /**
  * Manages a live log stream: opens/closes based on dialog state and live mode,
  * accumulates log text, and handles loading/error state.
@@ -86,7 +101,7 @@ export function useLogStream({
       clearInitialLoadTimeout();
       setIsLoading(false);
     }
-    setLogs((prev) => prev + text);
+    setLogs((prev) => appendLogs(prev, text));
   });
 
   const handleStreamResult = useEffectEvent(

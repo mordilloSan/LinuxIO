@@ -23,6 +23,7 @@ import {
   useStreamMux,
 } from "@/api";
 import useAuth from "@/hooks/useAuth";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import {
   ConfigContextType,
   ConfigPatch,
@@ -301,6 +302,17 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
   undefined,
 );
 
+export interface ConfigAccessorContextValue {
+  /** Current config, read through a ref — always fresh, never a rerender. */
+  getConfig: () => AppConfig;
+}
+
+// Identity-stable escape hatch for providers that must not rerender on
+// config changes (BackgroundJobsProvider): its value never changes after
+// mount, so subscribing costs nothing per config update.
+export const ConfigAccessorContext =
+  createContext<ConfigAccessorContextValue | null>(null);
+
 // Config state is deliberately layered: the sessionStorage cache seeds the
 // initial render synchronously (no theme flash before the mux is up), the
 // useState mirror is the live copy feature code reads, and the backend is the
@@ -455,8 +467,15 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     () => ({ config, setKey, updateConfig, isLoaded }),
     [config, setKey, updateConfig, isLoaded],
   );
+  const configRef = useLatestRef(config);
+  const accessorValue = useMemo<ConfigAccessorContextValue>(
+    () => ({ getConfig: () => configRef.current }),
+    [configRef],
+  );
   if (!isLoaded) return null;
   return (
-    <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
+    <ConfigAccessorContext.Provider value={accessorValue}>
+      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
+    </ConfigAccessorContext.Provider>
   );
 };

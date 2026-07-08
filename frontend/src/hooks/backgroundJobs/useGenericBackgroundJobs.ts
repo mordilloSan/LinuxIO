@@ -3,10 +3,13 @@ import { toast } from "sonner";
 
 import type { BackgroundJob } from "@/types/backgroundJobs";
 
+import { useLatestRef } from "@/hooks/useLatestRef";
+
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
 export function useGenericBackgroundJobs(runtime: BackgroundJobRuntime) {
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
+  const backgroundJobsRef = useLatestRef(backgroundJobs);
   const { activeBackgroundJobIdsRef, streamRefsRef, cancelBridgeJob } = runtime;
 
   const removeBackgroundJob = useCallback(
@@ -23,7 +26,7 @@ export function useGenericBackgroundJobs(runtime: BackgroundJobRuntime) {
 
   const cancelJob = useCallback(
     (id: string) => {
-      const job = backgroundJobs.find((item) => item.id === id);
+      const job = backgroundJobsRef.current.find((item) => item.id === id);
       if (!job) return;
       job.abortController.abort();
       const stream = streamRefsRef.current.get(id) || job.stream;
@@ -35,7 +38,7 @@ export function useGenericBackgroundJobs(runtime: BackgroundJobRuntime) {
       toast.info("Job cancelled");
       removeBackgroundJob(id);
     },
-    [backgroundJobs, cancelBridgeJob, removeBackgroundJob, streamRefsRef],
+    [backgroundJobsRef, cancelBridgeJob, removeBackgroundJob, streamRefsRef],
   );
 
   return {
