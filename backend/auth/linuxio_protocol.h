@@ -87,6 +87,10 @@
 
 /* ==========================================================================
  * Max lengths for variable fields
+ *
+ * These are C buffer sizes including the NUL terminator: the maximum
+ * accepted string length is N-1 bytes. The Go sender enforces the same
+ * limits (see backend/common/ipc/auth).
  * ========================================================================== */
 
 #define PROTO_MAX_USERNAME           256

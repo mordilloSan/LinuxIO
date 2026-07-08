@@ -52,6 +52,7 @@
 #define SOCKET_WRITE_TIMEOUT 10
 #define BRIDGE_START_TIMEOUT_MS 5000
 #define LINUXIO_WEB_TTY "web console"
+#define BRIDGE_PATH "/usr/local/bin/linuxio-bridge"
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -864,6 +865,18 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
     close(inpipe[0]);
     close(inpipe[1]);
 
+    // Inherited stdout is the client socket; sudo -l prints the permitted
+    // command there, which would corrupt the binary response stream.
+    {
+      int devnull = open("/dev/null", O_WRONLY);
+      if (devnull < 0)
+        _exit(127);
+      if (dup2(devnull, STDOUT_FILENO) < 0)
+        _exit(127);
+      if (devnull != STDOUT_FILENO)
+        close(devnull);
+    }
+
     clearenv();
     setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
     setenv("LANG", "C", 1);
@@ -878,20 +891,26 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
 
   int status = 0;
   int elapsed_ms = 0;
+  int reaped = 0;
   while (elapsed_ms < timeout_sec * 1000)
   {
     pid_t r = waitpid(pid, &status, WNOHANG);
     if (r == pid)
+    {
+      reaped = 1;
       break;
+    }
     if (r < 0 && errno != EINTR)
       break;
     usleep(100 * 1000);
     elapsed_ms += 100;
   }
-  if (elapsed_ms >= timeout_sec * 1000)
+  // Timeout or waitpid error: fail closed - callers treat 0 as "allowed",
+  // so never fall through to WEXITSTATUS of an unreaped/zeroed status.
+  if (!reaped)
   {
     kill(pid, SIGKILL);
-    waitpid(pid, &status, 0);
+    (void)waitpid(pid, &status, 0);
     return -1;
   }
 
@@ -902,36 +921,38 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
   return -1;
 }
 
-static int user_has_sudo(const struct passwd *pw, const char *password, int *out_nopasswd)
+// Privileged-mode policy: the user must be allowed by sudoers to run the
+// bridge binary as root. "sudo -l -- <cmd>" exits 0 only if the security
+// policy permits the invoking user to run that exact command (sudo(8)), so
+// sudoers stays the single source of truth: full admins (ALL) qualify,
+// users with unrelated narrow rules do not, and an admin can grant web
+// admin access explicitly by whitelisting BRIDGE_PATH in sudoers.
+static int user_can_run_bridge_as_root(const struct passwd *pw, const char *password)
 {
-  // We don't currently differentiate NOPASSWD vs PASSWD in the rest of the code,
-  // so just clear this and treat "has sudo" as a boolean.
-  if (out_nopasswd)
-    *out_nopasswd = 0;
-
-  // How long we wait for sudo -S -v to complete
+  // How long we wait for the sudo policy check to complete
   int to_pw = env_get_int("LINUXIO_SUDO_TIMEOUT_PASSWORD", 4, 1, 30);
 
   // If we don't have a password, don't even try
   if (!password || !*password)
     return 0;
 
-  // Validate sudo using the same password we used for PAM
-  const char *argv_pw[] = {"/usr/bin/sudo", "-S", "-p", "", "-v", NULL};
+  // Authenticate with the same password we used for PAM
+  const char *argv_list[] = {"/usr/bin/sudo", "-S", "-p", "", "-u", "root",
+                             "-l", "--", BRIDGE_PATH, NULL};
 
   // Buffer must accommodate password + newline + null terminator
   char buf[PROTO_MAX_PASSWORD + 2];
   (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
 
-  int rc = run_cmd_as_user_with_input(pw, argv_pw, buf, to_pw);
+  int rc = run_cmd_as_user_with_input(pw, argv_list, buf, to_pw);
 
   // Wipe the temporary buffer
   secure_bzero(buf, sizeof(buf));
 
   if (rc == 0)
   {
-    // Drop any cached sudo credentials immediately; we just wanted to know
-    // whether sudo works, not to keep a ticket open.
+    // Drop any cached sudo credentials immediately; we just wanted the
+    // policy answer, not to keep a ticket open.
     const char *argv_k[] = {"/usr/bin/sudo", "-k", NULL};
     (void)run_cmd_as_user_with_input(pw, argv_k, NULL, 2);
     return 1;
@@ -940,20 +961,31 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
   return 0;
 }
 
+// Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
+// stderr (wired to the journal) before _exit, so a bridge that dies during
+// setup is attributable instead of a silent status-127 exit.
+__attribute__((__noreturn__)) static void child_die(const char *what)
+{
+  char buf[256];
+  (void)safe_snprintf(buf, sizeof(buf), "linuxio-auth: bridge setup failed: %s: %m\n", what);
+  (void)write_all(STDERR_FILENO, buf, strlen(buf));
+  _exit(127);
+}
+
 static void drop_to_user(const struct auth_user *auth_user)
 {
   if (!auth_user)
-    _exit(127);
+    child_die("no user to drop to");
   if (setgroups(0, NULL) != 0)
-    _exit(127);
+    child_die("setgroups");
   if (initgroups(auth_user->name, auth_user->gid) != 0)
-    _exit(127);
+    child_die("initgroups");
   if (setgid(auth_user->gid) != 0)
-    _exit(127);
+    child_die("setgid");
   if (setuid(auth_user->uid) != 0)
-    _exit(127);
+    child_die("setuid");
   if (setuid(0) == 0)
-    _exit(127);
+    child_die("privilege drop verification (setuid(0) unexpectedly succeeded)");
 }
 // Locale validation - only allow safe locale strings
 static int valid_locale(const char *s)
@@ -1005,7 +1037,8 @@ static int valid_session_id(const char *s)
 
 // -------- Peer credential check (defense-in-depth) --------
 // Verify the connecting process is authorized (root or linuxio-bridge-socket group)
-// This mirrors the systemd socket policy but is kernel-enforced.
+// This mirrors the systemd socket policy: the uid/gid come from the kernel
+// (SO_PEERCRED); group membership is resolved from the user database.
 #define AUTH_SOCKET_GROUP "linuxio-bridge-socket"
 
 // Returns 1 if uid is in target_gid (by configured groups), 0 if not, -1 on error.
@@ -1239,7 +1272,7 @@ static pid_t spawn_bridge_process(
   if (orig_exec_status >= 0 && orig_exec_status <= BRIDGE_FD)
   {
     tmp_exec_status = dup(orig_exec_status);
-    if (tmp_exec_status < 0) _exit(127);
+    if (tmp_exec_status < 0) child_die("dup exec-status fd");
     // Preserve CLOEXEC on the new FD
     {
       int fdflags = fcntl(tmp_exec_status, F_GETFD);
@@ -1257,7 +1290,7 @@ static pid_t spawn_bridge_process(
   if (orig_bridge >= 0 && orig_bridge <= BRIDGE_FD)
   {
     tmp_bridge = dup(orig_bridge);
-    if (tmp_bridge < 0) _exit(127);
+    if (tmp_bridge < 0) child_die("dup bridge fd");
     // Close original to avoid leaking extra FD
     close(orig_bridge);
   }
@@ -1272,30 +1305,30 @@ static pid_t spawn_bridge_process(
   {
     // client_fd is stdin - need to save it first
     int saved_client = dup(orig_client);
-    if (saved_client < 0) _exit(127);
+    if (saved_client < 0) child_die("dup client fd");
     orig_client = saved_client;
   }
 
   if (orig_bootstrap >= 0)
   {
-    if (dup2(orig_bootstrap, STDIN_FILENO) < 0) _exit(127);
+    if (dup2(orig_bootstrap, STDIN_FILENO) < 0) child_die("dup2 bootstrap to stdin");
     if (orig_bootstrap != STDIN_FILENO) close(orig_bootstrap);
   }
 
   // Step 3: Set up stdout (FD 1) as dup of stderr
-  if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(127);
+  if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) child_die("dup2 stderr to stdout");
 
   // Step 4: Set up client connection at FD 3
   if (orig_client >= 0 && orig_client != CLIENT_CONN_FD)
   {
-    if (dup2(orig_client, CLIENT_CONN_FD) < 0) _exit(127);
+    if (dup2(orig_client, CLIENT_CONN_FD) < 0) child_die("dup2 client connection");
     close(orig_client);
   }
 
   // Step 5: Set up exec_status_fd at FD 4 (keep CLOEXEC)
   if (tmp_exec_status >= 0 && tmp_exec_status != EXEC_STATUS_FD)
   {
-    if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) _exit(127);
+    if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) child_die("dup2 exec-status fd");
     close(tmp_exec_status);
     // Restore CLOEXEC on the new FD
     {
@@ -1317,7 +1350,7 @@ static pid_t spawn_bridge_process(
   // Step 6: Set up bridge_fd at FD 5
   if (tmp_bridge >= 0 && tmp_bridge != BRIDGE_FD)
   {
-    if (dup2(tmp_bridge, BRIDGE_FD) < 0) _exit(127);
+    if (dup2(tmp_bridge, BRIDGE_FD) < 0) child_die("dup2 bridge fd");
     close(tmp_bridge);
   }
 
@@ -1399,11 +1432,11 @@ static pid_t spawn_bridge_process(
     setenv("USER", "root", 1);
     setenv("LOGNAME", "root", 1);
     if (setgroups(0, NULL) != 0)
-      _exit(127);
+      child_die("setgroups (privileged)");
     if (setresgid(0, 0, 0) != 0)
-      _exit(127);
+      child_die("setresgid (privileged)");
     if (setresuid(0, 0, 0) != 0)
-      _exit(127);
+      child_die("setresuid (privileged)");
   }
   else
   {
@@ -1417,7 +1450,7 @@ static pid_t spawn_bridge_process(
       safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)auth_user->uid);
       setenv("XDG_RUNTIME_DIR", xdg, 1);
       if (chdir(auth_user->dir) != 0)
-        _exit(127);
+        child_die("chdir to home directory");
     }
   }
 
@@ -1644,9 +1677,8 @@ static int handle_client(int input_fd, int output_fd)
     journal_info_fieldsf(fields, 2, "pam auth success");
   }
 
-  // Check sudo capability
-  int nopasswd = 0;
-  int want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
+  // Privileged mode iff sudoers lets this user run the bridge as root
+  int want_privileged = user_can_run_bridge_as_root(pw, password) ? 1 : 0;
 
   // Clear password from memory
   secure_bzero(password, sizeof(password));
@@ -1655,7 +1687,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
   int bridge_fd = -1;
-  if (open_and_validate_bridge("/usr/local/bin/linuxio-bridge", 0, &bridge_fd) != 0)
+  if (open_and_validate_bridge(BRIDGE_PATH, 0, &bridge_fd) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge validation failed");
     pam_setcred(pamh, PAM_DELETE_CRED);
@@ -1664,9 +1696,27 @@ static int handle_client(int input_fd, int output_fd)
   }
   // Keep bridge_fd open - we'll exec it directly to prevent TOCTOU
 
-  // Create pipe for bootstrap data (secrets never touch filesystem)
-  int bootstrap_pipe[2];
-  if (pipe(bootstrap_pipe) != 0)
+  // Create pipe for bootstrap data (secrets never touch filesystem).
+  // O_CLOEXEC on both ends: the child's dup2 to stdin clears it on FD 0,
+  // while the child's inherited copy of the write end closes at exec -
+  // otherwise the bridge would hold its own stdin open and never see EOF.
+  int bootstrap_pipe[2] = {-1, -1};
+  int bootstrap_rc;
+#if defined(HAVE_PIPE2) || (defined(__linux__) && defined(O_CLOEXEC))
+  bootstrap_rc = pipe2(bootstrap_pipe, O_CLOEXEC);
+#else
+  bootstrap_rc = pipe(bootstrap_pipe);
+  if (bootstrap_rc == 0)
+  {
+    int fdflags = fcntl(bootstrap_pipe[0], F_GETFD);
+    if (fdflags >= 0)
+      (void)fcntl(bootstrap_pipe[0], F_SETFD, fdflags | FD_CLOEXEC);
+    fdflags = fcntl(bootstrap_pipe[1], F_GETFD);
+    if (fdflags >= 0)
+      (void)fcntl(bootstrap_pipe[1], F_SETFD, fdflags | FD_CLOEXEC);
+  }
+#endif
+  if (bootstrap_rc != 0)
   {
     journal_errorf("failed to create bootstrap pipe: %m");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare bootstrap");
@@ -1860,8 +1910,37 @@ static int handle_client(int input_fd, int output_fd)
     pam_end(pamh, 0);
     return 1;
   }
-  // exec_status_n == 0 means EOF = exec succeeded (CLOEXEC closed the pipe)
-  // exec_status_n < 0 is read error, but exec likely succeeded anyway
+  // exec_status_n == 0 means EOF. Usually exec succeeded (CLOEXEC closed the
+  // pipe), but a child that _exit()s during pre-exec setup (privilege drop,
+  // chdir to a missing home dir, FD shuffle) also closes the write end
+  // without writing a byte. Distinguish with a non-blocking reap: a
+  // successfully exec'd bridge is still running at this point.
+  // exec_status_n < 0 is a read error; fall through to the same probe.
+  {
+    int wstatus = 0;
+    pid_t reaped;
+    do
+    {
+      reaped = waitpid(child, &wstatus, WNOHANG);
+    } while (reaped < 0 && errno == EINTR);
+
+    if (reaped == child)
+    {
+      char status_buf[16];
+      (void)safe_snprintf(status_buf, sizeof(status_buf), "%d",
+                          WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+          {"LINUXIO_STATUS", status_buf},
+      };
+      journal_error_fieldsf(fields, 2, "bridge died during startup (status %s)", status_buf);
+      send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge failed to start");
+      pam_close_session(pamh, 0);
+      pam_setcred(pamh, PAM_DELETE_CRED);
+      pam_end(pamh, 0);
+      return 1;
+    }
+  }
 
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
@@ -1958,6 +2037,11 @@ int main(int argc, char *argv[])
     return 126;
   }
   (void)prctl(PR_SET_DUMPABLE, 0);
+
+  // Don't die on writes to closed pipes/sockets; write() reports EPIPE and
+  // write_all() handles it. systemd's IgnoreSIGPIPE default covers the
+  // socket-activated path, but don't depend on it for manual/sudo runs.
+  (void)signal(SIGPIPE, SIG_IGN);
 
   if (isatty(STDIN_FILENO))
   {
