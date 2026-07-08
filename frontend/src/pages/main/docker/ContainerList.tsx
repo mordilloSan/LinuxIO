@@ -26,7 +26,7 @@ import { useSearchParams } from "react-router-dom";
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
-import { useContainerAutoUpdateControls } from "./useContainerAutoUpdateControls";
+import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
 import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { linuxio, openDockerLogsStream } from "@/api";
@@ -44,6 +44,11 @@ import {
 
 interface ContainerListProps {
   checkingUpdates?: boolean;
+  /**
+   * Page-level auto-update controller, shared with the settings dialog so
+   * both surfaces write through one save queue.
+   */
+  containerAutoUpdate: ContainerAutoUpdateController;
   editMode: boolean;
   stoppingContainerIds?: ReadonlySet<string>;
   viewMode?: "card" | "table";
@@ -53,6 +58,7 @@ const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 
 const ContainerList: React.FC<ContainerListProps> = ({
   checkingUpdates = false,
+  containerAutoUpdate,
   editMode,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
@@ -68,7 +74,6 @@ const ContainerList: React.FC<ContainerListProps> = ({
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const selectedContainerId = searchParams.get("container");
   const [search, setSearch] = useState("");
-  const containerAutoUpdate = useContainerAutoUpdateControls();
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
 

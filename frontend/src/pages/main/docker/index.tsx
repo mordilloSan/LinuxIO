@@ -8,6 +8,7 @@ import ContainerList from "./ContainerList";
 import DockerDashboard from "./DockerDashboard";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
+import { useContainerAutoUpdateState } from "./useContainerAutoUpdateState";
 import VolumeList from "./VolumeList";
 
 import { linuxio, type ContainerInfo } from "@/api";
@@ -39,6 +40,9 @@ const DockerPage: React.FC = () => {
     useCapability("watchtowerAvailable");
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
+  // Single writer for auto-update state, shared by the container list's
+  // toggles and the settings dialog so their saves cannot race.
+  const containerAutoUpdate = useContainerAutoUpdateState();
   const stopAllInFlightRef = useRef(false);
   const [stoppingContainerIds, setStoppingContainerIds] = useState<Set<string>>(
     () => new Set(),
@@ -327,6 +331,7 @@ const DockerPage: React.FC = () => {
             component: (
               <ContainerList
                 checkingUpdates={isCheckingUpdates}
+                containerAutoUpdate={containerAutoUpdate}
                 editMode={containerEditMode}
                 stoppingContainerIds={stoppingContainerIds}
                 viewMode={containerView}
@@ -564,6 +569,7 @@ const DockerPage: React.FC = () => {
         open={pruneDialogOpen}
       />
       <ContainerAutoUpdateDialog
+        autoUpdate={containerAutoUpdate}
         onClose={() => setAutoUpdateDialogOpen(false)}
         open={autoUpdateDialogOpen}
         watchtowerEnabled={watchtowerEnabled}

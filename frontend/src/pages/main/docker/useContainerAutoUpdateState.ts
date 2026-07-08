@@ -4,69 +4,38 @@ import {
   CACHE_TTL_MS,
   linuxio,
   type DockerContainerAutoUpdateOptions,
-  type DockerContainerAutoUpdateState,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+import {
+  DEFAULT_AUTO_UPDATE_OPTIONS,
+  diffNames,
+  normalizeOptions,
+  optionsKey,
+  stateWithOptions,
+} from "./containerAutoUpdate";
+
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 const SAVE_DEBOUNCE_MS = 250;
-const DEFAULT_OPTIONS: DockerContainerAutoUpdateOptions = {
-  cleanup: false,
-  container_names: [],
-  enabled: false,
-  mode: "update",
-  time: "04:00",
-};
 
-const uniqueNames = (names: string[]) => [...new Set(names)].sort();
+export type ContainerAutoUpdateController = ReturnType<
+  typeof useContainerAutoUpdateState
+>;
 
-const normalizeOptions = (options: DockerContainerAutoUpdateOptions) => ({
-  ...options,
-  container_names: uniqueNames(options.container_names ?? []),
-});
-
-const optionsKey = (options: DockerContainerAutoUpdateOptions) =>
-  JSON.stringify(normalizeOptions(options));
-
-const diffNames = (confirmedNames: string[], desiredNames: string[]) => {
-  const confirmed = new Set(confirmedNames);
-  const desired = new Set(desiredNames);
-  const pending = new Set<string>();
-
-  for (const name of desired) {
-    if (!confirmed.has(name)) pending.add(name);
-  }
-  for (const name of confirmed) {
-    if (!desired.has(name)) pending.add(name);
-  }
-
-  return pending;
-};
-
-const stateWithOptions = (
-  state: DockerContainerAutoUpdateState,
-  options: DockerContainerAutoUpdateOptions,
-): DockerContainerAutoUpdateState => {
-  const selected = new Set(options.container_names ?? []);
-  return {
-    ...state,
-    containers: (state.containers ?? []).map((container) => ({
-      ...container,
-      selected: selected.has(container.name),
-    })),
-    missing_container_names: (state.missing_container_names ?? []).filter(
-      (name) => selected.has(name),
-    ),
-    options,
-  };
-};
-
-export const useContainerAutoUpdateControls = () => {
+/**
+ * The single writer for `docker.get_container_auto_update` state. Every save
+ * — the container list's optimistic per-container toggles and the settings
+ * dialog's explicit Save — funnels through one coalescing queue, so the two
+ * surfaces cannot clobber each other's writes. Instantiate once per page and
+ * pass the controller down.
+ */
+export const useContainerAutoUpdateState = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);
   const autoUpdateCache = linuxio.docker.get_container_auto_update.useCache();
   const [confirmedOptions, setConfirmedOptions] =
     useState<DockerContainerAutoUpdateOptions | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const confirmedOptionsRef = useRef<DockerContainerAutoUpdateOptions | null>(
     null,
   );
@@ -87,7 +56,8 @@ export const useContainerAutoUpdateControls = () => {
     linuxio.docker.set_container_auto_update.useJobAction({ invalidates: [] });
 
   const containerNames =
-    query.data?.options?.container_names ?? DEFAULT_OPTIONS.container_names;
+    query.data?.options?.container_names ??
+    DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
   const selectedNames = useMemo(
     () => new Set(containerNames),
     [containerNames],
@@ -147,6 +117,7 @@ export const useContainerAutoUpdateControls = () => {
     }
 
     saveLoopRunningRef.current = true;
+    setIsSaving(true);
     try {
       while (queuedOptionsRef.current) {
         const options = queuedOptionsRef.current;
@@ -178,7 +149,8 @@ export const useContainerAutoUpdateControls = () => {
             continue;
           }
 
-          const confirmed = confirmedOptionsRef.current ?? DEFAULT_OPTIONS;
+          const confirmed =
+            confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
           desiredOptionsRef.current = confirmed;
           const current = autoUpdateCache.get();
           if (current) {
@@ -194,6 +166,7 @@ export const useContainerAutoUpdateControls = () => {
       }
     } finally {
       saveLoopRunningRef.current = false;
+      setIsSaving(false);
     }
   }, [autoUpdateCache, saveAutoUpdateOptions, toast]);
 
@@ -217,7 +190,7 @@ export const useContainerAutoUpdateControls = () => {
     (name: string) => {
       const state = autoUpdateCache.get();
       if (!state) return;
-      const options = state.options ?? DEFAULT_OPTIONS;
+      const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
 
       const nextNames = new Set(options.container_names ?? []);
       const enabling = !nextNames.has(name);
@@ -239,11 +212,47 @@ export const useContainerAutoUpdateControls = () => {
     [autoUpdateCache, scheduleSave],
   );
 
-  return {
-    disabled,
-    pendingNames,
-    reason,
-    selectedNames,
-    toggleContainer,
-  };
+  // Explicit whole-form save (settings dialog): optimistic like the toggles,
+  // but flushed immediately instead of waiting out the toggle debounce.
+  const saveOptions = useCallback(
+    (options: DockerContainerAutoUpdateOptions) => {
+      const nextOptions = normalizeOptions(options);
+      desiredOptionsRef.current = nextOptions;
+      const current = autoUpdateCache.get();
+      if (current) {
+        void autoUpdateCache.cancel();
+        autoUpdateCache.set(stateWithOptions(current, nextOptions));
+      }
+      queuedOptionsRef.current = nextOptions;
+      void runQueuedSave();
+    },
+    [autoUpdateCache, runQueuedSave],
+  );
+
+  return useMemo(
+    () => ({
+      disabled,
+      isPending: query.isPending,
+      isSaving,
+      pendingNames,
+      queryError: query.error?.message,
+      reason,
+      saveOptions,
+      selectedNames,
+      state: query.data,
+      toggleContainer,
+    }),
+    [
+      disabled,
+      query.isPending,
+      query.error?.message,
+      query.data,
+      isSaving,
+      pendingNames,
+      reason,
+      saveOptions,
+      selectedNames,
+      toggleContainer,
+    ],
+  );
 };

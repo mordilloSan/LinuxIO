@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
 import React, { useMemo, useState } from "react";
 
+import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
+import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
+
 import {
-  CACHE_TTL_MS,
-  linuxio,
   type DockerContainerAutoUpdateMode,
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
@@ -22,71 +23,37 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
-
-const DEFAULT_OPTIONS: DockerContainerAutoUpdateOptions = {
-  cleanup: false,
-  container_names: [],
-  enabled: false,
-  mode: "update",
-  time: "04:00",
-};
-
 interface ContainerAutoUpdateDialogProps {
+  autoUpdate: ContainerAutoUpdateController;
   onClose: () => void;
   open: boolean;
   watchtowerEnabled: boolean;
   watchtowerReason?: string;
 }
 
-const normalizeOptions = (options: DockerContainerAutoUpdateOptions) => ({
-  ...options,
-  container_names: [...new Set(options.container_names)].sort(),
-});
-
-const optionKey = (options: DockerContainerAutoUpdateOptions) =>
-  JSON.stringify(normalizeOptions(options));
-
 const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
+  autoUpdate,
   onClose,
   open,
   watchtowerEnabled,
   watchtowerReason,
 }) => {
   const theme = useAppTheme();
-  const toast = useScopedToast(DOCKER_TOAST_META);
-  const autoUpdateCache = linuxio.docker.get_container_auto_update.useCache();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
   const [containerNamesOverride, setContainerNamesOverride] = useState<
     string[] | null
   >(null);
 
-  const autoUpdateQuery = linuxio.docker.get_container_auto_update.useQuery({
-    enabled: open,
-    staleTime: CACHE_TTL_MS.TWO_SECONDS,
-  });
-  const saveMutation = linuxio.docker.set_container_auto_update.useJobAction({
-    success: (state) => {
-      toast.success("Container auto-update settings saved");
-      setDraftOverrides(null);
-      setContainerNamesOverride(null);
-      autoUpdateCache.set(state);
-    },
-    error: "Failed to save container auto-update settings",
-    toast: DOCKER_TOAST_META,
-  });
-
-  const serverState = autoUpdateQuery.data;
-  const baseOptions = serverState?.options ?? DEFAULT_OPTIONS;
+  const serverState = autoUpdate.state;
+  const baseOptions = serverState?.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
   const selectedNames =
     containerNamesOverride ??
     baseOptions.container_names ??
-    DEFAULT_OPTIONS.container_names;
+    DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
   const currentOptions = useMemo<DockerContainerAutoUpdateOptions>(
     () => ({
       ...baseOptions,
@@ -95,14 +62,14 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
     }),
     [baseOptions, draftOverrides, selectedNames],
   );
-  const dirty = optionKey(currentOptions) !== optionKey(baseOptions);
-  const loading = autoUpdateQuery.isPending && !serverState;
-  const saving = saveMutation.isPending;
+  const dirty = optionsKey(currentOptions) !== optionsKey(baseOptions);
+  const loading = autoUpdate.isPending && !serverState;
+  const saving = autoUpdate.isSaving;
   const unavailable =
-    !watchtowerEnabled || !serverState?.available || !!autoUpdateQuery.error;
+    !watchtowerEnabled || !serverState?.available || !!autoUpdate.queryError;
   const controlsDisabled = loading || saving || unavailable;
   const unavailableReason =
-    autoUpdateQuery.error?.message ??
+    autoUpdate.queryError ??
     serverState?.error ??
     watchtowerReason ??
     "Watchtower is unavailable.";
@@ -127,8 +94,12 @@ const ContainerAutoUpdateDialog: React.FC<ContainerAutoUpdateDialogProps> = ({
     setContainerNamesOverride(null);
   };
 
+  // Optimistic like the per-container toggles: the shared writer updates the
+  // cache immediately (so the drafts can clear now) and rolls back with an
+  // error toast if the save fails.
   const save = () => {
-    saveMutation.mutate(currentOptions);
+    autoUpdate.saveOptions(currentOptions);
+    reset();
   };
 
   const missingNames = (serverState?.missing_container_names ?? []).filter(

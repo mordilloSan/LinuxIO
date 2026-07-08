@@ -64,23 +64,19 @@ docker folders) and was deleted outright — together with the backend
 recovered-jobs handling. The shared indexer service stays: the filebrowser
 owns it.
 
-## 3. Container auto-update dual writer
+## 3. Container auto-update dual writer — DONE
 
-`pages/main/docker/ContainerAutoUpdateDialog.tsx` (draft state + explicit
-Save → `cache.set`) and `pages/main/docker/useContainerAutoUpdateControls.ts`
-(optimistic autosave with a hand-rolled debounce/coalescing queue) both write
-`docker.get_container_auto_update` state with two different consistency
-models, and duplicate `DEFAULT_OPTIONS` / `normalizeOptions` / `optionKey`
-verbatim. If both are mounted (dialog opened from the containers tab), two
-writers race on the same cache entry.
-
-**Fix shape:** extract the shared normalize/key helpers into one module
-under `pages/main/docker/`, then pick a single write strategy — either the
-dialog reuses the controls hook, or both feed one small
-`useContainerAutoUpdateState` hook that owns the cache writes. The
-hand-rolled autosave queue is also the only call site that would benefit
-from a debounced-optimistic-write helper; do not generalize it into the API
-layer unless a second consumer appears.
+Done 2026-07-08. The shared helpers live in
+`pages/main/docker/containerAutoUpdate.ts` (`DEFAULT_AUTO_UPDATE_OPTIONS`,
+`normalizeOptions`, `optionsKey`, `diffNames`, `stateWithOptions`), and the
+controls hook became `useContainerAutoUpdateState` — the single writer.
+`DockerPage` instantiates it once and passes the controller to both
+surfaces: the container list keeps its optimistic toggles, and the dialog's
+explicit Save now goes through the same coalescing queue via a new
+`saveOptions` (optimistic cache write + immediate flush; the queue rolls
+back and toasts on failure). The dialog lost its own query/mutation/cache
+writes entirely. The queue stays local to this hook — still the only call
+site; don't generalize it into the API layer without a second consumer.
 
 ## 4. Legacy stream consumers on the layering allowlist — DONE
 
