@@ -166,7 +166,10 @@ export interface AutoUpdateOptions {
 }
 
 export type AutoUpdateRebootPolicy =
-  "never" | "if_needed" | "always" | "schedule";
+  | "never"
+  | "if_needed"
+  | "always"
+  | "schedule";
 
 export type AutoUpdateScope = "security" | "updates" | "all";
 
@@ -1180,7 +1183,11 @@ export interface JobSnapshot {
 }
 
 export type JobState =
-  "queued" | "running" | "completed" | "failed" | "canceled";
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export interface LogicalVolume {
   attributes: string;
@@ -1295,7 +1302,11 @@ export interface MonitoringHistoryRequest {
 }
 
 export type MonitoringHistoryResolution =
-  "1m" | "10m" | "20m" | "120m" | "480m";
+  | "1m"
+  | "10m"
+  | "20m"
+  | "120m"
+  | "480m";
 
 export interface MonitoringListener {
   address: string;
@@ -1907,7 +1918,10 @@ export interface VMDisk {
 }
 
 export type VMImagePresetID =
-  "home-assistant-os" | "debian-server" | "ubuntu-server" | "fedora-cloud";
+  | "home-assistant-os"
+  | "debian-server"
+  | "ubuntu-server"
+  | "fedora-cloud";
 
 export interface VMManagedPaths {
   root: string;

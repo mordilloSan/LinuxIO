@@ -96,7 +96,11 @@ export interface BackgroundJob extends TrackedJobItem<"job"> {
 export type TransferItem = Compression | Extraction | Copy | Move;
 
 export type BackgroundJobItem =
-  Download | Upload | TransferItem | ActiveIndexer | BackgroundJob;
+  | Download
+  | Upload
+  | TransferItem
+  | ActiveIndexer
+  | BackgroundJob;
 
 export interface BackgroundJobsContextValue {
   backgroundJobs: BackgroundJob[];

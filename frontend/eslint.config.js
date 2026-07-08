@@ -2,9 +2,7 @@ import js from "@eslint/js";
 import tanstackQuery from "@tanstack/eslint-plugin-query";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import prettierConfig from "eslint-config-prettier";
 import importPlugin from "eslint-plugin-import-x";
-import prettier from "eslint-plugin-prettier";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactYouMightNotNeedAnEffect from "eslint-plugin-react-you-might-not-need-an-effect";
@@ -99,15 +97,6 @@ export default [
     },
   },
 
-  {
-    plugins: {
-      prettier,
-    },
-    rules: {
-      "prettier/prettier": "error",
-    },
-  },
-
   ...tanstackQuery.configs["flat/recommended"],
 
   {
@@ -121,6 +110,4 @@ export default [
       "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",
     },
   },
-
-  prettierConfig,
 ];

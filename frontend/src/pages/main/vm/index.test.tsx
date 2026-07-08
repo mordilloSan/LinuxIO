@@ -92,7 +92,8 @@ vi.mock("@/api", async (importOriginal) => {
     fn: (request: unknown) => unknown,
     config?: {
       invalidates?:
-        unknown[] | ((result: unknown, variables: unknown) => unknown[]);
+        | unknown[]
+        | ((result: unknown, variables: unknown) => unknown[]);
       success?: string | ((result: unknown, variables: unknown) => void);
       error?: string | ((error: unknown, variables: unknown) => void);
       options?: { onSuccess?: (result: unknown, variables: unknown) => void };

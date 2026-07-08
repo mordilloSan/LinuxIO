@@ -240,7 +240,8 @@ export function useUploadJobs(
               resolveSafe({
                 success: true,
                 result: (result.data ?? undefined) as
-                  BatchUploadResult | undefined,
+                  | BatchUploadResult
+                  | undefined,
               });
             } else {
               resolveSafe({

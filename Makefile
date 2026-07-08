@@ -443,13 +443,16 @@ test-updater: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint (auto-fix, concurrent)..."
+	@echo "🔎 Running ESLint + Oxfmt (auto-fix, concurrent)..."
 	@bash -c ' \
 	  cd frontend; \
 	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
 	  ./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache --concurrency auto 2>&1 | filter_ts_warn; \
 	  status=$${PIPESTATUS[0]}; \
-	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit "$$status"; } \
+	  [ "$$status" -eq 0 ] || { echo "❌ ESLint failed!"; exit "$$status"; }; \
+	  ./node_modules/.bin/oxfmt --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx"; \
+	  status=$$?; \
+	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
 
 tsc-only:
@@ -848,7 +851,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Bump frontend package.json to latest + npm install"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"

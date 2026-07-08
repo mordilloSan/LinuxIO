@@ -70,17 +70,17 @@ func writeFile(path string, content string) error {
 }
 
 func formatGeneratedFiles(repoRoot string, paths []string) error {
-	prettier := filepath.Join(repoRoot, "frontend", "node_modules", ".bin", "prettier")
-	if _, err := os.Stat(prettier); err != nil {
+	oxfmt := filepath.Join(repoRoot, "frontend", "node_modules", ".bin", "oxfmt")
+	if _, err := os.Stat(oxfmt); err != nil {
 		return nil
 	}
 
-	args := append([]string{"--log-level=error", "--write"}, paths...)
-	cmd := exec.Command(prettier, args...)
+	args := append([]string{"--write"}, paths...)
+	cmd := exec.Command(oxfmt, args...)
 	cmd.Dir = filepath.Join(repoRoot, "frontend")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("prettier failed: %w\n%s", err, out)
+		return fmt.Errorf("oxfmt failed: %w\n%s", err, out)
 	}
 	return nil
 }

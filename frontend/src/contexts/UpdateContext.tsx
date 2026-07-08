@@ -33,7 +33,12 @@ const buildUpdateRunId = () => {
 };
 
 export type UpdatePhase =
-  "idle" | "running" | "restarting" | "verifying" | "done" | "failed";
+  | "idle"
+  | "running"
+  | "restarting"
+  | "verifying"
+  | "done"
+  | "failed";
 
 export interface UpdateContextValue {
   canNavigate: boolean;

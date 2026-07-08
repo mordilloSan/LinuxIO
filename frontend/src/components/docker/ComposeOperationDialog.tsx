@@ -158,7 +158,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     scanKey: open && muxIsOpen ? `${action}:${projectName}` : null,
     match: (job) => {
       const request = job.request as
-        { action?: string; projectName?: string } | undefined;
+        | { action?: string; projectName?: string }
+        | undefined;
       return request?.action === action && request?.projectName === projectName;
     },
     onRecover: (job) =>

@@ -95,7 +95,9 @@ function getRetryPolicy(
 }
 
 export type RequestShape =
-  { kind: "none" } | { kind: "object" } | { kind: "field"; field: string };
+  | { kind: "none" }
+  | { kind: "object" }
+  | { kind: "field"; field: string };
 
 // ============================================================================
 // Type-Safe API
@@ -128,7 +130,8 @@ export interface ActionConfig<TRequest, TResult> {
    * entry; pass `[]` to opt out, or a value to override the manifest.
    */
   invalidates?:
-    QueryKey[] | ((result: TResult, variables: TRequest) => QueryKey[]);
+    | QueryKey[]
+    | ((result: TResult, variables: TRequest) => QueryKey[]);
   /** Success toast message, or a callback for custom success handling. */
   success?: string | ((result: TResult, variables: TRequest) => void);
   /**
@@ -150,7 +153,8 @@ export interface ActionConfig<TRequest, TResult> {
 }
 
 type StreamSignal<TRequest> =
-  AbortSignal | ((variables: TRequest) => AbortSignal | undefined);
+  | AbortSignal
+  | ((variables: TRequest) => AbortSignal | undefined);
 
 /**
  * Declarative config for job routes where the UI needs live progress frames.
@@ -691,7 +695,8 @@ export function createEndpoint<TResult>(
         set: (...args: unknown[]) => {
           const input = args.slice(0, -1) as [] | [unknown];
           const updater = args.at(-1) as
-            TResult | ((old: TResult | undefined) => TResult | undefined);
+            | TResult
+            | ((old: TResult | undefined) => TResult | undefined);
           queryClient.setQueryData<TResult>(queryKey(...input), updater);
         },
         invalidate: (...input: [] | [unknown]) =>

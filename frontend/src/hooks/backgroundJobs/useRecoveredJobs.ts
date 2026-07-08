@@ -97,7 +97,8 @@ export function useRecoveredJobs(
       installToastedRef.current.add(jobId);
 
       const def = CAPABILITIES.find((c) => c.wire === wire) as
-        CapabilityDef | undefined;
+        | CapabilityDef
+        | undefined;
       const label = def?.label ?? wire;
       // Surface an "Open …" action link on the notification for capabilities
       // that have a dedicated page (omitted for ones that don't).
@@ -183,7 +184,8 @@ export function useRecoveredJobs(
       };
       const genericProgressMeta = (value: unknown) => {
         const data = value as
-          { indeterminate?: boolean; processed?: number } | undefined;
+          | { indeterminate?: boolean; processed?: number }
+          | undefined;
         return {
           indeterminate: data?.indeterminate,
           processed: data?.processed,

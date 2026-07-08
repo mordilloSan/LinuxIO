@@ -509,7 +509,8 @@ function resolveVariantTheme(
 
 export function buildAppTheme(
   configOrTheme:
-    Pick<AppSettings, "theme" | "primaryColor" | "themeColors"> | string,
+    | Pick<AppSettings, "theme" | "primaryColor" | "themeColors">
+    | string,
   primaryColorToken?: string,
   themeColors?: ThemeColorsByMode,
 ): AppTheme {

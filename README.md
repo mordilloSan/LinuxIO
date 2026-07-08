@@ -181,7 +181,7 @@ make dev-prep          # Create placeholder assets for dev server
 **Quality Checks:**
 
 ```bash
-make lint              # Run ESLint on frontend
+make lint              # Run ESLint + Oxfmt on frontend
 make tsc               # TypeScript type checking
 make test-frontend     # Run frontend unit tests
 make golint            # Run Go formatters + golangci-lint on backend
