@@ -114,7 +114,9 @@ toast.
 
 ### Ordering suggestion
 
-Items 2 and 4 are done (2026-07-08), as is ToDo #12 (rerender plan — see
-`docs/frontend-rerender-plan.md`). Remaining: items 1 and 3. Item 1
-(controller prop-drilling) was deliberately sequenced after #12's
-stable-cancels fix, which has landed — it is unblocked.
+Items 2, 3, and 4 are done (2026-07-08), as is ToDo #12 (rerender plan — see
+`docs/frontend-rerender-plan.md`). Remaining: item 1 only. It was
+deliberately sequenced after #12's stable-cancels fix, which has landed — it
+is unblocked. Suggested approach: map the controller's state inventory and
+per-hook consumption first, agree on the slice boundaries, then migrate one
+slice at a time with tests green between steps — not a big-bang rewrite.
