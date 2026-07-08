@@ -23,13 +23,19 @@ function makeTracked(name: string) {
 }
 
 function Labelled({ children, label }: PropsWithChildren<{ label?: string }>) {
-  return <div data-testid="labelled" data-label={label}>{children}</div>;
+  return (
+    <div data-testid="labelled" data-label={label}>
+      {children}
+    </div>
+  );
 }
 
 describe("ComposeProviders", () => {
   it("renders entries first-to-last as outermost-to-innermost", () => {
     render(
-      <ComposeProviders providers={[makeTracked("outer"), makeTracked("inner")]}>
+      <ComposeProviders
+        providers={[makeTracked("outer"), makeTracked("inner")]}
+      >
         <span data-testid="leaf" />
       </ComposeProviders>,
     );
