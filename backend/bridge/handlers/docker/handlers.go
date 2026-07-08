@@ -37,7 +37,6 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Query[apischema.ContentRequest, apischema.NoResponse]("docker.normalize_compose", apischema.NoEndpoint()).Handle(handlers.handleNormalizeCompose),
 		apischema.Query[apischema.StackNameRequest, apischema.ComposeFilePathResponse]("docker.get_compose_file_path").Handle(handlers.handleGetComposeFilePath),
 		apischema.Query[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory").Handle(handlers.handleValidateStackDirectory),
-		apischema.Job[apischema.NoRequest, apischema.NoResponse]("docker.reindex_docker_folders", apischema.NoEndpoint()).Handle(handlers.handleReindexDockerFolders),
 		apischema.Job[apischema.ProjectNameRequest, apischema.NoResponse]("docker.delete_compose_stack", apischema.NoEndpoint()).Handle(handlers.handleDeleteComposeStack),
 		apischema.Query[apischema.NoRequest, apischema.DockerSystemInfo]("docker.get_docker_info").Handle(handlers.handleGetDockerInfo),
 		apischema.Query[apischema.IdentifierRequest, apischema.DockerIconURIResponse]("docker.get_icon_uri").Handle(handlers.handleGetIconURI),

@@ -2243,7 +2243,6 @@ export interface LinuxIOSchema {
       request: IdentifierRequest;
       result: DockerIconURIResponse;
     };
-    indexer: { input: []; request: void; result: JobSnapshot };
     list_compose_projects: {
       input: [];
       request: void;
@@ -2913,7 +2912,6 @@ export interface LinuxIOStreamSchema {
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.normalize_compose": ContentRequest;
-  "docker.reindex_docker_folders": void;
   "jobs.attach": JobIDRequest;
   "jobs.data": JobDataRequest;
   "jobs.events": void;

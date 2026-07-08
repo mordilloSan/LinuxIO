@@ -44,17 +44,25 @@ need instead of receiving setters as arguments. Constraints to respect:
 
 ## 2. Dialog-owned job streams → `useJobStreamAction` + `attach()` — DONE
 
-Done 2026-07-08. Both dialogs now run one `useJobStreamAction` config with
-`closeOnAbort: "close"` (aborting the run's controller detaches the attach
-stream and rejects `AbortError`, which the `error` callback filters), so the
-ref machines collapsed to a started-guard + abort handle (plus `jobIdRef` in
-the indexer, whose close cancels the job). `isRunning` is derived
-(`!success && !error`). The effect-started mutation was replaced by a
-recovery-scan-driven start: `useActiveJobRecovery` gained an `onMiss`
-callback, so one scan per dialog open either `attach()`es a still-running
-job (reopen mid-run, page reload) or `mutate()`s a fresh one — the two paths
-cannot race. Compose failures now toast once, from the terminal error
-callback; the progress `error` frame only updates the in-dialog display.
+Done 2026-07-08. `ComposeOperationDialog` now runs one `useJobStreamAction`
+config with `closeOnAbort: "close"` (aborting the run's controller detaches
+the attach stream and rejects `AbortError`, which the `error` callback
+filters), so the ref machine collapsed to a started-guard + abort handle.
+`isRunning` is derived (`!success && !error`). The effect-started mutation
+was replaced by a recovery-scan-driven start: `useActiveJobRecovery` gained
+an `onMiss` callback, so one scan per dialog open either `attach()`es a
+still-running job (reopen mid-run, page reload) or `mutate()`s a fresh one —
+the two paths cannot race. Compose failures now toast once, from the
+terminal error callback; the progress `error` frame only updates the
+in-dialog display.
+
+`DockerIndexerDialog` got the same treatment, then turned out to be dead
+since 084bab27 (2026-05-23, when stack discovery moved to a WalkDir over the
+docker folders) and was deleted outright — together with the backend
+`docker.indexer` job route and the (also unreferenced)
+`docker.reindex_docker_folders` route, `JOB_TYPE_DOCKER_INDEXER`, and its
+recovered-jobs handling. The shared indexer service stays: the filebrowser
+owns it.
 
 ## 3. Container auto-update dual writer
 

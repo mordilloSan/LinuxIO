@@ -71,11 +71,6 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req ap
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleReindexDockerFolders(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := IndexDockerFolders(ctx, h.rt.Username(), h.rt.Store)
-	return bridgeipc.EmitResult(emit, result, err)
-}
-
 func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
 	if err := DeleteComposeStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName); err != nil {
 		return err

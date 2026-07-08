@@ -242,11 +242,6 @@ export function useRecoveredJobs(
               data?.message ??
               `Docker compose ${requestString(request, "action") ?? "operation"}`
             );
-          case JobTypes.JOB_TYPE_DOCKER_INDEXER:
-            return data?.files_indexed !== undefined ||
-              data?.dirs_indexed !== undefined
-              ? `Indexing Docker folders: ${data.files_indexed ?? 0} files, ${data.dirs_indexed ?? 0} dirs`
-              : "Indexing Docker folders";
           case JobTypes.JOB_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${String(data.package_id).split(";")[0]}`
@@ -388,7 +383,6 @@ export function useRecoveredJobs(
           break;
         }
         case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
-        case JobTypes.JOB_TYPE_DOCKER_INDEXER:
         case JobTypes.JOB_TYPE_PACKAGE_UPDATE:
         case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
         case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY:

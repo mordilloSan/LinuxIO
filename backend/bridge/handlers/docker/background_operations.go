@@ -2,18 +2,14 @@ package docker
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 // ComposeJobMessage represents a message emitted by a Docker compose job.
@@ -39,15 +35,6 @@ type ComposeProgress struct {
 	Percent  int    `json:"percent,omitempty"`
 }
 
-type DockerIndexerJobResult struct {
-	Path         string                  `json:"path"`
-	FilesIndexed int64                   `json:"files_indexed"`
-	DirsIndexed  int64                   `json:"dirs_indexed"`
-	TotalSize    int64                   `json:"total_size"`
-	DurationMs   int64                   `json:"duration_ms"`
-	Folders      []indexer.IndexerResult `json:"folders"`
-}
-
 var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
 
 func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
@@ -57,12 +44,6 @@ func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
 				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
 			},
 			bridgejobs.ActionDefault,
-		),
-		apischema.Runner[apischema.NoRequest, apischema.JobSnapshot]("docker.indexer").Run(
-			func(ctx context.Context, job *bridgejobs.Job, _ apischema.NoRequest) (any, error) {
-				return runDockerIndexerJob(ctx, job, rt.Username(), rt.Store)
-			},
-			bridgejobs.SingletonSystem,
 		),
 	)
 }
@@ -136,80 +117,4 @@ func resolveComposeJobPaths(ctx context.Context, username string, store *config.
 		return composePath, filepath.Dir(composePath), nil
 	}
 	return findComposeFile(ctx, username, store, projectName)
-}
-
-func runDockerIndexerJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore) (any, error) {
-	dockerFolders, err := configuredDockerFolders(ctx, username, store)
-	if err != nil {
-		return nil, bridgejobs.NewError("failed to load user config", 500)
-	}
-
-	aggregate := DockerIndexerJobResult{
-		Path:    strings.Join(dockerFolders, ", "),
-		Folders: make([]indexer.IndexerResult, 0, len(dockerFolders)),
-	}
-	if len(dockerFolders) > 1 {
-		aggregate.Path = fmt.Sprintf("%d Docker folders", len(dockerFolders))
-	}
-
-	for _, dockerFolder := range dockerFolders {
-		result, err := runDockerIndexerOperation(ctx, job, dockerFolder, false)
-		if err != nil {
-			return nil, err
-		}
-
-		if indexResult, ok := result.(indexer.IndexerResult); ok {
-			aggregate.FilesIndexed += indexResult.FilesIndexed
-			aggregate.DirsIndexed += indexResult.DirsIndexed
-			aggregate.TotalSize += indexResult.TotalSize
-			aggregate.DurationMs += indexResult.DurationMs
-			aggregate.Folders = append(aggregate.Folders, indexResult)
-		}
-	}
-
-	return aggregate, nil
-}
-
-func runDockerIndexerOperation(ctx context.Context, job *bridgejobs.Job, path string, attachOnly bool) (any, error) {
-	var result any
-	var jobErr *bridgejobs.Error
-	cb := indexer.IndexerCallbacks{
-		OnProgress: func(p indexer.IndexerProgress) error {
-			job.ReportProgress(p)
-			return nil
-		},
-		OnResult: func(r indexer.IndexerResult) error {
-			result = r
-			return nil
-		},
-		OnError: func(msg string, code int) error {
-			jobErr = bridgejobs.NewError(msg, code)
-			return nil
-		},
-	}
-
-	var err error
-	if attachOnly {
-		err = indexer.StreamIndexerAttach(ctx, cb)
-	} else {
-		err = indexer.StreamIndexer(ctx, path, cb)
-		if err != nil && jobErr != nil && jobErr.Code == 409 {
-			jobErr = nil
-			err = indexer.StreamIndexerAttach(ctx, cb)
-		}
-	}
-	if err != nil {
-		if ctx.Err() != nil || errors.Is(err, ipc.ErrAborted) {
-			return nil, context.Canceled
-		}
-		if jobErr != nil {
-			return nil, jobErr
-		}
-		return nil, fmt.Errorf("docker indexer failed: %w", err)
-	}
-
-	if result == nil {
-		return map[string]any{}, nil
-	}
-	return result, nil
 }

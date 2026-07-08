@@ -18,7 +18,6 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
@@ -1456,35 +1455,6 @@ func getProjectNameFromComposePath(composePath string) string {
 	dir := filepath.Dir(composePath)
 	// Return the base name of that directory
 	return filepath.Base(dir)
-}
-
-func indexDockerFolderPath(ctx context.Context, username, dockerFolder string) error {
-	if err := indexer.StreamIndexer(ctx, dockerFolder, indexer.IndexerCallbacks{}); err != nil {
-		return fmt.Errorf("indexer request failed: %w", err)
-	}
-	slog.Info("triggered indexing of docker folder", "path", dockerFolder, "user", username)
-
-	return nil
-}
-
-// IndexDockerFolders is the handler function for indexing all configured Docker folders.
-func IndexDockerFolders(ctx context.Context, username string, store *config.UserStore) (any, error) {
-	dockerFolders, err := configuredDockerFolders(ctx, username, store)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load user config: %w", err)
-	}
-
-	for _, dockerFolder := range dockerFolders {
-		if err := indexDockerFolderPath(ctx, username, dockerFolder); err != nil {
-			return nil, err
-		}
-	}
-
-	return map[string]any{
-		"message": "Indexing started",
-		"status":  "running",
-		"folders": dockerFolders,
-	}, nil
 }
 
 // extractStackIcon parses a docker-compose file and extracts the stack icon from x-linuxio-stack metadata

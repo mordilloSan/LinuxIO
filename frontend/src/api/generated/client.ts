@@ -172,7 +172,6 @@ const linuxio = {
       kind: "field",
       field: "identifier",
     }),
-    indexer: createEndpoint("docker", "indexer", { kind: "none" }),
     list_compose_projects: createEndpoint("docker", "list_compose_projects", {
       kind: "none",
     }),

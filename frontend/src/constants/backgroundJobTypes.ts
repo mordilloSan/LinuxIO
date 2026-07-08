@@ -13,7 +13,6 @@ export const JOB_TYPE_FILE_DOWNLOAD = "filebrowser.download";
 export const JOB_TYPE_FILE_ARCHIVE = "filebrowser.archive";
 export const JOB_TYPE_FILE_CHMOD_BATCH = "filebrowser.chmod_batch";
 export const JOB_TYPE_DOCKER_COMPOSE = "docker.compose";
-export const JOB_TYPE_DOCKER_INDEXER = "docker.indexer";
 export const JOB_TYPE_PACKAGE_UPDATE = "packages.update";
 export const JOB_TYPE_STORAGE_SMART_TEST = "storage.run_smart_test";
 export const JOB_TYPE_SYSTEM_INSTALL_CAPABILITY = "system.install_capability";
