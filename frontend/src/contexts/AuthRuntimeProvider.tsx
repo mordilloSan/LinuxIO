@@ -2,6 +2,7 @@ import { type PropsWithChildren, useMemo } from "react";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import { BackgroundJobsProvider } from "@/contexts/BackgroundJobsContext";
+import { ComposeProviders, withProps } from "@/contexts/composeProviders";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
@@ -40,18 +41,20 @@ export default function AuthenticatedRuntimeProvider({
   userId,
 }: AuthenticatedRuntimeProviderProps) {
   return (
-    <ToastProvider>
-      <ConfigProvider key={userId ?? "anonymous"}>
-        <BackgroundJobsProvider>
-          <AuthedThemeShell>
-            <PowerActionProvider>
-              <UpdateProvider>
-                <SidebarProvider>{children}</SidebarProvider>
-              </UpdateProvider>
-            </PowerActionProvider>
-          </AuthedThemeShell>
-        </BackgroundJobsProvider>
-      </ConfigProvider>
-    </ToastProvider>
+    <ComposeProviders
+      providers={[
+        ToastProvider,
+        // key remounts config-scoped state (and everything below) when the
+        // signed-in user changes, without dropping toast history above it.
+        withProps(ConfigProvider, { key: userId ?? "anonymous" }),
+        BackgroundJobsProvider,
+        AuthedThemeShell,
+        PowerActionProvider,
+        UpdateProvider,
+        SidebarProvider,
+      ]}
+    >
+      {children}
+    </ComposeProviders>
   );
 }
