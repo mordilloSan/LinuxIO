@@ -14,7 +14,7 @@ import {
 } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
 
-import { linuxio, type Stream, useStreamMux } from "@/api";
+import { linuxio, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
   type AppDialogCloseEvent,
@@ -24,6 +24,8 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import { JOB_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundJobTypes";
+import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 
@@ -47,40 +49,28 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [output, setOutput] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Map<string, ComposeTask>>(new Map());
   const [showLog, setShowLog] = useState(false);
-  const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const jobIdRef = useRef<string | null>(null);
-  const startRequestedRef = useRef(false);
-  const progressErrorRef = useRef(false);
-  const closedByUserRef = useRef(false);
+  // Started-guard: one run per dialog open (reset on dialog exit). The abort
+  // controller is the run's detach handle — aborting closes the attach
+  // stream (closeOnAbort: "close") while the job keeps running server-side.
+  const startedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const { isOpen: muxIsOpen } = useStreamMux();
 
-  const closeJobStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-    abortControllerRef.current?.abort();
-  }, []);
+  const isRunning = !success && !error;
 
   const resetState = useCallback(() => {
-    closeJobStream();
+    abortRef.current?.abort();
+    abortRef.current = null;
+    startedRef.current = false;
     setOutput([]);
     setTasks(new Map());
     setShowLog(false);
-    setIsRunning(true);
     setError(null);
     setSuccess(false);
-    jobIdRef.current = null;
-    startRequestedRef.current = false;
-    progressErrorRef.current = false;
-    abortControllerRef.current = null;
-    closedByUserRef.current = false;
-  }, [closeJobStream]);
+  }, []);
 
   // Pin output to the bottom before paint to avoid a visible scroll jump.
   useLayoutEffect(() => {
@@ -89,97 +79,97 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
   }, [output, open]);
 
+  // Detach from the stream when the dialog closes or unmounts; the compose
+  // job itself keeps running.
   useEffect(() => {
     if (!open) {
-      closeJobStream();
+      abortRef.current?.abort();
     }
-  }, [open, closeJobStream]);
+  }, [open]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const { mutate: runComposeOperation } =
-    linuxio.docker.compose.useJobStreamAction<ComposeMessage, ComposeMessage>({
-      closeMessage: "Compose operation stream closed unexpectedly",
-      closeOnAbort: "none",
-      error: (streamError) => {
-        if (closedByUserRef.current || progressErrorRef.current) return;
-        const message =
-          streamError.message || "Failed to start compose operation";
-        setError(message);
-        toast.error(`Failed to ${action} stack: ${message}`);
-      },
-      invalidates: [
-        linuxio.docker.list_compose_projects.queryKey(),
-        linuxio.docker.list_containers.queryKey(),
-      ],
-      onJobStart: (job) => {
-        jobIdRef.current = job.id;
-      },
-      onOpen: (stream) => {
-        streamRef.current = stream;
-      },
-      onProgress: (msg) => {
-        switch (msg.type) {
-          case "progress": {
-            setTasks((prev) => mergeTask(prev, msg.progress));
-            // Keep the raw log meaningful and bounded: record milestones
-            // (status changes / completions), not every download tick.
-            const { text, status } = msg.progress;
-            if (
-              status === "Done" ||
-              (text !== "Downloading" && text !== "Extracting")
-            ) {
-              setOutput((prev) => [...prev, msg.message]);
-            }
-            break;
-          }
-          case "stdout":
-          case "stderr":
+  const composeOperation = linuxio.docker.compose.useJobStreamAction<
+    ComposeMessage,
+    ComposeMessage
+  >({
+    closeMessage: "Compose operation stream closed unexpectedly",
+    closeOnAbort: "close",
+    error: (streamError) => {
+      if (streamError.name === "AbortError") return;
+      const message =
+        streamError.message || "Failed to start compose operation";
+      setError(message);
+      toast.error(`Failed to ${action} stack: ${message}`);
+    },
+    invalidates: [
+      linuxio.docker.list_compose_projects.queryKey(),
+      linuxio.docker.list_containers.queryKey(),
+    ],
+    onProgress: (msg) => {
+      switch (msg.type) {
+        case "progress": {
+          setTasks((prev) => mergeTask(prev, msg.progress));
+          // Keep the raw log meaningful and bounded: record milestones
+          // (status changes / completions), not every download tick.
+          const { text, status } = msg.progress;
+          if (
+            status === "Done" ||
+            (text !== "Downloading" && text !== "Extracting")
+          ) {
             setOutput((prev) => [...prev, msg.message]);
-            break;
-          case "error":
-            progressErrorRef.current = true;
-            setError(msg.message);
-            setIsRunning(false);
-            toast.error(`Failed to ${action} stack: ${msg.message}`);
-            break;
-          case "complete":
-            setSuccess(true);
-            setIsRunning(false);
-            setOutput((prev) => [...prev, "✓ " + msg.message]);
-            break;
-        }
-      },
-      openErrorMessage: "Failed to attach compose operation",
-      options: {
-        onSettled: () => {
-          if (!closedByUserRef.current) {
-            setIsRunning(false);
           }
-          streamRef.current = null;
-          abortControllerRef.current = null;
-          startRequestedRef.current = false;
-        },
-      },
-      signal: () => abortControllerRef.current?.signal,
-      success: (msg) => {
-        if (msg?.type === "complete") {
-          setSuccess(true);
+          break;
         }
-      },
-    });
+        case "stdout":
+        case "stderr":
+          setOutput((prev) => [...prev, msg.message]);
+          break;
+        case "error":
+          // In-dialog display only; the terminal error callback owns the
+          // toast, so a failed run toasts once.
+          setError(msg.message);
+          break;
+        case "complete":
+          setSuccess(true);
+          setOutput((prev) => [...prev, "✓ " + msg.message]);
+          break;
+      }
+    },
+    openErrorMessage: "Failed to attach compose operation",
+    signal: () => abortRef.current?.signal,
+    success: (msg) => {
+      if (msg?.type === "complete") {
+        setSuccess(true);
+      }
+    },
+  });
 
-  useEffect(() => {
-    if (!open || !muxIsOpen) return;
-    if (streamRef.current || jobIdRef.current || startRequestedRef.current) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-    closedByUserRef.current = false;
-    progressErrorRef.current = false;
-    startRequestedRef.current = true;
-    runComposeOperation({ action, projectName, composePath });
-  }, [open, action, projectName, composePath, muxIsOpen, runComposeOperation]);
+  // One recovery scan per dialog open decides between the two start paths:
+  // adopt a still-running operation for this project (dialog was closed and
+  // reopened mid-run) or start a fresh one.
+  const beginRun = (run: () => void) => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    abortRef.current = new AbortController();
+    run();
+  };
+  useActiveJobRecovery({
+    type: JOB_TYPE_DOCKER_COMPOSE,
+    scanKey: open && muxIsOpen ? `${action}:${projectName}` : null,
+    match: (job) => {
+      const request = job.request as
+        { action?: string; projectName?: string } | undefined;
+      return request?.action === action && request?.projectName === projectName;
+    },
+    onRecover: (job) =>
+      beginRun(() =>
+        composeOperation.attach(job, { action, projectName, composePath }),
+      ),
+    onMiss: () =>
+      beginRun(() =>
+        composeOperation.mutate({ action, projectName, composePath }),
+      ),
+  });
 
   const getActionLabel = () => {
     switch (action) {
@@ -207,9 +197,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    if (isRunning) {
-      closedByUserRef.current = true;
-      closeJobStream();
+    if (isRunning && startedRef.current) {
+      abortRef.current?.abort();
       toast.info("Compose operation is still running in the background");
     }
     onClose();

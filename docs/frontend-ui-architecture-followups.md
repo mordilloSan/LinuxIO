@@ -42,29 +42,19 @@ need instead of receiving setters as arguments. Constraints to respect:
   fix for the per-progress-frame rerenders, so do #12's "stable cancels"
   first or together — both changes fight over the same context identities.
 
-## 2. Dialog-owned job streams → `useJobStreamAction` + `attach()`
+## 2. Dialog-owned job streams → `useJobStreamAction` + `attach()` — DONE
 
-`components/docker/ComposeOperationDialog.tsx` and
-`components/docker/DockerIndexerDialog.tsx` each hand-roll an ~80-line state
-machine on top of `useJobStreamAction`: 5–7 refs (`streamRef`,
-`abortControllerRef`, `jobIdRef`, `startRequestedRef`, `closedByUserRef`,
-…), a mutation started from a `useEffect` (non-idiomatic React Query), and
-manual closed-by-user vs error-from-progress bookkeeping.
-
-Since the migration, the mutation returned by `useJobStreamAction` also
-exposes **`attach(job, variables)`**, which adopts an already-running job
-into the same declarative config (progress, toasts, invalidation, pending
-state). `pages/main/storage/DiskOverview/index.tsx` is the reference:
-one config object drives fresh starts (`mutate`) and page-reload recovery
-(`attach` via `useActiveJobRecovery`), with `options.onSettled` doing the
-cleanup that used to need refs.
-
-**Fix shape:** per dialog, move the lifecycle into the action config
-(`onOpen`/`onProgress`/`onClose`/`signal`/`closeOnAbort` +
-`options.onSettled`), replace the effect-started mutation with an explicit
-start on open, and use `attach()` for the "dialog reopened while the job is
-still running" path. The ref machines should collapse to at most a
-started-guard.
+Done 2026-07-08. Both dialogs now run one `useJobStreamAction` config with
+`closeOnAbort: "close"` (aborting the run's controller detaches the attach
+stream and rejects `AbortError`, which the `error` callback filters), so the
+ref machines collapsed to a started-guard + abort handle (plus `jobIdRef` in
+the indexer, whose close cancels the job). `isRunning` is derived
+(`!success && !error`). The effect-started mutation was replaced by a
+recovery-scan-driven start: `useActiveJobRecovery` gained an `onMiss`
+callback, so one scan per dialog open either `attach()`es a still-running
+job (reopen mid-run, page reload) or `mutate()`s a fresh one — the two paths
+cannot race. Compose failures now toast once, from the terminal error
+callback; the progress `error` frame only updates the in-dialog display.
 
 ## 3. Container auto-update dual writer
 
@@ -84,20 +74,24 @@ hand-rolled autosave queue is also the only call site that would benefit
 from a debounced-optimistic-write helper; do not generalize it into the API
 layer unless a second consumer appears.
 
-## 4. Legacy stream consumers on the layering allowlist
+## 4. Legacy stream consumers on the layering allowlist — DONE
 
-`apiLayering.test.ts` fences the byte/mux-level primitives behind a
-shrink-only allowlist. Three page-level entries are marked as debt:
+Done 2026-07-08. No page-level file imports stream primitives anymore:
 
-| File | Primitive | Move to |
-|------|-----------|---------|
-| `pages/main/terminal/Terminal.tsx` | `bindStreamHandlers` | `useLiveStream` (it exists for exactly this) or `useXtermStreamTerminal` |
-| `pages/main/logs/GeneralLogsPage.tsx` | `decodeString` | `useLogStream` (which already decodes frames for the other log pages) |
-| `pages/main/vm/ConsoleDialog.tsx` | `createStreamMessageChannel` | a small `useStreamMessageChannel` lifecycle hook (owns open/close/cleanup) |
+- `Terminal.tsx` → `useLiveStream`, which gained `detachStream()` (unbind
+  handlers without closing — the PTY stream persists for reconnection).
+  Reattach goes through `openStream`'s `open` callback
+  (`getStream("terminal.open") ?? openTerminalStream(...)`).
+- `GeneralLogsPage.tsx` → `useLiveStream`'s new `onText` handler (the hook
+  decodes frames); `useLogStream` switched to `onText` too and came off the
+  allowlist with it. (`useLogStream` itself didn't fit this page: it
+  accumulates a text blob, the page builds parsed rows.)
+- `ConsoleDialog.tsx` → new `hooks/useStreamMessageChannel.ts` lifecycle
+  hook (allowlisted in the pages' place — the one sanctioned add).
 
-Each move deletes its allowlist entry; the staleness guard fails if an entry
-is left behind. The stream *openers* (`openTerminalStream`, …) stay public —
-the factory-prop idiom (`createStream={(tail) => openDockerLogsStream(id, tail)}`)
+Net: allowlist entries went from four consumer files to one lifecycle hook.
+The stream *openers* (`openTerminalStream`, …) stay public — the
+factory-prop idiom (`createStream={(tail) => openDockerLogsStream(id, tail)}`)
 is the blessed way pages consume streams.
 
 ## 5. Backend: `filebrowser.chmod_batch` (ToDo #14) — DONE
@@ -116,6 +110,7 @@ toast.
 
 ### Ordering suggestion
 
-Items 2 and 4 are small and independent — good warm-ups. Items 1
-and ToDo #12 should be planned together (same files, same context-identity
-concerns); do them last and as one design.
+Items 2 and 4 are done (2026-07-08), as is ToDo #12 (rerender plan — see
+`docs/frontend-rerender-plan.md`). Remaining: items 1 and 3. Item 1
+(controller prop-drilling) was deliberately sequenced after #12's
+stable-cancels fix, which has landed — it is unblocked.

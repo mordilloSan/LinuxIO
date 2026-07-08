@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 
-import { decodeString, type Stream, useStreamMux } from "@/api";
+import { type Stream, useStreamMux } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
 export interface UseLogStreamOptions {
@@ -94,8 +94,7 @@ export function useLogStream({
     });
   });
 
-  const handleStreamData = useEffectEvent((data: Uint8Array) => {
-    const text = decodeString(data);
+  const handleStreamText = useEffectEvent((text: string) => {
     if (!hasReceivedData.current) {
       hasReceivedData.current = true;
       clearInitialLoadTimeout();
@@ -149,7 +148,7 @@ export function useLogStream({
     openStream({
       open: () => createStream(initialTail),
       onOpenError: handleStreamOpenError,
-      onData: handleStreamData,
+      onText: handleStreamText,
       onResult: handleStreamResult,
       onClose: handleStreamClose,
     });
@@ -167,7 +166,7 @@ export function useLogStream({
       openStream({
         open: () => createStream(liveTail),
         onOpenError: handleStreamOpenError,
-        onData: handleStreamData,
+        onText: handleStreamText,
         onResult: handleStreamResult,
         onClose: handleStreamClose,
       });

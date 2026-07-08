@@ -75,14 +75,10 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "hooks/useUploadChunkSize.ts",
   // Stream-lifecycle hooks — the sanctioned way pages consume streams.
   "hooks/useLiveStream.ts",
-  "hooks/useLogStream.ts",
+  "hooks/useStreamMessageChannel.ts",
   "hooks/useStreamResult.ts",
   "hooks/useXtermStreamTerminal.ts",
   "hooks/useTerminalContextMenu.ts",
-  // Legacy page-level consumers — move these behind lifecycle hooks.
-  "pages/main/terminal/Terminal.tsx",
-  "pages/main/logs/GeneralLogsPage.tsx",
-  "pages/main/vm/ConsoleDialog.tsx",
 ]);
 
 const API_IMPORT_GROUP =

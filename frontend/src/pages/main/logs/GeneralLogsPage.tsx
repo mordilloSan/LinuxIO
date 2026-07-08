@@ -13,7 +13,6 @@ import { useNavigate } from "react-router-dom";
 import type { Service } from "@/api";
 import {
   CACHE_TTL_MS,
-  decodeString,
   linuxio,
   openGeneralLogsStream,
   useStreamMux,
@@ -390,8 +389,7 @@ const GeneralLogsPage: React.FC = () => {
             setIsLoading(false);
           });
         },
-        onData: (data: Uint8Array) => {
-          const text = decodeString(data);
+        onText: (text) => {
           if (!hasReceivedData.current) {
             hasReceivedData.current = true;
             setIsLoading(false);

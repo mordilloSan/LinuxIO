@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { type ComposeProject, linuxio, type Stream, useStreamMux } from "@/api";
+import { type ComposeProject, linuxio, useStreamMux } from "@/api";
 import IndexerStatusDialog, {
   type IndexerStat,
   type IndexerStatSection,
 } from "@/components/dialog/IndexerStatusDialog";
+import { JOB_TYPE_DOCKER_INDEXER } from "@/constants/backgroundJobTypes";
+import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 
 const normalizeIndexedPath = (path: string) => {
   const trimmed = path.trim();
@@ -73,64 +75,53 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
     dirs_indexed: 0,
     phase: "connecting",
   });
-  const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<IndexerResult | null>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  // Started-guard: one run per dialog open (reset on dialog exit). The abort
+  // controller detaches the stream (closeOnAbort: "close"); jobIdRef is the
+  // cancel handle for a user-initiated close while indexing.
+  const startedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const jobIdRef = useRef<string | null>(null);
-  const hasCompletedRef = useRef(false);
-  const closedByUserRef = useRef(false);
 
   const { isOpen: muxIsOpen } = useStreamMux();
+
+  const isRunning = !success && !error;
 
   // Cancels are fire-and-forget; a plain job action reports nothing.
   const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
 
-  const { mutate: runIndexer } = linuxio.docker.indexer.useJobStreamAction<
+  const indexer = linuxio.docker.indexer.useJobStreamAction<
     IndexerResult,
     IndexerProgress
   >({
-    signal: () => abortControllerRef.current?.signal,
-    closeOnAbort: "none",
+    signal: () => abortRef.current?.signal,
+    closeOnAbort: "close",
     openErrorMessage: "Failed to attach indexer operation",
     closeMessage: "Indexer stream closed unexpectedly",
     onJobStart: (job) => {
       // The dialog may have been closed while the job was being created;
       // cancel the orphaned job instead of tracking it.
-      if (abortControllerRef.current?.signal.aborted !== false) {
+      if (abortRef.current?.signal.aborted !== false) {
         cancelJob({ jobId: job.id });
         return;
       }
       jobIdRef.current = job.id;
     },
-    onOpen: (stream) => {
-      streamRef.current = stream;
-      closedByUserRef.current = false;
-    },
     onProgress: (progressData) => {
       setProgress(progressData);
     },
     success: (indexerResult) => {
-      hasCompletedRef.current = true;
       setResult(indexerResult);
       setSuccess(true);
       onComplete?.();
     },
     error: (err) => {
-      if (closedByUserRef.current || err.name === "AbortError") {
+      if (err.name === "AbortError") {
         return;
       }
-      hasCompletedRef.current = true;
       setError(err.message || "Indexing failed");
-    },
-    options: {
-      onSettled: () => {
-        streamRef.current = null;
-        abortControllerRef.current = null;
-        setIsRunning(false);
-      },
     },
   });
 
@@ -139,58 +130,49 @@ const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
       enabled: open && success,
     });
 
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      closedByUserRef.current = true;
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-  }, []);
-
   // Reset state helper
   const resetState = useCallback(() => {
-    closeStream();
+    abortRef.current?.abort();
+    abortRef.current = null;
+    startedRef.current = false;
+    jobIdRef.current = null;
     setProgress({ files_indexed: 0, dirs_indexed: 0, phase: "connecting" });
-    setIsRunning(true);
     setError(null);
     setSuccess(false);
     setResult(null);
-    hasCompletedRef.current = false;
-    closedByUserRef.current = false;
-    jobIdRef.current = null;
-  }, [closeStream]);
+  }, []);
 
-  // Cleanup stream when dialog closes
+  // Detach from the stream when the dialog closes or unmounts.
   useEffect(() => {
     if (!open) {
-      closeStream();
+      abortRef.current?.abort();
     }
-  }, [open, closeStream]);
+  }, [open]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Start the indexer job when the dialog opens.
-  useEffect(() => {
-    if (!open || !muxIsOpen) {
-      return;
-    }
-
-    // Don't create duplicate streams or recreate after completion
-    if (streamRef.current || jobIdRef.current || hasCompletedRef.current) {
-      return;
-    }
-
-    abortControllerRef.current = new AbortController();
-    runIndexer(undefined);
-  }, [muxIsOpen, open, runIndexer]);
+  // One recovery scan per dialog open decides between the two start paths:
+  // adopt an indexer that is already running (page reloaded mid-index) or
+  // start a fresh one.
+  const beginRun = (run: () => void) => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    abortRef.current = new AbortController();
+    run();
+  };
+  useActiveJobRecovery({
+    type: JOB_TYPE_DOCKER_INDEXER,
+    scanKey: open && muxIsOpen ? "docker-indexer" : null,
+    match: () => true,
+    onRecover: (job) => beginRun(() => indexer.attach(job, undefined)),
+    onMiss: () => beginRun(() => indexer.mutate(undefined)),
+  });
 
   const handleClose = () => {
-    if (isRunning) {
+    if (isRunning && startedRef.current) {
       if (jobIdRef.current) {
         cancelJob({ jobId: jobIdRef.current });
       }
-      closeStream();
+      abortRef.current?.abort();
     }
     onClose();
   };

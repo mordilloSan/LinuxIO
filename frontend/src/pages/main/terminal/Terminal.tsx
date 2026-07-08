@@ -1,16 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-import {
-  bindStreamHandlers,
-  openTerminalStream,
-  type Stream,
-  useStreamMux,
-} from "@/api";
+import { openTerminalStream, useStreamMux } from "@/api";
 import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useLiveStream } from "@/hooks/useLiveStream";
 import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
 import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
@@ -21,11 +17,14 @@ const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
 
 const TerminalXTerm: React.FC = () => {
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
   const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
+  // The PTY stream persists server-side across page visits: never close it
+  // on unmount, only detach the handlers (reattach happens via getStream).
+  const { streamRef, openStream, closeStream, detachStream } = useLiveStream({
+    closeOnUnmount: false,
+  });
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
   const terminalOptions = useMemo(
     () => ({
@@ -48,46 +47,21 @@ const TerminalXTerm: React.FC = () => {
     onReady: (terminal) => {
       if (!isOpen) return;
 
-      let stream = getStream("terminal.open");
-      console.log(
-        "[Terminal] getStream('terminal.open'):",
-        stream ? `found (id=${stream.id})` : "null",
-      );
-
-      if (stream) {
-        console.log("[Terminal] Reattaching to existing stream");
-        streamRef.current = stream;
-      } else {
-        stream = openTerminalStream(terminal.cols, terminal.rows);
-
-        if (stream) {
-          streamRef.current = stream;
-        }
-      }
-
-      if (stream) {
-        unbindRef.current = bindStreamHandlers(stream, {
-          onData: writeData,
-          onClose: () => {
-            unbindRef.current = null;
-            streamRef.current = null;
-          },
-        });
-
-        stream.resize(terminal.cols, terminal.rows);
+      // Reattach to the persistent PTY stream when one exists (page revisit),
+      // otherwise open a fresh one.
+      const opened = openStream({
+        open: () =>
+          getStream("terminal.open") ??
+          openTerminalStream(terminal.cols, terminal.rows),
+        onData: writeData,
+      });
+      if (opened) {
+        streamRef.current?.resize(terminal.cols, terminal.rows);
       }
 
       return () => {
-        console.log("[Terminal] Unmounting, detaching handlers");
         // Do not close the stream; it persists for reconnection.
-        if (unbindRef.current && streamRef.current) {
-          console.log(
-            `[Terminal] Detaching handlers for stream ${streamRef.current.id}`,
-          );
-          unbindRef.current();
-          unbindRef.current = null;
-        }
-        streamRef.current = null;
+        detachStream();
       };
     },
     sessionKey: isOpen ? "open" : "closed",
@@ -112,35 +86,17 @@ const TerminalXTerm: React.FC = () => {
     if (!terminal || !isOpen) return;
 
     // Close existing stream (terminates PTY on bridge)
-    if (streamRef.current) {
-      if (unbindRef.current) {
-        unbindRef.current();
-        unbindRef.current = null;
-      }
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
 
     // Clear xterm display
     terminal.clear();
     terminal.reset();
 
     // Open fresh stream (creates new PTY)
-    const cols = terminal.cols;
-    const rows = terminal.rows;
-    const stream = openTerminalStream(cols, rows);
-
-    if (stream) {
-      streamRef.current = stream;
-
-      unbindRef.current = bindStreamHandlers(stream, {
-        onData: writeData,
-        onClose: () => {
-          unbindRef.current = null;
-          streamRef.current = null;
-        },
-      });
-    }
+    openStream({
+      open: () => openTerminalStream(terminal.cols, terminal.rows),
+      onData: writeData,
+    });
 
     terminal.focus();
   };

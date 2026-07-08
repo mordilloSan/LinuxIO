@@ -5,11 +5,12 @@ import type { CSSProperties } from "react";
 
 import type { ConsoleSession } from "./vmShared";
 
-import { createStreamMessageChannel, type ResultFrame } from "@/api";
+import type { ResultFrame } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
 import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
 
 const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
@@ -56,6 +57,7 @@ export default function ConsoleDialog({
   const [error, setError] = useState<string | null>(
     stream ? null : "Console stream is unavailable.",
   );
+  const { openChannel, closeChannel } = useStreamMessageChannel();
 
   useEffect(() => {
     if (!open || !stream || !viewportRef.current) return;
@@ -70,7 +72,7 @@ export default function ConsoleDialog({
       setError(result.error || "Console failed to open.");
     };
 
-    const channel = createStreamMessageChannel(stream, {
+    const channel = openChannel(stream, {
       onResult: handleStreamResult,
     });
     const rfb = new RFB(viewport, channel, {
@@ -110,10 +112,10 @@ export default function ConsoleDialog({
       rfb.removeEventListener("credentialsrequired", handleCredentials);
       rfb.removeEventListener("securityfailure", handleSecurityFailure);
       rfb.disconnect();
-      channel.close();
+      closeChannel();
       viewport.innerHTML = "";
     };
-  }, [open, stream]);
+  }, [open, stream, openChannel, closeChannel]);
 
   return (
     <GeneralDialog
