@@ -1,9 +1,6 @@
 1 - Notifications!!!! See notifications.md
 
-2 - Revisit React Compiler backend once Rolldown/Vite exposes a native OXC integration: when `@vitejs/plugin-react`/Vite can run React Compiler through the OXC pass, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts`. Checked 2026-07-05: React Rust port PR facebook/react #36173 merged on 2026-06-09 and Oxc documents experimental standalone support, but Vite 8 / `@vitejs/plugin-react` 6.0.3 still exposes React Compiler via `reactCompilerPreset()` + `@rolldown/plugin-babel`, so keep the shim for now.
-
-3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
-- Checked 2026-07-05: `eslint-plugin-react` still needs the override. Latest 7.37.5 peers `eslint` through `^9.7`, not ESLint 10.
+2 - Revisit the exact `"oxc-transform": "0.136.0"` pin in `frontend/package.json`: 0.135.0-0.136.0 were the only npm releases shipping `reactCompiler` — Rolldown/Vite withdrew it in 0.137.0 over napi binary size (3.5→8.7 MiB) while a leaner (~1.4MB) implementation is upstreamed. Unpin when a current `oxc-transform` release documents `reactCompiler` again (or `@vitejs/plugin-react` exposes it natively). Beware: 0.137+ silently ignores the option, so a blind bump turns the compiler off — verify `memo_cache_sentinel` still appears in build output after any bump. Custom plugin lives in `frontend/vite.config.ts` (`enforce: "pre"` and the empty-code fallback are load-bearing). Pinned 2026-07-09.
 
 4 - values fixed in router.go should be set in global settings file?
 
@@ -31,6 +28,8 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
 - Bridge should mostly read the JSON artifact and display update status.
 
+React Compiler backend moved off Babel: `@rolldown/plugin-babel` + `babel-plugin-react-compiler` dropped for a custom `oxc-transform` plugin in frontend/vite.config.ts (2026-07-09; upstream integration was withdrawn, hence the pinned-version ToDo above) - DONE
+ESLint 10 `overrides` for eslint-plugin-react: moot — ESLint stack fully replaced by oxlint (+tsgolint, jsPlugins) and the `overrides` block removed from frontend/package.json (2026-07-09) - DONE
 UI-architecture cleanups after the 2026-07 API migration: filebrowser controller state now in five reducer slices with stable actions (2026-07-09), dialog job-streams on useJobStreamAction attach(), auto-update single writer, stream-consumer allowlist collapsed — see docs/frontend-ui-architecture-followups.md - DONE
 Frontend rerender performance (profiler-confirmed 2026-07-07): transfers rerender the whole filebrowser per progress frame (61 commits, ~71ms each, 97% in FileBrowser) DONE
 Backend: filebrowser.chmod_batch route replacing filebrowser.chmod; one job over the selection with aggregate result, handleConfirmPermissions collapsed to a single job-stream action - DONE

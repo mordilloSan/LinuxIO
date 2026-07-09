@@ -1,0 +1,110 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Native Rust plugins. `eslint` core rules are always on; `unicorn` is
+  // deliberately left out (not part of the previous ESLint setup).
+  "plugins": ["typescript", "oxc", "react"],
+  // ESLint plugins with no native oxc port yet, run via oxlint's JS-plugin
+  // workers. Their startup (~1.7s) overlaps with tsgolint type-checking, so
+  // they are free in wall-clock terms when linting with --type-aware.
+  "jsPlugins": [
+    { "name": "@tanstack/query", "specifier": "@tanstack/eslint-plugin-query" },
+    "eslint-plugin-react-you-might-not-need-an-effect",
+    // "import-x" is a reserved native alias, hence the -js suffix.
+    { "name": "import-x-js", "specifier": "eslint-plugin-import-x" }
+  ],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    // --- core ---
+    "no-unused-vars": [
+      "warn",
+      {
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "after-used",
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    // Suspicious-category rules the previous ESLint config never enforced.
+    "no-shadow": "off",
+    "no-underscore-dangle": "off",
+
+    // --- typescript ---
+    "typescript/no-empty-interface": "warn",
+    // Type-aware (requires --type-aware / oxlint-tsgolint).
+    "typescript/no-deprecated": "warn",
+    // tsgolint auto-enables every type-aware rule in the categories above;
+    // these were not part of the ESLint config, so keep them off for parity.
+    // no-floating-promises (29 hits) is the one most worth turning on later.
+    "typescript/no-floating-promises": "off",
+    "typescript/unbound-method": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/no-unnecessary-type-assertion": "off",
+    "typescript/no-unnecessary-type-conversion": "off",
+    "typescript/no-unnecessary-type-arguments": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "typescript/no-unnecessary-template-expression": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-meaningless-void-operator": "off",
+
+    // --- react ---
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    // Native port of the React Compiler diagnostics: flags code the compiler
+    // cannot memoize (the build really does skip those components).
+    "react/react-compiler": "warn",
+    "react/no-unescaped-entities": "warn",
+    "react/react-in-jsx-scope": "off",
+    // Flags the idiomatic `createElement(X, { children })` in .ts files
+    // (src/theme/index.ts) where JSX is not available.
+    "react/no-children-prop": "off",
+    "react/no-unstable-nested-components": "off",
+
+    // --- @tanstack/query (mirrors flat/recommended) ---
+    "@tanstack/query/exhaustive-deps": "error",
+    "@tanstack/query/stable-query-client": "error",
+    "@tanstack/query/no-rest-destructuring": "warn",
+    "@tanstack/query/no-unstable-deps": "error",
+    "@tanstack/query/infinite-query-property-order": "error",
+    "@tanstack/query/no-void-query-fn": "error",
+    "@tanstack/query/mutation-property-order": "error",
+
+    // --- react-you-might-not-need-an-effect (strict, minus no-event-handler) ---
+    "react-you-might-not-need-an-effect/no-derived-state": "error",
+    "react-you-might-not-need-an-effect/no-chain-state-updates": "error",
+    "react-you-might-not-need-an-effect/no-adjust-state-on-prop-change": "error",
+    "react-you-might-not-need-an-effect/no-reset-all-state-on-prop-change": "error",
+    "react-you-might-not-need-an-effect/no-initialize-state": "error",
+    "react-you-might-not-need-an-effect/no-external-store-subscription": "warn",
+    "react-you-might-not-need-an-effect/no-pass-data-to-parent": "warn",
+    "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",
+
+    // --- import ordering ---
+    "import-x-js/order": [
+      "warn",
+      {
+        "groups": [
+          "builtin",
+          "external",
+          "internal",
+          ["parent", "sibling", "index"]
+        ],
+        "newlines-between": "always",
+        "alphabetize": { "order": "asc", "caseInsensitive": true }
+      }
+    ]
+  },
+  // The JS-plugin worker has no module resolver, so classify the "@/..."
+  // tsconfig alias as internal by pattern (ESLint got this via resolution).
+  "settings": {
+    "import-x/internal-regex": "^@/"
+  }
+}

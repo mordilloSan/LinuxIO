@@ -443,13 +443,12 @@ test-updater: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint + Oxfmt (auto-fix, concurrent)..."
+	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
 	@bash -c ' \
 	  cd frontend; \
-	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
-	  ./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache --concurrency auto 2>&1 | filter_ts_warn; \
-	  status=$${PIPESTATUS[0]}; \
-	  [ "$$status" -eq 0 ] || { echo "❌ ESLint failed!"; exit "$$status"; }; \
+	  ./node_modules/.bin/oxlint --type-aware --fix src; \
+	  status=$$?; \
+	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
 	  ./node_modules/.bin/oxfmt --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
