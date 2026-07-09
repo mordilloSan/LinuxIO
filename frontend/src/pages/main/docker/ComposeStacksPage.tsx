@@ -343,12 +343,14 @@ const ComposeStacksPage = ({
 
         // Try to save without override first
         await performSave(content, stackName, filePath, false);
+        return true;
       } catch (error) {
         // The upload job reports an existing destination as a structured 409.
         if (error instanceof LinuxIOError && error.code === 409) {
           // Store pending save data and show confirmation dialog
           setPendingSaveData({ content, stackName, filePath });
           setOverwriteDialogOpen(true);
+          return false;
         } else {
           // Re-throw other errors
           toast.error(

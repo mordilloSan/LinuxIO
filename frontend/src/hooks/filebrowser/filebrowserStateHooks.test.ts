@@ -109,6 +109,21 @@ describe("filebrowser state hooks", () => {
     expect(result.current.isEditorDirty).toBe(true);
   });
 
+  it("starts a newly opened file with clean editor state", () => {
+    const { result } = renderHook(() => useFileEditor());
+
+    act(() => {
+      result.current.actions.openFile("/tmp/first.md");
+      result.current.actions.setDirty(true);
+      result.current.actions.promptClose();
+    });
+    act(() => result.current.actions.openFile("/tmp/second.md"));
+
+    expect(result.current.editingPath).toBe("/tmp/second.md");
+    expect(result.current.isEditorDirty).toBe(false);
+    expect(result.current.closeEditorDialog).toBe(false);
+  });
+
   it("tracks upload state and summarizes file/folder entries", () => {
     const { result } = renderHook(() => useFileUpload());
     const file = new File(["content"], "compose.yaml");

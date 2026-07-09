@@ -36,7 +36,12 @@ function editorReducer(state: EditorState, event: EditorEvent): EditorState {
     case "dismissClosePrompt":
       return { ...state, closeEditorDialog: false };
     case "openFile":
-      return { ...state, editingPath: event.path };
+      return {
+        ...state,
+        closeEditorDialog: false,
+        editingPath: event.path,
+        isEditorDirty: false,
+      };
     case "promptClose":
       return { ...state, closeEditorDialog: true };
     case "setDirty":

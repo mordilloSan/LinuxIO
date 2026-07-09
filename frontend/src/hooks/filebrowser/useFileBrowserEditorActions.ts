@@ -41,37 +41,31 @@ export const useFileBrowserEditorActions = ({
     [resourceCache],
   );
 
-  const saveCurrentEditor = useCallback(async () => {
-    if (!editorRef.current || !editingPath) return false;
+  const handleSaveContent = useCallback(
+    async (content: string): Promise<boolean> => {
+      if (!editingPath) return false;
 
-    actions.setSaving(true);
-    try {
-      const content = editorRef.current.getContent();
-      const contentBytes = new TextEncoder().encode(content);
-      await saveContentViaStream(editingPath, contentBytes);
-      toast.success("File saved successfully!");
-      actions.setDirty(false);
-      invalidateEditedFile(editingPath);
-      return true;
-    } catch (error) {
-      console.error("Save error:", error);
-      toast.error(getErrorMessage(error, "Failed to save file"));
-      return false;
-    } finally {
-      actions.setSaving(false);
-    }
-  }, [
-    actions,
-    editingPath,
-    editorRef,
-    invalidateEditedFile,
-    saveContentViaStream,
-    toast,
-  ]);
+      actions.setSaving(true);
+      try {
+        const contentBytes = new TextEncoder().encode(content);
+        await saveContentViaStream(editingPath, contentBytes);
+        toast.success("File saved successfully!");
+        invalidateEditedFile(editingPath);
+        return true;
+      } catch (error) {
+        console.error("Save error:", error);
+        toast.error(getErrorMessage(error, "Failed to save file"));
+        return false;
+      } finally {
+        actions.setSaving(false);
+      }
+    },
+    [actions, editingPath, invalidateEditedFile, saveContentViaStream, toast],
+  );
 
   const handleSaveFile = useCallback(async () => {
-    await saveCurrentEditor();
-  }, [saveCurrentEditor]);
+    await editorRef.current?.save();
+  }, [editorRef]);
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
@@ -90,16 +84,17 @@ export const useFileBrowserEditorActions = ({
   }, [actions]);
 
   const handleSaveAndExit = useCallback(async () => {
-    const saved = await saveCurrentEditor();
+    const saved = await editorRef.current?.save();
     if (!saved) return;
     actions.close();
-  }, [actions, saveCurrentEditor]);
+  }, [actions, editorRef]);
 
   return {
     handleCloseEditor,
     handleDiscardAndExit,
     handleKeepEditing,
     handleSaveAndExit,
+    handleSaveContent,
     handleSaveFile,
   };
 };

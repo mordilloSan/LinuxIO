@@ -115,6 +115,7 @@ interface FileBrowserEditorDialogProps {
   isSaving: boolean;
   onCloseEditor: () => void;
   onDirtyChange: (isDirty: boolean) => void;
+  onSaveContent: (content: string) => Promise<boolean>;
   onSaveFile: () => Promise<void>;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
@@ -135,6 +136,7 @@ export const FileBrowserEditorDialog = ({
   isSaving,
   onCloseEditor,
   onDirtyChange,
+  onSaveContent,
   onSaveFile,
   onSearchChange,
   onSwitchView,
@@ -199,7 +201,7 @@ export const FileBrowserEditorDialog = ({
               initialContent={editingFileResource.content || ""}
               isSaving={isSaving}
               onDirtyChange={onDirtyChange}
-              onSave={onSaveFile}
+              onSave={onSaveContent}
               ref={editorRef}
             />
           </Suspense>

@@ -251,6 +251,7 @@ export function useFileBrowserController(): FileBrowserController {
     handleDiscardAndExit,
     handleKeepEditing,
     handleSaveAndExit,
+    handleSaveContent,
     handleSaveFile,
   } = useFileBrowserEditorActions({ editor });
   const invalidateListing = useListingInvalidation(normalizedPath);
@@ -302,7 +303,8 @@ export function useFileBrowserController(): FileBrowserController {
       onDirtyChange: editorActions.setDirty,
       onDiscardAndExit: handleDiscardAndExit,
       onKeepEditing: handleKeepEditing,
-      onSave: handleSaveFile,
+      onRequestSave: handleSaveFile,
+      onSaveContent: handleSaveContent,
       onSaveAndExit: handleSaveAndExit,
       onSearchChange: viewActions.setSearch,
       onSwitchView: viewActions.switchView,
@@ -323,6 +325,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleDiscardAndExit,
       handleKeepEditing,
       handleSaveAndExit,
+      handleSaveContent,
       handleSaveFile,
       isEditorDirty,
       isEditingFileLoading,

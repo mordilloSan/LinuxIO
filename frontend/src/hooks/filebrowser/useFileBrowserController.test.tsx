@@ -74,6 +74,7 @@ const mocks = vi.hoisted(() => ({
     handleDiscardAndExit: vi.fn(),
     handleKeepEditing: vi.fn(),
     handleSaveAndExit: vi.fn(),
+    handleSaveContent: vi.fn(),
     handleSaveFile: vi.fn(),
   },
   filteredResource: undefined as FileResource | undefined,
@@ -421,7 +422,8 @@ describe("useFileBrowserController", () => {
         closeEditorDialog: false,
         isDirty: false,
         isSaving: false,
-        onSave: mocks.editorActions.handleSaveFile,
+        onRequestSave: mocks.editorActions.handleSaveFile,
+        onSaveContent: mocks.editorActions.handleSaveContent,
       },
       upload: {
         normalizedPath: "/srv/projects",

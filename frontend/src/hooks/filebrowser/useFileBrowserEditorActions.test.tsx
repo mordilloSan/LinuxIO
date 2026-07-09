@@ -35,7 +35,11 @@ vi.mock("@/api", async () => {
 
 function editorRef(content = "file body"): RefObject<FileEditorHandle | null> {
   return {
-    current: { getContent: () => content } as unknown as FileEditorHandle,
+    current: {
+      getContent: () => content,
+      isDirty: () => true,
+      save: vi.fn(async () => true),
+    },
   };
 }
 
@@ -133,9 +137,7 @@ describe("useFileBrowserEditorActions", () => {
         client,
       );
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
       expect(apiMocks.uploadContent).toHaveBeenCalledTimes(1);
       const [path, bytes, options] = apiMocks.uploadContent.mock.calls[0];
@@ -146,7 +148,6 @@ describe("useFileBrowserEditorActions", () => {
         "File saved successfully!",
         expect.anything(),
       );
-      expect(editor.actions.setDirty).toHaveBeenCalledWith(false);
       expect(editor.actions.setSaving).toHaveBeenNthCalledWith(1, true);
       expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
@@ -155,9 +156,7 @@ describe("useFileBrowserEditorActions", () => {
     it("does nothing when there is no editor or path", async () => {
       const { result, editor } = setup({ editingPath: null });
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
       expect(apiMocks.uploadContent).not.toHaveBeenCalled();
       expect(editor.actions.setSaving).not.toHaveBeenCalled();
@@ -167,15 +166,24 @@ describe("useFileBrowserEditorActions", () => {
       apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
       const { result, editor } = setup();
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
       expect(toastMocks.error).toHaveBeenCalledWith(
         "stream broke",
         expect.anything(),
       );
       expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
+    });
+
+    it("routes save requests through the editor handle", async () => {
+      const ref = editorRef();
+      const { result } = setup({ editorRef: ref });
+
+      await act(async () => {
+        await result.current.handleSaveFile();
+      });
+
+      expect(ref.current?.save).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -191,8 +199,9 @@ describe("useFileBrowserEditorActions", () => {
     });
 
     it("stays open when the save fails", async () => {
-      apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
-      const { result, editor } = setup();
+      const ref = editorRef();
+      vi.mocked(ref.current!.save).mockResolvedValue(false);
+      const { result, editor } = setup({ editorRef: ref });
 
       await act(async () => {
         await result.current.handleSaveAndExit();
