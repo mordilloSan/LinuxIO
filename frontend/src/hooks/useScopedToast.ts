@@ -15,14 +15,18 @@ export interface ScopedToast {
 }
 
 export function useScopedToast(meta: ToastMeta): ScopedToast {
+  // Destructure before the memo so the closure only reads primitives: callers
+  // pass inline meta objects, and depending on `meta` itself would rebuild the
+  // toast scope (and re-fire effects that depend on it) every render.
+  const { href, label } = meta;
   return useMemo(() => {
     const wrap = (fn: ToastFn) => (msg: ReactNode, opts?: ToastOpts) =>
-      fn(msg, { ...opts, meta: { ...meta, ...(opts?.meta ?? {}) } });
+      fn(msg, { ...opts, meta: { href, label, ...(opts?.meta ?? {}) } });
     return {
       success: wrap(toast.success),
       error: wrap(toast.error),
       info: wrap(toast.info),
       warning: wrap(toast.warning),
     };
-  }, [meta.href, meta.label]);
+  }, [href, label]);
 }

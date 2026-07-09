@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -103,34 +102,34 @@ const useUpdateController = (): UpdateContextValue => {
   const updateSuccess = phase === "done";
   const canNavigate = !isUpdating;
 
-  const trackTimeout = useCallback((fn: () => void, delayMs: number) => {
+  const trackTimeout = (fn: () => void, delayMs: number) => {
     const timerId = window.setTimeout(() => {
       timersRef.current.delete(timerId);
       fn();
     }, delayMs);
     timersRef.current.add(timerId);
     return timerId;
-  }, []);
+  };
 
-  const trackInterval = useCallback((fn: () => void, delayMs: number) => {
+  const trackInterval = (fn: () => void, delayMs: number) => {
     const timerId = window.setInterval(fn, delayMs);
     timersRef.current.add(timerId);
     return timerId;
-  }, []);
+  };
 
-  const clearTimers = useCallback(() => {
+  const clearTimers = () => {
     timersRef.current.forEach((timerId) => clearTimeout(timerId));
     timersRef.current.clear();
-  }, []);
+  };
 
-  const detachStreamHandlers = useCallback(() => {
+  const detachStreamHandlers = () => {
     if (unbindStreamHandlersRef.current) {
       unbindStreamHandlersRef.current();
       unbindStreamHandlersRef.current = null;
     }
-  }, []);
+  };
 
-  const resetUpdate = useCallback(() => {
+  const resetUpdate = () => {
     clearTimers();
     detachStreamHandlers();
     if (streamRef.current) {
@@ -148,47 +147,43 @@ const useUpdateController = (): UpdateContextValue => {
     setTargetVersion(null);
     // Re-enable API requests
     getStreamMux()?.setUpdating(false);
-  }, [clearTimers, detachStreamHandlers]);
+  };
 
-  const failUpdate = useCallback(
-    (message: string) => {
-      clearTimers();
-      detachStreamHandlers();
-      if (streamRef.current) {
-        streamRef.current.close();
-      }
-      streamRef.current = null;
-      updateRunIdRef.current = null;
-      setPhase("failed");
-      setError(message);
-      setStatus("Update failed");
-      setProgress(100);
-      // Re-enable API requests
-      getStreamMux()?.setUpdating(false);
-    },
-    [clearTimers, detachStreamHandlers],
-  );
+  const failUpdate = (message: string) => {
+    clearTimers();
+    detachStreamHandlers();
+    if (streamRef.current) {
+      streamRef.current.close();
+    }
+    streamRef.current = null;
+    updateRunIdRef.current = null;
+    setPhase("failed");
+    setError(message);
+    setStatus("Update failed");
+    setProgress(100);
+    // Re-enable API requests
+    getStreamMux()?.setUpdating(false);
+  };
 
-  const markUpdateStarted = useCallback(() => {
+  const markUpdateStarted = () => {
     if (updateStartedRef.current) return;
     updateStartedRef.current = true;
     setProgress((prev) => Math.max(prev, 30));
-  }, []);
+  };
 
-  const markUpdateStartedFromStatus = useCallback(
-    (status?: UpdateStatusResponse | null) => {
-      if (!status) return;
-      if (status.status === "running" || status.status === "ok") {
-        markUpdateStarted();
-      }
-      if (status.status === "error") {
-        markUpdateStarted();
-      }
-    },
-    [markUpdateStarted],
-  );
+  const markUpdateStartedFromStatus = (
+    status?: UpdateStatusResponse | null,
+  ) => {
+    if (!status) return;
+    if (status.status === "running" || status.status === "ok") {
+      markUpdateStarted();
+    }
+    if (status.status === "error") {
+      markUpdateStarted();
+    }
+  };
 
-  const fetchUpdateStatus = useCallback(async () => {
+  const fetchUpdateStatus = async () => {
     const runId = updateRunIdRef.current;
     if (!runId) return null;
     const url = `/api/update-status?id=${encodeURIComponent(runId)}`;
@@ -203,9 +198,9 @@ const useUpdateController = (): UpdateContextValue => {
     } catch {
       return null;
     }
-  }, []);
+  };
 
-  const beginVerification = useCallback(() => {
+  const beginVerification = () => {
     const runId = updateRunIdRef.current;
     if (!runId) {
       failUpdate("Update verification missing run id");
@@ -293,218 +288,183 @@ const useUpdateController = (): UpdateContextValue => {
         failUpdate("Update verification timed out");
       }
     }, VERIFY_TIMEOUT_MS);
-  }, [
-    clearTimers,
-    failUpdate,
-    markUpdateStartedFromStatus,
-    trackInterval,
-    trackTimeout,
-  ]);
+  };
 
-  const handleStreamFinished = useCallback(
-    (fallbackError?: string) => {
-      const finalize = async () => {
-        if (!updateRunIdRef.current) {
+  const handleStreamFinished = (fallbackError?: string) => {
+    const finalize = async () => {
+      if (!updateRunIdRef.current) {
+        return;
+      }
+      const updateStatus = await fetchUpdateStatus();
+
+      if (!updateStatus || updateStatus.status === "unknown") {
+        // If we know the update started (received output), the server is likely just
+        // restarting. Don't fail immediately - proceed to verification and keep polling.
+        if (updateStartedRef.current) {
+          setStatus("Update in progress - service restarting...");
+          setProgress((prev) => Math.max(prev, 60));
+          beginVerification();
           return;
         }
-        const updateStatus = await fetchUpdateStatus();
-
-        if (!updateStatus || updateStatus.status === "unknown") {
-          // If we know the update started (received output), the server is likely just
-          // restarting. Don't fail immediately - proceed to verification and keep polling.
-          if (updateStartedRef.current) {
-            setStatus("Update in progress - service restarting...");
-            setProgress((prev) => Math.max(prev, 60));
-            beginVerification();
-            return;
-          }
-          failUpdate(fallbackError || "Stream closed before update started");
-          return;
-        }
-
-        markUpdateStartedFromStatus(updateStatus);
-
-        if (updateStatus.status === "error") {
-          const exitCode = updateStatus.exit_code;
-          const detail = updateStatus.message?.trim() || fallbackError?.trim();
-          const prefix =
-            exitCode !== undefined
-              ? `Update failed (exit code ${exitCode})`
-              : "Update failed";
-          const message = detail ? `${prefix}: ${detail}` : prefix;
-          failUpdate(message);
-          return;
-        }
-
-        // Don't set phase here - let beginVerification handle it to avoid state update race conditions
-        setStatus("Update in progress - service restarting...");
-        setProgress((prev) => Math.max(prev, 60));
-        beginVerification();
-      };
-
-      void finalize();
-    },
-    [
-      beginVerification,
-      failUpdate,
-      fetchUpdateStatus,
-      markUpdateStartedFromStatus,
-    ],
-  );
-
-  const startUpdate = useCallback(
-    (version?: string) => {
-      if (phase !== "idle") return;
-
-      const target = version ?? null;
-      const runId = buildUpdateRunId();
-      targetVersionRef.current = target;
-      updateStartedRef.current = false;
-      updateRunIdRef.current = runId;
-      clearTimers();
-
-      setPhase("running");
-      setStatus("Starting update...");
-      setProgress(10);
-      setError(null);
-      setOutput([]);
-      setTargetVersion(target);
-
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
-        failUpdate("Stream connection not ready");
+        failUpdate(fallbackError || "Stream closed before update started");
         return;
       }
 
-      // Disable all API requests during update
-      mux.setUpdating(true);
+      markUpdateStartedFromStatus(updateStatus);
 
-      const stream = openAppUpdateStream(runId, target ?? undefined);
-      if (!stream) {
-        failUpdate("Failed to open update stream");
+      if (updateStatus.status === "error") {
+        const exitCode = updateStatus.exit_code;
+        const detail = updateStatus.message?.trim() || fallbackError?.trim();
+        const prefix =
+          exitCode !== undefined
+            ? `Update failed (exit code ${exitCode})`
+            : "Update failed";
+        const message = detail ? `${prefix}: ${detail}` : prefix;
+        failUpdate(message);
         return;
       }
 
-      streamRef.current = stream;
+      // Don't set phase here - let beginVerification handle it to avoid state update race conditions
+      setStatus("Update in progress - service restarting...");
+      setProgress((prev) => Math.max(prev, 60));
+      beginVerification();
+    };
 
-      trackTimeout(() => {
-        if (updateRunIdRef.current === runId) {
-          failUpdate("Update timed out");
-        }
-      }, UPDATE_TIMEOUT_MS);
+    void finalize();
+  };
 
-      unbindStreamHandlersRef.current = bindStreamHandlers(stream, {
-        onData: (data: Uint8Array) => {
-          const text = decodeString(data);
-          const lines = text
-            .split("\n")
-            .filter((line) => line.trim().length > 0);
-          if (lines.length === 0) return;
-          markUpdateStarted();
+  const startUpdate = (version?: string) => {
+    if (phase !== "idle") return;
 
-          for (const line of lines) {
-            setOutput((prev) => [...prev, line]);
-            setStatus(line);
+    const target = version ?? null;
+    const runId = buildUpdateRunId();
+    targetVersionRef.current = target;
+    updateStartedRef.current = false;
+    updateRunIdRef.current = runId;
+    clearTimers();
 
-            // Update progress based on installation steps
-            if (
-              line.includes("Step 1/5:") ||
-              line.includes("Downloading binaries")
-            ) {
-              setProgress(20);
-            } else if (
-              line.includes("Step 2/5:") ||
-              line.includes("Verifying checksums")
-            ) {
-              setProgress(35);
-            } else if (
-              line.includes("Step 3/5:") ||
-              line.includes("Installing binaries")
-            ) {
-              setProgress(50);
-            } else if (
-              line.includes("Step 4/5:") ||
-              line.includes("Installing configuration")
-            ) {
-              setProgress(65);
-            } else if (
-              line.includes("Step 5/5:") ||
-              line.includes("Installing systemd")
-            ) {
-              setProgress(75);
-            } else if (line.includes("Installation complete")) {
-              setProgress(85);
-            }
+    setPhase("running");
+    setStatus("Starting update...");
+    setProgress(10);
+    setError(null);
+    setOutput([]);
+    setTargetVersion(target);
+
+    const mux = getStreamMux();
+    if (!mux || mux.status !== "open") {
+      failUpdate("Stream connection not ready");
+      return;
+    }
+
+    // Disable all API requests during update
+    mux.setUpdating(true);
+
+    const stream = openAppUpdateStream(runId, target ?? undefined);
+    if (!stream) {
+      failUpdate("Failed to open update stream");
+      return;
+    }
+
+    streamRef.current = stream;
+
+    trackTimeout(() => {
+      if (updateRunIdRef.current === runId) {
+        failUpdate("Update timed out");
+      }
+    }, UPDATE_TIMEOUT_MS);
+
+    unbindStreamHandlersRef.current = bindStreamHandlers(stream, {
+      onData: (data: Uint8Array) => {
+        const text = decodeString(data);
+        const lines = text.split("\n").filter((line) => line.trim().length > 0);
+        if (lines.length === 0) return;
+        markUpdateStarted();
+
+        for (const line of lines) {
+          setOutput((prev) => [...prev, line]);
+          setStatus(line);
+
+          // Update progress based on installation steps
+          if (
+            line.includes("Step 1/5:") ||
+            line.includes("Downloading binaries")
+          ) {
+            setProgress(20);
+          } else if (
+            line.includes("Step 2/5:") ||
+            line.includes("Verifying checksums")
+          ) {
+            setProgress(35);
+          } else if (
+            line.includes("Step 3/5:") ||
+            line.includes("Installing binaries")
+          ) {
+            setProgress(50);
+          } else if (
+            line.includes("Step 4/5:") ||
+            line.includes("Installing configuration")
+          ) {
+            setProgress(65);
+          } else if (
+            line.includes("Step 5/5:") ||
+            line.includes("Installing systemd")
+          ) {
+            setProgress(75);
+          } else if (line.includes("Installation complete")) {
+            setProgress(85);
           }
-        },
-        onResult: (result) => {
-          detachStreamHandlers();
-          streamRef.current = null;
-          const fallbackError =
-            result.status === "error"
-              ? result.error || "Update failed"
-              : undefined;
-          handleStreamFinished(fallbackError);
-        },
-        onClose: () => {
-          detachStreamHandlers();
-          streamRef.current = null;
-          handleStreamFinished();
-        },
-      });
-    },
-    [
-      clearTimers,
-      detachStreamHandlers,
-      failUpdate,
-      handleStreamFinished,
-      markUpdateStarted,
-      phase,
-      trackTimeout,
-    ],
-  );
+        }
+      },
+      onResult: (result) => {
+        detachStreamHandlers();
+        streamRef.current = null;
+        const fallbackError =
+          result.status === "error"
+            ? result.error || "Update failed"
+            : undefined;
+        handleStreamFinished(fallbackError);
+      },
+      onClose: () => {
+        detachStreamHandlers();
+        streamRef.current = null;
+        handleStreamFinished();
+      },
+    });
+  };
 
+  // Unmount-only cleanup. Self-contained over refs (instead of calling
+  // clearTimers/detachStreamHandlers) so the dependency array can stay empty:
+  // with unstable function identities in dev, depending on them would re-run
+  // this cleanup every render and close the stream mid-update.
   useEffect(() => {
     return () => {
-      clearTimers();
-      detachStreamHandlers();
+      timersRef.current.forEach((timerId) => clearTimeout(timerId));
+      timersRef.current.clear();
+      if (unbindStreamHandlersRef.current) {
+        unbindStreamHandlersRef.current();
+        unbindStreamHandlersRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.close();
         streamRef.current = null;
       }
     };
-  }, [clearTimers, detachStreamHandlers]);
+  }, []);
 
-  return useMemo(
-    () => ({
-      phase,
-      status,
-      progress,
-      output,
-      error,
-      targetVersion,
-      isUpdating,
-      updateComplete,
-      updateSuccess,
-      canNavigate,
-      startUpdate,
-      resetUpdate,
-    }),
-    [
-      canNavigate,
-      error,
-      isUpdating,
-      output,
-      phase,
-      progress,
-      resetUpdate,
-      startUpdate,
-      status,
-      targetVersion,
-      updateComplete,
-      updateSuccess,
-    ],
-  );
+  return {
+    phase,
+    status,
+    progress,
+    output,
+    error,
+    targetVersion,
+    isUpdating,
+    updateComplete,
+    updateSuccess,
+    canNavigate,
+    startUpdate,
+    resetUpdate,
+  };
 };
 
 const useUpdateNavigationGuard = (isUpdating: boolean) => {

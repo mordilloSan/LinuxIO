@@ -167,14 +167,14 @@ export const useFileSelection = ({
     if (selectedPaths.size === 0) return;
     actions.copyToClipboard(Array.from(selectedPaths));
     toast.success(`${selectedPaths.size} item(s) copied to clipboard`);
-  }, [actions, onContextMenuClose, selectedPaths]);
+  }, [actions, onContextMenuClose, selectedPaths, toast]);
 
   const handleCut = useCallback(() => {
     onContextMenuClose?.();
     if (selectedPaths.size === 0) return;
     actions.cutToClipboard(Array.from(selectedPaths));
     toast.success(`${selectedPaths.size} item(s) cut to clipboard`);
-  }, [actions, onContextMenuClose, selectedPaths]);
+  }, [actions, onContextMenuClose, selectedPaths, toast]);
 
   const handlePaste = useCallback(async () => {
     onContextMenuClose?.();
@@ -208,6 +208,7 @@ export const useFileSelection = ({
     copyItems,
     moveItems,
     normalizedPath,
+    toast,
   ]);
 
   return {

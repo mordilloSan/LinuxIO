@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   CACHE_TTL_MS,
@@ -58,17 +58,10 @@ export const useContainerAutoUpdateState = () => {
   const containerNames =
     query.data?.options?.container_names ??
     DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
-  const selectedNames = useMemo(
-    () => new Set(containerNames),
-    [containerNames],
-  );
-  const pendingNames = useMemo(
-    () =>
-      diffNames(
-        confirmedOptions?.container_names ?? containerNames,
-        containerNames,
-      ),
-    [confirmedOptions?.container_names, containerNames],
+  const selectedNames = new Set(containerNames);
+  const pendingNames = diffNames(
+    confirmedOptions?.container_names ?? containerNames,
+    containerNames,
   );
   const disabled = query.isPending || !query.data?.available;
   const reason =
@@ -108,7 +101,7 @@ export const useContainerAutoUpdateState = () => {
     [],
   );
 
-  const runQueuedSave = useCallback(async () => {
+  const runQueuedSave = async () => {
     if (saveLoopRunningRef.current) return;
 
     if (flushTimerRef.current !== undefined) {
@@ -118,141 +111,118 @@ export const useContainerAutoUpdateState = () => {
 
     saveLoopRunningRef.current = true;
     setIsSaving(true);
-    try {
-      while (queuedOptionsRef.current) {
-        const options = queuedOptionsRef.current;
-        queuedOptionsRef.current = null;
+    // No try/finally around the loop — the React Compiler (oxc port) cannot
+    // lower finalizers yet. Each iteration catches its own errors without
+    // rethrowing, so the flag reset below is always reached.
+    while (queuedOptionsRef.current) {
+      const options = queuedOptionsRef.current;
+      queuedOptionsRef.current = null;
 
-        try {
-          const savedState = await saveAutoUpdateOptions(options);
-          const savedOptions = normalizeOptions(savedState.options);
-          const desiredOptions = desiredOptionsRef.current ?? savedOptions;
+      try {
+        const savedState = await saveAutoUpdateOptions(options);
+        const savedOptions = normalizeOptions(savedState.options);
+        const desiredOptions = desiredOptionsRef.current ?? savedOptions;
 
-          confirmedOptionsRef.current = savedOptions;
-          setConfirmedOptions(savedOptions);
-          autoUpdateCache.set(
-            optionsKey(savedOptions) === optionsKey(desiredOptions)
-              ? savedState
-              : stateWithOptions(savedState, desiredOptions),
-          );
+        confirmedOptionsRef.current = savedOptions;
+        setConfirmedOptions(savedOptions);
+        autoUpdateCache.set(
+          optionsKey(savedOptions) === optionsKey(desiredOptions)
+            ? savedState
+            : stateWithOptions(savedState, desiredOptions),
+        );
 
-          if (optionsKey(savedOptions) === optionsKey(desiredOptions)) {
-            toast.success("Container auto-update settings saved");
-          }
-        } catch (err) {
-          const desiredOptions = desiredOptionsRef.current;
-          if (
-            desiredOptions &&
-            optionsKey(desiredOptions) !== optionsKey(options)
-          ) {
-            queuedOptionsRef.current = desiredOptions;
-            continue;
-          }
-
-          const confirmed =
-            confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
-          desiredOptionsRef.current = confirmed;
-          const current = autoUpdateCache.get();
-          if (current) {
-            autoUpdateCache.set(stateWithOptions(current, confirmed));
-          }
-          toast.error(
-            getMutationErrorMessage(
-              err,
-              "Failed to save container auto-update setting",
-            ),
-          );
+        if (optionsKey(savedOptions) === optionsKey(desiredOptions)) {
+          toast.success("Container auto-update settings saved");
         }
+      } catch (err) {
+        const desiredOptions = desiredOptionsRef.current;
+        if (
+          desiredOptions &&
+          optionsKey(desiredOptions) !== optionsKey(options)
+        ) {
+          queuedOptionsRef.current = desiredOptions;
+          continue;
+        }
+
+        const confirmed =
+          confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
+        desiredOptionsRef.current = confirmed;
+        const current = autoUpdateCache.get();
+        if (current) {
+          autoUpdateCache.set(stateWithOptions(current, confirmed));
+        }
+        toast.error(
+          getMutationErrorMessage(
+            err,
+            "Failed to save container auto-update setting",
+          ),
+        );
       }
-    } finally {
-      saveLoopRunningRef.current = false;
-      setIsSaving(false);
     }
-  }, [autoUpdateCache, saveAutoUpdateOptions, toast]);
+    saveLoopRunningRef.current = false;
+    setIsSaving(false);
+  };
 
-  const scheduleSave = useCallback(
-    (options: DockerContainerAutoUpdateOptions) => {
-      queuedOptionsRef.current = normalizeOptions(options);
-      if (saveLoopRunningRef.current) return;
+  const scheduleSave = (options: DockerContainerAutoUpdateOptions) => {
+    queuedOptionsRef.current = normalizeOptions(options);
+    if (saveLoopRunningRef.current) return;
 
-      if (flushTimerRef.current !== undefined) {
-        window.clearTimeout(flushTimerRef.current);
-      }
-      flushTimerRef.current = window.setTimeout(() => {
-        flushTimerRef.current = undefined;
-        void runQueuedSave();
-      }, SAVE_DEBOUNCE_MS);
-    },
-    [runQueuedSave],
-  );
+    if (flushTimerRef.current !== undefined) {
+      window.clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = undefined;
+      void runQueuedSave();
+    }, SAVE_DEBOUNCE_MS);
+  };
 
-  const toggleContainer = useCallback(
-    (name: string) => {
-      const state = autoUpdateCache.get();
-      if (!state) return;
-      const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
+  const toggleContainer = (name: string) => {
+    const state = autoUpdateCache.get();
+    if (!state) return;
+    const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
 
-      const nextNames = new Set(options.container_names ?? []);
-      const enabling = !nextNames.has(name);
-      if (enabling) {
-        nextNames.add(name);
-      } else {
-        nextNames.delete(name);
-      }
-      const nextOptions = normalizeOptions({
-        ...options,
-        container_names: Array.from(nextNames),
-      });
+    const nextNames = new Set(options.container_names ?? []);
+    const enabling = !nextNames.has(name);
+    if (enabling) {
+      nextNames.add(name);
+    } else {
+      nextNames.delete(name);
+    }
+    const nextOptions = normalizeOptions({
+      ...options,
+      container_names: Array.from(nextNames),
+    });
 
-      desiredOptionsRef.current = nextOptions;
-      void autoUpdateCache.cancel();
-      autoUpdateCache.set(stateWithOptions(state, nextOptions));
-      scheduleSave(nextOptions);
-    },
-    [autoUpdateCache, scheduleSave],
-  );
+    desiredOptionsRef.current = nextOptions;
+    void autoUpdateCache.cancel();
+    autoUpdateCache.set(stateWithOptions(state, nextOptions));
+    scheduleSave(nextOptions);
+  };
 
   // Explicit whole-form save (settings dialog): optimistic like the toggles,
   // but flushed immediately instead of waiting out the toggle debounce.
-  const saveOptions = useCallback(
-    (options: DockerContainerAutoUpdateOptions) => {
-      const nextOptions = normalizeOptions(options);
-      desiredOptionsRef.current = nextOptions;
-      const current = autoUpdateCache.get();
-      if (current) {
-        void autoUpdateCache.cancel();
-        autoUpdateCache.set(stateWithOptions(current, nextOptions));
-      }
-      queuedOptionsRef.current = nextOptions;
-      void runQueuedSave();
-    },
-    [autoUpdateCache, runQueuedSave],
-  );
+  const saveOptions = (options: DockerContainerAutoUpdateOptions) => {
+    const nextOptions = normalizeOptions(options);
+    desiredOptionsRef.current = nextOptions;
+    const current = autoUpdateCache.get();
+    if (current) {
+      void autoUpdateCache.cancel();
+      autoUpdateCache.set(stateWithOptions(current, nextOptions));
+    }
+    queuedOptionsRef.current = nextOptions;
+    void runQueuedSave();
+  };
 
-  return useMemo(
-    () => ({
-      disabled,
-      isPending: query.isPending,
-      isSaving,
-      pendingNames,
-      queryError: query.error?.message,
-      reason,
-      saveOptions,
-      selectedNames,
-      state: query.data,
-      toggleContainer,
-    }),
-    [
-      disabled,
-      query.isPending,
-      query.error?.message,
-      query.data,
-      isSaving,
-      pendingNames,
-      reason,
-      saveOptions,
-      selectedNames,
-      toggleContainer,
-    ],
-  );
+  return {
+    disabled,
+    isPending: query.isPending,
+    isSaving,
+    pendingNames,
+    queryError: query.error?.message,
+    reason,
+    saveOptions,
+    selectedNames,
+    state: query.data,
+    toggleContainer,
+  };
 };
