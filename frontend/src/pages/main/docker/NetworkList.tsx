@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";

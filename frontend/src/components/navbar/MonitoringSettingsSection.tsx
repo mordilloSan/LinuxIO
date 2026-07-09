@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import {

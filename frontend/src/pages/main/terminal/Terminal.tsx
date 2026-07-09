@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import { openTerminalStream, useStreamMux } from "@/api";

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";

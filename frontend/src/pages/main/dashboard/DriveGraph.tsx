@@ -1,4 +1,4 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";

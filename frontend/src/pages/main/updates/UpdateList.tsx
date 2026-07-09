@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";

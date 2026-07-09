@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
 import DeleteGroupDialog from "./components/DeleteGroupDialog";

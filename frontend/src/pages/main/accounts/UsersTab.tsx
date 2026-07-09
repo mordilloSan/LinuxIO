@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";

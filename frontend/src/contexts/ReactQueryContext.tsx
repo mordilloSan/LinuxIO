@@ -4,7 +4,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import React, { ReactNode } from "react";
+import { ReactNode } from "react";
 import { toast } from "sonner";
 
 import { CACHE_TTL_MS } from "@/api";

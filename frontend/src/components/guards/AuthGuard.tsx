@@ -1,4 +1,4 @@
-import React, { lazy, type PropsWithChildren, Suspense } from "react";
+import { lazy, type PropsWithChildren, Suspense } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";

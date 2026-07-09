@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import { useState } from "react";
 
 import SetDateTimeDialog from "./SetDateTimeDialog";
 import SetHostnameDialog from "./SetHostnameDialog";

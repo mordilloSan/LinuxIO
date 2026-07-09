@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";

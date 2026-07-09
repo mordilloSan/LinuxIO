@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
 import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";

@@ -6,8 +6,8 @@ import {
   type ReactNode,
 } from "react";
 
-// children is required here so providers typed `FC<{ children: ReactNode }>`
-// stay assignable; components with optional children satisfy it too.
+// children is required here so providers that require children stay assignable;
+// components with optional children satisfy it too.
 type ProviderComponent = ComponentType<{ children: ReactNode }>;
 
 type ProviderProps = Record<string, unknown> & { key?: Key };

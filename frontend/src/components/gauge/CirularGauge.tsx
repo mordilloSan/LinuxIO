@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 
 import { useAppTheme } from "@/theme";
 import { GREY_TOKENS as grey } from "@/theme/colors";

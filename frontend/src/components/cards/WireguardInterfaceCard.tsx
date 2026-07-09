@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
-import React, { RefObject, useState } from "react";
+import { RefObject, useState } from "react";
 
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";

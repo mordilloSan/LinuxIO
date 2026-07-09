@@ -1,5 +1,5 @@
 // src/contexts/ConfigContext.tsx
-import React, {
+import {
   createContext,
   useCallback,
   useEffect,

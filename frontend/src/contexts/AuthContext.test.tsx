@@ -1,4 +1,3 @@
-import React from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { render, screen, waitFor } from "@/test/render";

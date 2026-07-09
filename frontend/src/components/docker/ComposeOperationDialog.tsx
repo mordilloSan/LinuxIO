@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
   useCallback,
   useEffect,
   useLayoutEffect,

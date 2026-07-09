@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { linuxio, type NFSClient, type NFSExport } from "@/api";
 import NFSShareCard from "@/components/cards/NFSShareCard";

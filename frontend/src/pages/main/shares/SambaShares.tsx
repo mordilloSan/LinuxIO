@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { linuxio, type SambaShare } from "@/api";
 import SambaShareCard from "@/components/cards/SambaShareCard";

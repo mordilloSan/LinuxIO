@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppCollapse from "@/components/ui/AppCollapse";
