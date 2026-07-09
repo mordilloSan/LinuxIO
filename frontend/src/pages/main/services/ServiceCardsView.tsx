@@ -1,5 +1,10 @@
 import { memo, type ReactNode } from "react";
 
+import type { Service } from "@/api";
+import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import { getServiceStatusColor } from "@/constants/statusColors";
+
 import {
   DetailRow,
   formatBytes,
@@ -7,11 +12,6 @@ import {
   UnitCardsView,
   UnitStatusRows,
 } from "./UnitViews";
-
-import type { Service } from "@/api";
-import { linuxio } from "@/api";
-import UnitLogsCard from "@/components/cards/UnitLogsCard";
-import { getServiceStatusColor } from "@/constants/statusColors";
 
 interface ServiceCardsViewProps {
   expanded: string | null;

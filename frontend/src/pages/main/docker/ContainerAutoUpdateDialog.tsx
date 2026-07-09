@@ -1,9 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
-import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
-import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
-
 import {
   type DockerContainerAutoUpdateMode,
   type DockerContainerAutoUpdateOptions,
@@ -25,6 +22,9 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+
+import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
+import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
 
 interface ContainerAutoUpdateDialogProps {
   autoUpdate: ContainerAutoUpdateController;

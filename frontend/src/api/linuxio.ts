@@ -13,7 +13,6 @@ import type {
   LinuxIOStreamSchema,
   StreamRouteName,
 } from "./generated/linuxio-types";
-
 import { isTerminalJobState } from "./job-state";
 import { request as bridgeRequest } from "./linuxio-core";
 import {

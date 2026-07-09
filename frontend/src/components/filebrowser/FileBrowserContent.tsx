@@ -5,8 +5,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
-
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import ErrorState from "@/components/filebrowser/ErrorState";
@@ -22,6 +20,8 @@ import type {
   SortOrder,
   ViewMode,
 } from "@/types/filebrowser";
+
+import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
 
 export interface FileBrowserSurfaceProps {
   isDragOver: boolean;

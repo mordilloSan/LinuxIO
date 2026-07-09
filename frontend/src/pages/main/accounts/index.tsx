@@ -2,14 +2,14 @@ import { Icon } from "@iconify/react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import GroupsTab from "./GroupsTab";
-import UsersTab from "./UsersTab";
-
 import { TabContainer } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
+
+import GroupsTab from "./GroupsTab";
+import UsersTab from "./UsersTab";
 
 const AccountsPage = () => {
   const [createUserHandler, setCreateUserHandler] = useState<

@@ -6,8 +6,6 @@ import {
   type ReactNode,
 } from "react";
 
-import FrostedCard from "./FrostedCard";
-
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
@@ -19,6 +17,8 @@ import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
 } from "@/theme/surfaces";
+
+import FrostedCard from "./FrostedCard";
 
 /** A single option rendered inside the card's dropdown selector. */
 export interface SelectOption {

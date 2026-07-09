@@ -8,12 +8,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import type {
-  ActiveIndexer,
-  BackgroundJob,
-  Indexer,
-} from "@/types/backgroundJobs";
-
 import {
   bindStreamHandlers,
   CAPABILITIES,
@@ -29,10 +23,15 @@ import {
   type Stream,
   useStreamMux,
 } from "@/api";
-import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import type {
+  ActiveIndexer,
+  BackgroundJob,
+  Indexer,
+} from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";

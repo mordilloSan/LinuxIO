@@ -6,26 +6,6 @@ import {
   type SyntheticEvent,
 } from "react";
 
-import PreflightSummary from "./PreflightSummary";
-import {
-  CLOUD_INIT_IMAGE_PRESETS,
-  DEFAULT_MANAGED_CLOUD_PATH,
-  DEFAULT_MANAGED_ISO_PATH,
-  IMAGE_PRESETS,
-  VM_TOAST,
-  folderFromISOPathText,
-  isISOPath,
-  isMissingPathError,
-  parentDirectory,
-} from "./vmShared";
-import type {
-  ReadyImagePreset,
-  VMCreateMode,
-  VMDialogImagePresetID,
-  VMDialogSourceType,
-  VMPresetID,
-} from "./vmShared";
-
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -45,6 +25,26 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 import { ensureTrailingSlash } from "@/utils/path";
+
+import PreflightSummary from "./PreflightSummary";
+import type {
+  ReadyImagePreset,
+  VMCreateMode,
+  VMDialogImagePresetID,
+  VMDialogSourceType,
+  VMPresetID,
+} from "./vmShared";
+import {
+  CLOUD_INIT_IMAGE_PRESETS,
+  DEFAULT_MANAGED_CLOUD_PATH,
+  DEFAULT_MANAGED_ISO_PATH,
+  IMAGE_PRESETS,
+  VM_TOAST,
+  folderFromISOPathText,
+  isISOPath,
+  isMissingPathError,
+  parentDirectory,
+} from "./vmShared";
 
 const createModeStyle = (theme: AppTheme, isMobile: boolean): CSSProperties =>
   isMobile

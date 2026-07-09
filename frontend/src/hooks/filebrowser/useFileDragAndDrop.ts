@@ -1,9 +1,8 @@
 import { useCallback, useState, type DragEvent } from "react";
 
-import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
-
 import type { ResolveCollisionsFn } from "@/hooks/filebrowser/useFileConflicts";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 import { FileResource } from "@/types/filebrowser";
 import { joinPath } from "@/utils/path";
 

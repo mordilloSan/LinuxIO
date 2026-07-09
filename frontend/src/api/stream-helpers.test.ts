@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Stream } from "@/api/StreamMultiplexer";
 import { LinuxIOError } from "@/api/linuxio-core";
 import {
   bindStreamHandlers,
   streamWriteChunks,
   waitForStreamResult,
 } from "@/api/stream-helpers";
+import type { Stream } from "@/api/StreamMultiplexer";
 
 function createStream(overrides: Partial<Stream> = {}): Stream {
   return {

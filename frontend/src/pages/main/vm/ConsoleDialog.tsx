@@ -3,8 +3,6 @@ import RFB from "@novnc/novnc";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
-import type { ConsoleSession } from "./vmShared";
-
 import type { ResultFrame } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -12,6 +10,8 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
 import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
+
+import type { ConsoleSession } from "./vmShared";
 
 const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
   height: isMobile ? "calc(100vh - 24px)" : "min(82vh, 820px)",

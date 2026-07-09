@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
-import DeleteUserDialog from "./DeleteUserDialog";
-
 import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -16,6 +14,8 @@ import {
 import AppTextField from "@/components/ui/AppTextField";
 import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
+
+import DeleteUserDialog from "./DeleteUserDialog";
 
 const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 

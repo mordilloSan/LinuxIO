@@ -1,13 +1,5 @@
 import { memo, type ChangeEvent, type ReactNode, type RefObject } from "react";
 
-import {
-  FileBrowserConflictDialog,
-  FileBrowserDetailsDialog,
-  FileBrowserEditorDialog,
-  FileBrowserUploadDialog,
-  type MultiItemsStats,
-} from "./FileBrowserPanels";
-
 import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -27,6 +19,14 @@ import type {
   ResourceStatData,
   ViewMode,
 } from "@/types/filebrowser";
+
+import {
+  FileBrowserConflictDialog,
+  FileBrowserDetailsDialog,
+  FileBrowserEditorDialog,
+  FileBrowserUploadDialog,
+  type MultiItemsStats,
+} from "./FileBrowserPanels";
 
 interface CompressFormatDialogState {
   baseName: string;

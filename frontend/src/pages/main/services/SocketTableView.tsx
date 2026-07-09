@@ -1,9 +1,9 @@
-import { statusDot, UnitTableView } from "./UnitViews";
-
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
 import { useAppTheme } from "@/theme";
+
+import { statusDot, UnitTableView } from "./UnitViews";
 
 interface SocketTableViewProps {
   onDoubleClick?: (name: string) => void;

@@ -1,10 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState, type ReactNode } from "react";
 
-import IndexerDialog from "./IndexerDialog";
-import SearchBar from "./SearchBar";
-import { ViewMode } from "../../types/filebrowser";
-
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
@@ -15,6 +11,10 @@ import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJob
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
+
+import IndexerDialog from "./IndexerDialog";
+import SearchBar from "./SearchBar";
+import { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
   editingFileName?: string;

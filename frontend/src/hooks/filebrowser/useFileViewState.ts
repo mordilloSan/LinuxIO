@@ -1,8 +1,7 @@
 import { useMemo, useReducer } from "react";
 
-import type { SortField, SortOrder, ViewMode } from "@/types/filebrowser";
-
 import { useConfigValue } from "@/hooks/useConfig";
+import type { SortField, SortOrder, ViewMode } from "@/types/filebrowser";
 
 const viewModes: ViewMode[] = ["card", "list"];
 

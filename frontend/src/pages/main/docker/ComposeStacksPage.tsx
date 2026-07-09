@@ -1,7 +1,5 @@
 import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
-import ComposeList from "./ComposeList";
-
 import {
   CACHE_TTL_MS,
   linuxio,
@@ -30,6 +28,8 @@ import { useConfig } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
+
+import ComposeList from "./ComposeList";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;

@@ -1,5 +1,4 @@
 import type { JobSnapshot } from "./generated/linuxio-types";
-
 import { isTerminalJobState } from "./job-state";
 import { openJobAttachStream } from "./linuxio";
 import { LinuxIOError, request } from "./linuxio-core";

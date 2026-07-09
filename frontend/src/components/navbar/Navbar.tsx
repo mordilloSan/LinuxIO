@@ -1,15 +1,15 @@
 import { Icon } from "@iconify/react";
 import { memo, type CSSProperties, type MouseEventHandler } from "react";
 
-import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
-import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
-import Settings from "./NavbarThemeToggle";
-import NavbarUserDropdown from "./NavbarUserDropdown";
-
 import AppIconButton from "@/components/ui/AppIconButton";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
+
+import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
+import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
+import Settings from "./NavbarThemeToggle";
+import NavbarUserDropdown from "./NavbarUserDropdown";
 
 import "./navbar.css";
 

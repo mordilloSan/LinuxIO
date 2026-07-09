@@ -7,13 +7,6 @@ import {
   useState,
 } from "react";
 
-import {
-  type ComposeMessage,
-  type ComposeTask,
-  mergeTask,
-} from "./composeProgress";
-import DockerComposeProgress from "./DockerComposeProgress";
-
 import { linuxio, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import {
@@ -28,6 +21,13 @@ import { JOB_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundJobTypes";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+
+import {
+  type ComposeMessage,
+  type ComposeTask,
+  mergeTask,
+} from "./composeProgress";
+import DockerComposeProgress from "./DockerComposeProgress";
 
 interface ComposeOperationDialogProps {
   action: "up" | "down" | "stop" | "restart";

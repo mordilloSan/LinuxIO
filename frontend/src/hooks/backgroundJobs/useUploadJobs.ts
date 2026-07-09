@@ -1,8 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Upload } from "@/types/backgroundJobs";
-
 import {
   bindStreamHandlers,
   type FileUploadBatchRequest,
@@ -15,6 +13,7 @@ import {
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { useLatestRef } from "@/hooks/useLatestRef";
+import type { Upload } from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";

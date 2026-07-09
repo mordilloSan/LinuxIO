@@ -8,8 +8,6 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import NetworkTrafficGraph from "./NetworkTrafficGraph";
-
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -20,6 +18,8 @@ import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
+
+import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
 export type { NetworkInterface };
 

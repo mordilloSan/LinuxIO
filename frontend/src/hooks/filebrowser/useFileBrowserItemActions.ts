@@ -8,8 +8,8 @@ import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
 import type { DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
-import type { ViewSlice } from "./useFileViewState";
 import { useFilePathUtilities } from "./useFilePathUtilities";
+import type { ViewSlice } from "./useFileViewState";
 import { useScopedToast } from "../useScopedToast";
 
 type ChangePermissionsPayload = Pick<

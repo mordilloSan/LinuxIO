@@ -1,6 +1,15 @@
 import { Icon } from "@iconify/react";
 import type { CSSProperties } from "react";
 
+import type { VMPreflight, VirtualMachine } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppChip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
+import { type AppTheme, useAppTheme } from "@/theme";
+
 import PreflightSummary from "./PreflightSummary";
 import {
   DEFAULT_MANAGED_CLOUD_PATH,
@@ -10,15 +19,6 @@ import {
   normalizeState,
   stateChipColor,
 } from "./vmShared";
-
-import type { VMPreflight, VirtualMachine } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppChip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
-import { type AppTheme, useAppTheme } from "@/theme";
 
 const tabPanelStyle = (theme: AppTheme): CSSProperties => ({
   display: "flex",

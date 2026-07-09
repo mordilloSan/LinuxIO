@@ -2,15 +2,6 @@ import { Icon } from "@iconify/react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import ComposeStacksPage from "./ComposeStacksPage";
-import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
-import ContainerList from "./ContainerList";
-import DockerDashboard from "./DockerDashboard";
-import ImageList from "./ImageList";
-import DockerNetworksTable from "./NetworkList";
-import { useContainerAutoUpdateState } from "./useContainerAutoUpdateState";
-import VolumeList from "./VolumeList";
-
 import { linuxio, type ContainerInfo } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
@@ -25,6 +16,15 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useAppTheme } from "@/theme";
+
+import ComposeStacksPage from "./ComposeStacksPage";
+import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
+import ContainerList from "./ContainerList";
+import DockerDashboard from "./DockerDashboard";
+import ImageList from "./ImageList";
+import DockerNetworksTable from "./NetworkList";
+import { useContainerAutoUpdateState } from "./useContainerAutoUpdateState";
+import VolumeList from "./VolumeList";
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 

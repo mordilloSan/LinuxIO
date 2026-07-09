@@ -1,8 +1,8 @@
-import CreateInterfaceButton from "./CreateInterfaceButton";
-import WireGuardDashboard from "./WireguardDashboard";
-
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import CreateInterfaceButton from "./CreateInterfaceButton";
+import WireGuardDashboard from "./WireguardDashboard";
 
 const Page = () => {
   const theme = useAppTheme();

@@ -1,9 +1,9 @@
 import { useState, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import PathPickerField from "./PathPickerField";
-
 import { render, screen } from "@/test/render";
+
+import PathPickerField from "./PathPickerField";
 
 const mocks = vi.hoisted(() => ({
   resourceGet: vi.fn(),

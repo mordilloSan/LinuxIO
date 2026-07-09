@@ -1,5 +1,3 @@
-import { getSmartNumber, getSmartString } from "../utils";
-
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -7,6 +5,8 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import { getSmartNumber, getSmartString } from "../utils";
 
 interface SelfTestsTabProps {
   nvmeSelfTestLog?: {

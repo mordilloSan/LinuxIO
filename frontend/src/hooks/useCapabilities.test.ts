@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { emptyCapabilityState } from "@/api/capabilities";
 import {
   getCapabilityReason,
   getCapabilityStatus,
   hasAccessPolicy,
   isCapabilityEnabled,
 } from "@/hooks/useCapabilities";
-import { emptyCapabilityState } from "@/api/capabilities";
 
 describe("capability access helpers", () => {
   it("normalizes capability status", () => {

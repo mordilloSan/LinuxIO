@@ -1,17 +1,17 @@
 import type { CSSProperties } from "react";
 
+import type { VirtualMachine } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
+import AppChip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
+import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
+
 import {
   formatDisk,
   formatMemory,
   normalizeState,
   stateChipColor,
 } from "./vmShared";
-
-import type { VirtualMachine } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppChip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
-import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
 
 const detailPanelStyle = (theme: AppTheme): CSSProperties => ({
   display: "flex",

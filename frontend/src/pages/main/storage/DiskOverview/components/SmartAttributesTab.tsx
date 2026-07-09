@@ -1,11 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import type { SmartAttribute, SmartData } from "../types";
-import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
-
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppTypography from "@/components/ui/AppTypography";
+
+import type { SmartAttribute, SmartData } from "../types";
+import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
 
 interface SmartAttributesTabProps {
   ataAttrs?: SmartAttribute[];

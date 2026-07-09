@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 
+import type { Socket } from "@/api";
+import { linuxio } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
+
 import {
   DetailRow,
   UnitCardActions,
   UnitCardsView,
   UnitStatusRows,
 } from "./UnitViews";
-
-import type { Socket } from "@/api";
-import { linuxio } from "@/api";
-import UnitLogsCard from "@/components/cards/UnitLogsCard";
 
 interface SocketCardsViewProps {
   expanded: string | null;

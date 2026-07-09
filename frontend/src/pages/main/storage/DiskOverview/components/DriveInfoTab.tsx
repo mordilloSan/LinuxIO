@@ -1,10 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import type { DriveInfo } from "../types";
-import { getSmartNumber, getSmartString } from "../utils";
-
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+
+import type { DriveInfo } from "../types";
+import { getSmartNumber, getSmartString } from "../utils";
 
 interface DriveInfoTabProps {
   deviceInfo?: Record<string, unknown>;

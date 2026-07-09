@@ -1,9 +1,5 @@
 import { useCallback, useState } from "react";
 
-import CreateGroupDialog from "./components/CreateGroupDialog";
-import DeleteGroupDialog from "./components/DeleteGroupDialog";
-import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
-
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -15,6 +11,10 @@ import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { responsiveTextStyles } from "@/theme/tableStyles";
+
+import CreateGroupDialog from "./components/CreateGroupDialog";
+import DeleteGroupDialog from "./components/DeleteGroupDialog";
+import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 interface GroupsTabProps {
   onMountCreateHandler?: (handler: () => void) => void;

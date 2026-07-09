@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
 import { memo, useCallback, useState } from "react";
 
-import SettingsDialog from "./SettingsDialog";
-
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/theme/constants";
+
+import SettingsDialog from "./SettingsDialog";
 
 const NavbarSettingsDialogTrigger = () => {
   const [open, setOpen] = useState(false);

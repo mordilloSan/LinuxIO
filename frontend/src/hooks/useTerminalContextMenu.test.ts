@@ -1,6 +1,5 @@
-import type { MouseEvent } from "react";
 import type { Terminal } from "@xterm/xterm";
-
+import type { MouseEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";

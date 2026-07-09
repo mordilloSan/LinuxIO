@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import type { FileExtractRequest } from "@/api";
 import {
   ensureTarGzExtension,
   ensureZipExtension,
   isArchiveFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
-import type { FileExtractRequest } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { splitName, stripNumericSuffix } from "@/utils/fileUpload";

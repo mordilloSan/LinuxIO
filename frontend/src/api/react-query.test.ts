@@ -4,12 +4,11 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
-
 import { openJobAttachStream } from "@/api/linuxio";
-import type { Stream } from "@/api/StreamMultiplexer";
-import { createEndpoint } from "@/api/react-query";
 import * as core from "@/api/linuxio-core";
 import { LinuxIOError } from "@/api/linuxio-core";
+import { createEndpoint } from "@/api/react-query";
+import type { Stream } from "@/api/StreamMultiplexer";
 import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 
 vi.mock("sonner", () => ({

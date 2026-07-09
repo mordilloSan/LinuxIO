@@ -1,6 +1,18 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useMemo, useState } from "react";
 
+import { linuxio, openVMConsoleStream } from "@/api";
+import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
+import { TabContainer } from "@/components/tabbar";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
+import AppTypography from "@/components/ui/AppTypography";
+import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
+import { useTabUrlState } from "@/hooks/useTabUrlState";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { getMutationErrorMessage } from "@/utils/mutations";
+
 import ConsoleDialog from "./ConsoleDialog";
 import CreateVMDialog from "./CreateVMDialog";
 import DeleteVMDialog from "./DeleteVMDialog";
@@ -19,18 +31,6 @@ import {
   VMNetworksTab,
   VMPreflightCard,
 } from "./VMTabs";
-
-import { linuxio, openVMConsoleStream } from "@/api";
-import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
-import { TabContainer } from "@/components/tabbar";
-import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
-import AppTypography from "@/components/ui/AppTypography";
-import { useCapability } from "@/hooks/useCapabilities";
-import { useScopedToast } from "@/hooks/useScopedToast";
-import { useTabUrlState } from "@/hooks/useTabUrlState";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const Page = () => {
   const theme = useAppTheme();

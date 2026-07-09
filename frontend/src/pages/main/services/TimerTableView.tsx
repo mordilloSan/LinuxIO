@@ -1,7 +1,7 @@
-import { formatUsec, statusDot, UnitTableView } from "./UnitViews";
-
 import type { Timer } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+
+import { formatUsec, statusDot, UnitTableView } from "./UnitViews";
 
 interface TimerTableViewProps {
   onDoubleClick?: (name: string) => void;

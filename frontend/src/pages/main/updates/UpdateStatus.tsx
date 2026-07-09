@@ -1,7 +1,7 @@
+import type { Update } from "@/api";
+
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
-
-import type { Update } from "@/api";
 
 interface UpdateStatusProps {
   error?: string | null;

@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import type { CSSProperties } from "react";
 
+import type { VirtualMachine } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppChip from "@/components/ui/AppChip";
+
 import {
   type VMAction,
   formatMemory,
@@ -8,13 +15,6 @@ import {
   stateChipColor,
   vmIPAddresses,
 } from "./vmShared";
-
-import type { VirtualMachine } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppChip from "@/components/ui/AppChip";
 
 const listPanelStyle: CSSProperties = {
   minWidth: 0,

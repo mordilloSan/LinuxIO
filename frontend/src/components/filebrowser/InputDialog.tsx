@@ -1,7 +1,5 @@
 import { useCallback, useState, type KeyboardEvent } from "react";
 
-import FileBrowserDialog from "../dialog/GeneralDialog";
-
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -9,6 +7,8 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+
+import FileBrowserDialog from "../dialog/GeneralDialog";
 
 interface InputDialogProps {
   confirmText?: string;

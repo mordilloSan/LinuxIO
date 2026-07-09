@@ -1,8 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import InterfaceDetails from "./InterfaceClients";
-
 import { linuxio, type WireGuardInterface } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -10,6 +8,8 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+
+import InterfaceDetails from "./InterfaceClients";
 
 const WIREGUARD_TOAST_META = { href: "/wireguard", label: "Open WireGuard" };
 

@@ -9,6 +9,10 @@ import {
   type RefObject,
 } from "react";
 
+import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
+import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
+
 import EmptyState from "./EmptyState";
 import VirtualDirectoryItems from "./VirtualDirectoryItems";
 import {
@@ -18,10 +22,6 @@ import {
   SortOrder,
   ViewMode,
 } from "../../types/filebrowser";
-
-import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
-import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
-import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 
 interface DirectoryListingProps {
   cutPaths: Set<string>;

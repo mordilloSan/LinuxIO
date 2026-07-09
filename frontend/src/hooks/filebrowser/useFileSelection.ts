@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useReducer } from "react";
 
-import type { FileItem, FileResource } from "@/types/filebrowser";
-
 import { useScopedToast } from "@/hooks/useScopedToast";
+import type { FileItem, FileResource } from "@/types/filebrowser";
 
 type ClipboardOperation = "copy" | "cut";
 

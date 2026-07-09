@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Stream } from "@/api/StreamMultiplexer";
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
+import type { Stream } from "@/api/StreamMultiplexer";
 
 const mocks = vi.hoisted(() => ({
   openJobAttachStream: vi.fn(),

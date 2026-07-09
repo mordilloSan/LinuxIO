@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Page from "./index";
-
 import { render, screen, waitFor, within } from "@/test/render";
+
+import Page from "./index";
 
 const mocks = vi.hoisted(() => {
   const managedISOPath = "/var/lib/libvirt/images/linuxio/isos";

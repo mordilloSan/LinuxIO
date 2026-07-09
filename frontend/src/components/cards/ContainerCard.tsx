@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
-import AppCircularProgress from "../ui/AppCircularProgress";
-
 import { linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
@@ -17,6 +15,8 @@ import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
+
+import AppCircularProgress from "../ui/AppCircularProgress";
 
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));

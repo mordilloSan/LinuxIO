@@ -1,8 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Download } from "@/types/backgroundJobs";
-
 import {
   isConnected,
   type JobSnapshot,
@@ -14,6 +12,7 @@ import {
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import type { Download } from "@/types/backgroundJobs";
 import {
   createProgressSpeedCalculator,
   jobIdentityKey,

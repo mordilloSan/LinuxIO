@@ -1,9 +1,8 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { BackgroundJob } from "@/types/backgroundJobs";
-
 import { useLatestRef } from "@/hooks/useLatestRef";
+import type { BackgroundJob } from "@/types/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 

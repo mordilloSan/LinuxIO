@@ -1,8 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { ActiveIndexer, Indexer } from "@/types/backgroundJobs";
-
 import {
   isConnected,
   type JobSnapshot,
@@ -12,6 +10,7 @@ import {
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import type { ActiveIndexer, Indexer } from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";

@@ -1,7 +1,7 @@
-import { statusDot, UnitTableView } from "./UnitViews";
-
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+
+import { statusDot, UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
   onDoubleClick?: (name: string) => void;

@@ -14,7 +14,6 @@ import type {
   AppSettings,
   ConfigThemeColorsByModePayload as ThemeColorsByMode,
 } from "@/api";
-
 import { useConfig } from "@/hooks/useConfig";
 import breakpoints from "@/theme/breakpoints";
 import {

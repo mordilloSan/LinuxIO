@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import ChangePasswordDialog from "./components/ChangePasswordDialog";
-import CreateUserDialog from "./components/CreateUserDialog";
-import EditUserDialog from "./components/EditUserDialog";
-import UserCardsView from "./components/UserCardsView";
-
 import { type AccountUser, linuxio } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -16,6 +11,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { responsiveTextStyles } from "@/theme/tableStyles";
+
+import ChangePasswordDialog from "./components/ChangePasswordDialog";
+import CreateUserDialog from "./components/CreateUserDialog";
+import EditUserDialog from "./components/EditUserDialog";
+import UserCardsView from "./components/UserCardsView";
 
 const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
 

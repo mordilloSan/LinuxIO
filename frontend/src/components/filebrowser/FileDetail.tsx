@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import type { ReactNode } from "react";
 
-import { FileResource, ResourceStatData } from "../../types/filebrowser";
-
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -11,6 +9,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
+
+import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 interface FileDetailProps {
   isLoadingStat?: boolean;

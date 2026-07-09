@@ -1,17 +1,17 @@
 import { motion } from "framer-motion";
 
+import type { AccountUser } from "@/api";
+import UserCard from "@/components/cards/UserCard";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+
 import {
   UserActivityCard,
   UserDetailsPanel,
   UserHomeSSHPanel,
   UserProcessPanel,
 } from "./UserAccountDetails";
-
-import type { AccountUser } from "@/api";
-import UserCard from "@/components/cards/UserCard";
-import AppGrid from "@/components/ui/AppGrid";
-import AppTypography from "@/components/ui/AppTypography";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 interface UserCardsViewProps {
   currentUsername?: string;

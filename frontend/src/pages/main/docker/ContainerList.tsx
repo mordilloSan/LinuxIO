@@ -25,11 +25,6 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import ContainerDetailsPanel from "./ContainerDetailsPanel";
-import ContainerTable from "./ContainerTable";
-import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
-import ContainerCard from "../../../components/cards/ContainerCard";
-
 import { linuxio, openDockerLogsStream } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
@@ -42,6 +37,11 @@ import {
   EASING_EMPHASIZED,
   TRANSITION_DURATION_SLOW_MS,
 } from "@/theme/constants";
+
+import ContainerDetailsPanel from "./ContainerDetailsPanel";
+import ContainerTable from "./ContainerTable";
+import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
+import ContainerCard from "../../../components/cards/ContainerCard";
 
 interface ContainerListProps {
   checkingUpdates?: boolean;

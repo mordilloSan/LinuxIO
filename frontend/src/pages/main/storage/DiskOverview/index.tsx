@@ -2,6 +2,21 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
+import DriveCard from "@/components/cards/DriveCard";
+import FilesystemCard from "@/components/cards/FilesystemCard";
+import PageLoader from "@/components/loaders/PageLoader";
+import TabSelector from "@/components/tabbar/TabSelector";
+import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
+import { JOB_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundJobTypes";
+import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { useCapability } from "@/hooks/useCapabilities";
+import { useScopedToast } from "@/hooks/useScopedToast";
+import { useAppTheme } from "@/theme";
+
 import {
   DriveInfoTab,
   OverviewTab,
@@ -17,21 +32,6 @@ import type {
   SmartTestResult,
 } from "./types";
 import { parseSizeToBytes } from "./utils";
-
-import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
-import DriveCard from "@/components/cards/DriveCard";
-import FilesystemCard from "@/components/cards/FilesystemCard";
-import PageLoader from "@/components/loaders/PageLoader";
-import TabSelector from "@/components/tabbar/TabSelector";
-import AppCollapse from "@/components/ui/AppCollapse";
-import AppDivider from "@/components/ui/AppDivider";
-import AppGrid from "@/components/ui/AppGrid";
-import AppTypography from "@/components/ui/AppTypography";
-import { JOB_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundJobTypes";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
-import { useCapability } from "@/hooks/useCapabilities";
-import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
 

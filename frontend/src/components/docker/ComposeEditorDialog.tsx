@@ -1,9 +1,5 @@
 import { lazy, Suspense, useRef, useState, type ChangeEvent } from "react";
 
-import ComposeValidationFeedback, {
-  ValidationResult,
-} from "./ComposeValidationFeedback";
-
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -17,6 +13,10 @@ import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import ComposeValidationFeedback, {
+  ValidationResult,
+} from "./ComposeValidationFeedback";
 
 interface ComposeEditorDialogProps {
   filePath?: string;

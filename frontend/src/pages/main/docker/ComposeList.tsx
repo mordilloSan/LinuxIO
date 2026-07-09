@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
-import ComposeStackCard from "../../../components/cards/ComposeStackCard";
-
 import {
   linuxio,
   type ComposeProject,
@@ -24,6 +22,8 @@ import {
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
 import "./compose-list.css";
 
