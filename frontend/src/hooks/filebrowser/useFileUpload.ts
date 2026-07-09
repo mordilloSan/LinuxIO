@@ -1,46 +1,91 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useMemo, useReducer, useRef, type RefObject } from "react";
 
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
+import { mergeDroppedEntries } from "@/utils/fileUpload";
 
 interface UploadSummary {
   files: number;
   folders: number;
 }
 
-interface useFileUploadResult {
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  folderInputRef: RefObject<HTMLInputElement | null>;
+interface UploadState {
   isUploadProcessing: boolean;
-  setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
-  setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;
-  setUploadEntries: Dispatch<SetStateAction<DroppedEntry[]>>;
   uploadDialogOpen: boolean;
   uploadEntries: DroppedEntry[];
+}
+
+type UploadEvent =
+  | { type: "clearEntries" }
+  | { type: "closeDialog" }
+  | { entries: DroppedEntry[]; type: "mergeEntries" }
+  | { type: "openDialog" }
+  | { processing: boolean; type: "setProcessing" };
+
+const initialUploadState: UploadState = {
+  isUploadProcessing: false,
+  uploadDialogOpen: false,
+  uploadEntries: [],
+};
+
+function uploadReducer(state: UploadState, event: UploadEvent): UploadState {
+  switch (event.type) {
+    case "clearEntries":
+      return { ...state, uploadEntries: [] };
+    case "closeDialog":
+      return { ...state, uploadDialogOpen: false, uploadEntries: [] };
+    case "mergeEntries":
+      return {
+        ...state,
+        uploadEntries: mergeDroppedEntries(state.uploadEntries, event.entries),
+      };
+    case "openDialog":
+      return { ...state, uploadDialogOpen: true, uploadEntries: [] };
+    case "setProcessing":
+      return { ...state, isUploadProcessing: event.processing };
+  }
+}
+
+interface UploadActions {
+  clearEntries: () => void;
+  closeDialog: () => void;
+  mergeEntries: (entries: DroppedEntry[]) => void;
+  openDialog: () => void;
+  setProcessing: (processing: boolean) => void;
+}
+
+interface UploadSlice extends UploadState {
+  actions: UploadActions;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   uploadSummary: UploadSummary;
 }
 
 /**
- * Custom hook for managing file upload state
- * Handles upload dialog, entries, and file/folder input refs
+ * Upload slice: the upload dialog's state (entries, processing flag, hidden
+ * input refs) behind a stable semantic-action API. `actions` never changes
+ * identity, so consumers can hold it in callbacks without churn.
  */
-export const useFileUpload = (): useFileUploadResult => {
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [isUploadProcessing, setIsUploadProcessing] = useState(false);
-  const [uploadEntries, setUploadEntries] = useState<DroppedEntry[]>([]);
+export const useFileUpload = (): UploadSlice => {
+  const [state, dispatch] = useReducer(uploadReducer, initialUploadState);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const actions = useMemo<UploadActions>(
+    () => ({
+      clearEntries: () => dispatch({ type: "clearEntries" }),
+      closeDialog: () => dispatch({ type: "closeDialog" }),
+      mergeEntries: (entries) => dispatch({ entries, type: "mergeEntries" }),
+      openDialog: () => dispatch({ type: "openDialog" }),
+      setProcessing: (processing) =>
+        dispatch({ processing, type: "setProcessing" }),
+    }),
+    [],
+  );
 
   // Calculate upload summary
   const uploadSummary = useMemo(
     () =>
-      uploadEntries.reduce(
+      state.uploadEntries.reduce(
         (acc, entry) => {
           if (entry.isDirectory) acc.folders += 1;
           else acc.files += 1;
@@ -48,20 +93,16 @@ export const useFileUpload = (): useFileUploadResult => {
         },
         { files: 0, folders: 0 },
       ),
-    [uploadEntries],
+    [state.uploadEntries],
   );
 
   return {
-    uploadDialogOpen,
-    setUploadDialogOpen,
-    isUploadProcessing,
-    setIsUploadProcessing,
-    uploadEntries,
-    setUploadEntries,
+    ...state,
+    actions,
     fileInputRef,
     folderInputRef,
     uploadSummary,
   };
 };
 
-export type { UploadSummary };
+export type { UploadActions, UploadSlice, UploadSummary };

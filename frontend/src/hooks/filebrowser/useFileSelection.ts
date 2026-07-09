@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useReducer } from "react";
 
 import type { FileItem, FileResource } from "@/types/filebrowser";
 
@@ -10,6 +10,84 @@ interface ClipboardData {
   operation: ClipboardOperation;
   paths: string[];
 }
+
+interface SelectionState {
+  clipboard: ClipboardData | null;
+  selectedPaths: Set<string>;
+}
+
+type SelectionEvent =
+  | { type: "clear" }
+  | { type: "clearClipboard" }
+  | { paths: string[]; type: "copyToClipboard" }
+  | { paths: string[]; type: "cutToClipboard" }
+  | { paths: Set<string>; type: "select" };
+
+const initialSelectionState: SelectionState = {
+  clipboard: null,
+  selectedPaths: new Set(),
+};
+
+function selectionReducer(
+  state: SelectionState,
+  event: SelectionEvent,
+): SelectionState {
+  switch (event.type) {
+    case "clear":
+      return { ...state, selectedPaths: new Set() };
+    case "clearClipboard":
+      return { ...state, clipboard: null };
+    case "copyToClipboard":
+      return { ...state, clipboard: { operation: "copy", paths: event.paths } };
+    case "cutToClipboard":
+      return { ...state, clipboard: { operation: "cut", paths: event.paths } };
+    case "select":
+      return { ...state, selectedPaths: event.paths };
+  }
+}
+
+interface SelectionActions {
+  clear: () => void;
+  clearClipboard: () => void;
+  copyToClipboard: (paths: string[]) => void;
+  cutToClipboard: (paths: string[]) => void;
+  select: (paths: Set<string>) => void;
+}
+
+interface SelectionSlice extends SelectionState {
+  actions: SelectionActions;
+  cutPaths: Set<string>;
+}
+
+/**
+ * Selection slice: the listing's selection and clipboard behind a stable
+ * semantic-action API. `actions` never changes identity, so consumers can
+ * hold it in callbacks without churn.
+ */
+export const useFileSelectionState = (): SelectionSlice => {
+  const [state, dispatch] = useReducer(selectionReducer, initialSelectionState);
+
+  const actions = useMemo<SelectionActions>(
+    () => ({
+      clear: () => dispatch({ type: "clear" }),
+      clearClipboard: () => dispatch({ type: "clearClipboard" }),
+      copyToClipboard: (paths) => dispatch({ paths, type: "copyToClipboard" }),
+      cutToClipboard: (paths) => dispatch({ paths, type: "cutToClipboard" }),
+      select: (paths) => dispatch({ paths, type: "select" }),
+    }),
+    [],
+  );
+
+  // Cut items render dimmed in the listing until they are pasted.
+  const cutPaths = useMemo(() => {
+    if (state.clipboard?.operation === "cut") {
+      return new Set(state.clipboard.paths);
+    }
+    return new Set<string>();
+  }, [state.clipboard]);
+
+  return { ...state, actions, cutPaths };
+};
 
 interface useFileSelectionParams {
   copyItems: (params: {
@@ -23,22 +101,12 @@ interface useFileSelectionParams {
   normalizedPath: string;
   onContextMenuClose?: () => void;
   resource: FileResource | undefined;
-}
-
-interface useFileSelectionResult {
-  clipboard: ClipboardData | null;
-  handleCopy: () => void;
-  handleCut: () => void;
-  handlePaste: () => Promise<void>;
-  selectedItems: FileItem[];
-  selectedPaths: Set<string>;
-  setClipboard: (data: ClipboardData | null) => void;
-  setSelectedPaths: (paths: Set<string>) => void;
+  selection: SelectionSlice;
 }
 
 /**
- * Custom hook for managing file browser selection and clipboard operations
- * Handles multi-select, copy/cut/paste operations
+ * Custom hook for the file browser's clipboard behaviors: copy/cut the
+ * current selection and paste it into the current directory.
  */
 export const useFileSelection = ({
   resource,
@@ -46,10 +114,10 @@ export const useFileSelection = ({
   copyItems,
   moveItems,
   onContextMenuClose,
-}: useFileSelectionParams): useFileSelectionResult => {
+  selection,
+}: useFileSelectionParams) => {
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
-  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
+  const { actions, clipboard, selectedPaths } = selection;
 
   // Memoize selected items from resource
   const selectedItems = useMemo(() => {
@@ -65,22 +133,16 @@ export const useFileSelection = ({
   const handleCopy = useCallback(() => {
     onContextMenuClose?.();
     if (selectedPaths.size === 0) return;
-    setClipboard({
-      paths: Array.from(selectedPaths),
-      operation: "copy",
-    });
+    actions.copyToClipboard(Array.from(selectedPaths));
     toast.success(`${selectedPaths.size} item(s) copied to clipboard`);
-  }, [onContextMenuClose, selectedPaths]);
+  }, [actions, onContextMenuClose, selectedPaths]);
 
   const handleCut = useCallback(() => {
     onContextMenuClose?.();
     if (selectedPaths.size === 0) return;
-    setClipboard({
-      paths: Array.from(selectedPaths),
-      operation: "cut",
-    });
+    actions.cutToClipboard(Array.from(selectedPaths));
     toast.success(`${selectedPaths.size} item(s) cut to clipboard`);
-  }, [onContextMenuClose, selectedPaths]);
+  }, [actions, onContextMenuClose, selectedPaths]);
 
   const handlePaste = useCallback(async () => {
     onContextMenuClose?.();
@@ -101,22 +163,27 @@ export const useFileSelection = ({
           destinationDir: normalizedPath,
         });
         // Clear clipboard after cut operation
-        setClipboard(null);
-        setSelectedPaths(new Set());
+        actions.clearClipboard();
+        actions.clear();
       }
     } catch {
       // Error is handled by the mutation
     }
-  }, [onContextMenuClose, clipboard, copyItems, moveItems, normalizedPath]);
+  }, [
+    actions,
+    onContextMenuClose,
+    clipboard,
+    copyItems,
+    moveItems,
+    normalizedPath,
+  ]);
 
   return {
-    selectedPaths,
-    setSelectedPaths,
-    selectedItems,
-    clipboard,
-    setClipboard,
     handleCopy,
     handleCut,
     handlePaste,
+    selectedItems,
   };
 };
+
+export type { ClipboardData, SelectionActions, SelectionSlice };

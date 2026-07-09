@@ -1,37 +1,22 @@
-import {
-  useCallback,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback } from "react";
 
 import { linuxio, uploadContent } from "@/api";
-import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 
+import type { EditorSlice } from "./useFileEditor";
+
 interface UseFileBrowserEditorActionsParams {
-  editingPath: string | null;
-  editorRef: RefObject<FileEditorHandle | null>;
-  isEditorDirty: boolean;
-  setCloseEditorDialog: Dispatch<SetStateAction<boolean>>;
-  setEditingPath: Dispatch<SetStateAction<string | null>>;
-  setIsEditorDirty: Dispatch<SetStateAction<boolean>>;
-  setIsSavingFile: Dispatch<SetStateAction<boolean>>;
+  editor: EditorSlice;
 }
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 export const useFileBrowserEditorActions = ({
-  editingPath,
-  editorRef,
-  isEditorDirty,
-  setCloseEditorDialog,
-  setEditingPath,
-  setIsEditorDirty,
-  setIsSavingFile,
+  editor,
 }: UseFileBrowserEditorActionsParams) => {
+  const { actions, editingPath, editorRef, isEditorDirty } = editor;
   const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
   const resourceCache = linuxio.filebrowser.resource_get.useCache();
   const chunkSize = useUploadChunkSize();
@@ -59,13 +44,13 @@ export const useFileBrowserEditorActions = ({
   const saveCurrentEditor = useCallback(async () => {
     if (!editorRef.current || !editingPath) return false;
 
-    setIsSavingFile(true);
+    actions.setSaving(true);
     try {
       const content = editorRef.current.getContent();
       const contentBytes = new TextEncoder().encode(content);
       await saveContentViaStream(editingPath, contentBytes);
       toast.success("File saved successfully!");
-      setIsEditorDirty(false);
+      actions.setDirty(false);
       invalidateEditedFile(editingPath);
       return true;
     } catch (error) {
@@ -73,15 +58,14 @@ export const useFileBrowserEditorActions = ({
       toast.error(getErrorMessage(error, "Failed to save file"));
       return false;
     } finally {
-      setIsSavingFile(false);
+      actions.setSaving(false);
     }
   }, [
+    actions,
     editingPath,
     editorRef,
     invalidateEditedFile,
     saveContentViaStream,
-    setIsEditorDirty,
-    setIsSavingFile,
     toast,
   ]);
 
@@ -91,29 +75,25 @@ export const useFileBrowserEditorActions = ({
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
-      setCloseEditorDialog(true);
+      actions.promptClose();
     } else {
-      setEditingPath(null);
-      setIsEditorDirty(false);
+      actions.close();
     }
-  }, [isEditorDirty, setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
+  }, [actions, isEditorDirty]);
 
   const handleKeepEditing = useCallback(() => {
-    setCloseEditorDialog(false);
-  }, [setCloseEditorDialog]);
+    actions.dismissClosePrompt();
+  }, [actions]);
 
   const handleDiscardAndExit = useCallback(() => {
-    setEditingPath(null);
-    setIsEditorDirty(false);
-    setCloseEditorDialog(false);
-  }, [setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
+    actions.close();
+  }, [actions]);
 
   const handleSaveAndExit = useCallback(async () => {
     const saved = await saveCurrentEditor();
     if (!saved) return;
-    setEditingPath(null);
-    setCloseEditorDialog(false);
-  }, [saveCurrentEditor, setCloseEditorDialog, setEditingPath]);
+    actions.close();
+  }, [actions, saveCurrentEditor]);
 
   return {
     handleCloseEditor,

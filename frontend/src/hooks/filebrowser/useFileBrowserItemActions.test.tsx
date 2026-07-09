@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFileBrowserItemActions } from "@/hooks/filebrowser/useFileBrowserItemActions";
+import type { DialogsSlice } from "@/hooks/filebrowser/useFileDialogs";
+import type { EditorSlice } from "@/hooks/filebrowser/useFileEditor";
+import type { ViewSlice } from "@/hooks/filebrowser/useFileViewState";
 import { act, createTestQueryClient, renderHook } from "@/test/render";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 
@@ -53,29 +56,85 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
+function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
+  return {
+    actions: {
+      clearPendingDelete: vi.fn(),
+      closeCreateFile: vi.fn(),
+      closeCreateFolder: vi.fn(),
+      closeDelete: vi.fn(),
+      closeDetails: vi.fn(),
+      closePermissions: vi.fn(),
+      openCreateFile: vi.fn(),
+      openCreateFolder: vi.fn(),
+      openPermissions: vi.fn(),
+      requestDelete: vi.fn(),
+      showDetails: vi.fn(),
+    },
+    createFileDialog: false,
+    createFolderDialog: false,
+    deleteDialog: false,
+    detailTarget: null,
+    pendingDeletePaths: [],
+    permissionsDialog: null,
+    ...overrides,
+  };
+}
+
+function viewSlice(): ViewSlice {
+  return {
+    actions: {
+      changeSort: vi.fn(),
+      clearSearch: vi.fn(),
+      closeContextMenu: vi.fn(),
+      openContextMenu: vi.fn(),
+      setSearch: vi.fn(),
+      switchView: vi.fn(),
+      toggleHiddenFiles: vi.fn(),
+    },
+    contextMenuPosition: null,
+    searchQuery: "",
+    showHiddenFiles: false,
+    sortField: "name",
+    sortOrder: "asc",
+    viewMode: "card",
+  };
+}
+
+function editorSlice(): EditorSlice {
+  return {
+    actions: {
+      close: vi.fn(),
+      dismissClosePrompt: vi.fn(),
+      openFile: vi.fn(),
+      promptClose: vi.fn(),
+      setDirty: vi.fn(),
+      setSaving: vi.fn(),
+    },
+    closeEditorDialog: false,
+    editingPath: null,
+    editorRef: { current: null },
+    isEditorDirty: false,
+    isSavingFile: false,
+    showQuickSave: false,
+  };
+}
+
 function setup(overrides: Partial<Params> = {}) {
   const params: Params = {
     changePermissions: vi.fn().mockResolvedValue(undefined),
     createFile: vi.fn(),
     createFolder: vi.fn(),
     deleteItems: vi.fn(),
+    dialogs: dialogsSlice(),
+    editor: editorSlice(),
     handleOpenDirectory: vi.fn(),
-    onContextMenuClose: vi.fn(),
-    pendingDeletePaths: [],
-    permissionsDialog: null,
     renameItem: vi.fn().mockResolvedValue(undefined),
     resource: undefined,
     selectedItems: [],
     selectedPaths: new Set<string>(),
-    setCreateFileDialog: vi.fn(),
-    setCreateFolderDialog: vi.fn(),
-    setDeleteDialog: vi.fn(),
-    setDetailTarget: vi.fn(),
-    setEditingPath: vi.fn(),
-    setPendingDeletePaths: vi.fn(),
-    setPermissionsDialog: vi.fn(),
-    setSearchQuery: vi.fn(),
     startDownload: vi.fn().mockResolvedValue(undefined),
+    view: viewSlice(),
     ...overrides,
   };
 
@@ -95,7 +154,7 @@ describe("useFileBrowserItemActions", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleDoubleClickFile(fileItem("notes.txt")));
-      expect(params.setEditingPath).toHaveBeenCalledWith(
+      expect(params.editor.actions.openFile).toHaveBeenCalledWith(
         "/srv/projects/notes.txt",
       );
 
@@ -110,10 +169,10 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleEditFile("/srv/projects/readme.md"));
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(
+      expect(params.editor.actions.openFile).toHaveBeenCalledWith(
         "/srv/projects/readme.md",
       );
-      expect(params.setDetailTarget).toHaveBeenCalledWith(null);
+      expect(params.dialogs.actions.closeDetails).toHaveBeenCalledTimes(1);
     });
 
     it("confirms an unsupported edit by promoting it to the editor", () => {
@@ -122,11 +181,11 @@ describe("useFileBrowserItemActions", () => {
       act(() => result.current.handleEditFile("/srv/projects/photo.png"));
       act(() => result.current.handleConfirmUnsupportedEdit());
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(
+      expect(params.editor.actions.openFile).toHaveBeenCalledWith(
         "/srv/projects/photo.png",
       );
       expect(result.current.unsupportedEditPath).toBeNull();
-      expect(params.setDetailTarget).toHaveBeenCalledWith(null);
+      expect(params.dialogs.actions.closeDetails).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -140,8 +199,8 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleShowDetails());
 
-      expect(params.onContextMenuClose).toHaveBeenCalledTimes(1);
-      expect(params.setDetailTarget).toHaveBeenCalledWith([
+      expect(params.view.actions.closeContextMenu).toHaveBeenCalledTimes(1);
+      expect(params.dialogs.actions.showDetails).toHaveBeenCalledWith([
         "/srv/projects/a",
         "/srv/projects/b",
       ]);
@@ -152,7 +211,7 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleShowDetails());
 
-      expect(params.setDetailTarget).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.showDetails).not.toHaveBeenCalled();
     });
 
     it("downloads the current selection and individual paths", () => {
@@ -185,7 +244,7 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleOpenContainingFolder());
 
-      expect(params.setSearchQuery).toHaveBeenCalledWith("");
+      expect(params.view.actions.clearSearch).toHaveBeenCalledTimes(1);
       expect(params.handleOpenDirectory).toHaveBeenCalledWith("/srv/projects");
     });
   });
@@ -195,11 +254,11 @@ describe("useFileBrowserItemActions", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleCreateFile());
-      expect(params.onContextMenuClose).toHaveBeenCalledTimes(1);
-      expect(params.setCreateFileDialog).toHaveBeenCalledWith(true);
+      expect(params.view.actions.closeContextMenu).toHaveBeenCalledTimes(1);
+      expect(params.dialogs.actions.openCreateFile).toHaveBeenCalledTimes(1);
 
       act(() => result.current.handleCloseCreateFileDialog());
-      expect(params.setCreateFileDialog).toHaveBeenCalledWith(false);
+      expect(params.dialogs.actions.closeCreateFile).toHaveBeenCalledTimes(1);
 
       act(() => result.current.handleConfirmCreateFile("new.txt"));
       expect(params.createFile).toHaveBeenCalledWith("new.txt");
@@ -209,7 +268,7 @@ describe("useFileBrowserItemActions", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleCreateFolder());
-      expect(params.setCreateFolderDialog).toHaveBeenCalledWith(true);
+      expect(params.dialogs.actions.openCreateFolder).toHaveBeenCalledTimes(1);
 
       act(() => result.current.handleConfirmCreateFolder("assets"));
       expect(params.createFolder).toHaveBeenCalledWith("assets");
@@ -224,10 +283,9 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleDelete());
 
-      expect(params.setPendingDeletePaths).toHaveBeenCalledWith([
+      expect(params.dialogs.actions.requestDelete).toHaveBeenCalledWith([
         "/srv/projects/a",
       ]);
-      expect(params.setDeleteDialog).toHaveBeenCalledWith(true);
     });
 
     it("warns when deleting with nothing selected", () => {
@@ -239,22 +297,26 @@ describe("useFileBrowserItemActions", () => {
         "No items selected",
         expect.anything(),
       );
-      expect(params.setDeleteDialog).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
     });
 
     it("confirms deletion of the pending paths", () => {
       const { result, params } = setup({
-        pendingDeletePaths: ["/srv/projects/a"],
+        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
       });
 
       act(() => result.current.handleConfirmDelete());
 
       expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
-      expect(params.setPendingDeletePaths).toHaveBeenCalledWith([]);
+      expect(params.dialogs.actions.clearPendingDelete).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it("ignores confirmation when there are no pending paths", () => {
-      const { result, params } = setup({ pendingDeletePaths: [] });
+      const { result, params } = setup({
+        dialogs: dialogsSlice({ pendingDeletePaths: [] }),
+      });
 
       act(() => result.current.handleConfirmDelete());
 
@@ -266,8 +328,7 @@ describe("useFileBrowserItemActions", () => {
 
       act(() => result.current.handleCloseDeleteDialog());
 
-      expect(params.setDeleteDialog).toHaveBeenCalledWith(false);
-      expect(params.setPendingDeletePaths).toHaveBeenCalledWith([]);
+      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -368,7 +429,7 @@ describe("useFileBrowserItemActions", () => {
       });
 
       expect(statMock).toHaveBeenCalledWith("/srv/projects/a.txt");
-      expect(params.setPermissionsDialog).toHaveBeenCalledWith(
+      expect(params.dialogs.actions.openPermissions).toHaveBeenCalledWith(
         expect.objectContaining({
           group: "wheel",
           isDirectory: false,
@@ -396,7 +457,7 @@ describe("useFileBrowserItemActions", () => {
         "Failed to fetch file permissions",
         expect.anything(),
       );
-      expect(params.setPermissionsDialog).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
     });
 
     it("does not fetch when nothing is selected", async () => {
@@ -407,18 +468,20 @@ describe("useFileBrowserItemActions", () => {
       });
 
       expect(statMock).not.toHaveBeenCalled();
-      expect(params.setPermissionsDialog).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
     });
 
     it("applies permissions to the whole selection in one call", async () => {
       const { result, params } = setup({
-        permissionsDialog: {
-          isDirectory: false,
-          mode: "0644",
-          pathLabel: "2 items",
-          paths: ["/srv/projects/a", "/srv/projects/b"],
-          selectionCount: 2,
-        },
+        dialogs: dialogsSlice({
+          permissionsDialog: {
+            isDirectory: false,
+            mode: "0644",
+            pathLabel: "2 items",
+            paths: ["/srv/projects/a", "/srv/projects/b"],
+            selectionCount: 2,
+          },
+        }),
       });
 
       await act(async () => {
@@ -438,11 +501,13 @@ describe("useFileBrowserItemActions", () => {
         paths: ["/srv/projects/a", "/srv/projects/b"],
         recursive: true,
       });
-      expect(params.setPermissionsDialog).toHaveBeenCalledWith(null);
+      expect(params.dialogs.actions.closePermissions).toHaveBeenCalledTimes(1);
     });
 
     it("ignores a permissions confirmation with no open dialog", async () => {
-      const { result, params } = setup({ permissionsDialog: null });
+      const { result, params } = setup({
+        dialogs: dialogsSlice({ permissionsDialog: null }),
+      });
 
       await act(async () => {
         await result.current.handleConfirmPermissions("0600", false);

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserEditorActions";
+import type { EditorSlice } from "@/hooks/filebrowser/useFileEditor";
 import { act, renderHook } from "@/test/render";
 
 const toastMocks = vi.hoisted(() => ({
@@ -32,31 +33,40 @@ vi.mock("@/api", async () => {
   };
 });
 
-type Params = Parameters<typeof useFileBrowserEditorActions>[0];
-
 function editorRef(content = "file body"): RefObject<FileEditorHandle | null> {
   return {
     current: { getContent: () => content } as unknown as FileEditorHandle,
   };
 }
 
-function setup(overrides: Partial<Params> = {}, client?: QueryClient) {
+function editorSlice(overrides: Partial<EditorSlice> = {}): EditorSlice {
+  return {
+    actions: {
+      close: vi.fn(),
+      dismissClosePrompt: vi.fn(),
+      openFile: vi.fn(),
+      promptClose: vi.fn(),
+      setDirty: vi.fn(),
+      setSaving: vi.fn(),
+    },
+    closeEditorDialog: false,
+    editingPath: "/srv/note.md",
+    editorRef: editorRef(),
+    isEditorDirty: false,
+    isSavingFile: false,
+    showQuickSave: true,
+    ...overrides,
+  };
+}
+
+function setup(overrides: Partial<EditorSlice> = {}, client?: QueryClient) {
   const queryClient =
     client ??
     new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
 
-  const params: Params = {
-    editingPath: "/srv/note.md",
-    editorRef: editorRef(),
-    isEditorDirty: false,
-    setCloseEditorDialog: vi.fn(),
-    setEditingPath: vi.fn(),
-    setIsEditorDirty: vi.fn(),
-    setIsSavingFile: vi.fn(),
-    ...overrides,
-  };
+  const editor = editorSlice(overrides);
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -64,10 +74,10 @@ function setup(overrides: Partial<Params> = {}, client?: QueryClient) {
     );
   }
 
-  const utils = renderHook(() => useFileBrowserEditorActions(params), {
+  const utils = renderHook(() => useFileBrowserEditorActions({ editor }), {
     wrapper,
   });
-  return { ...utils, params, queryClient };
+  return { ...utils, editor, queryClient };
 }
 
 describe("useFileBrowserEditorActions", () => {
@@ -78,39 +88,37 @@ describe("useFileBrowserEditorActions", () => {
 
   describe("close flow", () => {
     it("prompts for confirmation when there are unsaved changes", () => {
-      const { result, params } = setup({ isEditorDirty: true });
+      const { result, editor } = setup({ isEditorDirty: true });
 
       act(() => result.current.handleCloseEditor());
 
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(true);
-      expect(params.setEditingPath).not.toHaveBeenCalled();
+      expect(editor.actions.promptClose).toHaveBeenCalledTimes(1);
+      expect(editor.actions.close).not.toHaveBeenCalled();
     });
 
     it("closes immediately when the editor is clean", () => {
-      const { result, params } = setup({ isEditorDirty: false });
+      const { result, editor } = setup({ isEditorDirty: false });
 
       act(() => result.current.handleCloseEditor());
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
+      expect(editor.actions.promptClose).not.toHaveBeenCalled();
     });
 
     it("keeps editing by dismissing the confirm dialog", () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       act(() => result.current.handleKeepEditing());
 
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.dismissClosePrompt).toHaveBeenCalledTimes(1);
     });
 
     it("discards changes and exits", () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       act(() => result.current.handleDiscardAndExit());
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -120,7 +128,7 @@ describe("useFileBrowserEditorActions", () => {
         defaultOptions: { queries: { retry: false } },
       });
       const invalidateSpy = vi.spyOn(client, "invalidateQueries");
-      const { result, params } = setup(
+      const { result, editor } = setup(
         { editorRef: editorRef("hello") },
         client,
       );
@@ -138,26 +146,26 @@ describe("useFileBrowserEditorActions", () => {
         "File saved successfully!",
         expect.anything(),
       );
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
-      expect(params.setIsSavingFile).toHaveBeenNthCalledWith(1, true);
-      expect(params.setIsSavingFile).toHaveBeenLastCalledWith(false);
+      expect(editor.actions.setDirty).toHaveBeenCalledWith(false);
+      expect(editor.actions.setSaving).toHaveBeenNthCalledWith(1, true);
+      expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
     });
 
     it("does nothing when there is no editor or path", async () => {
-      const { result, params } = setup({ editingPath: null });
+      const { result, editor } = setup({ editingPath: null });
 
       await act(async () => {
         await result.current.handleSaveFile();
       });
 
       expect(apiMocks.uploadContent).not.toHaveBeenCalled();
-      expect(params.setIsSavingFile).not.toHaveBeenCalled();
+      expect(editor.actions.setSaving).not.toHaveBeenCalled();
     });
 
     it("surfaces a save error and clears the saving flag", async () => {
       apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       await act(async () => {
         await result.current.handleSaveFile();
@@ -167,31 +175,30 @@ describe("useFileBrowserEditorActions", () => {
         "stream broke",
         expect.anything(),
       );
-      expect(params.setIsSavingFile).toHaveBeenLastCalledWith(false);
+      expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
     });
   });
 
   describe("save-and-exit flow", () => {
     it("exits after a successful save", async () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       await act(async () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
     });
 
     it("stays open when the save fails", async () => {
       apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       await act(async () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(params.setEditingPath).not.toHaveBeenCalled();
+      expect(editor.actions.close).not.toHaveBeenCalled();
     });
   });
 });

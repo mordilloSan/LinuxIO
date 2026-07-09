@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
 import {
   type ActionSourceDestinationRequest,
@@ -64,8 +64,6 @@ export const useFileMutations = ({
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundJobActions();
-  const [isCompressing, setIsCompressing] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
@@ -140,18 +138,13 @@ export const useFileMutations = ({
       if (!paths.length) {
         throw new Error("No paths provided for compression");
       }
-      setIsCompressing(true);
-      try {
-        // Pass invalidateListing as onComplete - called when stream actually completes
-        await startCompression({
-          paths,
-          archiveName: archiveName || "archive.zip",
-          destination: destination || normalizedPath,
-          onComplete: invalidateListing,
-        });
-      } finally {
-        setIsCompressing(false);
-      }
+      // Pass invalidateListing as onComplete - called when stream actually completes
+      await startCompression({
+        paths,
+        archiveName: archiveName || "archive.zip",
+        destination: destination || normalizedPath,
+        onComplete: invalidateListing,
+      });
     },
     [invalidateListing, normalizedPath, startCompression],
   );
@@ -161,7 +154,6 @@ export const useFileMutations = ({
       if (!archivePath) {
         throw new Error("No archive selected");
       }
-      setIsExtracting(true);
       try {
         // Pass invalidateListing as onComplete - called when stream actually completes
         await startExtraction({
@@ -175,8 +167,6 @@ export const useFileMutations = ({
           getMutationErrorMessage(error, "Failed to extract archive"),
         );
         throw error;
-      } finally {
-        setIsExtracting(false);
       }
     },
     [invalidateListing, startExtraction, toast],
@@ -348,7 +338,5 @@ export const useFileMutations = ({
     copyItems,
     moveItems,
     renameItem,
-    isCompressing,
-    isExtracting,
   };
 };

@@ -151,7 +151,6 @@ export const useFileQueries = ({
     isPending,
     errorMessage,
     detailResource,
-    isDetailPending,
     detailError,
     statData,
     isStatPending,
