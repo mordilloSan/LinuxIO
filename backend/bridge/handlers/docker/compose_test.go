@@ -150,8 +150,8 @@ func TestValidateStackDirectoryDoesNotCreateMissingTarget(t *testing.T) {
 	if result.Exists || !result.CanCreate || !result.CanWrite || !result.Valid {
 		t.Fatalf("ValidateStackDirectory() result = %#v, want creatable missing directory", result)
 	}
-	if _, err := os.Lstat(targetPath); !os.IsNotExist(err) {
-		t.Fatalf("missing target after validation: Lstat error = %v, want not exist", err)
+	if _, lstatErr := os.Lstat(targetPath); !os.IsNotExist(lstatErr) {
+		t.Fatalf("missing target after validation: Lstat error = %v, want not exist", lstatErr)
 	}
 
 	after, err := os.Stat(parentPath)
