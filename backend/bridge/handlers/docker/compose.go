@@ -16,6 +16,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
@@ -1172,7 +1173,8 @@ func sanitizeStackName(name string) string {
 	return sanitized
 }
 
-// ValidateStackDirectory validates if a directory path is suitable for creating a stack
+// ValidateStackDirectory performs a read-only, advisory check that a directory is suitable
+// for creating a stack. The job that performs the eventual write remains authoritative.
 func ValidateStackDirectory(ctx context.Context, dirPath string) (any, error) {
 	result := apischema.DirectoryValidationResult{}
 
@@ -1193,6 +1195,14 @@ func ValidateStackDirectory(ctx context.Context, dirPath string) (any, error) {
 		result.Error = fmt.Sprintf("Error accessing path: %v", err)
 		return result, nil
 	}
+	if _, err := os.Lstat(dirPath); err == nil {
+		result.Exists = true
+		result.Error = "Path exists but is not a directory"
+		return result, nil
+	} else if !os.IsNotExist(err) {
+		result.Error = fmt.Sprintf("Error accessing path: %v", err)
+		return result, nil
+	}
 	return validateCreatableStackDirectory(ctx, dirPath)
 }
 
@@ -1202,15 +1212,15 @@ func validateExistingStackDirectory(ctx context.Context, dirPath string, info os
 		result.Error = "Path exists but is not a directory"
 		return result, nil
 	}
+	result.IsDirectory = true
 
-	if err := writeTestFile(ctx, dirPath); err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return result, ctxErr
-		}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if err := directoryAllowsCreate(dirPath); err != nil {
 		result.Error = "No write permission in directory"
 		return result, nil
 	}
-	result.IsDirectory = true
 	result.CanWrite = true
 	result.Valid = true
 	return result, nil
@@ -1239,22 +1249,9 @@ func validateCreatableStackDirectory(ctx context.Context, dirPath string) (apisc
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	if err := os.MkdirAll(dirPath, 0755); err != nil {
+	if err := directoryAllowsCreate(parentDir); err != nil {
 		result.Error = fmt.Sprintf("Cannot create directory: %v", err)
 		return result, nil
-	}
-
-	if err := writeTestFile(ctx, dirPath); err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return result, ctxErr
-		}
-		result.Error = "Cannot write to created directory"
-		os.RemoveAll(dirPath)
-		return result, nil
-	}
-
-	if err := os.RemoveAll(dirPath); err != nil {
-		slog.Warn("failed to clean up test directory", "component", "docker", "subsystem", "compose", "path", dirPath, "error", err)
 	}
 	result.CanCreate = true
 	result.CanWrite = true
@@ -1262,21 +1259,13 @@ func validateCreatableStackDirectory(ctx context.Context, dirPath string) (apisc
 	return result, nil
 }
 
-func writeTestFile(ctx context.Context, dirPath string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	testFile := filepath.Join(dirPath, ".linuxio-write-test")
-	f, err := os.Create(testFile)
-	if err != nil {
-		return err
-	}
-	closeErr := f.Close()
-	removeErr := os.Remove(testFile)
-	if closeErr != nil {
-		return closeErr
-	}
-	return removeErr
+func directoryAllowsCreate(dirPath string) error {
+	return unix.Faccessat2(
+		unix.AT_FDCWD,
+		dirPath,
+		unix.W_OK|unix.X_OK,
+		unix.AT_EACCESS,
+	)
 }
 
 // composeFileCandidate represents a possible compose YAML file discovered in a Docker folder.

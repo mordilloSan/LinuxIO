@@ -2,7 +2,10 @@ package docker
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 
@@ -85,6 +88,119 @@ services:
 	}
 	if len(result.Errors) == 0 {
 		t.Fatalf("ValidateComposeFile() errors empty")
+	}
+}
+
+func TestValidateStackDirectoryPreservesExistingContents(t *testing.T) {
+	dirPath := t.TempDir()
+	markerPath := filepath.Join(dirPath, ".linuxio-write-test")
+	markerContent := []byte("existing user data")
+	if err := os.WriteFile(markerPath, markerContent, 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	setDirectoryModTime(t, dirPath)
+	before, err := os.Stat(dirPath)
+	if err != nil {
+		t.Fatalf("stat directory before validation: %v", err)
+	}
+
+	resultAny, err := ValidateStackDirectory(context.Background(), dirPath)
+	result := requireDirectoryValidationResult(t, resultAny, err)
+	if !result.Exists || !result.IsDirectory || !result.CanWrite || !result.Valid {
+		t.Fatalf("ValidateStackDirectory() result = %#v, want writable existing directory", result)
+	}
+
+	gotContent, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read marker after validation: %v", err)
+	}
+	if string(gotContent) != string(markerContent) {
+		t.Fatalf("marker content after validation = %q, want %q", gotContent, markerContent)
+	}
+	markerInfo, err := os.Stat(markerPath)
+	if err != nil {
+		t.Fatalf("stat marker after validation: %v", err)
+	}
+	if got := markerInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("marker mode after validation = %o, want 600", got)
+	}
+
+	after, err := os.Stat(dirPath)
+	if err != nil {
+		t.Fatalf("stat directory after validation: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("directory mtime changed during validation: before %v, after %v", before.ModTime(), after.ModTime())
+	}
+}
+
+func TestValidateStackDirectoryDoesNotCreateMissingTarget(t *testing.T) {
+	parentPath := t.TempDir()
+	targetPath := filepath.Join(parentPath, "new-stack")
+
+	setDirectoryModTime(t, parentPath)
+	before, err := os.Stat(parentPath)
+	if err != nil {
+		t.Fatalf("stat parent before validation: %v", err)
+	}
+
+	resultAny, err := ValidateStackDirectory(context.Background(), targetPath)
+	result := requireDirectoryValidationResult(t, resultAny, err)
+	if result.Exists || !result.CanCreate || !result.CanWrite || !result.Valid {
+		t.Fatalf("ValidateStackDirectory() result = %#v, want creatable missing directory", result)
+	}
+	if _, err := os.Lstat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("missing target after validation: Lstat error = %v, want not exist", err)
+	}
+
+	after, err := os.Stat(parentPath)
+	if err != nil {
+		t.Fatalf("stat parent after validation: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("parent mtime changed during validation: before %v, after %v", before.ModTime(), after.ModTime())
+	}
+}
+
+func TestValidateStackDirectoryRejectsDanglingSymlink(t *testing.T) {
+	parentPath := t.TempDir()
+	targetPath := filepath.Join(parentPath, "stack-link")
+	if err := os.Symlink(filepath.Join(parentPath, "missing"), targetPath); err != nil {
+		t.Fatalf("create dangling symlink: %v", err)
+	}
+
+	resultAny, err := ValidateStackDirectory(context.Background(), targetPath)
+	result := requireDirectoryValidationResult(t, resultAny, err)
+	if !result.Exists || result.Valid {
+		t.Fatalf("ValidateStackDirectory() result = %#v, want existing invalid path", result)
+	}
+	if _, err := os.Lstat(targetPath); err != nil {
+		t.Fatalf("dangling symlink was modified during validation: %v", err)
+	}
+}
+
+func requireDirectoryValidationResult(
+	t *testing.T,
+	resultAny any,
+	err error,
+) apischema.DirectoryValidationResult {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("ValidateStackDirectory() error = %v", err)
+	}
+	result, ok := resultAny.(apischema.DirectoryValidationResult)
+	if !ok {
+		t.Fatalf("ValidateStackDirectory() type = %T, want DirectoryValidationResult", resultAny)
+	}
+	return result
+}
+
+func setDirectoryModTime(t *testing.T, dirPath string) {
+	t.Helper()
+	fixedTime := time.Date(2000, time.January, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(dirPath, fixedTime, fixedTime); err != nil {
+		t.Fatalf("set directory timestamps: %v", err)
 	}
 }
 
