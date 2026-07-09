@@ -84,8 +84,7 @@ const NetworkInterfaceList = () => {
     }
   };
 
-  const handleSave = (iface: NetworkInterface) => {
-    console.log("Save", iface.name, editForm);
+  const handleSave = () => {
     setSearchParams((prev) => {
       prev.delete("iface");
       return prev;
