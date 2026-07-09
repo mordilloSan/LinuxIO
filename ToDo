@@ -2,6 +2,8 @@
 
 2 - Revisit the exact `"oxc-transform": "0.136.0"` pin in `frontend/package.json`: 0.135.0-0.136.0 were the only npm releases shipping `reactCompiler` — Rolldown/Vite withdrew it in 0.137.0 over napi binary size (3.5→8.7 MiB) while a leaner (~1.4MB) implementation is upstreamed. Unpin when a current `oxc-transform` release documents `reactCompiler` again (or `@vitejs/plugin-react` exposes it natively). Beware: 0.137+ silently ignores the option, so a blind bump turns the compiler off — verify `memo_cache_sentinel` still appears in build output after any bump. Custom plugin lives in `frontend/vite.config.ts` (`enforce: "pre"` and the empty-code fallback are load-bearing). Pinned 2026-07-09.
 
+3 - TanStack Table v9: BETA ADOPTED 2026-07-09 (`@tanstack/react-table` pinned exact `9.0.0-beta.37`; breaking changes still possible upstream, so bump deliberately and re-run `make check-frontend` + `make compiler-coverage` after any bump; unpin/relax to ^9 when v9 goes stable). Migration was contained to AppDataTable.types.ts (shared `appTableFeatures` registry, typed `columnMeta` slot replacing the `declare module` augmentation) + the two table components; zero consumer edits. AppDataTable is now React Compiler memoized. Still open for later: simplify the stable-columns/getCellRenderKey workaround layer using v9 selector-based subscriptions, and remember @tanstack/react-virtual has no v9 — AppVirtualDataTable/AppVirtualGrid/VirtualDirectoryItems stay compiler-skipped until it does.
+
 4 - values fixed in router.go should be set in global settings file?
 
 5 - Session Activity And Job-Safe Idle Cleanup

@@ -1,19 +1,13 @@
 import { Icon } from "@iconify/react";
-import {
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { flexRender, useTable } from "@tanstack/react-table";
 import type {
   Column,
+  ColumnVisibilityState,
   ExpandedState,
   OnChangeFn,
   Row,
   RowData,
   SortingState,
-  VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -30,10 +24,12 @@ import {
   type RefObject,
 } from "react";
 
+import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
   AppDataTableBreakpoint,
   AppDataTableColumnDef,
   AppDataTableColumnMeta,
+  AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -53,7 +49,7 @@ const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STAN
 export type AppVirtualDataTableBreakpoint = AppDataTableBreakpoint;
 export type AppVirtualDataTableColumnMeta = AppDataTableColumnMeta;
 export type AppVirtualDataTableColumnDef<
-  TData,
+  TData extends RowData,
   TValue = unknown,
 > = AppDataTableColumnDef<TData, TValue>;
 
@@ -73,19 +69,31 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
    * Defaults to true for app-page data tables; set false for compact embedded tables.
    */
   fillAvailable?: boolean;
-  getRowCanExpand?: (row: Row<TData>) => boolean;
-  getRowAttributes?: (row: Row<TData>) => HTMLAttributes<HTMLDivElement>;
-  getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
+  getRowCanExpand?: (row: Row<AppTableFeatures, TData>) => boolean;
+  getRowAttributes?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => HTMLAttributes<HTMLDivElement>;
+  getRowId: (
+    row: TData,
+    index: number,
+    parent?: Row<AppTableFeatures, TData>,
+  ) => string;
   height?: CSSProperties["height"];
   manualSorting?: boolean;
   maxHeight?: CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
-  onRowClick?: (row: Row<TData>, event: MouseEvent) => void;
-  onRowContextMenu?: (row: Row<TData>, event: MouseEvent) => void;
-  onRowDoubleClick?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  onRowDoubleClick?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
   onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
-  renderExpandedContent?: (row: Row<TData>) => ReactNode;
+  renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   scrollElementRef?: RefObject<HTMLDivElement | null>;
   scrollToIndex?: number | null;
   selectedRowId?: string | null;
@@ -99,17 +107,19 @@ type VirtualTableEntry<TData extends RowData> =
   | {
       kind: "row";
       key: string;
-      row: Row<TData>;
+      row: Row<AppTableFeatures, TData>;
       rowIndex: number;
     }
   | {
       kind: "detail";
       key: string;
-      row: Row<TData>;
+      row: Row<AppTableFeatures, TData>;
       rowIndex: number;
     };
 
-function columnTrack<TData extends RowData>(column: Column<TData, unknown>) {
+function columnTrack<TData extends RowData>(
+  column: Column<AppTableFeatures, TData, unknown>,
+) {
   const width = column.columnDef.meta?.width;
   if (typeof width === "number") return `${width}px`;
   if (typeof width === "string" && width.trim()) return width;
@@ -148,8 +158,9 @@ function easeStandard(progress: number) {
     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 }
 
-// React Compiler skips this component: TanStack Table/Virtual APIs return
-// unstable functions it cannot memoize. Manual memoization stays load-bearing.
+// React Compiler skips this component because of @tanstack/react-virtual
+// (no compiler-compatible release exists); Table itself is v9 and fine.
+// Manual memoization stays load-bearing here.
 // oxlint-disable-next-line react/react-compiler
 function AppVirtualDataTable<TData extends RowData>({
   ariaLabel = "Data table",
@@ -211,14 +222,14 @@ function AppVirtualDataTable<TData extends RowData>({
     () => new Set(),
   );
 
-  const columnVisibility = useMemo<VisibilityState>(() => {
+  const columnVisibility = useMemo<ColumnVisibilityState>(() => {
     const below: Record<AppVirtualDataTableBreakpoint, boolean> = {
       sm: belowSm,
       md: belowMd,
       lg: belowLg,
       xl: belowXl,
     };
-    const next: VisibilityState = {};
+    const next: ColumnVisibilityState = {};
 
     columns.forEach((column, index) => {
       const hideBelow = column.meta?.hideBelow;
@@ -246,19 +257,15 @@ function AppVirtualDataTable<TData extends RowData>({
     onSortingChange?.(updater);
   };
 
-  // TanStack Table exposes dynamic helper functions that React Compiler cannot memoize safely.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
+  const table = useTable({
+    features: appTableFeatures,
     columns,
     data,
     enableSorting,
     enableSortingRemoval: false,
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
     getRowCanExpand: (row) =>
       Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
     getRowId,
-    getSortedRowModel: getSortedRowModel(),
     manualSorting,
     onExpandedChange: handleExpandedChange,
     onSortingChange: handleSortingChange,

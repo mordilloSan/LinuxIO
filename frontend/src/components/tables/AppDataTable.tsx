@@ -2,22 +2,16 @@ import type { UniqueIdentifier } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import {
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { flexRender, useTable } from "@tanstack/react-table";
 import type {
   Cell,
   Column,
+  ColumnVisibilityState,
   ExpandedState,
   OnChangeFn,
   Row,
   RowData,
   SortingState,
-  VisibilityState,
 } from "@tanstack/react-table";
 import {
   Fragment,
@@ -31,10 +25,12 @@ import {
   type Ref,
 } from "react";
 
+import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
   AppDataTableBreakpoint,
   AppDataTableCellRenderKey,
   AppDataTableColumnDef,
+  AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -66,14 +62,14 @@ export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
 export interface AppDataTableRowRenderProps<TData extends RowData> {
   cells: ReactNode;
   isSelected: boolean;
-  row: Row<TData>;
+  row: Row<AppTableFeatures, TData>;
   rowIndex: number;
   rowProps: AppDataTableRowAttributes;
 }
 
 export interface AppDataTableDndOptions<TData extends RowData> {
   enabled?: boolean;
-  getItemId: (row: Row<TData>) => UniqueIdentifier;
+  getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
   handleAriaLabel?: string;
   handleColumnWidth?: string | number;
 }
@@ -89,18 +85,30 @@ export interface AppDataTableProps<TData extends RowData> {
   enableSorting?: boolean;
   expanded?: ExpandedState;
   fillAvailable?: boolean;
-  getRowCanExpand?: (row: Row<TData>) => boolean;
-  getRowAttributes?: (row: Row<TData>) => AppDataTableRowAttributes;
-  getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
+  getRowCanExpand?: (row: Row<AppTableFeatures, TData>) => boolean;
+  getRowAttributes?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => AppDataTableRowAttributes;
+  getRowId: (
+    row: TData,
+    index: number,
+    parent?: Row<AppTableFeatures, TData>,
+  ) => string;
   height?: CSSProperties["height"];
   manualSorting?: boolean;
   maxHeight?: CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
-  onRowClick?: (row: Row<TData>, event: MouseEvent) => void;
-  onRowContextMenu?: (row: Row<TData>, event: MouseEvent) => void;
-  onRowDoubleClick?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  onRowDoubleClick?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
   onSortingChange?: OnChangeFn<SortingState>;
-  renderExpandedContent?: (row: Row<TData>) => ReactNode;
+  renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   selectedRowId?: string | null;
   showHeader?: boolean;
@@ -109,7 +117,9 @@ export interface AppDataTableProps<TData extends RowData> {
   variant?: "default" | "embedded";
 }
 
-function columnTrack<TData extends RowData>(column: Column<TData, unknown>) {
+function columnTrack<TData extends RowData>(
+  column: Column<AppTableFeatures, TData, unknown>,
+) {
   const width = column.columnDef.meta?.width;
   if (typeof width === "number") return `${width}px`;
   if (typeof width === "string" && width.trim()) return width;
@@ -153,7 +163,7 @@ function areCellRenderKeysEqual(
 }
 
 function getCellRenderKey<TData extends RowData>(
-  cell: Cell<TData, unknown>,
+  cell: Cell<AppTableFeatures, TData, unknown>,
   rowIndex: number,
 ) {
   return (
@@ -165,7 +175,7 @@ function getCellRenderKey<TData extends RowData>(
 }
 
 interface AppDataTableCellProps<TData extends RowData> {
-  cell: Cell<TData, unknown>;
+  cell: Cell<AppTableFeatures, TData, unknown>;
   renderKey: AppDataTableCellRenderKey;
 }
 
@@ -203,7 +213,7 @@ interface AppDataTableBodyRowProps<TData extends RowData> {
   cells: ReactNode;
   isSelected: boolean;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
-  row: Row<TData>;
+  row: Row<AppTableFeatures, TData>;
   rowIndex: number;
   rowProps: AppDataTableRowAttributes;
 }
@@ -293,9 +303,6 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
   );
 }
 
-// React Compiler skips this component: TanStack Table's API returns unstable
-// functions it cannot memoize. Manual memoization below stays load-bearing.
-// oxlint-disable-next-line react/react-compiler
 function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,
@@ -326,8 +333,6 @@ function AppDataTable<TData extends RowData>({
   style,
   variant = "default",
 }: AppDataTableProps<TData>) {
-  "use no memo";
-
   const theme = useAppTheme();
   const isDark = theme.palette.mode === "dark";
   const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
@@ -337,14 +342,14 @@ function AppDataTable<TData extends RowData>({
   const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
 
-  const columnVisibility = useMemo<VisibilityState>(() => {
+  const columnVisibility = useMemo<ColumnVisibilityState>(() => {
     const below: Record<AppDataTableBreakpoint, boolean> = {
       sm: belowSm,
       md: belowMd,
       lg: belowLg,
       xl: belowXl,
     };
-    const next: VisibilityState = {};
+    const next: ColumnVisibilityState = {};
 
     columns.forEach((column, index) => {
       const hideBelow = column.meta?.hideBelow;
@@ -372,19 +377,15 @@ function AppDataTable<TData extends RowData>({
     onSortingChange?.(updater);
   };
 
-  // TanStack Table exposes dynamic helper functions that React Compiler cannot memoize safely.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
+  const table = useTable({
+    features: appTableFeatures,
     columns,
     data,
     enableSorting,
     enableSortingRemoval: false,
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
     getRowCanExpand: (row) =>
       Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
     getRowId,
-    getSortedRowModel: getSortedRowModel(),
     manualSorting,
     onExpandedChange: handleExpandedChange,
     onSortingChange: handleSortingChange,

@@ -1,3 +1,12 @@
+import {
+  columnVisibilityFeature,
+  createExpandedRowModel,
+  createSortedRowModel,
+  rowExpandingFeature,
+  rowSortingFeature,
+  sortFns,
+  tableFeatures,
+} from "@tanstack/react-table";
 import type { ColumnDef, RowData } from "@tanstack/react-table";
 import type { CSSProperties } from "react";
 
@@ -21,18 +30,25 @@ export interface AppDataTableColumnMeta {
   width?: string | number;
 }
 
-/* eslint-disable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars */
-declare module "@tanstack/react-table" {
-  interface ColumnMeta<
-    TData extends RowData,
-    TValue,
-  > extends AppDataTableColumnMeta {}
-}
-/* eslint-enable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars */
+// v9 tree-shakeable feature registry, shared by AppDataTable and
+// AppVirtualDataTable: only sorting, expanding, and responsive column
+// visibility ship in the bundle. The type-only `columnMeta` slot replaces the
+// v8 `declare module` ColumnMeta augmentation.
+export const appTableFeatures = tableFeatures({
+  columnVisibilityFeature,
+  rowExpandingFeature,
+  rowSortingFeature,
+  expandedRowModel: createExpandedRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  sortFns,
+  columnMeta: {} as AppDataTableColumnMeta,
+});
 
-export type AppDataTableColumnDef<TData, TValue = unknown> = ColumnDef<
-  TData,
-  TValue
-> & {
+export type AppTableFeatures = typeof appTableFeatures;
+
+export type AppDataTableColumnDef<
+  TData extends RowData,
+  TValue = unknown,
+> = ColumnDef<AppTableFeatures, TData, TValue> & {
   meta?: AppDataTableColumnMeta;
 };
