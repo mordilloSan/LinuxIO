@@ -566,6 +566,11 @@ bundle-budget:
 	@echo "📏 Checking frontend bundle budgets..."
 	@bash -c 'cd frontend && npm run bundle:budget'
 
+compiler-coverage:
+	@echo ""
+	@echo "⚛️  Reporting React Compiler coverage..."
+	@bash -c 'cd frontend && npm run compiler:coverage'
+
 analyze: ensure-node setup
 	@echo ""
 	@echo "🔬 Building frontend bundle analysis..."
@@ -861,6 +866,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
+	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
@@ -920,7 +926,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
