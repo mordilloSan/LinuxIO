@@ -1,6 +1,13 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
+import "./docker-compose-progress.css";
+
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
+import { formatFileSize } from "@/utils/formaters";
+
 import {
   aggregatePercent,
   type ComposeTask,
@@ -8,12 +15,6 @@ import {
   prettyId,
   shortId,
 } from "./composeProgress";
-import "./docker-compose-progress.css";
-
-import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
-import { formatFileSize } from "@/utils/formaters";
 
 interface DockerComposeProgressProps {
   tasks: ComposeTask[];

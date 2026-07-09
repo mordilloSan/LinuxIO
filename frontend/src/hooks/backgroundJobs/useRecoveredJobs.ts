@@ -484,6 +484,20 @@ export function useRecoveredJobs(
       removeBackgroundJob,
       runStreamResult,
       emitCapabilityCompletion,
+      // Stable runtime refs and setters: they arrive as plain function
+      // params, so neither the compiler nor the lint rule can prove them
+      // stable without listing them.
+      activeBackgroundJobIdsRef,
+      activeFileTransferJobIdsRef,
+      activeIndexerIdsRef,
+      pendingLocalJobKeysRef,
+      recoveringJobIdsRef,
+      streamRefsRef,
+      setBackgroundJobs,
+      setIndexers,
+      setIsIndexerDialogOpen,
+      setLastIndexerError,
+      setLastIndexerResult,
     ],
   );
 

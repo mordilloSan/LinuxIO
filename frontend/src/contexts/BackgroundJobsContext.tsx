@@ -22,6 +22,13 @@ import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
 import { useUploadChunkSizeGetter } from "@/hooks/useUploadChunkSize";
 import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
+// Module scope on purpose: declared inside the transfers useMemo, this
+// rest-params closure trips an invariant in the React Compiler (oxc port)
+// and the whole file is left unmemoized.
+const addIds = (ids: Set<string>, ...values: (string | undefined)[]) => {
+  for (const v of values) if (v) ids.add(v);
+};
+
 export const BackgroundJobsProvider = ({
   children,
 }: {
@@ -71,9 +78,6 @@ export const BackgroundJobsProvider = ({
   });
 
   const transfers = useMemo<BackgroundJobItem[]>(() => {
-    const addIds = (ids: Set<string>, ...values: (string | undefined)[]) => {
-      for (const v of values) if (v) ids.add(v);
-    };
     const localTransferIds = new Set<string>();
     const localItems: { id: string; jobId?: string }[] = [
       ...downloads,

@@ -86,7 +86,7 @@ const DockerPage = () => {
   const { mutateAsync: stopContainer } =
     linuxio.docker.stop_container.useJobAction();
   const isStoppingAll = stoppingContainerIds.size > 0;
-  const handleStopAllRunning = useCallback(async () => {
+  const handleStopAllRunning = async () => {
     if (stopAllInFlightRef.current || runningContainers.length === 0) return;
 
     const targets = [...runningContainers];
@@ -94,24 +94,22 @@ const DockerPage = () => {
     setStoppingContainerIds(new Set(targets.map((container) => container.Id)));
 
     const failures: string[] = [];
-    try {
-      for (const container of targets) {
-        try {
-          await stopContainer({ containerId: container.Id });
-        } catch {
-          failures.push(getContainerName(container));
-        } finally {
-          setStoppingContainerIds((previous) => {
-            const next = new Set(previous);
-            next.delete(container.Id);
-            return next;
-          });
-        }
+    // No try/finally (the React Compiler oxc port cannot lower finalizers):
+    // each stop swallows its own error, so the resets below always run.
+    for (const container of targets) {
+      try {
+        await stopContainer({ containerId: container.Id });
+      } catch {
+        failures.push(getContainerName(container));
       }
-    } finally {
-      stopAllInFlightRef.current = false;
-      setStoppingContainerIds(new Set());
+      setStoppingContainerIds((previous) => {
+        const next = new Set(previous);
+        next.delete(container.Id);
+        return next;
+      });
     }
+    stopAllInFlightRef.current = false;
+    setStoppingContainerIds(new Set());
     if (failures.length > 0) {
       toast.error(
         `Failed to stop ${failures.length} of ${targets.length} container${targets.length === 1 ? "" : "s"}`,
@@ -119,7 +117,7 @@ const DockerPage = () => {
     } else {
       toast.success(`Stopped ${targets.length} container(s)`);
     }
-  }, [runningContainers, stopContainer, toast]);
+  };
   const { mutate: systemPrune, isPending: isPruning } =
     linuxio.docker.system_prune.useJobAction({
       success: () => {
