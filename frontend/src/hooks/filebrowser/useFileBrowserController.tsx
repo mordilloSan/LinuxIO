@@ -85,17 +85,18 @@ export function useFileBrowserController(): FileBrowserController {
     uploadSummary,
   } = upload;
 
-  // Selection slice: state plus a stable semantic-action API
-  const selection = useFileSelectionState();
+  const { handleOpenDirectory, normalizedPath } = useFileBrowserNavigation({
+    onPathChange: viewActions.clearSearch,
+  });
+
+  // Selection is directory-scoped; clipboard state survives navigation.
+  const selection = useFileSelectionState(normalizedPath);
   const {
     actions: selectionActions,
     clipboard,
     cutPaths,
     selectedPaths,
   } = selection;
-  const { handleOpenDirectory, normalizedPath } = useFileBrowserNavigation({
-    onPathChange: viewActions.clearSearch,
-  });
   const { startDownload, startUpload } = useBackgroundJobActions();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");

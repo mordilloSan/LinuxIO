@@ -178,10 +178,6 @@ const DirectoryListing = ({
     };
   }, []);
 
-  useEffect(() => {
-    onSelectedPathsChange(new Set());
-  }, [resource.path, onSelectedPathsChange]);
-
   const focusItemByPath = useCallback(
     (path: string) => {
       const index = allItems.findIndex((item) => item.path === path);

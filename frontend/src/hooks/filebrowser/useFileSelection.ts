@@ -13,27 +13,32 @@ interface ClipboardData {
 
 interface SelectionState {
   clipboard: ClipboardData | null;
+  directoryPath: string;
   selectedPaths: Set<string>;
 }
 
 type SelectionEvent =
-  | { type: "clear" }
+  | { directoryPath: string; type: "changeDirectory" }
+  | { directoryPath: string; type: "clear" }
   | { type: "clearClipboard" }
   | { paths: string[]; type: "copyToClipboard" }
   | { paths: string[]; type: "cutToClipboard" }
-  | { paths: Set<string>; type: "select" };
-
-const initialSelectionState: SelectionState = {
-  clipboard: null,
-  selectedPaths: new Set(),
-};
+  | { directoryPath: string; paths: Set<string>; type: "select" };
 
 function selectionReducer(
   state: SelectionState,
   event: SelectionEvent,
 ): SelectionState {
   switch (event.type) {
+    case "changeDirectory":
+      if (state.directoryPath === event.directoryPath) return state;
+      return {
+        ...state,
+        directoryPath: event.directoryPath,
+        selectedPaths: new Set(),
+      };
     case "clear":
+      if (state.directoryPath !== event.directoryPath) return state;
       return { ...state, selectedPaths: new Set() };
     case "clearClipboard":
       return { ...state, clipboard: null };
@@ -42,6 +47,7 @@ function selectionReducer(
     case "cutToClipboard":
       return { ...state, clipboard: { operation: "cut", paths: event.paths } };
     case "select":
+      if (state.directoryPath !== event.directoryPath) return state;
       return { ...state, selectedPaths: event.paths };
   }
 }
@@ -54,28 +60,50 @@ interface SelectionActions {
   select: (paths: Set<string>) => void;
 }
 
-interface SelectionSlice extends SelectionState {
+interface SelectionSlice {
   actions: SelectionActions;
+  clipboard: ClipboardData | null;
   cutPaths: Set<string>;
+  selectedPaths: Set<string>;
 }
 
 /**
- * Selection slice: the listing's selection and clipboard behind a stable
- * semantic-action API. `actions` never changes identity, so consumers can
- * hold it in callbacks without churn.
+ * Selection slice: selection is scoped to the current directory while the
+ * clipboard deliberately survives navigation for cross-directory paste.
+ * Actions stay stable until the directory changes.
  */
-export const useFileSelectionState = (): SelectionSlice => {
-  const [state, dispatch] = useReducer(selectionReducer, initialSelectionState);
+export const useFileSelectionState = (
+  directoryPath: string,
+): SelectionSlice => {
+  const [storedState, dispatch] = useReducer(selectionReducer, {
+    clipboard: null,
+    directoryPath,
+    selectedPaths: new Set<string>(),
+  });
+  const directoryChanged = storedState.directoryPath !== directoryPath;
+  const state = directoryChanged
+    ? {
+        ...storedState,
+        directoryPath,
+        selectedPaths: new Set<string>(),
+      }
+    : storedState;
+
+  // Normalize during render so a route or browser-history navigation never
+  // exposes the previous directory's selection for a committed frame.
+  if (directoryChanged) {
+    dispatch({ directoryPath, type: "changeDirectory" });
+  }
 
   const actions = useMemo<SelectionActions>(
     () => ({
-      clear: () => dispatch({ type: "clear" }),
+      clear: () => dispatch({ directoryPath, type: "clear" }),
       clearClipboard: () => dispatch({ type: "clearClipboard" }),
       copyToClipboard: (paths) => dispatch({ paths, type: "copyToClipboard" }),
       cutToClipboard: (paths) => dispatch({ paths, type: "cutToClipboard" }),
-      select: (paths) => dispatch({ paths, type: "select" }),
+      select: (paths) => dispatch({ directoryPath, paths, type: "select" }),
     }),
-    [],
+    [directoryPath],
   );
 
   // Cut items render dimmed in the listing until they are pasted.
@@ -86,7 +114,12 @@ export const useFileSelectionState = (): SelectionSlice => {
     return new Set<string>();
   }, [state.clipboard]);
 
-  return { ...state, actions, cutPaths };
+  return {
+    actions,
+    clipboard: state.clipboard,
+    cutPaths,
+    selectedPaths: state.selectedPaths,
+  };
 };
 
 interface useFileSelectionParams {

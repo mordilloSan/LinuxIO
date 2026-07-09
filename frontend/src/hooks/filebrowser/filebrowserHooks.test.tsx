@@ -122,12 +122,44 @@ describe("useFilePathUtilities", () => {
 function useSelectionHarness(
   params: Omit<Parameters<typeof useFileSelection>[0], "selection">,
 ) {
-  const selection = useFileSelectionState();
+  const selection = useFileSelectionState(params.normalizedPath);
   const api = useFileSelection({ ...params, selection });
   return { ...api, selection };
 }
 
 describe("useFileSelection", () => {
+  it("clears selection on navigation while preserving the clipboard", () => {
+    const { result, rerender } = renderHook(
+      ({ normalizedPath }) =>
+        useSelectionHarness({
+          copyItems: vi.fn(),
+          moveItems: vi.fn(),
+          normalizedPath,
+          resource: directoryResource,
+        }),
+      { initialProps: { normalizedPath: "/srv/projects" } },
+    );
+
+    act(() => {
+      result.current.selection.actions.select(
+        new Set(["/srv/projects/alpha.txt"]),
+      );
+      result.current.selection.actions.copyToClipboard([
+        "/srv/projects/alpha.txt",
+      ]);
+    });
+
+    rerender({ normalizedPath: "/srv/target" });
+    expect(result.current.selection.selectedPaths.size).toBe(0);
+    expect(result.current.selection.clipboard).toEqual({
+      operation: "copy",
+      paths: ["/srv/projects/alpha.txt"],
+    });
+
+    rerender({ normalizedPath: "/srv/projects" });
+    expect(result.current.selection.selectedPaths.size).toBe(0);
+  });
+
   it("derives selected items from the current directory resource", () => {
     const { result } = renderHook(() =>
       useSelectionHarness({

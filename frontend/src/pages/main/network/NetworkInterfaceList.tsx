@@ -4,7 +4,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type MouseEvent,
 } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -27,7 +26,6 @@ export type { NetworkInterface };
 const NetworkInterfaceList = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const expanded = searchParams.get("iface");
-  const [editForm, setEditForm] = useState<Record<string, any>>({});
 
   const { data: rawInterfaces = [], isPending: isLoading } =
     linuxio.network.get_network_info.useQuery({
@@ -70,13 +68,6 @@ const NetworkInterfaceList = () => {
         return prev;
       });
     } else {
-      setEditForm({
-        ipv4: Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "",
-        ipv6: Array.isArray(iface.ipv6) ? iface.ipv6.join(", ") : "",
-        dns: iface.dns ? iface.dns : "",
-        gateway: iface.gateway ? iface.gateway : "",
-        mtu: iface.mtu.toString(),
-      });
       setSearchParams((prev) => {
         prev.set("iface", iface.name);
         return prev;
@@ -84,12 +75,6 @@ const NetworkInterfaceList = () => {
     }
   };
 
-  const handleSave = () => {
-    setSearchParams((prev) => {
-      prev.delete("iface");
-      return prev;
-    });
-  };
   const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const rxCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -168,7 +153,6 @@ const NetworkInterfaceList = () => {
                 }}
               >
                 <NetworkInterfaceCard
-                  editForm={editForm}
                   expanded={expanded === iface.name}
                   iface={iface}
                   onClose={() =>
@@ -177,9 +161,7 @@ const NetworkInterfaceList = () => {
                       return prev;
                     })
                   }
-                  onSave={handleSave}
                   onToggle={() => handleToggle(iface)}
-                  setEditForm={setEditForm}
                 />
               </AppGrid>
             ),

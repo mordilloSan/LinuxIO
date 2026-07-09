@@ -29,23 +29,17 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 export interface NetworkInterfaceCardProps {
-  editForm: Record<string, any>;
   expanded: boolean;
   iface: NetworkInterface;
   onClose: () => void;
-  onSave: (iface: NetworkInterface) => void;
   onToggle: () => void;
-  setEditForm: (form: Record<string, any>) => void;
 }
 
 const NetworkInterfaceCard = ({
   iface,
   expanded,
-  editForm,
-  setEditForm,
   onToggle,
   onClose,
-  onSave,
 }: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
@@ -120,12 +114,9 @@ const NetworkInterfaceCard = ({
         </div>
       </div>
       <NetworkInterfaceEditor
-        editForm={editForm}
         expanded={expanded}
         iface={iface}
         onClose={onClose}
-        onSave={onSave}
-        setEditForm={setEditForm}
       />
     </FrostedCard>
   );
