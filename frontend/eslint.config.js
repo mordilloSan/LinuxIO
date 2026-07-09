@@ -17,7 +17,6 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
-        React: "readonly",
       },
     },
   },
@@ -105,7 +104,7 @@ export default [
     rules: {
       ...reactYouMightNotNeedAnEffect.configs.strict.rules,
       "react-you-might-not-need-an-effect/no-event-handler": "off",
-      "react-you-might-not-need-an-effect/no-pass-data-to-parent": "off",
+      "react-you-might-not-need-an-effect/no-pass-data-to-parent": "warn",
       "react-you-might-not-need-an-effect/no-external-store-subscription":
         "warn",
       "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",

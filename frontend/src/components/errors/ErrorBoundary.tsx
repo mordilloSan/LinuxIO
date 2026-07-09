@@ -1,4 +1,3 @@
-// components/ErrorBoundary.tsx
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
