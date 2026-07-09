@@ -1,5 +1,10 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import {
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import FrostedCard from "./FrostedCard";
 
@@ -73,12 +78,12 @@ export type DashboardCardProps = SelectProps & {
   /** Optional color override for the card title (e.g. "primary.main"). */
   titleColor?: string;
   /** Left-column content — typically a vertical list of `Typography` metrics. */
-  stats: React.ReactNode;
+  stats: ReactNode;
   /**
    * Right-column content — typically a chart, gauge, or icon grid.
    * When omitted the card renders `stats` across the full width.
    */
-  stats2?: React.ReactNode;
+  stats2?: ReactNode;
   /** Iconify icon ID rendered as the card's top-right avatar. */
   avatarIcon: string;
   /** Optional Iconify icon ID shown next to `icon_text` in the header. */
@@ -127,9 +132,7 @@ const DashboardCard = ({
     return contentLayout;
   })();
 
-  const handleSelectionChange = (
-    event: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
+  const handleSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
     onSelect?.(event.target.value);
   };
 
@@ -157,7 +160,7 @@ const DashboardCard = ({
           color: theme.palette.text.secondary,
           lineHeight: theme.typography.body2.lineHeight,
           "--app-select-input-font-size": "0.75rem",
-        } as React.CSSProperties
+        } as CSSProperties
       }
       value={selectedOption}
       variant="standard"

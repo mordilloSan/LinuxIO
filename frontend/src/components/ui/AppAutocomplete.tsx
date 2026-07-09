@@ -1,5 +1,14 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import AppPopover from "./AppPopover";
 import AppTextField from "./AppTextField";
@@ -13,21 +22,21 @@ interface BaseAutocompleteProps {
   autoFocus?: boolean;
   className?: string;
   disabled?: boolean;
-  endAdornment?: React.ReactNode;
+  endAdornment?: ReactNode;
   filterOptions?: (options: string[], state: FilterState) => string[];
   freeSolo?: boolean;
   fullWidth?: boolean;
-  helperText?: React.ReactNode;
+  helperText?: ReactNode;
   label?: string;
   loading?: boolean;
-  maxListHeight?: React.CSSProperties["maxHeight"];
-  noOptionsText?: React.ReactNode;
+  maxListHeight?: CSSProperties["maxHeight"];
+  noOptionsText?: ReactNode;
   onInputChange?: (value: string) => void;
   options: string[];
   placeholder?: string;
   shrinkLabel?: boolean;
   size?: "small" | "medium";
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
 type RenderValueProps = (
@@ -36,7 +45,7 @@ type RenderValueProps = (
     key: string;
     onDelete: () => void;
   },
-) => React.ReactNode;
+) => ReactNode;
 
 type SingleAutocompleteProps = BaseAutocompleteProps & {
   multiple?: false;
@@ -208,7 +217,7 @@ const AppAutocomplete = (props: AppAutocompleteProps) => {
     });
   };
 
-  const handleInputKeyDown = (event: React.KeyboardEvent<Element>) => {
+  const handleInputKeyDown = (event: KeyboardEvent<Element>) => {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();

@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -23,7 +23,7 @@ const GpuInfo = () => {
     refetchInterval: 2_000,
   });
 
-  const content: React.ReactNode = isLoading ? (
+  const content: ReactNode = isLoading ? (
     <AppTypography variant="body2">Loading...</AppTypography>
   ) : isError || !gpus || gpus.length === 0 ? (
     <AppTypography variant="body2">No GPU information available.</AppTypography>

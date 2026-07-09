@@ -1,5 +1,6 @@
 import {
   useCallback,
+  type ChangeEvent,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -54,7 +55,7 @@ export const useFileBrowserUploadActions = ({
   }, [onContextMenuClose, setUploadDialogOpen, setUploadEntries]);
 
   const handleUploadInputChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files?.length) {
         event.target.value = "";

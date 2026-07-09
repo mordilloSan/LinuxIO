@@ -1,4 +1,4 @@
-import React from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 
 import "./app-icon-button.css";
 
@@ -7,7 +7,7 @@ type IconButtonColor = "default" | "inherit" | "primary" | "error";
 type IconButtonSize = "small" | "medium";
 
 export interface AppIconButtonProps extends Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
   color?: IconButtonColor;
@@ -15,7 +15,7 @@ export interface AppIconButtonProps extends Omit<
   size?: IconButtonSize;
 }
 
-const AppIconButton = React.forwardRef<HTMLButtonElement, AppIconButtonProps>(
+const AppIconButton = forwardRef<HTMLButtonElement, AppIconButtonProps>(
   (
     {
       color = "default",

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { ReactNode, useCallback, useMemo } from "react";
+import { useCallback, useMemo, type MouseEvent, type ReactNode } from "react";
 
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
@@ -271,7 +271,7 @@ export function useFileBrowserController(): FileBrowserController {
   });
 
   const handleContextMenu = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       event.preventDefault();
       setContextMenuPosition({
         top: event.clientY,

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 
 import SettingsDialog from "./SettingsDialog";
 
@@ -35,4 +35,4 @@ const NavbarSettingsDialogTrigger = () => {
   );
 };
 
-export default React.memo(NavbarSettingsDialogTrigger);
+export default memo(NavbarSettingsDialogTrigger);

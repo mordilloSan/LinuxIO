@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo, useState, type CSSProperties } from "react";
 
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import AppTypography from "@/components/ui/AppTypography";
@@ -8,7 +8,7 @@ import { shadowSm } from "@/theme/constants";
 
 const DevToolsButton = () => {
   const theme = useAppTheme();
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   // Only show in development mode
   if (!import.meta.env.DEV) {
@@ -44,7 +44,7 @@ const DevToolsButton = () => {
               transition: "all 0.2s",
               "--devtools-hover-border": theme.palette.primary.main,
               "--devtools-hover-shadow": shadowSm,
-            } as React.CSSProperties
+            } as CSSProperties
           }
           tabIndex={0}
         >
@@ -64,4 +64,4 @@ const DevToolsButton = () => {
   );
 };
 
-export default React.memo(DevToolsButton);
+export default memo(DevToolsButton);

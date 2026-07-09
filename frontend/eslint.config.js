@@ -66,7 +66,8 @@ export default [
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.flat["recommended-latest"].rules,
-      "react/react-in-jsx-scope": "warn",
+      "react/jsx-uses-react": "off",
+      "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
       "no-unused-vars": "off",

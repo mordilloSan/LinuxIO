@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFileBrowserController } from "./useFileBrowserController";
@@ -424,7 +424,7 @@ describe("useFileBrowserController", () => {
         clientX: 42,
         clientY: 84,
         preventDefault,
-      } as unknown as React.MouseEvent<HTMLDivElement>);
+      } as unknown as MouseEvent<HTMLDivElement>);
     });
 
     expect(preventDefault).toHaveBeenCalledTimes(1);

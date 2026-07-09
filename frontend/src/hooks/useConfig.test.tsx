@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "@/api";
@@ -52,7 +53,7 @@ function makeContext(
 }
 
 function wrapper(value = makeContext()) {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
     );

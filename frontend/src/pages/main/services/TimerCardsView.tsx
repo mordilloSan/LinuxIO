@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import {
   DetailRow,
@@ -15,7 +15,7 @@ import UnitLogsCard from "@/components/cards/UnitLogsCard";
 interface TimerCardsViewProps {
   expanded: string | null;
   onExpand: (name: string | null) => void;
-  renderDetailPanel: (timer: Timer) => React.ReactNode;
+  renderDetailPanel: (timer: Timer) => ReactNode;
   timers: Timer[];
 }
 

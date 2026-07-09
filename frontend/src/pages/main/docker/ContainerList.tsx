@@ -14,7 +14,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { motion } from "framer-motion";
-import React, {
+import {
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -468,4 +469,4 @@ const ContainerList = ({
   );
 };
 
-export default React.memo(ContainerList);
+export default memo(ContainerList);

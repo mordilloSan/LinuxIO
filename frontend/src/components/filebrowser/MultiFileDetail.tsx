@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useState, type ReactNode } from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
@@ -50,7 +50,7 @@ const DetailRow = ({
   isLoading = false,
 }: {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   isLoading?: boolean;
 }) => {
   const theme = useAppTheme();
@@ -108,7 +108,7 @@ const MultiFileItemRow = ({
       : Number.parseFloat(theme.shape.borderRadius);
   const isDir = item.type === "directory";
   const isLoading = item.isLoading ?? false;
-  const [hovered, setHovered] = React.useState(false);
+  const [hovered, setHovered] = useState(false);
 
   const renderSize = () => {
     if (isLoading) {

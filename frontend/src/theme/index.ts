@@ -1,11 +1,13 @@
-import React, {
+import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
   useInsertionEffect,
   useMemo,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 
 import type {
@@ -192,7 +194,7 @@ export interface AppTheme {
 }
 
 interface AppThemeProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
   value?: AppTheme;
 }
 
@@ -707,7 +709,7 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     return null;
   }
 
-  return React.createElement(
+  return createElement(
     APP_THEME_CONTEXT.Provider,
     { value: resolvedTheme },
     children,
@@ -717,12 +719,12 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 export function ConfiguredAppThemeProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const { config } = useConfig();
   const theme = useMemo(() => buildAppTheme(config.appSettings), [config]);
 
-  return React.createElement(AppThemeProvider, { value: theme, children });
+  return createElement(AppThemeProvider, { value: theme, children });
 }
 
 export function useAppTheme() {

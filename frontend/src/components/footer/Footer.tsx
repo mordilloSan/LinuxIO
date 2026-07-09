@@ -1,4 +1,4 @@
-import React from "react";
+import { memo } from "react";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -70,4 +70,4 @@ function Footer() {
   );
 }
 
-export default React.memo(Footer);
+export default memo(Footer);

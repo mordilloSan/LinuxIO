@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import { useState, type CSSProperties, type SyntheticEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import AppAlert from "@/components/ui/AppAlert";
@@ -20,7 +20,7 @@ function LogIn() {
     "--lf-focus-color": theme.palette.primary.main,
     "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.28),
     "--lf-label-color": theme.palette.text.secondary,
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +33,7 @@ function LogIn() {
   const redirect = searchParams.get("redirect") || "/";
   const { signIn } = useAuth();
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 
@@ -67,7 +67,7 @@ function LogIn() {
               "--login-alert-icon": theme.palette.warning.main,
               "--login-alert-text": alpha(theme.palette.common.white, 0.92),
               marginBottom: 16,
-            } as React.CSSProperties
+            } as CSSProperties
           }
         >
           {error}
@@ -75,7 +75,7 @@ function LogIn() {
       )}
       <div
         className="login-reveal"
-        style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
+        style={{ "--login-reveal-delay": "140ms" } as CSSProperties}
       >
         <AppTextField
           autoComplete="username"
@@ -91,7 +91,7 @@ function LogIn() {
 
       <div
         className="login-reveal"
-        style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
+        style={{ "--login-reveal-delay": "220ms" } as CSSProperties}
       >
         <AppTextField
           autoComplete="current-password"
@@ -121,7 +121,7 @@ function LogIn() {
 
       <div
         className="login-reveal"
-        style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
+        style={{ "--login-reveal-delay": "300ms" } as CSSProperties}
       >
         <AppButton
           className="login-submit-btn"

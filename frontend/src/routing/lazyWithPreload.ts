@@ -1,17 +1,16 @@
-import { lazy } from "react";
-import type React from "react";
+import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-type LazyRouteModule<T extends React.ComponentType<any>> = { default: T };
-type LazyRouteImporter<T extends React.ComponentType<any>> = () => Promise<
+type LazyRouteModule<T extends ComponentType<any>> = { default: T };
+type LazyRouteImporter<T extends ComponentType<any>> = () => Promise<
   LazyRouteModule<T>
 >;
 
-export type PreloadableLazyRoute<T extends React.ComponentType<any>> =
-  React.LazyExoticComponent<T> & {
+export type PreloadableLazyRoute<T extends ComponentType<any>> =
+  LazyExoticComponent<T> & {
     preload: LazyRouteImporter<T>;
   };
 
-export function lazyWithPreload<T extends React.ComponentType<any>>(
+export function lazyWithPreload<T extends ComponentType<any>>(
   importer: LazyRouteImporter<T>,
 ): PreloadableLazyRoute<T> {
   let preloadPromise: Promise<LazyRouteModule<T>> | undefined;
@@ -28,7 +27,7 @@ export function lazyWithPreload<T extends React.ComponentType<any>>(
   return Component;
 }
 
-export function withRouteIcons<T extends React.ComponentType<any>>(
+export function withRouteIcons<T extends ComponentType<any>>(
   importer: LazyRouteImporter<T>,
 ): LazyRouteImporter<T> {
   return () =>

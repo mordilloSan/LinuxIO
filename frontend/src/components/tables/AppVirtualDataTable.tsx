@@ -16,13 +16,18 @@ import type {
   VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, {
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type HTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
 } from "react";
 
 import type {
@@ -69,24 +74,24 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
    */
   fillAvailable?: boolean;
   getRowCanExpand?: (row: Row<TData>) => boolean;
-  getRowAttributes?: (row: Row<TData>) => React.HTMLAttributes<HTMLDivElement>;
+  getRowAttributes?: (row: Row<TData>) => HTMLAttributes<HTMLDivElement>;
   getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
-  height?: React.CSSProperties["height"];
+  height?: CSSProperties["height"];
   manualSorting?: boolean;
-  maxHeight?: React.CSSProperties["maxHeight"];
+  maxHeight?: CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
-  onRowClick?: (row: Row<TData>, event: React.MouseEvent) => void;
-  onRowContextMenu?: (row: Row<TData>, event: React.MouseEvent) => void;
-  onRowDoubleClick?: (row: Row<TData>, event: React.MouseEvent) => void;
+  onRowClick?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowDoubleClick?: (row: Row<TData>, event: MouseEvent) => void;
   onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
-  renderExpandedContent?: (row: Row<TData>) => React.ReactNode;
-  scrollElementRef?: React.RefObject<HTMLDivElement | null>;
+  renderExpandedContent?: (row: Row<TData>) => ReactNode;
+  scrollElementRef?: RefObject<HTMLDivElement | null>;
   scrollToIndex?: number | null;
   selectedRowId?: string | null;
   showHeader?: boolean;
   sorting?: SortingState;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   variant?: "default" | "embedded";
 }
 
@@ -545,7 +550,7 @@ function AppVirtualDataTable<TData extends RowData>({
           maxHeight,
           minHeight: fillAvailable ? 0 : undefined,
           ...style,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       {showHeader && (

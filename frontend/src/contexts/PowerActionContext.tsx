@@ -1,9 +1,10 @@
-import React, {
+import {
   createContext,
   useCallback,
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -21,11 +22,7 @@ export const PowerActionContext = createContext<
   PowerActionContextType | undefined
 >(undefined);
 
-export const PowerActionProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
+export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
 

@@ -1,4 +1,4 @@
-import React from "react";
+import { useRef, type RefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
@@ -26,11 +26,11 @@ function Harness({
   onRename?: () => void;
   onSelectionChange?: (paths: Set<string>) => void;
 }) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useFileListKeyboardNavigation({
     allItems: items,
-    containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    containerRef: containerRef as RefObject<HTMLDivElement>,
     focusedIndex,
     global,
     onDelete,

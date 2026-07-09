@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import { linuxio, type NetworkInterface as BaseNI } from "@/api";
 import AppButton from "@/components/ui/AppButton";
@@ -77,7 +83,7 @@ interface Props {
   iface: BaseNI;
   onClose: () => void;
   onSave: (iface: BaseNI) => void;
-  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setEditForm: Dispatch<SetStateAction<Record<string, any>>>;
 }
 const NetworkInterfaceEditor = ({
   iface,

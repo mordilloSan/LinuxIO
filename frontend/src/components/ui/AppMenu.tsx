@@ -1,4 +1,12 @@
-import React, { useEffect, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import AppPopover, { AppPopoverOrigin } from "./AppPopover";
 import "./app-menu.css";
@@ -8,22 +16,22 @@ export interface AppMenuProps {
   anchorOrigin?: AppPopoverOrigin;
   anchorPosition?: { top: number; left: number } | null;
   autoFocus?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   minWidth?: number | string;
   onClose: () => void;
   open: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   transformOrigin?: AppPopoverOrigin;
 }
 
 export interface AppMenuItemProps extends Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
-  endAdornment?: React.ReactNode;
+  endAdornment?: ReactNode;
   selected?: boolean;
-  startAdornment?: React.ReactNode;
+  startAdornment?: ReactNode;
 }
 
 const focusableSelector = '[role="menuitem"]:not(:disabled)';
@@ -73,7 +81,7 @@ const AppMenu = ({
     items[nextIndex]?.focus();
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -134,10 +142,7 @@ const AppMenu = ({
   );
 };
 
-export const AppMenuItem = React.forwardRef<
-  HTMLButtonElement,
-  AppMenuItemProps
->(
+export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
   (
     {
       selected = false,

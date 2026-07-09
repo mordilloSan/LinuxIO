@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo } from "react";
 
 import { useAppTheme } from "@/theme";
 import { FILE_TYPE_COLORS } from "@/theme/colors";
@@ -171,7 +171,7 @@ const getIconColor = (
   return defaultColor;
 };
 
-const FileIcon = React.memo(
+const FileIcon = memo(
   ({
     isDirectory,
     filename,

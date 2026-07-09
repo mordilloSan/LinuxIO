@@ -1,5 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { Suspense } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
@@ -31,9 +38,7 @@ import type {
   ViewMode,
 } from "@/types/filebrowser";
 
-const FileEditor = React.lazy(
-  () => import("@/components/filebrowser/FileEditor"),
-);
+const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 
 interface IndexerUnavailableAlertProps {
   status: string;
@@ -104,7 +109,7 @@ export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
 interface FileBrowserEditorDialogProps {
   editingFileResource?: FileResource;
   editingPath: string | null;
-  editorRef: React.RefObject<FileEditorHandle | null>;
+  editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
   isEditingFileLoading: boolean;
   isSaving: boolean;
@@ -117,7 +122,7 @@ interface FileBrowserEditorDialogProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   showQuickSave: boolean;
-  viewIcon: React.ReactNode;
+  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
@@ -308,11 +313,11 @@ export const FileBrowserDetailsDialog = ({
 };
 
 interface FileBrowserUploadDialogProps {
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   isUploadProcessing: boolean;
   normalizedPath: string;
-  onChangeUploadInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChangeUploadInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearUploadSelection: () => void;
   onClose: () => void;
   onPickFiles: () => void;
@@ -457,7 +462,7 @@ export const FileBrowserConflictDialog = ({
   // Decisions are stored together with the prompt they belong to, so a new
   // prompt implicitly starts from the safe default (skip everything) — no
   // effect-based state reset needed.
-  const [decisionState, setDecisionState] = React.useState<{
+  const [decisionState, setDecisionState] = useState<{
     decisions: Record<string, ConflictDecision>;
     prompt: ConflictPrompt | null;
   }>({ decisions: {}, prompt: null });

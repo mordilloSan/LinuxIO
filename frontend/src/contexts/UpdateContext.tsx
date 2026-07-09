@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useCallback,
   useEffect,
@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useBeforeUnload, useLocation, useNavigate } from "react-router-dom";
 
@@ -70,7 +71,7 @@ UpdateContext.displayName = "UpdateContext";
 export const UpdateNavigationContext = createContext<boolean | null>(null);
 UpdateNavigationContext.displayName = "UpdateNavigationContext";
 
-export const UpdateProvider = ({ children }: { children: React.ReactNode }) => {
+export const UpdateProvider = ({ children }: { children: ReactNode }) => {
   const value = useUpdateController();
   useUpdateNavigationGuard(value.isUpdating);
 

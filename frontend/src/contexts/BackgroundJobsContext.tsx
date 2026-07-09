@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import {
   BackgroundJobsIndexerContext,
@@ -25,7 +25,7 @@ import type { BackgroundJobItem } from "@/types/backgroundJobs";
 export const BackgroundJobsProvider = ({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const getUploadChunkSize = useUploadChunkSizeGetter();
 

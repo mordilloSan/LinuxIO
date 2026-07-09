@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
@@ -408,7 +408,7 @@ const IndexerSettingsSection = () => {
     void refetchTimer();
   };
 
-  const renderStatusGrid = (children: React.ReactNode) => (
+  const renderStatusGrid = (children: ReactNode) => (
     <div
       className="indexer-status-grid"
       style={{

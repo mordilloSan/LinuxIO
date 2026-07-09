@@ -1,5 +1,13 @@
 import { Icon } from "@iconify/react";
-import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 
 import {
@@ -158,7 +166,7 @@ function sessionStatusTooltip(idle: string | undefined): string {
   return `Active session. Terminal idle for ${formatSessionIdle(value || "")}.`;
 }
 
-const activityChipStyle: React.CSSProperties = {
+const activityChipStyle: CSSProperties = {
   fontSize: "0.65rem",
   height: 20,
   width: 65,
@@ -196,7 +204,7 @@ const InlineError = ({ message }: { message: string }) => (
   <AppAlert severity="warning">{message}</AppAlert>
 );
 
-const topCardHeaderStyle: React.CSSProperties = {
+const topCardHeaderStyle: CSSProperties = {
   minHeight: 40,
   marginBottom: 12,
 };
@@ -212,7 +220,7 @@ const TopCardHeader = ({
   iconColor: string;
   title: string;
   subtitle: string;
-  right?: React.ReactNode;
+  right?: ReactNode;
 }) => (
   <div
     style={{
@@ -266,7 +274,7 @@ const DetailText = ({
   color,
   nowrap,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   color?: string;
   nowrap?: boolean;
 }) => (
@@ -309,7 +317,7 @@ const ActivitySection = ({
   gridClassName: string;
   metaText: string;
   className?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => (
   <FrostedCard
     className={`account-activity-card ${className || ""}`.trim()}
@@ -385,7 +393,7 @@ const ActivitySection = ({
   </FrostedCard>
 );
 
-const ActivityEmpty = ({ children }: { children: React.ReactNode }) => (
+const ActivityEmpty = ({ children }: { children: ReactNode }) => (
   <div style={{ paddingBlock: 14, textAlign: "center" }}>
     <AppTypography color="text.secondary" variant="body2">
       {children}
@@ -680,7 +688,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
           <ActivityEmpty>No active sessions.</ActivityEmpty>
         ) : (
           sessions.map((session, index) => (
-            <React.Fragment key={`${session.terminal}-${session.startedAt}`}>
+            <Fragment key={`${session.terminal}-${session.startedAt}`}>
               <div className="account-events-grid account-activity-row">
                 <AppTypography
                   className="account-hidden-xs"
@@ -736,7 +744,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                 </AppTooltip>
               </div>
               {index < sessions.length - 1 && <AppDivider />}
-            </React.Fragment>
+            </Fragment>
           ))
         )}
       </ActivitySection>
@@ -776,7 +784,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
           <ActivityEmpty>No login history found.</ActivityEmpty>
         ) : (
           logins.map((login, index) => (
-            <React.Fragment key={loginEventKey(login)}>
+            <Fragment key={loginEventKey(login)}>
               <div
                 className={[
                   "account-events-grid",
@@ -821,7 +829,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                 </div>
               </div>
               {index < logins.length - 1 && <AppDivider />}
-            </React.Fragment>
+            </Fragment>
           ))
         )}
       </ActivitySection>
@@ -987,8 +995,8 @@ const EMPTY_PROCESS_TOP: AccountUserProcess[] = [];
 
 const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
   const theme = useAppTheme();
-  const [sortField, setSortField] = React.useState<ProcessSortField>("cpu");
-  const [sortDirection, setSortDirection] = React.useState<SortDirection>(
+  const [sortField, setSortField] = useState<ProcessSortField>("cpu");
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
     PROCESS_DEFAULT_DIRECTION.cpu,
   );
 
@@ -1008,7 +1016,7 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
     ? details.processes.count
     : processTop.length;
 
-  const processes = React.useMemo(() => {
+  const processes = useMemo(() => {
     const factor = sortDirection === "asc" ? 1 : -1;
     return [...processTop].sort((a, b) => {
       switch (sortField) {
@@ -1059,7 +1067,7 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
         <ActivityEmpty>No processes running.</ActivityEmpty>
       ) : (
         processes.map((process, index) => (
-          <React.Fragment key={process.pid}>
+          <Fragment key={process.pid}>
             <div className="account-processes-grid account-activity-row">
               <AppTypography fontWeight={500} noWrap variant="body2">
                 {process.pid}
@@ -1075,7 +1083,7 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
               </AppTypography>
             </div>
             {index < processes.length - 1 && <AppDivider />}
-          </React.Fragment>
+          </Fragment>
         ))
       )}
     </ActivitySection>

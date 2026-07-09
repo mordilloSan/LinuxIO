@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useState, type CSSProperties } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -15,9 +15,7 @@ export interface SortBarProps {
 
 const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
   const theme = useAppTheme();
-  const [hoveredField, setHoveredField] = React.useState<SortField | null>(
-    null,
-  );
+  const [hoveredField, setHoveredField] = useState<SortField | null>(null);
   // Allow numeric columns to shrink on smaller widths while keeping alignment in sync with rows
   const columnTemplate =
     "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
@@ -46,7 +44,7 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
     );
   };
 
-  const columnStyle: React.CSSProperties = {
+  const columnStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
     cursor: "pointer",

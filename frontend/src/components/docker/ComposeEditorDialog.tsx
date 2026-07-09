@@ -1,9 +1,11 @@
-import React, {
+import {
+  lazy,
   Suspense,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
+  type ChangeEvent,
 } from "react";
 
 import ComposeValidationFeedback, {
@@ -39,9 +41,7 @@ interface ComposeEditorDialogProps {
   readOnly?: boolean;
   stackName?: string;
 }
-const FileEditor = React.lazy(
-  () => import("@/components/filebrowser/FileEditor"),
-);
+const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 const ComposeEditorDialog = ({
   open,
   mode,
@@ -183,7 +183,7 @@ const ComposeEditorDialog = ({
       .substring(0, 63);
   };
   const handleStackNameChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     setStackName(sanitizeStackName(e.target.value));
   };

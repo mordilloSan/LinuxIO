@@ -1,9 +1,10 @@
-import React, {
+import {
   createContext,
   useCallback,
   useEffect,
   useMemo,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { toast, Toaster, type ToastT, useSonner } from "sonner";
 
@@ -74,9 +75,7 @@ const persist = (history: ToastHistoryItem[]) => {
   }
 };
 
-const coerceText = (
-  node?: React.ReactNode | (() => React.ReactNode),
-): string => {
+const coerceText = (node?: ReactNode | (() => ReactNode)): string => {
   if (typeof node === "function") {
     return coerceText(node());
   }
@@ -220,7 +219,7 @@ export interface ToastHistoryContextValue {
 export const ToastHistoryContext =
   createContext<ToastHistoryContextValue | null>(null);
 
-export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
+export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const { toasts } = useSonner();
   const history = useSyncExternalStore(subscribeToHistory, getHistorySnapshot);
 

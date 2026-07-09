@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
 
@@ -18,10 +18,8 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
-const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
-const TerminalDialog = React.lazy(
-  () => import("@/components/docker/TerminalDialog"),
-);
+const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 

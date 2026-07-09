@@ -1,5 +1,5 @@
 import type { ColumnDef, RowData } from "@tanstack/react-table";
-import type React from "react";
+import type { CSSProperties } from "react";
 
 export type AppDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
 
@@ -8,16 +8,16 @@ export type AppDataTableCellRenderKey = unknown | readonly unknown[];
 export interface AppDataTableColumnMeta {
   align?: "left" | "center" | "right";
   cellClassName?: string;
-  cellStyle?: React.CSSProperties;
+  cellStyle?: CSSProperties;
   className?: string;
   getCellRenderKey?: (
     row: unknown,
     rowIndex: number,
   ) => AppDataTableCellRenderKey;
   headerClassName?: string;
-  headerStyle?: React.CSSProperties;
+  headerStyle?: CSSProperties;
   hideBelow?: AppDataTableBreakpoint;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   width?: string | number;
 }
 

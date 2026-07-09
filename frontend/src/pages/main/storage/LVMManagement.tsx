@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 
 import {
   linuxio,
@@ -63,14 +63,14 @@ const PANEL_ACCENTS: Record<LVMSectionId, string> = {
   pvs: "var(--app-palette-success-main)",
 };
 
-const dialogStackStyle: React.CSSProperties = {
+const dialogStackStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 12,
   marginTop: 4,
 };
 
-const monospaceStyle: React.CSSProperties = {
+const monospaceStyle: CSSProperties = {
   fontFamily: "monospace",
 };
 

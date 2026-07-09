@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   AppConfig,
   AppSettings,
@@ -38,5 +39,5 @@ export interface ConfigContextType {
 }
 
 export interface ConfigProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }

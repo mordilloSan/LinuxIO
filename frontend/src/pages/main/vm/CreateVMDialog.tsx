@@ -1,6 +1,10 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
-import type { CSSProperties } from "react";
+import {
+  useCallback,
+  useState,
+  type CSSProperties,
+  type SyntheticEvent,
+} from "react";
 
 import PreflightSummary from "./PreflightSummary";
 import {
@@ -302,7 +306,7 @@ export default function CreateVMDialog({
     usesISO,
   ]);
 
-  const handleSubmit = (event: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) return;
     const request: VMCreateRequest = {

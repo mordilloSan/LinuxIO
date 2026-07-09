@@ -1,5 +1,8 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
+  createContext,
+  lazy,
+  memo,
   Suspense,
   useCallback,
   useContext,
@@ -34,10 +37,8 @@ import { useAppTheme } from "@/theme";
 import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
-const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
-const TerminalDialog = React.lazy(
-  () => import("@/components/docker/TerminalDialog"),
-);
+const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 
@@ -47,9 +48,7 @@ const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 // identity and remount its subtree — which restarts AppCollapse already-open and
 // skips the expand animation. Context lets the columns stay stable while cells
 // still re-render in place when the expanded set changes.
-const ExpandedContainersContext = React.createContext<ReadonlySet<string>>(
-  new Set(),
-);
+const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
@@ -270,7 +269,7 @@ interface UpdateCellProps {
   updateError?: string;
 }
 
-const UpdateCell = React.memo(function UpdateCell({
+const UpdateCell = memo(function UpdateCell({
   checkingUpdates,
   containerId,
   name,
@@ -370,7 +369,7 @@ interface AutoUpdateCellProps {
   onToggleAutoUpdate: (name: string) => void;
 }
 
-const AutoUpdateCell = React.memo(function AutoUpdateCell({
+const AutoUpdateCell = memo(function AutoUpdateCell({
   autoUpdateDisabled,
   autoUpdatePending,
   autoUpdateReason,
@@ -763,7 +762,7 @@ interface ActionsCellProps {
   url?: string;
 }
 
-const ActionsCell = React.memo(function ActionsCell({
+const ActionsCell = memo(function ActionsCell({
   containerId,
   hasExpandableDetails,
   name,
@@ -1276,4 +1275,4 @@ const areContainerTablePropsEqual = (
   ) &&
   areContainerArraysEquivalent(previous.containers, next.containers);
 
-export default React.memo(ContainerTable, areContainerTablePropsEqual);
+export default memo(ContainerTable, areContainerTablePropsEqual);

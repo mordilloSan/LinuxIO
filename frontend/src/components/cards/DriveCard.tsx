@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
@@ -15,7 +15,7 @@ interface DriveSmartData {
 }
 
 export interface DriveCardProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
   expanded: boolean;
   model?: string;
   name: string;

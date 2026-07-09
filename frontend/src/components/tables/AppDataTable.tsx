@@ -19,7 +19,17 @@ import type {
   SortingState,
   VisibilityState,
 } from "@tanstack/react-table";
-import React, { useMemo, useState } from "react";
+import {
+  Fragment,
+  memo,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type HTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 import type {
   AppDataTableBreakpoint,
@@ -49,12 +59,12 @@ export type {
   AppDataTableColumnMeta,
 } from "@/components/tables/AppDataTable.types";
 
-export type AppDataTableRowAttributes = React.HTMLAttributes<HTMLDivElement> & {
-  ref?: React.Ref<HTMLDivElement>;
+export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
+  ref?: Ref<HTMLDivElement>;
 };
 
 export interface AppDataTableRowRenderProps<TData extends RowData> {
-  cells: React.ReactNode;
+  cells: ReactNode;
   isSelected: boolean;
   row: Row<TData>;
   rowIndex: number;
@@ -82,20 +92,20 @@ export interface AppDataTableProps<TData extends RowData> {
   getRowCanExpand?: (row: Row<TData>) => boolean;
   getRowAttributes?: (row: Row<TData>) => AppDataTableRowAttributes;
   getRowId: (row: TData, index: number, parent?: Row<TData>) => string;
-  height?: React.CSSProperties["height"];
+  height?: CSSProperties["height"];
   manualSorting?: boolean;
-  maxHeight?: React.CSSProperties["maxHeight"];
+  maxHeight?: CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
-  onRowClick?: (row: Row<TData>, event: React.MouseEvent) => void;
-  onRowContextMenu?: (row: Row<TData>, event: React.MouseEvent) => void;
-  onRowDoubleClick?: (row: Row<TData>, event: React.MouseEvent) => void;
+  onRowClick?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (row: Row<TData>, event: MouseEvent) => void;
+  onRowDoubleClick?: (row: Row<TData>, event: MouseEvent) => void;
   onSortingChange?: OnChangeFn<SortingState>;
-  renderExpandedContent?: (row: Row<TData>) => React.ReactNode;
-  renderRow?: (props: AppDataTableRowRenderProps<TData>) => React.ReactNode;
+  renderExpandedContent?: (row: Row<TData>) => ReactNode;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   selectedRowId?: string | null;
   showHeader?: boolean;
   sorting?: SortingState;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   variant?: "default" | "embedded";
 }
 
@@ -182,7 +192,7 @@ function AppDataTableCell<TData extends RowData>({
   );
 }
 
-const MemoizedAppDataTableCell = React.memo(
+const MemoizedAppDataTableCell = memo(
   AppDataTableCell,
   (previous, next) =>
     previous.cell.id === next.cell.id &&
@@ -190,9 +200,9 @@ const MemoizedAppDataTableCell = React.memo(
 ) as typeof AppDataTableCell;
 
 interface AppDataTableBodyRowProps<TData extends RowData> {
-  cells: React.ReactNode;
+  cells: ReactNode;
   isSelected: boolean;
-  renderRow?: (props: AppDataTableRowRenderProps<TData>) => React.ReactNode;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   row: Row<TData>;
   rowIndex: number;
   rowProps: AppDataTableRowAttributes;
@@ -224,7 +234,7 @@ interface AppDataTableSortableBodyRowProps<TData extends RowData> extends Omit<
   "cells"
 > {
   dnd: AppDataTableDndOptions<TData>;
-  renderCells: (handle: React.ReactNode) => React.ReactNode;
+  renderCells: (handle: ReactNode) => ReactNode;
 }
 
 function AppDataTableSortableBodyRow<TData extends RowData>({
@@ -434,7 +444,7 @@ function AppDataTable<TData extends RowData>({
           maxHeight,
           minHeight: fillAvailable ? 0 : undefined,
           ...style,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       {showHeader && (
@@ -525,7 +535,7 @@ function AppDataTable<TData extends RowData>({
             const rowAttributeOnClick = rowAttributes?.onClick;
             const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
             const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
-            const renderCells = (dragHandle?: React.ReactNode) => (
+            const renderCells = (dragHandle?: ReactNode) => (
               <>
                 {hasDragColumn && (
                   <div
@@ -611,7 +621,7 @@ function AppDataTable<TData extends RowData>({
             };
 
             return (
-              <React.Fragment key={row.id}>
+              <Fragment key={row.id}>
                 {dnd ? (
                   <AppDataTableSortableBodyRow
                     dnd={dnd}
@@ -647,7 +657,7 @@ function AppDataTable<TData extends RowData>({
                     </div>
                   </AppCollapse>
                 )}
-              </React.Fragment>
+              </Fragment>
             );
           })}
         </div>

@@ -1,17 +1,23 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 import "./app-fullscreen-dialog.css";
 
 export interface AppFullscreenDialogProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
   className?: string;
   contentClassName?: string;
-  contentStyle?: React.CSSProperties;
+  contentStyle?: CSSProperties;
   disableEscapeKeyDown?: boolean;
   onClose?: () => void;
   open: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
 const OVERLAY_ROOT_SELECTOR = ".app-dialog-root, .app-fullscreen-dialog-root";

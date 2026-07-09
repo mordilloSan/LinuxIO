@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
@@ -295,7 +295,7 @@ function buildFolderSambaProperties(
   return properties;
 }
 
-function renderProtocolSummary(group: ShareGroup): React.ReactNode {
+function renderProtocolSummary(group: ShareGroup): ReactNode {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {group.samba ? (
@@ -1039,7 +1039,7 @@ function renderExpandedContent(
   setEditingShare: (share: ShareGroup | null) => void,
   setDeletingSamba: (share: SambaShare | null) => void,
   setDeletingNFS: (share: NFSExport | null) => void,
-): React.ReactNode {
+): ReactNode {
   return (
     <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 280 }}>

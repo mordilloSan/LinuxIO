@@ -1,10 +1,13 @@
-import React, {
+import {
+  memo,
   useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -51,9 +54,9 @@ export interface FileCardProps {
   modTime?: string;
   name: string;
   onCancelRename?: () => void;
-  onClick: (event: React.MouseEvent) => void;
+  onClick: (event: MouseEvent) => void;
   onConfirmRename?: (newName: string) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
   selected?: boolean;
@@ -62,7 +65,7 @@ export interface FileCardProps {
   type: string;
 }
 
-const FileCard = React.memo<FileCardProps>(
+const FileCard = memo<FileCardProps>(
   ({
     name,
     path,
@@ -110,7 +113,7 @@ const FileCard = React.memo<FileCardProps>(
     }, [isRenaming, name, isDirectory]);
 
     const handleRenameKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
+      (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -192,7 +195,7 @@ const FileCard = React.memo<FileCardProps>(
     const metadataOpacity = isDirectory ? 0.85 : 0.65;
 
     const handleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onClick(e);
       },
@@ -200,7 +203,7 @@ const FileCard = React.memo<FileCardProps>(
     );
 
     const handleDoubleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onDoubleClick?.();
       },

@@ -1,4 +1,14 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import {
+  forwardRef,
+  HTMLAttributes,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 import "./app-dialog.css";
@@ -8,14 +18,14 @@ let _openDialogCount = 0;
 /* ── Dialog ─────────────────────────────────── */
 
 export type AppDialogCloseEvent =
-  | KeyboardEvent
-  | React.KeyboardEvent<HTMLDivElement>
-  | React.MouseEvent<HTMLDivElement>;
+  | globalThis.KeyboardEvent
+  | KeyboardEvent<HTMLDivElement>
+  | MouseEvent<HTMLDivElement>;
 
 export interface AppDialogProps {
   /** Styles applied to the backdrop overlay */
-  backdropStyle?: React.CSSProperties;
-  children?: React.ReactNode;
+  backdropStyle?: CSSProperties;
+  children?: ReactNode;
   className?: string;
   /** When true, pressing Escape will not close the dialog */
   disableEscapeKeyDown?: boolean;
@@ -29,14 +39,14 @@ export interface AppDialogProps {
   /** Class name applied to the paper element */
   paperClassName?: string;
   /** Styles applied to the paper (content wrapper) element */
-  paperStyle?: React.CSSProperties;
+  paperStyle?: CSSProperties;
   /** Slot props for advanced customization */
   slotProps?: {
-    paper?: { style?: React.CSSProperties; className?: string };
-    backdrop?: { style?: React.CSSProperties };
+    paper?: { style?: CSSProperties; className?: string };
+    backdrop?: { style?: CSSProperties };
     transition?: { onEntered?: () => void; onExited?: () => void };
   };
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
 export const AppDialog = ({
@@ -97,31 +107,33 @@ export const AppDialog = ({
   }, [open]);
 
   // ESC key
-  const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      event.key !== "Escape" ||
-      disableEscapeKeyDown ||
-      event.defaultPrevented
-    ) {
-      return;
-    }
+  const handleDocumentKeyDown = useEffectEvent(
+    (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        disableEscapeKeyDown ||
+        event.defaultPrevented
+      ) {
+        return;
+      }
 
-    const root = rootRef.current;
-    if (!root) {
-      return;
-    }
+      const root = rootRef.current;
+      if (!root) {
+        return;
+      }
 
-    const openDialogs = Array.from(
-      document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
-    );
-    if (openDialogs[openDialogs.length - 1] !== root) {
-      return;
-    }
+      const openDialogs = Array.from(
+        document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
+      );
+      if (openDialogs[openDialogs.length - 1] !== root) {
+        return;
+      }
 
-    event.preventDefault();
-    event.stopPropagation();
-    onClose?.(event, "escapeKeyDown");
-  });
+      event.preventDefault();
+      event.stopPropagation();
+      onClose?.(event, "escapeKeyDown");
+    },
+  );
 
   useEffect(() => {
     if (!open) {
@@ -206,29 +218,28 @@ export const AppDialog = ({
 
 /* ── DialogTitle ────────────────────────────── */
 
-interface AppDialogTitleProps extends React.HTMLAttributes<HTMLDivElement> {
-  children?: React.ReactNode;
+interface AppDialogTitleProps extends HTMLAttributes<HTMLDivElement> {
+  children?: ReactNode;
 }
 
-export const AppDialogTitle = React.forwardRef<
-  HTMLDivElement,
-  AppDialogTitleProps
->(({ className, ...props }, ref) => (
-  <div
-    className={`app-dialog-title ${className || ""}`.trim()}
-    ref={ref}
-    {...props}
-  />
-));
+export const AppDialogTitle = forwardRef<HTMLDivElement, AppDialogTitleProps>(
+  ({ className, ...props }, ref) => (
+    <div
+      className={`app-dialog-title ${className || ""}`.trim()}
+      ref={ref}
+      {...props}
+    />
+  ),
+);
 AppDialogTitle.displayName = "AppDialogTitle";
 
 /* ── DialogContent ──────────────────────────── */
 
-interface AppDialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
-  children?: React.ReactNode;
+interface AppDialogContentProps extends HTMLAttributes<HTMLDivElement> {
+  children?: ReactNode;
 }
 
-export const AppDialogContent = React.forwardRef<
+export const AppDialogContent = forwardRef<
   HTMLDivElement,
   AppDialogContentProps
 >(({ className, ...props }, ref) => (
@@ -242,11 +253,11 @@ AppDialogContent.displayName = "AppDialogContent";
 
 /* ── DialogContentText ──────────────────────── */
 
-interface AppDialogContentTextProps extends React.HTMLAttributes<HTMLParagraphElement> {
-  children?: React.ReactNode;
+interface AppDialogContentTextProps extends HTMLAttributes<HTMLParagraphElement> {
+  children?: ReactNode;
 }
 
-export const AppDialogContentText = React.forwardRef<
+export const AppDialogContentText = forwardRef<
   HTMLParagraphElement,
   AppDialogContentTextProps
 >(({ className, ...props }, ref) => (
@@ -260,11 +271,11 @@ AppDialogContentText.displayName = "AppDialogContentText";
 
 /* ── DialogActions ──────────────────────────── */
 
-interface AppDialogActionsProps extends React.HTMLAttributes<HTMLDivElement> {
-  children?: React.ReactNode;
+interface AppDialogActionsProps extends HTMLAttributes<HTMLDivElement> {
+  children?: ReactNode;
 }
 
-export const AppDialogActions = React.forwardRef<
+export const AppDialogActions = forwardRef<
   HTMLDivElement,
   AppDialogActionsProps
 >(({ className, ...props }, ref) => (

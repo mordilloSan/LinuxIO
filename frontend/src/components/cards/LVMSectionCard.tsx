@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -9,7 +9,7 @@ import { TRANSITION_SLOW_CSS, GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
   accent: string;
-  children: React.ReactNode;
+  children: ReactNode;
   count: number;
   expanded: boolean;
   icon: string;

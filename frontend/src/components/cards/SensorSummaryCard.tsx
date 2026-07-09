@@ -1,10 +1,10 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface SensorEmptyCardProps {
-  message?: React.ReactNode;
+  message?: ReactNode;
 }
 
 export const SensorEmptyCard = ({

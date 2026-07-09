@@ -1,23 +1,32 @@
-import React, {
+import {
+  Children,
+  forwardRef,
+  Fragment,
+  isValidElement,
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type OptionHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
 } from "react";
 import { createPortal } from "react-dom";
 
 import "./app-select.css";
 
 interface AppSelectProps extends Omit<
-  React.SelectHTMLAttributes<HTMLSelectElement>,
+  SelectHTMLAttributes<HTMLSelectElement>,
   "size"
 > {
   disableUnderline?: boolean;
   fullWidth?: boolean;
   label?: string;
-  renderOption?: (value: string, label: string) => React.ReactNode;
-  renderValue?: (value: string, label: string) => React.ReactNode;
+  renderOption?: (value: string, label: string) => ReactNode;
+  renderValue?: (value: string, label: string) => ReactNode;
   size?: "small" | "medium";
   variant?: "outlined" | "standard";
 }
@@ -29,20 +38,18 @@ interface OptionData {
   value: string;
 }
 
-function collectOptions(children: React.ReactNode): OptionData[] {
+function collectOptions(children: ReactNode): OptionData[] {
   const opts: OptionData[] = [];
-  React.Children.forEach(children, (child) => {
-    if (!React.isValidElement(child)) return;
-    if (child.type === React.Fragment) {
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    if (child.type === Fragment) {
       opts.push(
-        ...collectOptions(
-          (child.props as { children: React.ReactNode }).children,
-        ),
+        ...collectOptions((child.props as { children: ReactNode }).children),
       );
       return;
     }
     if (child.type === "option") {
-      const p = child.props as React.OptionHTMLAttributes<HTMLOptionElement>;
+      const p = child.props as OptionHTMLAttributes<HTMLOptionElement>;
       opts.push({
         value: String(p.value ?? ""),
         label: String(p.children ?? ""),
@@ -54,7 +61,7 @@ function collectOptions(children: React.ReactNode): OptionData[] {
   return opts;
 }
 
-const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
+const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
   (
     {
       size = "medium",
@@ -131,11 +138,11 @@ const AppSelect = React.forwardRef<HTMLDivElement, AppSelectProps>(
       if (onChange) {
         onChange({
           target: { value: opt.value },
-        } as React.ChangeEvent<HTMLSelectElement>);
+        } as ChangeEvent<HTMLSelectElement>);
       }
     };
 
-    const onKeyDown = (e: React.KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
         return;

@@ -1,4 +1,10 @@
-import React, { createContext, useCallback, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery } from "@/theme";
@@ -19,11 +25,7 @@ export const SidebarContext = createContext<SidebarContextType | undefined>(
   undefined,
 );
 
-export const SidebarProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
+export const SidebarProvider = ({ children }: { children: ReactNode }) => {
   const isDesktop = useAppMediaQuery(`(min-width:${breakpoints.values.md}px)`);
 
   // persisted collapsed flag

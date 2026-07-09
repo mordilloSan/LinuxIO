@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo, type ElementType } from "react";
 import { NavLink } from "react-router-dom";
 
 import { useIntentPreload } from "@/hooks/useIntentPreload";
@@ -8,13 +8,13 @@ interface SidebarNavListItemProps {
   collapsed?: boolean;
   disabled?: boolean;
   href: string;
-  icon?: React.ElementType | string;
+  icon?: ElementType | string;
   preload?: () => Promise<unknown>;
   preloadDelayMs?: number;
   title: string;
 }
 
-const SidebarNavList = React.memo<SidebarNavListItemProps>(
+const SidebarNavList = memo<SidebarNavListItemProps>(
   ({
     href,
     title,
@@ -34,7 +34,7 @@ const SidebarNavList = React.memo<SidebarNavListItemProps>(
       if (!icon) return null;
       if (typeof icon === "string")
         return <Icon height={24} icon={icon} width={24} />;
-      const IconComponent = icon as React.ElementType;
+      const IconComponent = icon as ElementType;
       return <IconComponent />;
     };
 

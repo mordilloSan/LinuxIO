@@ -1,4 +1,4 @@
-import React, { ReactNode } from "react";
+import { memo, type ChangeEvent, type ReactNode, type RefObject } from "react";
 
 import {
   FileBrowserConflictDialog,
@@ -37,7 +37,7 @@ export interface FileBrowserEditorDialogsProps {
   closeEditorDialog: boolean;
   editingFileResource?: FileResource;
   editingPath: string | null;
-  editorRef: React.RefObject<FileEditorHandle | null>;
+  editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
   isEditingFileLoading: boolean;
   isSaving: boolean;
@@ -127,11 +127,11 @@ export interface FileBrowserPermissionsDialogProps {
 
 export interface FileBrowserUploadDialogProps {
   entries: DroppedEntry[];
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   isProcessing: boolean;
   normalizedPath: string;
-  onChangeInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
   onClose: () => void;
   onPickFiles: () => void;
@@ -327,4 +327,4 @@ const FileBrowserDialogs = ({
   </>
 );
 
-export default React.memo(FileBrowserDialogs);
+export default memo(FileBrowserDialogs);

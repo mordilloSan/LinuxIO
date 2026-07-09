@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 
 import { linuxio } from "@/api";
@@ -91,7 +92,7 @@ const TreeNode = ({
     void toggleDirectory();
   };
 
-  const handleToggleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleToggleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (directory) {
       onBrowsePathChange?.(node.path);

@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,7 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/contexts/AuthRuntimeProvider", () => ({
-  default: ({ children }: { children: React.ReactNode }) => (
+  default: ({ children }: { children: ReactNode }) => (
     <div data-testid="runtime">{children}</div>
   ),
 }));

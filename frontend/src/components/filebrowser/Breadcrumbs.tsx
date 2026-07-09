@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 
 import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
@@ -261,7 +261,7 @@ const FilebrowserBreadcrumbs = ({
       theme.fileBrowser.breadcrumbBackground,
     "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
     "--linuxio-filebrowser-chrome": theme.fileBrowser.chrome,
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   return (
     <div

@@ -1,10 +1,15 @@
-import { useEffect, useEffectEvent, useLayoutEffect } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  type RefObject,
+} from "react";
 
 import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
   allItems: FileItem[];
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: RefObject<HTMLDivElement>;
   focusedIndex: number;
   global?: boolean; // Listen to document events instead of container events
   onDelete?: () => void;

@@ -1,5 +1,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Key,
+  type MouseEventHandler,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
 
@@ -10,20 +20,20 @@ export interface AppVirtualGridProps<TItem> {
   estimateItemHeight?: number;
   fillAvailable?: boolean;
   gap?: number;
-  getItemKey: (item: TItem, index: number) => React.Key;
-  height?: React.CSSProperties["height"];
+  getItemKey: (item: TItem, index: number) => Key;
+  height?: CSSProperties["height"];
   items: TItem[];
-  maxHeight?: React.CSSProperties["maxHeight"];
+  maxHeight?: CSSProperties["maxHeight"];
   minItemWidth?: number;
-  onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
-  onMouseDownCapture?: React.MouseEventHandler<HTMLDivElement>;
+  onMouseDown?: MouseEventHandler<HTMLDivElement>;
+  onMouseDownCapture?: MouseEventHandler<HTMLDivElement>;
   overscan?: number;
-  overlay?: React.ReactNode;
+  overlay?: ReactNode;
   padding?: number;
-  renderItem: (item: TItem, index: number) => React.ReactNode;
-  scrollElementRef?: React.RefObject<HTMLDivElement | null>;
+  renderItem: (item: TItem, index: number) => ReactNode;
+  scrollElementRef?: RefObject<HTMLDivElement | null>;
   scrollToIndex?: number | null;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
 function AppVirtualGrid<TItem>({

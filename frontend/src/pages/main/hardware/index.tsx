@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
@@ -52,7 +52,7 @@ const SectionHeader = ({
   title: string;
   expanded: boolean;
   onClick: () => void;
-  extras?: React.ReactNode;
+  extras?: ReactNode;
 }) => (
   <div
     className="dd-section-header"

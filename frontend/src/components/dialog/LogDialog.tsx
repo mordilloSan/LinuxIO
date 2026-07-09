@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode, RefObject } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -15,11 +15,11 @@ import { alpha } from "@/utils/color";
 interface LogDialogProps {
   error: string | null;
   /** Extra action buttons rendered before the live switch (e.g. copy, download). */
-  extraActions?: React.ReactNode;
+  extraActions?: ReactNode;
   isLoading: boolean;
   liveMode: boolean;
   logs: string;
-  logsBoxRef: React.RefObject<HTMLDivElement | null>;
+  logsBoxRef: RefObject<HTMLDivElement | null>;
   maxWidth?: "sm" | "md" | "lg" | "xl";
   onClose: () => void;
   onExited?: () => void;
@@ -28,7 +28,7 @@ interface LogDialogProps {
   /** Text title shown in the header. Ignored when `titleContent` is provided. */
   title?: string;
   /** Replaces the text title (e.g. a search field). Should grow to fill available space. */
-  titleContent?: React.ReactNode;
+  titleContent?: ReactNode;
 }
 const LogDialog = ({
   open,

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import "./power-settings.css";
@@ -52,13 +52,7 @@ const StatusBadge = ({ status }: { status: PowerStatus }) => {
   return <PowerBadge label="Running" tone="success" />;
 };
 
-const InfoMetric = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) => (
+const InfoMetric = ({ label, value }: { label: string; value: ReactNode }) => (
   <div className="power-settings-metric">
     <span className="power-settings-metric__label">{label}</span>
     <span className="power-settings-metric__value">{value}</span>

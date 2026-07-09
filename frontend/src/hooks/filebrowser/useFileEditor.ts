@@ -1,11 +1,17 @@
-import { Dispatch, SetStateAction, useRef, useState } from "react";
+import {
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 
 interface useFileEditorResult {
   closeEditorDialog: boolean;
   editingPath: string | null;
-  editorRef: React.RefObject<FileEditorHandle | null>;
+  editorRef: RefObject<FileEditorHandle | null>;
   isEditorDirty: boolean;
   isSavingFile: boolean;
   setCloseEditorDialog: Dispatch<SetStateAction<boolean>>;

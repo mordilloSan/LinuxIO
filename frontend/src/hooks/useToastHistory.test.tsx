@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -16,7 +17,7 @@ const value: ToastHistoryContextValue = {
   ],
 };
 
-function wrapper({ children }: { children: React.ReactNode }) {
+function wrapper({ children }: { children: ReactNode }) {
   return (
     <ToastHistoryContext.Provider value={value}>
       {children}

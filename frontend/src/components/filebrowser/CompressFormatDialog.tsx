@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import { useState, type SubmitEventHandler } from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -47,7 +47,7 @@ const CompressFormatDialog = ({
   const theme = useAppTheme();
   const [selected, setSelected] = useState<CompressFormat>("zip");
 
-  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (event) => {
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     onConfirm(selected);
     onClose();

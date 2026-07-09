@@ -1,4 +1,4 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
@@ -6,6 +6,9 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -25,15 +28,15 @@ export interface AppPopoverProps {
   anchorEl?: HTMLElement | null;
   anchorOrigin?: AppPopoverOrigin;
   anchorPosition?: { top: number; left: number } | null;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   matchAnchorWidth?: boolean;
   onClose?: () => void;
   open: boolean;
   paperClassName?: string;
-  paperRef?: React.Ref<HTMLDivElement>;
-  paperStyle?: React.CSSProperties;
-  style?: React.CSSProperties;
+  paperRef?: Ref<HTMLDivElement>;
+  paperStyle?: CSSProperties;
+  style?: CSSProperties;
   transformOrigin?: AppPopoverOrigin;
   zIndex?: number;
 }

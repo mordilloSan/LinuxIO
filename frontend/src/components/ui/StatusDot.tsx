@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 
@@ -6,7 +6,7 @@ interface StatusDotProps {
   absolute?: boolean;
   color: string;
   size?: number;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   tooltip?: string;
 }
 

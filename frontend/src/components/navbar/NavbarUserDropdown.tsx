@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
@@ -170,4 +170,4 @@ function NavbarUserDropdown() {
   );
 }
 
-export default React.memo(NavbarUserDropdown);
+export default memo(NavbarUserDropdown);

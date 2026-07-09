@@ -1,5 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+  type MouseEvent,
+} from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -13,10 +20,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
-const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
-const TerminalDialog = React.lazy(
-  () => import("@/components/docker/TerminalDialog"),
-);
+const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 const cleanName = (name: string) => name.replace(/^\//, "");
 const getStatusLabel = (status: string, state: string): string => {
   const health = status.match(/\((\w+)\)/)?.[1];
@@ -71,12 +76,7 @@ const DockerInfo = () => {
   const { mutate: removeContainer } =
     linuxio.docker.remove_container.useJobAction();
   const handleContextMenu = useCallback(
-    (
-      e: React.MouseEvent<HTMLElement>,
-      id: string,
-      name: string,
-      state: string,
-    ) => {
+    (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();
       setMenuAnchor(e.currentTarget);
       setMenuContainer({

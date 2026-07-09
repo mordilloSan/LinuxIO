@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import { type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -38,7 +38,7 @@ function getUserIcon(user: AccountUser): string {
   return "mdi:account-circle";
 }
 
-const selectedRowLabelStyle: React.CSSProperties = {
+const selectedRowLabelStyle: CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
@@ -10,7 +10,7 @@ export interface UnitInfoRow {
   hidden?: boolean;
   label: string;
   noBorder?: boolean;
-  value: React.ReactNode;
+  value: ReactNode;
 }
 
 interface UnitInfoPanelProps {
@@ -23,7 +23,7 @@ interface UnitInfoPanelProps {
   unitName: string;
 }
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",
@@ -38,7 +38,7 @@ export const DetailRow = ({
   noBorder,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   noBorder?: boolean;
 }) => (
   <div

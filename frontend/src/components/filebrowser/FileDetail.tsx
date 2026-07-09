@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
@@ -19,13 +19,7 @@ interface FileDetailProps {
   resource?: FileResource;
   statData?: ResourceStatData | null;
 }
-const DetailRow = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) => {
+const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => {
   const theme = useAppTheme();
   return (
     <div

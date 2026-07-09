@@ -4,7 +4,7 @@ import {
   type RenderOptions,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import React from "react";
+import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter, type MemoryRouterProps } from "react-router-dom";
 
 import { emptyCapabilityState } from "@/api/capabilities";
@@ -50,7 +50,7 @@ interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
 }
 
 export function render(
-  ui: React.ReactElement,
+  ui: ReactElement,
   {
     auth,
     memoryRouter,
@@ -61,7 +61,7 @@ export function render(
   const authValue = createAuthContextValue(auth);
   const user = userEvent.setup();
 
-  function Wrapper({ children }: { children: React.ReactNode }) {
+  function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter {...memoryRouter}>
         <QueryClientProvider client={queryClient}>

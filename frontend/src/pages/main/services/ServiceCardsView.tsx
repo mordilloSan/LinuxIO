@@ -1,4 +1,4 @@
-import React from "react";
+import { memo, type ReactNode } from "react";
 
 import {
   DetailRow,
@@ -16,11 +16,11 @@ import { getServiceStatusColor } from "@/constants/statusColors";
 interface ServiceCardsViewProps {
   expanded: string | null;
   onExpand: (name: string | null) => void;
-  renderDetailPanel: (service: Service) => React.ReactNode;
+  renderDetailPanel: (service: Service) => ReactNode;
   services: Service[];
 }
 
-const ServiceStatusRows = React.memo<{ service: Service }>(({ service }) => (
+const ServiceStatusRows = memo<{ service: Service }>(({ service }) => (
   <UnitStatusRows
     activeEnterTimestamp={service.active_enter_timestamp}
     activeLabel="Running"

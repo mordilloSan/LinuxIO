@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
@@ -14,7 +14,7 @@ export interface UnitListItem {
   unit_file_state: string;
 }
 
-const baseCardStyle: React.CSSProperties = {
+const baseCardStyle: CSSProperties = {
   padding: 12,
   display: "flex",
   flexDirection: "column",
@@ -24,13 +24,13 @@ const baseCardStyle: React.CSSProperties = {
   borderBottomStyle: "solid",
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   ...baseCardStyle,
   borderBottomColor:
     "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
 };
 
-const selectedCardStyle: React.CSSProperties = {
+const selectedCardStyle: CSSProperties = {
   ...baseCardStyle,
   width: "100%",
   borderBottomColor: "transparent",
@@ -40,9 +40,9 @@ interface UnitCardProps<T extends UnitListItem> {
   isSelected: boolean;
   item: T;
   onExpand: (name: string | null) => void;
-  renderActions?: (item: T) => React.ReactNode;
-  renderSelectedRows?: (item: T) => React.ReactNode;
-  renderSummaryRows: (item: T) => React.ReactNode;
+  renderActions?: (item: T) => ReactNode;
+  renderSelectedRows?: (item: T) => ReactNode;
+  renderSummaryRows: (item: T) => ReactNode;
 }
 
 function UnitCard<T extends UnitListItem>({
@@ -65,7 +65,7 @@ function UnitCard<T extends UnitListItem>({
           "--svc-status-color": statusColor,
           ...(isSelected ? selectedCardStyle : cardStyle),
           transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       <div

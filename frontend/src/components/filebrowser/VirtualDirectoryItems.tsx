@@ -1,5 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, { useLayoutEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type MouseEventHandler,
+  type RefObject,
+} from "react";
 
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
@@ -45,7 +53,7 @@ interface ItemsRow {
 type DirectoryVirtualRow = SectionHeaderRow | ItemsRow;
 
 interface VirtualDirectoryItemsProps {
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   cutPaths: Set<string>;
   files: FileItem[];
   focusedIndex: number;
@@ -54,13 +62,13 @@ interface VirtualDirectoryItemsProps {
   isMarqueeSelecting: boolean;
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
-  onContainerMouseDown: React.MouseEventHandler<HTMLDivElement>;
+  onContainerMouseDown: MouseEventHandler<HTMLDivElement>;
   onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
-  onMarqueeMouseDown: React.MouseEventHandler<HTMLDivElement>;
+  onFileClick: (event: MouseEvent, path: string) => void;
+  onFileContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
+  onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
   selectedPaths: Set<string>;
@@ -78,10 +86,10 @@ interface DirectoryItemProps {
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
   onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onFileClick: (event: MouseEvent, path: string) => void;
+  onFileContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
   selectedPaths: Set<string>;
@@ -140,7 +148,7 @@ function buildRows({
   return rows;
 }
 
-const SectionHeader = React.memo<{ label: string; viewMode: ViewMode }>(
+const SectionHeader = memo<{ label: string; viewMode: ViewMode }>(
   ({ label, viewMode }) => (
     <h6
       style={{
@@ -159,7 +167,7 @@ const SectionHeader = React.memo<{ label: string; viewMode: ViewMode }>(
 
 SectionHeader.displayName = "VirtualDirectorySectionHeader";
 
-const DirectoryItem = React.memo<DirectoryItemProps>(
+const DirectoryItem = memo<DirectoryItemProps>(
   ({
     item,
     itemKind,
@@ -452,4 +460,4 @@ const VirtualDirectoryItems = ({
   );
 };
 
-export default React.memo(VirtualDirectoryItems);
+export default memo(VirtualDirectoryItems);

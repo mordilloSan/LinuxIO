@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -35,4 +35,4 @@ function NavbarThemeToggle() {
   );
 }
 
-export default React.memo(NavbarThemeToggle);
+export default memo(NavbarThemeToggle);

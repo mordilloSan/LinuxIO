@@ -1,4 +1,11 @@
-import { Dispatch, SetStateAction, useMemo, useRef, useState } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
 
@@ -8,8 +15,8 @@ interface UploadSummary {
 }
 
 interface useFileUploadResult {
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   isUploadProcessing: boolean;
   setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
   setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import React from "react";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
@@ -146,8 +146,8 @@ function renderJobAction<T>(useHook: () => T) {
   const invalidateSpy = vi
     .spyOn(queryClient, "invalidateQueries")
     .mockResolvedValue();
-  const wrapper = ({ children }: { children: React.ReactNode }) =>
-    React.createElement(QueryClientProvider, { client: queryClient }, children);
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
   return { invalidateSpy, ...renderHook(useHook, { wrapper }) };
 }
 

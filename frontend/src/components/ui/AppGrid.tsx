@@ -1,4 +1,10 @@
-import React from "react";
+import {
+  forwardRef,
+  HTMLAttributes,
+  type CSSProperties,
+  type ElementType,
+  type Ref,
+} from "react";
 
 import "./app-grid.css";
 
@@ -12,11 +18,11 @@ type GridSize =
       xl?: number;
     };
 
-export interface AppGridProps extends React.HTMLAttributes<HTMLElement> {
+export interface AppGridProps extends HTMLAttributes<HTMLElement> {
   /** Allow extra props to pass through to the underlying component (e.g. motion props). */
   [key: string]: unknown;
-  alignItems?: React.CSSProperties["alignItems"];
-  component?: React.ElementType;
+  alignItems?: CSSProperties["alignItems"];
+  component?: ElementType;
   container?: boolean;
   size?: GridSize;
   spacing?: number;
@@ -34,7 +40,7 @@ function AppGrid(
     style,
     ...rest
   }: AppGridProps,
-  ref: React.Ref<HTMLElement>,
+  ref: Ref<HTMLElement>,
 ) {
   if (container) {
     const cls = ["app-grid", className].filter(Boolean).join(" ");
@@ -55,7 +61,7 @@ function AppGrid(
   }
 
   // Item mode
-  let sizeVars: React.CSSProperties | undefined;
+  let sizeVars: CSSProperties | undefined;
   if (size != null) {
     if (typeof size === "number") {
       sizeVars = {
@@ -64,7 +70,7 @@ function AppGrid(
         "--_gc-md": size,
         "--_gc-lg": size,
         "--_gc-xl": size,
-      } as React.CSSProperties;
+      } as CSSProperties;
     } else {
       const xs = size.xs ?? 12;
       const sm = size.sm ?? xs;
@@ -77,7 +83,7 @@ function AppGrid(
         "--_gc-md": md,
         "--_gc-lg": lg,
         "--_gc-xl": xl,
-      } as React.CSSProperties;
+      } as CSSProperties;
     }
   }
 
@@ -95,7 +101,7 @@ function AppGrid(
   );
 }
 
-const ForwardedAppGrid = React.forwardRef(AppGrid);
+const ForwardedAppGrid = forwardRef(AppGrid);
 ForwardedAppGrid.displayName = "AppGrid";
 
 export default ForwardedAppGrid;

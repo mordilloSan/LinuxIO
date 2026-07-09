@@ -1,4 +1,4 @@
-import React from "react";
+import { memo, type MouseEvent } from "react";
 
 import { FileItem, ViewMode } from "../../types/filebrowser";
 
@@ -12,14 +12,14 @@ interface FilesListProps {
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
   onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
+  onFileClick: (event: MouseEvent, path: string) => void;
+  onFileContextMenu: (event: MouseEvent, path: string) => void;
   renamingPath: string | null;
   selectedPaths: Set<string>;
   viewMode: ViewMode;
 }
 
-const FilesList = React.memo<FilesListProps>(
+const FilesList = memo<FilesListProps>(
   ({
     files,
     selectedPaths,

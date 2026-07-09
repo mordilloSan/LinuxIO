@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import React from "react";
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
@@ -13,7 +13,7 @@ import {
 
 function wrapper(auth = createAuthContextValue()) {
   const queryClient = createTestQueryClient();
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>

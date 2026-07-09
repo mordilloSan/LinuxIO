@@ -1,4 +1,4 @@
-import React, { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
@@ -20,7 +20,7 @@ const SERIES_ID = "cpu:usage";
 const STREAM_DELAY_MS = 2000;
 
 const CpuGraph = ({ usage }: CpuGraphProps) => {
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fetchCpuHistory = linuxio.monitoring.get_cpu_history.useFetcher();
   const [series] = useLiveSeries([SERIES_ID], async (request) => {
     // One-shot backfill: the request carries a rolling from_ms, so caching

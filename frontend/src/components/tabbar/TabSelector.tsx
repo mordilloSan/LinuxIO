@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import "./tab-selector.css";
 
@@ -15,8 +15,8 @@ interface TabSelectorProps {
   className?: string;
   onChange: (value: string) => void;
   options: TabOption[];
-  rightContent?: React.ReactNode;
-  style?: React.CSSProperties;
+  rightContent?: ReactNode;
+  style?: CSSProperties;
   value: string;
 }
 
@@ -30,7 +30,7 @@ const TabSelector = ({
 }: TabSelectorProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   const primaryHex = theme.palette.primary.main;
   const contrast = theme.palette.primary.contrastText;
@@ -46,7 +46,7 @@ const TabSelector = ({
           "--tab-selector-hover": theme.palette.action.hover,
           "--tab-selector-text": theme.palette.text.secondary,
           ...style,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       <div className="tab-selector__scroller custom-scrollbar">

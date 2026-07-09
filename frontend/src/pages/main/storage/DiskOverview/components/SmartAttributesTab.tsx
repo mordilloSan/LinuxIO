@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import type { SmartAttribute, SmartData } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
@@ -18,8 +18,8 @@ interface SmartAttributesTabProps {
 interface SmartSummaryRow {
   attribute: string;
   id: string;
-  value: React.ReactNode;
-  valueStyle?: React.CSSProperties;
+  value: ReactNode;
+  valueStyle?: CSSProperties;
 }
 
 const smartSummaryColumns: AppDataTableColumnDef<SmartSummaryRow>[] = [
@@ -95,8 +95,8 @@ export const SmartAttributesTab = ({
       id: string,
       attribute: string,
       input: unknown,
-      format: (value: number) => React.ReactNode,
-      valueStyle?: React.CSSProperties,
+      format: (value: number) => ReactNode,
+      valueStyle?: CSSProperties,
     ) => {
       if (rows.some((row) => row.id === id)) return;
       const value = getSmartNumber(input);

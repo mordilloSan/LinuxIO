@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
@@ -267,7 +267,7 @@ const MountEntryActions = ({
 }) => {
   const wrapClick =
     (handler: (mount: NFSMount) => void) =>
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+    (event: MouseEvent<HTMLButtonElement>) => {
       if (stopPropagation) {
         event.stopPropagation();
       }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PathPickerField from "./PathPickerField";
@@ -28,10 +28,7 @@ vi.mock("@/api", async (importOriginal) => {
 });
 
 function PickerHarness(
-  props: Omit<
-    React.ComponentProps<typeof PathPickerField>,
-    "onChange" | "value"
-  >,
+  props: Omit<ComponentProps<typeof PathPickerField>, "onChange" | "value">,
 ) {
   const [value, setValue] = useState("");
 

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -14,9 +14,9 @@ export const StatusMetric = ({
   value,
   detail,
 }: {
-  label: React.ReactNode;
-  value: React.ReactNode;
-  detail?: React.ReactNode;
+  label: ReactNode;
+  value: ReactNode;
+  detail?: ReactNode;
 }) => {
   const title =
     typeof value === "string" || typeof value === "number"
@@ -44,11 +44,7 @@ export const StatusMetric = ({
   );
 };
 
-export const StatusGroupLabel = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => (
+export const StatusGroupLabel = ({ children }: { children: ReactNode }) => (
   <AppTypography
     color="text.secondary"
     fontWeight={600}
@@ -71,16 +67,16 @@ export const SectionCard = ({
 }: {
   icon: string;
   title: string;
-  subtitle?: React.ReactNode;
-  titleAdornment?: React.ReactNode;
-  indicator?: React.ReactNode;
+  subtitle?: ReactNode;
+  titleAdornment?: ReactNode;
+  indicator?: ReactNode;
   collapsible?: boolean;
   defaultCollapsed?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const theme = useAppTheme();
-  const contentId = React.useId();
-  const [expanded, setExpanded] = React.useState(!defaultCollapsed);
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   const headerGap = subtitle ? 2.75 : 1.5;
   const content = collapsible ? (
     <AppCollapse in={expanded} unmountOnExit>

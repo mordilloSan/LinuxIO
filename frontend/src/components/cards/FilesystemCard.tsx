@@ -1,4 +1,4 @@
-import React from "react";
+import type { MouseEvent } from "react";
 
 import { type FilesystemInfo, type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -55,7 +55,7 @@ const FilesystemCardDetails = ({
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
   return (
     <AppCollapse in={true} unmountOnExit>
-      <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      <div onClick={(e: MouseEvent) => e.stopPropagation()}>
         <AppDivider style={{ margin: "16px 0" }} />
 
         <div

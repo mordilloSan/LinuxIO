@@ -1,4 +1,4 @@
-import React from "react";
+import { memo, type MouseEvent } from "react";
 
 import { FileItem, ViewMode } from "../../types/filebrowser";
 
@@ -14,8 +14,8 @@ interface FoldersListProps {
   isMarqueeSelecting?: boolean;
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
   selectedPaths: Set<string>;
@@ -31,15 +31,15 @@ interface FolderItemProps {
   isRenaming: boolean;
   onCancelRename: () => void;
   onConfirmRename: (newName: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   selected: boolean;
   subfoldersMap: Map<string, SubfolderData>;
   viewMode: ViewMode;
 }
 
-const FolderItem = React.memo<FolderItemProps>(
+const FolderItem = memo<FolderItemProps>(
   ({
     folder,
     selected,
@@ -110,7 +110,7 @@ const FolderItem = React.memo<FolderItemProps>(
 
 FolderItem.displayName = "FolderItem";
 
-const FoldersList = React.memo<FoldersListProps>(
+const FoldersList = memo<FoldersListProps>(
   ({
     folders,
     selectedPaths,

@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
@@ -7,7 +7,7 @@ import { useAppRoutes } from "@/routing/useAppRoutes";
 import { createAuthContextValue, renderHook } from "@/test/render";
 
 function wrapper(auth = createAuthContextValue()) {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
   };
 }

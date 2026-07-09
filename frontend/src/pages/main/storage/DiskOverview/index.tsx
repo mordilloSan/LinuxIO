@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
@@ -229,7 +229,7 @@ const DriveDetails = ({
   const nvmeSelfTestLog = smartData?.nvme_self_test_log;
   return (
     <AppCollapse in={expanded} unmountOnExit>
-      <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      <div onClick={(e: MouseEvent) => e.stopPropagation()}>
         <AppDivider style={{ margin: "16px 0" }} />
 
         <div

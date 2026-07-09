@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import { linuxio, openContainerStream, useStreamMux } from "@/api";
@@ -122,7 +122,7 @@ const TerminalDialog = ({
   });
 
   // Shell picker handler
-  const handleShellChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleShellChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const newShell = e.target.value;
     closeStream();
     setSelectedShell(newShell);

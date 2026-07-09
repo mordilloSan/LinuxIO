@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
@@ -81,7 +82,7 @@ function configWrapper({
     updateConfig: vi.fn(),
   } satisfies ConfigContextType;
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
     );

@@ -1,7 +1,13 @@
 import { Icon } from "@iconify/react";
 import type { RowData } from "@tanstack/react-table";
 import { motion } from "framer-motion";
-import React from "react";
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
@@ -43,8 +49,8 @@ interface UnitTableViewProps<T> {
   mobileColumns: UnitTableColumn[];
   onDoubleClick?: (key: string | number) => void;
   onSelect?: (key: string | number | null) => void;
-  renderMainRow: (row: T, isMobile: boolean, index: number) => React.ReactNode;
-  renderMobileExpandedContent?: (row: T, index: number) => React.ReactNode;
+  renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode;
+  renderMobileExpandedContent?: (row: T, index: number) => ReactNode;
   selected?: string | number | null;
 }
 
@@ -53,7 +59,7 @@ interface UnitTableColumn {
   className?: string;
   field: string;
   headerName: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   width?: string | number;
 }
 
@@ -62,11 +68,11 @@ interface UnitCardsViewProps<T extends UnitListItem> {
   expanded: string | null;
   items: T[];
   onExpand: (name: string | null) => void;
-  renderActions?: (item: T) => React.ReactNode;
-  renderBottomPanel?: (item: T) => React.ReactNode;
-  renderDetailPanel: (item: T) => React.ReactNode;
-  renderSelectedRows?: (item: T) => React.ReactNode;
-  renderSummaryRows: (item: T) => React.ReactNode;
+  renderActions?: (item: T) => ReactNode;
+  renderBottomPanel?: (item: T) => ReactNode;
+  renderDetailPanel: (item: T) => ReactNode;
+  renderSelectedRows?: (item: T) => ReactNode;
+  renderSummaryRows: (item: T) => ReactNode;
 }
 
 export function statusDot(activeState: string) {
@@ -418,7 +424,7 @@ export const UnitCardActions = ({
 };
 
 type RenderedTableCellProps = {
-  children?: React.ReactNode;
+  children?: ReactNode;
 };
 
 function getHideBelow(
@@ -432,13 +438,13 @@ function getHideBelow(
   return undefined;
 }
 
-function flattenRenderedCells(node: React.ReactNode): React.ReactNode[] {
-  const cells: React.ReactNode[] = [];
+function flattenRenderedCells(node: ReactNode): ReactNode[] {
+  const cells: ReactNode[] = [];
 
-  React.Children.forEach(node, (child) => {
+  Children.forEach(node, (child) => {
     if (
-      React.isValidElement<RenderedTableCellProps>(child) &&
-      child.type === React.Fragment
+      isValidElement<RenderedTableCellProps>(child) &&
+      child.type === Fragment
     ) {
       cells.push(...flattenRenderedCells(child.props.children));
       return;
@@ -450,8 +456,8 @@ function flattenRenderedCells(node: React.ReactNode): React.ReactNode[] {
   return cells;
 }
 
-function getRenderedCellContent(cell: React.ReactNode) {
-  if (React.isValidElement<RenderedTableCellProps>(cell)) {
+function getRenderedCellContent(cell: ReactNode) {
+  if (isValidElement<RenderedTableCellProps>(cell)) {
     return cell.props.children;
   }
   return cell;
@@ -472,7 +478,7 @@ export function UnitTableView<T extends RowData>({
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
-  const renderedCellCache = new Map<string, React.ReactNode[]>();
+  const renderedCellCache = new Map<string, ReactNode[]>();
   const columns: AppVirtualDataTableColumnDef<T>[] = activeColumns.map(
     (column, columnIndex) => ({
       id: column.field,

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import ComposeStackCard from "../../../components/cards/ComposeStackCard";
 
@@ -27,10 +27,8 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 import "./compose-list.css";
 
-const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
-const TerminalDialog = React.lazy(
-  () => import("@/components/docker/TerminalDialog"),
-);
+const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 interface ComposeListProps {
@@ -726,7 +724,7 @@ const ComposeList = ({
     </div>
   );
   const containerDialogs = (
-    <React.Suspense fallback={null}>
+    <Suspense fallback={null}>
       {logsContainer && (
         <LogsDialog
           containerId={logsContainer.Id}
@@ -743,7 +741,7 @@ const ComposeList = ({
           open={!!terminalContainer}
         />
       )}
-    </React.Suspense>
+    </Suspense>
   );
   if (viewMode === "card") {
     const skeletonCount = 8;
@@ -838,4 +836,4 @@ const ComposeList = ({
     </div>
   );
 };
-export default React.memo(ComposeList);
+export default memo(ComposeList);

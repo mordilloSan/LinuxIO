@@ -1,4 +1,9 @@
-import React, { ReactNode } from "react";
+import {
+  memo,
+  type DragEventHandler,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
 
 import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
 
@@ -20,11 +25,11 @@ import type {
 
 export interface FileBrowserSurfaceProps {
   isDragOver: boolean;
-  onContextMenu: React.MouseEventHandler<HTMLDivElement>;
-  onDragEnter: React.DragEventHandler<HTMLDivElement>;
-  onDragLeave: React.DragEventHandler<HTMLDivElement>;
-  onDragOver: React.DragEventHandler<HTMLDivElement>;
-  onDrop: React.DragEventHandler<HTMLDivElement>;
+  onContextMenu: MouseEventHandler<HTMLDivElement>;
+  onDragEnter: DragEventHandler<HTMLDivElement>;
+  onDragLeave: DragEventHandler<HTMLDivElement>;
+  onDragOver: DragEventHandler<HTMLDivElement>;
+  onDrop: DragEventHandler<HTMLDivElement>;
 }
 
 export interface FileBrowserChromeProps {
@@ -223,4 +228,4 @@ const FileBrowserContent = ({
   );
 };
 
-export default React.memo(FileBrowserContent);
+export default memo(FileBrowserContent);

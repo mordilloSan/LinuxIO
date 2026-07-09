@@ -1,5 +1,12 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import {
+  forwardRef,
+  type CSSProperties,
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
 import { AppTheme, useAppTheme } from "@/theme";
@@ -21,7 +28,7 @@ type AppChipSize = "small" | "medium";
 type AppChipVariant = "filled" | "outlined" | "soft";
 
 type NativeChipProps = Omit<
-  React.HTMLAttributes<HTMLSpanElement>,
+  HTMLAttributes<HTMLSpanElement>,
   "color" | "style" | "className"
 >;
 
@@ -29,20 +36,18 @@ export interface AppChipProps extends NativeChipProps {
   className?: string;
   color?: AppChipColor;
   disabled?: boolean;
-  label: React.ReactNode;
-  labelStyle?: React.CSSProperties;
+  label: ReactNode;
+  labelStyle?: CSSProperties;
   onDelete?: (
-    event:
-      | React.MouseEvent<HTMLButtonElement>
-      | React.KeyboardEvent<HTMLSpanElement>,
+    event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLSpanElement>,
   ) => void;
   size?: AppChipSize;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   title?: string;
   variant?: AppChipVariant;
 }
 
-const getPlainText = (node: React.ReactNode): string => {
+const getPlainText = (node: ReactNode): string => {
   if (typeof node === "string" || typeof node === "number") {
     return String(node).trim();
   }
@@ -75,7 +80,7 @@ const getPaletteColor = (theme: AppTheme, color: AppChipColor) => {
   }
 };
 
-const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
+const AppChip = forwardRef<HTMLSpanElement, AppChipProps>(
   (
     {
       label,
@@ -113,12 +118,12 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
       .filter(Boolean)
       .join(" ");
 
-    const handleDeleteClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const handleDeleteClick = (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
       onDelete?.(event);
     };
 
-    const handleKeyDown = (event: React.KeyboardEvent<HTMLSpanElement>) => {
+    const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
       onKeyDown?.(event);
       if (event.defaultPrevented || disabled) return;
 
@@ -192,7 +197,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
               : theme.typography.fontWeightRegular,
             "--app-chip-line-height": 1.5,
             ...style,
-          } as React.CSSProperties
+          } as CSSProperties
         }
         tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
         title={showTruncatedTooltip ? undefined : title}

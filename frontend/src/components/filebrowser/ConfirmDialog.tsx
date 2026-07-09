@@ -1,4 +1,4 @@
-import React from "react";
+import type { KeyboardEventHandler, SubmitEventHandler } from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -27,15 +27,13 @@ const ConfirmDialog = ({
 }: ConfirmDialogProps) => {
   const theme = useAppTheme();
 
-  const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {
+  const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     onConfirm();
     onClose();
   };
 
-  const handleKeyDown: React.KeyboardEventHandler<HTMLFormElement> = (
-    event,
-  ) => {
+  const handleKeyDown: KeyboardEventHandler<HTMLFormElement> = (event) => {
     if (event.key !== "Enter" || event.defaultPrevented || event.repeat) {
       return;
     }

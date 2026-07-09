@@ -1,5 +1,12 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
@@ -125,13 +132,13 @@ interface TransferLike {
 }
 
 interface TransferItemProps {
-  getTransferIcon: (type: string) => { icon: React.ReactNode; color: string };
+  getTransferIcon: (type: string) => { icon: ReactNode; color: string };
   onCancel: (transfer: TransferLike) => void;
   onIndexerClick: () => void;
   transfer: TransferLike;
 }
 
-const TransferItem = React.memo(function TransferItem({
+const TransferItem = memo(function TransferItem({
   transfer,
   getTransferIcon,
   onCancel,
@@ -672,4 +679,4 @@ function NavbarNotificationsDropdown() {
   );
 }
 
-export default React.memo(NavbarNotificationsDropdown);
+export default memo(NavbarNotificationsDropdown);

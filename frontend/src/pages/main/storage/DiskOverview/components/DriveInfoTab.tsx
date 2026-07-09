@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
@@ -16,8 +16,8 @@ interface DriveInfoTabProps {
 
 interface DriveInfoRow {
   property: string;
-  value: React.ReactNode;
-  valueStyle?: React.CSSProperties;
+  value: ReactNode;
+  valueStyle?: CSSProperties;
 }
 
 const driveInfoColumns: AppDataTableColumnDef<DriveInfoRow>[] = [

@@ -1,19 +1,16 @@
-import React from "react";
+import { forwardRef, HTMLAttributes, type CSSProperties } from "react";
 
 import "./app-linear-progress.css";
 
 type ProgressColor = "primary" | "error" | "warning" | "success";
 
-export interface AppLinearProgressProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface AppLinearProgressProps extends HTMLAttributes<HTMLDivElement> {
   color?: ProgressColor;
   value?: number;
   variant?: "determinate" | "indeterminate";
 }
 
-const AppLinearProgress = React.forwardRef<
-  HTMLDivElement,
-  AppLinearProgressProps
->(
+const AppLinearProgress = forwardRef<HTMLDivElement, AppLinearProgressProps>(
   (
     {
       variant = "indeterminate",
@@ -33,7 +30,7 @@ const AppLinearProgress = React.forwardRef<
       .filter(Boolean)
       .join(" ");
 
-    const barStyle: React.CSSProperties | undefined =
+    const barStyle: CSSProperties | undefined =
       variant === "determinate"
         ? { transform: `translateX(${value - 100}%)` }
         : undefined;

@@ -5,6 +5,9 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
 } from "react";
 
 import { type Stream, useStreamMux } from "@/api";
@@ -25,9 +28,9 @@ export interface UseLogStreamResult {
   isLoading: boolean;
   liveMode: boolean;
   logs: string;
-  logsBoxRef: React.RefObject<HTMLDivElement | null>;
+  logsBoxRef: RefObject<HTMLDivElement | null>;
   resetState: () => void;
-  setLiveMode: React.Dispatch<React.SetStateAction<boolean>>;
+  setLiveMode: Dispatch<SetStateAction<boolean>>;
 }
 
 const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;

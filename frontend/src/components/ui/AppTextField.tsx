@@ -1,4 +1,16 @@
-import React, { useRef, useState } from "react";
+import {
+  forwardRef,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type MouseEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 import "./app-text-field.css";
 
@@ -10,22 +22,20 @@ export interface AppTextFieldProps {
   autoFocus?: boolean;
   className?: string;
   disabled?: boolean;
-  endAdornment?: React.ReactNode;
+  endAdornment?: ReactNode;
   error?: boolean;
   fullWidth?: boolean;
-  helperText?: React.ReactNode;
+  helperText?: ReactNode;
   id?: string;
   label?: string;
   list?: string;
   multiline?: boolean;
   name?: string;
-  onBlur?: (e: React.FocusEvent) => void;
-  onChange?: (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-  onClick?: React.MouseEventHandler<HTMLDivElement>;
-  onFocus?: (e: React.FocusEvent) => void;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
+  onBlur?: (e: FocusEvent) => void;
+  onChange?: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onClick?: MouseEventHandler<HTMLDivElement>;
+  onFocus?: (e: FocusEvent) => void;
+  onKeyDown?: (e: KeyboardEvent) => void;
   placeholder?: string;
   readOnly?: boolean;
   required?: boolean;
@@ -33,14 +43,14 @@ export interface AppTextFieldProps {
   rows?: number;
   shrinkLabel?: boolean;
   size?: "small" | "medium";
-  startAdornment?: React.ReactNode;
-  style?: React.CSSProperties;
+  startAdornment?: ReactNode;
+  style?: CSSProperties;
   type?: string;
   value?: string | number;
   variant?: "outlined" | "standard";
 }
 
-const AppTextField = React.forwardRef<
+const AppTextField = forwardRef<
   HTMLInputElement | HTMLTextAreaElement,
   AppTextFieldProps
 >((props, ref) => {
@@ -87,17 +97,17 @@ const AppTextField = React.forwardRef<
   const labelText = label && required ? `${label}\u2009*` : label;
   const labelShrunk = !!(shrinkLabel || focused || hasValue || startAdornment);
 
-  const handleFocus = (e: React.FocusEvent) => {
+  const handleFocus = (e: FocusEvent) => {
     setFocused(true);
     onFocus?.(e);
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
+  const handleBlur = (e: FocusEvent) => {
     setFocused(false);
     onBlur?.(e);
   };
 
-  const handleWrapperClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleWrapperClick = (event: MouseEvent<HTMLDivElement>) => {
     onClick?.(event);
     if (event.defaultPrevented) return;
 
@@ -174,12 +184,12 @@ const AppTextField = React.forwardRef<
         )}
         {multiline ? (
           <textarea
-            ref={ref as React.Ref<HTMLTextAreaElement>}
+            ref={ref as Ref<HTMLTextAreaElement>}
             rows={rows}
             {...inputProps}
           />
         ) : (
-          <input ref={ref as React.Ref<HTMLInputElement>} {...inputProps} />
+          <input ref={ref as Ref<HTMLInputElement>} {...inputProps} />
         )}
         {endAdornment && (
           <div className="app-text-field__adornment app-text-field__adornment--end">

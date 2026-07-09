@@ -1,4 +1,9 @@
-import React from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import "./app-button.css";
 
@@ -46,18 +51,18 @@ const COLOR_VARS: Record<
 };
 
 export interface AppButtonProps extends Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
   color?: ButtonColor;
   fullWidth?: boolean;
   keepTextOnMobile?: boolean;
   size?: ButtonSize;
-  startIcon?: React.ReactNode;
+  startIcon?: ReactNode;
   variant?: ButtonVariant;
 }
 
-const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
+const AppButton = forwardRef<HTMLButtonElement, AppButtonProps>(
   (
     {
       variant = "text",
@@ -91,7 +96,7 @@ const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
             "--_btn-main": COLOR_VARS[color].main,
             "--_btn-dark": COLOR_VARS[color].dark,
             "--_btn-contrast": COLOR_VARS[color].contrast,
-          } as React.CSSProperties);
+          } as CSSProperties);
 
     return (
       <button

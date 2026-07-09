@@ -1,4 +1,5 @@
-import React, {
+import {
+  forwardRef,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
@@ -19,7 +20,7 @@ interface NetworkTrafficGraphProps {
   value: number;
 }
 
-const NetworkTrafficGraph = React.forwardRef<
+const NetworkTrafficGraph = forwardRef<
   HTMLCanvasElement,
   NetworkTrafficGraphProps
 >(({ value, color, label }, ref) => {

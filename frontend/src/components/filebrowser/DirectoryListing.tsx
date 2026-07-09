@@ -1,10 +1,12 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
+  type RefObject,
 } from "react";
 
 import EmptyState from "./EmptyState";
@@ -140,7 +142,7 @@ const DirectoryListing = ({
 
   // Use keyboard navigation hook
   useFileListKeyboardNavigation({
-    containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    containerRef: containerRef as RefObject<HTMLDivElement>,
     allItems,
     focusedIndex,
     selectedPaths,
@@ -156,16 +158,18 @@ const DirectoryListing = ({
     useFileMarqueeSelection(containerRef, allItems, onSelectedPathsChange);
 
   // Handle document click to clear selection
-  const handleDocumentMouseDown = useEffectEvent((event: MouseEvent) => {
-    if (isContextMenuOpen) {
-      return;
-    }
-    if (!containerRef.current) return;
-    if (containerRef.current.contains(event.target as Node)) {
-      return;
-    }
-    clearSelection();
-  });
+  const handleDocumentMouseDown = useEffectEvent(
+    (event: globalThis.MouseEvent) => {
+      if (isContextMenuOpen) {
+        return;
+      }
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target as Node)) {
+        return;
+      }
+      clearSelection();
+    },
+  );
 
   useEffect(() => {
     document.addEventListener("mousedown", handleDocumentMouseDown);
@@ -188,7 +192,7 @@ const DirectoryListing = ({
   );
 
   const handleItemSelection = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       const currentIndex = allItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
 
@@ -231,7 +235,7 @@ const DirectoryListing = ({
   );
 
   const handleItemContextMenu = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       event.preventDefault();
       const currentIndex = allItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
@@ -246,7 +250,7 @@ const DirectoryListing = ({
   );
 
   const handleContainerMouseDown = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       const element = event.target as HTMLElement | null;
       if (element && element.closest("[data-file-card='true']")) {
         return;
@@ -261,14 +265,14 @@ const DirectoryListing = ({
   );
 
   const handleFolderClick = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       handleItemSelection(event, path);
     },
     [handleItemSelection],
   );
 
   const handleFileClick = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       handleItemSelection(event, path);
     },
     [handleItemSelection],

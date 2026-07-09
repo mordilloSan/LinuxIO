@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { type AccountUserLogin, linuxio } from "@/api";
@@ -25,13 +25,13 @@ interface HealthItem {
   detail?: string;
   detailColor?: string;
   icon: string;
-  iconStyle?: React.CSSProperties;
+  iconStyle?: CSSProperties;
   onClick?: () => void;
   secondaryAction?: {
     label: string;
     icon?: string;
     ariaLabel?: string;
-    onClick: (event: React.MouseEvent) => void;
+    onClick: (event: MouseEvent) => void;
     disabled?: boolean;
   };
   spaceBefore?: boolean;
@@ -99,7 +99,7 @@ const SystemHealth = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const [failedLoginsOpen, setFailedLoginsOpen] = React.useState(false);
+  const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
 
   const {
     data: health,
@@ -531,7 +531,7 @@ const SystemHealth = () => {
                 ))}
               </div>
               {failedLoginEvents.map((login, index) => (
-                <React.Fragment key={login.id || `${login.username}-${index}`}>
+                <Fragment key={login.id || `${login.username}-${index}`}>
                   <div
                     style={{
                       display: "grid",
@@ -563,7 +563,7 @@ const SystemHealth = () => {
                     />
                   </div>
                   {index < failedLoginEvents.length - 1 ? <AppDivider /> : null}
-                </React.Fragment>
+                </Fragment>
               ))}
             </div>
           )}

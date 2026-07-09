@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
@@ -11,15 +11,15 @@ import AppTypography, {
 import { useAppTheme } from "@/theme";
 export interface IndexerStat {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   valueColor?: string;
   valueVariant?: AppTypographyProps["variant"];
 }
 
 export interface IndexerStatSection {
   stats: IndexerStat[];
-  subtitle?: React.ReactNode;
-  title: React.ReactNode;
+  subtitle?: ReactNode;
+  title: ReactNode;
 }
 
 interface IndexerStatusDialogProps {
@@ -34,7 +34,7 @@ interface IndexerStatusDialogProps {
   progressStats?: IndexerStat[];
   showProgressStats?: boolean;
   success: boolean;
-  successDescription?: React.ReactNode;
+  successDescription?: ReactNode;
   successMessage?: string;
   summaryStats?: IndexerStat[];
   summaryTitle?: string;

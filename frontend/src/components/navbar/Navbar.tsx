@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo, type CSSProperties, type MouseEventHandler } from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
 import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
@@ -14,7 +14,7 @@ import { iconSize } from "@/theme/constants";
 import "./navbar.css";
 
 interface NavbarProps {
-  onDrawerToggle: React.MouseEventHandler<HTMLElement>;
+  onDrawerToggle: MouseEventHandler<HTMLElement>;
 }
 
 const Navbar = ({ onDrawerToggle }: NavbarProps) => {
@@ -49,7 +49,7 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
                   "--app-navbar-search-text": theme.header.search.color,
                   "--app-navbar-search-icon": theme.header.color,
                   borderRadius: `${theme.shape.borderRadius * 2}px`,
-                } as React.CSSProperties
+                } as CSSProperties
               }
             >
               <div aria-hidden="true" className="app-navbar-search__icon">
@@ -82,4 +82,4 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
   );
 };
 
-export default React.memo(Navbar);
+export default memo(Navbar);

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -8,7 +8,7 @@ import { useAppTheme } from "@/theme";
 
 export type SummaryRow = {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   noWrap?: boolean;
 };
 
@@ -92,7 +92,7 @@ const HardwareCard = ({
   avatarIcon: string;
   accentColor: string;
   rows: SummaryRow[];
-  actions?: React.ReactNode;
+  actions?: ReactNode;
 }) => (
   <FrostedCard
     hoverLift

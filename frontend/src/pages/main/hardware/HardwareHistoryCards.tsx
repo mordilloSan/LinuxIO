@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { GpuDevice } from "@/api";
 import { linuxio } from "@/api";
@@ -381,9 +381,9 @@ const HistoryCardShell = ({
 }: {
   title: string;
   avatarIcon: string;
-  headerRight?: React.ReactNode;
+  headerRight?: ReactNode;
   message?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) => {
   const theme = useAppTheme();
 

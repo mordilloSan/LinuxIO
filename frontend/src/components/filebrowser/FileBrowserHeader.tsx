@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { ReactNode, useCallback } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
@@ -49,8 +49,9 @@ const FileBrowserHeader = ({
 }: FileBrowserHeaderProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [actionsAnchorEl, setActionsAnchorEl] =
-    React.useState<HTMLElement | null>(null);
+  const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
+    null,
+  );
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundJobActions();

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -80,7 +80,7 @@ export const SettingsSectionShell = ({
   refreshing: boolean;
   refreshDisabled?: boolean;
   onRefresh: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const theme = useAppTheme();
   return (
@@ -133,7 +133,7 @@ export const SettingsGrid = ({
   minColumnWidth = 220,
   rowGap = 1.5,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   minColumnWidth?: number;
   rowGap?: number;
 }) => {

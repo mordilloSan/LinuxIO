@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import { useCallback, useState, type KeyboardEvent } from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
@@ -63,7 +63,7 @@ const InputDialog = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === "Enter" && value.trim()) {
       handleConfirm();
     }

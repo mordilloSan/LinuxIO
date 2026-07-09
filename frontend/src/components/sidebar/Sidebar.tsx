@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 
 import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
@@ -54,7 +54,7 @@ const Sidebar = ({ items }: SidebarProps) => {
       easing: theme.transitions.easing.easeInOut,
       duration: theme.transitions.duration.standard,
     }),
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   return (
     <>

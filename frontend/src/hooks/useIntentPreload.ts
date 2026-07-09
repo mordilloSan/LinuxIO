@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /** Options for {@link useIntentPreload}. */
 interface UseIntentPreloadOptions {
@@ -38,26 +38,26 @@ export function useIntentPreload({
   preload,
 }: UseIntentPreloadOptions) {
   // Whether a preload has already been kicked off (dedupe guard).
-  const preloadRequestedRef = React.useRef(false);
+  const preloadRequestedRef = useRef(false);
   // Pending debounce timer id from `schedule`, if any.
-  const preloadTimerRef = React.useRef<number | undefined>(undefined);
+  const preloadTimerRef = useRef<number | undefined>(undefined);
 
-  const cancel = React.useCallback(() => {
+  const cancel = useCallback(() => {
     if (preloadTimerRef.current === undefined) return;
     window.clearTimeout(preloadTimerRef.current);
     preloadTimerRef.current = undefined;
   }, []);
 
   // A new preload target means a fresh request is allowed; drop any pending timer.
-  React.useEffect(() => {
+  useEffect(() => {
     preloadRequestedRef.current = false;
     cancel();
   }, [cancel, preload]);
 
   // Clear any pending timer on unmount.
-  React.useEffect(() => cancel, [cancel]);
+  useEffect(() => cancel, [cancel]);
 
-  const run = React.useCallback(() => {
+  const run = useCallback(() => {
     if (disabled || !preload || preloadRequestedRef.current) return;
 
     cancel();
@@ -68,7 +68,7 @@ export function useIntentPreload({
     });
   }, [cancel, disabled, preload]);
 
-  const schedule = React.useCallback(() => {
+  const schedule = useCallback(() => {
     if (disabled || !preload || preloadRequestedRef.current) return;
 
     cancel();

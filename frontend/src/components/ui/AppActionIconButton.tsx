@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -17,14 +17,14 @@ export interface AppActionIconButtonProps {
   disabled?: boolean;
   icon: string;
   iconSize?: number;
-  label?: React.ReactNode;
+  label?: ReactNode;
   loading?: boolean;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   size?: "small" | "medium";
   tooltip?: boolean;
 }
 
-const labelToAria = (label: React.ReactNode): string | undefined =>
+const labelToAria = (label: ReactNode): string | undefined =>
   typeof label === "string" ? label : undefined;
 
 export default function AppActionIconButton({
@@ -64,7 +64,7 @@ export default function AppActionIconButton({
           height: buttonHeight,
           opacity: disabled && !loading ? 0.45 : 1,
           width: buttonWidth,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       {loading ? (

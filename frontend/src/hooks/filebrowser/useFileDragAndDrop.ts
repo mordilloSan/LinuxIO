@@ -1,6 +1,4 @@
-import type React from "react";
-
-import { useCallback, useState } from "react";
+import { useCallback, useState, type DragEvent } from "react";
 
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 
@@ -21,10 +19,10 @@ interface UseDragAndDropUploadParams {
 }
 
 interface UseDragAndDropUploadResult {
-  handleDragEnter: (event: React.DragEvent) => void;
-  handleDragLeave: (event: React.DragEvent) => void;
-  handleDragOver: (event: React.DragEvent) => void;
-  handleDrop: (event: React.DragEvent) => Promise<void>;
+  handleDragEnter: (event: DragEvent) => void;
+  handleDragLeave: (event: DragEvent) => void;
+  handleDragOver: (event: DragEvent) => void;
+  handleDrop: (event: DragEvent) => Promise<void>;
   isDragOver: boolean;
 }
 
@@ -41,7 +39,7 @@ export const useFileDragAndDrop = ({
   const extractDroppedEntries = useFileDroppedEntries();
 
   const handleDragEnter = useCallback(
-    (event: React.DragEvent) => {
+    (event: DragEvent) => {
       if (editingPath) return;
       if (!resource || resource.type !== "directory") return;
       if (!event.dataTransfer?.types?.includes("Files")) return;
@@ -52,7 +50,7 @@ export const useFileDragAndDrop = ({
   );
 
   const handleDragOver = useCallback(
-    (event: React.DragEvent) => {
+    (event: DragEvent) => {
       if (editingPath) return;
       if (!resource || resource.type !== "directory") return;
       if (!event.dataTransfer?.types?.includes("Files")) return;
@@ -64,7 +62,7 @@ export const useFileDragAndDrop = ({
   );
 
   const handleDragLeave = useCallback(
-    (event: React.DragEvent) => {
+    (event: DragEvent) => {
       if (editingPath) return;
       const nextTarget = event.relatedTarget as Node | null;
       if (
@@ -79,7 +77,7 @@ export const useFileDragAndDrop = ({
   );
 
   const handleDrop = useCallback(
-    async (event: React.DragEvent) => {
+    async (event: DragEvent) => {
       if (editingPath) return;
       if (!resource || resource.type !== "directory") return;
       event.preventDefault();

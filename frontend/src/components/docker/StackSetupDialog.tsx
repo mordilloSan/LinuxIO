@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -55,7 +55,7 @@ const StackSetupDialog = ({
       .substring(0, 63);
   };
   const handleStackNameChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const sanitized = sanitizeStackName(e.target.value);
     setStackName(sanitized);
@@ -75,7 +75,7 @@ const StackSetupDialog = ({
     }
   };
   const handleWorkingDirChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     setWorkingDir(e.target.value);
     setIsWorkingDirManuallyEdited(true);

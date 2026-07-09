@@ -1,10 +1,13 @@
-import React, {
+import {
+  memo,
   useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -29,9 +32,9 @@ export interface FileListRowProps {
   modTime?: string;
   name: string;
   onCancelRename?: () => void;
-  onClick: (event: React.MouseEvent) => void;
+  onClick: (event: MouseEvent) => void;
   onConfirmRename?: (newName: string) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
   selected?: boolean;
@@ -43,7 +46,7 @@ export interface FileListRowProps {
 const COLUMN_TEMPLATE =
   "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
 
-const FileListRow = React.memo<FileListRowProps>(
+const FileListRow = memo<FileListRowProps>(
   ({
     name,
     path,
@@ -92,7 +95,7 @@ const FileListRow = React.memo<FileListRowProps>(
     }, [isRenaming, name, isDirectory]);
 
     const handleRenameKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
+      (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -164,7 +167,7 @@ const FileListRow = React.memo<FileListRowProps>(
     }, [effectiveSize, effectiveSizeLoading, effectiveSizeUnavailable]);
 
     const handleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onClick(e);
       },
@@ -172,7 +175,7 @@ const FileListRow = React.memo<FileListRowProps>(
     );
 
     const handleDoubleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onDoubleClick?.();
       },

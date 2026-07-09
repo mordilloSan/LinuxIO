@@ -1,4 +1,4 @@
-import type React from "react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sonnerMocks = vi.hoisted(() => ({
@@ -8,7 +8,7 @@ const sonnerMocks = vi.hoisted(() => ({
     description?: string;
     id: string | number;
     meta?: { href?: string; label?: string };
-    title?: React.ReactNode;
+    title?: ReactNode;
     type?: string;
   }>,
 }));

@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import { toast } from "sonner";
 
@@ -246,7 +247,7 @@ const DockerFolderSettingsSection = () => {
     validateDockerFolder,
   ]);
 
-  const folderIconStyle: React.CSSProperties = {
+  const folderIconStyle: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",

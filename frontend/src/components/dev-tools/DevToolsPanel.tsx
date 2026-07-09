@@ -1,5 +1,11 @@
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import { useAppTheme } from "@/theme";
@@ -52,7 +58,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     window.location.reload();
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest(".drag-handle")) {
       setIsDragging(true);
       dragRef.current = {
@@ -65,7 +71,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     }
   };
 
-  const handleMouseMove = useEffectEvent((e: MouseEvent) => {
+  const handleMouseMove = useEffectEvent((e: globalThis.MouseEvent) => {
     if (isDragging && dragRef.current) {
       const deltaX = e.clientX - dragRef.current.startX;
       const deltaY = e.clientY - dragRef.current.startY;

@@ -13,7 +13,7 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import React, { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 import DockerInfo from "./Docker";
 import DriveInfo from "./Drive";
@@ -38,16 +38,16 @@ import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
-const MemoSystemOverview = React.memo(SystemOverview);
-const MemoSystemHealth = React.memo(SystemHealth);
-const MemoProcessor = React.memo(Processor);
-const MemoMemory = React.memo(Memory);
-const MemoFileSystem = React.memo(FileSystem);
-const MemoNetwork = React.memo(Network);
-const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
-const MemoGpuInfo = React.memo(GpuInfo);
-const MemoDriveInfo = React.memo(DriveInfo);
-const MemoDockerInfo = React.memo(DockerInfo);
+const MemoSystemOverview = memo(SystemOverview);
+const MemoSystemHealth = memo(SystemHealth);
+const MemoProcessor = memo(Processor);
+const MemoMemory = memo(Memory);
+const MemoFileSystem = memo(FileSystem);
+const MemoNetwork = memo(Network);
+const MemoMotherBoardInfo = memo(MotherBoardInfo);
+const MemoGpuInfo = memo(GpuInfo);
+const MemoDriveInfo = memo(DriveInfo);
+const MemoDockerInfo = memo(DockerInfo);
 
 const allCards = [
   { id: "overview", label: "System Overview", component: MemoSystemOverview },

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -8,11 +8,11 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface DockerResourceListCardProps {
-  children: React.ReactNode;
+  children: ReactNode;
   footerText: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onViewAll: () => void;
-  subtitle: React.ReactNode;
+  subtitle: ReactNode;
   title: string;
 }
 

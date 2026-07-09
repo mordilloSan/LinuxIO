@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -32,7 +33,7 @@ interface UnitCardsViewRenderProps<T> {
   expanded: string | null;
   items: T[];
   onExpand: (name: string | null) => void;
-  renderDetailPanel: (item: T) => React.ReactNode;
+  renderDetailPanel: (item: T) => ReactNode;
 }
 
 interface UnitListTabProps<T extends UnitListItem> {
@@ -43,9 +44,9 @@ interface UnitListTabProps<T extends UnitListItem> {
   isError: boolean;
   isPending: boolean;
   matchesSearch: (item: T, search: string) => boolean;
-  renderCardsView: (props: UnitCardsViewRenderProps<T>) => React.ReactNode;
-  renderDetailPanel: (item: T, onClose: () => void) => React.ReactNode;
-  renderTableView: (props: UnitTableViewRenderProps<T>) => React.ReactNode;
+  renderCardsView: (props: UnitCardsViewRenderProps<T>) => ReactNode;
+  renderDetailPanel: (item: T, onClose: () => void) => ReactNode;
+  renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
   setViewMode: (
     next: TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),

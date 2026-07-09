@@ -1,5 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
@@ -106,7 +113,7 @@ const NetworkInterfaceList = () => {
   );
 
   const handleGraphMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       const containerRect = (
         e.currentTarget as HTMLElement
       ).getBoundingClientRect();

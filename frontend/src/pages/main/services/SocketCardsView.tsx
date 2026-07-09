@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import {
   DetailRow,
@@ -14,7 +14,7 @@ import UnitLogsCard from "@/components/cards/UnitLogsCard";
 interface SocketCardsViewProps {
   expanded: string | null;
   onExpand: (name: string | null) => void;
-  renderDetailPanel: (socket: Socket) => React.ReactNode;
+  renderDetailPanel: (socket: Socket) => ReactNode;
   sockets: Socket[];
 }
 

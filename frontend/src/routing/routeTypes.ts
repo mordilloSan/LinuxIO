@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type React from "react";
+import type { ElementType, ReactNode } from "react";
 
 import type { AccessContext, AccessPolicy } from "@/hooks/useCapabilities";
 
@@ -37,7 +37,7 @@ export interface RouteWithSidebar extends AccessPolicy {
   /** Nested child routes, each itself a {@link RouteWithSidebar}. */
   children?: RouteWithSidebar[];
   /** The element rendered when this route is active. */
-  element?: React.ReactNode;
+  element?: ReactNode;
   /** Intent-preload policy — see {@link RouteIntentPreloadPolicy}. */
   intentPreload: RouteIntentPreloadPolicy;
   /** Route path segment, as understood by the router. */
@@ -55,7 +55,7 @@ export interface RouteWithSidebar extends AccessPolicy {
   /** Sidebar presentation; absent for routes that don't appear in the nav. */
   sidebar?: {
     title: string;
-    icon: React.ElementType | string;
+    icon: ElementType | string;
     position: number;
   };
 }

@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { useAppTheme } from "@/theme";
 import { cardBorderRadius } from "@/theme/constants";
@@ -9,7 +9,7 @@ import { cardBorderRadius } from "@/theme/constants";
 import "./FrostedCard.css";
 
 interface SortableCardProps {
-  children: React.ReactNode;
+  children: ReactNode;
   editMode: boolean;
   id: string;
 }
@@ -25,7 +25,7 @@ const SortableCard = ({ id, editMode, children }: SortableCardProps) => {
     isDragging,
   } = useSortable({ id, disabled: !editMode });
 
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
@@ -53,7 +53,7 @@ const SortableCard = ({ id, editMode, children }: SortableCardProps) => {
               justifyContent: "center",
               borderRadius: cardBorderRadius,
               "--sc-hover-bg": theme.palette.action.hover,
-            } as React.CSSProperties
+            } as CSSProperties
           }
         >
           <Icon

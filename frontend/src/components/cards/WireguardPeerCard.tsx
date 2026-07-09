@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import { type Peer } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -55,7 +55,7 @@ function formatAgo(unix?: number): string {
 interface PeerCardRowProps {
   label: string;
   noDivider?: boolean;
-  value: React.ReactNode;
+  value: ReactNode;
   wrap?: boolean;
 }
 

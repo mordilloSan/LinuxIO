@@ -1,4 +1,4 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import { type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -8,7 +8,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface NFSMountCardProps {
-  actions: React.ReactNode;
+  actions: ReactNode;
   mount: NFSMount;
   persistenceLabel: string;
   statusLabel: string;

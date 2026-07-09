@@ -1,9 +1,9 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import { useAppTheme } from "@/theme";
 
 interface TabPanelProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
   index: number;
   value: number;
 }

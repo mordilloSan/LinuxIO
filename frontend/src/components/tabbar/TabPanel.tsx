@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import "./tab-panel.css";
 
@@ -8,9 +8,9 @@ interface TabPanelProps {
   /** The currently active tab identifier */
   activeTab: string;
   /** The tab content to render */
-  children: React.ReactNode;
+  children: ReactNode;
   /** Optional custom error fallback UI */
-  errorFallback?: React.ReactNode;
+  errorFallback?: ReactNode;
   /** Fade animation duration in milliseconds */
   timeout: number;
   /** The unique identifier for this tab */

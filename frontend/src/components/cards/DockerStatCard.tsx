@@ -1,13 +1,13 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface DockerStatCardProps {
-  detail: React.ReactNode;
+  detail: ReactNode;
   label: string;
   onClick: () => void;
-  value: React.ReactNode;
+  value: ReactNode;
 }
 
 const DockerStatCard = ({

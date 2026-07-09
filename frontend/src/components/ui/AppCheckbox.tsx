@@ -1,21 +1,25 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type ChangeEvent,
+  type InputHTMLAttributes,
+} from "react";
 
 import "./app-checkbox.css";
 
 export interface AppCheckboxProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
+  InputHTMLAttributes<HTMLInputElement>,
   "size" | "type" | "onChange"
 > {
   color?: "primary" | "error" | "default";
   indeterminate?: boolean;
-  onChange?: (
-    event: React.ChangeEvent<HTMLInputElement>,
-    checked: boolean,
-  ) => void;
+  onChange?: (event: ChangeEvent<HTMLInputElement>, checked: boolean) => void;
   size?: "small" | "medium";
 }
 
-const AppCheckbox = React.forwardRef<HTMLInputElement, AppCheckboxProps>(
+const AppCheckbox = forwardRef<HTMLInputElement, AppCheckboxProps>(
   (
     {
       size = "medium",
@@ -36,7 +40,7 @@ const AppCheckbox = React.forwardRef<HTMLInputElement, AppCheckboxProps>(
       }
     }, [indeterminate]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
       onChange?.(e, e.target.checked);
     };
 

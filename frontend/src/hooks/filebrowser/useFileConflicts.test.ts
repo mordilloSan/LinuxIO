@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import React from "react";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
@@ -27,8 +27,8 @@ const { useFileConflictResolution } =
 const { act, createTestQueryClient, renderHook } =
   await import("@/test/render");
 
-const wrapper = ({ children }: { children: React.ReactNode }) =>
-  React.createElement(
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(
     QueryClientProvider,
     { client: createTestQueryClient() },
     children,

@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import ComposeList from "./ComposeList";
 
@@ -509,4 +509,4 @@ const ComposeStacksPage = ({
   );
 };
 
-export default React.memo(ComposeStacksPage);
+export default memo(ComposeStacksPage);

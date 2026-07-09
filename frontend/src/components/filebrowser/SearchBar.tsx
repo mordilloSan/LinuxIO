@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState, type ChangeEvent } from "react";
 
 import "./search-bar.css";
 
@@ -28,7 +28,7 @@ const SearchBar = ({
   }, [onChange]);
 
   const handleChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       onChange(event.target.value);
     },
     [onChange],

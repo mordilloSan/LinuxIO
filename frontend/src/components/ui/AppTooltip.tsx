@@ -1,9 +1,13 @@
-import React, {
+import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
+  type CSSProperties,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -27,31 +31,27 @@ type TooltipPlacement =
 
 export interface AppTooltipProps {
   arrow?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   contentWidth?: boolean;
-  copyErrorMessage?: React.ReactNode;
-  copySuccessMessage?: React.ReactNode;
+  copyErrorMessage?: ReactNode;
+  copySuccessMessage?: ReactNode;
   copyText?: string;
   onlyWhenTruncated?: boolean;
   placement?: TooltipPlacement;
-  title: React.ReactNode;
+  title: ReactNode;
   toastMeta?: ToastMeta;
 }
 
-const AppTooltipTriggerContext = React.createContext(false);
+const AppTooltipTriggerContext = createContext(false);
 
-export const useIsInsideAppTooltip = () =>
-  React.useContext(AppTooltipTriggerContext);
+export const useIsInsideAppTooltip = () => useContext(AppTooltipTriggerContext);
 
 // Distance (px) from the trigger edge to the tooltip bubble — matches MUI default.
 const OFFSET = 8;
 const OFFSET_BOTTOM = 12;
 
-function calcStyle(
-  placement: TooltipPlacement,
-  rect: DOMRect,
-): React.CSSProperties {
+function calcStyle(placement: TooltipPlacement, rect: DOMRect): CSSProperties {
   const midX = rect.left + rect.width / 2;
   const midY = rect.top + rect.height / 2;
 
@@ -130,7 +130,7 @@ const AppTooltip = ({
 }: AppTooltipProps) => {
   const [visible, setVisible] = useState(false);
   const [canCopy, setCanCopy] = useState(false);
-  const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
+  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({});
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

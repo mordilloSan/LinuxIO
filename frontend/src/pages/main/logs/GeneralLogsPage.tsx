@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
@@ -7,6 +7,8 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
+  type MouseEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -449,7 +451,7 @@ const GeneralLogsPage = () => {
   ]);
 
   const handleLiveModeChange = (
-    _: React.ChangeEvent<HTMLInputElement>,
+    _: ChangeEvent<HTMLInputElement>,
     checked: boolean,
   ) => {
     setLiveMode(checked);
@@ -670,7 +672,7 @@ const GeneralLogsPage = () => {
   }, []);
 
   const handleIdentifierClick = useCallback(
-    (log: LogEntry, event: React.MouseEvent) => {
+    (log: LogEntry, event: MouseEvent) => {
       event.stopPropagation();
       const target = resolveUnitTarget(log);
       if (!target) return;

@@ -1,12 +1,12 @@
-import React from "react";
+import { forwardRef, HTMLAttributes } from "react";
 
 import "./app-divider.css";
 
-export interface AppDividerProps extends React.HTMLAttributes<HTMLHRElement> {
+export interface AppDividerProps extends HTMLAttributes<HTMLHRElement> {
   orientation?: "horizontal" | "vertical";
 }
 
-const AppDivider = React.forwardRef<HTMLHRElement, AppDividerProps>(
+const AppDivider = forwardRef<HTMLHRElement, AppDividerProps>(
   ({ orientation = "horizontal", className, ...rest }, ref) => {
     const cls = [
       "app-divider",
