@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import {
   Fragment,
-  useLayoutEffect,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -610,7 +610,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     return focusedLogin ? loginEventKey(focusedLogin) : "";
   }, [focusLoginEventId, logins]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!focusedLoginKey) {
       return;
     }

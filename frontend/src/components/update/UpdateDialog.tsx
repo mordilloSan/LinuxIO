@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -42,8 +42,8 @@ const UpdateDialog = ({
   const outputEndRef = useRef<HTMLDivElement>(null);
   const [outputExpanded, setOutputExpanded] = useState(false);
 
-  // Auto-scroll to bottom when new output arrives (before paint to avoid a jump)
-  useLayoutEffect(() => {
+  // Smooth scrolling is intentionally visible, so it does not need to block paint.
+  useEffect(() => {
     if (!outputExpanded) return;
 
     outputEndRef.current?.scrollIntoView({
