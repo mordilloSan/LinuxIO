@@ -33,7 +33,7 @@ const getContainerName = (container: ContainerInfo) =>
 
 const DockerPage = () => {
   const theme = useAppTheme();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
@@ -153,6 +153,16 @@ const DockerPage = () => {
     (() => void) | null
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
+  const handleToggleContainerEditMode = useCallback(() => {
+    if (!containerEditMode) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete("container");
+        return next;
+      });
+    }
+    setContainerEditMode(!containerEditMode);
+  }, [containerEditMode, setSearchParams]);
   const handleMountCreateStackHandler = useCallback((handler: () => void) => {
     setCreateStackHandler(() => handler);
   }, []);
@@ -368,7 +378,7 @@ const DockerPage = () => {
                 >
                   <AppIconButton
                     color={containerEditMode ? "primary" : "default"}
-                    onClick={() => setContainerEditMode((prev) => !prev)}
+                    onClick={handleToggleContainerEditMode}
                     size="small"
                   >
                     <Icon height={20} icon="mdi:drag" width={20} />

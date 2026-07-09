@@ -176,12 +176,6 @@ const ContainerList = ({
   });
 
   useEffect(() => {
-    if (editMode) {
-      clearSelectedContainer();
-    }
-  }, [editMode]);
-
-  useEffect(() => {
     if (hasLoadedContainers && selectedContainerId && !selectedContainer) {
       clearSelectedContainer();
     }
