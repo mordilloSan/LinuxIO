@@ -196,7 +196,12 @@ export const useFileMarqueeSelection = (
     : null;
 
   return {
-    isSelecting: isSelectingRef.current && marqueeBox !== null,
+    // Derived from state, not isSelectingRef: the ref flips in the same
+    // handlers that set/clear marqueeBox, so at render time the two are
+    // always in lockstep — and state keeps this hook compilable. The ref
+    // stays as the synchronous guard between native events, where a stale
+    // mousemove can arrive before React commits the mouseup update.
+    isSelecting: isMarqueeActive,
     selectionBox,
     handleMouseDown,
   };

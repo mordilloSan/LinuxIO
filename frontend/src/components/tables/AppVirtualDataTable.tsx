@@ -148,6 +148,9 @@ function easeStandard(progress: number) {
     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 }
 
+// React Compiler skips this component: TanStack Table/Virtual APIs return
+// unstable functions it cannot memoize. Manual memoization stays load-bearing.
+// oxlint-disable-next-line react/react-compiler
 function AppVirtualDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,

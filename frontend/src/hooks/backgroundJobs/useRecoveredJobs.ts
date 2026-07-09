@@ -81,6 +81,10 @@ export function useRecoveredJobs(
   // De-dupes capability-install completion toasts so the attach path and the
   // terminal fallback (events stream) can never both fire for one job.
   const installToastedRef = useRef(new Set<string>());
+  // The bridge cursor is epoch-scoped. Keeping it across mux reconnects closes
+  // the terminal-event gap; a page reload starts with a snapshot reset that
+  // includes both active and recently terminal jobs.
+  const jobEventsCursorRef = useRef("");
 
   // Single source of truth for capability-install completion feedback. Owned by
   // this global handler (not CapabilityManagerSection) so the toast still fires
@@ -510,10 +514,13 @@ export function useRecoveredJobs(
     let cleanupEvents: (() => void) | undefined;
     let eventStream: Stream | null = null;
 
-    eventStream = openJobEventsStream();
+    eventStream = openJobEventsStream(jobEventsCursorRef.current);
     if (eventStream) {
       cleanupEvents = bindStreamHandlers<JobEvent>(eventStream, {
         onProgress: (event) => {
+          if (event?.cursor) {
+            jobEventsCursorRef.current = event.cursor;
+          }
           if (!event?.job || cancelled) return;
           const job = event.job;
 

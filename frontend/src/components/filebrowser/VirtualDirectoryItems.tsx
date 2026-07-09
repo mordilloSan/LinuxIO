@@ -261,6 +261,9 @@ const DirectoryItem = memo<DirectoryItemProps>(
 
 DirectoryItem.displayName = "VirtualDirectoryItem";
 
+// React Compiler skips this component: TanStack Virtual's API returns
+// unstable functions it cannot memoize. Manual memoization stays load-bearing.
+// oxlint-disable-next-line react/react-compiler
 const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,

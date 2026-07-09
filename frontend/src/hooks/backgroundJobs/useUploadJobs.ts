@@ -138,6 +138,11 @@ export function useUploadJobs(
         };
       }
 
+      // False positive in the pinned React Compiler port (oxc-transform
+      // 0.136.0): the dep array below is complete, but the compiler still
+      // reports a missing dependency here and skips the file. Manual
+      // memoization in this hook remains fully in effect.
+      // oxlint-disable-next-line react/react-compiler
       updateUpload(uploadId, { jobId: job.id });
       activeFileTransferJobIdsRef.current.add(job.id);
       pendingLocalJobKeysRef.current.delete(pendingUploadKey);

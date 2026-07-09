@@ -2,7 +2,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -73,9 +72,16 @@ const FileListRow = memo<FileListRowProps>(
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const syncRenameValue = useEffectEvent(() => {
-      setRenameValue(name);
-    });
+    // Reset the draft to the current name when entering rename mode — the
+    // render-time adjustment pattern (react.dev "adjusting state when a prop
+    // changes"), not a setState-in-effect.
+    const [wasRenaming, setWasRenaming] = useState(isRenaming);
+    if (isRenaming !== wasRenaming) {
+      setWasRenaming(isRenaming);
+      if (isRenaming) {
+        setRenameValue(name);
+      }
+    }
 
     // Auto-focus and select text when entering rename mode
     useEffect(() => {
@@ -88,9 +94,6 @@ const FileListRow = memo<FileListRowProps>(
         } else {
           inputRef.current.select();
         }
-      }
-      if (isRenaming) {
-        syncRenameValue();
       }
     }, [isRenaming, name, isDirectory]);
 

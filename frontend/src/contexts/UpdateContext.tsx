@@ -437,9 +437,12 @@ const useUpdateController = (): UpdateContextValue => {
   // with unstable function identities in dev, depending on them would re-run
   // this cleanup every render and close the stream mid-update.
   useEffect(() => {
+    // The Set itself is created once and never reassigned, so capturing it
+    // here still clears whatever timers are pending at unmount.
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((timerId) => clearTimeout(timerId));
-      timersRef.current.clear();
+      timers.forEach((timerId) => clearTimeout(timerId));
+      timers.clear();
       if (unbindStreamHandlersRef.current) {
         unbindStreamHandlersRef.current();
         unbindStreamHandlersRef.current = null;

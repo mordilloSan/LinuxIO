@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 
+import { useTabUrlState } from "@/hooks/useTabUrlState";
+import { TabContainerProps } from "@/types/tabcontainer";
+
 import TabPanel from "./TabPanel";
 import TabSelector from "./TabSelector";
 
 import "./tab-container.css";
-
-import { useTabUrlState } from "@/hooks/useTabUrlState";
-import { TabContainerProps } from "@/types/tabcontainer";
 
 /**
  * TabContainer - A declarative component for managing tabbed interfaces

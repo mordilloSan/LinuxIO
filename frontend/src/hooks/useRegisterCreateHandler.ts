@@ -19,6 +19,9 @@ export function useRegisterCreateHandler(
   handler: () => void,
 ): void {
   const handlerRef = useRef(handler);
+  // Deliberate render-phase ref write (latest-ref pattern) so the registered
+  // callback stays identity-stable while always seeing the newest handler.
+  // oxlint-disable-next-line react/react-compiler
   handlerRef.current = handler;
 
   const registerOnMount = useEffectEvent(() => {

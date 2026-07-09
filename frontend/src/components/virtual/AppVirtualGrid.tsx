@@ -36,6 +36,9 @@ export interface AppVirtualGridProps<TItem> {
   style?: CSSProperties;
 }
 
+// React Compiler skips this component: TanStack Virtual's API returns
+// unstable functions it cannot memoize. Manual memoization stays load-bearing.
+// oxlint-disable-next-line react/react-compiler
 function AppVirtualGrid<TItem>({
   ariaLabel = "Grid",
   className,

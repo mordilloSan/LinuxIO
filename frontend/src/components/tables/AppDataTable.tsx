@@ -293,6 +293,9 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
   );
 }
 
+// React Compiler skips this component: TanStack Table's API returns unstable
+// functions it cannot memoize. Manual memoization below stays load-bearing.
+// oxlint-disable-next-line react/react-compiler
 function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,

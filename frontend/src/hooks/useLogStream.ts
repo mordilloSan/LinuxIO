@@ -123,6 +123,19 @@ export function useLogStream({
     }
   });
 
+  // Effect event so the opening effects don't depend on `createStream`, which
+  // callers pass as a fresh closure every render (see the hook doc comment) —
+  // depending on it would close and reopen the stream on every caller render.
+  const startStream = useEffectEvent((tail: string) => {
+    openStream({
+      open: () => createStream(tail),
+      onOpenError: handleStreamOpenError,
+      onText: handleStreamText,
+      onResult: handleStreamResult,
+      onClose: handleStreamClose,
+    });
+  });
+
   // Scroll to bottom whenever new logs arrive (before paint to avoid a flash).
   useLayoutEffect(() => {
     if (open && logsBoxRef.current) {
@@ -147,15 +160,8 @@ export function useLogStream({
 
     hasReceivedData.current = false;
     scheduleInitialLoadTimeout();
-
-    openStream({
-      open: () => createStream(initialTail),
-      onOpenError: handleStreamOpenError,
-      onText: handleStreamText,
-      onResult: handleStreamResult,
-      onClose: handleStreamClose,
-    });
-  }, [initialTail, open, muxIsOpen, streamRef]);
+    startStream(initialTail);
+  }, [initialTail, open, muxIsOpen, streamRef, scheduleInitialLoadTimeout]);
 
   // Handle live mode toggle.
   useEffect(() => {
@@ -166,15 +172,17 @@ export function useLogStream({
         queueMicrotask(() => setIsLoading(false));
       }
     } else if (liveMode && !streamRef.current && open && muxIsOpen) {
-      openStream({
-        open: () => createStream(liveTail),
-        onOpenError: handleStreamOpenError,
-        onText: handleStreamText,
-        onResult: handleStreamResult,
-        onClose: handleStreamClose,
-      });
+      startStream(liveTail);
     }
-  }, [liveMode, open, muxIsOpen, streamRef]);
+  }, [
+    liveMode,
+    liveTail,
+    open,
+    muxIsOpen,
+    streamRef,
+    closeStream,
+    clearInitialLoadTimeout,
+  ]);
 
   // Close stream when the dialog closes (state is reset separately via onExited).
   useEffect(() => {
