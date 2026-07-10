@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 
 import {
   BackgroundJobsIndexerContext,
+  BackgroundJobsIsIndexingContext,
   type BackgroundJobsIndexerContextValue,
 } from "@/contexts/IndexerContext";
 import {
@@ -151,18 +152,11 @@ export const BackgroundJobsProvider = ({
   const indexerValue = useMemo<BackgroundJobsIndexerContextValue>(
     () => ({
       indexers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
     }),
-    [
-      indexers,
-      isIndexing,
-      isIndexerDialogOpen,
-      lastIndexerResult,
-      lastIndexerError,
-    ],
+    [indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError],
   );
 
   const stateValue = useMemo<BackgroundJobsStateContextValue>(
@@ -176,7 +170,6 @@ export const BackgroundJobsProvider = ({
       moves,
       backgroundJobs,
       transfers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
@@ -191,7 +184,6 @@ export const BackgroundJobsProvider = ({
       moves,
       backgroundJobs,
       transfers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
@@ -200,11 +192,13 @@ export const BackgroundJobsProvider = ({
 
   return (
     <BackgroundJobsActionsContext.Provider value={actionsValue}>
-      <BackgroundJobsIndexerContext.Provider value={indexerValue}>
-        <BackgroundJobsStateContext.Provider value={stateValue}>
-          {children}
-        </BackgroundJobsStateContext.Provider>
-      </BackgroundJobsIndexerContext.Provider>
+      <BackgroundJobsIsIndexingContext.Provider value={isIndexing}>
+        <BackgroundJobsIndexerContext.Provider value={indexerValue}>
+          <BackgroundJobsStateContext.Provider value={stateValue}>
+            {children}
+          </BackgroundJobsStateContext.Provider>
+        </BackgroundJobsIndexerContext.Provider>
+      </BackgroundJobsIsIndexingContext.Provider>
     </BackgroundJobsActionsContext.Provider>
   );
 };

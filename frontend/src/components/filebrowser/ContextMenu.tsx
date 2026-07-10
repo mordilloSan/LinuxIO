@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { useEffect, useEffectEvent } from "react";
 
 import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
@@ -61,21 +60,6 @@ const ContextMenu = ({
     canCompress === undefined ? !hasSelection : !canCompress;
   const extractDisabled = canExtract === undefined ? true : !canExtract;
   const renameDisabled = canRename === undefined ? !hasSelection : !canRename;
-  const isOpen = Boolean(anchorPosition);
-
-  // Close menu on Escape key
-  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onClose();
-    }
-  });
-
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen]);
 
   return (
     <AppMenu

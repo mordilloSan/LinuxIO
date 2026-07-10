@@ -15,6 +15,12 @@ import "./app-dialog.css";
 
 let _openDialogCount = 0;
 
+// Overlay portals that participate in the Escape stack: only the last one in
+// DOM order may close on Escape. Shared with AppFullscreenDialog and with
+// document-level shortcut hooks that must stay quiet while an overlay is open.
+export const OVERLAY_ROOT_SELECTOR =
+  ".app-dialog-root, .app-fullscreen-dialog-root";
+
 /* ── Dialog ─────────────────────────────────── */
 
 export type AppDialogCloseEvent =
@@ -122,10 +128,10 @@ export const AppDialog = ({
         return;
       }
 
-      const openDialogs = Array.from(
-        document.querySelectorAll<HTMLDivElement>(".app-dialog-root"),
+      const openOverlays = Array.from(
+        document.querySelectorAll<HTMLDivElement>(OVERLAY_ROOT_SELECTOR),
       );
-      if (openDialogs[openDialogs.length - 1] !== root) {
+      if (openOverlays[openOverlays.length - 1] !== root) {
         return;
       }
 

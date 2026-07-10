@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, type RefObject } from "react";
 
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
@@ -35,6 +36,13 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
+    // Dialogs autofocus their action button, which passes the guard above;
+    // handling Escape here would preventDefault before the overlay's own
+    // handler sees it, clearing the selection while the dialog stays open.
+    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) {
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
       onSelectionChange(new Set());
@@ -60,8 +68,9 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
-    // CTRL+A to select all
-    if (e.ctrlKey && e.key === "a") {
+    // CTRL+A to select all (key is compared lowercased so CapsLock cannot
+    // break the match; Shift is excluded to keep Ctrl+Shift+A inert)
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
       const allPaths = new Set(allItems.map((item) => item.path));
       onSelectionChange(allPaths);

@@ -7,7 +7,7 @@ import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
-import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
+import { useIsIndexing } from "@/hooks/backgroundJobs/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
@@ -55,7 +55,7 @@ const FileBrowserHeader = ({
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundJobActions();
-  const { isIndexing } = useBackgroundJobIndexer();
+  const isIndexing = useIsIndexing();
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
     openIndexerDialog();

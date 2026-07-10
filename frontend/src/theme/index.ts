@@ -14,7 +14,6 @@ import type {
   AppSettings,
   ConfigThemeColorsByModePayload as ThemeColorsByMode,
 } from "@/api";
-import { useConfig } from "@/hooks/useConfig";
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
@@ -713,17 +712,6 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     { value: resolvedTheme },
     children,
   );
-}
-
-export function ConfiguredAppThemeProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const { config } = useConfig();
-  const theme = useMemo(() => buildAppTheme(config.appSettings), [config]);
-
-  return createElement(AppThemeProvider, { value: theme, children });
 }
 
 export function useAppTheme() {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -24,6 +24,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
@@ -70,7 +71,12 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
   const [customOptions, setCustomOptions] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   // Debounced server whose shares are being browsed; "" disables the query.
-  const [browseServer, setBrowseServer] = useState("");
+  // Too-short input clears on the next tick instead of waiting out the delay.
+  const serverToBrowse = server.length >= 3 ? server : "";
+  const browseServer = useDebouncedValue(
+    serverToBrowse,
+    serverToBrowse ? 500 : 0,
+  );
 
   const { mutate: mountCIFS, isPending: isMounting } =
     linuxio.storage.mount_cifs.useJobAction({
@@ -80,15 +86,6 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => handleClose() },
     });
-
-  useEffect(() => {
-    const invalid = !server || server.length < 3;
-    const timeout = setTimeout(
-      () => setBrowseServer(invalid ? "" : server),
-      invalid ? 0 : 500,
-    );
-    return () => clearTimeout(timeout);
-  }, [server]);
 
   // Browsing is best-effort; on error the field falls back to free text.
   const sharesQuery = linuxio.storage.list_cifs_shares.useQuery(browseServer, {
@@ -137,7 +134,6 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
     setDomain("");
     setReadOnly(false);
     setCustomOptions("");
-    setBrowseServer("");
     setValidationError(null);
     onClose();
   };

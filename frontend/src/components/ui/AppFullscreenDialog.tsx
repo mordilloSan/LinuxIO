@@ -7,6 +7,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
+
 import "./app-fullscreen-dialog.css";
 
 export interface AppFullscreenDialogProps {
@@ -19,8 +21,6 @@ export interface AppFullscreenDialogProps {
   open: boolean;
   style?: CSSProperties;
 }
-
-const OVERLAY_ROOT_SELECTOR = ".app-dialog-root, .app-fullscreen-dialog-root";
 
 const AppFullscreenDialog = ({
   open,

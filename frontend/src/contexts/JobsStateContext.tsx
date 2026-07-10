@@ -11,7 +11,6 @@ export type BackgroundJobsStateContextValue = Pick<
   | "extractions"
   | "indexers"
   | "isIndexerDialogOpen"
-  | "isIndexing"
   | "lastIndexerError"
   | "lastIndexerResult"
   | "moves"

@@ -259,8 +259,8 @@ const applyDefaults = (
   };
 };
 
-const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig =>
-  applyDefaults({
+const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig => {
+  const next = applyDefaults({
     appSettings: patch.appSettings
       ? { ...prev.appSettings, ...patch.appSettings }
       : prev.appSettings,
@@ -279,6 +279,14 @@ const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig =>
         ? prev.dismissals
         : { ...prev.dismissals, ...patch.dismissals },
   });
+  // applyDefaults defensively clones themeColors, which would hand memo
+  // consumers (the theme provider) a fresh reference on every unrelated
+  // update; keep the previous object when the patch didn't touch it.
+  if (!patch.appSettings || !("themeColors" in patch.appSettings)) {
+    next.appSettings.themeColors = prev.appSettings.themeColors;
+  }
+  return next;
+};
 
 const getConfigValue = <K extends ConfigValueKey>(
   cfg: AppConfig,

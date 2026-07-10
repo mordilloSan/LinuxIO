@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BackgroundJobsIndexerContext } from "@/contexts/IndexerContext";
+import {
+  BackgroundJobsIndexerContext,
+  BackgroundJobsIsIndexingContext,
+} from "@/contexts/IndexerContext";
 import type { BackgroundJobsIndexerContextValue } from "@/contexts/IndexerContext";
 import { BackgroundJobsActionsContext } from "@/contexts/JobsActionsContext";
 import type { BackgroundJobsActionsContextValue } from "@/contexts/JobsActionsContext";
@@ -9,6 +12,7 @@ import type { BackgroundJobsStateContextValue } from "@/contexts/JobsStateContex
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
 import { useBackgroundJobState } from "@/hooks/backgroundJobs/useBackgroundJobState";
+import { useIsIndexing } from "@/hooks/backgroundJobs/useIsIndexing";
 import { renderHook } from "@/test/render";
 
 const stateValue: BackgroundJobsStateContextValue = {
@@ -19,7 +23,6 @@ const stateValue: BackgroundJobsStateContextValue = {
   extractions: [],
   indexers: [],
   isIndexerDialogOpen: false,
-  isIndexing: false,
   lastIndexerError: null,
   lastIndexerResult: null,
   moves: [],
@@ -49,7 +52,6 @@ const actionsValue: BackgroundJobsActionsContextValue = {
 const indexerValue: BackgroundJobsIndexerContextValue = {
   indexers: [],
   isIndexerDialogOpen: true,
-  isIndexing: true,
   lastIndexerError: "failed",
   lastIndexerResult: null,
 };
@@ -65,6 +67,21 @@ describe("background job context hooks", () => {
     expect(() => renderHook(() => useBackgroundJobIndexer())).toThrow(
       "useBackgroundJobIndexer must be used within BackgroundJobsProvider",
     );
+    expect(() => renderHook(() => useIsIndexing())).toThrow(
+      "useIsIndexing must be used within BackgroundJobsProvider",
+    );
+  });
+
+  it("returns the isIndexing boolean from its own context", () => {
+    const isIndexing = renderHook(() => useIsIndexing(), {
+      wrapper: ({ children }) => (
+        <BackgroundJobsIsIndexingContext.Provider value={false}>
+          {children}
+        </BackgroundJobsIsIndexingContext.Provider>
+      ),
+    });
+
+    expect(isIndexing.result.current).toBe(false);
   });
 
   it("returns state, action, and indexer contexts from providers", () => {
