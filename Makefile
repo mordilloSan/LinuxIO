@@ -378,6 +378,9 @@ golint: ensure-golint
 test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
+	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"' EXIT; \
+	export FRONTEND_LINT_WARNINGS_FILE; \
 	$(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
 	$(MAKE) --no-print-directory tsc-only     & PID_TSC=$$!; \
 	$(MAKE) --no-print-directory golint-only  & PID_GOLINT=$$!; \
@@ -390,6 +393,11 @@ test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
+	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
+	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
+	  $(PRINTC) "$(COLOR_YELLOW)   Warnings are non-blocking; review the Oxlint output above or run 'make lint'.$(COLOR_RESET)"; \
+	fi; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -399,12 +407,20 @@ test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
 check-frontend: ensure-node setup
 	@set -uo pipefail; \
 	ST=0; \
+	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"' EXIT; \
+	export FRONTEND_LINT_WARNINGS_FILE; \
 	$(MAKE) --no-print-directory lint-only & PID_LINT=$$!; \
 	$(MAKE) --no-print-directory tsc-only  & PID_TSC=$$!; \
 	wait $$PID_LINT || ST=1; \
 	wait $$PID_TSC  || ST=1; \
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
+	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
+	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  Frontend checks completed with $$FRONTEND_LINT_WARNINGS lint warning(s).$(COLOR_RESET)"; \
+	  $(PRINTC) "$(COLOR_YELLOW)   Warnings are non-blocking; review the Oxlint output above or run 'make lint'.$(COLOR_RESET)"; \
+	fi; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Frontend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -446,8 +462,15 @@ lint-only:
 	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
 	@bash -c ' \
 	  cd frontend; \
-	  ./node_modules/.bin/oxlint --type-aware --fix src; \
-	  status=$$?; \
+	  lint_output="$$(mktemp)"; \
+	  trap "rm -f \"$$lint_output\"" EXIT; \
+	  ./node_modules/.bin/oxlint --type-aware --fix src 2>&1 | tee "$$lint_output"; \
+	  status=$${PIPESTATUS[0]}; \
+	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
+	  if [ -n "$$warning_count" ]; then \
+	    echo "⚠️  Oxlint completed with $$warning_count warning(s); warnings are non-blocking."; \
+	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
+	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
 	  ./node_modules/.bin/oxfmt --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx"; \
 	  status=$$?; \
