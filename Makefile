@@ -58,6 +58,11 @@ COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
+# Go's test cache re-runs only packages whose inputs changed. Pass
+# GO_TEST_FLAGS=-count=1 to force a full fresh run (or: go clean -testcache).
+GO_TEST_FLAGS ?=
+# Captured at Makefile parse so the `make test` timer includes prerequisites.
+TEST_TIMER_START := $(shell date +%s%N)
 
 MODULE_PATH = $(shell awk '/^module / {print $$2; exit}' "$(BACKEND_DIR)/go.mod" 2>/dev/null || echo "github.com/mordilloSan/LinuxIO/backend")
 
@@ -148,6 +153,7 @@ GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_TOOLS_DIR)/bin/golangci-lint
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 MODERNIZE_VERSION     ?= latest
+MODERNIZE             := $(GO_TOOLS_DIR)/bin/modernize
 DEADCODE_MODULE       := golang.org/x/tools/cmd/deadcode
 DEADCODE_VERSION      ?= latest
 DEADCODE              := $(GO_TOOLS_DIR)/bin/deadcode
@@ -337,6 +343,18 @@ ensure-deadcode: ensure-go
 	   echo "✅ deadcode ready."; \
 	}
 
+ensure-modernize: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(MODERNIZE)"; \
+	   if [ ! -x "$$bin" ]; then \
+	     echo "📥 Installing modernize $(MODERNIZE_VERSION) with local Go ($(GO_BIN))..."; \
+	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)"; \
+	   fi; \
+	   "$$bin" -h >/dev/null 2>&1 || { echo "❌ modernize is installed but not runnable"; exit 1; }; \
+	   echo "✅ modernize ready."; \
+	}
+
 setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
@@ -372,48 +390,59 @@ lint: ensure-node setup
 tsc: ensure-node setup
 	@$(MAKE) --no-print-directory tsc-only
 
-golint: ensure-golint
+golint: ensure-golint ensure-modernize
 	@$(MAKE) --no-print-directory golint-only
 
-test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
-	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"' EXIT; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
-	$(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only     & PID_TSC=$$!; \
-	$(MAKE) --no-print-directory golint-only  & PID_GOLINT=$$!; \
-	wait $$PID_LINT   || ST=1; \
-	wait $$PID_TSC    || ST=1; \
-	wait $$PID_GOLINT || ST=1; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/golint"; \
+	$(MAKE) --no-print-directory lint-only   > "$$TMPDIR_JOBS/lint"   2>&1 & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only    > "$$TMPDIR_JOBS/tsc"    2>&1 & PID_TSC=$$!; \
+	$(MAKE) --no-print-directory golint-only > "$$TMPDIR_JOBS/golint" 2>&1 & PID_GOLINT=$$!; \
+	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
+	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
+	follow "$$TMPDIR_JOBS/tsc"    $$PID_TSC    || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	touch "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1   > "$$TMPDIR_JOBS/be"   2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	follow "$$TMPDIR_JOBS/fe"   $$PID_FE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
 	  $(PRINTC) "$(COLOR_YELLOW)   Warnings are non-blocking; review the Oxlint output above or run 'make lint'.$(COLOR_RESET)"; \
 	fi; \
+	ELAPSED="$$(awk -v ns=$$(( $$(date +%s%N) - $(TEST_TIMER_START) )) 'BEGIN{printf "%.1f", ns/1e9}')"; \
 	if [ $$ST -ne 0 ]; then \
-	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET)"; \
+	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"; \
 	  exit 1; \
 	fi; \
-	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)"
+	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"
 
 check-frontend: ensure-node setup
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
-	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"' EXIT; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
-	$(MAKE) --no-print-directory lint-only & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only  & PID_TSC=$$!; \
-	wait $$PID_LINT || ST=1; \
-	wait $$PID_TSC  || ST=1; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc"; \
+	$(MAKE) --no-print-directory lint-only > "$$TMPDIR_JOBS/lint" 2>&1 & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only  > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
+	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
+	follow "$$TMPDIR_JOBS/lint" $$PID_LINT || ST=1; \
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
@@ -427,14 +456,20 @@ check-frontend: ensure-node setup
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ Frontend checks passed!$(COLOR_RESET)"
 
-check-backend: ensure-go ensure-golint ensure-deadcode
+check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 	@set -uo pipefail; \
 	ST=0; \
 	$(MAKE) --no-print-directory golint-only || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TMPDIR_JOBS"' EXIT; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/be"   2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -446,7 +481,7 @@ test-frontend: ensure-node setup
 
 test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
-	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run | sed "/^$$/d" && echo "✅ Frontend unit tests passed!"'
+	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -496,7 +531,7 @@ endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
-	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(MODERNIZE)" -fix ./... )
 	@echo "   Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
@@ -504,10 +539,9 @@ endif
 test-backend: $(GO_BUILD_PREREQ)
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
-		status=$$?; \
-		echo "$$out" | grep -v '\[no test files\]' || true; \
-		exit $$status
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... $(GO_TEST_FLAGS) -timeout 5m 2>&1 \
+		| grep --line-buffered -v '\[no test files\]'; \
+		exit "$${PIPESTATUS[0]}"
 
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
@@ -874,6 +908,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-deadcode  $(COLOR_RESET) Install deadcode (built with local Go $(GO_VERSION))"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Bump frontend package.json to latest + npm install"
 	@$(PRINTC) ""
@@ -951,6 +986,6 @@ cloc-breakdown:
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
-  ensure-node ensure-go ensure-golint ensure-deadcode \
+  ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   cloc cloc-clean cloc-breakdown
