@@ -1,7 +1,7 @@
 # Execution Architecture Migration Plan
 
-Status: reviewed against the current repository on 2026-07-14. No runtime
-migration stage has started.
+Status: reviewed against baseline commit `0cbe62cc6542` on 2026-07-16. No
+runtime migration stage has started.
 
 ## Decision
 
@@ -90,9 +90,9 @@ Other relevant facts:
   bridge shutdown explicitly cancels the session's jobs. It is not durable.
 - Job start waits up to 25 ms and returns a snapshot; later state is recovered
   through attach, events, polling, and frontend reconciliation.
-- There are 123 production `useJobAction` call sites in 46 frontend files and 8
-  `useJobStreamAction` call sites in 6 files. Their UI behavior must be migrated,
-  not deleted blindly.
+- Production `useJobAction` and `useJobStreamAction` consumers are recorded by
+  the Stage 0 manifest and its validation rather than by volatile prose counts.
+  Their UI behavior must be migrated, not deleted blindly.
 - The current download frontend collects chunks into memory and creates a Blob.
   The discarded HTTP benchmark also created a Blob, so it proved transport
   throughput but did not prove bounded browser memory.
@@ -272,10 +272,15 @@ operations. It must never accept arbitrary argv or a raw serialized RPC request.
 7. Action admission control is request-scoped and ID-free. Preserve required
    serialization, concurrency, queue/reject, rate, and timeout behavior without
    recreating a job registry.
-8. Every mutation has an Info-level structured audit completion record with a
-   safe correlation ID, route/operation, actor username and UID, outcome,
-   duration, and allowlisted operation fields. Queries remain Debug-level unless
-   they have an explicit audit requirement.
+8. Every mutation declares an authoritative audit writer, commit point, and
+   outcome phase. Completed request-owned work has an Info-level completion
+   record; native handoffs and expected-loss actions record acceptance before
+   destructive effects; durable work records both accepted and terminal state
+   transitions. Records contain a safe correlation ID, route/operation, actor
+   username and UID, outcome, duration where known, and allowlisted operation
+   fields. Queries remain Debug-level unless they have an explicit audit
+   requirement. The webserver may access-log but is never the authority for
+   bridge business completion.
 9. Raw session IDs are not logged. Generic middleware never logs decoded
    requests. Domain logs add targets such as unit, path, or resource only after
    redaction rules are defined.
@@ -363,7 +368,7 @@ timeout
 concurrency/admission scope
 idempotency/retry rule
 privilege and execution UID/GID
-audit event and allowlisted fields
+audit event, authoritative writer, commit point, outcome phase, and allowlisted fields
 frontend consumers
 cache invalidations
 accepted-operation convergence query/event and success condition
@@ -453,6 +458,12 @@ The webserver proxy must:
 - Strip browser `Cookie`, `Authorization`, forwarding, proxy, and internal trust
   headers before proxying; inject only server-owned identity metadata if needed.
 - Avoid logging raw filesystem query parameters.
+- Record whether file targets use an encoded path or an opaque transfer ticket.
+  The simple encoded-path contract accepts that target paths can appear in
+  browser download metadata and TLS-terminating proxy request logs even though
+  LinuxIO redacts them. Use a short-lived opaque ticket only if path
+  confidentiality is a product requirement; do not replace native GET/Range
+  downloads with POST merely to hide the path.
 - Disable compression and HTTP keep-alive on the private hop so one request owns
   one yamux stream.
 - Acquire shared global, per-UID, and per-session upload/download admission
@@ -484,9 +495,12 @@ Avoid forced flush on every proxy copy for fixed-length downloads.
 - Sanitize `Content-Disposition` filenames.
 - Use a normal browser navigation/anchor so the browser download manager owns
   streaming, resume, progress, and cancellation. Do not use `fetch().blob()`.
-- Accept that the universal baseline no longer shows byte-level progress in the
-  LinuxIO UI. A File System Access API enhancement is optional and not required
-  for migration.
+- After handoff, the normal download has no LinuxIO transfer entry, byte
+  progress, in-app cancellation, completion detection, or authoritative success
+  toast; the browser download manager owns that lifecycle. LinuxIO may show a
+  non-authoritative "download handed to browser" notification. Durable archive
+  preparation remains visible until its artifact is ready. A File System Access
+  API enhancement is optional and not required for migration.
 
 ### Upload
 
@@ -552,7 +566,7 @@ typed operation start routes -> JobHandle
 durable_jobs.sync         // atomic owned snapshot + event cursor
 durable_jobs.get
 durable_jobs.list
-durable_jobs.cancel       // direct Action
+durable_jobs.cancel       // native-handoff Action returning CancelAccepted
 durable_jobs.events       // replay after cursor; ordered and reconnectable
 durable_jobs.log_tail     // bounded Query backed by journald, if the UI needs it
 durable_jobs.logs_follow  // one generic filtered Duplex route, if the UI needs it
@@ -571,8 +585,14 @@ Required semantics:
   `resync_required` rather than silently dropping events.
 - Owner-based authorization using trusted peer/session credentials.
 - Reconciliation between persisted state and systemd/native executor state.
-- Cancel marks terminal cancellation only after the executor is confirmed
-  stopped; completion/cancel races have a deterministic winner.
+- Cancel validates ownership, durably records cancellation intent, hands the
+  stop request to the durable/native controller, and promptly returns a typed
+  disposition such as `requested`, `already_requested`, or `already_terminal`.
+  Repeated requests are idempotent. The control request has a bounded timeout;
+  it does not wait for worker death. Only the event stream marks terminal
+  `canceled`, after the executor is confirmed stopped. One authoritative writer
+  gives completion/cancel races a deterministic winner and reconciliation
+  closes crash windows between the persistent intent and native stop request.
 - Worker runs as the declared UID/GID with explicit working directory,
   environment allowlist, filesystem access, resource limits, runtime cap, and
   systemd sandbox properties.
@@ -615,15 +635,36 @@ Exit criteria:
 
 **STOP 0: present the manifest and baseline for approval.**
 
+### Security prerequisite S — Redact legacy job snapshots
+
+Ship this as an independently reviewable security change before Stage 1. It is
+not coupled to the Action/code-generation foundation and does not migrate any
+route:
+
+- Remove decoded requests from public legacy snapshots and every start, get,
+  list, cancel, event, and attach response.
+- Replace frontend recovery/display dependencies with default-deny,
+  route-declared, typed safe operation metadata. Passwords, tokens, cloud-init
+  data, share credentials, and other request secrets must never cross back to
+  the browser.
+- Keep execution input private only while the legacy job needs it and release it
+  on queued cancellation or terminal completion.
+- Test every public snapshot path plus generated frontend recovery and labels.
+
+Exit criteria:
+
+- Credential-bearing request fields are absent from all browser-visible job
+  state and event history.
+- Existing recoverable job UX uses only reviewed safe metadata.
+- No production route mode or execution behavior changes.
+- `make test` passes.
+
+**STOP S: present the redaction proof before beginning the Action foundation.**
+
 ### Stage 1 — Add the direct-action and mode-safe API foundation
 
 Backend:
 
-- Remove the decoded request from public legacy snapshots/list/get/events before
-  any broader migration. Replace frontend recovery/display needs with typed,
-  explicitly safe operation metadata; password-bearing legacy requests must
-  never cross back to the browser. Keep sensitive execution input private and
-  release it when the legacy job becomes terminal.
 - Add `ModeAction` and typed `apischema.Action` while retaining legacy jobs.
 - Reuse the existing typed handler adapter and reject action progress/data.
 - Derive a one-shot Query/Action context that cancels on explicit abort,
@@ -658,8 +699,6 @@ Exit criteria:
 - Compile-time tests reject invalid endpoint hooks.
 - Bootstrap capability fetch works without QueryClient, and logout/identity
   change cancels work and clears both QueryCache and MutationCache.
-- Legacy snapshot/list/event tests prove credential-bearing request fields are
-  absent or irreversibly redacted.
 - Integration tests prove handler context cancellation on abort and EOF.
 - Retry, timeout, admission, logging redaction, and identity-switch tests pass.
 - No production route has migrated yet.
@@ -707,7 +746,7 @@ the coexistence layer remains intact.
   bound transparent cache writes.
 
 Document the archive split in the manifest, but do not create an intermediate
-legacy implementation. Perform that split once in Stage 12, when durable
+legacy implementation. Perform that split once in Stage 11, when durable
 artifact creation and HTTP delivery are both available.
 
 Exit criteria:
@@ -762,6 +801,8 @@ Security tests must prove:
 - Session A cannot select session B's bridge or files.
 - Cross-origin, expired session, stripped-header, method/path allowlist, size,
   cancellation, and shutdown behavior are correct.
+- Production session cookies remain explicitly `SameSite=Strict`, `Secure`, and
+  `HttpOnly`; regression tests fail if those defaults are relaxed accidentally.
 - A stalled stream-kind sender times out without blocking other classifications,
   and classifier concurrency remains bounded.
 - Old-webserver/new-bridge and new-webserver/old-bridge combinations fail closed;
@@ -781,6 +822,16 @@ consumer depends on it yet.
 - Run old and new paths side by side during verification.
 - Change normal single-file download to browser-native HTTP navigation.
 - Keep archive download on the legacy path.
+- Add a browser-realistic cross-site file-GET test. The production Strict
+  session cookie must prevent an authenticated cross-site navigation. If the
+  route also enforces Fetch Metadata, accept the anchor-download shape
+  (`Sec-Fetch-Site: same-origin`, normally `Sec-Fetch-Dest: empty`), define the
+  policy for absent headers/non-browser clients, and reject untrusted
+  `cross-site` and, unless explicitly trusted, `same-site` initiators.
+- Deliberately remove normal downloads from LinuxIO's global transfer indicator
+  after browser handoff. Browser UI owns progress, cancellation, and completion;
+  LinuxIO may report only that the handoff started. Keep archive preparation in
+  the durable-job UI until its artifact is ready.
 
 Exit criteria:
 
@@ -794,7 +845,8 @@ Exit criteria:
   active progress prevents idle-only expiration.
 - `make test` passes.
 
-**STOP 6: review download UX and real-condition results.**
+**STOP 6: approve the browser-owned download UX, path-confidentiality decision,
+cross-site defense, and real-condition results.**
 
 ### Stage 7 — Cut over single-file upload and editor saves
 
