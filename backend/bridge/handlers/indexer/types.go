@@ -9,8 +9,8 @@ type IndexerProgress struct {
 	State        string `json:"state,omitempty"`
 	Message      string `json:"message,omitempty"`
 	Path         string `json:"path,omitempty"`
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
+	FilesIndexed int64  `json:"files_indexed,omitempty"`
+	DirsIndexed  int64  `json:"dirs_indexed,omitempty"`
 	BytesIndexed int64  `json:"bytes_indexed,omitempty"`
 	CurrentPath  string `json:"current_path,omitempty"`
 	Phase        string `json:"phase,omitempty"`
