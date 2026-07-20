@@ -586,7 +586,7 @@ const IndexerSettingsSection = () => {
         />
         <ToggleCard
           checked={draft.fts_search}
-          description="On: faster search. Off: faster, smaller full indexes."
+          description="Faster search; slower indexing."
           disabled={busy}
           label="Fast search"
           onChange={(checked) => updateDraft("fts_search", checked)}

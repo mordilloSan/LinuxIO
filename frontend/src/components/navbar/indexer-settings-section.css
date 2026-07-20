@@ -4,16 +4,17 @@
 
 .indexer-toggle-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  column-gap: 6px;
-  row-gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 @media (max-width: 599.95px) {
   .indexer-status-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
 
+@media (max-width: 719.95px) {
   .indexer-toggle-grid {
     grid-template-columns: 1fr;
   }
