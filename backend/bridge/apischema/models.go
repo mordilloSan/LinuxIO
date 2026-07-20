@@ -721,6 +721,7 @@ type UsersGroupsResponse struct {
 
 type IndexerStatusResponse struct {
 	DirsIndexed  int     `json:"dirs_indexed"`
+	FTSActive    bool    `json:"fts_active"`
 	FilesIndexed int     `json:"files_indexed"`
 	LastIndexed  *string `json:"last_indexed,omitempty"`
 	Running      bool    `json:"running"`
@@ -976,6 +977,7 @@ type IndexerConfig struct {
 	DBPath               string `json:"db_path"`
 	DBSynchronous        string `json:"db_synchronous"`
 	FreshIndex           bool   `json:"fresh_index"`
+	FTSSearch            bool   `json:"fts_search"`
 	IncludeHidden        bool   `json:"include_hidden"`
 	IncludeNetworkMounts bool   `json:"include_network_mounts"`
 	IndexName            string `json:"index_name"`
@@ -1001,6 +1003,7 @@ type IndexerDaemonStatus struct {
 	ActiveOperation *string `json:"active_operation,omitempty"`
 	ActivePath      *string `json:"active_path,omitempty"`
 	DatabaseSize    int64   `json:"database_size"`
+	FTSActive       bool    `json:"fts_active"`
 	LastIndexed     *string `json:"last_indexed,omitempty"`
 	NumDirs         int     `json:"num_dirs"`
 	NumFiles        int     `json:"num_files"`

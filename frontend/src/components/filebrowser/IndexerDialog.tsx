@@ -1,8 +1,10 @@
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
+import { indexerPhaseLabel } from "@/hooks/backgroundJobs/indexerProgress";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
+import { formatFileSize } from "@/utils/formaters";
 
 const IndexerDialog = () => {
   const { closeIndexerDialog } = useBackgroundJobActions();
@@ -18,17 +20,13 @@ const IndexerDialog = () => {
   const dirsIndexed = isRunning
     ? (activeIndexer?.dirsIndexed ?? 0)
     : (lastIndexerResult?.dirsIndexed ?? 0);
+  const indexedSize = isRunning
+    ? (activeIndexer?.bytesIndexed ?? 0)
+    : (lastIndexerResult?.totalSize ?? 0);
 
   const getPhaseLabel = () => {
-    if (isRunning) {
-      switch (activeIndexer?.phase) {
-        case "connecting":
-          return "Connecting to indexer...";
-        case "indexing":
-          return "Indexing filesystem...";
-        default:
-          return "Processing...";
-      }
+    if (isRunning && activeIndexer) {
+      return indexerPhaseLabel(activeIndexer);
     }
 
     if (success) {
@@ -52,6 +50,12 @@ const IndexerDialog = () => {
     {
       value: dirsIndexed.toLocaleString(),
       label: "Directories indexed",
+      valueColor: "primary.main",
+      valueVariant: "h4",
+    },
+    {
+      value: formatFileSize(indexedSize, 1, "0 Bytes"),
+      label: isRunning ? "Data indexed" : "Indexed size",
       valueColor: "primary.main",
       valueVariant: "h4",
     },

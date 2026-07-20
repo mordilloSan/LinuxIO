@@ -10,6 +10,16 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 const MODES = ROUTE_MODES as Record<string, string>;
 
 describe("ROUTE_INVALIDATIONS", () => {
+  it("refreshes index-backed data after indexing", () => {
+    expect(ROUTE_INVALIDATIONS["filebrowser.index"]).toEqual([
+      ["linuxio", "indexer", "get_status"],
+      ["linuxio", "filebrowser", "indexer_status"],
+      ["linuxio", "filebrowser", "search"],
+      ["linuxio", "filebrowser", "dir_size"],
+      ["linuxio", "filebrowser", "subfolders"],
+    ]);
+  });
+
   it("maps only job routes", () => {
     for (const route of Object.keys(ROUTE_INVALIDATIONS)) {
       expect(MODES[route], `${route} is not a job route`).toBe("job");

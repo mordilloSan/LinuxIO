@@ -16,6 +16,7 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 		}
 		return jsonResponse(http.StatusOK, `{
 			"status": "indexing",
+			"fts_active": true,
 			"num_dirs": 12,
 			"num_files": 345,
 			"total_size": 4096,
@@ -41,5 +42,8 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 	}
 	if status.DatabaseSize != 1048576 || status.TotalOnDisk != 1081344 {
 		t.Fatalf("unexpected storage counters: %#v", status)
+	}
+	if !status.FTSActive {
+		t.Fatalf("fts_active = false, want true")
 	}
 }

@@ -34,6 +34,12 @@ import type {
 } from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
+import {
+  indexerResultFromFrame,
+  mergeIndexerProgress,
+  type IndexerProgressFrame,
+  type IndexerResultFrame,
+} from "./indexerProgress";
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
 function requestObject(request: unknown): Record<string, unknown> {
@@ -313,6 +319,7 @@ export function useRecoveredJobs(
               jobId: job.id,
               type: "indexer",
               path: requestString(request, "path") ?? "/",
+              bytesIndexed: 0,
               filesIndexed: 0,
               dirsIndexed: 0,
               totalSize: 0,
@@ -320,56 +327,31 @@ export function useRecoveredJobs(
               currentPath: "",
               phase: "connecting",
               progress: 0,
-              label: "Indexing in progress...",
+              label: "Connecting to indexer...",
+              state: "connecting",
               abortController,
             },
           ]);
           attach({
             onProgress: (nextProgress) => {
-              const indexProgress = nextProgress as ProgressFrame & {
-                files_indexed?: number;
-                dirs_indexed?: number;
-                current_path?: string;
-                phase?: string;
-              };
               setIndexers((prev) =>
-                prev.map((item) => {
-                  if (item.id !== job.id) return item;
-                  const filesIndexed =
-                    indexProgress.files_indexed ?? item.filesIndexed;
-                  const dirsIndexed =
-                    indexProgress.dirs_indexed ?? item.dirsIndexed;
-                  const phase = indexProgress.phase ?? item.phase;
-                  return {
-                    ...item,
-                    filesIndexed,
-                    dirsIndexed,
-                    currentPath: indexProgress.current_path ?? item.currentPath,
-                    phase,
-                    label:
-                      phase === "connecting"
-                        ? "Connecting to indexer..."
-                        : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
-                  };
-                }),
+                prev.map((item) =>
+                  item.id === job.id
+                    ? mergeIndexerProgress(
+                        item,
+                        nextProgress as IndexerProgressFrame,
+                      )
+                    : item,
+                ),
               );
             },
             onSuccess: (result) => {
-              const summaryResult = result as
-                | {
-                    files_indexed?: number;
-                    dirs_indexed?: number;
-                    total_size?: number;
-                    duration_ms?: number;
-                  }
-                | undefined;
-              setLastIndexerResult({
-                path: requestString(request, "path") ?? "/",
-                filesIndexed: summaryResult?.files_indexed ?? 0,
-                dirsIndexed: summaryResult?.dirs_indexed ?? 0,
-                totalSize: summaryResult?.total_size ?? 0,
-                durationMs: summaryResult?.duration_ms ?? 0,
-              });
+              setLastIndexerResult(
+                indexerResultFromFrame(
+                  requestString(request, "path") ?? "/",
+                  result as IndexerResultFrame | undefined,
+                ),
+              );
               setLastIndexerError(null);
             },
             onError: (error) => {

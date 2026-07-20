@@ -6,13 +6,18 @@ import {
   type JobSnapshot,
   linuxio,
   openJobAttachStream,
-  type ProgressFrame,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import type { ActiveIndexer, Indexer } from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
+import {
+  indexerResultFromFrame,
+  mergeIndexerProgress,
+  type IndexerProgressFrame,
+  type IndexerResultFrame,
+} from "./indexerProgress";
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
 export function useIndexerJobs(runtime: BackgroundJobRuntime) {
@@ -102,14 +107,17 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
         jobId: id,
         type: "indexer",
         path,
+        bytesIndexed: 0,
         filesIndexed: 0,
         dirsIndexed: 0,
         totalSize: 0,
         durationMs: 0,
         currentPath: "",
+        operation: path && path !== "/" ? "reindex" : "index",
         phase: "connecting",
         progress: 0,
         label: "Starting indexer...",
+        state: "connecting",
         abortController,
       };
 
@@ -118,14 +126,8 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
       pendingLocalJobKeysRef.current.delete(pendingKey);
 
       void runStreamResult<
-        | {
-            files_indexed?: number;
-            dirs_indexed?: number;
-            total_size?: number;
-            duration_ms?: number;
-          }
-        | undefined,
-        ProgressFrame
+        IndexerResultFrame | undefined,
+        IndexerProgressFrame
       >({
         open: () => openJobAttachStream(id),
         signal: abortController.signal,
@@ -139,47 +141,18 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
           );
         },
         onProgress: (progress) => {
-          const progressData = progress as ProgressFrame & {
-            files_indexed?: number;
-            dirs_indexed?: number;
-            current_path?: string;
-            phase?: string;
-          };
-
           setIndexers((prev) =>
-            prev.map((r) => {
-              if (r.id !== id) return r;
-              const filesIndexed = progressData.files_indexed ?? r.filesIndexed;
-              const dirsIndexed = progressData.dirs_indexed ?? r.dirsIndexed;
-              const currentPath = progressData.current_path ?? r.currentPath;
-              const phase = progressData.phase ?? "indexing";
-
-              return {
-                ...r,
-                filesIndexed,
-                dirsIndexed,
-                currentPath,
-                phase,
-                label:
-                  phase === "connecting"
-                    ? "Connecting to indexer..."
-                    : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
-              };
-            }),
+            prev.map((item) =>
+              item.id === id ? mergeIndexerProgress(item, progress) : item,
+            ),
           );
         },
         onSuccess: (result) => {
-          const summary = {
-            path,
-            filesIndexed: result?.files_indexed ?? 0,
-            dirsIndexed: result?.dirs_indexed ?? 0,
-            totalSize: result?.total_size ?? 0,
-            durationMs: result?.duration_ms ?? 0,
-          };
+          const summary = indexerResultFromFrame(path, result);
           setLastIndexerResult(summary);
           setLastIndexerError(null);
           toast.success(
-            `Indexing complete: ${result?.files_indexed ?? 0} files, ${result?.dirs_indexed ?? 0} dirs`,
+            `Indexing complete: ${summary.filesIndexed} files, ${summary.dirsIndexed} dirs`,
           );
           onComplete?.(summary);
         },

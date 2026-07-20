@@ -1025,6 +1025,7 @@ type indexerEntryCountResponse struct {
 type indexerStatusResponse struct {
 	Running      bool   `json:"running"`
 	Status       string `json:"status"`
+	FTSActive    bool   `json:"fts_active"`
 	FilesIndexed int64  `json:"files_indexed"`
 	DirsIndexed  int64  `json:"dirs_indexed"`
 	TotalSize    int64  `json:"total_size"`
@@ -1131,6 +1132,7 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 
 	var raw struct {
 		Status      string `json:"status"`
+		FTSActive   bool   `json:"fts_active"`
 		NumDirs     int64  `json:"num_dirs"`
 		NumFiles    int64  `json:"num_files"`
 		TotalSize   int64  `json:"total_size"`
@@ -1149,8 +1151,9 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 	}
 
 	return indexerStatusResponse{
-		Running:      status == "running",
+		Running:      status == "running" || status == "indexing",
 		Status:       status,
+		FTSActive:    raw.FTSActive,
 		FilesIndexed: raw.NumFiles,
 		DirsIndexed:  raw.NumDirs,
 		TotalSize:    raw.TotalSize,

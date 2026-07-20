@@ -24,6 +24,14 @@ const FILEBROWSER_LISTING_KEYS = [
   key("filebrowser.subfolders"),
 ];
 
+const INDEXER_KEYS = [
+  key("indexer.get_status"),
+  key("filebrowser.indexer_status"),
+  key("filebrowser.search"),
+  key("filebrowser.dir_size"),
+  key("filebrowser.subfolders"),
+];
+
 const UNIT_KEYS = [key("systemd.list_services"), key("systemd.get_unit_info")];
 
 // The datetime handler prefix covers get_timezone/get_ntp_status/get_ntp_servers.
@@ -49,6 +57,7 @@ const VM_KEYS = [key("virt.list"), key("virt.get")];
  * own invalidation explicitly (conditional logic, cache writes, refetches).
  */
 export const ROUTE_INVALIDATIONS: Record<string, QueryKey[]> = {
+  "filebrowser.index": INDEXER_KEYS,
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.move_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.delete_batch": FILEBROWSER_LISTING_KEYS,

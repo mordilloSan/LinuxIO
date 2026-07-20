@@ -22,6 +22,7 @@ type configPatch struct {
 	IncludeHidden        *bool   `json:"include_hidden,omitempty"`
 	IncludeNetworkMounts *bool   `json:"include_network_mounts,omitempty"`
 	FreshIndex           *bool   `json:"fresh_index,omitempty"`
+	FTSSearch            *bool   `json:"fts_search,omitempty"`
 	KeepIndexes          *int    `json:"keep_indexes,omitempty"`
 	DBPath               *string `json:"db_path,omitempty"`
 	DBBusyTimeout        *string `json:"db_busy_timeout,omitempty"`

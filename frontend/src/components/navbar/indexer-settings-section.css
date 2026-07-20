@@ -1,10 +1,10 @@
 .indexer-status-grid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
 .indexer-toggle-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   column-gap: 6px;
   row-gap: 8px;
 }
@@ -12,10 +12,6 @@
 @media (max-width: 599.95px) {
   .indexer-status-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .indexer-status-grid > :nth-child(n + 4) {
-    display: none;
   }
 
   .indexer-toggle-grid {

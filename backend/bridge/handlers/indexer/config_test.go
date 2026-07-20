@@ -29,14 +29,14 @@ func TestFetchConfigUsesUnixConfigEndpoint(t *testing.T) {
 		if req.URL.Path != "/config" {
 			t.Fatalf("path = %s, want /config", req.URL.Path)
 		}
-		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "include_hidden": true }`, nil), nil
+		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "include_hidden": true, "fts_search": true }`, nil), nil
 	})
 
 	cfg, err := FetchConfig(context.Background())
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !cfg.IncludeHidden {
+	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !cfg.IncludeHidden || !cfg.FTSSearch {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -60,17 +60,20 @@ func TestUpdateConfigSendsTypedPatchAndReadsRestartHeader(t *testing.T) {
 		if !strings.Contains(got, `"include_hidden":false`) {
 			t.Fatalf("body missing explicit false: %s", got)
 		}
+		if !strings.Contains(got, `"fts_search":false`) {
+			t.Fatalf("body missing explicit fts_search false: %s", got)
+		}
 		if strings.Contains(got, `"db_path":null`) {
 			t.Fatalf("body included null fields: %s", got)
 		}
 
 		header := http.Header{"X-Indexer-Restart-Required": []string{"true"}}
-		return jsonResponse(http.StatusOK, `{ "index_path": "/data", "include_hidden": false }`, header), nil
+		return jsonResponse(http.StatusOK, `{ "index_path": "/data", "include_hidden": false, "fts_search": false }`, header), nil
 	})
 
 	cfg, restartRequired, err := UpdateConfig(
 		context.Background(),
-		[]byte(`{"index_path":"/data","include_hidden":false}`),
+		[]byte(`{"index_path":"/data","include_hidden":false,"fts_search":false}`),
 	)
 	if err != nil {
 		t.Fatalf("UpdateConfig: %v", err)
@@ -78,8 +81,35 @@ func TestUpdateConfigSendsTypedPatchAndReadsRestartHeader(t *testing.T) {
 	if !restartRequired {
 		t.Fatal("restartRequired = false, want true")
 	}
-	if cfg.IndexPath != "/data" || cfg.IncludeHidden {
+	if cfg.IndexPath != "/data" || cfg.IncludeHidden || cfg.FTSSearch {
 		t.Fatalf("config = %#v", cfg)
+	}
+}
+
+func TestUpdateConfigFTSSearchDoesNotRequireRestart(t *testing.T) {
+	withTestIndexerClient(t, func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if got := string(body); got != `{"fts_search":false}` {
+			t.Fatalf("body = %s, want fts_search patch", got)
+		}
+		return jsonResponse(http.StatusOK, `{ "fts_search": false }`, nil), nil
+	})
+
+	cfg, restartRequired, err := UpdateConfig(
+		context.Background(),
+		[]byte(`{"fts_search":false}`),
+	)
+	if err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+	if restartRequired {
+		t.Fatal("restartRequired = true, want false")
+	}
+	if cfg.FTSSearch {
+		t.Fatalf("fts_search = true, want false")
 	}
 }
 

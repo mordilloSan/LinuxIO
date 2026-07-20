@@ -56,15 +56,21 @@ export interface Extraction extends ByteTrackedJobItem<"extraction"> {
 
 export interface Indexer {
   abortController?: AbortController;
+  bytesIndexed?: number;
   currentPath?: string;
+  deletedEntries?: number;
+  deletedIndexes?: number;
   dirsIndexed: number;
   durationMs: number;
   filesIndexed: number;
   id?: string;
   label?: string;
+  message?: string;
+  operation?: string;
   path: string;
   phase?: string;
   progress?: number;
+  state?: string;
   stream?: Stream | null;
   totalSize: number;
   type?: "indexer";

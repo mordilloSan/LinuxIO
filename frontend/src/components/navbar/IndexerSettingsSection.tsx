@@ -9,6 +9,7 @@ import {
   type UnitInfo,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getFTSStatus } from "@/components/navbar/indexerFts";
 import {
   SettingsGrid,
   SettingsSaveFooter,
@@ -101,6 +102,9 @@ const toPatchPayload = (
   }
   if (patch.fresh_index !== undefined) {
     payload.fresh_index = patch.fresh_index;
+  }
+  if (patch.fts_search !== undefined) {
+    payload.fts_search = patch.fts_search;
   }
   if (patch.keep_indexes !== undefined) {
     payload.keep_indexes = Number(patch.keep_indexes);
@@ -356,6 +360,7 @@ const IndexerSettingsSection = () => {
     const payload = toPatchPayload(configPatch);
     const hasConfigChanges = Object.keys(payload).length > 0;
     const hasTimerChange = draftPatch.interval !== undefined;
+    const hasFTSSearchChange = draftPatch.fts_search !== undefined;
 
     if (!hasConfigChanges && !hasTimerChange) return;
 
@@ -389,6 +394,9 @@ const IndexerSettingsSection = () => {
       );
       if (nextRestartRequired) {
         toast.info("Restart indexer to apply database or listener changes.");
+      }
+      if (hasFTSSearchChange) {
+        toast.info("Run a full index to apply the selected search mode.");
       }
       void refetchStatus();
       void refetchTimer();
@@ -466,6 +474,11 @@ const IndexerSettingsSection = () => {
     );
   }
 
+  const ftsStatus = getFTSStatus(
+    draft.fts_search,
+    daemonStatus?.fts_active ?? false,
+  );
+
   return (
     <SettingsSectionShell {...shellProps}>
       {restartRequired ? (
@@ -529,6 +542,11 @@ const IndexerSettingsSection = () => {
                   label="Last indexed"
                   value={formatDate(daemonStatus.last_indexed)}
                 />
+                <StatusMetric
+                  detail={ftsStatus.detail}
+                  label="Search mode"
+                  value={ftsStatus.label}
+                />
               </>,
             )}
             {daemonStatus.warning ? (
@@ -565,6 +583,13 @@ const IndexerSettingsSection = () => {
           disabled={busy}
           label="Fresh index"
           onChange={(checked) => updateDraft("fresh_index", checked)}
+        />
+        <ToggleCard
+          checked={draft.fts_search}
+          description="On: faster search. Off: faster, smaller full indexes."
+          disabled={busy}
+          label="Fast search"
+          onChange={(checked) => updateDraft("fts_search", checked)}
         />
       </div>
 

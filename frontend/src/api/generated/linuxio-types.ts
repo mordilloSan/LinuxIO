@@ -1016,6 +1016,7 @@ export interface IndexerConfig {
   db_path: string;
   db_synchronous: string;
   fresh_index: boolean;
+  fts_search: boolean;
   include_hidden: boolean;
   include_network_mounts: boolean;
   index_name: string;
@@ -1032,6 +1033,7 @@ export interface IndexerConfigPatch {
   include_hidden?: boolean;
   include_network_mounts?: boolean;
   fresh_index?: boolean;
+  fts_search?: boolean;
   keep_indexes?: number;
   db_path?: string;
   db_busy_timeout?: string;
@@ -1055,6 +1057,7 @@ export interface IndexerDaemonStatus {
   active_operation?: string;
   active_path?: string;
   database_size: number;
+  fts_active: boolean;
   last_indexed?: string;
   num_dirs: number;
   num_files: number;
@@ -1071,6 +1074,7 @@ export interface IndexerDaemonStatus {
 
 export interface IndexerStatusResponse {
   dirs_indexed: number;
+  fts_active: boolean;
   files_indexed: number;
   last_indexed?: string;
   running: boolean;
