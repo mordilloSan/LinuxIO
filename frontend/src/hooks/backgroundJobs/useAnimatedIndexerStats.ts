@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 export interface IndexerDisplayStats {
   bytesIndexed: number;
@@ -75,25 +75,25 @@ function getPrefersReducedMotion(): boolean {
   );
 }
 
+function subscribeToReducedMotion(onStoreChange: () => void): () => void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return () => {};
+  }
+
+  const mediaQuery = window.matchMedia(reducedMotionQuery);
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
 function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
     getPrefersReducedMotion,
+    () => false,
   );
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia(reducedMotionQuery);
-    const onChange = (event: MediaQueryListEvent) => {
-      setPrefersReducedMotion(event.matches);
-    };
-    mediaQuery.addEventListener("change", onChange);
-    return () => mediaQuery.removeEventListener("change", onChange);
-  }, []);
-
-  return prefersReducedMotion;
 }
 
 /**
@@ -105,17 +105,22 @@ export function useAnimatedIndexerStats(
   stats: IndexerDisplayStats,
   { enabled, jobId }: UseAnimatedIndexerStatsOptions,
 ): IndexerDisplayStats {
-  const target = normalizeStats(stats);
-  const [displayed, setDisplayed] = useState(target);
+  const { bytesIndexed, dirsIndexed, filesIndexed } = stats;
+  const [displayed, setDisplayed] = useState(() => normalizeStats(stats));
   const displayedRef = useRef(displayed);
   const frameRef = useRef<number | null>(null);
   const previousJobIDRef = useRef(jobId);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    const target = normalizeStats({
+      bytesIndexed,
+      dirsIndexed,
+      filesIndexed,
+    });
     const cancelAnimation = () => {
       if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current);
+        window.cancelAnimationFrame?.(frameRef.current);
         frameRef.current = null;
       }
     };
@@ -126,15 +131,19 @@ export function useAnimatedIndexerStats(
     const jobChanged = previousJobIDRef.current !== jobId;
     previousJobIDRef.current = jobId;
     const current = displayedRef.current;
+    const animationAvailable =
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function";
 
     if (
       !enabled ||
       prefersReducedMotion ||
       jobChanged ||
       hasCounterDecrease(current, target) ||
-      typeof window.requestAnimationFrame !== "function"
+      !animationAvailable
     ) {
       cancelAnimation();
+      // oxlint-disable-next-line react-you-might-not-need-an-effect/no-adjust-state-on-prop-change, react-you-might-not-need-an-effect/no-external-store-subscription -- Snap to confirmed counters when animation cannot run.
       setDisplayedStats(target);
       return cancelAnimation;
     }
@@ -165,12 +174,12 @@ export function useAnimatedIndexerStats(
     frameRef.current = window.requestAnimationFrame(animate);
     return cancelAnimation;
   }, [
+    bytesIndexed,
+    dirsIndexed,
     enabled,
+    filesIndexed,
     jobId,
     prefersReducedMotion,
-    target.bytesIndexed,
-    target.dirsIndexed,
-    target.filesIndexed,
   ]);
 
   return displayed;

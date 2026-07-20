@@ -2,6 +2,7 @@ import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
 import { indexerPhaseLabel } from "@/hooks/backgroundJobs/indexerProgress";
+import { useAnimatedIndexerStats } from "@/hooks/backgroundJobs/useAnimatedIndexerStats";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
 import { formatFileSize } from "@/utils/formaters";
@@ -14,14 +15,25 @@ const IndexerDialog = () => {
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);
   const error = !isRunning ? lastIndexerError : null;
+  const animatedStats = useAnimatedIndexerStats(
+    {
+      bytesIndexed: activeIndexer?.bytesIndexed ?? 0,
+      dirsIndexed: activeIndexer?.dirsIndexed ?? 0,
+      filesIndexed: activeIndexer?.filesIndexed ?? 0,
+    },
+    {
+      enabled: isRunning && isIndexerDialogOpen,
+      jobId: activeIndexer?.id,
+    },
+  );
   const filesIndexed = isRunning
-    ? (activeIndexer?.filesIndexed ?? 0)
+    ? animatedStats.filesIndexed
     : (lastIndexerResult?.filesIndexed ?? 0);
   const dirsIndexed = isRunning
-    ? (activeIndexer?.dirsIndexed ?? 0)
+    ? animatedStats.dirsIndexed
     : (lastIndexerResult?.dirsIndexed ?? 0);
   const indexedSize = isRunning
-    ? (activeIndexer?.bytesIndexed ?? 0)
+    ? animatedStats.bytesIndexed
     : (lastIndexerResult?.totalSize ?? 0);
 
   const getPhaseLabel = () => {

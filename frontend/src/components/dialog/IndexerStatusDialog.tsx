@@ -133,9 +133,15 @@ const IndexerStatusDialog = ({
             gap: 8,
           }}
         >
-          <AppTypography color="text.secondary" variant="body2">
-            {phaseLabel}
-          </AppTypography>
+          {success ? (
+            <AppTypography color="success" variant="body2">
+              ✓ {successMessage}
+            </AppTypography>
+          ) : (
+            <AppTypography color="text.secondary" variant="body2">
+              {phaseLabel}
+            </AppTypography>
+          )}
 
           {hasProgressStats && (
             <div
@@ -145,6 +151,7 @@ const IndexerStatusDialog = ({
                 padding: 8,
                 backgroundColor: sectionBackground,
                 borderRadius: 4,
+                fontVariantNumeric: "tabular-nums",
               }}
             >
               {progressStats.map((stat) => (
@@ -170,14 +177,7 @@ const IndexerStatusDialog = ({
           )}
 
           {success && (
-            <div
-              style={{
-                marginTop: 8,
-              }}
-            >
-              <AppTypography color="success" gutterBottom variant="body2">
-                ✓ {successMessage}
-              </AppTypography>
+            <>
               {successDescription && (
                 <AppTypography
                   color="text.secondary"
@@ -313,7 +313,7 @@ const IndexerStatusDialog = ({
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
 
           {error && (
