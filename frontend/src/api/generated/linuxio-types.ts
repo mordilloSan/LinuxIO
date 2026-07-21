@@ -1019,6 +1019,7 @@ export interface IndexerConfig {
   fts_search: boolean;
   include_hidden: boolean;
   include_network_mounts: boolean;
+  integrity_check: IndexerIntegrityCheck;
   index_name: string;
   index_path: string;
   interval: string;
@@ -1035,6 +1036,7 @@ export interface IndexerConfigPatch {
   fresh_index?: boolean;
   fts_search?: boolean;
   keep_indexes?: number;
+  integrity_check?: IndexerIntegrityCheck;
   db_path?: string;
   db_busy_timeout?: string;
   db_journal_mode?: string;
@@ -1071,6 +1073,8 @@ export interface IndexerDaemonStatus {
   wal_size: number;
   warning?: string;
 }
+
+export type IndexerIntegrityCheck = "full" | "quick" | "off";
 
 export interface IndexerStatusResponse {
   dirs_indexed: number;

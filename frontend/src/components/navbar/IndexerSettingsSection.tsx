@@ -5,11 +5,16 @@ import {
   CACHE_TTL_MS,
   type IndexerConfig,
   type IndexerDaemonStatus,
+  type IndexerIntegrityCheck,
   linuxio,
   type UnitInfo,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getFTSStatus } from "@/components/navbar/indexerFts";
+import {
+  getIntegrityCheckOption,
+  INDEXER_INTEGRITY_CHECK_OPTIONS,
+} from "@/components/navbar/indexerIntegrity";
 import {
   SettingsGrid,
   SettingsSaveFooter,
@@ -77,6 +82,7 @@ const INDEXER_TIMER_UNIT = "indexer-index.timer";
 
 const toDraft = (config: IndexerConfig): DraftConfig => ({
   ...config,
+  integrity_check: config.integrity_check || "full",
   interval: compactGoDuration(config.interval),
   keep_indexes: String(config.keep_indexes),
   db_max_open_conns: String(config.db_max_open_conns),
@@ -108,6 +114,9 @@ const toPatchPayload = (
   }
   if (patch.keep_indexes !== undefined) {
     payload.keep_indexes = Number(patch.keep_indexes);
+  }
+  if (patch.integrity_check !== undefined) {
+    payload.integrity_check = patch.integrity_check;
   }
   if (patch.db_path !== undefined) {
     payload.db_path = patch.db_path.trim();
@@ -361,6 +370,7 @@ const IndexerSettingsSection = () => {
     const hasConfigChanges = Object.keys(payload).length > 0;
     const hasTimerChange = draftPatch.interval !== undefined;
     const hasFTSSearchChange = draftPatch.fts_search !== undefined;
+    const hasIntegrityCheckChange = draftPatch.integrity_check !== undefined;
 
     if (!hasConfigChanges && !hasTimerChange) return;
 
@@ -397,6 +407,11 @@ const IndexerSettingsSection = () => {
       }
       if (hasFTSSearchChange) {
         toast.info("Run a full index to apply the selected search mode.");
+      }
+      if (hasIntegrityCheckChange) {
+        toast.info(
+          "The integrity check mode will apply on the next indexing run.",
+        );
       }
       void refetchStatus();
       void refetchTimer();
@@ -478,6 +493,7 @@ const IndexerSettingsSection = () => {
     draft.fts_search,
     daemonStatus?.fts_active ?? false,
   );
+  const integrityCheckOption = getIntegrityCheckOption(draft.integrity_check);
 
   return (
     <SettingsSectionShell {...shellProps}>
@@ -759,7 +775,7 @@ const IndexerSettingsSection = () => {
 
       <SectionCard
         icon="mdi:database-cog-outline"
-        subtitle="SQLite path, durability, and connection pool."
+        subtitle="SQLite integrity checks, path, durability, and connection pool."
         title="Database"
       >
         <SettingsGrid minColumnWidth={220} rowGap={2.75}>
@@ -773,6 +789,27 @@ const IndexerSettingsSection = () => {
               size="small"
               value={draft.db_path}
             />
+            <AppTooltip title={integrityCheckOption.description}>
+              <AppSelect
+                disabled={busy}
+                fullWidth
+                label="Integrity check"
+                onChange={(event) =>
+                  updateDraft(
+                    "integrity_check",
+                    event.target.value as IndexerIntegrityCheck,
+                  )
+                }
+                size="small"
+                value={draft.integrity_check}
+              >
+                {INDEXER_INTEGRITY_CHECK_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </AppSelect>
+            </AppTooltip>
             <AppTextField
               disabled={busy}
               error={Boolean(errors.db_busy_timeout)}
@@ -869,6 +906,15 @@ const IndexerSettingsSection = () => {
             </AppSelect>
           </>
         </SettingsGrid>
+        {draft.integrity_check === "off" ? (
+          <div style={{ marginTop: theme.spacing(1.5) }}>
+            <AppAlert severity="warning">
+              <AppAlertTitle>Integrity checks disabled</AppAlertTitle>
+              Database corruption will not be checked before indexing and may
+              only be detected when another database operation fails.
+            </AppAlert>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SettingsSaveFooter

@@ -10,6 +10,7 @@ type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
+type IndexerIntegrityCheck string
 type JobState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
@@ -22,6 +23,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
+	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
@@ -968,24 +970,25 @@ type InstallCapabilityResult struct {
 }
 
 type IndexerConfig struct {
-	DBAutoVacuum         string `json:"db_auto_vacuum"`
-	DBBusyTimeout        string `json:"db_busy_timeout"`
-	DBConnMaxIdleTime    string `json:"db_conn_max_idle_time"`
-	DBJournalMode        string `json:"db_journal_mode"`
-	DBMaxIdleConns       int    `json:"db_max_idle_conns"`
-	DBMaxOpenConns       int    `json:"db_max_open_conns"`
-	DBPath               string `json:"db_path"`
-	DBSynchronous        string `json:"db_synchronous"`
-	FreshIndex           bool   `json:"fresh_index"`
-	FTSSearch            bool   `json:"fts_search"`
-	IncludeHidden        bool   `json:"include_hidden"`
-	IncludeNetworkMounts bool   `json:"include_network_mounts"`
-	IndexName            string `json:"index_name"`
-	IndexPath            string `json:"index_path"`
-	Interval             string `json:"interval"`
-	KeepIndexes          int    `json:"keep_indexes"`
-	ListenAddr           string `json:"listen_addr"`
-	SocketPath           string `json:"socket_path"`
+	DBAutoVacuum         string                `json:"db_auto_vacuum"`
+	DBBusyTimeout        string                `json:"db_busy_timeout"`
+	DBConnMaxIdleTime    string                `json:"db_conn_max_idle_time"`
+	DBJournalMode        string                `json:"db_journal_mode"`
+	DBMaxIdleConns       int                   `json:"db_max_idle_conns"`
+	DBMaxOpenConns       int                   `json:"db_max_open_conns"`
+	DBPath               string                `json:"db_path"`
+	DBSynchronous        string                `json:"db_synchronous"`
+	FreshIndex           bool                  `json:"fresh_index"`
+	FTSSearch            bool                  `json:"fts_search"`
+	IncludeHidden        bool                  `json:"include_hidden"`
+	IncludeNetworkMounts bool                  `json:"include_network_mounts"`
+	IntegrityCheck       IndexerIntegrityCheck `json:"integrity_check"`
+	IndexName            string                `json:"index_name"`
+	IndexPath            string                `json:"index_path"`
+	Interval             string                `json:"interval"`
+	KeepIndexes          int                   `json:"keep_indexes"`
+	ListenAddr           string                `json:"listen_addr"`
+	SocketPath           string                `json:"socket_path"`
 }
 
 type IndexerConfigSetResult struct {

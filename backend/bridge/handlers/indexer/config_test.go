@@ -29,14 +29,14 @@ func TestFetchConfigUsesUnixConfigEndpoint(t *testing.T) {
 		if req.URL.Path != "/config" {
 			t.Fatalf("path = %s, want /config", req.URL.Path)
 		}
-		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "include_hidden": true, "fts_search": true }`, nil), nil
+		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "include_hidden": true, "fts_search": true, "integrity_check": "quick" }`, nil), nil
 	})
 
 	cfg, err := FetchConfig(context.Background())
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !cfg.IncludeHidden || !cfg.FTSSearch {
+	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !cfg.IncludeHidden || !cfg.FTSSearch || cfg.IntegrityCheck != "quick" {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -110,6 +110,33 @@ func TestUpdateConfigFTSSearchDoesNotRequireRestart(t *testing.T) {
 	}
 	if cfg.FTSSearch {
 		t.Fatalf("fts_search = true, want false")
+	}
+}
+
+func TestUpdateConfigIntegrityCheckDoesNotRequireRestart(t *testing.T) {
+	withTestIndexerClient(t, func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if got := string(body); got != `{"integrity_check":"off"}` {
+			t.Fatalf("body = %s, want integrity_check patch", got)
+		}
+		return jsonResponse(http.StatusOK, `{ "integrity_check": "off" }`, nil), nil
+	})
+
+	cfg, restartRequired, err := UpdateConfig(
+		context.Background(),
+		[]byte(`{"integrity_check":"off"}`),
+	)
+	if err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+	if restartRequired {
+		t.Fatal("restartRequired = true, want false")
+	}
+	if cfg.IntegrityCheck != "off" {
+		t.Fatalf("integrity_check = %q, want off", cfg.IntegrityCheck)
 	}
 }
 
