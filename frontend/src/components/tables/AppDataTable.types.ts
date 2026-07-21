@@ -4,7 +4,9 @@ import {
   createSortedRowModel,
   rowExpandingFeature,
   rowSortingFeature,
-  sortFns,
+  sortFn_alphanumeric,
+  sortFn_datetime,
+  sortFn_text,
   tableFeatures,
 } from "@tanstack/react-table";
 import type { ColumnDef, RowData } from "@tanstack/react-table";
@@ -34,13 +36,18 @@ export interface AppDataTableColumnMeta {
 // AppVirtualDataTable: only sorting, expanding, and responsive column
 // visibility ship in the bundle. The type-only `columnMeta` slot replaces the
 // v8 `declare module` ColumnMeta augmentation.
+
 export const appTableFeatures = tableFeatures({
   columnVisibilityFeature,
   rowExpandingFeature,
   rowSortingFeature,
   expandedRowModel: createExpandedRowModel(),
   sortedRowModel: createSortedRowModel(),
-  sortFns,
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    datetime: sortFn_datetime,
+    text: sortFn_text,
+  },
   columnMeta: {} as AppDataTableColumnMeta,
 });
 
