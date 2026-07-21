@@ -8,7 +8,6 @@ import Navbar from "@/components/navbar/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
 import UpdateBanner from "@/components/update/UpdateBanner";
 import { useCloseMobileSidebarOnNavigate } from "@/hooks/useCloseMobileSidebarOnNavigate";
-import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
 import Page500 from "@/pages/auth/Page500";
@@ -19,14 +18,11 @@ const Dashboard = () => {
   const location = useLocation();
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
-  const isLoaded = useConfigReady();
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
-
-  if (!isLoaded) return null;
 
   const contentSpacing =
     location.pathname === "/"
