@@ -143,6 +143,8 @@ describe("AuthContext", () => {
     );
     expect(sessionStorage.getItem("update_info")).toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    // Deliberate sign-out must not preserve the current path.
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(false);
   });
 
   it("handles a real session-timeout signal from the stream mux", async () => {
@@ -183,6 +185,8 @@ describe("AuthContext", () => {
     expect(localStorage.getItem("auth_privileged")).toBeNull();
     expect(sessionStorage.getItem("update_info")).toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    // Involuntary session loss must preserve the current path for post-login return.
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(true);
     expect(apiMocks.closeStreamMux).toHaveBeenCalled();
     expect(consoleLog).toHaveBeenCalledWith(
       "[AuthContext] Session invalid or expired",

@@ -190,27 +190,32 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   // One place to clear local state and redirect.
   // `broadcast` writes to localStorage so other tabs receive it.
-  const doLocalSignOut = useCallback((broadcast: boolean) => {
-    // Clear update info and user data on logout
-    try {
-      sessionStorage.removeItem("update_info");
-      clearConfigCache();
-      localStorage.removeItem("auth_username");
-      localStorage.removeItem("auth_privileged");
-      localStorage.removeItem(AUTH_CAPABILITIES_KEY);
-    } catch {
-      /* ignore */
-    }
-    if (broadcast) {
+  // `preservePath` keeps the current location as a redirect target, used when
+  // the session is lost involuntarily (not for deliberate sign-out).
+  const doLocalSignOut = useCallback(
+    (broadcast: boolean, preservePath = false) => {
+      // Clear update info and user data on logout
       try {
-        localStorage.setItem("logout", String(Date.now()));
+        sessionStorage.removeItem("update_info");
+        clearConfigCache();
+        localStorage.removeItem("auth_username");
+        localStorage.removeItem("auth_privileged");
+        localStorage.removeItem(AUTH_CAPABILITIES_KEY);
       } catch {
         /* ignore */
       }
-    }
-    dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
-    redirectToSignIn();
-  }, []);
+      if (broadcast) {
+        try {
+          localStorage.setItem("logout", String(Date.now()));
+        } catch {
+          /* ignore */
+        }
+      }
+      dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
+      redirectToSignIn(preservePath);
+    },
+    [],
+  );
 
   // Init on mount
   useEffect(() => {
@@ -241,7 +246,7 @@ function AuthProvider({ children }: AuthProviderProps) {
           // or WebSocket connection failed (session cookie invalid)
           console.log("[AuthContext] Session invalid or expired");
           toast.error("Session expired. Please sign in again.");
-          doLocalSignOut(false);
+          doLocalSignOut(false, true);
         } else if (status === "closed") {
           // Network issue or tab closed - don't logout
           // Session cookie might still be valid
