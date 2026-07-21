@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -7,9 +7,11 @@ import PageLoader from "@/components/loaders/PageLoader";
 import Navbar from "@/components/navbar/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
 import UpdateBanner from "@/components/update/UpdateBanner";
+import { useCloseMobileSidebarOnNavigate } from "@/hooks/useCloseMobileSidebarOnNavigate";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
+import Page500 from "@/pages/auth/Page500";
 import { useSidebarItems } from "@/routing/useSidebarItems";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
@@ -18,14 +20,11 @@ const Dashboard = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const isLoaded = useConfigReady();
-  const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
-    useSidebar();
+  const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
-  useEffect(() => {
-    if (!isDesktop) setMobileOpen(false);
-  }, [location.key, isDesktop, setMobileOpen]);
+  useCloseMobileSidebarOnNavigate();
 
   if (!isLoaded) return null;
 
@@ -108,7 +107,7 @@ const Dashboard = () => {
               ...contentSpacing,
             }}
           >
-            <ErrorBoundary>
+            <ErrorBoundary fallback={<Page500 />}>
               <Suspense fallback={<PageLoader />}>
                 <Outlet />
               </Suspense>

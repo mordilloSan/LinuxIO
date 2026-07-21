@@ -470,7 +470,7 @@ const useUpdateController = (): UpdateContextValue => {
   };
 };
 
-const useUpdateNavigationGuard = (isUpdating: boolean) => {
+export const useUpdateNavigationGuard = (isUpdating: boolean) => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = `${location.pathname}${location.search}${location.hash}`;

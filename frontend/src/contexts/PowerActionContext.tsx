@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
@@ -23,7 +22,6 @@ export const PowerActionContext = createContext<
 >(undefined);
 
 export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
-  const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
 
   // Stable action functions - never cause re-renders in consumers
@@ -61,7 +59,7 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       clearTimeout(initialDelay);
     };
-  }, [powerAction, navigate]);
+  }, [powerAction]);
 
   const value = useMemo(
     () => ({ triggerReboot, triggerPowerOff }),
