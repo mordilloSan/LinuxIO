@@ -29,14 +29,15 @@ describe("AuthGuard", () => {
     useAuthMock.mockReset();
   });
 
-  it("shows a loader while auth is initializing", () => {
+  it("renders nothing while auth is initializing", () => {
     useAuthMock.mockReturnValue(
       createAuthContextValue({ isInitialized: false }),
     );
 
     render(<AuthGuard>secret</AuthGuard>);
 
-    expect(document.querySelector(".page-loader")).toBeInTheDocument();
+    expect(document.querySelector(".page-loader")).not.toBeInTheDocument();
+    expect(screen.queryByText("secret")).not.toBeInTheDocument();
   });
 
   it("redirects unauthenticated users with a return URL", async () => {

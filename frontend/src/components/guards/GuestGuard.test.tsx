@@ -20,7 +20,7 @@ describe("GuestGuard", () => {
     useAuthMock.mockReset();
   });
 
-  it("renders children while auth is still initializing", () => {
+  it("renders nothing while auth is still initializing", () => {
     useAuthMock.mockReturnValue(
       createAuthContextValue({
         isAuthenticated: false,
@@ -34,7 +34,7 @@ describe("GuestGuard", () => {
       </GuestGuard>,
     );
 
-    expect(screen.getByText("sign-in form")).toBeInTheDocument();
+    expect(screen.queryByText("sign-in form")).not.toBeInTheDocument();
   });
 
   it("renders children for initialized guests", () => {

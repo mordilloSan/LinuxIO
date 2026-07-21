@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import Footer from "@/components/footer/Footer";
+import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import PageLoader from "@/components/loaders/PageLoader";
 import Navbar from "@/components/navbar/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
@@ -103,9 +104,17 @@ const Dashboard = () => {
               ...contentSpacing,
             }}
           >
-            <ErrorBoundary fallback={<Page500 />}>
+            <ErrorBoundary
+              fallback={
+                <>
+                  <Page500 />
+                  <BootstrapLoaderReady />
+                </>
+              }
+            >
               <Suspense fallback={<PageLoader />}>
                 <Outlet />
+                <BootstrapLoaderReady />
               </Suspense>
             </ErrorBoundary>
           </div>
