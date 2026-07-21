@@ -35,7 +35,7 @@ export const AuthGuard = ({ children }: PropsWithChildren) => {
   // Authenticated:
   // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={null}>
       <AuthenticatedRuntimeProvider userId={user?.id}>
         {children ?? <Outlet />}
       </AuthenticatedRuntimeProvider>
