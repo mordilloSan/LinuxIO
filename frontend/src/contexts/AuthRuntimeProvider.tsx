@@ -8,8 +8,7 @@ import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { UpdateProvider } from "@/contexts/UpdateContext";
 import { useConfigValue } from "@/hooks/useConfig";
-import { AppThemeProvider } from "@/theme";
-import buildAppTheme from "@/theme";
+import buildAppTheme, { AppThemeProvider } from "@/theme";
 
 interface AuthenticatedRuntimeProviderProps extends PropsWithChildren {
   userId?: string;
@@ -20,12 +19,7 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
   const [primaryColorName] = useConfigValue("primaryColor");
   const [themeColors] = useConfigValue("themeColors");
   const appTheme = useMemo(
-    () =>
-      buildAppTheme(
-        String(themeName),
-        primaryColorName as string | undefined,
-        themeColors,
-      ),
+    () => buildAppTheme(themeName, primaryColorName, themeColors),
     [themeName, primaryColorName, themeColors],
   );
 
