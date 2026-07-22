@@ -17,11 +17,7 @@ const tabs = [
 describe("TabContainer", () => {
   it("only mounts the active tab while switching", async () => {
     const { user } = render(
-      <TabContainer
-        defaultTab="users"
-        tabs={tabs}
-        urlParam="accountsTab"
-      />,
+      <TabContainer defaultTab="users" tabs={tabs} urlParam="accountsTab" />,
     );
 
     expect(screen.getByText("Users content")).toBeInTheDocument();
@@ -35,11 +31,7 @@ describe("TabContainer", () => {
 
   it("mounts a tab selected in the URL", () => {
     render(
-      <TabContainer
-        defaultTab="users"
-        tabs={tabs}
-        urlParam="accountsTab"
-      />,
+      <TabContainer defaultTab="users" tabs={tabs} urlParam="accountsTab" />,
       {
         memoryRouter: {
           initialEntries: ["/accounts?accountsTab=groups"],

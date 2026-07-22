@@ -80,10 +80,7 @@ const TabContainer = ({
       {/* Only mount the active panel so large tab views do not overlap. */}
       <div className="tab-container__panels">
         {activeTabConfig && (
-          <TabPanel
-            errorFallback={errorFallback}
-            key={activeTabConfig.value}
-          >
+          <TabPanel errorFallback={errorFallback} key={activeTabConfig.value}>
             {activeTabConfig.component}
           </TabPanel>
         )}
