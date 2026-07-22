@@ -33,9 +33,17 @@ import {
 } from "@/types/auth";
 import { clearConfigCache } from "@/utils/configCache";
 import { redirectToSignIn } from "@/utils/navigation";
+import { setSigninNotice } from "@/utils/signinNotice";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 const AUTH_CAPABILITIES_KEY = "auth_capabilities";
+const LOGOUT_EVENT_KEY = "logout";
+const SESSION_EXPIRED_EVENT_KEY = "session_expired";
+
+type SignOutBroadcast =
+  | typeof LOGOUT_EVENT_KEY
+  | typeof SESSION_EXPIRED_EVENT_KEY
+  | null;
 
 const readStoredCapabilities = (): CapabilityState => {
   try {
@@ -189,11 +197,12 @@ function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // One place to clear local state and redirect.
-  // `broadcast` writes to localStorage so other tabs receive it.
+  // `broadcast` writes the sign-out reason to localStorage so other tabs can
+  // apply the matching redirect policy without rebroadcasting.
   // `preservePath` keeps the current location as a redirect target, used when
   // the session is lost involuntarily (not for deliberate sign-out).
   const doLocalSignOut = useCallback(
-    (broadcast: boolean, preservePath = false) => {
+    (broadcast: SignOutBroadcast, preservePath = false) => {
       // Clear update info and user data on logout
       try {
         sessionStorage.removeItem("update_info");
@@ -206,7 +215,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       }
       if (broadcast) {
         try {
-          localStorage.setItem("logout", String(Date.now()));
+          localStorage.setItem(broadcast, String(Date.now()));
         } catch {
           /* ignore */
         }
@@ -217,6 +226,15 @@ function AuthProvider({ children }: AuthProviderProps) {
     [],
   );
 
+  // The session was lost involuntarily (expired/invalidated, not a deliberate
+  // sign-out): tear down locally without calling the logout endpoint, preserve
+  // the current path, and leave a one-shot notice for the sign-in screen. A
+  // toast would be lost to the redirect (and the sign-in screen has no Toaster).
+  const sessionExpired = useCallback(() => {
+    setSigninNotice("expired");
+    doLocalSignOut(SESSION_EXPIRED_EVENT_KEY, true);
+  }, [doLocalSignOut]);
+
   // Init on mount
   useEffect(() => {
     initialize();
@@ -225,9 +243,16 @@ function AuthProvider({ children }: AuthProviderProps) {
   // Cross-tab logout via localStorage
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "logout") {
+      // Ignore key removals; only newly published auth events are actionable.
+      if (e.newValue === null) return;
+
+      if (e.key === LOGOUT_EVENT_KEY) {
         // other tab asked us to logout; do not rebroadcast
-        doLocalSignOut(false);
+        doLocalSignOut(null);
+      } else if (e.key === SESSION_EXPIRED_EVENT_KEY) {
+        // Preserve this tab's own path and surface the expiry notice here too.
+        setSigninNotice("expired");
+        doLocalSignOut(null, true);
       }
     };
     window.addEventListener("storage", onStorage);
@@ -245,8 +270,7 @@ function AuthProvider({ children }: AuthProviderProps) {
           // "error" status means close code 1008 (session expired/invalid)
           // or WebSocket connection failed (session cookie invalid)
           console.log("[AuthContext] Session invalid or expired");
-          toast.error("Session expired. Please sign in again.");
-          doLocalSignOut(false, true);
+          sessionExpired();
         } else if (status === "closed") {
           // Network issue or tab closed - don't logout
           // Session cookie might still be valid
@@ -260,7 +284,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     } else {
       closeStreamMux();
     }
-  }, [state.isAuthenticated, doLocalSignOut]);
+  }, [state.isAuthenticated, sessionExpired]);
 
   const signIn = useCallback(async (username: string, password: string) => {
     // Login response may include update info
@@ -322,7 +346,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     } catch {
       // ignore; we still want to clear locally
     }
-    doLocalSignOut(true);
+    doLocalSignOut(LOGOUT_EVENT_KEY);
   }, [doLocalSignOut]);
 
   const contextValue = useMemo(
@@ -331,9 +355,10 @@ function AuthProvider({ children }: AuthProviderProps) {
       method: "session" as const,
       signIn,
       signOut,
+      sessionExpired,
       refreshCapabilities,
     }),
-    [state, signIn, signOut, refreshCapabilities],
+    [state, signIn, signOut, sessionExpired, refreshCapabilities],
   );
 
   return (

@@ -1,5 +1,10 @@
 import { Icon } from "@iconify/react";
-import { useState, type CSSProperties, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type SyntheticEvent,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import AppAlert from "@/components/ui/AppAlert";
@@ -10,6 +15,12 @@ import "./login.css";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+import {
+  clearSigninNotice,
+  readSigninNotice,
+  SIGNIN_NOTICE_MESSAGES,
+  type SigninNotice,
+} from "@/utils/signinNotice";
 
 function LogIn() {
   const theme = useAppTheme();
@@ -26,6 +37,7 @@ function LogIn() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SigninNotice | null>(readSigninNotice);
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -33,9 +45,30 @@ function LogIn() {
   const redirect = searchParams.get("redirect") || "/";
   const { signIn } = useAuth();
 
+  // Clear the external one-shot value after its initial snapshot is committed.
+  useEffect(() => {
+    clearSigninNotice();
+  }, []);
+
+  // A login error takes precedence over the session notice.
+  const feedback = error
+    ? {
+        message: error,
+        severity: "warning" as const,
+        accent: theme.palette.warning.main,
+      }
+    : notice
+      ? {
+          message: SIGNIN_NOTICE_MESSAGES[notice],
+          severity: "info" as const,
+          accent: theme.palette.info.main,
+        }
+      : null;
+
   const handleSubmit = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
 
     if (!username || !password) {
       setError("Username and password are required.");
@@ -55,22 +88,22 @@ function LogIn() {
 
   return (
     <form noValidate onSubmit={handleSubmit}>
-      {error && (
+      {feedback && (
         <AppAlert
           className="login-alert login-reveal"
-          severity="warning"
+          severity={feedback.severity}
           style={
             {
               "--login-reveal-delay": "60ms",
-              "--login-alert-bg": alpha(theme.palette.warning.main, 0.18),
-              "--login-alert-border": alpha(theme.palette.warning.main, 0.36),
-              "--login-alert-icon": theme.palette.warning.main,
+              "--login-alert-bg": alpha(feedback.accent, 0.18),
+              "--login-alert-border": alpha(feedback.accent, 0.36),
+              "--login-alert-icon": feedback.accent,
               "--login-alert-text": alpha(theme.palette.common.white, 0.92),
               marginBottom: 16,
             } as CSSProperties
           }
         >
-          {error}
+          {feedback.message}
         </AppAlert>
       )}
       <div

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import Login from "@/components/auth/Login";
 import { render, screen, waitFor } from "@/test/render";
+import { readSigninNotice, setSigninNotice } from "@/utils/signinNotice";
 
 function getUsername(container: HTMLElement) {
   return container.querySelector(
@@ -17,6 +18,17 @@ function getPassword(container: HTMLElement) {
 }
 
 describe("Login form", () => {
+  it("shows and consumes an expired-session notice", () => {
+    setSigninNotice("expired");
+
+    render(<Login />);
+
+    expect(
+      screen.getByText("Your session expired. Please sign in again."),
+    ).toBeInTheDocument();
+    expect(readSigninNotice()).toBeNull();
+  });
+
   it("validates required credentials", async () => {
     const { user } = render(<Login />);
 

@@ -1,51 +1,29 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { redirectToSignIn } from "@/utils/navigation";
+import { buildSignInUrl } from "@/utils/navigation";
 
-describe("redirectToSignIn", () => {
-  const originalLocation = window.location;
-  let assign: ReturnType<typeof vi.fn>;
-
-  const setLocation = (pathname: string, search = "", hash = "") => {
-    assign = vi.fn();
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      writable: true,
-      value: { pathname, search, hash, assign },
-    });
-  };
-
+describe("buildSignInUrl", () => {
   afterEach(() => {
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      writable: true,
-      value: originalLocation,
-    });
+    window.history.pushState({}, "", "/");
   });
 
-  it("navigates to bare /sign-in when the path is not preserved", () => {
-    setLocation("/docker", "?tab=logs", "#section");
+  it("returns bare /sign-in when the path is not preserved", () => {
+    window.history.pushState({}, "", "/docker?tab=logs#section");
 
-    redirectToSignIn();
-
-    expect(assign).toHaveBeenCalledWith("/sign-in");
+    expect(buildSignInUrl()).toBe("/sign-in");
   });
 
   it("captures path, search and hash as a redirect param when preserving", () => {
-    setLocation("/docker", "?tab=logs", "#section");
+    window.history.pushState({}, "", "/docker?tab=logs#section");
 
-    redirectToSignIn(true);
-
-    expect(assign).toHaveBeenCalledWith(
+    expect(buildSignInUrl(true)).toBe(
       `/sign-in?redirect=${encodeURIComponent("/docker?tab=logs#section")}`,
     );
   });
 
   it("does not self-redirect when already on /sign-in", () => {
-    setLocation("/sign-in", "?redirect=%2Fdocker");
+    window.history.pushState({}, "", "/sign-in?redirect=%2Fdocker");
 
-    redirectToSignIn(true);
-
-    expect(assign).toHaveBeenCalledWith("/sign-in");
+    expect(buildSignInUrl(true)).toBe("/sign-in");
   });
 });

@@ -327,7 +327,7 @@ export const ConfigAccessorContext =
 // durable store. Saves are optimistic — local state updates immediately and a
 // failed persist surfaces via the action's error toast.
 export const ConfigProvider = ({ children }: ConfigProviderProps) => {
-  const { signOut, user } = useAuth();
+  const { sessionExpired, user } = useAuth();
   const username = user?.id;
   const [config, setConfig] = useState<AppConfig>(() =>
     applyDefaults(readConfigCache(username)),
@@ -394,8 +394,9 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         // Only treat actual auth errors (401/403) as session expired
         const code = error instanceof LinuxIOError ? error.code : 500;
         if (code === 401 || code === 403) {
-          toast.error("Session expired. Please sign in again.");
-          await signOut();
+          // Involuntary expiry during config load: preserve the path, notify,
+          // and sign out locally (same handling as a dropped auth socket).
+          sessionExpired();
           return;
         }
 
@@ -416,7 +417,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       cancelled = true;
       clearTimeout(giveUp);
     };
-  }, [fetchConfigSettings, isMuxOpen, signOut, username]);
+  }, [fetchConfigSettings, isMuxOpen, sessionExpired, username]);
 
   // Warn once per unreachable period, not on every discarded change.
   const warnedUnsavedRef = useRef(false);

@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,10 @@ describe("GuestGuard", () => {
   });
 
   it("renders nothing while auth is still initializing", () => {
+    const loadLogin = vi.fn(async () => ({
+      default: () => <div>sign-in form</div>,
+    }));
+    const LoginProbe = lazy(loadLogin);
     useAuthMock.mockReturnValue(
       createAuthContextValue({
         isAuthenticated: false,
@@ -30,10 +35,11 @@ describe("GuestGuard", () => {
 
     render(
       <GuestGuard>
-        <div>sign-in form</div>
+        <LoginProbe />
       </GuestGuard>,
     );
 
+    expect(loadLogin).not.toHaveBeenCalled();
     expect(screen.queryByText("sign-in form")).not.toBeInTheDocument();
   });
 

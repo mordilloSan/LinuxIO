@@ -36,6 +36,7 @@ export function createAuthContextValue(
     method: "session",
     privileged: false,
     refreshCapabilities: async () => ({}) as CapabilitiesResponse,
+    sessionExpired: () => {},
     signIn: async () => {},
     signOut: async () => {},
     user: null,
