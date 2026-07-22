@@ -28,6 +28,7 @@ import { useSearchParams } from "react-router-dom";
 import { linuxio, openDockerLogsStream } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
@@ -68,9 +69,10 @@ const ContainerList = ({
   const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
-    refetchInterval: 5000,
-  });
+  const { data: rawContainers, isPending } =
+    linuxio.docker.list_containers.useQuery({
+      refetchInterval: 5000,
+    });
   const hasLoadedContainers = rawContainers !== undefined;
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const selectedContainerId = searchParams.get("container");
@@ -197,6 +199,8 @@ const ContainerList = ({
       selectedContainerId === containerId ? null : containerId,
     );
   };
+
+  if (isPending) return <PageLoader />;
 
   if (viewMode === "table") {
     const table = (

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -341,9 +342,10 @@ const NetworkList = ({
   viewMode = "table",
 }: NetworkListProps) => {
   const theme = useAppTheme();
-  const { data: rawNetworks } = linuxio.docker.list_networks.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: rawNetworks, isPending } =
+    linuxio.docker.list_networks.useQuery({
+      refetchInterval: 10000,
+    });
   const networks = rawNetworks ?? [];
 
   const [search, setSearch] = useState("");
@@ -373,6 +375,8 @@ const NetworkList = ({
   }, []);
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
+
+  if (isPending) return <PageLoader />;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

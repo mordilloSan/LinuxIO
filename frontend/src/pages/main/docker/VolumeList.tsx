@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -137,7 +138,7 @@ const VolumeList = ({
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
-  const { data: rawVolumes } = linuxio.docker.list_volumes.useQuery({
+  const { data: rawVolumes, isPending } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
@@ -172,6 +173,9 @@ const VolumeList = ({
     });
     return result;
   }, [selected, filtered]);
+
+  if (isPending) return <PageLoader />;
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelected(new Set(filtered.map((v) => v.Name)));

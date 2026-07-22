@@ -10,6 +10,7 @@ import DockerSectionCard from "@/components/cards/DockerSectionCard";
 import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
@@ -99,21 +100,26 @@ const DockerDashboard = ({
 }: DockerDashboardProps) => {
   const theme = useAppTheme();
   const [, setSearchParams] = useSearchParams();
-  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
-    refetchInterval: 5000,
-  });
-  const { data: rawImages } = linuxio.docker.list_images.useQuery({
-    refetchInterval: 30000,
-  });
-  const { data: rawNetworks } = linuxio.docker.list_networks.useQuery({
-    refetchInterval: 30000,
-  });
-  const { data: rawVolumes } = linuxio.docker.list_volumes.useQuery({
-    refetchInterval: 30000,
-  });
-  const { data: dockerInfo } = linuxio.docker.get_docker_info.useQuery({
-    refetchInterval: 60000,
-  });
+  const { data: rawContainers, isPending: containersPending } =
+    linuxio.docker.list_containers.useQuery({
+      refetchInterval: 5000,
+    });
+  const { data: rawImages, isPending: imagesPending } =
+    linuxio.docker.list_images.useQuery({
+      refetchInterval: 30000,
+    });
+  const { data: rawNetworks, isPending: networksPending } =
+    linuxio.docker.list_networks.useQuery({
+      refetchInterval: 30000,
+    });
+  const { data: rawVolumes, isPending: volumesPending } =
+    linuxio.docker.list_volumes.useQuery({
+      refetchInterval: 30000,
+    });
+  const { data: dockerInfo, isPending: dockerInfoPending } =
+    linuxio.docker.get_docker_info.useQuery({
+      refetchInterval: 60000,
+    });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const images = useMemo(() => rawImages ?? [], [rawImages]);
   const networks = rawNetworks ?? [];
@@ -232,6 +238,17 @@ const DockerDashboard = ({
       return list.sort((a, b) => (b.Containers ?? 0) - (a.Containers ?? 0));
     return list;
   }, [images, imageSort]);
+
+  if (
+    containersPending ||
+    imagesPending ||
+    networksPending ||
+    volumesPending ||
+    dockerInfoPending
+  ) {
+    return <PageLoader />;
+  }
+
   const containerColumns: AppDataTableColumnDef<
     (typeof previewContainers)[number]
   >[] = [
