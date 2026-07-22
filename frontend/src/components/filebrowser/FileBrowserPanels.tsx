@@ -13,6 +13,7 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -229,7 +230,7 @@ interface FileBrowserDetailsDialogProps {
   detailTarget: string[] | null;
   hasMultipleDetailTargets: boolean;
   hasSingleDetailTarget: boolean;
-  isStatPending: boolean;
+  isStatLoading: boolean;
   multiItemsStats: MultiItemsStats;
   onClose: () => void;
   onDownload: (path: string) => void;
@@ -244,7 +245,7 @@ export const FileBrowserDetailsDialog = ({
   detailTarget,
   hasMultipleDetailTargets,
   hasSingleDetailTarget,
-  isStatPending,
+  isStatLoading,
   multiItemsStats,
   onClose,
   onDownload,
@@ -282,7 +283,7 @@ export const FileBrowserDetailsDialog = ({
           borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
-        {shouldShowDetailLoader && <PageLoader />}
+        {shouldShowDetailLoader && <ComponentLoader />}
         {!shouldShowDetailLoader &&
           hasSingleDetailTarget &&
           Boolean(detailError) && (
@@ -294,7 +295,7 @@ export const FileBrowserDetailsDialog = ({
           )}
         {detailResource && (
           <FileDetail
-            isLoadingStat={isStatPending}
+            isLoadingStat={isStatLoading}
             onDownload={onDownload}
             onEdit={onEdit}
             resource={detailResource}

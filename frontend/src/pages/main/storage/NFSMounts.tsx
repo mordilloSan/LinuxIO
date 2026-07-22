@@ -832,7 +832,7 @@ const NFSMounts = ({
   const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
     null,
   );
-  const { data: mounts = [], isPending: loading } =
+  const { data: mounts = [], isPending } =
     linuxio.storage.list_nfs_mounts.useQuery({
       refetchInterval: 10000,
     });
@@ -894,7 +894,7 @@ const NFSMounts = ({
       persist: mount.inFstab ? "true" : "false",
     });
   };
-  if (loading) {
+  if (isPending) {
     return <PageLoader />;
   }
   const mountsList = Array.isArray(mounts) ? mounts : [];

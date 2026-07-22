@@ -3,9 +3,11 @@ import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, openVMConsoleStream } from "@/api";
 import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
+import PageLoader from "@/components/loaders/PageLoader";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -215,8 +217,15 @@ const Page = () => {
       }}
     >
       <AppButton
+        disabled={listQuery.isFetching}
         onClick={() => listQuery.refetch()}
-        startIcon={<Icon height={18} icon="mdi:refresh" width={18} />}
+        startIcon={
+          listQuery.isFetching ? (
+            <AppCircularProgress color="inherit" size={16} />
+          ) : (
+            <Icon height={18} icon="mdi:refresh" width={18} />
+          )
+        }
         variant="outlined"
       >
         Refresh
@@ -245,6 +254,23 @@ const Page = () => {
               : "libvirt unavailable"}
           </AppAlertTitle>
           <AppTypography variant="body2">{libvirtReason}</AppTypography>
+        </AppAlert>
+      </div>
+    );
+  }
+
+  if (listQuery.isLoading || preflightQuery.isLoading) {
+    return <PageLoader />;
+  }
+
+  if (listQuery.isLoadingError || preflightQuery.isLoadingError) {
+    return (
+      <div style={{ padding: theme.spacing(3) }}>
+        <AppAlert severity="error">
+          <AppAlertTitle>Virtualization data unavailable</AppAlertTitle>
+          {listQuery.error?.message ??
+            preflightQuery.error?.message ??
+            "LinuxIO could not load the virtual machine data."}
         </AppAlert>
       </div>
     );
@@ -315,7 +341,15 @@ const Page = () => {
                     onSelect={setSelectedName}
                     vms={vms}
                   />
-                  <VMDetailsPanel vm={selectedVM} />
+                  <VMDetailsPanel
+                    error={
+                      detailQuery.isLoadingError
+                        ? detailQuery.error?.message
+                        : undefined
+                    }
+                    isLoading={detailQuery.isLoading}
+                    vm={selectedVM}
+                  />
                 </div>
               </div>
             ),

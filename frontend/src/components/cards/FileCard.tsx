@@ -146,14 +146,14 @@ const FileCard = memo<FileCardProps>(
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
     const {
       size: fetchedSize,
-      isLoading: isFetchingSize,
+      isLoading: isSizeLoading,
       error: fetchError,
     } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
     const effectiveSizeLoading = needsIndividualDirSize
-      ? isFetchingSize
+      ? isSizeLoading
       : directorySizeLoading;
     const effectiveSizeError = needsIndividualDirSize
       ? fetchError

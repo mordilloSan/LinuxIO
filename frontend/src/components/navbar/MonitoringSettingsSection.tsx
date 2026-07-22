@@ -235,7 +235,7 @@ const MonitoringSettingsSection = () => {
 
   const {
     data: config,
-    isPending,
+    isLoading,
     error,
     refetch,
     isFetching,
@@ -297,9 +297,8 @@ const MonitoringSettingsSection = () => {
     error: "Failed to restart go-monitoring",
   });
 
-  const busy =
-    isFetching || setConfigMutation.isPending || restartMutation.isPending;
-  const refreshing = busy || isStatusFetching;
+  const busy = setConfigMutation.isPending || restartMutation.isPending;
+  const refreshing = isFetching || isStatusFetching;
 
   const updateDraft = <K extends keyof DraftConfig>(
     key: K,
@@ -512,7 +511,7 @@ const MonitoringSettingsSection = () => {
     );
   }
 
-  if (isPending || !draft) {
+  if (isLoading || !draft) {
     return (
       <SettingsSectionShell {...shellProps}>
         <div style={{ padding: theme.spacing(3) }}>

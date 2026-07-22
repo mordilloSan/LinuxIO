@@ -33,7 +33,7 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   }, []);
   const {
     data: peersData,
-    isPending: isLoading,
+    isLoading,
     isError,
   } = linuxio.wireguard.list_peers.useQuery(interfaceName, {
     enabled: !!interfaceName,

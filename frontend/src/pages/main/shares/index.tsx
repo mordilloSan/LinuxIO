@@ -1160,20 +1160,20 @@ const SharesPage = () => {
 
   const {
     data: nfsShares = [],
-    isPending: loadingNFS,
+    isPending: nfsPending,
     refetch: refetchNFS,
   } = linuxio.shares.list_nfs_shares.useQuery({
     refetchInterval: 10000,
   });
   const {
     data: sambaShares = [],
-    isPending: loadingSamba,
+    isPending: sambaPending,
     refetch: refetchSamba,
   } = linuxio.shares.list_samba_shares.useQuery({
     refetchInterval: 10000,
   });
 
-  if (loadingNFS || loadingSamba) {
+  if (nfsPending || sambaPending) {
     return <PageLoader />;
   }
 

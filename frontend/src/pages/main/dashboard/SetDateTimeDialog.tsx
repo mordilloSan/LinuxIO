@@ -3,6 +3,8 @@ import { useState } from "react";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -52,23 +54,59 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DASHBOARD_TOAST_META);
 
-  const { data: timezones = [] } = linuxio.system.get_timezones.useQuery({
+  const {
+    data: timezones,
+    isLoading: timezonesLoading,
+    isError: timezonesError,
+  } = linuxio.system.get_timezones.useQuery({
     enabled: open,
     staleTime: 60 * 60 * 1000,
   });
-  const { data: currentTimezone } = linuxio.datetime.get_timezone.useQuery({
-    enabled: open,
-  });
-  const { data: ntpStatus } = linuxio.datetime.get_ntp_status.useQuery({
-    enabled: open,
-  });
-  const { data: ntpServers } = linuxio.datetime.get_ntp_servers.useQuery({
-    enabled: open,
-  });
-  const { data: serverTime } = linuxio.system.get_server_time.useQuery({
+  const {
+    data: currentTimezone,
+    isLoading: timezoneLoading,
+    isError: timezoneError,
+  } = linuxio.datetime.get_timezone.useQuery({ enabled: open });
+  const {
+    data: ntpStatus,
+    isLoading: ntpStatusLoading,
+    isError: ntpStatusError,
+  } = linuxio.datetime.get_ntp_status.useQuery({ enabled: open });
+  const {
+    data: ntpServers,
+    isLoading: ntpServersLoading,
+    isError: ntpServersError,
+  } = linuxio.datetime.get_ntp_servers.useQuery({ enabled: open });
+  const {
+    data: serverTime,
+    isLoading: serverTimeLoading,
+    isError: serverTimeError,
+  } = linuxio.system.get_server_time.useQuery({
     enabled: open,
     staleTime: 0,
   });
+
+  const settingsLoading =
+    timezonesLoading ||
+    timezoneLoading ||
+    ntpStatusLoading ||
+    ntpServersLoading ||
+    serverTimeLoading;
+  const settingsReady =
+    timezones !== undefined &&
+    currentTimezone !== undefined &&
+    ntpStatus !== undefined &&
+    ntpServers !== undefined &&
+    serverTime !== undefined;
+  const settingsError =
+    !settingsReady &&
+    (timezonesError ||
+      timezoneError ||
+      ntpStatusError ||
+      ntpServersError ||
+      serverTimeError);
+  const showSettingsLoader =
+    settingsLoading || (!settingsReady && !settingsError);
 
   const [timezone, setTimezone] = useState("");
   const [originalTimezone, setOriginalTimezone] = useState("");
@@ -130,10 +168,12 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
       toast: DASHBOARD_TOAST_META,
     });
 
-  const [isPending, setIsPending] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    setIsPending(true);
+    if (!settingsReady) return;
+
+    setIsSaving(true);
     try {
       if (timezone && timezone !== originalTimezone) {
         await setTz({ timezone });
@@ -161,7 +201,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     } catch {
       // individual errors already toasted by mutation onError
     } finally {
-      setIsPending(false);
+      setIsSaving(false);
     }
   };
 
@@ -189,6 +229,12 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Date &amp; Time Settings</AppDialogTitle>
       <AppDialogContent>
+        {showSettingsLoader && <ComponentLoader />}
+        {settingsError && (
+          <AppAlert severity="error">
+            Date and time settings could not be loaded.
+          </AppAlert>
+        )}
         {/* Sentinel captures initial focus so autocomplete dropdowns don't open automatically */}
         <span
           style={{ outline: "none", display: "block", height: 0 }}
@@ -196,7 +242,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
         />
         <div
           style={{
-            display: "flex",
+            display: showSettingsLoader || settingsError ? "none" : "flex",
             flexDirection: "column",
             gap: theme.spacing(4),
           }}
@@ -211,7 +257,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
             fullWidth
             label="Time zone"
             onChange={(v) => setTimezone(v)}
-            options={timezones}
+            options={timezones ?? []}
             size="small"
             value={timezone}
           />
@@ -290,11 +336,11 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
       <AppDialogActions>
         <AppButton onClick={onClose}>Cancel</AppButton>
         <AppButton
-          disabled={isPending}
+          disabled={isSaving || showSettingsLoader || settingsError}
           onClick={handleSave}
           variant="contained"
         >
-          Save
+          {isSaving ? "Saving..." : "Save"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>

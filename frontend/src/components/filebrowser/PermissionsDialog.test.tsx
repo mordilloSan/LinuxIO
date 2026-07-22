@@ -28,6 +28,7 @@ describe("PermissionsDialog", () => {
   it("updates permission checkboxes after selecting and deselecting them", async () => {
     apiMocks.usersGroupsUseQuery.mockReturnValue({
       data: { groups: ["root"], users: ["root"] },
+      isLoading: false,
     });
 
     const { user } = render(

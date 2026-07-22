@@ -126,21 +126,33 @@ const DockerInfo = () => {
   );
   const {
     data: rawContainers,
-    isPending: isContainersLoading,
-    isError: isContainersError,
+    isPending: containersPending,
+    isLoadingError: containersError,
   } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
-  const { data: imagesCount = 0 } = linuxio.docker.list_images.useQuery({
+  const {
+    data: imagesCount = 0,
+    isPending: imagesPending,
+    isLoadingError: imagesError,
+  } = linuxio.docker.list_images.useQuery({
     refetchInterval: 30_000,
     select: getCollectionCount,
   });
-  const { data: networksCount = 0 } = linuxio.docker.list_networks.useQuery({
+  const {
+    data: networksCount = 0,
+    isPending: networksPending,
+    isLoadingError: networksError,
+  } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 30_000,
     select: getCollectionCount,
   });
-  const { data: volumesCount = 0 } = linuxio.docker.list_volumes.useQuery({
+  const {
+    data: volumesCount = 0,
+    isPending: volumesPending,
+    isLoadingError: volumesError,
+  } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 30_000,
     select: getCollectionCount,
   });
@@ -157,7 +169,11 @@ const DockerInfo = () => {
       }),
     [containers],
   );
-  const stats = (
+  const countsPending =
+    containersPending || imagesPending || networksPending || volumesPending;
+  const countsError =
+    containersError || imagesError || networksError || volumesError;
+  const statsContent = (
     <div
       style={{
         display: "flex",
@@ -218,9 +234,16 @@ const DockerInfo = () => {
       ))}
     </div>
   );
-  const stats2 = isContainersError ? (
+  const stats = countsError ? (
     <ErrorMessage />
-  ) : isContainersLoading ? (
+  ) : countsPending ? (
+    <ComponentLoader />
+  ) : (
+    statsContent
+  );
+  const stats2 = containersError ? (
+    <ErrorMessage />
+  ) : containersPending ? (
     <ComponentLoader />
   ) : (
     <div

@@ -50,10 +50,10 @@ const Drive = () => {
   const theme = useAppTheme();
   const {
     data: rawDrives = [],
-    isPending: isLoading,
+    isPending,
     isError,
   } = linuxio.storage.get_drive_info.useQuery();
-  const { data: diskThroughput, isPending: isThroughputLoading } =
+  const { data: diskThroughput, isPending: throughputPending } =
     linuxio.system.get_disk_throughput.useQuery({
       refetchInterval: 1000,
     });
@@ -81,7 +81,7 @@ const Drive = () => {
       ? selected
       : fallbackSelected;
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <DashboardCard
         avatarIcon="mdi:harddisk"
@@ -172,7 +172,7 @@ const Drive = () => {
     <AppTypography variant="body2">No drive selected.</AppTypography>
   );
   const content2 = selectedDrive ? (
-    isThroughputLoading ? (
+    throughputPending ? (
       <ComponentLoader />
     ) : (
       <div style={{ height: "90px", width: "100%", minWidth: 0 }}>

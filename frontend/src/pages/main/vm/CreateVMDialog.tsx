@@ -9,6 +9,7 @@ import {
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -261,7 +262,12 @@ export default function CreateVMDialog({
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
   const hasBlockingPreflightErrors = (preflight.data?.errors ?? []).length > 0;
   const isBusy = isCreating || createISOFolderMutation.isPending;
-  const canSubmit = fieldsValid && !isBusy && !hasBlockingPreflightErrors;
+  const canSubmit =
+    fieldsValid &&
+    !isBusy &&
+    !preflight.isLoading &&
+    !preflight.isLoadingError &&
+    !hasBlockingPreflightErrors;
 
   const ensureISOFolderExists = useCallback(async () => {
     if (!usesISO) return;
@@ -613,7 +619,16 @@ export default function CreateVMDialog({
               ) : null}
             </div>
           ) : null}
-          {preflight.data && (
+          {preflight.isLoading ? (
+            <div style={{ padding: theme.spacing(2) }}>
+              <ComponentLoader />
+            </div>
+          ) : preflight.isLoadingError ? (
+            <AppAlert severity="error">
+              <AppAlertTitle>Preflight unavailable</AppAlertTitle>
+              {preflight.error.message}
+            </AppAlert>
+          ) : preflight.data ? (
             <>
               <PreflightSummary preflight={preflight.data} />
               {(preflight.data.warnings ?? []).length > 0 && (
@@ -637,7 +652,7 @@ export default function CreateVMDialog({
                 </AppAlert>
               )}
             </>
-          )}
+          ) : null}
         </AppDialogContent>
         <AppDialogActions>
           <AppButton disabled={isBusy} onClick={onClose} variant="text">

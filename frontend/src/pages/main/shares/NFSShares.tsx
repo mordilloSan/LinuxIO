@@ -581,7 +581,7 @@ const NFSShares = ({ onCreateHandler, viewMode = "table" }: NFSSharesProps) => {
 
   const {
     data: shares = [],
-    isPending: loading,
+    isPending,
     refetch,
   } = linuxio.shares.list_nfs_shares.useQuery({
     refetchInterval: 10000,
@@ -607,7 +607,7 @@ const NFSShares = ({ onCreateHandler, viewMode = "table" }: NFSSharesProps) => {
     setDeleteOpen(true);
   };
 
-  if (loading) {
+  if (isPending) {
     return <PageLoader />;
   }
 

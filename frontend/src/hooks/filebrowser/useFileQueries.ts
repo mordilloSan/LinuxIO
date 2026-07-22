@@ -58,7 +58,7 @@ export const useFileQueries = ({
   // Detail resource query with content flag
   const {
     data: detailResource,
-    isPending: isDetailPending,
+    isLoading: isDetailLoading,
     error: detailError,
   } = linuxio.filebrowser.resource_get.useQuery(
     {
@@ -74,7 +74,7 @@ export const useFileQueries = ({
     },
   );
 
-  const { data: statData, isPending: isStatPending } =
+  const { data: statData, isLoading: isStatLoading } =
     linuxio.filebrowser.resource_stat.useQuery(
       detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
       {
@@ -124,9 +124,9 @@ export const useFileQueries = ({
     });
   }
 
-  const isMultipleFilesPending =
+  const isMultipleFilesLoading =
     multipleDetailTargets.length > 1 &&
-    multipleResourceQueries.some((query) => query.isPending);
+    multipleResourceQueries.some((query) => query.isLoading);
 
   const multiItemsStats = useFileMultipleDirectoryDetails(
     detailTarget || [],
@@ -134,7 +134,7 @@ export const useFileQueries = ({
   );
 
   // Editing file resource with content flag
-  const { data: editingFileResource, isPending: isEditingFileLoading } =
+  const { data: editingFileResource, isLoading: isEditingFileLoading } =
     linuxio.filebrowser.resource_get.useQuery(
       { path: editingPath || "", unused: "", getContent: "true" },
       {
@@ -143,8 +143,8 @@ export const useFileQueries = ({
     );
 
   const shouldShowDetailLoader =
-    (hasSingleDetailTarget && isDetailPending) ||
-    (hasMultipleDetailTargets && isMultipleFilesPending);
+    (hasSingleDetailTarget && isDetailLoading) ||
+    (hasMultipleDetailTargets && isMultipleFilesLoading);
 
   return {
     resource,
@@ -153,7 +153,7 @@ export const useFileQueries = ({
     detailResource,
     detailError,
     statData,
-    isStatPending,
+    isStatLoading,
     multiItemsStats,
     editingFileResource,
     isEditingFileLoading,

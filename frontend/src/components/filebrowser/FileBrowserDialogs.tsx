@@ -90,7 +90,7 @@ export interface FileBrowserDetailsDialogsProps {
   detailTarget: string[] | null;
   hasMultipleTargets: boolean;
   hasSingleTarget: boolean;
-  isStatPending: boolean;
+  isStatLoading: boolean;
   multiItemsStats: MultiItemsStats;
   onClose: () => void;
   onDownload: (path: string) => void;
@@ -240,7 +240,7 @@ const FileBrowserDialogs = ({
       detailTarget={details.detailTarget}
       hasMultipleDetailTargets={details.hasMultipleTargets}
       hasSingleDetailTarget={details.hasSingleTarget}
-      isStatPending={details.isStatPending}
+      isStatLoading={details.isStatLoading}
       multiItemsStats={details.multiItemsStats}
       onClose={details.onClose}
       onDownload={details.onDownload}

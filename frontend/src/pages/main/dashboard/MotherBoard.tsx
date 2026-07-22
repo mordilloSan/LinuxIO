@@ -4,6 +4,7 @@ import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
 } from "@/components/cards/DashboardCard";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
@@ -11,12 +12,14 @@ import { useAppTheme } from "@/theme";
 const MotherBoardInfo = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const { data: motherboardInfo } =
+  const { data: motherboardInfo, isPending } =
     linuxio.system.get_motherboard_info.useQuery({
       refetchInterval: 50000,
     });
 
-  const visibleDetails = motherboardInfo ? (
+  const visibleDetails = isPending ? (
+    <ComponentLoader />
+  ) : motherboardInfo ? (
     <div
       style={{
         display: "flex",

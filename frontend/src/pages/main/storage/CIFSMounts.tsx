@@ -423,7 +423,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
 
-  const { data: mounts = [], isPending: loading } =
+  const { data: mounts = [], isPending } =
     linuxio.storage.list_cifs_mounts.useQuery({
       refetchInterval: 10000,
     });
@@ -475,7 +475,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
     });
   };
 
-  if (loading) {
+  if (isPending) {
     return <PageLoader />;
   }
 

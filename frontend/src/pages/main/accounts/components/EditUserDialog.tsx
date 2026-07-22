@@ -39,8 +39,10 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   const isProtected =
     user.username === "root" || user.username === currentUser?.name;
 
-  const { data: shells = [] } = linuxio.accounts.list_shells.useQuery();
-  const { data: groups = [] } = linuxio.accounts.list_groups.useQuery();
+  const { data: shells = [], isLoading: shellsLoading } =
+    linuxio.accounts.list_shells.useQuery({ enabled: open });
+  const { data: groups = [], isLoading: groupsLoading } =
+    linuxio.accounts.list_groups.useQuery({ enabled: open });
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
@@ -116,6 +118,7 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
             freeSolo
             fullWidth
             label="Shell"
+            loading={shellsLoading}
             onChange={(value) => setShell(value || "/bin/bash")}
             onInputChange={setShell}
             options={shellsList}
@@ -124,6 +127,7 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
           <AppAutocomplete
             fullWidth
             label="Secondary Groups"
+            loading={groupsLoading}
             multiple
             onChange={(values) => {
               const added = values[0];

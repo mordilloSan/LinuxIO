@@ -7,6 +7,7 @@ import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
@@ -98,15 +99,18 @@ const SectionHeader = ({
 
 const HardwarePage = () => {
   // ── data ──
-  const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
-    refetchInterval: 5000,
-  }) as { data: SensorGroup[] | undefined };
-  const { data: pciDevices } = linuxio.system.get_pci_devices.useQuery({
-    staleTime: 300000,
-  });
-  const { data: memoryModules } = linuxio.system.get_memory_modules.useQuery({
-    staleTime: 300000,
-  });
+  const { data: sensorGroups, isPending: isSensorsPending } =
+    linuxio.system.get_sensor_info.useQuery({
+      refetchInterval: 5000,
+    }) as { data: SensorGroup[] | undefined; isPending: boolean };
+  const { data: pciDevices, isPending: isPciPending } =
+    linuxio.system.get_pci_devices.useQuery({
+      staleTime: 300000,
+    });
+  const { data: memoryModules, isPending: isMemoryPending } =
+    linuxio.system.get_memory_modules.useQuery({
+      staleTime: 300000,
+    });
 
   const visibleSensorGroups = useMemo(
     () =>
@@ -340,7 +344,11 @@ const HardwarePage = () => {
         title="Sensors"
       />
       <AppCollapse in={sections.sensors}>
-        {visibleSensorGroups.length === 0 ? (
+        {isSensorsPending ? (
+          <div style={{ minHeight: 120 }}>
+            <ComponentLoader />
+          </div>
+        ) : visibleSensorGroups.length === 0 ? (
           <SensorEmptyCard />
         ) : (
           <>
@@ -371,16 +379,22 @@ const HardwarePage = () => {
       />
       <AppCollapse in={sections.memoryModules}>
         <HardwareTableCard>
-          <AppDataTable
-            ariaLabel="Memory modules"
-            columns={memoryColumns}
-            data={memoryRows}
-            emptyMessage="No memory module data available. Ensure dmidecode is installed."
-            fillAvailable={false}
-            getRowId={(mod, idx) => `${mod.id}-${idx}`}
-            maxHeight={280}
-            style={{ boxShadow: "none" }}
-          />
+          {isMemoryPending ? (
+            <div style={{ minHeight: 160 }}>
+              <ComponentLoader />
+            </div>
+          ) : (
+            <AppDataTable
+              ariaLabel="Memory modules"
+              columns={memoryColumns}
+              data={memoryRows}
+              emptyMessage="No memory module data available. Ensure dmidecode is installed."
+              fillAvailable={false}
+              getRowId={(mod, idx) => `${mod.id}-${idx}`}
+              maxHeight={280}
+              style={{ boxShadow: "none" }}
+            />
+          )}
         </HardwareTableCard>
       </AppCollapse>
 
@@ -392,16 +406,22 @@ const HardwarePage = () => {
       />
       <AppCollapse in={sections.pciDevices}>
         <HardwareTableCard>
-          <AppDataTable
-            ariaLabel="PCI devices"
-            columns={pciColumns}
-            data={pciRows}
-            emptyMessage="No PCI devices found"
-            fillAvailable={false}
-            getRowId={(dev, idx) => `${dev.slot}-${idx}`}
-            maxHeight={420}
-            style={{ boxShadow: "none" }}
-          />
+          {isPciPending ? (
+            <div style={{ minHeight: 160 }}>
+              <ComponentLoader />
+            </div>
+          ) : (
+            <AppDataTable
+              ariaLabel="PCI devices"
+              columns={pciColumns}
+              data={pciRows}
+              emptyMessage="No PCI devices found"
+              fillAvailable={false}
+              getRowId={(dev, idx) => `${dev.slot}-${idx}`}
+              maxHeight={420}
+              style={{ boxShadow: "none" }}
+            />
+          )}
         </HardwareTableCard>
       </AppCollapse>
     </div>
