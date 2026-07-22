@@ -15,7 +15,6 @@ import "./tab-container.css";
  * - URL query parameter persistence (tab state survives page reload)
  * - Lazy loading (tabs only mount when active)
  * - Error boundary wrapping (errors in one tab don't crash others)
- * - Fade animations between tabs
  * - Per-tab action buttons in the tab bar
  *
  * @example
@@ -43,7 +42,6 @@ const TabContainer = ({
   tabs,
   defaultTab,
   urlParam = "tab",
-  fadeTimeout = 300,
   containerStyle = {},
   errorFallback,
 }: TabContainerProps) => {
@@ -79,19 +77,16 @@ const TabContainer = ({
         value={validTab}
       />
 
-      {/* Container for tab panels. Grid keeps fade panels aligned without absolute layout. */}
+      {/* Only mount the active panel so large tab views do not overlap. */}
       <div className="tab-container__panels">
-        {tabs.map((tab) => (
+        {activeTabConfig && (
           <TabPanel
-            activeTab={validTab}
             errorFallback={errorFallback}
-            key={tab.value}
-            timeout={fadeTimeout}
-            value={tab.value}
+            key={activeTabConfig.value}
           >
-            {tab.component}
+            {activeTabConfig.component}
           </TabPanel>
-        ))}
+        )}
       </div>
     </div>
   );

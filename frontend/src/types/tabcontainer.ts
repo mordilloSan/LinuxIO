@@ -24,8 +24,6 @@ export interface TabContainerProps {
   defaultTab: string;
   /** Custom fallback UI to show when a tab component errors */
   errorFallback?: ReactNode;
-  /** Duration of the fade animation in milliseconds (default: 300) */
-  fadeTimeout?: number;
   /** Array of tab configurations */
   tabs: TabConfig[];
   /** Name of the URL query parameter to use for tab state (default: "tab") */
