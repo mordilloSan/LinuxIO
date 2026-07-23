@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { router } from "@/router";
+import { router } from "./-router";
 
 const leafRoutes = Object.values(router.routesById).filter(
   (route) => route.id !== "__root__" && route.id !== "/_authenticated",

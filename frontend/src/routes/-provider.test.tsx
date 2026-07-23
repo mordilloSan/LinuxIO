@@ -11,7 +11,7 @@ const routerMocks = vi.hoisted(() => ({
   invalidate: vi.fn(),
 }));
 
-vi.mock("@/router", () => ({
+vi.mock("./-router", () => ({
   router: {
     invalidate: routerMocks.invalidate,
   },

@@ -1,4 +1,4 @@
-import LoginComponent from "@/components/auth/Login";
+import LoginComponent from "@/routes/sign-in/-components/Login";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 

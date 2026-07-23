@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import Login from "@/components/auth/Login";
+import Login from "@/routes/sign-in/-components/Login";
 import { render, screen, waitFor } from "@/test/render";
 import { readSigninNotice, setSigninNotice } from "@/utils/signinNotice";
 

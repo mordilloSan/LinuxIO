@@ -1,6 +1,6 @@
 import { AuthProvider } from "./contexts/AuthContext";
 import { useGlobalContextMenuGuard } from "./hooks/useGlobalContextMenuGuard";
-import AppQueryClientProvider from "./query-client";
+import AppQueryClientProvider from "./routes/-query-client";
 import ApplicationRouterProvider from "./routes/-provider";
 
 function App() {

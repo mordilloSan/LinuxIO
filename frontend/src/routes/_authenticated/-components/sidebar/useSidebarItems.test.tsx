@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import { AuthContext } from "@/contexts/AuthContext";
-import { router } from "@/router";
+import { router } from "@/routes/-router";
 import {
   createAuthContextValue,
   createTestQueryClient,
