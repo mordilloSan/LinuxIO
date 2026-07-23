@@ -108,6 +108,25 @@ describe("useFileBrowserNavigation", () => {
       expect(onPathChange).toHaveBeenCalledTimes(2);
     });
   });
+  it("keeps the last valid path when location moves away from /filebrowser before this page unmounts", async () => {
+    const onPathChange = vi.fn();
+    const { router, Wrapper } = createTanStackRouterWrapper({
+      initialEntries: ["/filebrowser/srv/projects"],
+    });
+    const { result } = renderHook(
+      () => useFileBrowserNavigation({ onPathChange }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current?.normalizedPath).toBe("/srv/projects"),
+    );
+
+    await act(() => router.navigate({ to: "/terminal" } as never));
+
+    expect(result.current?.normalizedPath).toBe("/srv/projects");
+  });
+
   it.each([
     "/srv/percent%value",
     "/srv/hash#value",
