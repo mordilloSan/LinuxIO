@@ -481,7 +481,7 @@ test-frontend: ensure-node setup
 
 test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
-	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
+	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --config config/vitest.config.ts --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -499,7 +499,7 @@ lint-only:
 	  cd frontend; \
 	  lint_output="$$(mktemp)"; \
 	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  ./node_modules/.bin/oxlint --type-aware --fix src 2>&1 | tee "$$lint_output"; \
+	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
 	  if [ -n "$$warning_count" ]; then \
@@ -507,7 +507,7 @@ lint-only:
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
-	  ./node_modules/.bin/oxfmt --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "!src/routeTree.gen.ts"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
@@ -830,7 +830,7 @@ dev: setup dev-prep
 	  echo "  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
 	  rm -f "$(VITE_DEV_PID)"; \
-	  nohup bash -c 'cd frontend && exec npx vite --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  nohup bash -c 'cd frontend && exec npx vite --config config/vite.config.ts --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
 	  echo $$! > "$(VITE_DEV_PID)"; \
 	  STARTED_VITE=1; \
 	fi

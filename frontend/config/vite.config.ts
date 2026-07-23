@@ -56,7 +56,7 @@ function oxcReactCompiler(): PluginOption {
 }
 
 export default defineConfig(async ({ command }) => {
-  const { generateIcons } = await import("./scripts/generate-icons.mjs");
+  const { generateIcons } = await import("../scripts/generate-icons.mjs");
   generateIcons();
 
   const isBuild = command === "build";

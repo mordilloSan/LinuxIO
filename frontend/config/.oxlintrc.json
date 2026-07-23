@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
   // Native Rust plugins. `eslint` core rules are always on; `unicorn` is
   // deliberately left out (not part of the previous ESLint setup).
   "plugins": ["typescript", "oxc", "react"],

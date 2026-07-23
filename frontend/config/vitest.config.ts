@@ -14,7 +14,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": path.resolve(__dirname, "../src"),
     },
   },
   test: {
@@ -53,8 +53,8 @@ export default defineConfig({
         "src/icons/**",
         "src/test/**",
         "src/index.tsx",
-        "vite.config.ts",
-        "vitest.config.ts",
+        "config/vite.config.ts",
+        "config/vitest.config.ts",
       ],
     },
   },

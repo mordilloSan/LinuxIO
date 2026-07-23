@@ -9,19 +9,19 @@
     "node": "24"
   },
   "scripts": {
-    "dev": "vite",
-    "lint": "oxlint --type-aware --fix src && npm run format",
-    "format": "oxfmt --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\"",
-    "format:check": "oxfmt --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\"",
+    "dev": "vite --config config/vite.config.ts",
+    "lint": "oxlint --type-aware --fix -c config/.oxlintrc.json src && npm run format",
+    "format": "oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"!src/routeTree.gen.ts\"",
+    "format:check": "oxfmt -c config/.oxfmtrc.json --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"!src/routeTree.gen.ts\"",
     "icons:generate": "node scripts/generate-icons.mjs",
-    "build": "vite build",
-    "analyze": "BUNDLE_ANALYZE=true vite build",
+    "build": "vite build --config config/vite.config.ts",
+    "analyze": "BUNDLE_ANALYZE=true vite build --config config/vite.config.ts",
     "bundle:metrics": "node scripts/bundle-metrics.mjs",
     "bundle:budget": "node scripts/bundle-metrics.mjs --check",
     "compiler:coverage": "node scripts/compiler-coverage.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test": "vitest run --config config/vitest.config.ts",
+    "test:watch": "vitest --config config/vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config config/vitest.config.ts",
     "update": "npm update && npm outdated"
   },
   "browserslist": [

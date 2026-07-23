@@ -43,5 +43,5 @@
       "@/theme": ["./src/theme/index"]
     }
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "config/vite.config.ts", "config/vitest.config.ts"]
 }
