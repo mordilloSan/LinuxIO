@@ -3,6 +3,91 @@
 Status: reviewed against baseline commit `0cbe62cc6542` on 2026-07-16. No
 runtime migration stage has started.
 
+
+
+excerto da conversa com claude code
+
+
+
+Veredicto
+A tua intuição está certa e os números confirmam-na de forma esmagadora — mas a tua premissa tem duas imprecisões importantes, e a resposta a "não era mais simples usar React Query?" é mais subtil do que parece. Quanto ao documento: concordo com o diagnóstico e com os contratos-alvo, com reservas sobre o âmbito. Fiz a revisão com 6 revisores paralelos (DSL, motor de jobs, handlers, API frontend, consumidores, histórico git) mais um verificador adversarial que recontou todos os números, e só li o plano depois de fechar a conclusão.
+
+O que o código diz (números verificados)
+Dos 228 routes, 128 correm em ModeJob: 109 bindings apischema.Job + 19 apischema.Runner. Apenas 2 dos 109 Job emitem progresso (filebrowser.resource_patch e virt.create). ~96 são mutações imperativas de <2s; 60 devolvem NoResponse. Os 19 Runners (filebrowser, docker.compose, packages.update, SMART test, appupdate, log-follows) usam todos a maquinaria a sério.
+Cada mutação simples paga 3 operações de rede em vez de 1 (start → jobs.attach → jobs.get final, em jobs.ts:79-107), 3 goroutines, entrada no registry com retenção de 30 min, e o protocolo markJobLocallyHandled para não duplicar toasts com o stream global de eventos.
+O próprio frontend admite quais rotas precisam de jobs: o switch de recuperação em useRecoveredJobs.ts:301-461 é uma whitelist de 15 tipos, sem default. Um network.set_mtu interrompido por reload não mostra nada — nem toast de sucesso/erro. Paga o custo todo do framework e não recebe nenhum benefício visível.
+Achado de segurança: os snapshots guardam o request descodificado sem redação — incluindo passwords em claro (accounts.change_password, storage.mount_cifs, cloud-init do virt) — em memória durante o job + 30 min, expostos via jobs.get/jobs.list (jobs.go:68).
+Histórico: a migração custou ~20 commits e +8.185 linhas líquidas; o DSL foi remodelado 6 vezes em 4 dias (4–7 jun); HandleWithPolicy tem zero call sites; docker.compose_up/down/stop/restart são duplicados sem progresso do Runner docker.compose.
+Duas correções à tua premissa
+Nada sobrevive à expiração da sessão hoje — nem os jobs do filebrowser. O bridge é um processo por login; quando a sessão expira, o webserver mata-o e startBridgeCleanup chama CancelForSession. O que os jobs realmente dão é sobrevivência a reload da página / queda do WebSocket dentro de uma sessão viva — e o filebrowser depende exatamente disso. O critério correto é "operações que sobrevivem à página/ligação", não "à sessão".
+O conjunto que precisa de jobs é maior que o filebrowser: docker.compose, packages.update, capability install, SMART test, app update, indexer — no total ~20 rotas, que coincidem quase 1:1 com os 19 Runners + a whitelist de 15 tipos do frontend.
+"Não era mais simples usar React Query?"
+Tu nunca deixaste de usar React Query — useJobAction é um useMutation por baixo, e a ergonomia nos componentes é igual ou melhor que antes (os 123 call sites só usam mutate/isPending). O problema não é a API dos componentes; é tudo o que está por baixo para manter essa ilusão. A pergunta certa não é "React Query vs jobs" mas sim "porque é que uma mutação request/response corre pelo registry de jobs?". E a resposta mecânica é pequena: Job e Query diferem numa palavra no binding, useJobAction→useAction numa palavra no call site (o useAction já existe), regenerar o cliente. O motor de jobs (~1.400 linhas) e o motor de transferências do frontend (~2.100 linhas) ficam — são complexidade essencial para as ~20 rotas assíncronas.
+
+Uma nuance que o plano apanha bem e um flip ingénuo partiria: os jobs dão hoje contexto destacado (um set_ipv4_manual que corta a tua própria ligação completa na mesma) e serialização por owner. Rotas de rede/power precisam de política explícita de desconexão, não de um flip cego.
+
+A verbosidade dos handlers é um problema separado
+O Job[X, Y]("...").Handle(...) não é verboso por causa dos jobs. As causas reais: (a) o handler emite o resultado type-erased via Events.Result(any), o que obriga a declarar os type params — e o tipo Result declarado nunca é verificado em compilação contra o que o handler emite (o codegen pode gerar TS errado em silêncio); (b) os 201 wrappers EmitResult de 3-4 linhas (~700 linhas de cerimónia pura), institucionalizados pelo handler_pattern_test.go. Uma sobrecarga Handle(func(ctx, req) (Result, error)) deixaria o Go inferir os dois type params, apagaria a camada de wrappers e tornaria o Result verificado em compilação — sem tocar no codegen, que consome dados do RouteSpec e não a sintaxe.
+
+Sobre o plano de migração
+Concordo com o essencial: parar de tratar mutações como jobs, os 5 contratos (Query/Action/Duplex/FileTransfer/DurableJob), a redação de secrets como pré-requisito S (os meus revisores encontraram exatamente esse problema sem ler o documento), mode-safety em compile time, e reclassificar log-follows como Duplex (o adaptador JobBackedDataStream de 189 linhas existe só por causa dessa má classificação). O plano é notavelmente mais rigoroso que um flip ingénuo — as políticas native_handoff/expected_loss e a preservação de serialização/admissão respondem a subtilezas reais.
+
+Reservas:
+
+O valor está concentrado em S + Stages 0–4. É aí que morrem os 3 round-trips, o protocolo de coordenação e a retenção de secrets para ~96 rotas. Os Stages 5–8 (plano HTTP de ficheiros) e 9–14 (durable core) são programas separáveis — trata-os como projetos independentes com justificação própria, não como continuação inevitável.
+DurableJob é funcionalidade nova, não restauro. Hoje nada sobrevive ao bridge e o produto vive com isso. D1/D2/D3, store persistente, cursors, broker socket-activated — só se houver um requisito de produto real (o candidato óbvio é o control.app_update, que o plano bem escolhe).
+O plano não resolve a tua queixa de verbosidade: diz explicitamente que Action reutiliza o adapter Events.Result, ou seja, os 201 wrappers ficam. Acrescentaria a sobrecarga tipada Handle(func(ctx, req) (Result, error)) ao Stage 1 — é barato, ortogonal, e corrige de caminho a falta de verificação do tipo Result.
+Em suma: a tua conclusão instintiva ("isto é complexidade desnecessária para quase tudo exceto o filebrowser") está certa na direção e o documento já a formaliza bem; corrige apenas a ideia de "sobrevive à sessão", alarga o conjunto de jobs legítimos para ~20 rotas, e faz primeiro o pré-requisito de segurança S + Stages 0–4 antes de decidir se os capítulos HTTP e durable valem o investimento.
+
+
+É mais eficiente? Sim — medido no teu hardware
+Escrevi um benchmark Go temporário no router (mesmo handler, mesmos frames, net.Pipe) comparando o dispatch dos dois modos. Resultados no teu Ryzen 7 PRO 4750G:
+
+Query	Job (melhor caso)	Rácio
+Tempo por chamada	~18 µs	~80 µs	4,4×
+Memória por chamada	2.438 B	~6.600 B	2,7×
+Alocações	37	78	2,1×
+E isto é o melhor caso do job (handler instantâneo, snapshot terminal dentro da janela de 25ms, 1 operação de rede). O caso real de produção é pior de forma estrutural, não incremental: qualquer handler que demore >25ms (praticamente todas as chamadas D-Bus/NetworkManager) custa ao browser 3 round-trips em vez de 1, mais o snapshot retido em memória 30 minutos, mais o fan-out para o stream jobs.events que o frontend tem sempre aberto.
+
+O benchmark revelou ainda um comportamento que as queries não têm: com ActionDefault (1 ativo por owner+rota, fila de 16, libertação assíncrona do slot), dispatches costas-com-costas da mesma mutação são rejeitados com "job queue full" — descobri-o porque o benchmark falhou à primeira. A velocidade humana nunca enche a fila, mas é admission control aplicado a rotas que não precisam de nenhum.
+
+Agora a parte honesta: por clique humano, 60µs e 4KB são irrelevantes — o teu próprio plano mediu 11ms p50 para uma mutação vazia, dominados por rede e D-Bus. A eficiência é real mas é o argumento secundário. O argumento principal é o que tu próprio disseste: estado e complexidade. Uma query tem 1 estado (pendente→resultado); um job tem 5 máquinas de estado no frontend, 3 goroutines no backend e 2 caminhos de fallback.
+
+2. Onde está a "amálgama" — e onde não está
+Reli os dois documentos que citas, e eles confirmam o critério que estás a aplicar sem o nomeares: uma camada é limpa quando o seu trabalho se descreve numa página. O relay descreve-se numa frase ("o servidor nunca faz parse de nada, só encaminha bytes"); a arquitetura de processos idem (4 binários, cada um com um privilégio e um trabalho). Essas camadas — o caminho GIN→http puro→WebSocket+yamux que percorreste — não são o problema. São, aliás, exatamente a topologia do Cockpit (o próprio doc o diz), e os teus benchmarks validaram-nas: 3,4ms vs 16,5ms contra HTTP.
+
+A amálgama está toda na camada de cima, e consegue-se nomear com precisão porque é onde o teste da "uma página" falha:
+
+Vocabulário a mais: Query/Job/Runner/DuplexRoute × Handle/HandleWithPolicy/Run/Duplex (com panics para combinações inválidas), 6 primitivos jobs.*, endpoints gerados com 10 métodos cada, 3 variantes de action hooks, runtime de background jobs com 4 ref-sets de coordenação. Cada peça é defensável; a soma não é descritível.
+Handlers não-idiomáticos: apischema.Job[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").Handle(handleSetMTU) + wrapper de 3 linhas. A causa raiz é uma só: o handler emite o resultado type-erased via Events.Result(any), o que obriga a declarar os type params à mão (e o tipo Result nunca é verificado pelo compilador). Go idiomático seria func(ctx, req) (Result, error) — e com isso o binding inferia os tipos sozinho e os 201 wrappers desapareciam.
+Jobs como caminho default — já quantificado: ~96 rotas pagam a maquinaria toda e não usam nada dela.
+3. O modelo Cockpit: segue a disciplina, não a implementação
+Aqui preciso de te travar um bocado, porque há duas coisas diferentes dentro de "modelo do Cockpit":
+
+O que o Cockpit tem de limpo e tu deves copiar (e que o teu migration plan já codifica, talvez sem teres dado por isso):
+
+Vocabulário mínimo: o Cockpit tem ~6 payload types de canal e mais nada. O equivalente teu: Query / Action / Duplex + controlo de jobs duráveis — 4 conceitos, um convention de chamada cada.
+Canal = lifetime: uma operação ligada à ligação usa a stream como identidade e morre com ela. Nada de segundo ID. (Os teus Duplex já são isto.)
+Native ownership: o Cockpit não tem registry de jobs — quando instala pacotes, subscreve os sinais D-Bus do PackageKit; quando a página fecha, a operação nativa continua e o reload relê o estado nativo. É literalmente a regra 4 do teu plano ("não cries um job LinuxIO para espelhar o job do systemd").
+O que o Cockpit tem e tu NÃO queres copiar: a limpeza dele vem de uma escolha radical — não ter API aplicacional nenhuma. O browser fala D-Bus cru (dbus-json3), spawna processos, lê ficheiros. Isso significa: zero contratos tipados, zero codegen, toda a lógica de negócio em JavaScript, e o frontend a ter de conhecer as interfaces D-Bus do NetworkManager, systemd, logind... O teu contrato Go-owned + cliente TS gerado é a tua maior vantagem sobre o Cockpit — e o filebrowser, o compose SDK, o wireguard são features que o modelo Cockpit não faz de forma limpa (é por isso que no Cockpit cada feature dessas vem como "package" com backend próprio). Deitar isso fora para ganhar a estética do Cockpit seria trocar complexidade estruturada por complexidade dispersa.
+
+E o "acrescentar React Query ficava super fluido" — já provaste isso esta manhã: o canário config.set é exatamente essa experiência (RPC puro + useAction), e custou 3 palavras.
+
+O estado final que resolve o teu desconforto
+Não é uma re-arquitetura; é uma redução de vocabulário sobre o que já tens:
+
+
+// O ficheiro de bindings que consegues descrever numa página:
+apischema.Query[NoRequest, []NetworkInterface]("network.get_network_info").Handle(GetNetworkInfo)
+apischema.Action[InterfaceMTURequest]("network.set_mtu").Handle(SetMTU)   // func(ctx, req) error — sem wrapper
+Stages S+0–4 do teu plano (redação de secrets + flip das ~96 mutações) — mata os jobs como default. O canário já demonstrou a mecânica.
+Sobrecarga tipada no Handle — mata os 201 wrappers e os type params redundantes. É a correção "idiomática" e o plano ainda não a tem; acrescentava-a ao Stage 1.
+Native ownership para as ~11 rotas longas cinzentas (compose_up/down, update_container...) — à Cockpit: o Docker/systemd é que é dono, a UI segue o estado nativo.
+O motor de jobs fica, encolhido para as ~20 rotas que o merecem — e essas descrevem-se numa página também.
+O transporte, os processos, o systemd, o codegen — nada disso mexe. A amálgama não é o caminho que percorreste; é só a camada onde o vocabulário cresceu sem disciplina. E essa poda já está, no essencial, escrita no teu próprio plano.
+
+Sobrecarga tipada no Handle — mata os 201 wrappers e os type params redundantes. É a correção "idiomática" e o plano ainda não a tem; acrescentava-a ao Stage 1.
+
 ## Decision
 
 LinuxIO should stop treating every mutation as a job, but it should not delete
@@ -391,8 +476,10 @@ DurableJob
 Duplex
 ```
 
-`Action` reuses the existing typed `HandlerFunc` and `Events.Result/Error`
-adapter; it does not introduce a parallel handler style. Progress/data emission
+`Action` reuses the typed handler shape `func(ctx, Req) (Res, error)` (the
+`.Handle` binding form, shipped ahead of this plan on 2026-07-21); it does not
+introduce a parallel handler style. The raw emitter shape survives only as
+`.HandleEvents` for the two progress-emitting handlers. Progress/data emission
 is invalid for an action.
 
 Generated TypeScript surfaces are mode-specific:
@@ -666,7 +753,8 @@ Exit criteria:
 Backend:
 
 - Add `ModeAction` and typed `apischema.Action` while retaining legacy jobs.
-- Reuse the existing typed handler adapter and reject action progress/data.
+- Reuse the typed `.Handle` adapter (`func(ctx, Req) (Res, error)`, already
+  shipped) and reject action progress/data.
 - Derive a one-shot Query/Action context that cancels on explicit abort,
   EOF/reset, timeout, or bridge shutdown. Duplex handlers continue to own their
   stream reads.

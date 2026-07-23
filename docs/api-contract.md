@@ -190,9 +190,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
     api.Register(router)
 }
 
-func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
-    result, err := GetUnitInfo(ctx, req.UnitName)
-    return bridgeipc.EmitResult(emit, result, err)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apischema.UnitInfo, error) {
+    return GetUnitInfo(ctx, req.UnitName)
 }
 ```
 
@@ -317,9 +316,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
     api.Register(router)
 }
 
-func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest, emit bridgeipc.Events) error {
-    result, err := SearchPackages(ctx, req.Query)
-    return bridgeipc.EmitResult(emit, result, err)
+func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest) (apischema.PackageSearchResult, error) {
+    return SearchPackages(ctx, req.Query)
 }
 ```
 

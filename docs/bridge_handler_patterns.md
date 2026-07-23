@@ -15,17 +15,23 @@ It must not contain package state types, package variables, constants, helper fu
 - `*_operation.go` for mutation/job orchestration
 - domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
 
-Every adapter in `handlers.go` should receive a typed request and return through `bridgeipc.EmitResult`:
+Every adapter in `handlers.go` receives a typed request and returns `(Result, error)`. The returned `Result` is emitted as the route result, and the compiler checks it against the type declared in the binding:
 
 ```go
-func handleListTimers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-    result, err := ListTimers(ctx)
-    return bridgeipc.EmitResult(emit, result, err)
+func handleListTimers(ctx context.Context, _ apischema.NoRequest) ([]apischema.Timer, error) {
+    return ListTimers(ctx)
 }
 
-func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
-    result, err := GetUnitInfo(ctx, req.UnitName)
-    return bridgeipc.EmitResult(emit, result, err)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apischema.UnitInfo, error) {
+    return GetUnitInfo(ctx, req.UnitName)
+}
+```
+
+Void routes declare `apischema.NoResponse` and return through `apischema.Done`, which keeps the wire result null:
+
+```go
+func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) (apischema.NoResponse, error) {
+    return apischema.Done(SetMTU(ctx, req.Iface, req.MTU))
 }
 ```
 
@@ -37,7 +43,7 @@ func ListTimers(ctx context.Context) ([]apischema.Timer, error) {
 }
 ```
 
-Do not call `emit.Result(...)` or `emit.Error(...)` directly from `handlers.go`; use `bridgeipc.EmitResult` so result and error mapping stay consistent.
+Handlers do not receive an emitter. The raw `func(ctx, req, emit bridgeipc.Events) error` shape exists only as `.HandleEvents`, reserved for the few handlers that emit progress frames before their result (`filebrowser.resource_patch`, `virt.create`); everything else binds with `.Handle`.
 
 ## Context
 
@@ -123,11 +129,11 @@ Use `operation` for job-backed mutations or long-running work, `follow` for log/
 Request JSON is decoded before the handler runs. Use typed fields directly:
 
 ```go
-func handleStartService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
+func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) (apischema.NoResponse, error) {
     if req.ServiceName == "" {
-        return bridgeipc.NewError("missing service name", 400)
+        return apischema.Done(bridgeipc.NewError("missing service name", 400))
     }
-    return bridgeipc.EmitResult(emit, nil, StartUnit(ctx, req.ServiceName))
+    return apischema.Done(StartUnit(ctx, req.ServiceName))
 }
 ```
 
