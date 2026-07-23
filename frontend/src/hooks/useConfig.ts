@@ -34,8 +34,3 @@ export function useConfigValue<K extends ConfigValueKey>(key: K) {
 
   return [readConfigValue(config, key), set] as const;
 }
-
-export function useConfigReady(): boolean {
-  const { isLoaded } = useConfig();
-  return isLoaded;
-}

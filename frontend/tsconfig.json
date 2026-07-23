@@ -28,6 +28,7 @@
       "@/layouts/*": ["./src/layouts/*"],
       "@/pages/*": ["./src/pages/*"],
       "@/routing/*": ["./src/routing/*"],
+      "@/tanstack-router/*": ["./src/tanstack-router/*"],
       "@/theme/*": ["./src/theme/*"],
       "@/test/*": ["./src/test/*"],
       "@/types/*": ["./src/types/*"],

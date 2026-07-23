@@ -500,7 +500,7 @@ const SambaShares = ({
 
   const {
     data: shares = [],
-    isPending: loading,
+    isPending,
     refetch,
   } = linuxio.shares.list_samba_shares.useQuery({
     refetchInterval: 10000,
@@ -522,7 +522,7 @@ const SambaShares = ({
     setDeleteOpen(true);
   };
 
-  if (loading) {
+  if (isPending) {
     return <PageLoader />;
   }
 

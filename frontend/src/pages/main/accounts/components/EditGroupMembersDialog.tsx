@@ -34,7 +34,8 @@ const EditGroupMembersDialog = ({
     group.members,
   );
 
-  const { data: users = [] } = linuxio.accounts.list_users.useQuery();
+  const { data: users = [], isLoading: usersLoading } =
+    linuxio.accounts.list_users.useQuery({ enabled: open });
 
   const usersList = Array.isArray(users) ? users : [];
 
@@ -90,6 +91,7 @@ const EditGroupMembersDialog = ({
           <AppAutocomplete
             fullWidth
             label="Members"
+            loading={usersLoading}
             multiple
             onChange={(values) => {
               const added = values[0];

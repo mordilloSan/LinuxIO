@@ -34,7 +34,7 @@ export {
 } from "./jobs";
 
 // === API Error Type ===
-export { LinuxIOError } from "./linuxio-core";
+export { LinuxIOError, ensureLoaderRequestReady } from "./linuxio-core";
 
 // === React Hooks ===
 export { useStreamMux, useIsUpdating } from "./linuxio";

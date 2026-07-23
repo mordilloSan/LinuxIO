@@ -10,7 +10,7 @@ import NetworkGraph from "./NetworkGraph";
 
 const NetworkInterfacesCard = () => {
   const theme = useAppTheme();
-  const { data: rawInterfaces = [], isPending: isLoading } =
+  const { data: rawInterfaces = [], isPending } =
     linuxio.system.get_network_info.useQuery({
       refetchInterval: 1000,
     });
@@ -62,79 +62,81 @@ const NetworkInterfacesCard = () => {
     [filteredInterfaces],
   );
 
+  if (isPending) {
+    return (
+      <DashboardCard
+        avatarIcon="mdi:ethernet"
+        stats={<ComponentLoader />}
+        title="Network"
+      />
+    );
+  }
+
   const content = selectedInterface ? (
-    isLoading ? (
-      <ComponentLoader />
-    ) : (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignSelf: "flex-start",
-          width: "fit-content",
-        }}
-      >
-        {[
-          {
-            label: "IPv4",
-            value: selectedInterface.ipv4?.length
-              ? selectedInterface.ipv4.join(", ")
-              : "None",
-          },
-          { label: "MAC", value: selectedInterface.mac },
-          { label: "Speed", value: selectedInterface.speed },
-        ].map(({ label, value }, index, rows) => (
-          <div
-            key={label}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignSelf: "flex-start",
+        width: "fit-content",
+      }}
+    >
+      {[
+        {
+          label: "IPv4",
+          value: selectedInterface.ipv4?.length
+            ? selectedInterface.ipv4.join(", ")
+            : "None",
+        },
+        { label: "MAC", value: selectedInterface.mac },
+        { label: "Speed", value: selectedInterface.speed },
+      ].map(({ label, value }, index, rows) => (
+        <div
+          key={label}
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "flex-start",
+            paddingTop: theme.spacing(0.5),
+            paddingBottom: theme.spacing(0.5),
+            borderBottom:
+              index === rows.length - 1
+                ? "none"
+                : "1px solid var(--app-palette-divider)",
+            gap: theme.spacing(1),
+          }}
+        >
+          <AppTypography
+            color="text.secondary"
             style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "flex-start",
-              paddingTop: theme.spacing(0.5),
-              paddingBottom: theme.spacing(0.5),
-              borderBottom:
-                index === rows.length - 1
-                  ? "none"
-                  : "1px solid var(--app-palette-divider)",
-              gap: theme.spacing(1),
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
             }}
+            variant="caption"
           >
-            <AppTypography
-              color="text.secondary"
-              style={{
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                fontSize: "0.62rem",
-                flexShrink: 0,
-              }}
-              variant="caption"
-            >
-              {label}
-            </AppTypography>
-            <AppTypography fontWeight={500} noWrap variant="body2">
-              {value}
-            </AppTypography>
-          </div>
-        ))}
-      </div>
-    )
+            {label}
+          </AppTypography>
+          <AppTypography fontWeight={500} noWrap variant="body2">
+            {value}
+          </AppTypography>
+        </div>
+      ))}
+    </div>
   ) : (
     <AppTypography variant="body2">No interface selected.</AppTypography>
   );
 
   const content2 = selectedInterface ? (
-    isLoading ? (
-      <ComponentLoader />
-    ) : (
-      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
-        <NetworkGraph
-          interfaceName={effectiveSelected}
-          key={effectiveSelected}
-          rx={selectedInterface.rx_speed}
-          tx={selectedInterface.tx_speed}
-        />
-      </div>
-    )
+    <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <NetworkGraph
+        interfaceName={effectiveSelected}
+        key={effectiveSelected}
+        rx={selectedInterface.rx_speed}
+        tx={selectedInterface.tx_speed}
+      />
+    </div>
   ) : (
     <AppTypography variant="body2">No graph data.</AppTypography>
   );

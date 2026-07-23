@@ -1,7 +1,6 @@
 import { lazy, type PropsWithChildren, Suspense } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import PageLoader from "@/components/loaders/PageLoader";
 import useAuth from "@/hooks/useAuth";
 
 const AuthenticatedRuntimeProvider = lazy(
@@ -13,7 +12,7 @@ export const AuthGuard = ({ children }: PropsWithChildren) => {
   const location = useLocation();
 
   // Block everything until we know the auth state
-  if (!isInitialized) return <PageLoader />;
+  if (!isInitialized) return null;
 
   const isOnSignIn = location.pathname === "/sign-in";
 
@@ -35,7 +34,7 @@ export const AuthGuard = ({ children }: PropsWithChildren) => {
   // Authenticated:
   // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={null}>
       <AuthenticatedRuntimeProvider userId={user?.id}>
         {children ?? <Outlet />}
       </AuthenticatedRuntimeProvider>

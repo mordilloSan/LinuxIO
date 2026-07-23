@@ -64,10 +64,11 @@ export const useContainerAutoUpdateState = () => {
     containerNames,
   );
   const disabled = query.isPending || !query.data?.available;
-  const reason =
-    query.error?.message ??
-    query.data?.error ??
-    (!query.data?.available ? "Watchtower is unavailable." : undefined);
+  const reason = query.isPending
+    ? "Loading scheduled auto-update settings..."
+    : (query.error?.message ??
+      query.data?.error ??
+      (!query.data?.available ? "Watchtower is unavailable." : undefined));
 
   useEffect(() => {
     if (!query.data?.options) return;

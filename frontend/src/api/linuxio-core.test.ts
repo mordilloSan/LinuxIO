@@ -30,7 +30,8 @@ vi.mock("@/api/stream-helpers", () => ({
   waitForStreamResult: streamHelperMocks.waitForStreamResult,
 }));
 
-const { LinuxIOError, request } = await import("@/api/linuxio-core");
+const { LinuxIOError, ensureLoaderRequestReady, request } =
+  await import("@/api/linuxio-core");
 
 function createStream(overrides: Partial<Stream> = {}): Stream {
   return {
@@ -71,6 +72,7 @@ function createMux(stream = createStream()) {
 
 describe("linuxio-core request", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     muxMocks.waitForStreamMux.mockResolvedValue(true);
   });
 
@@ -106,16 +108,51 @@ describe("linuxio-core request", () => {
     );
   });
 
-  it("throws when no stream mux has been initialized", async () => {
+  it("initializes an absent mux and waits for it to open for loader readiness", async () => {
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValueOnce(null).mockReturnValue(mux);
+    muxMocks.initStreamMux.mockReturnValue(mux);
+
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(mux);
+
+    expect(muxMocks.initStreamMux).toHaveBeenCalledTimes(1);
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+  });
+
+  it("reuses an open mux for loader readiness without reinitializing it", async () => {
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(mux);
+
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+  });
+
+  it("keeps ordinary requests owned by the authenticated mux lifecycle", async () => {
     muxMocks.getStreamMux.mockReturnValue(null);
 
     await expect(request("system", "get_info")).rejects.toMatchObject({
       code: "not_initialized",
       message: "StreamMux not initialized",
     });
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
   });
 
-  it("reinitializes closed muxes before waiting for readiness", async () => {
+  it("reinitializes closed muxes before waiting for loader readiness", async () => {
+    const stream = createStream();
+    const closedMux = createMux(stream);
+    closedMux.status = "closed";
+    const openMux = createMux(stream);
+    muxMocks.getStreamMux
+      .mockReturnValueOnce(closedMux)
+      .mockReturnValue(openMux);
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(openMux);
+
+    expect(muxMocks.initStreamMux).toHaveBeenCalledTimes(1);
+  });
+
+  it("reinitializes a closed mux before an ordinary request opens its stream", async () => {
     const stream = createStream();
     const closedMux = createMux(stream);
     closedMux.status = "closed";
@@ -136,8 +173,27 @@ describe("linuxio-core request", () => {
     muxMocks.getStreamMux.mockReturnValue(createMux());
     muxMocks.waitForStreamMux.mockResolvedValue(false);
 
+    await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
+      code: "connection_closed",
+    });
+  });
+
+  it("throws connection_closed when an ordinary request mux does not become ready", async () => {
+    muxMocks.getStreamMux.mockReturnValue(createMux());
+    muxMocks.waitForStreamMux.mockResolvedValue(false);
+
     await expect(request("system", "get_info")).rejects.toMatchObject({
       code: "connection_closed",
+    });
+  });
+
+  it("rejects with a typed connection error when readiness fails", async () => {
+    muxMocks.getStreamMux.mockReturnValue(createMux());
+    muxMocks.waitForStreamMux.mockRejectedValue(new Error("socket failed"));
+
+    await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
+      code: "connection_closed",
+      message: "Connection closed before receiving result",
     });
   });
 

@@ -69,16 +69,22 @@ const Processor = () => {
     label: formatSensorLabel(key),
   }));
 
+  if (isPending || isError) {
+    return (
+      <DashboardCard
+        avatarIcon="ph:cpu"
+        stats={isPending ? <ComponentLoader /> : <ErrorMessage />}
+        title="Processor"
+      />
+    );
+  }
+
   const IconText = lmSensorsAvailable ? displayTemp : "N/A";
 
   const data = {
     title: "Processor",
     avatarIcon: "ph:cpu",
-    stats2: isError ? (
-      <ErrorMessage />
-    ) : isPending ? (
-      <ComponentLoader />
-    ) : (
+    stats2: (
       <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
         <ProcessorGraph usage={averageCpuUsage} />
       </div>

@@ -135,7 +135,7 @@ export function useFileBrowserController(): FileBrowserController {
     detailResource,
     detailError,
     statData,
-    isStatPending,
+    isStatLoading,
     multiItemsStats,
     editingFileResource,
     isEditingFileLoading,
@@ -147,7 +147,7 @@ export function useFileBrowserController(): FileBrowserController {
     hasSingleDetailTarget,
     hasMultipleDetailTargets,
   });
-  const filteredResource = useFileBrowserFilteredResource({
+  const { filteredResource, isSearchLoading } = useFileBrowserFilteredResource({
     resource,
     searchQuery,
   });
@@ -398,7 +398,7 @@ export function useFileBrowserController(): FileBrowserController {
       detailTarget,
       hasMultipleTargets: hasMultipleDetailTargets,
       hasSingleTarget: hasSingleDetailTarget,
-      isStatPending,
+      isStatLoading,
       multiItemsStats,
       onClose: handleCloseDetailDialog,
       onDownload: handleDownloadDetail,
@@ -415,7 +415,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleEditFile,
       hasMultipleDetailTargets,
       hasSingleDetailTarget,
-      isStatPending,
+      isStatLoading,
       multiItemsStats,
       shouldShowDetailLoader,
       statData,
@@ -584,9 +584,10 @@ export function useFileBrowserController(): FileBrowserController {
       errorMessage,
       filteredResource,
       isPending,
+      isSearchLoading,
       resource,
     }),
-    [errorMessage, filteredResource, isPending, resource],
+    [errorMessage, filteredResource, isPending, isSearchLoading, resource],
   );
 
   const contentListing = useMemo(

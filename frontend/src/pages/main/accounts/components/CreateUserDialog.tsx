@@ -33,8 +33,10 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [createHome, setCreateHome] = useState(true);
 
-  const { data: shells = [] } = linuxio.accounts.list_shells.useQuery();
-  const { data: groups = [] } = linuxio.accounts.list_groups.useQuery();
+  const { data: shells = [], isLoading: shellsLoading } =
+    linuxio.accounts.list_shells.useQuery({ enabled: open });
+  const { data: groups = [], isLoading: groupsLoading } =
+    linuxio.accounts.list_groups.useQuery({ enabled: open });
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
@@ -147,6 +149,7 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
             freeSolo
             fullWidth
             label="Shell"
+            loading={shellsLoading}
             onChange={(value) => setShell(value || "/bin/bash")}
             onInputChange={setShell}
             options={shellsList}
@@ -155,6 +158,7 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
           <AppAutocomplete
             fullWidth
             label="Secondary Groups"
+            loading={groupsLoading}
             multiple
             onChange={(values) => {
               const added = values[0];

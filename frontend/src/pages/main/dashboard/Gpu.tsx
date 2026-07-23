@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -17,14 +18,14 @@ const GpuInfo = () => {
   const theme = useAppTheme();
   const {
     data: gpus,
-    isPending: isLoading,
+    isPending,
     isError,
   } = linuxio.system.get_gpu_info.useQuery({
     refetchInterval: 2_000,
   });
 
-  const content: ReactNode = isLoading ? (
-    <AppTypography variant="body2">Loading...</AppTypography>
+  const content: ReactNode = isPending ? (
+    <ComponentLoader />
   ) : isError || !gpus || gpus.length === 0 ? (
     <AppTypography variant="body2">No GPU information available.</AppTypography>
   ) : (

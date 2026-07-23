@@ -11,6 +11,7 @@ import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import { useAppTheme } from "@/theme";
 import type {
@@ -54,6 +55,7 @@ export interface FileBrowserDataProps {
   errorMessage?: string | null;
   filteredResource?: FileResource;
   isPending: boolean;
+  isSearchLoading: boolean;
   resource?: FileResource;
 }
 
@@ -172,6 +174,8 @@ const FileBrowserContent = ({
         >
           {data.isPending && <PageLoader />}
 
+          {!data.isPending && data.isSearchLoading && <ComponentLoader />}
+
           {!data.isPending && data.errorMessage && (
             <ErrorState
               message={data.errorMessage}
@@ -181,6 +185,7 @@ const FileBrowserContent = ({
 
           {!chrome.editingPath &&
             !data.isPending &&
+            !data.isSearchLoading &&
             !data.errorMessage &&
             data.filteredResource &&
             data.filteredResource.type === "directory" && (

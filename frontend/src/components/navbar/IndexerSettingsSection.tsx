@@ -293,7 +293,7 @@ const IndexerSettingsSection = () => {
 
   const {
     data: config,
-    isPending,
+    isLoading,
     error,
     refetch,
     isFetching,
@@ -341,9 +341,8 @@ const IndexerSettingsSection = () => {
     patchKey,
     reset: handleReset,
   } = useSettingsDraft<DraftConfig, DraftErrors>(savedDraft);
-  const busy =
-    isFetching || setConfigMutation.isPending || setTimerMutation.isPending;
-  const refreshing = busy || isStatusFetching || isTimerFetching;
+  const busy = setConfigMutation.isPending || setTimerMutation.isPending;
+  const refreshing = isFetching || isStatusFetching || isTimerFetching;
   const statusTooltip = formatStatusLabel(daemonStatus?.status);
   const timerTooltip = formatTimerState(timerInfo);
   const willRequireRestart = useMemo(() => {
@@ -479,7 +478,7 @@ const IndexerSettingsSection = () => {
     );
   }
 
-  if (isPending || !draft) {
+  if (isLoading || !draft) {
     return (
       <SettingsSectionShell {...shellProps}>
         <div style={{ padding: theme.spacing(3) }}>

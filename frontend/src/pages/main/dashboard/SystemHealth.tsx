@@ -101,15 +101,12 @@ const SystemHealth = () => {
   const { user: currentUser } = useAuth();
   const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
 
-  const {
-    data: health,
-    isPending: loadingHealth,
-    isFetching: fetchingHealth,
-  } = linuxio.system.get_health_summary.useQuery({ refetchInterval: 50000 });
+  const { data: health, isPending: healthPending } =
+    linuxio.system.get_health_summary.useQuery({ refetchInterval: 50000 });
 
   const {
     data: failedLoginEvents = [],
-    isPending: failedLoginEventsPending,
+    isLoading: failedLoginEventsLoading,
     isError: failedLoginEventsError,
     error: failedLoginEventsErrorValue,
   } = linuxio.system.list_failed_login_events.useQuery(
@@ -285,7 +282,7 @@ const SystemHealth = () => {
 
   const stats2 = (
     <div>
-      {!health && (loadingHealth || fetchingHealth) ? (
+      {!health && healthPending ? (
         <AppSkeleton height={100} variant="circular" width={100} />
       ) : (
         <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
@@ -451,8 +448,7 @@ const SystemHealth = () => {
         : skeletonRow("s-updates", "16ch", true)}
       {bottomItem
         ? renderItem(bottomItem)
-        : health?.lastLogin?.time === undefined &&
-            (loadingHealth || fetchingHealth)
+        : health?.lastLogin?.time === undefined && healthPending
           ? skeletonRow("s-lastlogin", "18ch", true)
           : null}
     </div>
@@ -493,7 +489,7 @@ const SystemHealth = () => {
           <AppTypography variant="h6">Failed logins</AppTypography>
         </AppDialogTitle>
         <AppDialogContent style={{ paddingTop: 12 }}>
-          {failedLoginEventsPending ? (
+          {failedLoginEventsLoading ? (
             <div style={{ display: "grid", gap: 8 }}>
               {skeletonRow("failed-login-1", "28ch")}
               {skeletonRow("failed-login-2", "24ch")}

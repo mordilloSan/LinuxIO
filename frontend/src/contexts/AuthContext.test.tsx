@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import { render, screen, waitFor } from "@/test/render";
+import { act, render, screen, waitFor } from "@/test/render";
+import { consumeSigninNotice } from "@/utils/signinNotice";
 
 const apiMocks = vi.hoisted(() => ({
   closeStreamMux: vi.fn(),
@@ -142,7 +143,11 @@ describe("AuthContext", () => {
       expect(localStorage.getItem("auth_username")).toBeNull(),
     );
     expect(sessionStorage.getItem("update_info")).toBeNull();
+    expect(localStorage.getItem("logout")).not.toBeNull();
+    expect(localStorage.getItem("session_expired")).toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    // Deliberate sign-out must not preserve the current path.
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(false);
   });
 
   it("handles a real session-timeout signal from the stream mux", async () => {
@@ -176,16 +181,47 @@ describe("AuthContext", () => {
     await waitFor(() =>
       expect(screen.getByText("none:false:false:null")).toBeInTheDocument(),
     );
-    expect(toastMocks.error).toHaveBeenCalledWith(
-      "Session expired. Please sign in again.",
-    );
+    // Involuntary expiry leaves a one-shot notice for the sign-in screen,
+    // instead of a toast that the redirect would discard.
+    expect(consumeSigninNotice()).toBe("expired");
     expect(localStorage.getItem("auth_username")).toBeNull();
     expect(localStorage.getItem("auth_privileged")).toBeNull();
     expect(sessionStorage.getItem("update_info")).toBeNull();
+    expect(localStorage.getItem("session_expired")).not.toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    // Involuntary session loss must preserve the current path for post-login return.
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(true);
     expect(apiMocks.closeStreamMux).toHaveBeenCalled();
     expect(consoleLog).toHaveBeenCalledWith(
       "[AuthContext] Session invalid or expired",
     );
+  });
+
+  it("preserves this tab's path for a broadcast session expiry", async () => {
+    localStorage.setItem("auth_username", "miguel");
+    localStorage.setItem("auth_privileged", "true");
+
+    renderAuthProvider();
+
+    expect(
+      await screen.findByText("miguel:true:true:null"),
+    ).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "session_expired",
+          newValue: String(Date.now()),
+        }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("none:false:false:null")).toBeInTheDocument(),
+    );
+    expect(consumeSigninNotice()).toBe("expired");
+    expect(localStorage.getItem("session_expired")).toBeNull();
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
+    expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(true);
   });
 });

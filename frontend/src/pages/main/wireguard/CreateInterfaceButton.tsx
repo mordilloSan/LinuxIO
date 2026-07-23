@@ -25,12 +25,18 @@ const CreateInterfaceButton = () => {
   // Fetch network info via stream API
   const {
     data: networkData,
-    isPending: networkLoading,
+    isPending: networkPending,
     error: networkError,
   } = linuxio.network.get_network_info.useQuery();
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces } = linuxio.wireguard.list_interfaces.useQuery();
+  const {
+    data: wgInterfaces,
+    isPending: interfacesPending,
+    error: interfacesError,
+  } = linuxio.wireguard.list_interfaces.useQuery();
+  const queriesPending = networkPending || interfacesPending;
+  const queryError = networkError ?? interfacesError;
 
   // Job action for adding an interface; invalidation comes from the
   // ROUTE_INVALIDATIONS manifest.
@@ -128,6 +134,8 @@ const CreateInterfaceButton = () => {
 
   // Preselect NIC, name, port, and CIDR when opening dialog
   const handleOpenDialog = useCallback(() => {
+    if (queriesPending || queryError) return;
+
     // Set NIC
     const availableNICs = getPhysicalNICs(networkData);
     if (availableNICs.length > 0) {
@@ -153,6 +161,8 @@ const CreateInterfaceButton = () => {
     nextAvailableWgName,
     nextAvailablePort,
     nextAvailableCIDR,
+    queriesPending,
+    queryError,
   ]);
 
   const handleCreateInterface = () => {
@@ -186,7 +196,7 @@ const CreateInterfaceButton = () => {
   };
 
   const availableNICs =
-    networkLoading || networkError ? [] : getPhysicalNICs(networkData);
+    queriesPending || queryError ? [] : getPhysicalNICs(networkData);
 
   // Pass down for validation
   const existingNames = wgArray.map((iface: any) => iface.name);
@@ -195,8 +205,14 @@ const CreateInterfaceButton = () => {
 
   return (
     <>
-      <AppButton color="primary" onClick={handleOpenDialog} variant="contained">
-        Create New Interface
+      <AppButton
+        color="primary"
+        disabled={queriesPending || Boolean(queryError)}
+        onClick={handleOpenDialog}
+        title={queryError?.message}
+        variant="contained"
+      >
+        {queriesPending ? "Loading interfaces..." : "Create New Interface"}
       </AppButton>
       <CreateInterfaceDialog
         availableNICs={availableNICs}

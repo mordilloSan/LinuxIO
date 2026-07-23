@@ -19,6 +19,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 |-----|-----|
 | [UI-Architecture Follow-ups](./frontend-ui-architecture-followups.md) | Remaining cleanups after the API migration: controller prop-drilling, dialog job streams → `attach()`, auto-update dual writer, allowlisted stream consumers, `chmod_batch`. ToDo #13/#14. |
 | [Rerender Plan](./frontend-rerender-plan.md) | Profiler-confirmed rerender hotspots and the fix order. ToDo #12. |
+| [TanStack Router Migration Baseline](./tanstack-router-migration-baseline.md) | Phase 1 behavior and measurement contracts before router-loader work. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 
 ## Product Areas

@@ -6,6 +6,7 @@ import {
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -66,7 +67,8 @@ const ContainerAutoUpdateDialog = ({
   const loading = autoUpdate.isPending && !serverState;
   const saving = autoUpdate.isSaving;
   const unavailable =
-    !watchtowerEnabled || !serverState?.available || !!autoUpdate.queryError;
+    !loading &&
+    (!watchtowerEnabled || !serverState?.available || !!autoUpdate.queryError);
   const controlsDisabled = loading || saving || unavailable;
   const unavailableReason =
     autoUpdate.queryError ??
@@ -152,6 +154,11 @@ const ContainerAutoUpdateDialog = ({
           paddingTop: theme.spacing(1),
         }}
       >
+        {loading && (
+          <div style={{ padding: theme.spacing(3) }}>
+            <ComponentLoader />
+          </div>
+        )}
         {unavailable && (
           <AppAlert severity="warning">
             <AppAlertTitle>Watchtower unavailable</AppAlertTitle>
@@ -162,7 +169,7 @@ const ContainerAutoUpdateDialog = ({
         <div
           style={{
             alignItems: "center",
-            display: "flex",
+            display: loading ? "none" : "flex",
             flexWrap: "wrap",
             gap: theme.spacing(2),
           }}
@@ -197,7 +204,7 @@ const ContainerAutoUpdateDialog = ({
 
         <div
           style={{
-            display: "grid",
+            display: loading ? "none" : "grid",
             gap: theme.spacing(2),
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           }}
@@ -240,7 +247,7 @@ const ContainerAutoUpdateDialog = ({
           />
         </div>
 
-        {missingNames.length > 0 && (
+        {!loading && missingNames.length > 0 && (
           <div
             style={{
               borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,

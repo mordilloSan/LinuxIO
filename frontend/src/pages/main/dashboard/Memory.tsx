@@ -20,6 +20,16 @@ const MemoryUsage = () => {
     refetchInterval: 2000,
   });
 
+  if (isPending || isError) {
+    return (
+      <DashboardCard
+        avatarIcon="la:memory"
+        stats={isPending ? <ComponentLoader /> : <ErrorMessage />}
+        title="Memory Usage"
+      />
+    );
+  }
+
   const ramUsagePercentage = memoryData?.system?.active
     ? parseFloat(
         calculatePercentage(memoryData.system.active, memoryData.system.total),
@@ -32,11 +42,7 @@ const MemoryUsage = () => {
 
   const data = {
     title: "Memory Usage",
-    stats2: isError ? (
-      <ErrorMessage />
-    ) : isPending ? (
-      <ComponentLoader />
-    ) : (
+    stats2: (
       <GradientCircularGauge
         gradientColors={[
           theme.chart.tx,

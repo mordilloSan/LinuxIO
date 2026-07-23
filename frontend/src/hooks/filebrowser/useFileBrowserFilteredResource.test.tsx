@@ -24,6 +24,7 @@ const directoryResource: FileResource = {
 
 function mockSearch(
   overrides: Partial<{
+    isLoading: boolean;
     isUnavailable: boolean;
     results: SearchResult[];
   }> = {},
@@ -56,7 +57,8 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "   ",
     });
 
-    expect(result.current).toBe(directoryResource);
+    expect(result.current.filteredResource).toBe(directoryResource);
+    expect(result.current.isSearchLoading).toBe(false);
   });
 
   it("returns undefined when there is no resource", () => {
@@ -65,7 +67,7 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "alpha",
     });
 
-    expect(result.current).toBeUndefined();
+    expect(result.current.filteredResource).toBeUndefined();
   });
 
   it("returns non-directory resources unchanged", () => {
@@ -80,7 +82,7 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "notes",
     });
 
-    expect(result.current).toBe(fileResource);
+    expect(result.current.filteredResource).toBe(fileResource);
   });
 
   it("only enables the indexer search once the query reaches two characters", () => {
@@ -101,9 +103,9 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "ALPHA",
     });
 
-    expect(result.current?.items?.map((item) => item.name)).toEqual([
-      "Alpha.txt",
-    ]);
+    expect(
+      result.current.filteredResource?.items?.map((item) => item.name),
+    ).toEqual(["Alpha.txt"]);
   });
 
   it("maps remote search results into file items", () => {
@@ -132,7 +134,7 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "anything",
     });
 
-    expect(result.current?.items).toEqual([
+    expect(result.current.filteredResource?.items).toEqual([
       expect.objectContaining({
         extension: "pdf",
         isDirectory: false,
@@ -174,8 +176,19 @@ describe("useFileBrowserFilteredResource", () => {
       searchQuery: "no-match",
     });
 
-    expect(result.current?.items).toEqual([]);
-    expect(result.current?.path).toBe(directoryResource.path);
-    expect(result.current?.name).toBe(directoryResource.name);
+    expect(result.current.filteredResource?.items).toEqual([]);
+    expect(result.current.filteredResource?.path).toBe(directoryResource.path);
+    expect(result.current.filteredResource?.name).toBe(directoryResource.name);
+  });
+
+  it("propagates the search loading state", () => {
+    mockSearch({ isLoading: true });
+
+    const { result } = renderFiltered({
+      resource: directoryResource,
+      searchQuery: "alpha",
+    });
+
+    expect(result.current.isSearchLoading).toBe(true);
   });
 });

@@ -156,9 +156,10 @@ const PermissionsDialog = ({
     }
   }
   // Fetch users and groups when dialog opens
-  const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
-    enabled: open,
-  });
+  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } =
+    linuxio.filebrowser.users_groups.useQuery({
+      enabled: open,
+    });
 
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];
@@ -275,6 +276,7 @@ const PermissionsDialog = ({
             freeSolo
             fullWidth
             label="Owner"
+            loading={isLoadingUsersGroups}
             maxListHeight={150}
             onChange={setOwnerInput}
             onInputChange={setOwnerInput}
@@ -288,6 +290,7 @@ const PermissionsDialog = ({
             freeSolo
             fullWidth
             label="Group"
+            loading={isLoadingUsersGroups}
             maxListHeight={150}
             onChange={setGroupInput}
             onInputChange={setGroupInput}

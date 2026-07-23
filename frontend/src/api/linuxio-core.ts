@@ -42,6 +42,56 @@ function isConnectionClosedError(error: unknown): boolean {
   return error instanceof LinuxIOError && error.code === "connection_closed";
 }
 
+/**
+ * Ensure the singleton transport can accept a request.
+ *
+ * AuthContext remains responsible for the authenticated mux lifecycle. This
+ * small imperative seam only makes a request safe when a router loader runs
+ * before a component has mounted: initialization is idempotent and a closed
+ * singleton is reconnected by initStreamMux().
+ */
+export async function ensureLoaderRequestReady(
+  timeoutMs = STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+) {
+  const existingMux = getStreamMux();
+  if (!existingMux || existingMux.status === "closed") {
+    try {
+      initStreamMux();
+    } catch {
+      throw new LinuxIOError(
+        "Connection closed before receiving result",
+        "connection_closed",
+      );
+    }
+  }
+
+  let ready: boolean;
+  try {
+    ready = await waitForStreamMux(timeoutMs);
+  } catch {
+    throw new LinuxIOError(
+      "Connection closed before receiving result",
+      "connection_closed",
+    );
+  }
+  if (!ready) {
+    throw new LinuxIOError(
+      "Connection closed before receiving result",
+      "connection_closed",
+    );
+  }
+
+  const mux = getStreamMux();
+  if (!mux || mux.status !== "open") {
+    throw new LinuxIOError(
+      "Connection closed before receiving result",
+      "connection_closed",
+    );
+  }
+
+  return mux;
+}
+
 async function ensureRequestMuxReady(timeoutMs: number) {
   const existingMux = getStreamMux();
   if (!existingMux) {

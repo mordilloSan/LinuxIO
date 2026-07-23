@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { type AccountUser, linuxio } from "@/api";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -29,7 +30,7 @@ const UsersTab = ({
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
-  const { data: users = [] } = linuxio.accounts.list_users.useQuery({
+  const { data: users = [], isPending } = linuxio.accounts.list_users.useQuery({
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
@@ -105,6 +106,9 @@ const UsersTab = ({
       error: "Failed to unlock user",
       toast: ACCOUNTS_TOAST_META,
     });
+
+  if (isPending) return <PageLoader />;
+
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
     if (user.isLocked) {

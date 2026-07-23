@@ -19,9 +19,6 @@ const AuthContent = () => {
   return (
     <div
       style={{
-        ["--accent" as string]: theme.palette.primary.main,
-        ["--accent-strong" as string]: theme.palette.primary.dark,
-        ["--accent-soft" as string]: theme.palette.primary.light,
         minHeight: "100vh",
         width: "100%",
         display: "grid",

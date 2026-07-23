@@ -27,7 +27,7 @@ const NetworkInterfaceList = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const expanded = searchParams.get("iface");
 
-  const { data: rawInterfaces = [], isPending: isLoading } =
+  const { data: rawInterfaces = [], isPending } =
     linuxio.network.get_network_info.useQuery({
       refetchInterval: 1000,
     });
@@ -124,7 +124,7 @@ const NetworkInterfaceList = () => {
     }
   }, []);
 
-  if (isLoading) {
+  if (isPending) {
     return <PageLoader />;
   }
   const selectedIface = interfaces.find((i) => i.name === expanded);

@@ -193,7 +193,7 @@ export interface AppTheme {
 
 interface AppThemeProviderProps {
   children: ReactNode;
-  value?: AppTheme;
+  value: AppTheme;
 }
 
 const APP_THEME_CONTEXT = createContext<AppTheme | undefined>(undefined);
@@ -538,7 +538,7 @@ export function buildAppTheme(
     shape: {
       borderRadius: 4,
     },
-    spacing: (...values: SpacingInput[]) => createSpacing(...values),
+    spacing: createSpacing,
     breakpoints: createBreakpoints(),
     transitions,
     typography,
@@ -668,50 +668,35 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
 }
 
 export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
-  const resolvedTheme = value;
-  const cssVariables = useMemo(
-    () => (resolvedTheme ? getThemeCssVariables(resolvedTheme) : {}),
-    [resolvedTheme],
-  );
+  const cssVariables = useMemo(() => getThemeCssVariables(value), [value]);
 
   useInsertionEffect(() => {
-    if (!resolvedTheme) return;
-
     const root = document.documentElement;
-    root.dataset.appTheme = resolvedTheme.name.toLowerCase();
-    root.dataset.appColorScheme = resolvedTheme.colorScheme;
+    root.dataset.appTheme = value.name.toLowerCase();
+    root.dataset.appColorScheme = value.colorScheme;
 
-    for (const [key, value] of Object.entries(cssVariables)) {
-      root.style.setProperty(key, value);
+    for (const [key, cssValue] of Object.entries(cssVariables)) {
+      root.style.setProperty(key, cssValue);
     }
-  }, [cssVariables, resolvedTheme]);
+  }, [cssVariables, value]);
 
   useEffect(() => {
-    if (!resolvedTheme) return;
     try {
       localStorage.setItem(
         "linuxio_theme_bootstrap",
         JSON.stringify({
-          scheme: resolvedTheme.colorScheme,
-          bg: resolvedTheme.palette.background.default,
-          text: resolvedTheme.palette.text.primary,
-          primary: resolvedTheme.palette.primary.main,
+          scheme: value.colorScheme,
+          bg: value.palette.background.default,
+          text: value.palette.text.primary,
+          primary: value.palette.primary.main,
         }),
       );
     } catch {
       // Best-effort cache only.
     }
-  }, [resolvedTheme]);
+  }, [value]);
 
-  if (!resolvedTheme) {
-    return null;
-  }
-
-  return createElement(
-    APP_THEME_CONTEXT.Provider,
-    { value: resolvedTheme },
-    children,
-  );
+  return createElement(APP_THEME_CONTEXT.Provider, { value }, children);
 }
 
 export function useAppTheme() {

@@ -315,11 +315,11 @@ const DiskOverview = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const { data: rawDrivesData, isPending: drivesLoading } =
+  const { data: rawDrivesData, isPending: drivesPending } =
     linuxio.storage.get_drive_info.useQuery({
       refetchInterval: 30000,
     });
-  const { data: filesystemsData, isPending: fsLoading } =
+  const { data: filesystemsData, isPending: filesystemsPending } =
     linuxio.system.get_fs_info.useQuery({
       refetchInterval: 10000,
     });
@@ -478,7 +478,7 @@ const DiskOverview = () => {
       },
     );
   };
-  if (drivesLoading || fsLoading) {
+  if (drivesPending || filesystemsPending) {
     return <PageLoader />;
   }
   return (

@@ -8,7 +8,7 @@ import {
   type AutoUpdateState,
   linuxio,
 } from "@/api";
-import PageLoader from "@/components/loaders/PageLoader";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
@@ -31,7 +31,7 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   },
 });
 export const useUpdateSettingsState = (enabled = true) => {
-  const { data: rawServerState, isPending: loading } =
+  const { data: rawServerState, isLoading: loading } =
     linuxio.updates.get_auto_updates.useQuery({
       enabled,
     });
@@ -163,7 +163,7 @@ const UpdateSettings = ({
     applyOffline,
   } = state;
   if (loading || !serverState || !currentOptions) {
-    return <PageLoader />;
+    return <ComponentLoader />;
   }
   return (
     <div

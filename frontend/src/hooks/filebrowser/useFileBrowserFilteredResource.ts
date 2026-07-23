@@ -12,15 +12,18 @@ interface UseFileBrowserFilteredResourceParams {
 export const useFileBrowserFilteredResource = ({
   resource,
   searchQuery,
-}: UseFileBrowserFilteredResourceParams): FileResource | undefined => {
-  const { results: searchResults, isUnavailable: isSearchUnavailable } =
-    useFileSearch({
-      query: searchQuery,
-      basePath: "/",
-      enabled: searchQuery.trim().length >= 2,
-    });
+}: UseFileBrowserFilteredResourceParams) => {
+  const {
+    results: searchResults,
+    isLoading: isSearchLoading,
+    isUnavailable: isSearchUnavailable,
+  } = useFileSearch({
+    query: searchQuery,
+    basePath: "/",
+    enabled: searchQuery.trim().length >= 2,
+  });
 
-  return useMemo(() => {
+  const filteredResource = useMemo(() => {
     if (!resource || !searchQuery.trim()) {
       return resource;
     }
@@ -77,4 +80,9 @@ export const useFileBrowserFilteredResource = ({
       items: [],
     };
   }, [resource, searchQuery, searchResults, isSearchUnavailable]);
+
+  return {
+    filteredResource,
+    isSearchLoading: resource?.type === "directory" && isSearchLoading,
+  };
 };

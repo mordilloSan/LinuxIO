@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -25,9 +26,10 @@ const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
-  const { data: groups = [] } = linuxio.accounts.list_groups.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: groups = [], isPending } =
+    linuxio.accounts.list_groups.useQuery({
+      refetchInterval: 10000,
+    });
 
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -43,6 +45,8 @@ const GroupsTab = ({
   }, []);
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateGroup);
+
+  if (isPending) return <PageLoader />;
 
   const filtered = groupsList.filter(
     (group) =>

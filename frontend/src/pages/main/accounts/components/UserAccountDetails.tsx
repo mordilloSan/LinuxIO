@@ -411,7 +411,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
   const theme = useAppTheme();
   const {
     data: details,
-    isPending,
+    isLoading,
     isError,
     error,
   } = useAccountDetails(user.username);
@@ -448,7 +448,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
         title="Access & security"
       />
 
-      {isPending ? (
+      {isLoading ? (
         <LoadingRows />
       ) : isError ? (
         <InlineError
@@ -549,13 +549,13 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const [searchParams] = useSearchParams();
   const {
     data: details,
-    isPending: detailsPending,
+    isLoading: detailsLoading,
     isError: detailsError,
     error: detailsErrorValue,
   } = useAccountDetails(username);
   const {
     data: logins = [],
-    isPending: loginsPending,
+    isLoading: loginsLoading,
     isError: loginsError,
     error: loginsErrorValue,
   } = linuxio.accounts.list_user_logins.useQuery(username, {
@@ -663,14 +663,14 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         icon="mdi:account-clock"
         iconColor={theme.palette.primary.main}
         metaText={
-          detailsPending || !details
+          detailsLoading || !details
             ? "Checking sessions"
             : `${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`
         }
         subtitle="Current authenticated sessions"
         title="Active sessions"
       >
-        {detailsPending ? (
+        {detailsLoading ? (
           <ActivityLoading rows={2} />
         ) : detailsError ? (
           <div style={{ padding: 12 }}>
@@ -761,14 +761,14 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         icon="mdi:history"
         iconColor={theme.palette.primary.main}
         metaText={
-          loginsPending
+          loginsLoading
             ? "Loading login history"
             : `${logins.length} recent ${logins.length === 1 ? "event" : "events"}`
         }
         subtitle="Recent login events"
         title="Login history"
       >
-        {loginsPending ? (
+        {loginsLoading ? (
           <ActivityLoading rows={3} />
         ) : loginsError ? (
           <div style={{ padding: 12 }}>
@@ -1093,7 +1093,7 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
 export const UserHomeSSHPanel = ({ username }: { username: string }) => {
   const {
     data: details,
-    isPending,
+    isLoading,
     isError,
     error,
   } = useAccountDetails(username);
@@ -1112,7 +1112,7 @@ export const UserHomeSSHPanel = ({ username }: { username: string }) => {
     );
   }
 
-  if (isPending || !details) {
+  if (isLoading || !details) {
     return (
       <FrostedCard style={{ padding: 12, height: "100%" }}>
         <LoadingRows />
@@ -1126,7 +1126,7 @@ export const UserHomeSSHPanel = ({ username }: { username: string }) => {
 export const UserProcessPanel = ({ username }: { username: string }) => {
   const {
     data: details,
-    isPending,
+    isLoading,
     isError,
     error,
   } = useAccountDetails(username);
@@ -1145,7 +1145,7 @@ export const UserProcessPanel = ({ username }: { username: string }) => {
     );
   }
 
-  if (isPending || !details) {
+  if (isLoading || !details) {
     return (
       <FrostedCard style={{ padding: 12, height: "100%" }}>
         <LoadingRows />
@@ -1159,7 +1159,7 @@ export const UserProcessPanel = ({ username }: { username: string }) => {
 export const UserSupplementalCards = ({ username }: { username: string }) => {
   const {
     data: details,
-    isPending,
+    isLoading,
     isError,
     error,
   } = useAccountDetails(username);
@@ -1170,7 +1170,7 @@ export const UserSupplementalCards = ({ username }: { username: string }) => {
         <UserActivityCard username={username} />
       </AppGrid>
       <AppGrid size={{ xs: 12, md: 6, lg: 3 }}>
-        {isPending ? (
+        {isLoading ? (
           <FrostedCard style={{ padding: 12, height: "100%" }}>
             <LoadingRows />
           </FrostedCard>
@@ -1193,7 +1193,7 @@ export const UserSupplementalCards = ({ username }: { username: string }) => {
         )}
       </AppGrid>
       <AppGrid size={{ xs: 12, md: 6, lg: 4 }}>
-        {isPending ? (
+        {isLoading ? (
           <FrostedCard style={{ padding: 12, height: "100%" }}>
             <LoadingRows />
           </FrostedCard>

@@ -24,7 +24,7 @@ const WireGuardDashboard = () => {
 
   const {
     data: interfaceData,
-    isPending: isLoading,
+    isPending,
     isError,
     error,
   } = linuxio.wireguard.list_interfaces.useQuery({
@@ -147,7 +147,7 @@ const WireGuardDashboard = () => {
 
   return (
     <>
-      {isLoading ? (
+      {isPending ? (
         <PageLoader />
       ) : isError ? (
         <AppTypography color="error">

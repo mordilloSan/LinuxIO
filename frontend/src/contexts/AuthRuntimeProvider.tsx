@@ -1,6 +1,5 @@
 import { type PropsWithChildren, useMemo } from "react";
 
-import PageLoader from "@/components/loaders/PageLoader";
 import { BackgroundJobsProvider } from "@/contexts/BackgroundJobsContext";
 import { ComposeProviders, withProps } from "@/contexts/composeProviders";
 import { ConfigProvider } from "@/contexts/ConfigContext";
@@ -8,9 +7,8 @@ import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { UpdateProvider } from "@/contexts/UpdateContext";
-import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
-import { AppThemeProvider } from "@/theme";
-import buildAppTheme from "@/theme";
+import { useConfigValue } from "@/hooks/useConfig";
+import buildAppTheme, { AppThemeProvider } from "@/theme";
 
 interface AuthenticatedRuntimeProviderProps extends PropsWithChildren {
   userId?: string;
@@ -20,19 +18,11 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
   const [themeName] = useConfigValue("theme");
   const [primaryColorName] = useConfigValue("primaryColor");
   const [themeColors] = useConfigValue("themeColors");
-  const isLoaded = useConfigReady();
-
   const appTheme = useMemo(
-    () =>
-      buildAppTheme(
-        String(themeName),
-        primaryColorName as string | undefined,
-        themeColors,
-      ),
+    () => buildAppTheme(themeName, primaryColorName, themeColors),
     [themeName, primaryColorName, themeColors],
   );
 
-  if (!isLoaded) return <PageLoader />;
   return <AppThemeProvider value={appTheme}>{children}</AppThemeProvider>;
 }
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
@@ -38,15 +39,13 @@ interface OverviewRow {
 const SystemOverview = () => {
   const theme = useAppTheme();
 
-  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
-    refetchInterval: 50000,
-  });
-  const { data: uptime } = linuxio.system.get_uptime.useQuery({
-    refetchInterval: 30000,
-  });
-  const { data: serverTime } = linuxio.system.get_server_time.useQuery({
-    refetchInterval: 60000,
-  });
+  const { data: hostInfo, isPending: hostInfoPending } =
+    linuxio.system.get_host_info.useQuery({ refetchInterval: 50000 });
+  const { data: uptime, isPending: uptimePending } =
+    linuxio.system.get_uptime.useQuery({ refetchInterval: 30000 });
+  const { data: serverTime, isPending: serverTimePending } =
+    linuxio.system.get_server_time.useQuery({ refetchInterval: 60000 });
+  const overviewPending = hostInfoPending || uptimePending || serverTimePending;
 
   const [hostnameDialogOpen, setHostnameDialogOpen] = useState(false);
   const [dateTimeDialogOpen, setDateTimeDialogOpen] = useState(false);
@@ -138,7 +137,7 @@ const SystemOverview = () => {
     <>
       <DashboardCard
         avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
-        stats={stats}
+        stats={overviewPending ? <ComponentLoader /> : stats}
         title="System Overview"
       />
       <SetHostnameDialog

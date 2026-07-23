@@ -581,21 +581,21 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
   const [selectedLV, setSelectedLV] = useState<LogicalVolume | null>(null);
   const {
     data: pvs = [],
-    isPending: pvsLoading,
+    isPending: pvsPending,
     refetch: refetchPVs,
   } = linuxio.storage.list_pvs.useQuery({
     refetchInterval: 10000,
   });
   const {
     data: vgs = [],
-    isPending: vgsLoading,
+    isPending: vgsPending,
     refetch: refetchVGs,
   } = linuxio.storage.list_vgs.useQuery({
     refetchInterval: 10000,
   });
   const {
     data: lvs = [],
-    isPending: lvsLoading,
+    isPending: lvsPending,
     refetch: refetchLVs,
   } = linuxio.storage.list_lvs.useQuery({
     refetchInterval: 10000,
@@ -620,7 +620,7 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
     setSelectedLV(lv);
     setDeleteDialogOpen(true);
   };
-  if (pvsLoading || vgsLoading || lvsLoading) {
+  if (pvsPending || vgsPending || lvsPending) {
     return <PageLoader />;
   }
   const pvsList = Array.isArray(pvs) ? pvs : [];

@@ -41,6 +41,8 @@ export interface AuthContextType extends CapabilityState {
   method: "session";
   privileged: boolean;
   refreshCapabilities: () => Promise<CapabilitiesResponse>;
+  /** Tear down locally after an involuntary session loss, preserving the path. */
+  sessionExpired: () => void;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   user: AuthUser | null;

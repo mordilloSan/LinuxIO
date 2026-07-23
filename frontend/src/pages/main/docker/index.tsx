@@ -49,10 +49,11 @@ const DockerPage = () => {
   );
   const activeDockerTab = searchParams.get("dockerTab") || "dashboard";
   const isDashboardTab = activeDockerTab === "dashboard";
-  const { data: rawContainers } = linuxio.docker.list_containers.useQuery({
-    enabled: isDashboardTab,
-    refetchInterval: isDashboardTab ? 5000 : false,
-  });
+  const { data: rawContainers, isLoading: dashboardContainersLoading } =
+    linuxio.docker.list_containers.useQuery({
+      enabled: isDashboardTab,
+      refetchInterval: isDashboardTab ? 5000 : false,
+    });
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),
@@ -290,7 +291,11 @@ const DockerPage = () => {
                 {renderCheckUpdatesButton()}
                 {renderAutoUpdateSettingsButton()}
                 <AppButton
-                  disabled={isStartingAll || stoppedContainers.length === 0}
+                  disabled={
+                    dashboardContainersLoading ||
+                    isStartingAll ||
+                    stoppedContainers.length === 0
+                  }
                   onClick={() => startAllStopped()}
                   size="small"
                   startIcon={
@@ -306,7 +311,11 @@ const DockerPage = () => {
                 </AppButton>
                 <AppButton
                   color="warning"
-                  disabled={isStoppingAll || runningContainers.length === 0}
+                  disabled={
+                    dashboardContainersLoading ||
+                    isStoppingAll ||
+                    runningContainers.length === 0
+                  }
                   onClick={() => void handleStopAllRunning()}
                   size="small"
                   startIcon={

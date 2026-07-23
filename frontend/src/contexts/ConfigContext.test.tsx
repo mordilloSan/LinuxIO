@@ -141,10 +141,10 @@ interface CapturedJobActionConfig {
 
 function renderProvider({
   configQueryFn = async () => remoteConfig(),
-  signOut = vi.fn(),
+  sessionExpired = vi.fn(),
 }: {
   configQueryFn?: () => Promise<AppConfig>;
-  signOut?: () => Promise<void>;
+  sessionExpired?: () => void;
 } = {}) {
   const jobActionConfigs: CapturedJobActionConfig[] = [];
   const queryClient = createTestQueryClient();
@@ -185,7 +185,7 @@ function renderProvider({
       <AuthContext.Provider
         value={createAuthContextValue({
           isAuthenticated: true,
-          signOut,
+          sessionExpired,
           user: { id: "miguel", name: "Miguel" },
         })}
       >
@@ -201,7 +201,7 @@ function renderProvider({
     invalidateQueries,
     jobActionConfigs,
     queryClient,
-    signOut,
+    sessionExpired,
   };
 }
 
@@ -298,20 +298,18 @@ describe("ConfigProvider", () => {
   });
 
   it("signs out and does not render children on auth failures", async () => {
-    const signOut = vi.fn(async () => undefined);
+    const sessionExpired = vi.fn();
 
     renderProvider({
       configQueryFn: async () => {
         throw new LinuxIOError("expired", 401);
       },
-      signOut,
+      sessionExpired,
     });
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
-
-    expect(toastMocks.error).toHaveBeenCalledWith(
-      "Session expired. Please sign in again.",
-    );
+    // The notice + redirect are sessionExpired's contract (covered in the
+    // AuthContext suite); here we only assert ConfigProvider delegates to it.
+    await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("loaded")).not.toBeInTheDocument();
   });
 

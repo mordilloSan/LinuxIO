@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +13,13 @@ vi.mock("@/hooks/useAuth", () => ({
 
 function LocationProbe() {
   const location = useLocation();
-  return <div>location:{location.pathname}</div>;
+  return (
+    <div>
+      location:{location.pathname}
+      {location.search}
+      {location.hash}
+    </div>
+  );
 }
 
 describe("GuestGuard", () => {
@@ -20,7 +27,11 @@ describe("GuestGuard", () => {
     useAuthMock.mockReset();
   });
 
-  it("renders children while auth is still initializing", () => {
+  it("renders nothing while auth is still initializing", () => {
+    const loadLogin = vi.fn(async () => ({
+      default: () => <div>sign-in form</div>,
+    }));
+    const LoginProbe = lazy(loadLogin);
     useAuthMock.mockReturnValue(
       createAuthContextValue({
         isAuthenticated: false,
@@ -30,11 +41,12 @@ describe("GuestGuard", () => {
 
     render(
       <GuestGuard>
-        <div>sign-in form</div>
+        <LoginProbe />
       </GuestGuard>,
     );
 
-    expect(screen.getByText("sign-in form")).toBeInTheDocument();
+    expect(loadLogin).not.toHaveBeenCalled();
+    expect(screen.queryByText("sign-in form")).not.toBeInTheDocument();
   });
 
   it("renders children for initialized guests", () => {
@@ -54,7 +66,7 @@ describe("GuestGuard", () => {
     expect(screen.getByText("sign-in form")).toBeInTheDocument();
   });
 
-  it("redirects authenticated users to redirect query target", async () => {
+  it("redirects authenticated users to the complete redirect query target", async () => {
     useAuthMock.mockReturnValue(
       createAuthContextValue({
         isAuthenticated: true,
@@ -72,16 +84,22 @@ describe("GuestGuard", () => {
             </GuestGuard>
           }
         />
-        <Route path="/docker" element={<LocationProbe />} />
+        <Route path="/filebrowser/*" element={<LocationProbe />} />
       </Routes>,
       {
         memoryRouter: {
-          initialEntries: ["/sign-in?redirect=/docker"],
+          initialEntries: [
+            "/sign-in?redirect=%2Ffilebrowser%2Fsrv%2Fmy%2520files%3Fview%3Ddetails%23preview",
+          ],
         },
       },
     );
 
-    expect(await screen.findByText("location:/docker")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "location:/filebrowser/srv/my%20files?view=details#preview",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("redirects authenticated users to dashboard by default", async () => {

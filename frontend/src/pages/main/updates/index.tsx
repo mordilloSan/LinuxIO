@@ -28,8 +28,7 @@ const Updates = () => {
   const packageKitUnavailable = packageKitStatus === "unavailable";
   const {
     data: rawUpdates,
-    isPending: isLoading,
-    isFetching,
+    isLoading,
     refetch,
   } = linuxio.updates.get_updates_basic.useQuery({
     enabled: !packageKitUnavailable,
@@ -98,9 +97,7 @@ const Updates = () => {
               >
                 {!packageKitUnavailable ? (
                   <AppButton
-                    disabled={
-                      packageOperationPending || (isFetching && !isLoading)
-                    }
+                    disabled={packageOperationPending}
                     onClick={() => refreshCache()}
                     size="small"
                     startIcon={

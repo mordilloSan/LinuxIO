@@ -132,7 +132,7 @@ const mocks = vi.hoisted(() => ({
     errorMessage: null,
     isEditingFileLoading: false,
     isPending: false,
-    isStatPending: false,
+    isStatLoading: false,
     multiItemsStats: null,
     resource: undefined as FileResource | undefined,
     shouldShowDetailLoader: false,
@@ -321,7 +321,10 @@ function applyDefaultHookReturns() {
 
   mocks.useFileBrowserArchiveActions.mockReturnValue(mocks.archiveActions);
   mocks.useFileBrowserEditorActions.mockReturnValue(mocks.editorActions);
-  mocks.useFileBrowserFilteredResource.mockReturnValue(mocks.filteredResource);
+  mocks.useFileBrowserFilteredResource.mockReturnValue({
+    filteredResource: mocks.filteredResource,
+    isSearchLoading: false,
+  });
   mocks.useFileBrowserItemActions.mockReturnValue(mocks.itemActions);
   mocks.useFileBrowserNavigation.mockReturnValue(mocks.navigation);
   mocks.useFileBrowserUploadActions.mockReturnValue(mocks.uploadActions);
@@ -377,6 +380,7 @@ describe("useFileBrowserController", () => {
         errorMessage: null,
         filteredResource: resource,
         isPending: false,
+        isSearchLoading: false,
         resource,
       },
       listing: {

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -139,7 +140,7 @@ const ImageList = ({
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
-  const { data: rawImages } = linuxio.docker.list_images.useQuery({
+  const { data: rawImages, isPending } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
   const images = rawImages ?? [];
@@ -191,6 +192,9 @@ const ImageList = ({
     });
     return result;
   }, [selected, filtered]);
+
+  if (isPending) return <PageLoader />;
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelected(new Set(filtered.map((img) => img.id)));
