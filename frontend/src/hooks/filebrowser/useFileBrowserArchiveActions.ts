@@ -45,7 +45,11 @@ export const useFileBrowserArchiveActions = ({
   selectedItems,
   selectedPaths,
 }: UseFileBrowserArchiveActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const { joinPath } = useFilePathUtilities();
   const [compressFormatDialog, setCompressFormatDialog] =
     useState<CompressFormatDialogState | null>(null);

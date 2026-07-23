@@ -21,7 +21,7 @@ import AppCircularProgress from "../ui/AppCircularProgress";
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();

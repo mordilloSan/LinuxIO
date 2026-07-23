@@ -25,10 +25,7 @@
       "@/components/*": ["./src/components/*"],
       "@/contexts/*": ["./src/contexts/*"],
       "@/hooks/*": ["./src/hooks/*"],
-      "@/layouts/*": ["./src/layouts/*"],
-      "@/pages/*": ["./src/pages/*"],
-      "@/routing/*": ["./src/routing/*"],
-      "@/tanstack-router/*": ["./src/tanstack-router/*"],
+      "@/routes/*": ["./src/routes/*"],
       "@/theme/*": ["./src/theme/*"],
       "@/test/*": ["./src/test/*"],
       "@/types/*": ["./src/types/*"],
@@ -40,8 +37,10 @@
       // Files
       "@/api": ["./src/api/index"],
       "@/config": ["./src/config"],
-      "@/theme": ["./src/theme/index"],
-      "@/routes": ["./src/routes"]
+      "@/query-client": ["./src/query-client"],
+      "@/router": ["./src/router"],
+      "@/routeTree.gen": ["./src/routeTree.gen"],
+      "@/theme": ["./src/theme/index"]
     }
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts"]

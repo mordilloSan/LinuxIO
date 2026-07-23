@@ -54,7 +54,11 @@ export const useFileBrowserItemActions = ({
   startDownload,
   view,
 }: UseFileBrowserItemActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const {
     actions: dialogActions,
     pendingDeletePaths,

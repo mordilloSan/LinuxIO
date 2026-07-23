@@ -9,6 +9,7 @@ import {
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
+import { redirectToSignIn } from "@/utils/navigation";
 
 type PowerActionState = "rebooting" | "poweringOff" | null;
 
@@ -42,7 +43,7 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
           cache: "no-store",
         });
         if (response.ok && !cancelled) {
-          window.location.href = "/sign-in";
+          redirectToSignIn();
         } else if (!cancelled) {
           setTimeout(poll, pollInterval);
         }

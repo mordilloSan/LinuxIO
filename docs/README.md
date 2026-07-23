@@ -19,7 +19,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 |-----|-----|
 | [UI-Architecture Follow-ups](./frontend-ui-architecture-followups.md) | Remaining cleanups after the API migration: controller prop-drilling, dialog job streams → `attach()`, auto-update dual writer, allowlisted stream consumers, `chmod_batch`. ToDo #13/#14. |
 | [Rerender Plan](./frontend-rerender-plan.md) | Profiler-confirmed rerender hotspots and the fix order. ToDo #12. |
-| [TanStack Router Baseline](./tanstack-router-baseline.md) | Native lazy-route architecture, four-loader inventory, validation, and residue audit. Docker runtime validation was not performed. |
+| [TanStack Router Architecture](./tanstack-router.md) | File-based routes, generated type tree, automatic code splitting, route-local loaders/static data, and global preload policy. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 
 ## Product Areas

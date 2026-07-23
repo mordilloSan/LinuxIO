@@ -1,0 +1,40 @@
+import { createRouter } from "@tanstack/react-router";
+import type { ElementType } from "react";
+
+import PageLoader from "@/components/loaders/PageLoader";
+import type { AccessPolicy } from "@/hooks/useCapabilities";
+import type { LinuxIORouterContext } from "@/routes/-context";
+import { routeTree } from "@/routeTree.gen";
+
+interface RouteNavigation {
+  icon: ElementType | string;
+  params?: { _splat: string };
+  position: number;
+  title: string;
+}
+
+export const router = createRouter({
+  context: {
+    access: undefined!,
+    auth: undefined!,
+    isUpdateBlocked: undefined!,
+    queryClient: undefined!,
+  } satisfies LinuxIORouterContext,
+  defaultPendingComponent: PageLoader,
+  defaultPreload: "intent",
+  defaultPreloadDelay: 150,
+  defaultPreloadStaleTime: 0,
+  routeTree,
+  search: { strict: true },
+});
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+
+  interface StaticDataRouteOption {
+    access?: AccessPolicy;
+    navigation?: RouteNavigation;
+  }
+}

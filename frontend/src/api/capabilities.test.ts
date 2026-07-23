@@ -30,7 +30,7 @@ describe("capabilities helpers", () => {
     expect(libvirt).toMatchObject({
       dependency: "libvirt",
       installable: { requiresPackageKit: true },
-      route: { href: "/vm", label: "Open VMs" },
+      route: { label: "Open VMs", to: "/vm" },
       state: "libvirtAvailable",
     });
   });

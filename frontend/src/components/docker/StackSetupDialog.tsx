@@ -27,7 +27,7 @@ const StackSetupDialog = ({
   defaultWorkingDir,
 }: StackSetupDialogProps) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =
@@ -117,7 +117,7 @@ const StackSetupDialog = ({
         onConfirm(stackName.trim(), workingDir.trim());
       },
       error: "Failed to validate directory",
-      toast: { href: "/docker", label: "Open Docker" },
+      toast: { label: "Open Docker", to: "/docker" },
     });
   const handleConfirm = () => {
     if (!validate()) {

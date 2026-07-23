@@ -45,7 +45,7 @@ const ComposeOperationDialog = ({
   composePath,
 }: ComposeOperationDialogProps) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [output, setOutput] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Map<string, ComposeTask>>(new Map());
   const [showLog, setShowLog] = useState(false);

@@ -11,7 +11,7 @@ export interface VolumeCardProps {
   volume: DockerVolume;
 }
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
   <FrostedCard style={{ padding: 8 }}>

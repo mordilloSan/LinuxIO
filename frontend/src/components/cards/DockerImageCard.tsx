@@ -23,7 +23,7 @@ export interface DockerImageCardProps {
   selected: boolean;
 }
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const DockerImageCard = ({
   image,

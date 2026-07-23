@@ -17,7 +17,7 @@ const { renderHook } = await import("@/test/render");
 describe("useScopedToast", () => {
   it("adds scope metadata to toast calls", () => {
     const { result } = renderHook(() =>
-      useScopedToast({ href: "/updates", label: "Updates" }),
+      useScopedToast({ label: "Updates", to: "/updates" }),
     );
 
     result.current.success("Updated", {
@@ -25,7 +25,7 @@ describe("useScopedToast", () => {
     });
 
     expect(toastMock.success).toHaveBeenCalledWith("Updated", {
-      meta: { href: "/updates", label: "Custom" },
+      meta: { label: "Custom", to: "/updates" },
     });
   });
 

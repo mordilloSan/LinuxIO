@@ -25,7 +25,11 @@ export const useFileBrowserUploadActions = ({
   startUpload,
   upload,
 }: UseFileBrowserUploadActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const {
     actions: uploadActions,
     fileInputRef,

@@ -17,7 +17,11 @@ import { joinPath } from "@/utils/path";
 
 import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
 
-const FILES_TOAST_META = { href: "/filebrowser", label: "Open files" };
+const FILES_TOAST_META = {
+  label: "Open files",
+  params: { _splat: "" },
+  to: "/filebrowser/$",
+} as const;
 
 interface UseFileMutationsParams {
   normalizedPath: string;

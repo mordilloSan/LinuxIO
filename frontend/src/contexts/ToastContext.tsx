@@ -8,10 +8,7 @@ import {
 } from "react";
 import { toast, Toaster, type ToastT, useSonner } from "sonner";
 
-export interface ToastMeta {
-  href?: string;
-  label?: string;
-}
+import type { ToastMeta } from "@/routes/-navigation";
 
 export interface ToastHistoryItem {
   createdAt: number;

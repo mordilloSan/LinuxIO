@@ -1,7 +1,7 @@
 import { AuthProvider } from "./contexts/AuthContext";
-import ReactQueryProvider from "./contexts/ReactQueryContext";
 import { useGlobalContextMenuGuard } from "./hooks/useGlobalContextMenuGuard";
-import AppRouterProvider from "./tanstack-router/AppRouterProvider";
+import AppQueryClientProvider from "./query-client";
+import ApplicationRouterProvider from "./routes/-provider";
 
 function App() {
   // Disable right-click globally except where explicitly allowed
@@ -9,9 +9,9 @@ function App() {
 
   return (
     <AuthProvider>
-      <ReactQueryProvider>
-        <AppRouterProvider />
-      </ReactQueryProvider>
+      <AppQueryClientProvider>
+        <ApplicationRouterProvider />
+      </AppQueryClientProvider>
     </AuthProvider>
   );
 }

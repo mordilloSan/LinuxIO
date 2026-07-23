@@ -11,7 +11,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 
-const NETWORK_TOAST_META = { href: "/network", label: "Open network" };
+const NETWORK_TOAST_META = {
+  label: "Open network",
+  to: "/network",
+} as const;
 
 /* ================= helpers ================= */
 

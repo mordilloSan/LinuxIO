@@ -148,7 +148,11 @@ export const useFileSelection = ({
   onContextMenuClose,
   selection,
 }: useFileSelectionParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const { actions, clipboard, selectedPaths } = selection;
 
   // Memoize selected items from resource

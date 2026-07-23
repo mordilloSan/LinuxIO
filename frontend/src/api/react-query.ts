@@ -29,7 +29,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
 import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
-import type { ToastMeta } from "@/contexts/ToastContext";
+import type { ToastMeta } from "@/routes/-navigation";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import type {
@@ -146,7 +146,7 @@ export interface ActionConfig<TRequest, TResult> {
    * (`getMutationErrorMessage` semantics) — or a callback for custom handling.
    */
   error?: string | ((error: LinuxIOError, variables: TRequest) => void);
-  /** Toast meta ({ href, label }) attached to string success/error toasts. */
+  /** Typed route target attached to string success/error toasts. */
   toast?: ToastMeta;
   /** Escape hatch: raw React Query options; its handlers run after the config ones. */
   options?: MutationOptions<TRequest, TResult>;
@@ -346,7 +346,7 @@ export interface CommandEndpoint<
    *   invalidates: [linuxio.docker.list_containers.queryKey()],
    *   success: "Container started",
    *   error: "Failed to start container",
-   *   toast: { href: "/docker", label: "Open Docker" },
+   *   toast: { label: "Open Docker", to: "/docker" },
    * });
    * mutate({ containerId });
    */

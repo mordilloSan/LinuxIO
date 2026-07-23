@@ -7,7 +7,7 @@ const sonnerMocks = vi.hoisted(() => ({
   toasts: [] as Array<{
     description?: string;
     id: string | number;
-    meta?: { href?: string; label?: string };
+    meta?: { label?: string; params?: { _splat: string }; to: string };
     title?: ReactNode;
     type?: string;
   }>,
@@ -42,7 +42,7 @@ function Probe({ limit = 5 }: { limit?: number }) {
               item.title,
               item.description ?? "",
               item.type ?? "",
-              item.meta?.href ?? "",
+              item.meta?.to ?? "",
             ].join(":"),
           )
           .join("|")}
@@ -74,7 +74,7 @@ describe("ToastProvider", () => {
       {
         description: "Compose stack is up",
         id: 1,
-        meta: { href: "/docker", label: "Open Docker" },
+        meta: { label: "Open Docker", to: "/docker" },
         title: "Started",
         type: "success",
       },

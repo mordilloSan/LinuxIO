@@ -17,7 +17,11 @@ export const useFileBrowserEditorActions = ({
   editor,
 }: UseFileBrowserEditorActionsParams) => {
   const { actions, editingPath, editorRef, isEditorDirty } = editor;
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const resourceCache = linuxio.filebrowser.resource_get.useCache();
   const chunkSize = useUploadChunkSize();
 

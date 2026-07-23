@@ -176,7 +176,7 @@ describe("useJobAction", () => {
       endpoint.useJobAction({
         invalidates: [["linuxio", "docker", "list_containers"]],
         success: "Container updated",
-        toast: { href: "/docker", label: "Open Docker" },
+        toast: { label: "Open Docker", to: "/docker" },
       }),
     );
 
@@ -194,7 +194,7 @@ describe("useJobAction", () => {
       queryKey: ["linuxio", "docker", "list_containers"],
     });
     expect(toast.success).toHaveBeenCalledWith("Container updated", {
-      meta: { href: "/docker", label: "Open Docker" },
+      meta: { label: "Open Docker", to: "/docker" },
     });
   });
 

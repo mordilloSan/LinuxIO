@@ -18,28 +18,26 @@ import { relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 const SANCTIONED_DIR_PREFIXES = ["api/", "hooks/backgroundJobs/"];
 
 // Beyond the primitive layer, only React Query's own wiring may import it:
-// the provider, routing preload plumbing, and the test harness — plus the
-// invalidation manifest's type-only `QueryKey` import.
+// the provider, route context/loader plumbing, and the test harness — plus
+// the invalidation manifest's type-only `QueryKey` import.
 const REACT_QUERY_IMPORT_ALLOWED_PREFIXES = [
   ...SANCTIONED_DIR_PREFIXES,
-  "routing/",
   "test/",
 ];
 const REACT_QUERY_IMPORT_ALLOWED_FILES = new Set([
   "constants/routeInvalidations.ts",
-  "contexts/ReactQueryContext.tsx",
-  // Router context carries the shared client by identity; route data still
-  // goes through routing/routeQueryLoader.ts rather than direct client calls.
-  "tanstack-router/router.tsx",
-  // The application router receives the active provider client by identity.
-  "tanstack-router/AppRouterProvider.tsx",
+  "query-client.tsx",
+  "routes/-context.ts",
+  "routes/-loader.ts",
+  // The application router receives the active QueryClient by identity.
+  "routes/-provider.tsx",
 ]);
 const REACT_QUERY_IMPORT = /from\s*["']@tanstack\/react-query["']/;
 
 // Files allowed to call `linuxio.<handler>.<command>(...)` directly.
 // Shrink this list over time; never grow it without a structural reason.
 const ALLOWED_BARE_CALL_FILES = new Set([
-  // AuthProvider mounts above ReactQueryProvider, so no query client exists
+  // AuthProvider mounts above AppQueryClientProvider, so no query client exists
   // for its capability bootstrap.
   "contexts/AuthContext.tsx",
 ]);
@@ -76,7 +74,7 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   // Mux bootstrap owns init/close across sign-in/sign-out.
   "contexts/AuthContext.tsx",
   // Router loader transport readiness (the only routing-level mux primitive).
-  "routing/routeQueryLoader.ts",
+  "routes/-loader.ts",
   // App-update stream lifecycle (mux handle + frame decoding).
   "contexts/UpdateContext.tsx",
   // Upload chunk sizing from the transport default.
@@ -115,9 +113,7 @@ const USE_MUTATION_IMPORT =
 const IMPERATIVE_QUERY_CLIENT_CALL = /\.(?:fetchQuery|ensureQueryData)\(/;
 
 const IMPERATIVE_QUERY_CLIENT_ALLOWED_PREFIXES = [...SANCTIONED_DIR_PREFIXES];
-const IMPERATIVE_QUERY_CLIENT_ALLOWED_FILES = new Set([
-  "routing/routeQueryLoader.ts",
-]);
+const IMPERATIVE_QUERY_CLIENT_ALLOWED_FILES = new Set(["routes/-loader.ts"]);
 
 function isSanctioned(rel: string): boolean {
   return SANCTIONED_DIR_PREFIXES.some((prefix) => rel.startsWith(prefix));

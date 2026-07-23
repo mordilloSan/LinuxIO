@@ -1,5 +1,6 @@
 import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { transform as oxcTransform } from "oxc-transform";
 import { compression } from "vite-plugin-compression2";
 import { analyzer } from "vite-bundle-analyzer";
@@ -64,7 +65,10 @@ export default defineConfig(async ({ command }) => {
   const proxyTarget = process.env.PROXY_TARGET || "https://localhost:8090";
   const devPort = Number(process.env.VITE_DEV_PORT || 3000);
 
-  const plugins: PluginOption[] = [react()];
+  const plugins: PluginOption[] = [
+    tanstackRouter({ autoCodeSplitting: true, target: "react" }),
+    react(),
+  ];
   if (isBuild) {
     plugins.push(oxcReactCompiler());
     plugins.push(

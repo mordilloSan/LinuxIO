@@ -163,20 +163,35 @@ Adding the entry automatically: derives the wire/state types, adds the
 There are two established patterns. Pick based on whether the *whole feature* or
 just *some actions* depend on the tool.
 
-### 1. Whole-route gating (Docker, Hardware, WireGuard)
+### 1. Whole-route gating (Docker, Hardware, VMs, WireGuard)
 
-Add `requiredCapabilities` to the route in `frontend/src/routes.tsx`. Routes are
-filtered by `hasAccessPolicy` in `buildProtectedRoutes`, so an unavailable
-capability hides both the sidebar item and the route:
+Define one typed policy beside the file route, use it in `beforeLoad`, and
+expose the same policy through `staticData`. The guard denies direct
+navigation; the sidebar reads `staticData` and hides inaccessible routes:
 
-```ts
-{
-  path: "wireguard",
-  element: <Wireguard />,
-  requiresPrivileged: true,
+```tsx
+const access = {
   requiredCapabilities: ["wireguardAvailable"],
-  sidebar: { title: "Wireguard", icon: WireguardIcon, position: 80 },
-},
+  requiresPrivileged: true,
+} satisfies AccessPolicy;
+
+export const Route = createFileRoute("/_authenticated/wireguard")({
+  beforeLoad: ({ context }) => requireAccess(access, context),
+  loader: ({ context, preload }) =>
+    loadRouteQueries(
+      { context, preload },
+      [linuxio.wireguard.list_interfaces.queryOptions()],
+    ),
+  component: WireguardPage,
+  staticData: {
+    access,
+    navigation: {
+      icon: WireguardIcon,
+      position: 80,
+      title: "Wireguard",
+    },
+  },
+});
 ```
 
 Users discover and install the missing tool from the Capability Manager in the

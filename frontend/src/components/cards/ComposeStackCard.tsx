@@ -12,7 +12,7 @@ const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
 };
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 type ComposeStackCardProps =
   | { isPending: true }

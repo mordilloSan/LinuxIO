@@ -212,7 +212,11 @@ describe("useFileSelection", () => {
     expect(toastMocks.success).toHaveBeenCalledWith(
       "2 item(s) copied to clipboard",
       expect.objectContaining({
-        meta: { href: "/filebrowser", label: "Open files" },
+        meta: {
+          label: "Open files",
+          params: { _splat: "" },
+          to: "/filebrowser/$",
+        },
       }),
     );
   });
@@ -317,7 +321,11 @@ describe("useFileSelection", () => {
     expect(toastMocks.error).toHaveBeenCalledWith(
       "Nothing to paste",
       expect.objectContaining({
-        meta: { href: "/filebrowser", label: "Open files" },
+        meta: {
+          label: "Open files",
+          params: { _splat: "" },
+          to: "/filebrowser/$",
+        },
       }),
     );
     expect(copyItems).not.toHaveBeenCalled();

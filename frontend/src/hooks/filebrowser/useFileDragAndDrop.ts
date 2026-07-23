@@ -33,7 +33,11 @@ export const useFileDragAndDrop = ({
   startUpload,
   onUploadComplete,
 }: UseDragAndDropUploadParams): UseDragAndDropUploadResult => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const [isDragOver, setIsDragOver] = useState(false);
   const extractDroppedEntries = useFileDroppedEntries();
 
