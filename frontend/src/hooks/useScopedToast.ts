@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 
 type ToastFn = typeof toast.success;
 type ToastOpts = Parameters<ToastFn>[1];

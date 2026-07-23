@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import AppQueryClientProvider, {
   createQueryClient,
   getAppQueryClient,
-} from "./-query-client";
+} from "./query-client";
 
 describe("AppQueryClientProvider", () => {
   it("provides the stable browser client returned to router infrastructure", async () => {

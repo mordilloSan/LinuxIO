@@ -6,7 +6,7 @@ import { isLiveUpdateBlocked } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
 import { useAccessContext } from "@/hooks/useCapabilities";
 
-import { router } from "./-router";
+import { router } from "./router";
 
 function ActiveApplicationRouterProvider() {
   const auth = useAuth();

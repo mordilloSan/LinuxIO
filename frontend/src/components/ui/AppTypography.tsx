@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 
 import "./app-typography.css";
 

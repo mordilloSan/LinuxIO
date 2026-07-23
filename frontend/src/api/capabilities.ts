@@ -6,7 +6,7 @@
  * Adding a capability = adding one entry to this list.
  */
 
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 
 import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
 

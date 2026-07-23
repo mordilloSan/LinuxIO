@@ -8,7 +8,7 @@ import {
 } from "react";
 import { toast, Toaster, type ToastT, useSonner } from "sonner";
 
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 
 export interface ToastHistoryItem {
   createdAt: number;

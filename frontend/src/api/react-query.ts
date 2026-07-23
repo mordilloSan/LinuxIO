@@ -29,7 +29,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
 import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import type {

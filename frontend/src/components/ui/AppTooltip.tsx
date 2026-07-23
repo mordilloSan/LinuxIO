@@ -12,7 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/routes/-navigation";
+import type { ToastMeta } from "@/types/navigation";
 import "./app-tooltip.css";
 
 type TooltipPlacement =

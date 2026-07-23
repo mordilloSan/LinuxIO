@@ -11,7 +11,7 @@ const routerMocks = vi.hoisted(() => ({
   invalidate: vi.fn(),
 }));
 
-vi.mock("./-router", () => ({
+vi.mock("./router", () => ({
   router: {
     invalidate: routerMocks.invalidate,
   },
@@ -29,7 +29,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 const { default: ApplicationRouterProvider } =
-  await import("@/routes/-provider");
+  await import("@/router/provider");
 
 function ProviderHarness() {
   const [queryClient] = useState(() => new QueryClient());
