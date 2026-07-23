@@ -62,13 +62,51 @@ describe("AuthGuard", () => {
       </Routes>,
       {
         memoryRouter: {
-          initialEntries: ["/secret?tab=logs"],
+          initialEntries: ["/secret?tab=logs#latest"],
         },
       },
     );
 
     expect(
-      await screen.findByText("sign-in:?redirect=%2Fsecret%3Ftab%3Dlogs"),
+      await screen.findByText(
+        "sign-in:?redirect=%2Fsecret%3Ftab%3Dlogs%23latest",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("preserves an existing redirect target instead of nesting it", async () => {
+    useAuthMock.mockReturnValue(
+      createAuthContextValue({
+        isAuthenticated: false,
+        isInitialized: true,
+      }),
+    );
+
+    render(
+      <Routes>
+        <Route
+          path="/secret"
+          element={
+            <AuthGuard>
+              <div>secret</div>
+            </AuthGuard>
+          }
+        />
+        <Route path="/sign-in" element={<SignInLocation />} />
+      </Routes>,
+      {
+        memoryRouter: {
+          initialEntries: [
+            "/secret?redirect=%2Ffilebrowser%2Fsrv%2Fmy%2520files%3Fview%3Ddetails%23preview",
+          ],
+        },
+      },
+    );
+
+    expect(
+      await screen.findByText(
+        "sign-in:?redirect=%2Ffilebrowser%2Fsrv%2Fmy%2520files%3Fview%3Ddetails%23preview",
+      ),
     ).toBeInTheDocument();
   });
 

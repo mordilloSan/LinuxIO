@@ -16,6 +16,18 @@ describe("useTabUrlState", () => {
     expect(result.current[0]).toBe("overview");
   });
 
+  it("uses the default tab when the configured URL param is empty", () => {
+    const { result } = renderHook(() => useTabUrlState("overview"), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <MemoryRouter initialEntries={["/storage?tab="]}>
+          {children}
+        </MemoryRouter>
+      ),
+    });
+
+    expect(result.current[0]).toBe("overview");
+  });
+
   it("reads and updates the configured URL param", () => {
     const { result } = renderHook(() => useTabUrlState("overview", "view"), {
       wrapper: ({ children }: { children: ReactNode }) => (

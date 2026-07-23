@@ -133,9 +133,11 @@ Every generated endpoint exposes:
 | `endpoint.useFetcher()` | Hook returning a stable imperative fetch through the query cache — for loaders and effects that need data at call time (chart backfill, lazy tree loads, workflow pre-checks). Same input shape and options as `useQuery`. |
 | `endpoint.useCache()` | Hook returning a stable typed cache handle: `get`/`set` for one request's entry (optimistic updates, seeding an action's result), `invalidate`/`remove`/`cancel` for one entry or — with no input — the whole endpoint. |
 | `endpoint.queryKey(...input)` | Stable React Query key. |
-| `endpoint.queryOptions(...input, options?)` | Options object for API-layer plumbing (route preloads, the `useFetcher` implementation); feature code uses the hooks. |
+| `endpoint.queryOptions(...input, options?)` | Options object for API-layer plumbing (route preloads, `ensureRouteQueryData`, the `useFetcher` implementation); feature code uses the hooks. |
 
 Feature code (`pages/`, `components/`, `contexts/`, non-jobs `hooks/`) never imports `@tanstack/react-query` at all: render-driven reads go through `useQuery`/`useQueries`, event-driven commands through `useAction`, writes through `useJobAction`/`useJobStreamAction` or the background-jobs layer, imperative loader/effect reads through `useFetcher`, and cache manipulation through `useCache`. The primitives live in `src/api/` and `src/hooks/backgroundJobs/` (with routing preloads and the provider as the only other React Query touchpoints); guard tests (`frontend/src/constants/apiLayering.test.ts`) enforce the boundary.
+
+Router infrastructure uses `ensureRouteQueryData` from `src/routing/routeQueryLoader.ts` to wait for the request transport and seed the shared browser QueryClient with a typed `endpoint.queryOptions(...)` result. It requires a live `isUpdateBlocked` getter from router context rather than the mux, rechecks it after readiness, and rejects without querying while an update is active. Callers must pass `speculative: true` for intent preloads so QueryCache suppresses their error toast.
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code consumes streams through the `open*Stream` factories and the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`), and only a short, shrink-only allowlist of low-level consumers may import the primitives from `@/api`.
 

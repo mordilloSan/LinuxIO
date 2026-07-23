@@ -1,21 +1,9 @@
 import { linuxio } from "@/api";
-import {
-  CpuIcon,
-  DockerIcon,
-  FileTextIcon,
-  FolderIcon,
-  HardDriveIcon,
-  HomeIcon,
-  NetworkIcon,
-  RefreshCcwIcon,
-  ServerCogIcon,
-  ShareIcon,
-  TerminalIcon,
-  UsersIcon,
-  VirtualMachineIcon,
-  WireguardIcon,
-} from "@/icons/svg";
 import { lazyWithPreload, withRouteIcons } from "@/routing/lazyWithPreload";
+import {
+  protectedRouteCatalog,
+  type ProtectedRouteId,
+} from "@/routing/protectedRouteCatalog";
 import { routeQuery, ROUTE_INTENT_PRELOAD } from "@/routing/routeIntentPreload";
 import type { RouteWithSidebar } from "@/routing/routeTypes";
 
@@ -69,9 +57,18 @@ const AccountsPage = lazyWithPreload(
 export const SignIn = lazyWithPreload(() => import("@/pages/auth/Login"));
 export const Page404 = lazyWithPreload(() => import("@/pages/auth/Page404"));
 
+const catalogRoute = (id: ProtectedRouteId) => {
+  const catalogEntry = protectedRouteCatalog.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!catalogEntry) throw new Error(`Unknown protected route: ${id}`);
+  const { id: _id, ...route } = catalogEntry;
+  return route;
+};
+
 export const coreRoutes: RouteWithSidebar[] = [
   {
-    path: "",
+    ...catalogRoute("dashboard"),
     element: <Default />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [
@@ -81,100 +78,57 @@ export const coreRoutes: RouteWithSidebar[] = [
       routeQuery(linuxio.system.get_server_time),
     ],
     preload: Default.preload,
-    sidebar: {
-      title: "Dashboard",
-      icon: HomeIcon,
-      position: 0,
-    },
   },
   {
-    path: "network",
+    ...catalogRoute("network"),
     element: <Network />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [routeQuery(linuxio.network.get_network_info)],
     preload: Network.preload,
-    sidebar: {
-      title: "Network",
-      icon: NetworkIcon,
-      position: 10,
-    },
   },
   {
-    path: "updates",
+    ...catalogRoute("updates"),
     element: <Updates />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchDataWhen: (access) => access.packageKitAvailable === true,
     prefetchQueries: [routeQuery(linuxio.updates.get_updates_basic)],
     preload: Updates.preload,
-    sidebar: {
-      title: "Updates",
-      icon: RefreshCcwIcon,
-      position: 20,
-    },
   },
   {
-    path: "services",
+    ...catalogRoute("services"),
     element: <Services />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [routeQuery(linuxio.systemd.list_services)],
     preload: Services.preload,
-    sidebar: {
-      title: "Services",
-      icon: ServerCogIcon,
-      position: 30,
-    },
   },
   {
-    path: "logs",
+    ...catalogRoute("logs"),
     element: <Logs />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Logs.preload,
-    sidebar: {
-      title: "Logs",
-      icon: FileTextIcon,
-      position: 35,
-    },
   },
   {
-    path: "storage",
+    ...catalogRoute("storage"),
     element: <StoragePage />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: StoragePage.preload,
-    sidebar: {
-      title: "Storage",
-      icon: HardDriveIcon,
-      position: 40,
-    },
   },
   {
-    path: "docker",
+    ...catalogRoute("docker"),
     element: <Docker />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [routeQuery(linuxio.docker.list_containers)],
     preload: Docker.preload,
-    requiredCapabilities: ["dockerAvailable"],
-    sidebar: {
-      title: "Docker",
-      icon: DockerIcon,
-      position: 50,
-    },
   },
   {
-    path: "vm",
+    ...catalogRoute("vm"),
     element: <VirtualMachines />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [routeQuery(linuxio.virt.list)],
     preload: VirtualMachines.preload,
-    requiresPrivileged: true,
-    requiredCapabilities: ["libvirtAvailable"],
-    sidebar: {
-      title: "VMs",
-      icon: VirtualMachineIcon,
-      position: 55,
-    },
   },
   {
-    path: "accounts",
+    ...catalogRoute("accounts"),
     element: <AccountsPage />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeAndData,
     prefetchQueries: [
@@ -182,68 +136,35 @@ export const coreRoutes: RouteWithSidebar[] = [
       routeQuery(linuxio.accounts.list_groups),
     ],
     preload: AccountsPage.preload,
-    sidebar: {
-      title: "Accounts",
-      icon: UsersIcon,
-      position: 60,
-    },
   },
   {
-    path: "shares",
+    ...catalogRoute("shares"),
     element: <Shares />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Shares.preload,
-    sidebar: {
-      title: "Shares",
-      icon: ShareIcon,
-      position: 70,
-    },
   },
   {
-    path: "wireguard",
+    ...catalogRoute("wireguard"),
     element: <Wireguard />,
     intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: Wireguard.preload,
-    requiresPrivileged: true,
-    requiredCapabilities: ["wireguardAvailable"],
-    sidebar: {
-      title: "Wireguard",
-      icon: WireguardIcon,
-      position: 80,
-    },
   },
   {
-    path: "hardware",
+    ...catalogRoute("hardware"),
     element: <Hardware />,
     intentPreload: ROUTE_INTENT_PRELOAD.routeOnly,
     preload: Hardware.preload,
-    requiredCapabilities: ["lmSensorsAvailable"],
-    sidebar: {
-      title: "Hardware",
-      icon: CpuIcon,
-      position: 90,
-    },
   },
   {
-    path: "filebrowser/*",
+    ...catalogRoute("filebrowser"),
     element: <FileBrowser />,
     intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: FileBrowser.preload,
-    sidebar: {
-      title: "Navigator",
-      icon: FolderIcon,
-      position: 100,
-    },
   },
   {
-    path: "terminal",
+    ...catalogRoute("terminal"),
     element: <TerminalPage />,
     intentPreload: ROUTE_INTENT_PRELOAD.heavyRouteOnly,
     preload: TerminalPage.preload,
-    sidebar: {
-      title: "Terminal",
-      icon: TerminalIcon,
-      position: 110,
-    },
   },
 ];

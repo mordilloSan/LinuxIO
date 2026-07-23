@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { useFileBrowserNavigation } from "@/hooks/filebrowser/useFileBrowserNavigation";
@@ -60,13 +60,25 @@ describe("useFileBrowserNavigation", () => {
   it("encodes directory segments when navigating and round-trips the path", () => {
     const onPathChange = vi.fn();
     const { result } = renderHook(
-      () => useFileBrowserNavigation({ onPathChange }),
+      () => ({
+        navigation: useFileBrowserNavigation({ onPathChange }),
+        location: useLocation(),
+      }),
       { wrapper: routerWrapper("/filebrowser") },
     );
 
-    act(() => result.current.handleOpenDirectory("/srv/my files/sub dir"));
+    act(() =>
+      result.current.navigation.handleOpenDirectory(
+        "/srv/my files/hash#question?",
+      ),
+    );
 
-    expect(result.current.normalizedPath).toBe("/srv/my files/sub dir");
+    expect(result.current.location.pathname).toBe(
+      "/filebrowser/srv/my%20files/hash%23question%3F",
+    );
+    expect(result.current.navigation.normalizedPath).toBe(
+      "/srv/my files/hash#question?",
+    );
     expect(onPathChange).toHaveBeenCalledTimes(1);
   });
 

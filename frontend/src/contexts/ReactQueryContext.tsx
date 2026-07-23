@@ -14,7 +14,14 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function makeQueryClient() {
+/**
+ * Build an isolated QueryClient.
+ *
+ * Server renders and tests must use a fresh client per invocation; browser code
+ * should instead use getAppQueryClient() so providers and route loaders share
+ * one cache.
+ */
+export function createQueryClient(): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache({
       onError: (error, query) => {
@@ -39,9 +46,9 @@ function makeQueryClient() {
 
 let browserQueryClient: QueryClient | undefined;
 
-function getQueryClient(): QueryClient {
-  if (typeof window === "undefined") return makeQueryClient();
-  if (!browserQueryClient) browserQueryClient = makeQueryClient();
+export function getAppQueryClient(): QueryClient {
+  if (typeof window === "undefined") return createQueryClient();
+  if (!browserQueryClient) browserQueryClient = createQueryClient();
   return browserQueryClient;
 }
 
@@ -50,7 +57,7 @@ interface ReactQueryProviderProps {
 }
 
 const ReactQueryProvider = ({ children }: ReactQueryProviderProps) => {
-  const queryClient = getQueryClient();
+  const queryClient = getAppQueryClient();
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
