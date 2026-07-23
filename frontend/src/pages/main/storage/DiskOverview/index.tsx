@@ -1,6 +1,6 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
@@ -33,6 +33,7 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
+const storageRouteApi = getRouteApi("/authenticated/storage");
 const STORAGE_TOAST_META = { href: "/storage", label: "Open storage" };
 
 interface DriveDetailsProps {
@@ -303,11 +304,12 @@ const DriveDetails = ({
 };
 
 const DiskOverview = () => {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = storageRouteApi.useNavigate();
+  const search = storageRouteApi.useSearch();
   const toast = useScopedToast(STORAGE_TOAST_META);
-  const expanded = searchParams.get("drive");
-  const selectedMountpoint = searchParams.get("fs");
+  const expanded = typeof search.drive === "string" ? search.drive : undefined;
+  const selectedMountpoint =
+    typeof search.fs === "string" ? search.fs : undefined;
   const [creatingSubvolumeMountpoint, setCreatingSubvolumeMountpoint] =
     useState<string | null>(null);
   const [subvolumeDrafts, setSubvolumeDrafts] = useState<
@@ -342,9 +344,12 @@ const DiskOverview = () => {
     linuxio.storage.unmount_filesystem.useJobAction({
       success: () => {
         toast.success("Filesystem unmounted");
-        setSearchParams((prev) => {
-          prev.delete("fs");
-          return prev;
+        navigate({
+          to: "/storage",
+          search: (previous) => ({
+            ...previous,
+            fs: undefined,
+          }),
         });
       },
       error: "Failed to unmount filesystem",
@@ -374,25 +379,27 @@ const DiskOverview = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setSearchParams((prev) => {
-          prev.delete("drive");
-          prev.delete("fs");
-          return prev;
+        navigate({
+          to: "/storage",
+          search: (previous) => ({
+            ...previous,
+            drive: undefined,
+            fs: undefined,
+          }),
         });
         setCreatingSubvolumeMountpoint(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setSearchParams]);
+  }, [navigate]);
   const handleToggle = (driveName: string) => {
-    setSearchParams((prev) => {
-      if (prev.get("drive") === driveName) {
-        prev.delete("drive");
-      } else {
-        prev.set("drive", driveName);
-      }
-      return prev;
+    navigate({
+      to: "/storage",
+      search: (previous) => ({
+        ...previous,
+        drive: expanded === driveName ? undefined : driveName,
+      }),
     });
   };
   const drives = useMemo<DriveInfo[]>(
@@ -433,23 +440,31 @@ const DiskOverview = () => {
   );
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     setCreatingSubvolumeMountpoint(null);
-    setSearchParams((prev) => {
-      if (prev.get("fs") === filesystem.mountpoint) {
-        prev.delete("fs");
-      } else {
-        prev.set("fs", filesystem.mountpoint);
-      }
-      return prev;
+    navigate({
+      to: "/storage",
+      search: (previous) => ({
+        ...previous,
+        fs:
+          selectedMountpoint === filesystem.mountpoint
+            ? undefined
+            : filesystem.mountpoint,
+      }),
     });
   };
   const handleBrowseFilesystem = (mountpoint: string) => {
-    navigate(encodeFilebrowserPath(mountpoint));
+    navigate({
+      to: "/filebrowser/$",
+      params: { _splat: mountpoint.replace(/^\/+/, "") },
+    });
   };
   const handleInspectDrive = (driveName: string) => {
-    setSearchParams((prev) => {
-      prev.set("drive", driveName);
-      prev.delete("fs");
-      return prev;
+    navigate({
+      to: "/storage",
+      search: (previous) => ({
+        ...previous,
+        drive: driveName,
+        fs: undefined,
+      }),
     });
     setCreatingSubvolumeMountpoint(null);
   };
@@ -633,17 +648,6 @@ const DiskOverview = () => {
       )}
     </div>
   );
-};
-
-const encodeFilebrowserPath = (path: string): string => {
-  if (path === "/") {
-    return "/filebrowser";
-  }
-  const encodedSegments = path
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-  return `/filebrowser/${encodedSegments.join("/")}`;
 };
 
 export default DiskOverview;

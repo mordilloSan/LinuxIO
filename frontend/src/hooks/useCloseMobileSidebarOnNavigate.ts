@@ -1,5 +1,5 @@
+import { useLocation } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
 
 import useSidebar from "@/hooks/useSidebar";
 
@@ -7,7 +7,7 @@ import useSidebar from "@/hooks/useSidebar";
  * Closes the mobile sidebar drawer whenever the route changes.
  *
  * No-op on desktop, where the sidebar is always visible. Keyed on
- * `location.key` so repeat navigations to the same path still close it.
+ * `location.state.key` so repeat navigations to the same path still close it.
  */
 export function useCloseMobileSidebarOnNavigate() {
   const location = useLocation();
@@ -15,5 +15,5 @@ export function useCloseMobileSidebarOnNavigate() {
 
   useEffect(() => {
     if (!isDesktop) setMobileOpen(false);
-  }, [location.key, isDesktop, setMobileOpen]);
+  }, [location.state.key, isDesktop, setMobileOpen]);
 }

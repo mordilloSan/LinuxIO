@@ -89,6 +89,42 @@ describe("ensureRouteQueryData", () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
+  it("deduplicates simultaneous route-loader callers for the shared cache key", async () => {
+    apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
+    let resolveQuery!: (value: string) => void;
+    const queryFn = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveQuery = resolve;
+        }),
+    );
+    const queryClient = createClient();
+    const options = {
+      queryKey: ["shared-loader-query"],
+      queryFn,
+      staleTime: Infinity,
+    };
+
+    const first = ensureRouteQueryData({
+      isUpdateBlocked: () => false,
+      queryClient,
+      queryOptions: options,
+    });
+    const second = ensureRouteQueryData({
+      isUpdateBlocked: () => false,
+      queryClient,
+      queryOptions: options,
+    });
+
+    await Promise.resolve();
+    resolveQuery("shared");
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      "shared",
+      "shared",
+    ]);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
   it("marks failed speculative work silent for QueryCache toast policy", async () => {
     apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
     const onError = vi.fn();

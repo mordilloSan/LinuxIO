@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
 import {
   Fragment,
   useEffect,
@@ -8,7 +9,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import {
   type AccountActiveSession,
@@ -41,6 +41,7 @@ import { useAppTheme } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
 import "./user-account-details.css";
+const accountsRouteApi = getRouteApi("/authenticated/accounts");
 
 interface UserDetailsPanelProps {
   currentUsername?: string;
@@ -546,7 +547,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 
 export const UserActivityCard = ({ username }: { username: string }) => {
   const theme = useAppTheme();
-  const [searchParams] = useSearchParams();
+  const search = accountsRouteApi.useSearch();
   const {
     data: details,
     isLoading: detailsLoading,
@@ -566,10 +567,16 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const focusLoginEventId = searchParams.get("focusLoginEventId");
-  const failedLoginAlertId = searchParams.get("failedLoginAlertId");
+  const focusLoginEventId =
+    typeof search.focusLoginEventId === "string"
+      ? search.focusLoginEventId
+      : undefined;
+  const failedLoginAlertId =
+    typeof search.failedLoginAlertId === "string"
+      ? search.failedLoginAlertId
+      : undefined;
   const autoDismissFailedLoginAlert =
-    searchParams.get("autoDismissFailedLoginAlert") === "1";
+    search.autoDismissFailedLoginAlert === true;
   const { mutate: dismissFailedLoginAlert } =
     linuxio.system.dismiss_failed_login_alert.useJobAction();
   const [pendingKillSession, setPendingKillSession] =

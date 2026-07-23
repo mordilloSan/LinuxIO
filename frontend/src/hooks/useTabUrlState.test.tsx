@@ -1,75 +1,79 @@
-import type { ReactNode } from "react";
-import { MemoryRouter, useSearchParams } from "react-router-dom";
+import { useSearch } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { useTabUrlState } from "@/hooks/useTabUrlState";
-import { act, renderHook } from "@/test/render";
+import {
+  act,
+  createTanStackRouterWrapper,
+  renderHook,
+  waitFor,
+} from "@/test/render";
 
 describe("useTabUrlState", () => {
-  it("uses the default tab when the URL param is absent", () => {
-    const { result } = renderHook(() => useTabUrlState("overview"), {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <MemoryRouter>{children}</MemoryRouter>
-      ),
-    });
+  it("uses the default tab when the URL param is absent", async () => {
+    const { result } = renderHook(
+      () => useTabUrlState("overview", "storageTab"),
+      {
+        wrapper: createTanStackRouterWrapper().Wrapper,
+      },
+    );
 
-    expect(result.current[0]).toBe("overview");
+    await waitFor(() => expect(result.current?.[0]).toBe("overview"));
   });
 
-  it("uses the default tab when the configured URL param is empty", () => {
-    const { result } = renderHook(() => useTabUrlState("overview"), {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <MemoryRouter initialEntries={["/storage?tab="]}>
-          {children}
-        </MemoryRouter>
-      ),
-    });
+  it("uses the default tab when the configured URL param is empty", async () => {
+    const { result } = renderHook(
+      () => useTabUrlState("overview", "storageTab"),
+      {
+        wrapper: createTanStackRouterWrapper({
+          initialEntries: ["/storage?storageTab="],
+        }).Wrapper,
+      },
+    );
 
-    expect(result.current[0]).toBe("overview");
+    await waitFor(() => expect(result.current?.[0]).toBe("overview"));
   });
 
-  it("reads and updates the configured URL param", () => {
-    const { result } = renderHook(() => useTabUrlState("overview", "view"), {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <MemoryRouter initialEntries={["/storage?view=details&keep=yes"]}>
-          {children}
-        </MemoryRouter>
-      ),
-    });
+  it("reads and updates the configured URL param", async () => {
+    const { result } = renderHook(
+      () => useTabUrlState("overview", "storageTab"),
+      {
+        wrapper: createTanStackRouterWrapper({
+          initialEntries: ["/storage?storageTab=details&keep=yes"],
+        }).Wrapper,
+      },
+    );
 
-    expect(result.current[0]).toBe("details");
-    act(() => result.current[1]("settings"));
-    expect(result.current[0]).toBe("settings");
+    await waitFor(() => expect(result.current?.[0]).toBe("details"));
+    act(() => result.current?.[1]("settings"));
+    await waitFor(() => expect(result.current?.[0]).toBe("settings"));
   });
 
-  it("preserves sibling query params when switching tabs (Accounts deep-link contract)", () => {
+  it("preserves sibling query params when switching tabs (Accounts deep-link contract)", async () => {
     // Mirrors the SystemHealth -> Accounts deep link: the tab switch must not
     // drop focusLoginEventId/failedLoginAlertId, which UserAccountDetails reads.
     const { result } = renderHook(
       () => ({
         tab: useTabUrlState("users", "accountsTab"),
-        search: useSearchParams(),
+        search: useSearch({ strict: false }),
       }),
       {
-        wrapper: ({ children }: { children: ReactNode }) => (
-          <MemoryRouter
-            initialEntries={[
-              "/accounts?accountsTab=users&focusLoginEventId=evt-42&failedLoginAlertId=alert-7",
-            ]}
-          >
-            {children}
-          </MemoryRouter>
-        ),
+        wrapper: createTanStackRouterWrapper({
+          initialEntries: [
+            "/accounts?accountsTab=users&focusLoginEventId=evt-42&failedLoginAlertId=alert-7",
+          ],
+        }).Wrapper,
       },
     );
 
-    expect(result.current.tab[0]).toBe("users");
+    await waitFor(() => expect(result.current?.tab[0]).toBe("users"));
 
-    act(() => result.current.tab[1]("groups"));
+    act(() => result.current?.tab[1]("groups"));
 
-    const params = result.current.search[0];
-    expect(params.get("accountsTab")).toBe("groups");
-    expect(params.get("focusLoginEventId")).toBe("evt-42");
-    expect(params.get("failedLoginAlertId")).toBe("alert-7");
+    await waitFor(() => {
+      expect(result.current?.search.accountsTab).toBe("groups");
+      expect(result.current?.search.focusLoginEventId).toBe("evt-42");
+      expect(result.current?.search.failedLoginAlertId).toBe("alert-7");
+    });
   });
 });

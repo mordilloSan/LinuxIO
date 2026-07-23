@@ -1,5 +1,5 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { type AccountUser, linuxio } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -19,6 +19,7 @@ import EditUserDialog from "./components/EditUserDialog";
 import UserCardsView from "./components/UserCardsView";
 
 const ACCOUNTS_TOAST_META = { href: "/accounts", label: "Open accounts" };
+const accountsRouteApi = getRouteApi("/authenticated/accounts");
 
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -38,26 +39,23 @@ const UsersTab = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [dialogUser, setDialogUser] = useState<AccountUser | null>(null);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const selectedUsername = searchParams.get("user");
+  const navigate = accountsRouteApi.useNavigate();
+  const routeSearch = accountsRouteApi.useSearch();
+  const selectedUsername =
+    typeof routeSearch.user === "string" ? routeSearch.user : undefined;
   const usersList = Array.isArray(users) ? users : [];
 
   const setSelectedUsername = useCallback(
     (username: string | null) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (username === null) {
-            next.delete("user");
-          } else {
-            next.set("user", username);
-          }
-          return next;
-        },
-        { replace: false },
-      );
+      navigate({
+        to: "/accounts",
+        search: (previous) => ({
+          ...previous,
+          user: username ?? undefined,
+        }),
+      });
     },
-    [setSearchParams],
+    [navigate],
   );
 
   const effectiveViewMode = selectedUsername ? "card" : viewMode;

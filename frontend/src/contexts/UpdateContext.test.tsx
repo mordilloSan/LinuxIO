@@ -20,9 +20,11 @@ vi.mock("@/api", async () => {
   };
 });
 
-const { UpdateProvider } = await import("@/contexts/UpdateContext");
+const { isLiveUpdateBlocked, UpdateProvider } =
+  await import("@/contexts/UpdateContext");
 const { useLinuxIOUpdater } = await import("@/hooks/useLinuxIOUpdater");
-const { act, render, screen, waitFor } = await import("@/test/render");
+const { act, renderWithTanStackRouter, screen, waitFor } =
+  await import("@/test/render");
 
 async function flushPromises() {
   await Promise.resolve();
@@ -70,12 +72,14 @@ function Probe() {
   );
 }
 
-function renderProvider() {
-  return render(
+async function renderProvider() {
+  const result = renderWithTanStackRouter(
     <UpdateProvider>
       <Probe />
     </UpdateProvider>,
   );
+  await screen.findByTestId("phase");
+  return result;
 }
 
 describe("UpdateProvider", () => {
@@ -84,17 +88,18 @@ describe("UpdateProvider", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("starts idle and allows navigation before updates run", () => {
-    renderProvider();
+  it("starts idle and allows navigation before updates run", async () => {
+    await renderProvider();
 
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
     expect(screen.getByTestId("progress")).toHaveTextContent("0");
     expect(screen.getByTestId("can-navigate")).toHaveTextContent("true");
+    expect(isLiveUpdateBlocked()).toBe(false);
   });
 
   it("fails fast when the stream mux is not open", async () => {
     apiMocks.getStreamMux.mockReturnValue(null);
-    renderProvider();
+    await renderProvider();
 
     await act(async () => {
       screen.getByRole("button", { name: "start" }).click();
@@ -123,7 +128,7 @@ describe("UpdateProvider", () => {
       handlers = nextHandlers;
       return unbind;
     });
-    renderProvider();
+    await renderProvider();
 
     await act(async () => {
       screen.getByRole("button", { name: "start" }).click();
@@ -137,6 +142,7 @@ describe("UpdateProvider", () => {
     expect(screen.getByTestId("phase")).toHaveTextContent("running");
     expect(screen.getByTestId("target")).toHaveTextContent("v2.0.0");
     expect(screen.getByTestId("can-navigate")).toHaveTextContent("false");
+    expect(isLiveUpdateBlocked()).toBe(true);
 
     await act(async () => {
       handlers.onData(
@@ -163,10 +169,10 @@ describe("UpdateProvider", () => {
     expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
     expect(screen.getByTestId("output")).toHaveTextContent("");
+    expect(isLiveUpdateBlocked()).toBe(false);
   });
 
   it("verifies restart completion after the update stream finishes", async () => {
-    vi.useFakeTimers();
     const stream = createStream();
     const mux = { setUpdating: vi.fn(), status: "open" };
     let handlers!: {
@@ -192,7 +198,8 @@ describe("UpdateProvider", () => {
       handlers = nextHandlers;
       return vi.fn();
     });
-    renderProvider();
+    await renderProvider();
+    vi.useFakeTimers();
 
     await act(async () => {
       screen.getByRole("button", { name: "start" }).click();
@@ -238,7 +245,7 @@ describe("UpdateProvider", () => {
       handlers = nextHandlers;
       return vi.fn();
     });
-    renderProvider();
+    await renderProvider();
 
     await act(async () => {
       screen.getByRole("button", { name: "start" }).click();

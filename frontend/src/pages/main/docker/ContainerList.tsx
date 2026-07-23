@@ -13,6 +13,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   memo,
@@ -23,7 +24,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { linuxio, openDockerLogsStream } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
@@ -57,6 +57,7 @@ interface ContainerListProps {
 }
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
+const dockerRouteApi = getRouteApi("/authenticated/docker");
 
 const ContainerList = ({
   checkingUpdates = false,
@@ -68,14 +69,18 @@ const ContainerList = ({
   const theme = useAppTheme();
   const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
   const { data: rawContainers, isPending } =
     linuxio.docker.list_containers.useQuery({
       refetchInterval: 5000,
     });
   const hasLoadedContainers = rawContainers !== undefined;
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
-  const selectedContainerId = searchParams.get("container");
+  const selectedContainerId =
+    typeof searchParams.container === "string"
+      ? searchParams.container
+      : undefined;
   const [search, setSearch] = useState("");
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
@@ -90,17 +95,15 @@ const ContainerList = ({
 
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (containerId) {
-          next.set("container", containerId);
-        } else {
-          next.delete("container");
-        }
-        return next;
+      navigate({
+        to: "/docker",
+        search: (previous) => ({
+          ...previous,
+          container: containerId ?? undefined,
+        }),
       });
     },
-    [setSearchParams],
+    [navigate],
   );
 
   const sensors = useSensors(

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { targetAllowsContextMenu } from "@/utils/contextMenu";
 import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-popover.css";
@@ -188,7 +189,7 @@ const AppPopover = ({
       return;
     }
 
-    if ((target as HTMLElement).closest?.("[data-allow-context-menu='true']")) {
+    if (targetAllowsContextMenu(target)) {
       return;
     }
 

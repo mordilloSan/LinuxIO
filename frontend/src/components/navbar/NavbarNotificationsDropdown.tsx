@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { Link } from "@tanstack/react-router";
 import {
   memo,
   useCallback,
@@ -7,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Link } from "react-router-dom";
 
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";

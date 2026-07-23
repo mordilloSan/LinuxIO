@@ -18,20 +18,103 @@ import {
 } from "@/routing/protectedRouteCatalog";
 import type { AuthState } from "@/types/auth";
 
+type SearchRecord = Record<string, unknown>;
+
+const optionalString = <TKey extends string>(
+  search: SearchRecord,
+  key: TKey,
+): { [P in TKey]?: string } => {
+  const value = search[key];
+  return typeof value === "string" && value
+    ? ({ [key]: value } as { [P in TKey]: string })
+    : {};
+};
+
+const optionalNumber = <TKey extends string>(
+  search: SearchRecord,
+  key: TKey,
+): { [P in TKey]?: number } => {
+  const value = search[key];
+  return typeof value === "number"
+    ? ({ [key]: value } as { [P in TKey]: number })
+    : {};
+};
+
+const optionalBoolean = <TKey extends string>(
+  search: SearchRecord,
+  key: TKey,
+): { [P in TKey]?: boolean } => {
+  const value = search[key];
+  return typeof value === "boolean"
+    ? ({ [key]: value } as { [P in TKey]: boolean })
+    : {};
+};
+
+const validateSearchByRoute = {
+  "sign-in": (search: SearchRecord) => ({
+    ...optionalString(search, "redirect"),
+  }),
+  dashboard: (_search: SearchRecord) => ({}),
+  network: (search: SearchRecord) => ({
+    ...optionalString(search, "iface"),
+    ...optionalString(search, "sort"),
+    ...optionalString(search, "tab"),
+  }),
+  updates: (search: SearchRecord) => ({
+    ...optionalString(search, "updateTab"),
+  }),
+  services: (search: SearchRecord) => ({
+    ...optionalString(search, "section"),
+    ...optionalString(search, "service"),
+    ...optionalString(search, "socket"),
+    ...optionalString(search, "timer"),
+  }),
+  logs: (_search: SearchRecord) => ({}),
+  storage: (search: SearchRecord) => ({
+    ...optionalString(search, "drive"),
+    ...optionalString(search, "fs"),
+    ...optionalString(search, "storageTab"),
+  }),
+  docker: (search: SearchRecord) => ({
+    ...optionalString(search, "container"),
+    ...optionalString(search, "dockerTab"),
+  }),
+  vm: (search: SearchRecord) => ({ ...optionalString(search, "vmTab") }),
+  accounts: (search: SearchRecord) => ({
+    ...optionalString(search, "accountsTab"),
+    ...optionalBoolean(search, "autoDismissFailedLoginAlert"),
+    ...optionalString(search, "failedLoginAlertId"),
+    ...optionalString(search, "focusLoginEventId"),
+    ...optionalString(search, "user"),
+  }),
+  shares: (search: SearchRecord) => ({
+    ...optionalString(search, "sharesTab"),
+  }),
+  wireguard: (_search: SearchRecord) => ({}),
+  hardware: (_search: SearchRecord) => ({}),
+  filebrowser: (search: SearchRecord) => ({
+    ...optionalBoolean(search, "enabled"),
+    ...optionalString(search, "redirect"),
+    ...optionalNumber(search, "tail"),
+  }),
+  terminal: (_search: SearchRecord) => ({}),
+} satisfies Record<
+  ProtectedRouteId | "sign-in",
+  (search: SearchRecord) => object
+>;
+
 /** The router only needs an immutable auth snapshot, not AuthContext methods. */
 export type RouterAuthSnapshot = Omit<
   Pick<AuthState, "isAuthenticated" | "isInitialized" | "user">,
   "isInitialized"
 > & {
-  /** The future bridge creates/mounts this router only after auth bootstrap. */
+  /** The router mounts only after auth bootstrap. */
   isInitialized: true;
 };
 
 /**
- * Dependencies and live state supplied by the eventual RouterProvider bridge.
+ * Dependencies and live state supplied by RouterProvider.
  *
- * `isUpdateBlocked` deliberately remains a getter: it is consumed by the
- * Phase 2 route-query helper immediately before and after mux readiness.
  */
 export interface LinuxIORouterContext {
   queryClient: QueryClient;
@@ -46,16 +129,14 @@ type LocationWithHref = {
 };
 
 export type RouterRouteComponent = RouteComponent;
-export type ProtectedRouteComponentFactory = (
-  route: ProtectedRouteCatalogEntry,
-) => RouterRouteComponent;
+export interface ProtectedRouteLoaderOptions {
+  context: LinuxIORouterContext;
+  preload: boolean;
+}
 
-type TanStackPath<TPath extends ProtectedRouteCatalogEntry["path"]> =
-  TPath extends ""
-    ? "/"
-    : TPath extends `${infer Prefix}/*`
-      ? `${Prefix}/$`
-      : TPath;
+export type ProtectedRouteLoader = (
+  options: ProtectedRouteLoaderOptions,
+) => Promise<unknown>;
 
 type CatalogEntryFor<TId extends ProtectedRouteId> = Extract<
   (typeof protectedRouteCatalog)[number],
@@ -63,8 +144,8 @@ type CatalogEntryFor<TId extends ProtectedRouteId> = Extract<
 >;
 
 /**
- * Components are injected so this foundation can be exercised with inert
- * test components. The live cutover will supply the existing layouts/pages.
+ * Components are injected so tests can provide inert components while the app
+ * supplies its layouts and pages.
  */
 export interface TanStackRouterComponents {
   AuthenticatedLayout?: RouterRouteComponent;
@@ -73,7 +154,7 @@ export interface TanStackRouterComponents {
    * boundaries and the authenticated catch-all child.
    */
   NotFound?: RouterRouteComponent;
-  ProtectedRoute?: ProtectedRouteComponentFactory;
+  ProtectedRoutes?: Partial<Record<ProtectedRouteId, RouterRouteComponent>>;
   Root?: RouterRouteComponent;
   SignIn?: RouterRouteComponent;
 }
@@ -82,25 +163,18 @@ export interface CreateTanStackRouterOptions {
   components?: TanStackRouterComponents;
   context: LinuxIORouterContext;
   history?: RouterHistory;
-  /** Test seam confirming future child work only runs after access allows it. */
+  /** Test seam confirming child work only runs after access allows it. */
   onAuthorizedProtectedRoute?: (route: ProtectedRouteCatalogEntry) => void;
+  /**
+   * Explicit per-id loaders. An absent id has no loader at all.
+   */
+  protectedRouteLoaders?: Partial<
+    Record<ProtectedRouteId, ProtectedRouteLoader>
+  >;
 }
 
 const DefaultNotFound = () => <div>Not found</div>;
 const DefaultRoute = () => <div />;
-
-/**
- * The old router's `filebrowser/*` splat has the same semantics as TanStack
- * Router's `filebrowser/$` path syntax.
- */
-export function toTanStackRoutePath<
-  TPath extends ProtectedRouteCatalogEntry["path"],
->(path: TPath): TanStackPath<TPath> {
-  if (path === "") return "/" as TanStackPath<TPath>;
-  return (
-    path.endsWith("/*") ? `${path.slice(0, -1)}$` : path
-  ) as TanStackPath<TPath>;
-}
 
 /** Pure parent guard: child beforeLoad/load work never runs after this redirect. */
 export function requireAuthenticatedRoute(
@@ -120,7 +194,7 @@ export function requireAuthenticatedRoute(
   });
 }
 
-/** Pure access guard run by each protected child before future route loaders. */
+/** Pure access guard run by each protected child before route loaders. */
 export function requireProtectedRouteAccess(
   route: ProtectedRouteCatalogEntry,
   context: LinuxIORouterContext,
@@ -129,7 +203,7 @@ export function requireProtectedRouteAccess(
   throw notFound();
 }
 
-/** Pure guest guard matching the current GuestGuard redirect/default behavior. */
+/** Pure guest guard for signed-in visitors. */
 export function redirectAuthenticatedGuest(
   context: LinuxIORouterContext,
   location: Pick<LocationWithHref, "search">,
@@ -142,13 +216,8 @@ export function redirectAuthenticatedGuest(
 }
 
 /**
- * Build (but do not mount) the code-based TanStack Router tree.
- *
- * Production continues to render React Router until the live cutover. Keeping
- * construction in a factory lets tests provide memory history and inert
- * components while preserving the exact catalog and guards for that cutover.
- * The eventual AuthContext bridge must wait for `isInitialized === true`
- * before creating this router, matching AuthGuard's current blank bootstrap.
+ * Builds the code-based router tree from the supplied layouts, pages, guards,
+ * and router context. Tests provide the same dependencies with memory history.
  */
 export function createTanStackRouter(options: CreateTanStackRouterOptions) {
   const components = options.components ?? {};
@@ -164,8 +233,8 @@ export function createTanStackRouter(options: CreateTanStackRouterOptions) {
     beforeLoad: ({ context, location }) =>
       redirectAuthenticatedGuest(context, location),
     component: components.SignIn ?? DefaultRoute,
+    validateSearch: validateSearchByRoute["sign-in"],
   });
-
   const authenticatedRoute = createRoute({
     getParentRoute: () => rootRoute,
     id: "authenticated",
@@ -181,37 +250,119 @@ export function createTanStackRouter(options: CreateTanStackRouterOptions) {
     if (!entry) throw new Error(`Unknown protected route: ${id}`);
     return entry as CatalogEntryFor<TId>;
   };
-  const createProtectedRoute = <
-    TCatalogRoute extends ProtectedRouteCatalogEntry,
-  >(
-    catalogRoute: TCatalogRoute,
-  ) =>
-    createRoute({
-      getParentRoute: () => authenticatedRoute,
-      path: toTanStackRoutePath(catalogRoute.path),
-      beforeLoad: ({ context }) => {
+  const protectedRouteOptions = <TId extends ProtectedRouteId>(id: TId) => {
+    const catalogRoute = catalogEntry(id);
+    return {
+      beforeLoad: ({ context }: { context: LinuxIORouterContext }) => {
         requireProtectedRouteAccess(catalogRoute, context);
         options.onAuthorizedProtectedRoute?.(catalogRoute);
       },
-      component: components.ProtectedRoute?.(catalogRoute) ?? DefaultRoute,
+      component: components.ProtectedRoutes?.[id] ?? DefaultRoute,
+      loader: options.protectedRouteLoaders?.[id],
       notFoundComponent: NotFound,
-    });
+    };
+  };
+
+  const dashboardRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "/",
+    validateSearch: validateSearchByRoute.dashboard,
+    ...protectedRouteOptions("dashboard"),
+  });
+  const networkRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "network",
+    validateSearch: validateSearchByRoute.network,
+    ...protectedRouteOptions("network"),
+  });
+  const updatesRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "updates",
+    validateSearch: validateSearchByRoute.updates,
+    ...protectedRouteOptions("updates"),
+  });
+  const servicesRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "services",
+    validateSearch: validateSearchByRoute.services,
+    ...protectedRouteOptions("services"),
+  });
+  const logsRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "logs",
+    validateSearch: validateSearchByRoute.logs,
+    ...protectedRouteOptions("logs"),
+  });
+  const storageRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "storage",
+    validateSearch: validateSearchByRoute.storage,
+    ...protectedRouteOptions("storage"),
+  });
+  const dockerRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "docker",
+    validateSearch: validateSearchByRoute.docker,
+    ...protectedRouteOptions("docker"),
+  });
+  const vmRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "vm",
+    validateSearch: validateSearchByRoute.vm,
+    ...protectedRouteOptions("vm"),
+  });
+  const accountsRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "accounts",
+    validateSearch: validateSearchByRoute.accounts,
+    ...protectedRouteOptions("accounts"),
+  });
+  const sharesRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "shares",
+    validateSearch: validateSearchByRoute.shares,
+    ...protectedRouteOptions("shares"),
+  });
+  const wireguardRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "wireguard",
+    validateSearch: validateSearchByRoute.wireguard,
+    ...protectedRouteOptions("wireguard"),
+  });
+  const hardwareRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "hardware",
+    validateSearch: validateSearchByRoute.hardware,
+    ...protectedRouteOptions("hardware"),
+  });
+  const filebrowserRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "filebrowser/$",
+    validateSearch: validateSearchByRoute.filebrowser,
+    ...protectedRouteOptions("filebrowser"),
+  });
+  const terminalRoute = createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: "terminal",
+    validateSearch: validateSearchByRoute.terminal,
+    ...protectedRouteOptions("terminal"),
+  });
 
   const protectedRoutes = [
-    createProtectedRoute(catalogEntry("dashboard")),
-    createProtectedRoute(catalogEntry("network")),
-    createProtectedRoute(catalogEntry("updates")),
-    createProtectedRoute(catalogEntry("services")),
-    createProtectedRoute(catalogEntry("logs")),
-    createProtectedRoute(catalogEntry("storage")),
-    createProtectedRoute(catalogEntry("docker")),
-    createProtectedRoute(catalogEntry("vm")),
-    createProtectedRoute(catalogEntry("accounts")),
-    createProtectedRoute(catalogEntry("shares")),
-    createProtectedRoute(catalogEntry("wireguard")),
-    createProtectedRoute(catalogEntry("hardware")),
-    createProtectedRoute(catalogEntry("filebrowser")),
-    createProtectedRoute(catalogEntry("terminal")),
+    dashboardRoute,
+    networkRoute,
+    updatesRoute,
+    servicesRoute,
+    logsRoute,
+    storageRoute,
+    dockerRoute,
+    vmRoute,
+    accountsRoute,
+    sharesRoute,
+    wireguardRoute,
+    hardwareRoute,
+    filebrowserRoute,
+    terminalRoute,
   ] as const;
 
   const protectedNotFoundRoute = createRoute({
@@ -232,7 +383,9 @@ export function createTanStackRouter(options: CreateTanStackRouterOptions) {
     routeTree,
     context: options.context,
     history: options.history,
+    search: { strict: true },
     defaultPreload: "intent",
+    defaultPreloadDelay: 150,
     defaultPreloadStaleTime: 0,
   });
 
@@ -245,4 +398,12 @@ export function createTanStackRouter(options: CreateTanStackRouterOptions) {
     router,
     signInRoute,
   };
+}
+
+export type AppRouter = ReturnType<typeof createTanStackRouter>["router"];
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: AppRouter;
+  }
 }

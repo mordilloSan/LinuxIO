@@ -3,8 +3,8 @@
  *
  * When `preservePath` is set (e.g. an involuntary session loss), the current
  * path+query+hash is captured into a `redirect` query param so the user is
- * returned there after re-authenticating. This mirrors the param that AuthGuard
- * and GuestGuard already read. Returns bare `/sign-in` for a deliberate
+ * returned there after re-authenticating. This mirrors the param that the router
+ * reads. Returns bare `/sign-in` for a deliberate
  * sign-out (`preservePath` false) or when already on the sign-in screen, so we
  * never bounce the user back into the app or self-redirect.
  */

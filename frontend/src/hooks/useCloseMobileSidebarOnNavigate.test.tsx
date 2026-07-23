@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,7 +6,7 @@ import {
   type SidebarContextType,
 } from "@/contexts/SidebarContext";
 import { useCloseMobileSidebarOnNavigate } from "@/hooks/useCloseMobileSidebarOnNavigate";
-import { render, screen } from "@/test/render";
+import { renderWithTanStackRouter, screen } from "@/test/render";
 
 function makeSidebar(
   overrides: Partial<SidebarContextType>,
@@ -33,7 +33,7 @@ function Harness({ sidebar }: { sidebar: SidebarContextType }) {
   return (
     <SidebarContext.Provider value={sidebar}>
       <Consumer />
-      <button onClick={() => navigate("/docker")}>go</button>
+      <button onClick={() => navigate({ to: "/docker" })}>go</button>
     </SidebarContext.Provider>
   );
 }
@@ -42,11 +42,11 @@ describe("useCloseMobileSidebarOnNavigate", () => {
   it("closes the mobile drawer after navigating", async () => {
     const setMobileOpen = vi.fn();
     const sidebar = makeSidebar({ isDesktop: false, setMobileOpen });
-    const { user } = render(<Harness sidebar={sidebar} />);
+    const { user } = renderWithTanStackRouter(<Harness sidebar={sidebar} />);
 
     setMobileOpen.mockClear(); // ignore the on-mount close
 
-    await user.click(screen.getByRole("button", { name: "go" }));
+    await user.click(await screen.findByRole("button", { name: "go" }));
 
     expect(setMobileOpen).toHaveBeenCalledWith(false);
   });
@@ -54,11 +54,11 @@ describe("useCloseMobileSidebarOnNavigate", () => {
   it("leaves the sidebar untouched on desktop", async () => {
     const setMobileOpen = vi.fn();
     const sidebar = makeSidebar({ isDesktop: true, setMobileOpen });
-    const { user } = render(<Harness sidebar={sidebar} />);
+    const { user } = renderWithTanStackRouter(<Harness sidebar={sidebar} />);
 
     setMobileOpen.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "go" }));
+    await user.click(await screen.findByRole("button", { name: "go" }));
 
     expect(setMobileOpen).not.toHaveBeenCalled();
   });

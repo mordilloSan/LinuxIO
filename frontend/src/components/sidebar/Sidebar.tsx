@@ -110,8 +110,6 @@ const Sidebar = ({ items }: SidebarProps) => {
                 href={page.href}
                 icon={page.icon}
                 key={page.title}
-                preload={page.preload}
-                preloadDelayMs={page.preloadDelayMs}
                 title={page.title}
               />
             ))}

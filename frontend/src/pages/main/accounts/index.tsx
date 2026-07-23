@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { TabContainer } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
@@ -10,6 +10,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 
 import GroupsTab from "./GroupsTab";
 import UsersTab from "./UsersTab";
+const accountsRouteApi = getRouteApi("/authenticated/accounts");
 
 const AccountsPage = () => {
   const [createUserHandler, setCreateUserHandler] = useState<
@@ -20,8 +21,8 @@ const AccountsPage = () => {
   >(null);
   const [usersView, setUsersView] = useViewMode("accounts.users", "table");
   const [groupsView, setGroupsView] = useViewMode("accounts.groups", "table");
-  const [searchParams] = useSearchParams();
-  const isUserDetailOpen = searchParams.get("user") !== null;
+  const search = accountsRouteApi.useSearch();
+  const isUserDetailOpen = typeof search.user === "string";
 
   return (
     <TabContainer

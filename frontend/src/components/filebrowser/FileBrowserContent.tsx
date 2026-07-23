@@ -21,6 +21,7 @@ import type {
   SortOrder,
   ViewMode,
 } from "@/types/filebrowser";
+import { allowContextMenuProps } from "@/utils/contextMenu";
 
 import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
 
@@ -101,7 +102,7 @@ const FileBrowserContent = ({
 
   return (
     <div
-      data-allow-context-menu="true"
+      {...allowContextMenuProps}
       onContextMenu={surface.onContextMenu}
       onDragEnter={surface.onDragEnter}
       onDragLeave={surface.onDragLeave}

@@ -548,6 +548,15 @@ export function buildAppTheme(
   };
 }
 
+export function applyCssVariables(
+  root: HTMLElement,
+  vars: Record<string, string>,
+): void {
+  for (const [key, value] of Object.entries(vars)) {
+    root.style.setProperty(key, value);
+  }
+}
+
 function getThemeCssVariables(theme: AppTheme): Record<string, string> {
   return {
     "--app-color-scheme": theme.colorScheme,
@@ -675,9 +684,7 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
     root.dataset.appTheme = value.name.toLowerCase();
     root.dataset.appColorScheme = value.colorScheme;
 
-    for (const [key, cssValue] of Object.entries(cssVariables)) {
-      root.style.setProperty(key, cssValue);
-    }
+    applyCssVariables(root, cssVariables);
   }, [cssVariables, value]);
 
   useEffect(() => {

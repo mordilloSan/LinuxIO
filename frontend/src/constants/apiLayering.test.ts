@@ -31,6 +31,8 @@ const REACT_QUERY_IMPORT_ALLOWED_FILES = new Set([
   // Router context carries the shared client by identity; route data still
   // goes through routing/routeQueryLoader.ts rather than direct client calls.
   "tanstack-router/router.tsx",
+  // The application router receives the active provider client by identity.
+  "tanstack-router/AppRouterProvider.tsx",
 ]);
 const REACT_QUERY_IMPORT = /from\s*["']@tanstack\/react-query["']/;
 

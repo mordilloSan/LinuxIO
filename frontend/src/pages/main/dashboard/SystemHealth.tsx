@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
+import { useNavigate } from "@tanstack/react-router";
 import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { type AccountUserLogin, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -20,6 +20,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
+type HealthRoute = "/logs" | "/services" | "/updates";
+
 interface HealthItem {
   color: string;
   detail?: string;
@@ -37,38 +39,28 @@ interface HealthItem {
   spaceBefore?: boolean;
   text: string;
   textColor?: string;
-  to?: string;
+  to?: HealthRoute;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function userDetailsPath(
+function accountDetailSearch(
   username: string | undefined | null,
   focusLogin?: {
     eventId?: string;
     failedLoginAlertId?: string;
     autoDismissFailedLoginAlert?: boolean;
   },
-): string {
-  const user = username?.trim();
-  const params = new URLSearchParams({ accountsTab: "users" });
-  if (user) {
-    params.set("user", user);
-  }
-  if (focusLogin) {
-    if (focusLogin.eventId) {
-      params.set("focusLoginEventId", focusLogin.eventId);
-    }
-    if (focusLogin.failedLoginAlertId) {
-      params.set("failedLoginAlertId", focusLogin.failedLoginAlertId);
-    }
-    if (focusLogin.autoDismissFailedLoginAlert) {
-      params.set("autoDismissFailedLoginAlert", "1");
-    }
-  }
-  return `/accounts?${params.toString()}`;
+) {
+  return {
+    accountsTab: "users",
+    autoDismissFailedLoginAlert: focusLogin?.autoDismissFailedLoginAlert,
+    failedLoginAlertId: focusLogin?.failedLoginAlertId,
+    focusLoginEventId: focusLogin?.eventId,
+    user: username?.trim() || undefined,
+  };
 }
 
 function loginAttemptLocation(login: AccountUserLogin): string {
@@ -148,9 +140,11 @@ const SystemHealth = () => {
       icon: "mdi:alert-circle",
       color: theme.palette.error.main,
       text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
-      to: failed
-        ? `/services?section=services&service=${encodeURIComponent(failed)}`
-        : "/services",
+      onClick: () =>
+        navigate({
+          to: "/services",
+          search: failed ? { section: "services", service: failed } : undefined,
+        }),
       detail: health.failedServices?.slice(0, 2).join(", "),
     });
   }
@@ -223,6 +217,7 @@ const SystemHealth = () => {
 
   if (health?.lastLogin?.time && !failedLoginAlert) {
     const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const lastLoginUsername = health.lastLogin.username;
     const timeParts = health.lastLogin.time.split(" ");
     let displaySource = health.lastLogin.source;
     let timeStr = health.lastLogin.time;
@@ -248,7 +243,11 @@ const SystemHealth = () => {
       icon: "mdi:account-clock-outline",
       color: theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
-      to: userDetailsPath(health.lastLogin.username || currentUser?.name),
+      onClick: () =>
+        navigate({
+          to: "/accounts",
+          search: accountDetailSearch(lastLoginUsername || currentUser?.name),
+        }),
       detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -257,7 +256,7 @@ const SystemHealth = () => {
 
   let statusColor = theme.palette.success.dark;
   let iconName = "mdi:shield-check-outline";
-  let iconLink = "/updates";
+  let iconLink: HealthRoute = "/updates";
 
   if (health?.failedServicesCount) {
     statusColor = theme.palette.error.main;
@@ -277,7 +276,7 @@ const SystemHealth = () => {
       openFailedLogins();
       return;
     }
-    navigate(iconLink);
+    navigate({ to: iconLink });
   };
 
   const stats2 = (
@@ -385,7 +384,7 @@ const SystemHealth = () => {
       ? { marginTop: theme.spacing(1) }
       : undefined;
     const clickHandler =
-      item.onClick ?? (item.to ? () => navigate(item.to!) : undefined);
+      item.onClick ?? (item.to ? () => navigate({ to: item.to! }) : undefined);
 
     return clickHandler ? (
       <div

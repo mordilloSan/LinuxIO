@@ -1,32 +1,28 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { hasAccessPolicy, useAccessContext } from "@/hooks/useCapabilities";
-import { coreRoutes } from "@/routes";
-import { createRouteIntentPreload } from "@/routing/routeIntentPreload";
+import {
+  protectedRouteCatalog,
+  type ProtectedRouteCatalogEntry,
+} from "@/routing/protectedRouteCatalog";
 
 export function useSidebarItems() {
   const access = useAccessContext();
-  const queryClient = useQueryClient();
 
-  return useMemo(() => {
-    const allRoutes = coreRoutes.filter((route) =>
-      hasAccessPolicy(route, access),
-    );
-
-    return allRoutes
-      .filter((route) => route.sidebar)
-      .sort(
-        (a, b) =>
-          (a.sidebar?.position ?? Number.MAX_SAFE_INTEGER) -
-          (b.sidebar?.position ?? Number.MAX_SAFE_INTEGER),
-      )
-      .map((route) => ({
-        href: `/${route.path ?? ""}`.replace("/*", ""),
-        title: route.sidebar!.title,
-        icon: route.sidebar!.icon,
-        preload: createRouteIntentPreload(route, queryClient, access),
-        preloadDelayMs: route.intentPreload.delayMs,
-      }));
-  }, [access, queryClient]);
+  return useMemo(
+    () =>
+      protectedRouteCatalog
+        .filter((route) =>
+          hasAccessPolicy(route as ProtectedRouteCatalogEntry, access),
+        )
+        .sort((a, b) => a.sidebar.position - b.sidebar.position)
+        .map((route) => ({
+          href:
+            ("href" in route.sidebar ? route.sidebar.href : undefined) ??
+            `/${route.path}`,
+          icon: route.sidebar.icon,
+          title: route.sidebar.title,
+        })),
+    [access],
+  );
 }

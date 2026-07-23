@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
+import { useNavigate } from "@tanstack/react-router";
 import { memo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -58,7 +58,7 @@ function NavbarUserDropdown() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/sign-in");
+    navigate({ to: "/sign-in", search: {} });
   };
 
   const handleConfirmedAction = () => {

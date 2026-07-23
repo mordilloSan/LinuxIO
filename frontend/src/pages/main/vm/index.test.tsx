@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen, waitFor, within } from "@/test/render";
+import {
+  renderWithTanStackRouter,
+  screen,
+  waitFor,
+  within,
+} from "@/test/render";
 
 import Page from "./index";
 
@@ -317,14 +322,16 @@ function fakeJobSnapshot(id: string, type: string) {
   };
 }
 
-function renderVMPage(libvirtAvailable = true) {
-  return render(<Page />, {
+async function renderVMPage(libvirtAvailable = true) {
+  const result = renderWithTanStackRouter(<Page />, {
     auth: {
       isAuthenticated: true,
       libvirtAvailable,
       privileged: true,
     },
   });
+  await waitFor(() => expect(document.body.textContent).not.toBe(""));
+  return result;
 }
 
 async function openVirtualMachinesTab(user: {
@@ -424,8 +431,8 @@ beforeEach(() => {
 });
 
 describe("Virtual Machines page", () => {
-  it("shows the libvirt capability warning when unavailable", () => {
-    renderVMPage(false);
+  it("shows the libvirt capability warning when unavailable", async () => {
+    await renderVMPage(false);
 
     expect(screen.getByText(/libvirt unavailable/i)).toBeInTheDocument();
     expect(
@@ -433,8 +440,8 @@ describe("Virtual Machines page", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the VM section tabs", () => {
-    renderVMPage();
+  it("renders the VM section tabs", async () => {
+    await renderVMPage();
 
     expect(
       screen.getByRole("tab", { name: /global dashboard/i }),
@@ -447,7 +454,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("renders VM rows and dispatches lifecycle actions", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await openVirtualMachinesTab(user);
 
@@ -463,7 +470,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("does not crash when delete success has no disk arrays", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -486,7 +493,7 @@ describe("Virtual Machines page", () => {
     mocks.waitForStreamResult.mockRejectedValueOnce(
       new Error("Domain not found: no domain with matching name 'alpha'"),
     );
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -503,7 +510,7 @@ describe("Virtual Machines page", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("allows create when the default storage pool can be repaired", () => {
+  it("allows create when the default storage pool can be repaired", async () => {
     mocks.preflight = {
       ...mocks.readyPreflight,
       defaultPoolActive: false,
@@ -513,7 +520,7 @@ describe("Virtual Machines page", () => {
       ],
     };
 
-    renderVMPage();
+    await renderVMPage();
 
     expect(
       screen.getByText(/default storage pool is missing/i),
@@ -522,7 +529,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("submits the create dialog request shape", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -555,7 +562,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("does not submit a directory path as install media", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -576,7 +583,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("does not show presets for custom ISO installers", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -590,7 +597,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("creates a Home Assistant OS VM from the image preset", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -621,7 +628,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("creates a Debian Server VM from a ready cloud image", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -672,7 +679,7 @@ describe("Virtual Machines page", () => {
         });
       },
     );
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -704,7 +711,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("selects an ISO path from the file tree picker", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -725,7 +732,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("keeps the browsed folder in the ISO path when the tree closes", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -752,7 +759,7 @@ describe("Virtual Machines page", () => {
     mocks.resourceStat.mockRejectedValueOnce(
       new Error("bad_request:no such file or directory"),
     );
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
@@ -770,7 +777,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("opens the noVNC console over a mux stream", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Console" }));
@@ -780,7 +787,7 @@ describe("Virtual Machines page", () => {
   });
 
   it("shows console stream result errors", async () => {
-    const { user } = renderVMPage();
+    const { user } = await renderVMPage();
 
     await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Console" }));

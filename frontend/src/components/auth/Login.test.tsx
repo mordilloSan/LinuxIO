@@ -1,4 +1,3 @@
-import { Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import Login from "@/components/auth/Login";
@@ -48,20 +47,11 @@ describe("Login form", () => {
     expect(password.type).toBe("text");
   });
 
-  it("signs in and redirects to the requested page", async () => {
+  it("submits credentials and leaves redirect handling to the live router", async () => {
     const signIn = vi.fn().mockResolvedValue(undefined);
-    const { container, user } = render(
-      <Routes>
-        <Route path="/sign-in" element={<Login />} />
-        <Route path="/target" element={<div>Target page</div>} />
-      </Routes>,
-      {
-        auth: { signIn },
-        memoryRouter: {
-          initialEntries: ["/sign-in?redirect=/target"],
-        },
-      },
-    );
+    const { container, user } = render(<Login />, {
+      auth: { signIn },
+    });
 
     await user.type(getUsername(container), "miguel");
     await user.type(getPassword(container), "secret");
@@ -70,7 +60,6 @@ describe("Login form", () => {
     await waitFor(() =>
       expect(signIn).toHaveBeenCalledWith("miguel", "secret"),
     );
-    expect(await screen.findByText("Target page")).toBeInTheDocument();
   });
 
   it("shows failed sign-in errors", async () => {

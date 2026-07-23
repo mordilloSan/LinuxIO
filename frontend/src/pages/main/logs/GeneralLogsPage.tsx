@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
@@ -10,7 +11,6 @@ import {
   type ChangeEvent,
   type MouseEvent,
 } from "react";
-import { useNavigate } from "react-router-dom";
 
 import type { Service } from "@/api";
 import {
@@ -676,11 +676,10 @@ const GeneralLogsPage = () => {
       event.stopPropagation();
       const target = resolveUnitTarget(log);
       if (!target) return;
-      const params = new URLSearchParams({
-        section: target.section,
-        [target.param]: target.unit,
+      navigate({
+        to: "/services",
+        search: { section: target.section, [target.param]: target.unit },
       });
-      navigate(`/services?${params.toString()}`);
     },
     [navigate],
   );

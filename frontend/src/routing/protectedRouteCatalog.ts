@@ -50,9 +50,10 @@ export interface ProtectedRouteCatalogEntry extends AccessPolicy {
     | "shares"
     | "wireguard"
     | "hardware"
-    | "filebrowser/*"
+    | "filebrowser/$"
     | "terminal";
   sidebar: {
+    href?: string;
     title: string;
     icon: ElementType | string;
     position: number;
@@ -68,85 +69,141 @@ function capabilities(
 /**
  * Router-independent protected-route metadata.
  *
- * Legacy React Router, the sidebar, and the future TanStack Router all read
- * this one catalog. Keep page elements and query prefetch details in
- * `routes.tsx`; access policy and URL shape belong here.
+ * The router and sidebar share this path, access, and presentation metadata.
+ * Executable components and loaders stay outside the catalog.
  */
 export const protectedRouteCatalog = [
   {
     id: "dashboard",
     path: "",
-    sidebar: { title: "Dashboard", icon: HomeIcon, position: 0 },
+    sidebar: {
+      title: "Dashboard",
+      icon: HomeIcon,
+      position: 0,
+    },
   },
   {
     id: "network",
     path: "network",
-    sidebar: { title: "Network", icon: NetworkIcon, position: 10 },
+    sidebar: {
+      title: "Network",
+      icon: NetworkIcon,
+      position: 10,
+    },
   },
   {
     id: "updates",
     path: "updates",
-    sidebar: { title: "Updates", icon: RefreshCcwIcon, position: 20 },
+    sidebar: {
+      title: "Updates",
+      icon: RefreshCcwIcon,
+      position: 20,
+    },
   },
   {
     id: "services",
     path: "services",
-    sidebar: { title: "Services", icon: ServerCogIcon, position: 30 },
+    sidebar: {
+      title: "Services",
+      icon: ServerCogIcon,
+      position: 30,
+    },
   },
   {
     id: "logs",
     path: "logs",
-    sidebar: { title: "Logs", icon: FileTextIcon, position: 35 },
+    sidebar: {
+      title: "Logs",
+      icon: FileTextIcon,
+      position: 35,
+    },
   },
   {
     id: "storage",
     path: "storage",
-    sidebar: { title: "Storage", icon: HardDriveIcon, position: 40 },
+    sidebar: {
+      title: "Storage",
+      icon: HardDriveIcon,
+      position: 40,
+    },
   },
   {
     id: "docker",
     path: "docker",
     ...capabilities("dockerAvailable"),
-    sidebar: { title: "Docker", icon: DockerIcon, position: 50 },
+    sidebar: {
+      title: "Docker",
+      icon: DockerIcon,
+      position: 50,
+    },
   },
   {
     id: "vm",
     path: "vm",
     requiresPrivileged: true,
     ...capabilities("libvirtAvailable"),
-    sidebar: { title: "VMs", icon: VirtualMachineIcon, position: 55 },
+    sidebar: {
+      title: "VMs",
+      icon: VirtualMachineIcon,
+      position: 55,
+    },
   },
   {
     id: "accounts",
     path: "accounts",
-    sidebar: { title: "Accounts", icon: UsersIcon, position: 60 },
+    sidebar: {
+      title: "Accounts",
+      icon: UsersIcon,
+      position: 60,
+    },
   },
   {
     id: "shares",
     path: "shares",
-    sidebar: { title: "Shares", icon: ShareIcon, position: 70 },
+    sidebar: {
+      title: "Shares",
+      icon: ShareIcon,
+      position: 70,
+    },
   },
   {
     id: "wireguard",
     path: "wireguard",
     requiresPrivileged: true,
     ...capabilities("wireguardAvailable"),
-    sidebar: { title: "Wireguard", icon: WireguardIcon, position: 80 },
+    sidebar: {
+      title: "Wireguard",
+      icon: WireguardIcon,
+      position: 80,
+    },
   },
   {
     id: "hardware",
     path: "hardware",
     ...capabilities("lmSensorsAvailable"),
-    sidebar: { title: "Hardware", icon: CpuIcon, position: 90 },
+    sidebar: {
+      title: "Hardware",
+      icon: CpuIcon,
+      position: 90,
+    },
   },
   {
     id: "filebrowser",
-    path: "filebrowser/*",
-    sidebar: { title: "Navigator", icon: FolderIcon, position: 100 },
+    path: "filebrowser/$",
+    sidebar: {
+      title: "Navigator",
+      icon: FolderIcon,
+      position: 100,
+      href: "/filebrowser",
+    },
   },
   {
     id: "terminal",
     path: "terminal",
-    sidebar: { title: "Terminal", icon: TerminalIcon, position: 110 },
+    sidebar: {
+      title: "Terminal",
+      icon: TerminalIcon,
+      position: 110,
+    },
   },
 ] as const satisfies readonly ProtectedRouteCatalogEntry[];

@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import type { TabSearchKey } from "@/hooks/useTabUrlState";
+
 /**
  * Configuration for a single tab in the TabContainer
  */
@@ -26,6 +28,6 @@ export interface TabContainerProps {
   errorFallback?: ReactNode;
   /** Array of tab configurations */
   tabs: TabConfig[];
-  /** Name of the URL query parameter to use for tab state (default: "tab") */
-  urlParam?: string;
+  /** Required URL search key, limited to the supported typed tab keys */
+  urlParam: TabSearchKey;
 }

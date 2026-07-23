@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { linuxio, type ContainerInfo } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
@@ -27,13 +27,15 @@ import { useContainerAutoUpdateState } from "./useContainerAutoUpdateState";
 import VolumeList from "./VolumeList";
 
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const dockerRouteApi = getRouteApi("/authenticated/docker");
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
 
 const DockerPage = () => {
   const theme = useAppTheme();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const { status: dockerStatus } = useCapability("dockerAvailable");
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
@@ -47,7 +49,10 @@ const DockerPage = () => {
   const [stoppingContainerIds, setStoppingContainerIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const activeDockerTab = searchParams.get("dockerTab") || "dashboard";
+  const activeDockerTab =
+    typeof searchParams.dockerTab === "string"
+      ? searchParams.dockerTab
+      : "dashboard";
   const isDashboardTab = activeDockerTab === "dashboard";
   const { data: rawContainers, isLoading: dashboardContainersLoading } =
     linuxio.docker.list_containers.useQuery({
@@ -103,7 +108,7 @@ const DockerPage = () => {
       } catch {
         failures.push(getContainerName(container));
       }
-      setStoppingContainerIds((previous) => {
+      setStoppingContainerIds((previous: Set<string>) => {
         const next = new Set(previous);
         next.delete(container.Id);
         return next;
@@ -154,14 +159,16 @@ const DockerPage = () => {
   const [containerEditMode, setContainerEditMode] = useState(false);
   const handleToggleContainerEditMode = useCallback(() => {
     if (!containerEditMode) {
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current);
-        next.delete("container");
-        return next;
+      navigate({
+        to: "/docker",
+        search: (previous) => ({
+          ...previous,
+          container: undefined,
+        }),
       });
     }
     setContainerEditMode(!containerEditMode);
-  }, [containerEditMode, setSearchParams]);
+  }, [containerEditMode, navigate]);
   const handleMountCreateStackHandler = useCallback((handler: () => void) => {
     setCreateStackHandler(() => handler);
   }, []);

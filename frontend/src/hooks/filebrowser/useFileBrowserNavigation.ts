@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef } from "react";
 
 interface UseFileBrowserNavigationParams {
   onPathChange: () => void;
@@ -18,25 +18,26 @@ export const useFileBrowserNavigation = ({
     .join("/");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
 
-  const [prevNormalizedPath, setPrevNormalizedPath] = useState(normalizedPath);
-  if (normalizedPath !== prevNormalizedPath) {
-    setPrevNormalizedPath(normalizedPath);
+  const previousPathRef = useRef(normalizedPath);
+  useEffect(() => {
+    if (normalizedPath === previousPathRef.current) return;
+    previousPathRef.current = normalizedPath;
     onPathChange();
-  }
+  }, [normalizedPath, onPathChange]);
 
   const handleOpenDirectory = useCallback(
     (path: string) => {
       if (path === "/") {
-        navigate("/filebrowser");
+        navigate({ to: "/filebrowser/$", params: { _splat: "" }, search: {} });
         return;
       }
 
-      const urlPath = path
-        .split("/")
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-      navigate(`/filebrowser/${urlPath}`);
+      const urlPath = path.split("/").filter(Boolean).join("/");
+      navigate({
+        to: "/filebrowser/$",
+        params: { _splat: urlPath },
+        search: {},
+      });
     },
     [navigate],
   );

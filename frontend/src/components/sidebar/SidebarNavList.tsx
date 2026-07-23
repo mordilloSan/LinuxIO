@@ -1,35 +1,17 @@
 import { Icon } from "@iconify/react";
+import { Link } from "@tanstack/react-router";
 import { memo, type ElementType } from "react";
-import { NavLink } from "react-router-dom";
-
-import { useIntentPreload } from "@/hooks/useIntentPreload";
 
 interface SidebarNavListItemProps {
   collapsed?: boolean;
   disabled?: boolean;
   href: string;
   icon?: ElementType | string;
-  preload?: () => Promise<unknown>;
-  preloadDelayMs?: number;
   title: string;
 }
 
 const SidebarNavList = memo<SidebarNavListItemProps>(
-  ({
-    href,
-    title,
-    icon,
-    preload,
-    preloadDelayMs = 150,
-    collapsed = false,
-    disabled = false,
-  }) => {
-    const intentPreload = useIntentPreload({
-      delayMs: preloadDelayMs,
-      disabled,
-      preload,
-    });
-
+  ({ href, title, icon, collapsed = false, disabled = false }) => {
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -71,23 +53,18 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
 
     return (
       <li>
-        <NavLink
-          className={({ isActive }) =>
-            [baseClassName, isActive && "app-sidebar-link--active"]
-              .filter(Boolean)
-              .join(" ")
-          }
-          onFocus={intentPreload.schedule}
-          onBlur={intentPreload.cancel}
-          onMouseDown={intentPreload.run}
-          onPointerEnter={intentPreload.schedule}
-          onPointerLeave={intentPreload.cancel}
-          onTouchStart={intentPreload.run}
+        <Link
+          activeOptions={{ exact: href === "/" }}
+          activeProps={{
+            className: `${baseClassName} app-sidebar-link--active`,
+          }}
+          className={baseClassName}
+          preload="intent"
           title={collapsed ? title : undefined}
           to={href}
         >
           {content}
-        </NavLink>
+        </Link>
       </li>
     );
   },

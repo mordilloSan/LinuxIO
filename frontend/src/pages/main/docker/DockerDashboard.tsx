@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import "@/theme/section.css";
 
@@ -73,6 +73,7 @@ const StateChip = ({
 const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
 const RESOURCE_TABLE_MAX_HEIGHT = 201;
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
+const dockerRouteApi = getRouteApi("/authenticated/docker");
 
 const getContainerDisplayName = (names?: string[]) =>
   names?.[0]?.replace(/^\//, "") || "Unnamed";
@@ -99,7 +100,7 @@ const DockerDashboard = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: DockerDashboardProps) => {
   const theme = useAppTheme();
-  const [, setSearchParams] = useSearchParams();
+  const navigate = dockerRouteApi.useNavigate();
   const { data: rawContainers, isPending: containersPending } =
     linuxio.docker.list_containers.useQuery({
       refetchInterval: 5000,
@@ -125,10 +126,12 @@ const DockerDashboard = ({
   const networks = rawNetworks ?? [];
   const volumes = rawVolumes ?? [];
   const navigateToTab = (tab: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set("dockerTab", tab);
-      return next;
+    navigate({
+      to: "/docker",
+      search: (previous) => ({
+        ...previous,
+        dockerTab: tab,
+      }),
     });
   };
   const [dockerDashboardSections, setDockerDashboardSections] = useConfigValue(

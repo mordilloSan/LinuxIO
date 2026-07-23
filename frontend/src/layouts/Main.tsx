@@ -1,5 +1,5 @@
+import { Outlet, useLocation } from "@tanstack/react-router";
 import { Suspense } from "react";
-import { Outlet, useLocation } from "react-router-dom";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import Footer from "@/components/footer/Footer";

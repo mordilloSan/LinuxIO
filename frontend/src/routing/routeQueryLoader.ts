@@ -1,7 +1,7 @@
 /**
  * Framework-agnostic React Query loader primitive.
  *
- * Future route loaders call this after their access checks. It intentionally
+ * Route loaders call this after their access checks. It intentionally
  * receives a live update-state getter: UpdateContext owns that state and the
  * stream multiplexer does not.
  */
@@ -30,7 +30,7 @@ export interface EnsureRouteQueryDataOptions<
   queryClient: QueryClient;
   /** The typed options built by endpoint.queryOptions(...). */
   queryOptions: LoaderQueryOptions<TQueryFnData, TError, TData, TQueryKey>;
-  /** Live state supplied by the router's UpdateContext bridge; never read from the mux. */
+  /** Live state supplied by the live update-state getter; never read from the mux. */
   isUpdateBlocked: () => boolean;
   /** Intent preloads are best-effort and must not trigger the global error toast. */
   speculative?: boolean;

@@ -7,13 +7,12 @@ import {
   type UpdateContextValue,
 } from "@/contexts/UpdateContext";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
-import { useIntentPreload } from "@/hooks/useIntentPreload";
 import {
   useLinuxIOUpdater,
   useUpdateCanNavigate,
 } from "@/hooks/useLinuxIOUpdater";
 import usePowerAction from "@/hooks/usePowerAction";
-import { act, renderHook } from "@/test/render";
+import { renderHook } from "@/test/render";
 
 const apiMocks = vi.hoisted(() => ({
   getIconUriUseQuery: vi.fn(),
@@ -89,62 +88,6 @@ describe("useDockerIcon", () => {
       "si:nginx",
       expect.objectContaining({ enabled: false }),
     ]);
-  });
-});
-
-describe("useIntentPreload", () => {
-  it("debounces scheduled preloads and cancels pending work", () => {
-    vi.useFakeTimers();
-    const preload = vi.fn(async () => undefined);
-    const { result } = renderHook(() =>
-      useIntentPreload({ delayMs: 200, preload }),
-    );
-
-    act(() => result.current.schedule());
-    act(() => vi.advanceTimersByTime(199));
-    expect(preload).not.toHaveBeenCalled();
-
-    act(() => result.current.cancel());
-    act(() => vi.advanceTimersByTime(1));
-    expect(preload).not.toHaveBeenCalled();
-
-    act(() => result.current.schedule());
-    act(() => vi.advanceTimersByTime(200));
-    expect(preload).toHaveBeenCalledTimes(1);
-  });
-
-  it("dedupes successful preloads and retries after a rejected preload", async () => {
-    const preload = vi
-      .fn<() => Promise<unknown>>()
-      .mockRejectedValueOnce(new Error("chunk failed"))
-      .mockResolvedValue(undefined);
-    const { result } = renderHook(() => useIntentPreload({ preload }));
-
-    act(() => result.current.run());
-    await vi.waitFor(() => expect(preload).toHaveBeenCalledTimes(1));
-
-    act(() => result.current.run());
-    await vi.waitFor(() => expect(preload).toHaveBeenCalledTimes(2));
-
-    act(() => result.current.run());
-    expect(preload).toHaveBeenCalledTimes(2);
-  });
-
-  it("does nothing when disabled or when no preload callback exists", () => {
-    const preload = vi.fn(async () => undefined);
-    const disabled = renderHook(() =>
-      useIntentPreload({ disabled: true, preload }),
-    );
-    const missing = renderHook(() => useIntentPreload({}));
-
-    act(() => {
-      disabled.result.current.run();
-      disabled.result.current.schedule();
-      missing.result.current.run();
-      missing.result.current.schedule();
-    });
-
-    expect(preload).not.toHaveBeenCalled();
   });
 });
 

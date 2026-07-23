@@ -1,18 +1,19 @@
-import { Outlet } from "react-router-dom";
+import { Outlet } from "@tanstack/react-router";
+import { type PropsWithChildren } from "react";
 
 import { AppThemeProvider, useAppMediaQuery, useAppTheme } from "@/theme";
 import authTheme from "@/theme/authTheme";
 import { alpha } from "@/utils/color";
 
-const Auth = () => {
+const Auth = ({ children }: PropsWithChildren) => {
   return (
     <AppThemeProvider value={authTheme}>
-      <AuthContent />
+      <AuthContent>{children}</AuthContent>
     </AppThemeProvider>
   );
 };
 
-const AuthContent = () => {
+const AuthContent = ({ children }: PropsWithChildren) => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
 
@@ -76,7 +77,7 @@ const AuthContent = () => {
           justifyContent: "center",
         }}
       >
-        <Outlet />
+        {children ?? <Outlet />}
       </div>
     </div>
   );

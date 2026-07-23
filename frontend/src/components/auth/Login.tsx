@@ -5,7 +5,6 @@ import {
   type CSSProperties,
   type SyntheticEvent,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -40,9 +39,6 @@ function LogIn() {
   const [notice, setNotice] = useState<SigninNotice | null>(readSigninNotice);
   const [loading, setLoading] = useState(false);
 
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/";
   const { signIn } = useAuth();
 
   // Clear the external one-shot value after its initial snapshot is committed.
@@ -78,7 +74,6 @@ function LogIn() {
     try {
       setLoading(true);
       await signIn(username, password);
-      navigate(redirect);
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {

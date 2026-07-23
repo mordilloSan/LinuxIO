@@ -1,13 +1,12 @@
+import { useBlocker } from "@tanstack/react-router";
 import {
   createContext,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { useBeforeUnload, useLocation, useNavigate } from "react-router-dom";
 
 import {
   bindStreamHandlers,
@@ -70,9 +69,38 @@ UpdateContext.displayName = "UpdateContext";
 export const UpdateNavigationContext = createContext<boolean | null>(null);
 UpdateNavigationContext.displayName = "UpdateNavigationContext";
 
+/*
+ * The router is mounted above UpdateProvider, therefore router context cannot
+ * consume UpdateContext directly. This mutable value remains owned and
+ * published exclusively by UpdateProvider; router consumers receive only the
+ * getter. The owner guard makes cleanup safe when ConfigProvider remounts the
+ * authenticated runtime for a different user.
+ */
+let liveUpdateBlockerOwner: object | null = null;
+let liveUpdateBlocked = false;
+
+export const isLiveUpdateBlocked = () => liveUpdateBlocked;
+
+function publishLiveUpdateBlocked(owner: object, blocked: boolean) {
+  liveUpdateBlockerOwner = owner;
+  liveUpdateBlocked = blocked;
+
+  return () => {
+    if (liveUpdateBlockerOwner !== owner) return;
+    liveUpdateBlockerOwner = null;
+    liveUpdateBlocked = false;
+  };
+}
+
 export const UpdateProvider = ({ children }: { children: ReactNode }) => {
   const value = useUpdateController();
+  const ownerRef = useRef<object>({});
   useUpdateNavigationGuard(value.isUpdating);
+
+  useLayoutEffect(
+    () => publishLiveUpdateBlocked(ownerRef.current, value.isUpdating),
+    [value.isUpdating],
+  );
 
   return (
     <UpdateNavigationContext.Provider value={value.canNavigate}>
@@ -471,31 +499,9 @@ const useUpdateController = (): UpdateContextValue => {
 };
 
 export const useUpdateNavigationGuard = (isUpdating: boolean) => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const currentPath = `${location.pathname}${location.search}${location.hash}`;
-  const lastSafePathRef = useRef(currentPath);
-
-  useLayoutEffect(() => {
-    if (!isUpdating) {
-      lastSafePathRef.current = currentPath;
-    }
-  }, [isUpdating, currentPath]);
-
-  useEffect(() => {
-    if (!isUpdating) return;
-    if (currentPath !== lastSafePathRef.current) {
-      navigate(lastSafePathRef.current, { replace: true });
-    }
-  }, [isUpdating, currentPath, navigate]);
-
-  const handleBeforeUnload = useCallback(
-    (event: BeforeUnloadEvent) => {
-      if (!isUpdating) return;
-      event.preventDefault();
-    },
-    [isUpdating],
-  );
-
-  useBeforeUnload(handleBeforeUnload);
+  useBlocker({
+    disabled: !isUpdating,
+    enableBeforeUnload: isUpdating,
+    shouldBlockFn: () => isUpdating,
+  });
 };

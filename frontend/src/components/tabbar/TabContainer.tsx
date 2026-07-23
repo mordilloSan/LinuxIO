@@ -22,26 +22,26 @@ import "./tab-container.css";
  * <TabContainer
  *   tabs={[
  *     {
- *       value: "overview",
- *       label: "Overview",
- *       component: <OverviewPage />,
+ *       value: "users",
+ *       label: "Users",
+ *       component: <UsersPage />,
  *       rightContent: <Button>Action</Button>
  *     },
  *     {
- *       value: "details",
- *       label: "Details",
- *       component: <DetailsPage />
+ *       value: "groups",
+ *       label: "Groups",
+ *       component: <GroupsPage />
  *     }
  *   ]}
- *   defaultTab="overview"
- *   urlParam="view"
+ *   defaultTab="users"
+ *   urlParam="accountsTab"
  * />
  * ```
  */
 const TabContainer = ({
   tabs,
   defaultTab,
-  urlParam = "tab",
+  urlParam,
   containerStyle = {},
   errorFallback,
 }: TabContainerProps) => {

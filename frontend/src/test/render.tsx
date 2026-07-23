@@ -1,11 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import {
   render as rtlRender,
   type RenderOptions,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement, ReactNode } from "react";
-import { MemoryRouter, type MemoryRouterProps } from "react-router-dom";
+import {
+  createContext,
+  type ReactElement,
+  type ReactNode,
+  useContext,
+} from "react";
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import type { CapabilitiesResponse } from "@/api/capabilities";
@@ -46,7 +56,6 @@ export function createAuthContextValue(
 
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
   auth?: Partial<AuthContextType>;
-  memoryRouter?: MemoryRouterProps;
   queryClient?: QueryClient;
 }
 
@@ -54,7 +63,6 @@ export function render(
   ui: ReactElement,
   {
     auth,
-    memoryRouter,
     queryClient = createTestQueryClient(),
     ...options
   }: AppRenderOptions = {},
@@ -64,15 +72,13 @@ export function render(
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter {...memoryRouter}>
-        <QueryClientProvider client={queryClient}>
-          <AuthContext.Provider value={authValue}>
-            <AppThemeProvider value={buildAppTheme("DARK")}>
-              {children}
-            </AppThemeProvider>
-          </AuthContext.Provider>
-        </QueryClientProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={authValue}>
+          <AppThemeProvider value={buildAppTheme("DARK")}>
+            {children}
+          </AppThemeProvider>
+        </AuthContext.Provider>
+      </QueryClientProvider>
     );
   }
 
@@ -83,3 +89,73 @@ export function render(
 }
 
 export * from "@testing-library/react";
+
+export interface TanStackMemoryRouterOptions {
+  initialEntries?: string[];
+}
+
+const TanStackRouterTestChildren = createContext<ReactNode>(null);
+
+function TanStackRouterTestRoute() {
+  return useContext(TanStackRouterTestChildren);
+}
+
+export function createTanStackRouterWrapper({
+  auth,
+  initialEntries = ["/"],
+  queryClient = createTestQueryClient(),
+}: TanStackMemoryRouterOptions & {
+  auth?: Partial<AuthContextType>;
+  queryClient?: QueryClient;
+} = {}) {
+  const authValue = createAuthContextValue(auth);
+  const rootRoute = createRootRoute({ component: TanStackRouterTestRoute });
+  const router = createRouter({
+    history: createMemoryHistory({ initialEntries }),
+    routeTree: rootRoute,
+  });
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <TanStackRouterTestChildren.Provider value={children}>
+        <QueryClientProvider client={queryClient}>
+          <AuthContext.Provider value={authValue}>
+            <AppThemeProvider value={buildAppTheme("DARK")}>
+              <RouterProvider router={router} />
+            </AppThemeProvider>
+          </AuthContext.Provider>
+        </QueryClientProvider>
+      </TanStackRouterTestChildren.Provider>
+    );
+  }
+
+  return { router, Wrapper };
+}
+
+interface TanStackAppRenderOptions extends Omit<RenderOptions, "wrapper"> {
+  auth?: Partial<AuthContextType>;
+  queryClient?: QueryClient;
+  tanstackRouter?: TanStackMemoryRouterOptions;
+}
+
+export function renderWithTanStackRouter(
+  ui: ReactElement,
+  {
+    auth,
+    queryClient,
+    tanstackRouter,
+    ...options
+  }: TanStackAppRenderOptions = {},
+) {
+  const user = userEvent.setup();
+  const { router, Wrapper } = createTanStackRouterWrapper({
+    auth,
+    queryClient,
+    ...tanstackRouter,
+  });
+
+  return {
+    router,
+    user,
+    ...rtlRender(ui, { wrapper: Wrapper, ...options }),
+  };
+}

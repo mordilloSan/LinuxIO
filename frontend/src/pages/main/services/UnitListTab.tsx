@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   useCallback,
@@ -7,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import type { TableCardViewMode } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -36,6 +36,8 @@ interface UnitCardsViewRenderProps<T> {
   renderDetailPanel: (item: T) => ReactNode;
 }
 
+type ServiceSearchKey = "section" | "service" | "socket" | "timer";
+
 interface UnitListTabProps<T extends UnitListItem> {
   compareItems: (a: T, b: T) => number;
   data: T[] | undefined;
@@ -51,9 +53,11 @@ interface UnitListTabProps<T extends UnitListItem> {
   setViewMode: (
     next: TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),
   ) => void;
-  urlParam: string;
+  urlParam: ServiceSearchKey;
   viewMode: TableCardViewMode;
 }
+
+const servicesRouteApi = getRouteApi("/authenticated/services");
 
 function UnitListTab<T extends UnitListItem>({
   viewMode,
@@ -74,24 +78,21 @@ function UnitListTab<T extends UnitListItem>({
   const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
-  const [searchParams, setSearchParams] = useSearchParams();
-  const expanded = searchParams.get(urlParam);
+  const navigate = servicesRouteApi.useNavigate();
+  const routeSearch = servicesRouteApi.useSearch();
+  const selected = routeSearch[urlParam];
+  const expanded = typeof selected === "string" ? selected : undefined;
   const setExpanded = useCallback(
     (name: string | null) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (name === null) {
-            next.delete(urlParam);
-          } else {
-            next.set(urlParam, name);
-          }
-          return next;
-        },
-        { replace: false },
-      );
+      navigate({
+        to: "/services",
+        search: (previous) => ({
+          ...previous,
+          [urlParam]: name ?? undefined,
+        }),
+      });
     },
-    [urlParam, setSearchParams],
+    [navigate, urlParam],
   );
   const [returnToTable, setReturnToTable] = useState(false);
 
@@ -188,7 +189,7 @@ function UnitListTab<T extends UnitListItem>({
             >
               {renderCardsView({
                 items: filtered,
-                expanded,
+                expanded: expanded ?? null,
                 onExpand: handleCardExpand,
                 renderDetailPanel: (item) =>
                   renderDetailPanel(item, () => handleCardExpand(null)),
@@ -223,7 +224,7 @@ function UnitListTab<T extends UnitListItem>({
               <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
                 {renderTableView({
                   items: filtered,
-                  selected: expanded,
+                  selected: expanded ?? null,
                   onSelect: setExpanded,
                   onDoubleClick: handleOpenCardView,
                 })}

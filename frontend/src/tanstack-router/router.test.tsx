@@ -1,6 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import {
   createMemoryHistory,
+  lazyRouteComponent,
+  type RouteComponent,
   Outlet,
   RouterProvider,
   type NavigateOptions,
@@ -9,14 +11,17 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
-import { coreRoutes } from "@/routes";
-import { protectedRouteCatalog } from "@/routing/protectedRouteCatalog";
+import { protectedRouteComponents } from "@/routes";
+import {
+  protectedRouteCatalog,
+  type ProtectedRouteId,
+} from "@/routing/protectedRouteCatalog";
+import { protectedRouteLoaders } from "@/routing/protectedRouteLoaders";
 import {
   createTanStackRouter,
-  toTanStackRoutePath,
+  type CreateTanStackRouterOptions,
   type LinuxIORouterContext,
 } from "@/tanstack-router/router";
-
 const expectedProtectedTopology = [
   { path: "", sidebar: { position: 0, title: "Dashboard" } },
   { path: "network", sidebar: { position: 10, title: "Network" } },
@@ -49,7 +54,7 @@ const expectedProtectedTopology = [
     sidebar: { position: 90, title: "Hardware" },
   },
   {
-    path: "filebrowser/*",
+    path: "filebrowser/$",
     sidebar: { position: 100, title: "Navigator" },
   },
   { path: "terminal", sidebar: { position: 110, title: "Terminal" } },
@@ -77,6 +82,12 @@ function routeTopology(route: {
       : {}),
   };
 }
+const protectedRouteTestComponents = Object.fromEntries(
+  protectedRouteCatalog.map((route) => [
+    route.id,
+    () => <div data-testid={`route-${route.id}`}>{route.id}</div>,
+  ]),
+) as unknown as Record<ProtectedRouteId, RouteComponent>;
 
 const routers: Array<ReturnType<typeof createTanStackRouter>["router"]> = [];
 
@@ -107,6 +118,7 @@ function makeRouter(
   initialEntry: string,
   routerContext = context(),
   onAuthorizedProtectedRoute?: (id: string) => void,
+  protectedRouteLoaders?: CreateTanStackRouterOptions["protectedRouteLoaders"],
 ) {
   const result = createTanStackRouter({
     context: routerContext,
@@ -118,15 +130,14 @@ function makeRouter(
         </div>
       ),
       NotFound: () => <div>router-not-found</div>,
-      ProtectedRoute: (route) => () => (
-        <div data-testid={`route-${route.id}`}>{route.id}</div>
-      ),
+      ProtectedRoutes: protectedRouteTestComponents,
       Root: Outlet,
       SignIn: () => <div data-testid="sign-in">sign-in</div>,
     },
     onAuthorizedProtectedRoute: onAuthorizedProtectedRoute
       ? (route) => onAuthorizedProtectedRoute(route.id)
       : undefined,
+    protectedRouteLoaders,
   });
   routers.push(result.router);
   return result;
@@ -149,8 +160,43 @@ const impossibleRoute: NavigateOptions<
 void knownRoute;
 void impossibleRoute;
 
+const validNetworkSearch: NavigateOptions<
+  FoundationRouter,
+  string,
+  "/network"
+> = {
+  to: "/network",
+  search: { iface: "eth0" },
+};
+const invalidNetworkSearchValue: NavigateOptions<
+  FoundationRouter,
+  string,
+  "/network"
+> = {
+  to: "/network",
+  search: {
+    // @ts-expect-error Network iface accepts strings only.
+    iface: true,
+  },
+};
+const invalidNetworkSearchKey: NavigateOptions<
+  FoundationRouter,
+  string,
+  "/network"
+> = {
+  to: "/network",
+  search: {
+    // @ts-expect-error Network does not accept unrelated search keys.
+    accountsTab: "users",
+  },
+};
+
+void validNetworkSearch;
+void invalidNetworkSearchValue;
+void invalidNetworkSearchKey;
+
 describe("TanStack Router foundation", () => {
-  it("keeps the complete protected topology and policy in parity with coreRoutes", () => {
+  it("keeps the complete protected topology and policy", () => {
     const {
       router,
       protectedNotFoundRoute,
@@ -159,30 +205,159 @@ describe("TanStack Router foundation", () => {
       signInRoute,
     } = makeRouter("/");
 
-    expect(coreRoutes.map(routeTopology)).toEqual(expectedProtectedTopology);
     expect(protectedRouteCatalog.map(routeTopology)).toEqual(
       expectedProtectedTopology,
     );
     expect(protectedRoutes.map((route) => route.fullPath)).toEqual(
-      protectedRouteCatalog.map((route) => {
-        const path = toTanStackRoutePath(route.path);
-        return path === "/" ? path : `/${path}`;
-      }),
+      protectedRouteCatalog.map((route) =>
+        route.path ? `/${route.path}` : "/",
+      ),
     );
     expect(rootRoute.id).toBe("__root__");
     expect(signInRoute.fullPath).toBe("/sign-in");
     expect(protectedNotFoundRoute.fullPath).toBe("/$");
     expect(router.options.defaultPreload).toBe("intent");
+    expect(router.options.defaultPreloadDelay).toBe(150);
     expect(router.options.defaultPreloadStaleTime).toBe(0);
   });
 
+  it("registers exactly four data loaders and native lazy pages", () => {
+    const { protectedRoutes } = makeRouter(
+      "/",
+      context(),
+      undefined,
+      protectedRouteLoaders,
+    );
+
+    expect(
+      protectedRoutes
+        .filter((route) => route.options.loader)
+        .map((route) => route.fullPath),
+    ).toEqual(["/", "/network", "/updates", "/services"]);
+    expect(Object.keys(protectedRouteLoaders)).toEqual([
+      "dashboard",
+      "network",
+      "services",
+      "updates",
+    ]);
+    expect(
+      protectedRoutes
+        .filter((route) => !route.options.loader)
+        .map((route) => route.fullPath),
+    ).toEqual([
+      "/logs",
+      "/storage",
+      "/docker",
+      "/vm",
+      "/accounts",
+      "/shares",
+      "/wireguard",
+      "/hardware",
+      "/filebrowser/$",
+      "/terminal",
+    ]);
+
+    for (const component of Object.values(protectedRouteComponents)) {
+      expect((component as { preload?: unknown }).preload).toEqual(
+        expect.any(Function),
+      );
+    }
+  });
+
+  it("natively preloads Logs, Storage, and Docker chunks without loaders or queries", async () => {
+    const queryClient = new QueryClient();
+    const logsImporter = vi.fn(async () => ({
+      default: () => <div>logs</div>,
+    }));
+    const storageImporter = vi.fn(async () => ({
+      default: () => <div>storage</div>,
+    }));
+    const dockerImporter = vi.fn(async () => ({
+      default: () => <div>docker</div>,
+    }));
+    const result = createTanStackRouter({
+      components: {
+        AuthenticatedLayout: Outlet,
+        ProtectedRoutes: {
+          ...protectedRouteTestComponents,
+          docker: lazyRouteComponent(dockerImporter),
+          logs: lazyRouteComponent(logsImporter),
+          storage: lazyRouteComponent(storageImporter),
+        },
+        Root: Outlet,
+      },
+      context: context({
+        access: {
+          ...emptyCapabilityState,
+          dockerAvailable: true,
+          privileged: true,
+        },
+        queryClient,
+      }),
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+    routers.push(result.router);
+    const ensureQueryData = vi.spyOn(queryClient, "ensureQueryData");
+
+    await Promise.all([
+      result.router.preloadRoute({ to: "/docker" }),
+      result.router.preloadRoute({ to: "/logs" }),
+      result.router.preloadRoute({ to: "/storage" }),
+    ]);
+
+    expect(dockerImporter).toHaveBeenCalledTimes(1);
+    expect(logsImporter).toHaveBeenCalledTimes(1);
+    expect(storageImporter).toHaveBeenCalledTimes(1);
+    expect(ensureQueryData).not.toHaveBeenCalled();
+    expect(
+      result.protectedRoutes
+        .filter((route) =>
+          ["/docker", "/logs", "/storage"].includes(route.fullPath),
+        )
+        .every((route) => route.options.loader === undefined),
+    ).toBe(true);
+  });
+
+  it("denies protected preload before its lazy importer and loader execute", async () => {
+    const dockerImporter = vi.fn(async () => ({
+      default: () => <div>docker</div>,
+    }));
+    const dockerLoader = vi.fn(async () => undefined);
+    const result = createTanStackRouter({
+      components: {
+        AuthenticatedLayout: Outlet,
+        ProtectedRoutes: {
+          ...protectedRouteTestComponents,
+          docker: lazyRouteComponent(dockerImporter),
+        },
+        Root: Outlet,
+      },
+      context: context({
+        access: { ...emptyCapabilityState, privileged: true },
+      }),
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      protectedRouteLoaders: { docker: dockerLoader },
+    });
+    routers.push(result.router);
+
+    await expect(
+      result.router.preloadRoute({ to: "/docker" }),
+    ).resolves.toBeDefined();
+
+    expect(dockerImporter).not.toHaveBeenCalled();
+    expect(dockerLoader).not.toHaveBeenCalled();
+  });
+
   it("redirects an unauthenticated protected deep link with its full target", async () => {
+    const loader = vi.fn(async () => undefined);
     const routerContext = context({
       auth: { isAuthenticated: false, isInitialized: true, user: null },
     });
     const { router } = makeRouter(
       "/network?tab=interfaces&sort=name#routes",
       routerContext,
+      undefined,
+      { network: loader },
     );
 
     render(<RouterProvider router={router} />);
@@ -192,6 +367,80 @@ describe("TanStack Router foundation", () => {
     expect(
       (router.state.location.search as { redirect?: string }).redirect,
     ).toBe("/network?tab=interfaces&sort=name#routes");
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it("validates JSON-first values into the strict Accounts schema", async () => {
+    const { router } = makeRouter(
+      "/accounts?accountsTab=users&user=alice&autoDismissFailedLoginAlert=true&unexpected=ignored",
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route-accounts")).toBeVisible(),
+    );
+    const accountsMatch = router.state.matches.at(-1);
+    expect(accountsMatch?._strictSearch).toEqual({
+      accountsTab: "users",
+      autoDismissFailedLoginAlert: true,
+      user: "alice",
+    });
+
+    await router.navigate({ to: "/accounts", search: true });
+
+    expect(router.state.location.search).toEqual({
+      accountsTab: "users",
+      autoDismissFailedLoginAlert: true,
+      user: "alice",
+    });
+  });
+
+  it("re-evaluates a bootstrapped protected location when auth becomes available", async () => {
+    const { router } = makeRouter(
+      "/network?tab=interfaces#routes",
+      context({
+        auth: { isAuthenticated: false, isInitialized: true, user: null },
+      }),
+    );
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => expect(screen.getByTestId("sign-in")).toBeVisible());
+
+    router.update({ context: context() });
+    await router.invalidate();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route-network")).toBeVisible(),
+    );
+    expect(router.state.location.href).toBe("/network?tab=interfaces#routes");
+  });
+
+  it("re-evaluates access gates when the live router context changes", async () => {
+    const { router } = makeRouter(
+      "/docker",
+      context({ access: { ...emptyCapabilityState, privileged: true } }),
+    );
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("router-not-found")).toBeVisible(),
+    );
+
+    router.update({
+      context: context({
+        access: {
+          ...emptyCapabilityState,
+          dockerAvailable: true,
+          privileged: true,
+        },
+      }),
+    });
+    await router.invalidate();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route-docker")).toBeVisible(),
+    );
   });
 
   it("preserves an existing encoded file-browser redirect target", async () => {
@@ -270,9 +519,12 @@ describe("TanStack Router foundation", () => {
     expect(marker).not.toHaveBeenCalled();
   });
 
-  it("allows authorized routes before their future loader boundary", async () => {
+  it("runs protected access before the Dashboard/Network loader boundary", async () => {
     const marker = vi.fn();
-    const { router } = makeRouter("/network", context(), marker);
+    const loader = vi.fn(async () => undefined);
+    const { router } = makeRouter("/network", context(), marker, {
+      network: loader,
+    });
     render(<RouterProvider router={router} />);
 
     await waitFor(() =>
@@ -280,6 +532,10 @@ describe("TanStack Router foundation", () => {
     );
     expect(screen.getByTestId("authenticated-layout")).toBeVisible();
     expect(marker).toHaveBeenCalledWith("network");
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(marker.mock.invocationCallOrder[0]).toBeLessThan(
+      loader.mock.invocationCallOrder[0],
+    );
   });
 
   it("matches encoded file-browser paths with the protected splat route", async () => {
@@ -300,7 +556,9 @@ describe("TanStack Router foundation", () => {
     const match = router.state.matches.find(
       (candidate) => candidate.routeId === fileBrowserRoute?.id,
     );
-    expect(match?.params._splat).toBe("home/miguel/Project Files/readme.md");
+    expect(match?.params).toMatchObject({
+      _splat: "home/miguel/Project Files/readme.md",
+    });
   });
 
   it("passes the exact QueryClient and context into the router", () => {

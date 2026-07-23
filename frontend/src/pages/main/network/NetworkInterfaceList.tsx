@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   useCallback,
@@ -6,7 +7,6 @@ import {
   useRef,
   type MouseEvent,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
@@ -22,10 +22,12 @@ import {
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
 export type { NetworkInterface };
+const networkRouteApi = getRouteApi("/authenticated/network");
 
 const NetworkInterfaceList = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const expanded = searchParams.get("iface");
+  const search = networkRouteApi.useSearch();
+  const navigate = networkRouteApi.useNavigate();
+  const expanded = typeof search.iface === "string" ? search.iface : undefined;
 
   const { data: rawInterfaces = [], isPending } =
     linuxio.network.get_network_info.useQuery({
@@ -51,26 +53,35 @@ const NetworkInterfaceList = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setSearchParams((prev) => {
-          prev.delete("iface");
-          return prev;
+        navigate({
+          to: ".",
+          search: (previous) => ({
+            ...previous,
+            iface: undefined,
+          }),
         });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setSearchParams]);
+  }, [navigate]);
 
   const handleToggle = (iface: NetworkInterface) => {
     if (expanded === iface.name) {
-      setSearchParams((prev) => {
-        prev.delete("iface");
-        return prev;
+      navigate({
+        to: ".",
+        search: (previous) => ({
+          ...previous,
+          iface: undefined,
+        }),
       });
     } else {
-      setSearchParams((prev) => {
-        prev.set("iface", iface.name);
-        return prev;
+      navigate({
+        to: ".",
+        search: (previous) => ({
+          ...previous,
+          iface: iface.name,
+        }),
       });
     }
   };
@@ -156,9 +167,12 @@ const NetworkInterfaceList = () => {
                   expanded={expanded === iface.name}
                   iface={iface}
                   onClose={() =>
-                    setSearchParams((prev) => {
-                      prev.delete("iface");
-                      return prev;
+                    navigate({
+                      to: ".",
+                      search: (previous) => ({
+                        ...previous,
+                        iface: undefined,
+                      }),
                     })
                   }
                   onToggle={() => handleToggle(iface)}
