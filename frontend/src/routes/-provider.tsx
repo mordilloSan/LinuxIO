@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { isLiveUpdateBlocked } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
 import { useAccessContext } from "@/hooks/useCapabilities";
+
 import { router } from "./-router";
 
 function ActiveApplicationRouterProvider() {

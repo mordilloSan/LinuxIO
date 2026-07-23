@@ -14,6 +14,7 @@ import { linuxio } from "@/api";
 import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
+import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type {
   AppVirtualDataTableBreakpoint,
@@ -23,7 +24,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
-import AppVirtualGrid from "@/components/virtual/AppVirtualGrid";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
