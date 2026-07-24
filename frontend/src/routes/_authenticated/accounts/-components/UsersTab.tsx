@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { type AccountUser, linuxio } from "@/api";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -35,7 +34,7 @@ const UsersTab = ({
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
-  const { data: users = [], isPending } = useQuery(
+  const { data: users } = useSuspenseQuery(
     linuxio.accounts.list_users.queryOptions({
       refetchInterval: 10000,
     }),
@@ -110,8 +109,6 @@ const UsersTab = ({
       error: "Failed to unlock user",
       toast: ACCOUNTS_TOAST_META,
     });
-
-  if (isPending) return <PageLoader />;
 
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;

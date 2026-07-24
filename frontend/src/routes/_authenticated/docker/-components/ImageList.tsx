@@ -1,11 +1,10 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -141,12 +140,12 @@ const ImageList = ({
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
-  const { data: rawImages, isPending } = useQuery(
+  const { data: rawImages } = useSuspenseQuery(
     linuxio.docker.list_images.queryOptions({
       refetchInterval: 10000,
     }),
   );
-  const images = rawImages ?? [];
+  const images = rawImages;
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -195,8 +194,6 @@ const ImageList = ({
     });
     return result;
   }, [selected, filtered]);
-
-  if (isPending) return <PageLoader />;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

@@ -1,10 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
@@ -40,16 +39,16 @@ interface OverviewRow {
 const SystemOverview = () => {
   const theme = useAppTheme();
 
-  const { data: hostInfo, isPending: hostInfoPending } = useQuery(
-    linuxio.system.get_host_info.queryOptions({ refetchInterval: 50000 }),
-  );
-  const { data: uptime, isPending: uptimePending } = useQuery(
-    linuxio.system.get_uptime.queryOptions({ refetchInterval: 30000 }),
-  );
-  const { data: serverTime, isPending: serverTimePending } = useQuery(
-    linuxio.system.get_server_time.queryOptions({ refetchInterval: 60000 }),
-  );
-  const overviewPending = hostInfoPending || uptimePending || serverTimePending;
+  const [{ data: hostInfo }, { data: uptime }, { data: serverTime }] =
+    useSuspenseQueries({
+      queries: [
+        linuxio.system.get_host_info.queryOptions({ refetchInterval: 50000 }),
+        linuxio.system.get_uptime.queryOptions({ refetchInterval: 30000 }),
+        linuxio.system.get_server_time.queryOptions({
+          refetchInterval: 60000,
+        }),
+      ],
+    });
 
   const [hostnameDialogOpen, setHostnameDialogOpen] = useState(false);
   const [dateTimeDialogOpen, setDateTimeDialogOpen] = useState(false);
@@ -141,7 +140,7 @@ const SystemOverview = () => {
     <>
       <DashboardCard
         avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
-        stats={overviewPending ? <ComponentLoader /> : stats}
+        stats={stats}
         title="System Overview"
       />
       <SetHostnameDialog

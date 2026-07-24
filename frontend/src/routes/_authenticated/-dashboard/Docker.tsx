@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import {
   lazy,
   Suspense,
@@ -12,8 +12,6 @@ import {
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
-import ErrorMessage from "@/components/errors/Error";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -125,46 +123,31 @@ const DockerInfo = () => {
       toast,
     ],
   );
-  const {
-    data: rawContainers,
-    isPending: containersPending,
-    isLoadingError: containersError,
-  } = useQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchInterval: 5000,
-    }),
-  );
-  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
-  const {
-    data: imagesCount = 0,
-    isPending: imagesPending,
-    isLoadingError: imagesError,
-  } = useQuery(
-    linuxio.docker.list_images.queryOptions({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    }),
-  );
-  const {
-    data: networksCount = 0,
-    isPending: networksPending,
-    isLoadingError: networksError,
-  } = useQuery(
-    linuxio.docker.list_networks.queryOptions({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    }),
-  );
-  const {
-    data: volumesCount = 0,
-    isPending: volumesPending,
-    isLoadingError: volumesError,
-  } = useQuery(
-    linuxio.docker.list_volumes.queryOptions({
-      refetchInterval: 30_000,
-      select: getCollectionCount,
-    }),
-  );
+  const [
+    { data: rawContainers },
+    { data: imagesCount },
+    { data: networksCount },
+    { data: volumesCount },
+  ] = useSuspenseQueries({
+    queries: [
+      linuxio.docker.list_containers.queryOptions({
+        refetchInterval: 5000,
+      }),
+      linuxio.docker.list_images.queryOptions({
+        refetchInterval: 30_000,
+        select: getCollectionCount,
+      }),
+      linuxio.docker.list_networks.queryOptions({
+        refetchInterval: 30_000,
+        select: getCollectionCount,
+      }),
+      linuxio.docker.list_volumes.queryOptions({
+        refetchInterval: 30_000,
+        select: getCollectionCount,
+      }),
+    ],
+  });
+  const containers = rawContainers;
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
     [containers],
@@ -178,10 +161,6 @@ const DockerInfo = () => {
       }),
     [containers],
   );
-  const countsPending =
-    containersPending || imagesPending || networksPending || volumesPending;
-  const countsError =
-    containersError || imagesError || networksError || volumesError;
   const statsContent = (
     <div
       style={{
@@ -243,18 +222,7 @@ const DockerInfo = () => {
       ))}
     </div>
   );
-  const stats = countsError ? (
-    <ErrorMessage />
-  ) : countsPending ? (
-    <ComponentLoader />
-  ) : (
-    statsContent
-  );
-  const stats2 = containersError ? (
-    <ErrorMessage />
-  ) : containersPending ? (
-    <ComponentLoader />
-  ) : (
+  const stats2 = (
     <div
       className="custom-scrollbar"
       style={{
@@ -409,7 +377,7 @@ const DockerInfo = () => {
       <DashboardCard
         avatarIcon="mdi:docker"
         contentLayout="auto"
-        stats={stats}
+        stats={statsContent}
         stats2={stats2}
         title="Docker"
       />

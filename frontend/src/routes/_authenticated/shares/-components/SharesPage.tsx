@@ -11,7 +11,6 @@ import {
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -39,8 +38,10 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-import { DeleteNFSShareDialog } from "./NFSShares";
-import { DeleteSambaShareDialog } from "./SambaShares";
+import {
+  DeleteNFSShareDialog,
+  DeleteSambaShareDialog,
+} from "./DeleteShareDialogs";
 import CIFSMounts from "../../storage/-components/CIFSMounts";
 import NFSMounts from "../../storage/-components/NFSMounts";
 
@@ -1164,30 +1165,18 @@ const SharesPage = () => {
   );
   const [nfsView, setNfsView] = useViewMode("shares.mounts", "table");
 
-  const {
-    data: nfsShares = [],
-    isPending: nfsPending,
-    refetch: refetchNFS,
-  } = useQuery(
+  const { data: nfsShares = [], refetch: refetchNFS } = useQuery(
     linuxio.shares.list_nfs_shares.queryOptions({
       enabled: isSharesTab,
       refetchInterval: isSharesTab ? 10000 : false,
     }),
   );
-  const {
-    data: sambaShares = [],
-    isPending: sambaPending,
-    refetch: refetchSamba,
-  } = useQuery(
+  const { data: sambaShares = [], refetch: refetchSamba } = useQuery(
     linuxio.shares.list_samba_shares.queryOptions({
       enabled: isSharesTab,
       refetchInterval: isSharesTab ? 10000 : false,
     }),
   );
-
-  if (isSharesTab && (nfsPending || sambaPending)) {
-    return <PageLoader />;
-  }
 
   const shareGroups = buildShareGroups(
     Array.isArray(sambaShares) ? sambaShares : [],

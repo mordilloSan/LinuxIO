@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -11,7 +11,6 @@ import {
 
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -30,7 +29,7 @@ const NetworkInterfaceList = () => {
   const navigate = networkRouteApi.useNavigate();
   const expanded = typeof search.iface === "string" ? search.iface : undefined;
 
-  const { data: rawInterfaces = [], isPending } = useQuery(
+  const { data: rawInterfaces } = useSuspenseQuery(
     linuxio.network.get_network_info.queryOptions({
       refetchInterval: 1000,
     }),
@@ -137,9 +136,6 @@ const NetworkInterfaceList = () => {
     }
   }, []);
 
-  if (isPending) {
-    return <PageLoader />;
-  }
   const selectedIface = interfaces.find((i) => i.name === expanded);
 
   return (

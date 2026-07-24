@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -429,7 +428,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
 
-  const { data: mounts = [], isPending } = useQuery(
+  const { data: mounts } = useSuspenseQuery(
     linuxio.storage.list_cifs_mounts.queryOptions({
       refetchInterval: 10000,
     }),
@@ -481,10 +480,6 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
       options: [],
     });
   };
-
-  if (isPending) {
-    return <PageLoader />;
-  }
 
   const mountsList = Array.isArray(mounts) ? mounts : [];
 

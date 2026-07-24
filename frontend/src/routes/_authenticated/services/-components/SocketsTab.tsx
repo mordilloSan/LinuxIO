@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { Socket, TableCardViewMode, UnitInfo } from "@/api";
@@ -25,18 +25,14 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
 }
 
 function useSocketsQuery(viewMode: TableCardViewMode) {
-  return useQuery(
+  return useSuspenseQuery(
     linuxio.systemd.list_sockets.queryOptions({
       refetchInterval: viewMode === "card" ? false : 5000,
     }),
   );
 }
 
-function buildSocketInfoRows(
-  socket: Socket,
-  info: UnitInfo | undefined,
-  isPending: boolean,
-) {
+function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
   const listen = Array.isArray(info?.Listen)
     ? info.Listen.join(", ")
     : socket.listen.join(", ");
@@ -49,28 +45,24 @@ function buildSocketInfoRows(
     {
       label: "Connections",
       value: String(info?.NConnections ?? socket.n_connections),
-      hidden: isPending && !info && socket.n_connections === 0,
+      hidden: !info && socket.n_connections === 0,
     },
     {
       label: "Accepted",
       value: String(info?.NAccepted ?? socket.n_accepted),
-      hidden: isPending && !info && socket.n_accepted === 0,
+      hidden: !info && socket.n_accepted === 0,
     },
   ];
 }
 
 const SocketsTab = () => {
   const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
-  const { data, isPending, isError, error } = useSocketsQuery(viewMode);
+  const { data } = useSocketsQuery(viewMode);
 
   return (
     <UnitListTab
       compareItems={compareSocketsByName}
       data={data}
-      error={error}
-      errorMessage="Failed to load sockets"
-      isError={isError}
-      isPending={isPending}
       matchesSearch={matchesSocketSearch}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <SocketCardsView
@@ -83,9 +75,7 @@ const SocketsTab = () => {
       renderDetailPanel={(socket, onClose) => (
         <UnitInfoPanel
           onClose={onClose}
-          renderInfoRows={(info, isPending) =>
-            buildSocketInfoRows(socket, info, isPending)
-          }
+          renderInfoRows={(info) => buildSocketInfoRows(socket, info)}
           unitName={socket.name}
         />
       )}

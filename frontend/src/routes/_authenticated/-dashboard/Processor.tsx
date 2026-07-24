@@ -1,12 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
 } from "@/components/cards/DashboardCard";
-import ErrorMessage from "@/components/errors/Error";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
@@ -25,11 +23,7 @@ const formatLoadAverage = (loadAverage?: {
 const Processor = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const {
-    data: CPUInfo,
-    isPending,
-    isError,
-  } = useQuery(
+  const { data: CPUInfo } = useSuspenseQuery(
     linuxio.system.get_cpu_info.queryOptions({
       refetchInterval: 1000,
     }),
@@ -71,16 +65,6 @@ const Processor = () => {
     value: key,
     label: formatSensorLabel(key),
   }));
-
-  if (isPending || isError) {
-    return (
-      <DashboardCard
-        avatarIcon="ph:cpu"
-        stats={isPending ? <ComponentLoader /> : <ErrorMessage />}
-        title="Processor"
-      />
-    );
-  }
 
   const IconText = lmSensorsAvailable ? displayTemp : "N/A";
 

@@ -7,12 +7,10 @@ import {
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
-import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import PageLoader from "@/components/loaders/PageLoader";
 import { useAppTheme } from "@/theme";
 import type {
   FileItem,
@@ -53,9 +51,7 @@ export interface FileBrowserChromeProps {
 }
 
 export interface FileBrowserDataProps {
-  errorMessage?: string | null;
   filteredResource?: FileResource;
-  isPending: boolean;
   isSearchLoading: boolean;
   resource?: FileResource;
 }
@@ -151,15 +147,12 @@ const FileBrowserContent = ({
               path={chrome.normalizedPath}
             />
 
-            {!data.isPending &&
-              !data.errorMessage &&
-              data.resource &&
-              data.resource.type === "directory" && (
-                <SortBar
-                  onSortChange={chrome.onSortChange}
-                  sortOrder={chrome.sortOrder}
-                />
-              )}
+            {data.resource?.type === "directory" && (
+              <SortBar
+                onSortChange={chrome.onSortChange}
+                sortOrder={chrome.sortOrder}
+              />
+            )}
           </>
         )}
         <div
@@ -173,21 +166,10 @@ const FileBrowserContent = ({
             position: "relative",
           }}
         >
-          {data.isPending && <PageLoader />}
-
-          {!data.isPending && data.isSearchLoading && <ComponentLoader />}
-
-          {!data.isPending && data.errorMessage && (
-            <ErrorState
-              message={data.errorMessage}
-              onReset={() => chrome.onOpenDirectory("/")}
-            />
-          )}
+          {data.isSearchLoading && <ComponentLoader />}
 
           {!chrome.editingPath &&
-            !data.isPending &&
             !data.isSearchLoading &&
-            !data.errorMessage &&
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing
@@ -212,8 +194,6 @@ const FileBrowserContent = ({
             )}
 
           {!chrome.editingPath &&
-            !data.isPending &&
-            !data.errorMessage &&
             data.resource &&
             data.resource.type !== "directory" && (
               <FileDetail

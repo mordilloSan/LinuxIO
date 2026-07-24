@@ -30,11 +30,7 @@ const UpdatesPage = () => {
     "packageKitAvailable",
   );
   const packageKitUnavailable = packageKitStatus === "unavailable";
-  const {
-    data: rawUpdates,
-    isLoading,
-    refetch,
-  } = useQuery(
+  const { data: rawUpdates, refetch } = useQuery(
     linuxio.updates.get_updates_basic.queryOptions({
       enabled: !packageKitUnavailable,
       refetchInterval: 50000,
@@ -83,7 +79,6 @@ const UpdatesPage = () => {
               <UpdateStatus
                 error={error}
                 eventLog={eventLog}
-                isLoading={isLoading}
                 onCancel={cancelUpdate}
                 onClearError={clearError}
                 onUpdateOne={updateOne}
@@ -135,7 +130,7 @@ const UpdatesPage = () => {
                 ) : null}
                 {!packageKitUnavailable && updates.length > 0 ? (
                   <AppButton
-                    disabled={packageOperationPending || isLoading}
+                    disabled={packageOperationPending}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                     size="small"
                     startIcon={

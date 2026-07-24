@@ -17,6 +17,7 @@
 
 import {
   queryOptions as createQueryOptions,
+  type QueryFunction,
   type QueryKey,
   useMutation,
   type UseMutationResult,
@@ -112,6 +113,15 @@ type QueryOptions<TResult, TData = TResult> = Omit<
   UseQueryOptions<TResult, LinuxIOError, TData>,
   "queryKey" | "queryFn"
 >;
+
+type EndpointQueryOptions<TResult, TData = TResult> = UseQueryOptions<
+  TResult,
+  LinuxIOError,
+  TData
+> & {
+  queryFn: QueryFunction<TResult, QueryKey>;
+  queryKey: QueryKey;
+};
 
 type MutationOptions<TRequest, TResult> = Omit<
   UseMutationOptions<TResult, LinuxIOError, TRequest>,
@@ -275,7 +285,7 @@ export interface CommandEndpoint<
   /** Shared React Query key and query function for every consumer. */
   queryOptions: <TData = TResult>(
     ...params: QueryOptionsArgs<TInput, TResult, TData>
-  ) => UseQueryOptions<TResult, LinuxIOError, TData>;
+  ) => EndpointQueryOptions<TResult, TData>;
 
   /**
    * Hook returning an imperative fetch through the query cache — for
@@ -527,7 +537,7 @@ export function createEndpoint<TResult>(
 
   const queryOptions = <TData = TResult>(
     ...params: unknown[]
-  ): UseQueryOptions<TResult, LinuxIOError, TData> => {
+  ): EndpointQueryOptions<TResult, TData> => {
     const { request, options } = queryRequestAndOptions<
       QueryOptions<TResult, TData>
     >(requestShape, params);
@@ -535,11 +545,18 @@ export function createEndpoint<TResult>(
     const input = (requestShape.kind === "none" ? [] : [request]) as
       | []
       | [unknown];
-    return createQueryOptions<TResult, LinuxIOError, TData, QueryKey>({
+    const queryFn: QueryFunction<TResult, QueryKey> = () => execute(...input);
+    const optionsWithTaggedKey = createQueryOptions<
+      TResult,
+      LinuxIOError,
+      TData,
+      QueryKey
+    >({
       queryKey: queryKey(...input),
-      queryFn: () => execute(...input),
+      queryFn,
       ...(options ?? {}),
     });
+    return { ...optionsWithTaggedKey, queryFn };
   };
 
   const endpoint = ((...rawArgs: [] | [unknown]) =>

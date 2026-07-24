@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -49,16 +48,14 @@ function parseSizeToBytes(input: string | undefined | null): number {
 
 const Drive = () => {
   const theme = useAppTheme();
-  const {
-    data: rawDrives = [],
-    isPending,
-    isError,
-  } = useQuery(linuxio.storage.get_drive_info.queryOptions());
-  const { data: diskThroughput, isPending: throughputPending } = useQuery(
-    linuxio.system.get_disk_throughput.queryOptions({
-      refetchInterval: 1000,
-    }),
-  );
+  const [{ data: rawDrives }, { data: diskThroughput }] = useSuspenseQueries({
+    queries: [
+      linuxio.storage.get_drive_info.queryOptions(),
+      linuxio.system.get_disk_throughput.queryOptions({
+        refetchInterval: 1000,
+      }),
+    ],
+  });
 
   const drives = useMemo<DriveInfo[]>(
     () =>
@@ -83,21 +80,7 @@ const Drive = () => {
       ? selected
       : fallbackSelected;
 
-  if (isPending) {
-    return (
-      <DashboardCard
-        avatarIcon="mdi:harddisk"
-        onSelect={() => {}}
-        selectedOption={selectedDriveName}
-        selectedOptionLabel={selectedDriveName}
-        selectOptions={[]}
-        stats={<ComponentLoader />}
-        title="Drives"
-      />
-    );
-  }
-
-  if (isError || drives.length === 0) {
+  if (drives.length === 0) {
     return (
       <DashboardCard
         avatarIcon="mdi:harddisk"
@@ -174,17 +157,13 @@ const Drive = () => {
     <AppTypography variant="body2">No drive selected.</AppTypography>
   );
   const content2 = selectedDrive ? (
-    throughputPending ? (
-      <ComponentLoader />
-    ) : (
-      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
-        <DriveGraph
-          key={selectedDriveName}
-          readBytesPerSec={selectedDriveThroughput?.readBytesPerSec ?? 0}
-          writeBytesPerSec={selectedDriveThroughput?.writeBytesPerSec ?? 0}
-        />
-      </div>
-    )
+    <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <DriveGraph
+        key={selectedDriveName}
+        readBytesPerSec={selectedDriveThroughput?.readBytesPerSec ?? 0}
+        writeBytesPerSec={selectedDriveThroughput?.writeBytesPerSec ?? 0}
+      />
+    </div>
   ) : (
     <AppTypography variant="body2">No I/O data.</AppTypography>
   );

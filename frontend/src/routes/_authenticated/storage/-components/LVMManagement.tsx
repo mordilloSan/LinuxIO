@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { useCallback, useState, type CSSProperties } from "react";
 
 import {
@@ -11,7 +11,6 @@ import {
 import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
@@ -583,33 +582,23 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
   const [resizeDialogOpen, setResizeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedLV, setSelectedLV] = useState<LogicalVolume | null>(null);
-  const {
-    data: pvs = [],
-    isPending: pvsPending,
-    refetch: refetchPVs,
-  } = useQuery(
-    linuxio.storage.list_pvs.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
-  const {
-    data: vgs = [],
-    isPending: vgsPending,
-    refetch: refetchVGs,
-  } = useQuery(
-    linuxio.storage.list_vgs.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
-  const {
-    data: lvs = [],
-    isPending: lvsPending,
-    refetch: refetchLVs,
-  } = useQuery(
-    linuxio.storage.list_lvs.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const [
+    { data: pvs, refetch: refetchPVs },
+    { data: vgs, refetch: refetchVGs },
+    { data: lvs, refetch: refetchLVs },
+  ] = useSuspenseQueries({
+    queries: [
+      linuxio.storage.list_pvs.queryOptions({
+        refetchInterval: 10000,
+      }),
+      linuxio.storage.list_vgs.queryOptions({
+        refetchInterval: 10000,
+      }),
+      linuxio.storage.list_lvs.queryOptions({
+        refetchInterval: 10000,
+      }),
+    ],
+  });
   const handleCreateLV = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);
@@ -630,9 +619,6 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
     setSelectedLV(lv);
     setDeleteDialogOpen(true);
   };
-  if (pvsPending || vgsPending || lvsPending) {
-    return <PageLoader />;
-  }
   const pvsList = Array.isArray(pvs) ? pvs : [];
   const vgsList = Array.isArray(vgs) ? vgs : [];
   const lvsList = Array.isArray(lvs) ? lvs : [];

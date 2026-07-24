@@ -377,9 +377,7 @@ describe("useFileBrowserController", () => {
         viewMode: "card",
       },
       data: {
-        errorMessage: null,
         filteredResource: resource,
-        isPending: false,
         isSearchLoading: false,
         resource,
       },

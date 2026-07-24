@@ -3,6 +3,7 @@ import type { ElementType } from "react";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
+import RouteError from "@/routes/-components/RouteError";
 import type { LinuxIORouterContext } from "@/routes/-context";
 import { routeTree } from "@/routeTree.gen";
 
@@ -20,6 +21,7 @@ export const router = createRouter({
     isUpdateBlocked: undefined!,
     queryClient: undefined!,
   } satisfies LinuxIORouterContext,
+  defaultErrorComponent: RouteError,
   defaultPendingComponent: PageLoader,
   defaultPreload: "intent",
   defaultPreloadDelay: 150,

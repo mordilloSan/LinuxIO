@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import type { Timer } from "@/api";
@@ -31,7 +31,7 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
 );
 
 const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(timer.name, {
       refetchInterval: 2000,
     }),
@@ -64,7 +64,7 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
 };
 
 const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(timer.name, {
       refetchInterval: 2000,
     }),

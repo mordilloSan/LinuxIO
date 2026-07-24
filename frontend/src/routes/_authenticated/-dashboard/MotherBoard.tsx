@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard, {
   type SelectOption,
 } from "@/components/cards/DashboardCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
@@ -13,15 +12,13 @@ import { useAppTheme } from "@/theme";
 const MotherBoardInfo = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const { data: motherboardInfo, isPending } = useQuery(
+  const { data: motherboardInfo } = useSuspenseQuery(
     linuxio.system.get_motherboard_info.queryOptions({
       refetchInterval: 50000,
     }),
   );
 
-  const visibleDetails = isPending ? (
-    <ComponentLoader />
-  ) : motherboardInfo ? (
+  const visibleDetails = motherboardInfo ? (
     <div
       style={{
         display: "flex",

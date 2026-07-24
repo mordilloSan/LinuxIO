@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { memo, Suspense, useCallback, useMemo, useState } from "react";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { memo, Suspense, useCallback, useState } from "react";
 
 import {
   CACHE_TTL_MS,
@@ -88,16 +88,12 @@ const ComposeStacksPage = ({
     useState<ComposeProject | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const {
-    data: rawProjects,
-    isPending,
-    refetch,
-  } = useQuery(
+  const { data: rawProjects, refetch } = useSuspenseQuery(
     linuxio.docker.list_compose_projects.queryOptions({
       refetchInterval: 5000,
     }),
   );
-  const projects = useMemo(() => rawProjects ?? [], [rawProjects]);
+  const projects = rawProjects;
 
   // Success/error toasts are composed per delete option in handleDeleteConfirm.
   const { mutateAsync: deleteStack } =
@@ -419,22 +415,17 @@ const ComposeStacksPage = ({
           minHeight: 0,
         }}
       >
-        {isPending && viewMode !== "card" ? (
-          <PageLoader />
-        ) : (
-          <ComposeList
-            isLoading={isLoading}
-            isPending={isPending}
-            onDelete={handleOpenDeleteDialog}
-            onEdit={handleEditStack}
-            onPreview={handlePreviewStack}
-            onRestart={restartProject}
-            onStart={startProject}
-            onStop={stopProject}
-            projects={projects}
-            viewMode={viewMode}
-          />
-        )}
+        <ComposeList
+          isLoading={isLoading}
+          onDelete={handleOpenDeleteDialog}
+          onEdit={handleEditStack}
+          onPreview={handlePreviewStack}
+          onRestart={restartProject}
+          onStart={startProject}
+          onStop={stopProject}
+          projects={projects}
+          viewMode={viewMode}
+        />
 
         <ComposeEditorDialog
           filePath={editingFilePath}

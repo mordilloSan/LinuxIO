@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { memo, type ReactNode } from "react";
 
 import type { Service } from "@/api";
@@ -34,7 +34,7 @@ const ServiceStatusRows = memo<{ service: Service }>(({ service }) => (
 ServiceStatusRows.displayName = "ServiceStatusRows";
 
 const ServiceInfoRows = ({ service }: { service: Service }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(service.name, {
       refetchInterval: 2000,
     }),
@@ -87,7 +87,7 @@ const ServiceInfoRows = ({ service }: { service: Service }) => {
 };
 
 const ServiceActionsWrapper = ({ service }: { service: Service }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(service.name, {
       refetchInterval: 2000,
     }),

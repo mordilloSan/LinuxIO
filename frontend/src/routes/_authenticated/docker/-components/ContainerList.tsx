@@ -13,7 +13,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
@@ -30,7 +30,6 @@ import { linuxio, openDockerLogsStream } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
 import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
@@ -72,13 +71,12 @@ const ContainerList = ({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
-  const { data: rawContainers, isPending } = useQuery(
+  const { data: rawContainers } = useSuspenseQuery(
     linuxio.docker.list_containers.queryOptions({
       refetchInterval: 5000,
     }),
   );
-  const hasLoadedContainers = rawContainers !== undefined;
-  const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
+  const containers = rawContainers;
   const selectedContainerId =
     typeof searchParams.container === "string"
       ? searchParams.container
@@ -183,10 +181,10 @@ const ContainerList = ({
   });
 
   useEffect(() => {
-    if (hasLoadedContainers && selectedContainerId && !selectedContainer) {
+    if (selectedContainerId && !selectedContainer) {
       clearSelectedContainer();
     }
-  }, [hasLoadedContainers, selectedContainer, selectedContainerId]);
+  }, [selectedContainer, selectedContainerId]);
 
   useEffect(() => {
     if (!selectedContainer) return;
@@ -204,8 +202,6 @@ const ContainerList = ({
       selectedContainerId === containerId ? null : containerId,
     );
   };
-
-  if (isPending) return <PageLoader />;
 
   if (viewMode === "table") {
     const table = (

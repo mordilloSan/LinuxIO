@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
@@ -321,21 +320,23 @@ const DiskOverview = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const { data: rawDrivesData, isPending: drivesPending } = useQuery(
-    linuxio.storage.get_drive_info.queryOptions({
-      refetchInterval: 30000,
-    }),
-  );
-  const { data: filesystemsData, isPending: filesystemsPending } = useQuery(
-    linuxio.system.get_fs_info.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
-  const { data: nfsMountsData } = useQuery(
-    linuxio.storage.list_nfs_mounts.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const [
+    { data: rawDrivesData },
+    { data: filesystemsData },
+    { data: nfsMountsData },
+  ] = useSuspenseQueries({
+    queries: [
+      linuxio.storage.get_drive_info.queryOptions({
+        refetchInterval: 30000,
+      }),
+      linuxio.system.get_fs_info.queryOptions({
+        refetchInterval: 10000,
+      }),
+      linuxio.storage.list_nfs_mounts.queryOptions({
+        refetchInterval: 10000,
+      }),
+    ],
+  });
   const rawDrives = useMemo(
     () => (Array.isArray(rawDrivesData) ? rawDrivesData : []),
     [rawDrivesData],
@@ -501,9 +502,6 @@ const DiskOverview = () => {
       },
     );
   };
-  if (drivesPending || filesystemsPending) {
-    return <PageLoader />;
-  }
   return (
     <div>
       {!selectedMountpoint && (

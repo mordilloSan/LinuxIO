@@ -3,7 +3,12 @@ import { Link } from "@tanstack/react-router";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
-function ErrorPage() {
+interface ErrorPageProps {
+  error?: Error;
+  onRetry?: () => void;
+}
+
+function ErrorPage({ error, onRetry }: ErrorPageProps) {
   return (
     <div style={{ textAlign: "center" }}>
       <AppTypography align="center" component="h1" gutterBottom variant="h1">
@@ -18,22 +23,33 @@ function ErrorPage() {
         gutterBottom
         variant="subtitle1"
       >
-        The server encountered something unexpected that didn’t allow it to
-        complete the request.
+        {error?.message ??
+          "The server encountered something unexpected that didn’t allow it to complete the request."}
       </AppTypography>
 
-      <Link
-        style={{
-          textDecoration: "none",
-          marginTop: 16,
-          display: "inline-block",
-        }}
-        to="/"
-      >
-        <AppButton color="secondary" variant="contained">
-          Return to website
+      {onRetry ? (
+        <AppButton
+          color="secondary"
+          onClick={onRetry}
+          style={{ marginTop: 16 }}
+          variant="contained"
+        >
+          Try again
         </AppButton>
-      </Link>
+      ) : (
+        <Link
+          style={{
+            textDecoration: "none",
+            marginTop: 16,
+            display: "inline-block",
+          }}
+          to="/"
+        >
+          <AppButton color="secondary" variant="contained">
+            Return to website
+          </AppButton>
+        </Link>
+      )}
     </div>
   );
 }

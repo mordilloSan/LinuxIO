@@ -6,7 +6,6 @@ import UpdateList from "./UpdateList";
 interface UpdateStatusProps {
   error?: string | null;
   eventLog?: string[];
-  isLoading: boolean;
   onCancel?: () => void;
   onClearError?: () => void;
   onUpdateOne: (pkg: string) => Promise<void>;
@@ -18,7 +17,6 @@ interface UpdateStatusProps {
 
 const UpdateStatus = ({
   updates,
-  isLoading,
   onUpdateOne,
   updatingPackage,
   progress,
@@ -43,8 +41,7 @@ const UpdateStatus = ({
 
       <UpdateList
         currentPackage={updatingPackage}
-        isLoading={isLoading}
-        isUpdating={!!updatingPackage || isLoading}
+        isUpdating={!!updatingPackage}
         onUpdateClick={onUpdateOne}
         updates={updates}
       />

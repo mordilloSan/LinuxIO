@@ -1,14 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard = () => {
-  const { data: fsInfo, isPending } = useQuery(
+  const { data: fsInfo } = useSuspenseQuery(
     linuxio.system.get_fs_info.queryOptions({
       refetchInterval: 2000,
     }),
@@ -61,11 +60,7 @@ const FsInfoCard = () => {
 
   const data = {
     title: "FileSystems",
-    stats: (
-      <div style={{ width: "100%" }}>
-        {isPending ? <ComponentLoader /> : renderFsProgressBars()}
-      </div>
-    ),
+    stats: <div style={{ width: "100%" }}>{renderFsProgressBars()}</div>,
     avatarIcon: "eos-icons:file-system",
   };
 

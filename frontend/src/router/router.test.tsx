@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import PageLoader from "@/components/loaders/PageLoader";
+import RouteError from "@/routes/-components/RouteError";
+
 import { router } from "./router";
 
 const leafRoutes = Object.values(router.routesById).filter(
@@ -11,6 +14,8 @@ describe("generated application router", () => {
     expect(router.options.defaultPreload).toBe("intent");
     expect(router.options.defaultPreloadDelay).toBe(150);
     expect(router.options.defaultPreloadStaleTime).toBe(0);
+    expect(router.options.defaultErrorComponent).toBe(RouteError);
+    expect(router.options.defaultPendingComponent).toBe(PageLoader);
 
     for (const route of Object.values(router.routesById)) {
       expect("preload" in route.options).toBe(false);

@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
@@ -11,7 +10,7 @@ import NetworkGraph from "./NetworkGraph";
 
 const NetworkInterfacesCard = () => {
   const theme = useAppTheme();
-  const { data: rawInterfaces = [], isPending } = useQuery(
+  const { data: rawInterfaces } = useSuspenseQuery(
     linuxio.system.get_network_info.queryOptions({
       refetchInterval: 1000,
     }),
@@ -63,16 +62,6 @@ const NetworkInterfacesCard = () => {
       })),
     [filteredInterfaces],
   );
-
-  if (isPending) {
-    return (
-      <DashboardCard
-        avatarIcon="mdi:ethernet"
-        stats={<ComponentLoader />}
-        title="Network"
-      />
-    );
-  }
 
   const content = selectedInterface ? (
     <div

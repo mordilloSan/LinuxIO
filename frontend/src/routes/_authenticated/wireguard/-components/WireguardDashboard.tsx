@@ -1,10 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { linuxio, type WireGuardInterface } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -26,12 +25,7 @@ const WireGuardDashboard = () => {
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
 
-  const {
-    data: interfaceData,
-    isPending,
-    isError,
-    error,
-  } = useQuery(
+  const { data: interfaceData } = useSuspenseQuery(
     linuxio.wireguard.list_interfaces.queryOptions({
       refetchInterval: 10000,
     }),
@@ -153,13 +147,7 @@ const WireGuardDashboard = () => {
 
   return (
     <>
-      {isPending ? (
-        <PageLoader />
-      ) : isError ? (
-        <AppTypography color="error">
-          {error?.message || "Failed to fetch interfaces"}
-        </AppTypography>
-      ) : WGinterfaces.length > 0 ? (
+      {WGinterfaces.length > 0 ? (
         <>
           <AnimatePresence>
             <AppGrid container spacing={3}>

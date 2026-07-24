@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
@@ -25,23 +25,19 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
 }
 
 function useTimersQuery(viewMode: TableCardViewMode) {
-  return useQuery(
+  return useSuspenseQuery(
     linuxio.systemd.list_timers.queryOptions({
       refetchInterval: viewMode === "card" ? false : 5000,
     }),
   );
 }
 
-function buildTimerInfoRows(
-  timer: Timer,
-  info: UnitInfo | undefined,
-  isPending: boolean,
-) {
+function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
   return [
     {
       label: "Unit",
       value: String(info?.Unit ?? timer.unit ?? "—"),
-      hidden: isPending && !info && !timer.unit,
+      hidden: !info && !timer.unit,
     },
     {
       label: "Next",
@@ -56,16 +52,12 @@ function buildTimerInfoRows(
 
 const TimersTab = () => {
   const [viewMode, setViewMode] = useViewMode("timers.list", "table");
-  const { data, isPending, isError, error } = useTimersQuery(viewMode);
+  const { data } = useTimersQuery(viewMode);
 
   return (
     <UnitListTab
       compareItems={compareTimersByName}
       data={data}
-      error={error}
-      errorMessage="Failed to load timers"
-      isError={isError}
-      isPending={isPending}
       matchesSearch={matchesTimerSearch}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <TimerCardsView
@@ -78,9 +70,7 @@ const TimersTab = () => {
       renderDetailPanel={(timer, onClose) => (
         <UnitInfoPanel
           onClose={onClose}
-          renderInfoRows={(info, isPending) =>
-            buildTimerInfoRows(timer, info, isPending)
-          }
+          renderInfoRows={(info) => buildTimerInfoRows(timer, info)}
           unitName={timer.name}
         />
       )}

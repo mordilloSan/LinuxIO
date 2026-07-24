@@ -1,10 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, openVMConsoleStream } from "@/api";
 import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
-import PageLoader from "@/components/loaders/PageLoader";
 import { TabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -54,22 +53,20 @@ const VMPage = () => {
   );
   const [, setActiveTab] = useTabUrlState("dashboard", "vmTab");
 
-  const listQuery = useQuery(
-    linuxio.virt.list.queryOptions({
-      enabled: libvirtStatus === "available",
-      refetchInterval: libvirtStatus === "available" ? 5000 : false,
-    }),
-  );
-  const preflightQuery = useQuery(
-    linuxio.virt.preflight.queryOptions(
-      {},
-      {
-        enabled: libvirtStatus === "available",
-        refetchInterval: libvirtStatus === "available" ? 15000 : false,
-      },
-    ),
-  );
-  const vms = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const [listQuery, preflightQuery] = useSuspenseQueries({
+    queries: [
+      linuxio.virt.list.queryOptions({
+        refetchInterval: 5000,
+      }),
+      linuxio.virt.preflight.queryOptions(
+        {},
+        {
+          refetchInterval: 15000,
+        },
+      ),
+    ],
+  });
+  const vms = listQuery.data;
   const effectiveSelectedName = useMemo(() => {
     if (selectedName && vms.some((vm) => vm.name === selectedName)) {
       return selectedName;
@@ -261,23 +258,6 @@ const VMPage = () => {
               : "libvirt unavailable"}
           </AppAlertTitle>
           <AppTypography variant="body2">{libvirtReason}</AppTypography>
-        </AppAlert>
-      </div>
-    );
-  }
-
-  if (listQuery.isLoading || preflightQuery.isLoading) {
-    return <PageLoader />;
-  }
-
-  if (listQuery.isLoadingError || preflightQuery.isLoadingError) {
-    return (
-      <div style={{ padding: theme.spacing(3) }}>
-        <AppAlert severity="error">
-          <AppAlertTitle>Virtualization data unavailable</AppAlertTitle>
-          {listQuery.error?.message ??
-            preflightQuery.error?.message ??
-            "LinuxIO could not load the virtual machine data."}
         </AppAlert>
       </div>
     );

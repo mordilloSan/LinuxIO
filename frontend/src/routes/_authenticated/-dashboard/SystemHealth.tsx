@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
 
@@ -94,7 +94,7 @@ const SystemHealth = () => {
   const { user: currentUser } = useAuth();
   const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
 
-  const { data: health, isPending: healthPending } = useQuery(
+  const { data: health } = useSuspenseQuery(
     linuxio.system.get_health_summary.queryOptions({ refetchInterval: 50000 }),
   );
 
@@ -177,7 +177,7 @@ const SystemHealth = () => {
     });
   }
 
-  if (health?.upToDate === false) {
+  if (!health?.upToDate) {
     items.push({
       icon: "mdi:package-up",
       color: theme.palette.warning.main,
@@ -284,14 +284,8 @@ const SystemHealth = () => {
   };
 
   const stats2 = (
-    <div>
-      {!health && healthPending ? (
-        <AppSkeleton height={100} variant="circular" width={100} />
-      ) : (
-        <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
-          <Icon color={statusColor} height={100} icon={iconName} width={100} />
-        </div>
-      )}
+    <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
+      <Icon color={statusColor} height={100} icon={iconName} width={100} />
     </div>
   );
 
@@ -405,14 +399,13 @@ const SystemHealth = () => {
     );
   };
 
-  const skeletonRow = (key: string, width: string, spaceBefore = false) => (
+  const skeletonRow = (key: string, width: string) => (
     <div
       key={key}
       style={{
         display: "flex",
         alignItems: "center",
         gap: theme.spacing(1),
-        ...(spaceBefore ? { marginTop: theme.spacing(1) } : undefined),
       }}
     >
       <AppSkeleton height={18} variant="circular" width={18} />
@@ -442,18 +435,10 @@ const SystemHealth = () => {
         width: "fit-content",
       }}
     >
-      {servicesItem
-        ? renderItem(servicesItem)
-        : skeletonRow("s-services", "12ch")}
+      {servicesItem ? renderItem(servicesItem) : null}
       {alertItems.map(renderItem)}
-      {updatesItem
-        ? renderItem(updatesItem)
-        : skeletonRow("s-updates", "16ch", true)}
-      {bottomItem
-        ? renderItem(bottomItem)
-        : health?.lastLogin?.time === undefined && healthPending
-          ? skeletonRow("s-lastlogin", "18ch", true)
-          : null}
+      {updatesItem ? renderItem(updatesItem) : null}
+      {bottomItem ? renderItem(bottomItem) : null}
     </div>
   );
   const failedLoginGridColumns =

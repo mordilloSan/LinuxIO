@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { UnitInfo } from "@/api";
@@ -16,10 +16,7 @@ export interface UnitInfoRow {
 
 interface UnitInfoPanelProps {
   onClose: () => void;
-  renderInfoRows?: (
-    info: UnitInfo | undefined,
-    isPending: boolean,
-  ) => UnitInfoRow[];
+  renderInfoRows?: (info: UnitInfo | undefined) => UnitInfoRow[];
   title?: string;
   unitName: string;
 }
@@ -78,14 +75,14 @@ export function UnitInfoPanel({
   title = "Unit file & dependencies",
   renderInfoRows,
 }: UnitInfoPanelProps) {
-  const { data: info, isPending } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(unitName, {
       refetchInterval: 2000,
     }),
   );
 
   const fragmentPath = String(info?.FragmentPath ?? "");
-  const extraRows = renderInfoRows?.(info, isPending) ?? [];
+  const extraRows = renderInfoRows?.(info) ?? [];
 
   return (
     <FrostedCard
@@ -140,27 +137,16 @@ export function UnitInfoPanel({
       <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
         <div style={{ minWidth: "max-content" }}>
           <DetailRow label="Path" noBorder>
-            {isPending ? (
-              <div
-                style={{
-                  height: 18,
-                  width: "80%",
-                  borderRadius: 4,
-                  backgroundColor: "var(--app-palette-action-hover)",
-                }}
-              />
-            ) : (
-              <AppTypography
-                component="span"
-                fontSize="0.8rem"
-                fontWeight={500}
-                noWrap
-                title={fragmentPath || "—"}
-                variant="body2"
-              >
-                {fragmentPath || "—"}
-              </AppTypography>
-            )}
+            <AppTypography
+              component="span"
+              fontSize="0.8rem"
+              fontWeight={500}
+              noWrap
+              title={fragmentPath || "—"}
+              variant="body2"
+            >
+              {fragmentPath || "—"}
+            </AppTypography>
           </DetailRow>
 
           {extraRows
@@ -189,25 +175,24 @@ export function UnitInfoPanel({
               </DetailRow>
             ))}
 
-          {!isPending &&
-            depFields.map(({ label, key }) => {
-              const items = toStringArray(info?.[key]);
-              if (!items.length) return null;
-              return (
-                <DetailRow key={label} label={label}>
-                  <AppTypography
-                    component="span"
-                    fontSize="0.75rem"
-                    fontWeight={500}
-                    noWrap
-                    title={items.join(", ")}
-                    variant="body2"
-                  >
-                    {items.join(", ")}
-                  </AppTypography>
-                </DetailRow>
-              );
-            })}
+          {depFields.map(({ label, key }) => {
+            const items = toStringArray(info?.[key]);
+            if (!items.length) return null;
+            return (
+              <DetailRow key={label} label={label}>
+                <AppTypography
+                  component="span"
+                  fontSize="0.75rem"
+                  fontWeight={500}
+                  noWrap
+                  title={items.join(", ")}
+                  variant="body2"
+                >
+                  {items.join(", ")}
+                </AppTypography>
+              </DetailRow>
+            );
+          })}
         </div>
       </div>
     </FrostedCard>

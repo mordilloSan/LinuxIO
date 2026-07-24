@@ -3,12 +3,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 interface Props {
   currentPackage?: string | null;
-  isLoading?: boolean;
   isUpdating?: boolean;
   onUpdateClick: (pkg: string) => void;
   updates: Update[];
@@ -18,7 +16,6 @@ const UpdateList = ({
   onUpdateClick,
   isUpdating,
   currentPackage,
-  isLoading,
 }: Props) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   // Kept across collapse so the changelog stays visible during the collapse
@@ -57,9 +54,6 @@ const UpdateList = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  if (isLoading) {
-    return <PageLoader />;
-  }
   if (!updates.length && !isUpdating) {
     return (
       <div

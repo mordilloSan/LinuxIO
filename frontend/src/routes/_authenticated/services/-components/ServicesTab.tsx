@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { Service, TableCardViewMode } from "@/api";
@@ -24,7 +24,7 @@ function matchesServiceSearch(service: Service, search: string): boolean {
 }
 
 function useServicesQuery(viewMode: TableCardViewMode) {
-  return useQuery(
+  return useSuspenseQuery(
     linuxio.systemd.list_services.queryOptions({
       refetchInterval: viewMode === "card" ? false : 2000,
     }),
@@ -33,16 +33,12 @@ function useServicesQuery(viewMode: TableCardViewMode) {
 
 const ServicesTab = () => {
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
-  const { data, isPending, isError, error } = useServicesQuery(viewMode);
+  const { data } = useServicesQuery(viewMode);
 
   return (
     <UnitListTab
       compareItems={compareServicesByName}
       data={data}
-      error={error}
-      errorMessage="Failed to load services"
-      isError={isError}
-      isPending={isPending}
       matchesSearch={matchesServiceSearch}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <ServiceCardsView

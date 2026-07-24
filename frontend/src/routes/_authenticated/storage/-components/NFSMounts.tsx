@@ -1,10 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState, type MouseEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -838,7 +837,7 @@ const NFSMounts = ({
   const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
     null,
   );
-  const { data: mounts = [], isPending } = useQuery(
+  const { data: mounts } = useSuspenseQuery(
     linuxio.storage.list_nfs_mounts.queryOptions({
       refetchInterval: 10000,
     }),
@@ -901,9 +900,6 @@ const NFSMounts = ({
       persist: mount.inFstab ? "true" : "false",
     });
   };
-  if (isPending) {
-    return <PageLoader />;
-  }
   const mountsList = Array.isArray(mounts) ? mounts : [];
   const filtered = mountsList.filter(
     (m) =>

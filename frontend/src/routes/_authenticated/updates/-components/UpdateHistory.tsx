@@ -1,8 +1,7 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppChip from "@/components/ui/AppChip";
@@ -23,13 +22,9 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 const UpdateHistory = () => {
   const theme = useAppTheme();
-  const { data: rows = [], isPending } = useQuery(
+  const { data: rows } = useSuspenseQuery(
     linuxio.updates.get_update_history.queryOptions(),
   );
-
-  if (isPending) {
-    return <PageLoader />;
-  }
 
   const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
     {

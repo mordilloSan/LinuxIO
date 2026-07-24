@@ -32,7 +32,6 @@ const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 interface ComposeListProps {
   isLoading?: boolean;
-  isPending?: boolean;
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
@@ -97,7 +96,6 @@ const ComposeList = ({
   onEdit,
   onPreview,
   isLoading = false,
-  isPending = false,
   viewMode = "table",
 }: ComposeListProps) => {
   const [search, setSearch] = useState("");
@@ -718,7 +716,7 @@ const ComposeList = ({
           whiteSpace: "nowrap",
         }}
       >
-        {isPending ? "Loading..." : `${filtered.length} shown`}
+        {filtered.length} shown
       </AppTypography>
     </div>
   );
@@ -743,28 +741,10 @@ const ComposeList = ({
     </Suspense>
   );
   if (viewMode === "card") {
-    const skeletonCount = 8;
-
     return (
       <div>
         {searchBar}
-        {isPending ? (
-          <AppGrid container spacing={2}>
-            {Array.from({ length: skeletonCount }, (_, index) => (
-              <AppGrid
-                key={`compose-stack-skeleton-${index}`}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 2,
-                }}
-              >
-                <ComposeStackCard isPending />
-              </AppGrid>
-            ))}
-          </AppGrid>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div
             style={{
               textAlign: "center",

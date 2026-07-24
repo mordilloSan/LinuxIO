@@ -1,11 +1,10 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -139,7 +138,7 @@ const VolumeList = ({
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
-  const { data: rawVolumes, isPending } = useQuery(
+  const { data: rawVolumes } = useSuspenseQuery(
     linuxio.docker.list_volumes.queryOptions({
       refetchInterval: 10000,
     }),
@@ -149,7 +148,7 @@ const VolumeList = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Ensure volumes is an array (handle null/undefined from API)
-  const volumesList = Array.isArray(rawVolumes) ? rawVolumes : [];
+  const volumesList = rawVolumes;
 
   // Create volume handler
   const handleCreateVolume = useCallback(() => {
@@ -176,8 +175,6 @@ const VolumeList = ({
     });
     return result;
   }, [selected, filtered]);
-
-  if (isPending) return <PageLoader />;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

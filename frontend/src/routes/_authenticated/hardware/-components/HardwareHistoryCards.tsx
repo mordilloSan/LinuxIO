@@ -1,5 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useSuspenseQueries,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 
 import type { GpuDevice } from "@/api";
@@ -12,7 +16,6 @@ import {
   formatChartClock,
   formatChartDay,
 } from "@/components/charts/timeFormat";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -54,25 +57,16 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
 
 export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
-  const { data: motherboardInfo, isPending: isMotherboardPending } = useQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const { data: systemInfo, isPending: isSystemPending } = useQuery(
-    linuxio.system.get_system_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const isPending = isMotherboardPending || isSystemPending;
-
-  if (isPending) {
-    return (
-      <FrostedCard style={{ height: "100%", minHeight: 160 }}>
-        <ComponentLoader />
-      </FrostedCard>
-    );
-  }
+  const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
+    queries: [
+      linuxio.system.get_motherboard_info.queryOptions({
+        staleTime: 300_000,
+      }),
+      linuxio.system.get_system_info.queryOptions({
+        staleTime: 300_000,
+      }),
+    ],
+  });
 
   return (
     <HardwareCard
@@ -111,25 +105,16 @@ export const MotherboardInfoCard = () => {
 
 export const CPUDetailsCard = () => {
   const theme = useAppTheme();
-  const { data: cpuInfo, isPending: isCpuPending } = useQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const { data: systemInfo, isPending: isSystemPending } = useQuery(
-    linuxio.system.get_system_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const isPending = isCpuPending || isSystemPending;
-
-  if (isPending) {
-    return (
-      <FrostedCard style={{ height: "100%", minHeight: 160 }}>
-        <ComponentLoader />
-      </FrostedCard>
-    );
-  }
+  const [{ data: cpuInfo }, { data: systemInfo }] = useSuspenseQueries({
+    queries: [
+      linuxio.system.get_cpu_info.queryOptions({
+        staleTime: 300_000,
+      }),
+      linuxio.system.get_system_info.queryOptions({
+        staleTime: 300_000,
+      }),
+    ],
+  });
 
   return (
     <HardwareCard
@@ -165,25 +150,16 @@ export const CPUDetailsCard = () => {
 
 export const BIOSInfoCard = () => {
   const theme = useAppTheme();
-  const { data: motherboardInfo, isPending: isMotherboardPending } = useQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const { data: systemInfo, isPending: isSystemPending } = useQuery(
-    linuxio.system.get_system_info.queryOptions({
-      staleTime: 300_000,
-    }),
-  );
-  const isPending = isMotherboardPending || isSystemPending;
-
-  if (isPending) {
-    return (
-      <FrostedCard style={{ height: "100%", minHeight: 160 }}>
-        <ComponentLoader />
-      </FrostedCard>
-    );
-  }
+  const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
+    queries: [
+      linuxio.system.get_motherboard_info.queryOptions({
+        staleTime: 300_000,
+      }),
+      linuxio.system.get_system_info.queryOptions({
+        staleTime: 300_000,
+      }),
+    ],
+  });
 
   return (
     <HardwareCard
@@ -221,7 +197,7 @@ export const BIOSInfoCard = () => {
 export const GPUInfoCard = () => {
   const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
-  const { data: gpus, isPending } = useQuery(
+  const { data: gpus } = useSuspenseQuery(
     linuxio.system.get_gpu_info.queryOptions({
       staleTime: 60_000,
       refetchInterval: 15_000,
@@ -236,14 +212,6 @@ export const GPUInfoCard = () => {
   );
   const gpuCount = gpus?.length ?? 0;
   const selectedValue = primaryGpu?.address ?? "";
-
-  if (isPending) {
-    return (
-      <FrostedCard style={{ height: "100%", minHeight: 160 }}>
-        <ComponentLoader />
-      </FrostedCard>
-    );
-  }
 
   return (
     <HardwareCard

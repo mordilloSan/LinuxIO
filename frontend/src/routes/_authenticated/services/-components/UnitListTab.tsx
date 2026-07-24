@@ -10,8 +10,6 @@ import {
 } from "react";
 
 import type { TableCardViewMode } from "@/api";
-import PageLoader from "@/components/loaders/PageLoader";
-import AppAlert from "@/components/ui/AppAlert";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import { useAppTheme } from "@/theme";
@@ -40,11 +38,7 @@ type ServiceSearchKey = "section" | "service" | "socket" | "timer";
 
 interface UnitListTabProps<T extends UnitListItem> {
   compareItems: (a: T, b: T) => number;
-  data: T[] | undefined;
-  error: unknown;
-  errorMessage: string;
-  isError: boolean;
-  isPending: boolean;
+  data: T[];
   matchesSearch: (item: T, search: string) => boolean;
   renderCardsView: (props: UnitCardsViewRenderProps<T>) => ReactNode;
   renderDetailPanel: (item: T, onClose: () => void) => ReactNode;
@@ -63,11 +57,7 @@ function UnitListTab<T extends UnitListItem>({
   viewMode,
   setViewMode,
   data,
-  isPending,
-  isError,
-  error,
   searchPlaceholder,
-  errorMessage,
   compareItems,
   matchesSearch,
   renderTableView,
@@ -116,7 +106,7 @@ function UnitListTab<T extends UnitListItem>({
   const filtered = useMemo(() => {
     const searchText = search.trim().toLowerCase();
 
-    return (data ?? [])
+    return data
       .filter((item) => matchesSearch(item, searchText))
       .sort(compareItems);
   }, [compareItems, data, matchesSearch, search]);
@@ -169,75 +159,55 @@ function UnitListTab<T extends UnitListItem>({
           minWidth: 0,
         }}
       >
-        {isPending && <PageLoader />}
-        {isError && (
-          <AppAlert severity="error">
-            {error instanceof Error ? error.message : errorMessage}
-          </AppAlert>
-        )}
-        {data !== undefined && (
-          <>
-            {!selectedItem && searchControls}
-            <div
-              style={{
-                display: "flex",
-                flex: "1 1 0",
-                flexDirection: "column",
-                minHeight: 0,
-                minWidth: 0,
-              }}
-            >
-              {renderCardsView({
-                items: filtered,
-                expanded: expanded ?? null,
-                onExpand: handleCardExpand,
-                renderDetailPanel: (item) =>
-                  renderDetailPanel(item, () => handleCardExpand(null)),
-              })}
-            </div>
-          </>
-        )}
+        {!selectedItem && searchControls}
+        <div
+          style={{
+            display: "flex",
+            flex: "1 1 0",
+            flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
+          }}
+        >
+          {renderCardsView({
+            items: filtered,
+            expanded: expanded ?? null,
+            onExpand: handleCardExpand,
+            renderDetailPanel: (item) =>
+              renderDetailPanel(item, () => handleCardExpand(null)),
+          })}
+        </div>
       </div>
     );
   }
 
   return (
     <>
-      {isPending && <PageLoader />}
-      {isError && (
-        <AppAlert severity="error">
-          {error instanceof Error ? error.message : errorMessage}
-        </AppAlert>
-      )}
-      {data !== undefined && (
-        <>
-          {!selectedItem && searchControls}
+      {!selectedItem && searchControls}
 
-          <motion.div
-            layout="position"
-            transition={{
-              duration: slowTransitionDurationSeconds,
-              ease: EASING_STANDARD,
-            }}
-          >
-            <AppGrid alignItems="flex-start" container spacing={3}>
-              <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
-                {renderTableView({
-                  items: filtered,
-                  selected: expanded ?? null,
-                  onSelect: setExpanded,
-                  onDoubleClick: handleOpenCardView,
-                })}
-              </AppGrid>
-              {selectedItem && (
-                <AppGrid size={{ xs: 12, md: 5 }}>
-                  {renderDetailPanel(selectedItem, () => setExpanded(null))}
-                </AppGrid>
-              )}
+      <motion.div
+        layout="position"
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          ease: EASING_STANDARD,
+        }}
+      >
+        <AppGrid alignItems="flex-start" container spacing={3}>
+          <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+            {renderTableView({
+              items: filtered,
+              selected: expanded ?? null,
+              onSelect: setExpanded,
+              onDoubleClick: handleOpenCardView,
+            })}
+          </AppGrid>
+          {selectedItem && (
+            <AppGrid size={{ xs: 12, md: 5 }}>
+              {renderDetailPanel(selectedItem, () => setExpanded(null))}
             </AppGrid>
-          </motion.div>
-        </>
-      )}
+          )}
+        </AppGrid>
+      </motion.div>
     </>
   );
 }

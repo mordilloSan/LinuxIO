@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import {
   Fragment,
@@ -51,9 +51,8 @@ interface UserDetailsPanelProps {
 }
 
 function useAccountDetails(username: string) {
-  return useQuery(
+  return useSuspenseQuery(
     linuxio.accounts.get_user_details.queryOptions(username, {
-      enabled: Boolean(username),
       refetchInterval: 10000,
     }),
   );
@@ -188,21 +187,6 @@ function loginEventKey(login: AccountUserLogin): string {
     ].join("|")
   );
 }
-
-const LoadingRows = ({ rows = 4 }: { rows?: number }) => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-    {Array.from({ length: rows }).map((_, index) => (
-      <div
-        key={index}
-        style={{
-          height: 22,
-          borderRadius: 4,
-          backgroundColor: "var(--app-palette-action-hover)",
-        }}
-      />
-    ))}
-  </div>
-);
 
 const InlineError = ({ message }: { message: string }) => (
   <AppAlert severity="warning">{message}</AppAlert>
@@ -405,20 +389,9 @@ const ActivityEmpty = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-const ActivityLoading = ({ rows }: { rows?: number }) => (
-  <div style={{ paddingBlock: 12 }}>
-    <LoadingRows rows={rows} />
-  </div>
-);
-
 export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
   const theme = useAppTheme();
-  const {
-    data: details,
-    isLoading,
-    isError,
-    error,
-  } = useAccountDetails(user.username);
+  const { data: details } = useAccountDetails(user.username);
 
   const adminColor = details?.admin.isAdmin
     ? theme.palette.warning.main
@@ -452,98 +425,84 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
         title="Access & security"
       />
 
-      {isLoading ? (
-        <LoadingRows />
-      ) : isError ? (
-        <InlineError
-          message={
-            error instanceof Error
-              ? error.message
-              : "Account detail is unavailable"
-          }
-        />
-      ) : !details ? (
-        <LoadingRows />
-      ) : (
-        <>
-          <div
-            className="custom-scrollbar"
-            style={{ flex: 1, overflowX: "auto" }}
-          >
-            <div style={{ minWidth: "max-content" }}>
-              <DetailRow label="Admin" noBorder>
-                <DetailText color={adminColor}>
-                  {details.admin.isAdmin
-                    ? "Elevated account"
-                    : "Standard account"}
-                </DetailText>
-              </DetailRow>
-              <DetailRow label="Password">
-                <DetailText color={passwordColor(details.password)}>
-                  {passwordLabel(details.password)}
-                </DetailText>
-              </DetailRow>
-              <DetailRow label="Changed">
-                <DetailText>{details.password.lastChanged || "-"}</DetailText>
-              </DetailRow>
-              <DetailRow label="Expires">
-                <DetailText>{expiryLabel(details.password)}</DetailText>
-              </DetailRow>
-              <DetailRow label="Sessions">
-                <DetailText>
-                  {details.activeSessions.length
-                    ? `${details.activeSessions.length} active`
-                    : "No active sessions"}
-                </DetailText>
-              </DetailRow>
-              <DetailRow label="Failed">
-                <DetailText
-                  color={
-                    details.failedLoginAttempts > 0
-                      ? theme.palette.warning.main
-                      : undefined
-                  }
-                >
-                  {details.failedLoginAttemptsAvailable
-                    ? `${details.failedLoginAttempts} attempts`
-                    : "Unavailable"}
-                </DetailText>
-              </DetailRow>
-            </div>
+      <>
+        <div
+          className="custom-scrollbar"
+          style={{ flex: 1, overflowX: "auto" }}
+        >
+          <div style={{ minWidth: "max-content" }}>
+            <DetailRow label="Admin" noBorder>
+              <DetailText color={adminColor}>
+                {details.admin.isAdmin
+                  ? "Elevated account"
+                  : "Standard account"}
+              </DetailText>
+            </DetailRow>
+            <DetailRow label="Password">
+              <DetailText color={passwordColor(details.password)}>
+                {passwordLabel(details.password)}
+              </DetailText>
+            </DetailRow>
+            <DetailRow label="Changed">
+              <DetailText>{details.password.lastChanged || "-"}</DetailText>
+            </DetailRow>
+            <DetailRow label="Expires">
+              <DetailText>{expiryLabel(details.password)}</DetailText>
+            </DetailRow>
+            <DetailRow label="Sessions">
+              <DetailText>
+                {details.activeSessions.length
+                  ? `${details.activeSessions.length} active`
+                  : "No active sessions"}
+              </DetailText>
+            </DetailRow>
+            <DetailRow label="Failed">
+              <DetailText
+                color={
+                  details.failedLoginAttempts > 0
+                    ? theme.palette.warning.main
+                    : undefined
+                }
+              >
+                {details.failedLoginAttemptsAvailable
+                  ? `${details.failedLoginAttempts} attempts`
+                  : "Unavailable"}
+              </DetailText>
+            </DetailRow>
           </div>
+        </div>
 
-          <div style={{ marginTop: 12 }}>
-            <AppTypography
-              color="text.secondary"
-              style={{ display: "block", marginBottom: 6 }}
-              variant="caption"
-            >
-              Elevated groups
-            </AppTypography>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {details.admin.groups.length ? (
-                details.admin.groups.map((group) => (
-                  <Chip
-                    color="warning"
-                    key={`${user.username}-${group}`}
-                    label={group}
-                    size="small"
-                    style={{ fontSize: "0.65rem", height: 20 }}
-                    variant="soft"
-                  />
-                ))
-              ) : (
+        <div style={{ marginTop: 12 }}>
+          <AppTypography
+            color="text.secondary"
+            style={{ display: "block", marginBottom: 6 }}
+            variant="caption"
+          >
+            Elevated groups
+          </AppTypography>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {details.admin.groups.length ? (
+              details.admin.groups.map((group) => (
                 <Chip
-                  label="none"
+                  color="warning"
+                  key={`${user.username}-${group}`}
+                  label={group}
                   size="small"
                   style={{ fontSize: "0.65rem", height: 20 }}
                   variant="soft"
                 />
-              )}
-            </div>
+              ))
+            ) : (
+              <Chip
+                label="none"
+                size="small"
+                style={{ fontSize: "0.65rem", height: 20 }}
+                variant="soft"
+              />
+            )}
           </div>
-        </>
-      )}
+        </div>
+      </>
     </FrostedCard>
   );
 };
@@ -551,24 +510,17 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 export const UserActivityCard = ({ username }: { username: string }) => {
   const theme = useAppTheme();
   const search = accountsRouteApi.useSearch();
-  const {
-    data: details,
-    isLoading: detailsLoading,
-    isError: detailsError,
-    error: detailsErrorValue,
-  } = useAccountDetails(username);
-  const {
-    data: logins = [],
-    isLoading: loginsLoading,
-    isError: loginsError,
-    error: loginsErrorValue,
-  } = useQuery(
-    linuxio.accounts.list_user_logins.queryOptions(username, {
-      enabled: Boolean(username),
-      refetchInterval: 30000,
-    }),
-  );
-  const sessions = details?.activeSessions ?? [];
+  const [{ data: details }, { data: logins }] = useSuspenseQueries({
+    queries: [
+      linuxio.accounts.get_user_details.queryOptions(username, {
+        refetchInterval: 10000,
+      }),
+      linuxio.accounts.list_user_logins.queryOptions(username, {
+        refetchInterval: 30000,
+      }),
+    ],
+  });
+  const sessions = details.activeSessions;
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
@@ -674,29 +626,11 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         ]}
         icon="mdi:account-clock"
         iconColor={theme.palette.primary.main}
-        metaText={
-          detailsLoading || !details
-            ? "Checking sessions"
-            : `${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`
-        }
+        metaText={`${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`}
         subtitle="Current authenticated sessions"
         title="Active sessions"
       >
-        {detailsLoading ? (
-          <ActivityLoading rows={2} />
-        ) : detailsError ? (
-          <div style={{ padding: 12 }}>
-            <InlineError
-              message={
-                detailsErrorValue instanceof Error
-                  ? detailsErrorValue.message
-                  : "Session details unavailable"
-              }
-            />
-          </div>
-        ) : !details ? (
-          <ActivityLoading rows={2} />
-        ) : sessions.length === 0 ? (
+        {sessions.length === 0 ? (
           <ActivityEmpty>No active sessions.</ActivityEmpty>
         ) : (
           sessions.map((session, index) => (
@@ -772,27 +706,11 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         ]}
         icon="mdi:history"
         iconColor={theme.palette.primary.main}
-        metaText={
-          loginsLoading
-            ? "Loading login history"
-            : `${logins.length} recent ${logins.length === 1 ? "event" : "events"}`
-        }
+        metaText={`${logins.length} recent ${logins.length === 1 ? "event" : "events"}`}
         subtitle="Recent login events"
         title="Login history"
       >
-        {loginsLoading ? (
-          <ActivityLoading rows={3} />
-        ) : loginsError ? (
-          <div style={{ padding: 12 }}>
-            <InlineError
-              message={
-                loginsErrorValue instanceof Error
-                  ? loginsErrorValue.message
-                  : "Login history unavailable"
-              }
-            />
-          </div>
-        ) : logins.length === 0 ? (
+        {logins.length === 0 ? (
           <ActivityEmpty>No login history found.</ActivityEmpty>
         ) : (
           logins.map((login, index) => (
@@ -1103,78 +1021,19 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
 };
 
 export const UserHomeSSHPanel = ({ username }: { username: string }) => {
-  const {
-    data: details,
-    isLoading,
-    isError,
-    error,
-  } = useAccountDetails(username);
-
-  if (isError) {
-    return (
-      <FrostedCard style={{ padding: 12, height: "100%" }}>
-        <InlineError
-          message={
-            error instanceof Error
-              ? error.message
-              : "Account detail is unavailable"
-          }
-        />
-      </FrostedCard>
-    );
-  }
-
-  if (isLoading || !details) {
-    return (
-      <FrostedCard style={{ padding: 12, height: "100%" }}>
-        <LoadingRows />
-      </FrostedCard>
-    );
-  }
+  const { data: details } = useAccountDetails(username);
 
   return <HomeAndSSHCard details={details} />;
 };
 
 export const UserProcessPanel = ({ username }: { username: string }) => {
-  const {
-    data: details,
-    isLoading,
-    isError,
-    error,
-  } = useAccountDetails(username);
-
-  if (isError) {
-    return (
-      <FrostedCard style={{ padding: 12, height: "100%" }}>
-        <InlineError
-          message={
-            error instanceof Error
-              ? error.message
-              : "Account detail is unavailable"
-          }
-        />
-      </FrostedCard>
-    );
-  }
-
-  if (isLoading || !details) {
-    return (
-      <FrostedCard style={{ padding: 12, height: "100%" }}>
-        <LoadingRows />
-      </FrostedCard>
-    );
-  }
+  const { data: details } = useAccountDetails(username);
 
   return <ProcessCard details={details} />;
 };
 
 export const UserSupplementalCards = ({ username }: { username: string }) => {
-  const {
-    data: details,
-    isLoading,
-    isError,
-    error,
-  } = useAccountDetails(username);
+  const { data: details } = useAccountDetails(username);
 
   return (
     <AppGrid container spacing={2.5}>
@@ -1182,50 +1041,10 @@ export const UserSupplementalCards = ({ username }: { username: string }) => {
         <UserActivityCard username={username} />
       </AppGrid>
       <AppGrid size={{ xs: 12, md: 6, lg: 3 }}>
-        {isLoading ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <LoadingRows />
-          </FrostedCard>
-        ) : isError ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <InlineError
-              message={
-                error instanceof Error
-                  ? error.message
-                  : "Account detail is unavailable"
-              }
-            />
-          </FrostedCard>
-        ) : !details ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <LoadingRows />
-          </FrostedCard>
-        ) : (
-          <HomeAndSSHCard details={details} />
-        )}
+        <HomeAndSSHCard details={details} />
       </AppGrid>
       <AppGrid size={{ xs: 12, md: 6, lg: 4 }}>
-        {isLoading ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <LoadingRows />
-          </FrostedCard>
-        ) : isError ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <InlineError
-              message={
-                error instanceof Error
-                  ? error.message
-                  : "Account detail is unavailable"
-              }
-            />
-          </FrostedCard>
-        ) : !details ? (
-          <FrostedCard style={{ padding: 12, height: "100%" }}>
-            <LoadingRows />
-          </FrostedCard>
-        ) : (
-          <ProcessCard details={details} />
-        )}
+        <ProcessCard details={details} />
       </AppGrid>
     </AppGrid>
   );

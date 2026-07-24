@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
-import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -27,7 +26,7 @@ const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
-  const { data: groups = [], isPending } = useQuery(
+  const { data: groups } = useSuspenseQuery(
     linuxio.accounts.list_groups.queryOptions({
       refetchInterval: 10000,
     }),
@@ -47,8 +46,6 @@ const GroupsTab = ({
   }, []);
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateGroup);
-
-  if (isPending) return <PageLoader />;
 
   const filtered = groupsList.filter(
     (group) =>

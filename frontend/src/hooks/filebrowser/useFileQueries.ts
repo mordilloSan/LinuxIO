@@ -1,7 +1,7 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { CACHE_TTL_MS, linuxio, LinuxIOError } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
 
@@ -20,12 +20,7 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
-  const {
-    data: resourceData,
-    isPending,
-    isError,
-    error,
-  } = useQuery(
+  const { data: resourceData } = useSuspenseQuery(
     linuxio.filebrowser.resource_get.queryOptions(
       { path: normalizedPath },
       {
@@ -38,25 +33,6 @@ export const useFileQueries = ({
     () => (resourceData ? normalizeResource(resourceData) : undefined),
     [resourceData],
   );
-
-  const errorMessage = useMemo(() => {
-    if (!isError || error === null || error === undefined) return null;
-
-    const err = error as Error | LinuxIOError | null | undefined;
-    if (err instanceof LinuxIOError) {
-      if (err.code === 403) {
-        return `Permission denied: You don't have access to "${normalizedPath}".`;
-      }
-      if (err.code === 404 || err.code === 500) {
-        return `Path not found: "${normalizedPath}" does not exist.`;
-      }
-      return err.message;
-    }
-    if (err instanceof Error) {
-      return err.message;
-    }
-    return "Failed to load file information.";
-  }, [error, isError, normalizedPath]);
 
   // Detail resource query with content flag
   const {
@@ -160,8 +136,6 @@ export const useFileQueries = ({
 
   return {
     resource,
-    isPending,
-    errorMessage,
     detailResource,
     detailError,
     statData,

@@ -130,8 +130,6 @@ export function useFileBrowserController(): FileBrowserController {
   const hasMultipleDetailTargets = detailTargetCount > 1;
   const {
     resource,
-    isPending,
-    errorMessage,
     detailResource,
     detailError,
     statData,
@@ -581,13 +579,11 @@ export function useFileBrowserController(): FileBrowserController {
 
   const contentData = useMemo(
     () => ({
-      errorMessage,
       filteredResource,
-      isPending,
       isSearchLoading,
       resource,
     }),
-    [errorMessage, filteredResource, isPending, isSearchLoading, resource],
+    [filteredResource, isSearchLoading, resource],
   );
 
   const contentListing = useMemo(

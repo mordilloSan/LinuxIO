@@ -1,10 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
@@ -14,25 +12,11 @@ const calculatePercentage = (used: number, total: number) =>
 
 const MemoryUsage = () => {
   const theme = useAppTheme();
-  const {
-    data: memoryData,
-    isPending,
-    isError,
-  } = useQuery(
+  const { data: memoryData } = useSuspenseQuery(
     linuxio.system.get_memory_info.queryOptions({
       refetchInterval: 2000,
     }),
   );
-
-  if (isPending || isError) {
-    return (
-      <DashboardCard
-        avatarIcon="la:memory"
-        stats={isPending ? <ComponentLoader /> : <ErrorMessage />}
-        title="Memory Usage"
-      />
-    );
-  }
 
   const ramUsagePercentage = memoryData?.system?.active
     ? parseFloat(

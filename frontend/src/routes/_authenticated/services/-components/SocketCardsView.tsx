@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import type { Socket } from "@/api";
@@ -30,7 +30,7 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
 );
 
 const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(socket.name, {
       refetchInterval: 2000,
     }),
@@ -64,7 +64,7 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
 };
 
 const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useQuery(
+  const { data: info } = useSuspenseQuery(
     linuxio.systemd.get_unit_info.queryOptions(socket.name, {
       refetchInterval: 2000,
     }),
