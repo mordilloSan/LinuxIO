@@ -1,7 +1,7 @@
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
-import type { LinuxIORouterContext } from "@/routes/-context";
+import type { LinuxIORouterContext } from "@/routes/-auth";
 
 import NotFoundPage from "./-components/NotFoundPage";
 

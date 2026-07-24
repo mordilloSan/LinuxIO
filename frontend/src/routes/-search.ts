@@ -1,5 +1,18 @@
 export type SearchInput = Record<string, unknown>;
 
+export function enumString<const TValues extends readonly string[]>(
+  search: SearchInput,
+  key: string,
+  values: TValues,
+  fallback: TValues[number],
+): TValues[number] {
+  const value = search[key];
+  return typeof value === "string" &&
+    values.some((candidate) => candidate === value)
+    ? (value as TValues[number])
+    : fallback;
+}
+
 export function optionalString<TKey extends string>(
   search: SearchInput,
   key: TKey,

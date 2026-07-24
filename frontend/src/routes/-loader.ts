@@ -12,7 +12,7 @@ import type {
 } from "@tanstack/react-query";
 
 import { ensureLoaderRequestReady, LinuxIOError } from "@/api";
-import type { LinuxIORouterContext } from "@/routes/-context";
+import type { LinuxIORouterContext } from "@/routes/-auth";
 
 /** Heterogeneous queryOptions accepted by a route-level batch. */
 export type LoaderQueryOptions = AnyUseQueryOptions;

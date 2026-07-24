@@ -21,7 +21,7 @@ vi.mock("@/api", async () => {
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import linuxio from "@/api/generated/client";
-import type { LinuxIORouterContext } from "@/routes/-context";
+import type { LinuxIORouterContext } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
 
 function createClient(queryCache?: QueryCache) {

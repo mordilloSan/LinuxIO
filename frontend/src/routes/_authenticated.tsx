@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import useAuth from "@/hooks/useAuth";
-import { requireAuthentication } from "@/routes/-context";
+import { requireAuthentication } from "@/routes/-auth";
 
 import NotFoundPage from "./-components/NotFoundPage";
 import AuthenticatedRuntimeProvider from "./_authenticated/-components/AuthenticatedRuntimeProvider";

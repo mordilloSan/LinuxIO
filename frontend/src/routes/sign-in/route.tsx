@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
-import { requireGuest } from "@/routes/-context";
+import { requireGuest } from "@/routes/-auth";
 import { optionalString } from "@/routes/-search";
 
 import AuthLayout from "./-components/AuthLayout";

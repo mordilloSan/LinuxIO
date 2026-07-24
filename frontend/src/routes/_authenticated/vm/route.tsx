@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { linuxio } from "@/api";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { VirtualMachineIcon } from "@/icons/svg";
-import { requireAccess } from "@/routes/-context";
+import { requireAccess } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 

@@ -1,11 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import type { TabSearchKey } from "@/hooks/useTabUrlState";
-
 /**
  * Configuration for a single tab in the TabContainer
  */
-export interface TabConfig {
+export interface TabConfig<TValue extends string = string> {
   /** The component to render when this tab is active */
   component: ReactNode;
   /** Display label shown in the tab selector */
@@ -13,21 +11,19 @@ export interface TabConfig {
   /** Optional content to display in the right section of the TabSelector (e.g., action buttons) */
   rightContent?: ReactNode;
   /** Unique identifier for the tab */
-  value: string;
+  value: TValue;
 }
 
 /**
  * Props for the TabContainer component
  */
-export interface TabContainerProps {
+export interface TabContainerProps<TValue extends string = string> {
+  /** Validated value supplied by the owning route. */
+  activeTab: TValue;
   /** Custom styles for the outer container */
   containerStyle?: CSSProperties;
-  /** The default tab to show (used when no URL parameter is set) */
-  defaultTab: string;
-  /** Custom fallback UI to show when a tab component errors */
-  errorFallback?: ReactNode;
+  /** Route-typed navigation callback supplied by the owning route. */
+  onTabChange: (newTab: TValue) => void;
   /** Array of tab configurations */
-  tabs: TabConfig[];
-  /** Required URL search key, limited to the supported typed tab keys */
-  urlParam: TabSearchKey;
+  tabs: readonly TabConfig<TValue>[];
 }

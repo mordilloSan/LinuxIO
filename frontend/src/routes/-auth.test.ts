@@ -8,7 +8,7 @@ import {
   requireAccess,
   requireAuthentication,
   requireGuest,
-} from "@/routes/-context";
+} from "@/routes/-auth";
 
 function context(
   overrides: Partial<LinuxIORouterContext> = {},
