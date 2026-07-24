@@ -28,6 +28,29 @@ beware of ctx in handlers and if session dies bridge is orpahned doing work? Rig
 - Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
 - Bridge should mostly read the JSON artifact and display update status.
 
+
+Não precisamos de esperar por upstream. Mas também não resolvemos isto com a API v1.20.1, porque essa API exige que o Watchtower permaneça a correr para responder a /v1/check.
+Temos três cenários:
+Sem daemon, usando --porcelain v1 — recomendado
+Podemos resolver já. O formato estruturado existe, o parser já existe em [porcelain.go (line 15)](/home/wdeadmin/LinuxIO/backend/bridge/internal/watchtower/porcelain.go:15), e o writer JSON também já existe. Falta ligar ambos à execução agendada.
+
+Sem daemon, exigindo JSON diretamente do Watchtower
+Aí teríamos de esperar/pedir upstream por algo como --porcelain json ou --output-file. A API HTTP não substitui essa funcionalidade one-shot.
+
+Usar /v1/check da nova versão
+Exigiria um Watchtower residente com API HTTP. Como não queremos daemon, descartamos esta opção.
+
+Portanto, a decisão simples é:
+manter --run-once --porcelain v1
+        ↓
+reutilizar o parser Go existente
+        ↓
+escrever docker-update-status.json
+        ↓
+terminar o processo
+A atualização para Watchtower 1.20.1 pode ser feita separadamente por correções e melhorias, mas não é necessária para concluir o TODO 11.
+Conclusão: resolvemos localmente agora, sem daemon e sem esperar por upstream.
+
 React Compiler backend moved off Babel: `@rolldown/plugin-babel` + `babel-plugin-react-compiler` dropped for a custom `oxc-transform` plugin in frontend/vite.config.ts (2026-07-09; upstream integration was withdrawn, hence the pinned-version ToDo above) - DONE
 ESLint 10 `overrides` for eslint-plugin-react: moot — ESLint stack fully replaced by oxlint (+tsgolint, jsPlugins) and the `overrides` block removed from frontend/package.json (2026-07-09) - DONE
 UI-architecture cleanups after the 2026-07 API migration: filebrowser controller state now in five reducer slices with stable actions (2026-07-09), dialog job-streams on useJobStreamAction attach(), auto-update single writer, stream-consumer allowlist collapsed — see docs/frontend-ui-architecture-followups.md - DONE
