@@ -313,7 +313,6 @@ const VMPage = () => {
                   <VMListTable
                     actionPending={actionPending}
                     effectiveSelectedName={effectiveSelectedName}
-                    isLoading={listQuery.isLoading}
                     onDelete={(vm) => {
                       setSelectedName(vm.name);
                       setDeleteOpen(true);

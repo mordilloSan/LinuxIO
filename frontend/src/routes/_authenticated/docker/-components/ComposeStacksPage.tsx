@@ -51,7 +51,6 @@ const ComposeStacksPage = ({
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
-  const [editorReadOnly, setEditorReadOnly] = useState(false);
   const [editingStackName, setEditingStackName] = useState("");
   const [editingFilePath, setEditingFilePath] = useState("");
   const [editingContent, setEditingContent] = useState("");
@@ -224,9 +223,9 @@ const ComposeStacksPage = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateStack);
 
-  // Open the editor with a stack's compose file loaded (read-only previews).
+  // Open the editor with a stack's compose file loaded.
   const openStackEditor = useCallback(
-    async (projectName: string, configPath: string, readOnly: boolean) => {
+    async (projectName: string, configPath: string) => {
       try {
         const result = await fetchComposeFile(
           { path: configPath, unused: "", getContent: "true" },
@@ -235,7 +234,6 @@ const ComposeStacksPage = ({
 
         if (result && result.content) {
           setEditorMode("edit");
-          setEditorReadOnly(readOnly);
           setEditingStackName(projectName);
           setEditingFilePath(configPath);
           setEditingContent(result.content);
@@ -254,13 +252,7 @@ const ComposeStacksPage = ({
 
   const handleEditStack = useCallback(
     (projectName: string, configPath: string) =>
-      openStackEditor(projectName, configPath, false),
-    [openStackEditor],
-  );
-
-  const handlePreviewStack = useCallback(
-    (projectName: string, configPath: string) =>
-      openStackEditor(projectName, configPath, true),
+      openStackEditor(projectName, configPath),
     [openStackEditor],
   );
 
@@ -419,7 +411,6 @@ const ComposeStacksPage = ({
           isLoading={isLoading}
           onDelete={handleOpenDeleteDialog}
           onEdit={handleEditStack}
-          onPreview={handlePreviewStack}
           onRestart={restartProject}
           onStart={startProject}
           onStop={stopProject}
@@ -435,7 +426,7 @@ const ComposeStacksPage = ({
           onSave={handleSave}
           onValidate={handleValidate}
           open={editorOpen}
-          readOnly={editorReadOnly}
+          readOnly={false}
           stackName={editingStackName}
         />
 

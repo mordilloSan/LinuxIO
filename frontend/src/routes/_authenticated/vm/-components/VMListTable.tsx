@@ -45,7 +45,6 @@ const rowActionsStyle: CSSProperties = {
 export default function VMListTable({
   actionPending,
   effectiveSelectedName,
-  isLoading,
   onDelete,
   onOpenConsole,
   onRunAction,
@@ -54,7 +53,6 @@ export default function VMListTable({
 }: {
   actionPending: boolean;
   effectiveSelectedName: string | null;
-  isLoading: boolean;
   onDelete: (vm: VirtualMachine) => void;
   onOpenConsole: (vm: VirtualMachine) => void;
   onRunAction: (action: VMAction, vm: VirtualMachine) => void;
@@ -190,8 +188,8 @@ export default function VMListTable({
       <AppDataTable
         ariaLabel="Virtual machines"
         columns={columns}
-        data={isLoading ? [] : vms}
-        emptyMessage={isLoading ? "Loading VMs" : "No virtual machines."}
+        data={vms}
+        emptyMessage="No virtual machines."
         enableSorting={false}
         getRowId={(vm) => vm.name}
         onRowClick={(row) => onSelect(row.original.name)}

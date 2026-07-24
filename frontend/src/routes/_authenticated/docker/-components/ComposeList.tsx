@@ -34,7 +34,6 @@ interface ComposeListProps {
   isLoading?: boolean;
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
-  onPreview?: (projectName: string, configPath: string) => void;
   onRestart: (projectName: string) => void;
   onStart: (projectName: string) => void;
   onStop: (projectName: string) => void;
@@ -94,7 +93,6 @@ const ComposeList = ({
   onRestart,
   onDelete,
   onEdit,
-  onPreview,
   isLoading = false,
   viewMode = "table",
 }: ComposeListProps) => {
@@ -773,7 +771,6 @@ const ComposeList = ({
                   isLoading={isLoading || isUpdatingContainer}
                   onDelete={onDelete}
                   onEdit={onEdit}
-                  onPreview={onPreview}
                   onRestart={onRestart}
                   onStart={onStart}
                   onStop={onStop}
