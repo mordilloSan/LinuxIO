@@ -13,17 +13,16 @@ export const Route = createFileRoute("/_authenticated/shares")({
   }),
   loaderDeps: ({ search }) => ({ sharesTab: search.sharesTab }),
   loader: ({ context, deps, preload }) => {
-    const queries: LoaderQueryOptions[] = [
-      linuxio.shares.list_nfs_shares.queryOptions(),
-      linuxio.shares.list_samba_shares.queryOptions(),
-    ];
-
-    if (deps.sharesTab === "mounts") {
-      queries.push(
-        linuxio.storage.list_nfs_mounts.queryOptions(),
-        linuxio.storage.list_cifs_mounts.queryOptions(),
-      );
-    }
+    const queries: LoaderQueryOptions[] =
+      deps.sharesTab === "mounts"
+        ? [
+            linuxio.storage.list_nfs_mounts.queryOptions(),
+            linuxio.storage.list_cifs_mounts.queryOptions(),
+          ]
+        : [
+            linuxio.shares.list_nfs_shares.queryOptions(),
+            linuxio.shares.list_samba_shares.queryOptions(),
+          ];
 
     return loadRouteQueries({ context, preload }, queries);
   },

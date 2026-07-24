@@ -61,13 +61,13 @@ Every protected page that owns initial route data has a co-located loader:
 | Network | network interfaces |
 | Updates | available updates and history when the history tab is active |
 | Services | active unit list for the selected section and selected-unit details |
-| Logs | systemd service list used by log filters |
+| Logs | request-transport readiness; service filter data loads in background |
 | Storage | disks/filesystems/NFS mounts, or LVM physical volumes, volume groups, and logical volumes |
-| Docker | auto-update state plus data for the active Docker tab |
+| Docker | data for the active tab; auto-update state only for Containers |
 | VMs | VM list, preflight status, and the initially selected VM detail |
 | Accounts | active users/groups list and selected-user details/login history |
-| Shares | NFS and Samba shares, plus NFS/CIFS mounts on the mounts tab |
-| WireGuard | network interfaces and WireGuard interfaces |
+| Shares | NFS/Samba shares or NFS/CIFS mounts, according to the active tab |
+| WireGuard | WireGuard interfaces |
 | Hardware | sensors, PCI devices, memory modules, hardware summaries, and monitoring histories when available |
 | Navigator | the resource for the current splat path |
 | Terminal | request-transport readiness before the stream-only page mounts |

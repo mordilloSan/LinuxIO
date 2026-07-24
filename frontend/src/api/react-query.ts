@@ -2,8 +2,9 @@
  * LinuxIO API Usage Guidelines:
  *
  * 1. TYPE-SAFE API (preferred for built-in handlers):
- *    Render-driven reads:    linuxio.filebrowser.resource_get.useQuery()
- *                            linuxio.filebrowser.dir_size.useQueries(paths)
+ *    Render-driven reads:    useQuery(linuxio.filebrowser.resource_get.queryOptions())
+ *                            useQueries({ queries: paths.map((path) =>
+ *                              linuxio.filebrowser.dir_size.queryOptions(path)) })
  *    Event-driven commands:  linuxio.docker.validate_compose.useAction({ error })
  *    Job routes:             linuxio.docker.start_container.useJobAction({ invalidates, success, error })
  *                            linuxio.docker.compose.useJobStreamAction({ onProgress })
@@ -15,20 +16,17 @@
  */
 
 import {
+  queryOptions as createQueryOptions,
   type QueryKey,
   useMutation,
   type UseMutationResult,
   type UseMutationOptions,
-  useQueries,
-  useQuery,
   useQueryClient,
   type UseQueryOptions,
-  type UseQueryResult,
 } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
-import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 import type { ToastMeta } from "@/types/navigation";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -41,6 +39,7 @@ import type {
   HandlerName,
 } from "./generated/linuxio-types";
 import { getRouteMode, routeName } from "./generated/route-metadata";
+import { JOB_QUERY_INVALIDATIONS } from "./job-query-invalidations";
 import {
   isJobSnapshot,
   isTerminalJobState,
@@ -49,9 +48,15 @@ import {
   unmarkJobLocallyHandled,
   waitForJobCompletion,
 } from "./jobs";
-import { openJobAttachStream, useIsUpdating, useStreamMux } from "./linuxio";
+import { openJobAttachStream } from "./linuxio";
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
+import {
+  endpointQueryKey,
+  endpointQueryPrefix,
+  requestForWire,
+  type RequestShape,
+} from "./query-keys";
 import { waitForStreamResult } from "./stream-helpers";
 import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
 
@@ -94,10 +99,7 @@ function getRetryPolicy(
   return "none";
 }
 
-export type RequestShape =
-  | { kind: "none" }
-  | { kind: "object" }
-  | { kind: "field"; field: string };
+export type { RequestShape } from "./query-keys";
 
 // ============================================================================
 // Type-Safe API
@@ -126,7 +128,8 @@ type MutationOptions<TRequest, TResult> = Omit<
 export interface ActionConfig<TRequest, TResult> {
   /**
    * Query keys to invalidate after success (static, or derived from
-   * result/variables). Defaults to the route's `ROUTE_INVALIDATIONS` manifest
+   * result/variables). Defaults to the route's `JOB_QUERY_INVALIDATIONS`
+   * manifest
    * entry; pass `[]` to opt out, or a value to override the manifest.
    */
   invalidates?:
@@ -269,28 +272,10 @@ export interface CommandEndpoint<
   /** Deterministic React Query key for this command */
   queryKey: (...args: TInput) => QueryKey;
 
-  /**
-   * React Query options for API-layer plumbing (route preloads, the
-   * `useFetcher` implementation). Feature code uses the hooks instead.
-   */
+  /** Shared React Query key and query function for every consumer. */
   queryOptions: <TData = TResult>(
     ...params: QueryOptionsArgs<TInput, TResult, TData>
   ) => UseQueryOptions<TResult, LinuxIOError, TData>;
-
-  /**
-   * `useQuery` over a dynamic list of inputs for this endpoint — one query
-   * per input, sharing the singular hook's cache entries and stream-mux
-   * gating. Options apply to every entry.
-   *
-   * @example
-   * const sizes = linuxio.filebrowser.dir_size.useQueries(paths, {
-   *   staleTime: CACHE_TTL_MS.ONE_MINUTE,
-   * });
-   */
-  useQueries: <TData = TResult>(
-    inputs: readonly TInput[0][],
-    options?: QueryOptions<TResult, TData>,
-  ) => UseQueryResult<TData, LinuxIOError>[];
 
   /**
    * Hook returning an imperative fetch through the query cache — for
@@ -323,7 +308,8 @@ export interface CommandEndpoint<
    * (validation, download generation, path resolution): imperative
    * `mutate`/`mutateAsync` with pending state and the same declarative
    * invalidation/toast config as `useJobAction`. No query caching — use
-   * `useQuery` or `useFetcher` when the result is data to display.
+   * `useQuery(endpoint.queryOptions(...))` or `useFetcher` when the result
+   * is data to display.
    *
    * @example
    * const { mutate: downloadConfig } =
@@ -370,39 +356,6 @@ export interface CommandEndpoint<
   useJobStreamAction: <TStreamResult = TResult, TProgress = ProgressFrame>(
     config?: JobStreamActionConfig<TRequest, TStreamResult, TProgress>,
   ) => JobStreamActionResult<TRequest, TStreamResult>;
-
-  /**
-   * React Query hook for fetching data
-   *
-   * @example
-   * // No arguments
-   * useQuery()
-   *
-   * @example
-   * // Single-field generated request with options
-   * useQuery(unitName, { staleTime: 60000 })
-   */
-  useQuery: <TData = TResult>(
-    ...params: QueryOptionsArgs<TInput, TResult, TData>
-  ) => ReturnType<typeof useQuery<TResult, LinuxIOError, TData>>;
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requestForWire(requestShape: RequestShape, request: unknown): unknown {
-  switch (requestShape.kind) {
-    case "none":
-      return {};
-    case "field":
-      if (isObjectRecord(request) && requestShape.field in request) {
-        return request;
-      }
-      return { [requestShape.field]: request };
-    case "object":
-      return request ?? {};
-  }
 }
 
 function queryRequestAndOptions<TOptions>(
@@ -428,50 +381,11 @@ function assertRouteMode(route: string, expected: "query" | "job"): void {
   }
 }
 
-function buildQueryOptions<TResult, TData = TResult>(
-  handler: string,
-  command: string,
-  requestShape: RequestShape,
-  request: unknown,
-  options?: QueryOptions<TResult, TData>,
-): UseQueryOptions<TResult, LinuxIOError, TData> {
-  const route = routeName(handler, command);
-  assertRouteMode(route, "query");
-  const wireRequest = requestForWire(requestShape, request);
-
-  return {
-    queryKey:
-      requestShape.kind === "none"
-        ? ["linuxio", handler, command]
-        : ["linuxio", handler, command, wireRequest],
-    queryFn: () =>
-      core.request<TResult>(handler, command, wireRequest, {
-        retryPolicy: getRetryPolicy(handler, command),
-      }),
-    ...(options ?? {}),
-  };
-}
-
 function resolveSignal<TRequest>(
   signal: StreamSignal<TRequest> | undefined,
   variables: TRequest,
 ): AbortSignal | undefined {
   return typeof signal === "function" ? signal(variables) : signal;
-}
-
-/**
- * Compose the API-layer gate (mux open, not updating) with a caller-supplied
- * `enabled`, preserving React Query v5's function form instead of collapsing
- * it to a boolean comparison.
- */
-function gatedEnabled<TResult, TData>(
-  gate: boolean,
-  enabled: UseQueryOptions<TResult, LinuxIOError, TData>["enabled"],
-): UseQueryOptions<TResult, LinuxIOError, TData>["enabled"] {
-  if (typeof enabled === "function") {
-    return (query) => gate && enabled(query);
-  }
-  return gate && (enabled ?? true);
 }
 
 /**
@@ -504,7 +418,7 @@ function useActionMutation<TResult>(
       const keys =
         typeof invalidates === "function"
           ? invalidates(result, variables)
-          : (invalidates ?? ROUTE_INVALIDATIONS[route] ?? []);
+          : (invalidates ?? JOB_QUERY_INVALIDATIONS[route] ?? []);
       for (const queryKey of keys) {
         void queryClient.invalidateQueries({ queryKey });
       }
@@ -598,13 +512,8 @@ export function createEndpoint<TResult>(
   requestShape: RequestShape,
 ): CommandEndpoint<[] | [unknown], unknown, TResult> {
   const retryPolicy = getRetryPolicy(handler, command);
-  const queryKey = (...rawArgs: [] | [unknown]): QueryKey => {
-    const request = rawArgs[0];
-    const wireRequest = requestForWire(requestShape, request);
-    return requestShape.kind === "none"
-      ? (["linuxio", handler, command] as const)
-      : (["linuxio", handler, command, wireRequest] as const);
-  };
+  const queryKey = (...rawArgs: [] | [unknown]): QueryKey =>
+    endpointQueryKey(handler, command, requestShape, rawArgs[0]);
 
   const execute = (...rawArgs: [] | [unknown]): Promise<TResult> => {
     const request = rawArgs[0];
@@ -622,13 +531,15 @@ export function createEndpoint<TResult>(
     const { request, options } = queryRequestAndOptions<
       QueryOptions<TResult, TData>
     >(requestShape, params);
-    return buildQueryOptions<TResult, TData>(
-      handler,
-      command,
-      requestShape,
-      request,
-      options,
-    );
+    assertRouteMode(routeName(handler, command), "query");
+    const input = (requestShape.kind === "none" ? [] : [request]) as
+      | []
+      | [unknown];
+    return createQueryOptions<TResult, LinuxIOError, TData, QueryKey>({
+      queryKey: queryKey(...input),
+      queryFn: () => execute(...input),
+      ...(options ?? {}),
+    });
   };
 
   const endpoint = ((...rawArgs: [] | [unknown]) =>
@@ -636,42 +547,6 @@ export function createEndpoint<TResult>(
 
   endpoint.queryKey = queryKey;
   endpoint.queryOptions = queryOptions;
-  endpoint.useQuery = (<TData = TResult>(
-    ...params: unknown[]
-  ): ReturnType<typeof useQuery<TResult, LinuxIOError, TData>> => {
-    const { isOpen } = useStreamMux();
-    const isUpdating = useIsUpdating();
-
-    const baseOptions = queryOptions<TData>(...params);
-    return useQuery<TResult, LinuxIOError, TData>({
-      ...baseOptions,
-      enabled: gatedEnabled(isOpen && !isUpdating, baseOptions.enabled),
-    });
-  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQuery"];
-
-  endpoint.useQueries = (<TData = TResult>(
-    inputs: readonly unknown[],
-    options?: QueryOptions<TResult, TData>,
-  ) => {
-    const { isOpen } = useStreamMux();
-    const isUpdating = useIsUpdating();
-    const enabled = gatedEnabled<TResult, TData>(
-      isOpen && !isUpdating,
-      options?.enabled,
-    );
-    return useQueries({
-      queries: inputs.map((input) => ({
-        ...buildQueryOptions<TResult, TData>(
-          handler,
-          command,
-          requestShape,
-          input,
-          options,
-        ),
-        enabled,
-      })),
-    });
-  }) as CommandEndpoint<[] | [unknown], unknown, TResult>["useQueries"];
 
   endpoint.useFetcher = (() => {
     const queryClient = useQueryClient();
@@ -688,7 +563,7 @@ export function createEndpoint<TResult>(
       const filterKey = (input: [] | [unknown]) =>
         input.length > 0
           ? queryKey(...input)
-          : (["linuxio", handler, command] as QueryKey);
+          : endpointQueryPrefix(routeName(handler, command));
       return {
         get: (...input: [] | [unknown]) =>
           queryClient.getQueryData<TResult>(queryKey(...input)),

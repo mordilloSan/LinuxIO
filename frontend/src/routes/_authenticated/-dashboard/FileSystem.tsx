@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -6,9 +8,11 @@ import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard = () => {
-  const { data: fsInfo, isPending } = linuxio.system.get_fs_info.useQuery({
-    refetchInterval: 2000,
-  });
+  const { data: fsInfo, isPending } = useQuery(
+    linuxio.system.get_fs_info.queryOptions({
+      refetchInterval: 2000,
+    }),
+  );
   const theme = useAppTheme();
 
   const isRelevantMount = (fs: FilesystemInfo): boolean => {

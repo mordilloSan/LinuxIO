@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
 import { linuxio, type NFSClient, type NFSExport } from "@/api";
@@ -583,9 +584,11 @@ const NFSShares = ({ onCreateHandler, viewMode = "table" }: NFSSharesProps) => {
     data: shares = [],
     isPending,
     refetch,
-  } = linuxio.shares.list_nfs_shares.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.shares.list_nfs_shares.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
 
   const handleCreate = useCallback(() => {
     if (nfsUnavailable) {

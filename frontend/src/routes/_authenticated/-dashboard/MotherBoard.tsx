@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -12,10 +13,11 @@ import { useAppTheme } from "@/theme";
 const MotherBoardInfo = () => {
   const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const { data: motherboardInfo, isPending } =
-    linuxio.system.get_motherboard_info.useQuery({
+  const { data: motherboardInfo, isPending } = useQuery(
+    linuxio.system.get_motherboard_info.queryOptions({
       refetchInterval: 50000,
-    });
+    }),
+  );
 
   const visibleDetails = isPending ? (
     <ComponentLoader />

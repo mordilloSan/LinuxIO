@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -28,9 +29,11 @@ const Processor = () => {
     data: CPUInfo,
     isPending,
     isError,
-  } = linuxio.system.get_cpu_info.useQuery({
-    refetchInterval: 1000,
-  });
+  } = useQuery(
+    linuxio.system.get_cpu_info.queryOptions({
+      refetchInterval: 1000,
+    }),
+  );
 
   const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
     undefined,

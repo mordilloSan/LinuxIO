@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -23,9 +25,11 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
 }
 
 function useTimersQuery(viewMode: TableCardViewMode) {
-  return linuxio.systemd.list_timers.useQuery({
-    refetchInterval: viewMode === "card" ? false : 5000,
-  });
+  return useQuery(
+    linuxio.systemd.list_timers.queryOptions({
+      refetchInterval: viewMode === "card" ? false : 5000,
+    }),
+  );
 }
 
 function buildTimerInfoRows(

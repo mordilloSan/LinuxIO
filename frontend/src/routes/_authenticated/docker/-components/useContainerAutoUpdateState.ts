@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -47,9 +48,11 @@ export const useContainerAutoUpdateState = () => {
   );
   const saveLoopRunningRef = useRef(false);
   const flushTimerRef = useRef<number | undefined>(undefined);
-  const query = linuxio.docker.get_container_auto_update.useQuery({
-    staleTime: CACHE_TTL_MS.TWO_SECONDS,
-  });
+  const query = useQuery(
+    linuxio.docker.get_container_auto_update.queryOptions({
+      staleTime: CACHE_TTL_MS.TWO_SECONDS,
+    }),
+  );
   // This hook reconciles the cache itself (optimistic setQueryData + save
   // loop), so opt out of the manifest invalidation.
   const { mutateAsync: saveAutoUpdateOptions } =

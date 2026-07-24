@@ -17,7 +17,6 @@ export const Route = createFileRoute("/_authenticated/wireguard")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: ({ context, preload }) =>
     loadRouteQueries({ context, preload }, [
-      linuxio.network.get_network_info.queryOptions(),
       linuxio.wireguard.list_interfaces.queryOptions(),
     ]),
   component: WireguardPage,

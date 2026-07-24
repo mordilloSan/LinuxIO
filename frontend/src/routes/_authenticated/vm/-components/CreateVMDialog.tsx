@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useState,
@@ -188,14 +189,17 @@ export default function CreateVMDialog({
   const usesCloudInit = Boolean(
     imagePresetId && CLOUD_INIT_IMAGE_PRESETS.has(imagePresetId),
   );
-  const preflight = linuxio.virt.preflight.useQuery(
-    {
-      imagePresetId,
-      isoPath: usesISO ? isoPath || undefined : undefined,
-      sourceType,
-    },
-    { enabled: open, refetchInterval: open ? 5000 : false },
+  const preflight = useQuery(
+    linuxio.virt.preflight.queryOptions(
+      {
+        imagePresetId,
+        isoPath: usesISO ? isoPath || undefined : undefined,
+        sourceType,
+      },
+      { enabled: open, refetchInterval: open ? 5000 : false },
+    ),
   );
+  const { refetch: refetchPreflight } = preflight;
   const createISOFolderMutation =
     linuxio.filebrowser.resource_post.useJobAction({
       invalidates: (_result, variables) => [
@@ -297,7 +301,7 @@ export default function CreateVMDialog({
         path: ensureTrailingSlash(folder),
       });
       toast.success(`Created ISO folder ${folder}`);
-      void preflight.refetch();
+      void refetchPreflight();
     } catch (error) {
       toast.error(
         getMutationErrorMessage(error, "Failed to create ISO folder"),
@@ -307,7 +311,7 @@ export default function CreateVMDialog({
     createISOFolderMutation,
     fetchResourceStat,
     isoPath,
-    preflight,
+    refetchPreflight,
     toast,
     usesISO,
   ]);

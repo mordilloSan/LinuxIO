@@ -152,7 +152,9 @@ const linuxio = {
     get_container_auto_update: createEndpoint(
       "docker",
       "get_container_auto_update",
-      { kind: "none" },
+      {
+        kind: "none",
+      },
     ),
     get_docker_folders: createEndpoint("docker", "get_docker_folders", {
       kind: "none",
@@ -193,7 +195,9 @@ const linuxio = {
     set_container_auto_update: createEndpoint(
       "docker",
       "set_container_auto_update",
-      { kind: "object" },
+      {
+        kind: "object",
+      },
     ),
     start_all_stopped: createEndpoint("docker", "start_all_stopped", {
       kind: "none",
@@ -221,7 +225,10 @@ const linuxio = {
     validate_stack_directory: createEndpoint(
       "docker",
       "validate_stack_directory",
-      { kind: "field", field: "dirPath" },
+      {
+        kind: "field",
+        field: "dirPath",
+      },
     ),
   },
   filebrowser: {
@@ -426,12 +433,18 @@ const linuxio = {
     dismiss_failed_login_alert: createEndpoint(
       "system",
       "dismiss_failed_login_alert",
-      { kind: "field", field: "alertId" },
+      {
+        kind: "field",
+        field: "alertId",
+      },
     ),
     dismiss_unclean_shutdown: createEndpoint(
       "system",
       "dismiss_unclean_shutdown",
-      { kind: "field", field: "bootId" },
+      {
+        kind: "field",
+        field: "bootId",
+      },
     ),
     get_capabilities: createEndpoint("system", "get_capabilities", {
       kind: "none",
@@ -483,7 +496,9 @@ const linuxio = {
     list_failed_login_events: createEndpoint(
       "system",
       "list_failed_login_events",
-      { kind: "object" },
+      {
+        kind: "object",
+      },
     ),
   },
   systemd: {

@@ -21,13 +21,14 @@ export const Route = createFileRoute("/_authenticated/docker")({
   loaderDeps: ({ search }) => ({ dockerTab: search.dockerTab }),
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: ({ context, deps, preload }) => {
-    const queries: LoaderQueryOptions[] = [
-      linuxio.docker.get_container_auto_update.queryOptions(),
-    ];
+    const queries: LoaderQueryOptions[] = [];
 
     switch (deps.dockerTab) {
       case "containers":
-        queries.push(linuxio.docker.list_containers.queryOptions());
+        queries.push(
+          linuxio.docker.list_containers.queryOptions(),
+          linuxio.docker.get_container_auto_update.queryOptions(),
+        );
         break;
       case "compose":
         queries.push(linuxio.docker.list_compose_projects.queryOptions());

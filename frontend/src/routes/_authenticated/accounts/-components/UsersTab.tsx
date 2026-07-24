@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
@@ -34,9 +35,11 @@ const UsersTab = ({
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
-  const { data: users = [], isPending } = linuxio.accounts.list_users.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: users = [], isPending } = useQuery(
+    linuxio.accounts.list_users.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);

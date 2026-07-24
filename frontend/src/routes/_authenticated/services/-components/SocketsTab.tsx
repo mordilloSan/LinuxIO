@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 import type { Socket, TableCardViewMode, UnitInfo } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -23,9 +25,11 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
 }
 
 function useSocketsQuery(viewMode: TableCardViewMode) {
-  return linuxio.systemd.list_sockets.useQuery({
-    refetchInterval: viewMode === "card" ? false : 5000,
-  });
+  return useQuery(
+    linuxio.systemd.list_sockets.queryOptions({
+      refetchInterval: viewMode === "card" ? false : 5000,
+    }),
+  );
 }
 
 function buildSocketInfoRows(

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -140,9 +141,11 @@ const ImageList = ({
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
-  const { data: rawImages, isPending } = linuxio.docker.list_images.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: rawImages, isPending } = useQuery(
+    linuxio.docker.list_images.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const images = rawImages ?? [];
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());

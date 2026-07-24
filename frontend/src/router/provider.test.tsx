@@ -28,8 +28,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-const { default: ApplicationRouterProvider } =
-  await import("@/router/provider");
+const { default: ApplicationRouterProvider } = await import("./provider");
 
 function ProviderHarness() {
   const [queryClient] = useState(() => new QueryClient());

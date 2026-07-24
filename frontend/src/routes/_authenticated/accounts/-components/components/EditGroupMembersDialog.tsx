@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import {
@@ -37,8 +38,9 @@ const EditGroupMembersDialog = ({
     group.members,
   );
 
-  const { data: users = [], isLoading: usersLoading } =
-    linuxio.accounts.list_users.useQuery({ enabled: open });
+  const { data: users = [], isLoading: usersLoading } = useQuery(
+    linuxio.accounts.list_users.queryOptions({ enabled: open }),
+  );
 
   const usersList = Array.isArray(users) ? users : [];
 

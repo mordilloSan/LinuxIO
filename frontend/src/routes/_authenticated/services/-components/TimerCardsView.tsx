@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import type { Timer } from "@/api";
@@ -30,9 +31,11 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
 );
 
 const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
-    refetchInterval: 2000,
-  });
+  const { data: info } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
+      refetchInterval: 2000,
+    }),
+  );
 
   return (
     <>
@@ -61,9 +64,11 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
 };
 
 const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = linuxio.systemd.get_unit_info.useQuery(timer.name, {
-    refetchInterval: 2000,
-  });
+  const { data: info } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
+      refetchInterval: 2000,
+    }),
+  );
   return (
     <UnitCardActions
       activeState={timer.active_state}

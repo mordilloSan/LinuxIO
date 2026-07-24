@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { memo } from "react";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
@@ -9,10 +10,12 @@ import DevToolsButton from "./DevToolsButton";
 function Footer() {
   const theme = useAppTheme();
 
-  const { data } = linuxio.control.version.useQuery({
-    staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-    retry: false, // Don't retry on failure for footer
-  });
+  const { data } = useQuery(
+    linuxio.control.version.queryOptions({
+      staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+      retry: false, // Don't retry on failure for footer
+    }),
+  );
 
   return (
     <footer

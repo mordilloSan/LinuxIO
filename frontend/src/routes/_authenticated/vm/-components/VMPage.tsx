@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, openVMConsoleStream } from "@/api";
@@ -53,16 +54,20 @@ const VMPage = () => {
   );
   const [, setActiveTab] = useTabUrlState("dashboard", "vmTab");
 
-  const listQuery = linuxio.virt.list.useQuery({
-    enabled: libvirtStatus === "available",
-    refetchInterval: libvirtStatus === "available" ? 5000 : false,
-  });
-  const preflightQuery = linuxio.virt.preflight.useQuery(
-    {},
-    {
+  const listQuery = useQuery(
+    linuxio.virt.list.queryOptions({
       enabled: libvirtStatus === "available",
-      refetchInterval: libvirtStatus === "available" ? 15000 : false,
-    },
+      refetchInterval: libvirtStatus === "available" ? 5000 : false,
+    }),
+  );
+  const preflightQuery = useQuery(
+    linuxio.virt.preflight.queryOptions(
+      {},
+      {
+        enabled: libvirtStatus === "available",
+        refetchInterval: libvirtStatus === "available" ? 15000 : false,
+      },
+    ),
   );
   const vms = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const effectiveSelectedName = useMemo(() => {
@@ -71,9 +76,11 @@ const VMPage = () => {
     }
     return vms[0]?.name ?? null;
   }, [selectedName, vms]);
-  const detailQuery = linuxio.virt.get.useQuery(effectiveSelectedName ?? "", {
-    enabled: libvirtStatus === "available" && Boolean(effectiveSelectedName),
-  });
+  const detailQuery = useQuery(
+    linuxio.virt.get.queryOptions(effectiveSelectedName ?? "", {
+      enabled: libvirtStatus === "available" && Boolean(effectiveSelectedName),
+    }),
+  );
   const selectedVM =
     detailQuery.data ??
     vms.find((vm) => vm.name === effectiveSelectedName) ??

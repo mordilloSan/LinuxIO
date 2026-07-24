@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetworkContainer } from "@/api";
@@ -342,10 +343,11 @@ const NetworkList = ({
   viewMode = "table",
 }: NetworkListProps) => {
   const theme = useAppTheme();
-  const { data: rawNetworks, isPending } =
-    linuxio.docker.list_networks.useQuery({
+  const { data: rawNetworks, isPending } = useQuery(
+    linuxio.docker.list_networks.queryOptions({
       refetchInterval: 10000,
-    });
+    }),
+  );
   const networks = rawNetworks ?? [];
 
   const [search, setSearch] = useState("");

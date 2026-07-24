@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -58,33 +59,39 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     data: timezones,
     isLoading: timezonesLoading,
     isError: timezonesError,
-  } = linuxio.system.get_timezones.useQuery({
-    enabled: open,
-    staleTime: 60 * 60 * 1000,
-  });
+  } = useQuery(
+    linuxio.system.get_timezones.queryOptions({
+      enabled: open,
+      staleTime: 60 * 60 * 1000,
+    }),
+  );
   const {
     data: currentTimezone,
     isLoading: timezoneLoading,
     isError: timezoneError,
-  } = linuxio.datetime.get_timezone.useQuery({ enabled: open });
+  } = useQuery(linuxio.datetime.get_timezone.queryOptions({ enabled: open }));
   const {
     data: ntpStatus,
     isLoading: ntpStatusLoading,
     isError: ntpStatusError,
-  } = linuxio.datetime.get_ntp_status.useQuery({ enabled: open });
+  } = useQuery(linuxio.datetime.get_ntp_status.queryOptions({ enabled: open }));
   const {
     data: ntpServers,
     isLoading: ntpServersLoading,
     isError: ntpServersError,
-  } = linuxio.datetime.get_ntp_servers.useQuery({ enabled: open });
+  } = useQuery(
+    linuxio.datetime.get_ntp_servers.queryOptions({ enabled: open }),
+  );
   const {
     data: serverTime,
     isLoading: serverTimeLoading,
     isError: serverTimeError,
-  } = linuxio.system.get_server_time.useQuery({
-    enabled: open,
-    staleTime: 0,
-  });
+  } = useQuery(
+    linuxio.system.get_server_time.queryOptions({
+      enabled: open,
+      staleTime: 0,
+    }),
+  );
 
   const settingsLoading =
     timezonesLoading ||

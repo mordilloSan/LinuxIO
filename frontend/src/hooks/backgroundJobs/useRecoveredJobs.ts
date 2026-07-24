@@ -23,8 +23,8 @@ import {
   type Stream,
   useStreamMux,
 } from "@/api";
+import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
-import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import type {
@@ -533,7 +533,7 @@ export function useRecoveredJobs(
           }
 
           if (isJobLocallyHandled(job.id)) return;
-          const keys = ROUTE_INVALIDATIONS[job.type];
+          const keys = JOB_QUERY_INVALIDATIONS[job.type];
           if (!keys) return;
           for (const queryKey of keys) {
             void queryClient.invalidateQueries({ queryKey });

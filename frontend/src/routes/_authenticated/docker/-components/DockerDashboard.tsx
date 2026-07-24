@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
@@ -101,26 +102,31 @@ const DockerDashboard = ({
 }: DockerDashboardProps) => {
   const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
-  const { data: rawContainers, isPending: containersPending } =
-    linuxio.docker.list_containers.useQuery({
+  const { data: rawContainers, isPending: containersPending } = useQuery(
+    linuxio.docker.list_containers.queryOptions({
       refetchInterval: 5000,
-    });
-  const { data: rawImages, isPending: imagesPending } =
-    linuxio.docker.list_images.useQuery({
+    }),
+  );
+  const { data: rawImages, isPending: imagesPending } = useQuery(
+    linuxio.docker.list_images.queryOptions({
       refetchInterval: 30000,
-    });
-  const { data: rawNetworks, isPending: networksPending } =
-    linuxio.docker.list_networks.useQuery({
+    }),
+  );
+  const { data: rawNetworks, isPending: networksPending } = useQuery(
+    linuxio.docker.list_networks.queryOptions({
       refetchInterval: 30000,
-    });
-  const { data: rawVolumes, isPending: volumesPending } =
-    linuxio.docker.list_volumes.useQuery({
+    }),
+  );
+  const { data: rawVolumes, isPending: volumesPending } = useQuery(
+    linuxio.docker.list_volumes.queryOptions({
       refetchInterval: 30000,
-    });
-  const { data: dockerInfo, isPending: dockerInfoPending } =
-    linuxio.docker.get_docker_info.useQuery({
+    }),
+  );
+  const { data: dockerInfo, isPending: dockerInfoPending } = useQuery(
+    linuxio.docker.get_docker_info.queryOptions({
       refetchInterval: 60000,
-    });
+    }),
+  );
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const images = useMemo(() => rawImages ?? [], [rawImages]);
   const networks = rawNetworks ?? [];

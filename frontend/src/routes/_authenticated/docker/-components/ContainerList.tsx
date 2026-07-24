@@ -13,6 +13,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
@@ -71,10 +72,11 @@ const ContainerList = ({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
-  const { data: rawContainers, isPending } =
-    linuxio.docker.list_containers.useQuery({
+  const { data: rawContainers, isPending } = useQuery(
+    linuxio.docker.list_containers.queryOptions({
       refetchInterval: 5000,
-    });
+    }),
+  );
   const hasLoadedContainers = rawContainers !== undefined;
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const selectedContainerId =

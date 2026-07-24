@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -156,10 +157,11 @@ const PermissionsDialog = ({
     }
   }
   // Fetch users and groups when dialog opens
-  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } =
-    linuxio.filebrowser.users_groups.useQuery({
+  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } = useQuery(
+    linuxio.filebrowser.users_groups.queryOptions({
       enabled: open,
-    });
+    }),
+  );
 
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];

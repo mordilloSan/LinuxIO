@@ -2,7 +2,7 @@
  * LinuxIO API - Unified Entry Point
  *
  * JSON API (generated, Go-owned request/response contracts):
- *   linuxio.system.get_cpu_info.useQuery()
+ *   useQuery(linuxio.system.get_cpu_info.queryOptions())
  *   linuxio.docker.start_container.useJobAction({ invalidates, success, error })
  *   linuxio.docker.compose.useJobStreamAction({ onProgress })
  *
@@ -37,7 +37,8 @@ export {
 export { LinuxIOError, ensureLoaderRequestReady } from "./linuxio-core";
 
 // === React Hooks ===
-export { useStreamMux, useIsUpdating } from "./linuxio";
+export { useStreamMux } from "./linuxio";
+export { isRequestAvailable, subscribeRequestAvailability } from "./linuxio";
 
 // === Connection Utilities ===
 export { isConnected, getStatus } from "./linuxio";

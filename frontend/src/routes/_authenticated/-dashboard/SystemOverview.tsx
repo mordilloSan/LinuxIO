@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
@@ -39,12 +40,15 @@ interface OverviewRow {
 const SystemOverview = () => {
   const theme = useAppTheme();
 
-  const { data: hostInfo, isPending: hostInfoPending } =
-    linuxio.system.get_host_info.useQuery({ refetchInterval: 50000 });
-  const { data: uptime, isPending: uptimePending } =
-    linuxio.system.get_uptime.useQuery({ refetchInterval: 30000 });
-  const { data: serverTime, isPending: serverTimePending } =
-    linuxio.system.get_server_time.useQuery({ refetchInterval: 60000 });
+  const { data: hostInfo, isPending: hostInfoPending } = useQuery(
+    linuxio.system.get_host_info.queryOptions({ refetchInterval: 50000 }),
+  );
+  const { data: uptime, isPending: uptimePending } = useQuery(
+    linuxio.system.get_uptime.queryOptions({ refetchInterval: 30000 }),
+  );
+  const { data: serverTime, isPending: serverTimePending } = useQuery(
+    linuxio.system.get_server_time.queryOptions({ refetchInterval: 60000 }),
+  );
   const overviewPending = hostInfoPending || uptimePending || serverTimePending;
 
   const [hostnameDialogOpen, setHostnameDialogOpen] = useState(false);

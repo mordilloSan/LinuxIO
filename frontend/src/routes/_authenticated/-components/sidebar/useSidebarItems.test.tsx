@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import { AuthContext } from "@/contexts/AuthContext";
-import { router } from "@/router/router";
 import {
   createAuthContextValue,
   createTestQueryClient,
@@ -15,6 +14,7 @@ import {
 
 import SidebarNavList from "./SidebarNavList";
 import { useSidebarItems } from "./useSidebarItems";
+import { router } from "../../../../router/router";
 
 const linkProps = vi.hoisted(() => ({
   calls: [] as Array<{

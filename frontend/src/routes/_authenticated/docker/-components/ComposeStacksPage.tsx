@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import {
@@ -91,9 +92,11 @@ const ComposeStacksPage = ({
     data: rawProjects,
     isPending,
     refetch,
-  } = linuxio.docker.list_compose_projects.useQuery({
-    refetchInterval: 5000,
-  });
+  } = useQuery(
+    linuxio.docker.list_compose_projects.queryOptions({
+      refetchInterval: 5000,
+    }),
+  );
   const projects = useMemo(() => rawProjects ?? [], [rawProjects]);
 
   // Success/error toasts are composed per delete option in handleDeleteConfirm.

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 
@@ -55,10 +56,12 @@ const DockerPage = () => {
       : "dashboard";
   const isDashboardTab = activeDockerTab === "dashboard";
   const { data: rawContainers, isLoading: dashboardContainersLoading } =
-    linuxio.docker.list_containers.useQuery({
-      enabled: isDashboardTab,
-      refetchInterval: isDashboardTab ? 5000 : false,
-    });
+    useQuery(
+      linuxio.docker.list_containers.queryOptions({
+        enabled: isDashboardTab,
+        refetchInterval: isDashboardTab ? 5000 : false,
+      }),
+    );
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),

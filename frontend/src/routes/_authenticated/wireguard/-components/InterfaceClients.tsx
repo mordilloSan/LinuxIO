@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
@@ -38,11 +39,13 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
     data: peersData,
     isLoading,
     isError,
-  } = linuxio.wireguard.list_peers.useQuery(interfaceName, {
-    enabled: !!interfaceName,
-    // poll so bps updates
-    refetchInterval: 3000,
-  });
+  } = useQuery(
+    linuxio.wireguard.list_peers.queryOptions(interfaceName, {
+      enabled: !!interfaceName,
+      // poll so bps updates
+      refetchInterval: 3000,
+    }),
+  );
 
   // Mutations
   const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useJobAction({
@@ -89,13 +92,15 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
       toast: WIREGUARD_TOAST_META,
     });
 
-  const qrQuery = linuxio.wireguard.peer_qrcode.useQuery(
-    { interfaceName, peerName: qrPeer ?? "" },
-    {
-      enabled: qrPeer !== null,
-      staleTime: CACHE_TTL_MS.NONE,
-      gcTime: CACHE_TTL_MS.NONE,
-    },
+  const qrQuery = useQuery(
+    linuxio.wireguard.peer_qrcode.queryOptions(
+      { interfaceName, peerName: qrPeer ?? "" },
+      {
+        enabled: qrPeer !== null,
+        staleTime: CACHE_TTL_MS.NONE,
+        gcTime: CACHE_TTL_MS.NONE,
+      },
+    ),
   );
   if (isLoading) return <PageLoader />;
   if (isError)

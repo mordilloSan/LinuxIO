@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -33,10 +34,12 @@ const UpdatesPage = () => {
     data: rawUpdates,
     isLoading,
     refetch,
-  } = linuxio.updates.get_updates_basic.useQuery({
-    enabled: !packageKitUnavailable,
-    refetchInterval: 50000,
-  });
+  } = useQuery(
+    linuxio.updates.get_updates_basic.queryOptions({
+      enabled: !packageKitUnavailable,
+      refetchInterval: 50000,
+    }),
+  );
   const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -22,8 +23,9 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 const UpdateHistory = () => {
   const theme = useAppTheme();
-  const { data: rows = [], isPending } =
-    linuxio.updates.get_update_history.useQuery();
+  const { data: rows = [], isPending } = useQuery(
+    linuxio.updates.get_update_history.queryOptions(),
+  );
 
   if (isPending) {
     return <PageLoader />;

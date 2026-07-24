@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { linuxio } from "@/api";
@@ -20,9 +21,11 @@ const GpuInfo = () => {
     data: gpus,
     isPending,
     isError,
-  } = linuxio.system.get_gpu_info.useQuery({
-    refetchInterval: 2_000,
-  });
+  } = useQuery(
+    linuxio.system.get_gpu_info.queryOptions({
+      refetchInterval: 2_000,
+    }),
+  );
 
   const content: ReactNode = isPending ? (
     <ComponentLoader />

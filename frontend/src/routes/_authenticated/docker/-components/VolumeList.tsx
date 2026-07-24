@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -138,9 +139,11 @@ const VolumeList = ({
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
-  const { data: rawVolumes, isPending } = linuxio.docker.list_volumes.useQuery({
-    refetchInterval: 10000,
-  });
+  const { data: rawVolumes, isPending } = useQuery(
+    linuxio.docker.list_volumes.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

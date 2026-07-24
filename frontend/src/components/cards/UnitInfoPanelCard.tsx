@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { UnitInfo } from "@/api";
@@ -77,11 +78,10 @@ export function UnitInfoPanel({
   title = "Unit file & dependencies",
   renderInfoRows,
 }: UnitInfoPanelProps) {
-  const { data: info, isPending } = linuxio.systemd.get_unit_info.useQuery(
-    unitName,
-    {
+  const { data: info, isPending } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(unitName, {
       refetchInterval: 2000,
-    },
+    }),
   );
 
   const fragmentPath = String(info?.FragmentPath ?? "");

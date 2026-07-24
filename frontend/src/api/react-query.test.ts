@@ -1,15 +1,19 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueries,
+} from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
+import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
 import { openJobAttachStream } from "@/api/linuxio";
 import * as core from "@/api/linuxio-core";
 import { LinuxIOError } from "@/api/linuxio-core";
 import { createEndpoint } from "@/api/react-query";
 import type { Stream } from "@/api/StreamMultiplexer";
-import { ROUTE_INVALIDATIONS } from "@/constants/routeInvalidations";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -20,9 +24,6 @@ vi.mock("@/api/linuxio", async (importOriginal) => {
   return {
     ...actual,
     openJobAttachStream: vi.fn(),
-    // useQuery/useQueries gate on the stream mux; tests run with it "open".
-    useStreamMux: () => ({ isOpen: true, status: "open" }),
-    useIsUpdating: () => false,
   };
 });
 
@@ -213,14 +214,14 @@ describe("useJobAction", () => {
     expect(result.current.data).toEqual({ ok: true });
   });
 
-  it("defaults invalidation to the route's ROUTE_INVALIDATIONS entry", async () => {
+  it("defaults invalidation to the route's job-query manifest entry", async () => {
     vi.spyOn(core, "request").mockResolvedValue(jobSnapshot());
     const endpoint = createEndpoint("docker", "start_container", {
       kind: "field",
       field: "containerId",
     });
 
-    const manifestKeys = ROUTE_INVALIDATIONS["docker.start_container"];
+    const manifestKeys = JOB_QUERY_INVALIDATIONS["docker.start_container"];
     expect(manifestKeys.length).toBeGreaterThan(0);
 
     const { result, invalidateSpy } = renderJobAction(() =>
@@ -379,7 +380,7 @@ describe("useAction", () => {
       { content: "services: {}" },
       { retryPolicy: "connection_closed" },
     );
-    // Query routes have no ROUTE_INVALIDATIONS entry, so nothing invalidates.
+    // Query routes have no job-query manifest entry, so nothing invalidates.
     expect(invalidateSpy).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith(
       "Compose file is valid",
@@ -444,7 +445,7 @@ describe("useFetcher", () => {
 });
 
 describe("useQueries", () => {
-  it("runs one cached query per input with the endpoint's key scheme", async () => {
+  it("composes one cached queryOptions object per input", async () => {
     const request = vi
       .spyOn(core, "request")
       .mockImplementation((_handler, _command, wireRequest) =>
@@ -456,7 +457,11 @@ describe("useQueries", () => {
     });
 
     const { result } = renderJobAction(() =>
-      endpoint.useQueries(["a", "b"], { staleTime: Infinity }),
+      useQueries({
+        queries: ["a", "b"].map((jobId) =>
+          endpoint.queryOptions(jobId, { staleTime: Infinity }),
+        ),
+      }),
     );
 
     await waitFor(() =>
@@ -476,7 +481,11 @@ describe("useQueries", () => {
       field: "jobId",
     });
 
-    renderJobAction(() => endpoint.useQueries(["a"], { enabled: false }));
+    renderJobAction(() =>
+      useQueries({
+        queries: [endpoint.queryOptions("a", { enabled: false })],
+      }),
+    );
 
     expect(request).not.toHaveBeenCalled();
   });

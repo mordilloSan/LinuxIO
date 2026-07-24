@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 import type { Service, TableCardViewMode } from "@/api";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -22,9 +24,11 @@ function matchesServiceSearch(service: Service, search: string): boolean {
 }
 
 function useServicesQuery(viewMode: TableCardViewMode) {
-  return linuxio.systemd.list_services.useQuery({
-    refetchInterval: viewMode === "card" ? false : 2000,
-  });
+  return useQuery(
+    linuxio.systemd.list_services.queryOptions({
+      refetchInterval: viewMode === "card" ? false : 2000,
+    }),
+  );
 }
 
 const ServicesTab = () => {

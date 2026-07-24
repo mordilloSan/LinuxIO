@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
@@ -26,13 +27,12 @@ const UpdateList = ({
     null,
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const changelogQuery = linuxio.updates.get_update_detail.useQuery(
-    changelogPackageId ?? "",
-    {
+  const changelogQuery = useQuery(
+    linuxio.updates.get_update_detail.queryOptions(changelogPackageId ?? "", {
       enabled: changelogPackageId !== null,
       staleTime: CACHE_TTL_MS.FIVE_MINUTES,
       select: (detail) => detail.changelog || "No changelog available",
-    },
+    }),
   );
   const changelog = changelogQuery.isError
     ? "Failed to load changelog"

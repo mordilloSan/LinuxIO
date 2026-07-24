@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type CSSProperties } from "react";
 
 import {
@@ -586,23 +587,29 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
     data: pvs = [],
     isPending: pvsPending,
     refetch: refetchPVs,
-  } = linuxio.storage.list_pvs.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.storage.list_pvs.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const {
     data: vgs = [],
     isPending: vgsPending,
     refetch: refetchVGs,
-  } = linuxio.storage.list_vgs.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.storage.list_vgs.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const {
     data: lvs = [],
     isPending: lvsPending,
     refetch: refetchLVs,
-  } = linuxio.storage.list_lvs.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.storage.list_lvs.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
   const handleCreateLV = useCallback(() => {
     setCreateDialogOpen(true);
   }, []);

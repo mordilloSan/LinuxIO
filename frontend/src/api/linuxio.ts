@@ -289,12 +289,26 @@ const subscribeToUpdating = makeSubscribeWithRebind((mux, notifyStoreChanged) =>
   mux.addUpdatingListener(notifyStoreChanged),
 );
 
-function getStatusSnapshot(): MuxStatus {
-  return getStreamMux()?.status ?? "closed";
+/** Subscribe to changes that determine whether API requests may run. */
+export function subscribeRequestAvailability(
+  notifyStoreChanged: () => void,
+): () => void {
+  const unsubscribeStatus = subscribeToStatus(notifyStoreChanged);
+  const unsubscribeUpdating = subscribeToUpdating(notifyStoreChanged);
+  return () => {
+    unsubscribeStatus();
+    unsubscribeUpdating();
+  };
 }
 
-function getUpdatingSnapshot(): boolean {
-  return getStreamMux()?.isUpdating ?? false;
+/** Whether the shared request transport is open and not paused by an update. */
+export function isRequestAvailable(): boolean {
+  const mux = getStreamMux();
+  return mux?.status === "open" && !mux.isUpdating;
+}
+
+function getStatusSnapshot(): MuxStatus {
+  return getStreamMux()?.status ?? "closed";
 }
 
 // ============================================================================
@@ -324,14 +338,6 @@ export function useStreamMux() {
     isOpen: status === "open",
     getStream,
   };
-}
-
-/**
- * Hook to track system update status.
- * Returns true when a system update is in progress and all API queries should be paused.
- */
-export function useIsUpdating(): boolean {
-  return useSyncExternalStore(subscribeToUpdating, getUpdatingSnapshot);
 }
 
 // ============================================================================

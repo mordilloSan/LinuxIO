@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import {
   Fragment,
@@ -50,10 +51,12 @@ interface UserDetailsPanelProps {
 }
 
 function useAccountDetails(username: string) {
-  return linuxio.accounts.get_user_details.useQuery(username, {
-    enabled: Boolean(username),
-    refetchInterval: 10000,
-  });
+  return useQuery(
+    linuxio.accounts.get_user_details.queryOptions(username, {
+      enabled: Boolean(username),
+      refetchInterval: 10000,
+    }),
+  );
 }
 
 function getLoginLocation(login: AccountUserLogin): string {
@@ -559,10 +562,12 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     isLoading: loginsLoading,
     isError: loginsError,
     error: loginsErrorValue,
-  } = linuxio.accounts.list_user_logins.useQuery(username, {
-    enabled: Boolean(username),
-    refetchInterval: 30000,
-  });
+  } = useQuery(
+    linuxio.accounts.list_user_logins.queryOptions(username, {
+      enabled: Boolean(username),
+      refetchInterval: 30000,
+    }),
+  );
   const sessions = details?.activeSessions ?? [];
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");

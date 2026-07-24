@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
@@ -16,9 +18,11 @@ const MemoryUsage = () => {
     data: memoryData,
     isPending,
     isError,
-  } = linuxio.system.get_memory_info.useQuery({
-    refetchInterval: 2000,
-  });
+  } = useQuery(
+    linuxio.system.get_memory_info.queryOptions({
+      refetchInterval: 2000,
+    }),
+  );
 
   if (isPending || isError) {
     return (

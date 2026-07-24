@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
 import { linuxio, type SambaShare } from "@/api";
@@ -502,9 +503,11 @@ const SambaShares = ({
     data: shares = [],
     isPending,
     refetch,
-  } = linuxio.shares.list_samba_shares.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.shares.list_samba_shares.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
 
   const handleCreate = useCallback(() => {
     setCreateOpen(true);

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   lazy,
   Suspense,
@@ -128,34 +129,42 @@ const DockerInfo = () => {
     data: rawContainers,
     isPending: containersPending,
     isLoadingError: containersError,
-  } = linuxio.docker.list_containers.useQuery({
-    refetchInterval: 5000,
-  });
+  } = useQuery(
+    linuxio.docker.list_containers.queryOptions({
+      refetchInterval: 5000,
+    }),
+  );
   const containers = useMemo(() => rawContainers ?? [], [rawContainers]);
   const {
     data: imagesCount = 0,
     isPending: imagesPending,
     isLoadingError: imagesError,
-  } = linuxio.docker.list_images.useQuery({
-    refetchInterval: 30_000,
-    select: getCollectionCount,
-  });
+  } = useQuery(
+    linuxio.docker.list_images.queryOptions({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    }),
+  );
   const {
     data: networksCount = 0,
     isPending: networksPending,
     isLoadingError: networksError,
-  } = linuxio.docker.list_networks.useQuery({
-    refetchInterval: 30_000,
-    select: getCollectionCount,
-  });
+  } = useQuery(
+    linuxio.docker.list_networks.queryOptions({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    }),
+  );
   const {
     data: volumesCount = 0,
     isPending: volumesPending,
     isLoadingError: volumesError,
-  } = linuxio.docker.list_volumes.useQuery({
-    refetchInterval: 30_000,
-    select: getCollectionCount,
-  });
+  } = useQuery(
+    linuxio.docker.list_volumes.queryOptions({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    }),
+  );
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
     [containers],

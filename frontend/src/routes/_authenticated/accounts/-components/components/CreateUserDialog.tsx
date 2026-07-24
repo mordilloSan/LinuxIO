@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { type CreateUserRequest, linuxio } from "@/api";
@@ -36,10 +37,12 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [createHome, setCreateHome] = useState(true);
 
-  const { data: shells = [], isLoading: shellsLoading } =
-    linuxio.accounts.list_shells.useQuery({ enabled: open });
-  const { data: groups = [], isLoading: groupsLoading } =
-    linuxio.accounts.list_groups.useQuery({ enabled: open });
+  const { data: shells = [], isLoading: shellsLoading } = useQuery(
+    linuxio.accounts.list_shells.queryOptions({ enabled: open }),
+  );
+  const { data: groups = [], isLoading: groupsLoading } = useQuery(
+    linuxio.accounts.list_groups.queryOptions({ enabled: open }),
+  );
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];

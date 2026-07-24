@@ -4,35 +4,17 @@ import { describe, expect, it } from "vitest";
 
 import { relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
-// Feature code talks to the backend through the typed hook surface only:
-// render-driven reads via `endpoint.useQuery`/`useQueries`, event-driven
+// Feature code talks to the backend through centralized endpoint options:
+// render-driven reads via `useQuery(endpoint.queryOptions(...))`, event-driven
 // commands via `endpoint.useAction`, writes via `endpoint.useJobAction`/
 // `useJobStreamAction` or the background-jobs layer, imperative loader/effect
 // reads via `endpoint.useFetcher()`, and cache surgery via
-// `endpoint.useCache()`. The primitives — bare `linuxio.<handler>.<command>()`
-// promise calls, raw React Query hooks, and direct query-client access — live
-// in the API layer, so feature code never imports @tanstack/react-query.
+// `endpoint.useCache()`. Bare `linuxio.<handler>.<command>()` promise calls,
+// raw mutations, and direct query-client access stay in the API layer.
 // See docs/api-contract.md ("Every generated endpoint exposes").
 
 // Directories that ARE the primitive layer.
 const SANCTIONED_DIR_PREFIXES = ["api/", "hooks/backgroundJobs/"];
-
-// Beyond the primitive layer, only React Query's own wiring may import it:
-// the provider, route context/loader plumbing, and the test harness — plus
-// the invalidation manifest's type-only `QueryKey` import.
-const REACT_QUERY_IMPORT_ALLOWED_PREFIXES = [
-  ...SANCTIONED_DIR_PREFIXES,
-  "test/",
-];
-const REACT_QUERY_IMPORT_ALLOWED_FILES = new Set([
-  "constants/routeInvalidations.ts",
-  "query-client.tsx",
-  "routes/-context.ts",
-  "routes/-loader.ts",
-  // The application router receives the active QueryClient by identity.
-  "routes/-provider.tsx",
-]);
-const REACT_QUERY_IMPORT = /from\s*["']@tanstack\/react-query["']/;
 
 // Files allowed to call `linuxio.<handler>.<command>(...)` directly.
 // Shrink this list over time; never grow it without a structural reason.
@@ -43,9 +25,10 @@ const ALLOWED_BARE_CALL_FILES = new Set([
 ]);
 
 // Matches `linuxio.<handler>.<command>(` — a bare endpoint invocation. Member
-// access like `linuxio.docker.list_images.useQuery(` does not match because a
-// third property follows instead of a call.
+// access like `linuxio.docker.list_images.queryOptions(` does not match
+// because a third property follows instead of a call.
 const BARE_ENDPOINT_CALL = /\blinuxio\.\w+\.\w+\(/;
+const ENDPOINT_QUERY_WRAPPER = /\blinuxio\.\w+\.\w+\.useQuer(?:y|ies)\s*\(/;
 
 // Byte/mux-level transport primitives. Feature code talks streams through
 // the stream openers (openTerminalStream, ...) and the lifecycle hooks; only
@@ -120,6 +103,22 @@ function isSanctioned(rel: string): boolean {
 }
 
 describe("API layering guard", () => {
+  it("keeps endpoint query-hook wrappers out of feature code", () => {
+    const violations = sourceFiles()
+      .map(relativeToSrc)
+      .filter((rel) =>
+        ENDPOINT_QUERY_WRAPPER.test(
+          readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
+        ),
+      );
+
+    expect(
+      violations,
+      "Render-driven reads use TanStack Query directly with " +
+        "useQuery(endpoint.queryOptions(...)) or useQueries.",
+    ).toEqual([]);
+  });
+
   it("keeps bare linuxio endpoint calls out of feature code", () => {
     const violations = sourceFiles()
       .map(relativeToSrc)
@@ -135,32 +134,10 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Feature code must not call linuxio endpoints as bare promises. " +
-        "Reads go through endpoint.useQuery or " +
+        "Reads go through useQuery(endpoint.queryOptions(...)) or " +
         "queryClient.fetchQuery(endpoint.queryOptions(...)); writes go " +
         "through endpoint.useJobAction / useJobStreamAction or the " +
         "background-jobs layer.",
-    ).toEqual([]);
-  });
-
-  it("keeps direct React Query imports out of feature code", () => {
-    const violations = sourceFiles()
-      .map(relativeToSrc)
-      .filter(
-        (rel) =>
-          !REACT_QUERY_IMPORT_ALLOWED_PREFIXES.some((prefix) =>
-            rel.startsWith(prefix),
-          ) &&
-          !REACT_QUERY_IMPORT_ALLOWED_FILES.has(rel) &&
-          REACT_QUERY_IMPORT.test(
-            readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
-          ),
-      );
-
-    expect(
-      violations,
-      "Feature code talks to React Query through the endpoint hooks " +
-        "(useQuery/useQueries/useAction/useJobAction/useJobStreamAction/" +
-        "useFetcher/useCache), not by importing @tanstack/react-query.",
     ).toEqual([]);
   });
 

@@ -62,7 +62,7 @@ For request routes:
 | File | Role |
 |------|------|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
-| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks (`useQuery`, `useJobAction`, `useJobStreamAction`), query keys/options, route mode checks, retry policy, request shaping. |
+| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, centralized React Query keys/options, action hooks (`useJobAction`, `useJobStreamAction`), route mode checks, retry policy, request shaping. |
 | `frontend/src/api/linuxio-core.ts` | Low-level JSON request path over the stream multiplexer. API internals only. |
 | `frontend/src/api/linuxio.ts` | Stream utilities, connection hooks, stream openers, and job-backed stream wrappers. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
@@ -94,11 +94,15 @@ Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for 
 ## Frontend Shape
 
 ```typescript
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 
-const { data: unit } = linuxio.systemd.get_unit_info.useQuery("ssh.service", {
-  refetchInterval: 2000,
-});
+const { data: unit } = useQuery(
+  linuxio.systemd.get_unit_info.queryOptions("ssh.service", {
+    refetchInterval: 2000,
+  }),
+);
 
 // Loader/effect reads go through a cache-backed fetcher, not bare endpoint
 // calls or the query client:
@@ -125,29 +129,36 @@ Every generated endpoint exposes:
 | Member | Use |
 |--------|-----|
 | `endpoint(...input)` | Framework-agnostic Promise call. API/jobs infrastructure only — feature code uses the hooks. |
-| `endpoint.useQuery(...input, options?)` | React Query hook for render-driven reads on query routes. |
-| `endpoint.useQueries(inputs, options?)` | `useQuery` over a dynamic list of inputs — one query per input, sharing the singular hook's cache entries and stream-mux gating. |
+| `endpoint.queryOptions(...input, options?)` | The single definition of the query key, query function, request shaping, retry policy, and caller overrides. Pass it to `useQuery`, `useQueries`, route loaders, or the query client. |
+| `endpoint.queryKey(...input)` | Stable React Query key for invalidation and cache operations that only need the key. It uses exactly the same request shaping as `queryOptions`. |
 | `endpoint.useAction(config?)` | Mutation-style hook for query routes used as event-driven commands (validation, download generation, path resolution): `mutate`/`mutateAsync` with pending state and declarative toasts, no query caching. |
 | `endpoint.useJobAction(config?)` | React Query hook for job routes: awaits job completion, unwraps the job result, declarative invalidation/toasts. |
 | `endpoint.useJobStreamAction(config?)` | Job-route hook with live progress: starts the job, attaches to its stream, and surfaces `onJobStart`/`onOpen`/`onProgress` plus the `useJobAction` config. The returned mutation also exposes `attach(job, variables)`, which adopts an already-running job (page-reload recovery via `useActiveJobRecovery`) into the same config lifecycle — progress, toasts, invalidation, and pending state behave exactly as if `mutate(variables)` had started it. |
 | `endpoint.useFetcher()` | Hook returning a stable imperative fetch through the query cache — for loaders and effects that need data at call time (chart backfill, lazy tree loads, workflow pre-checks). Same input shape and options as `useQuery`. |
 | `endpoint.useCache()` | Hook returning a stable typed cache handle: `get`/`set` for one request's entry (optimistic updates, seeding an action's result), `invalidate`/`remove`/`cancel` for one entry or — with no input — the whole endpoint. |
-| `endpoint.queryKey(...input)` | Stable React Query key. |
-| `endpoint.queryOptions(...input, options?)` | Options object for API-layer plumbing (route loaders and the `useFetcher` implementation); feature code uses the hooks. |
 
-Feature code (route-owned `-components/`, shared `components/`, `contexts/`, and non-jobs `hooks/`) never imports `@tanstack/react-query` at all: render-driven reads go through `useQuery`/`useQueries`, event-driven commands through `useAction`, writes through `useJobAction`/`useJobStreamAction` or the background-jobs layer, imperative loader/effect reads through `useFetcher`, and cache manipulation through `useCache`. The primitives live in `src/api/` and `src/hooks/backgroundJobs/` (with route loading/context/provider infrastructure as the only other React Query touchpoints); guard tests (`frontend/src/constants/apiLayering.test.ts`) enforce the boundary.
+Feature code imports TanStack Query's read primitives directly and combines
+them with the generated endpoint options:
+`useQuery(endpoint.queryOptions(...))` or
+`useQueries({ queries: inputs.map((input) => endpoint.queryOptions(input)) })`.
+Event-driven commands still go through `useAction`, writes through
+`useJobAction`/`useJobStreamAction` or the background-jobs layer,
+imperative loader/effect reads through `useFetcher`, and cache manipulation
+through `useCache`. Feature code does not define query keys/functions or use
+raw mutations. Guard tests (`frontend/src/constants/apiLayering.test.ts`)
+enforce that boundary.
 
 Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for the request transport and return typed `endpoint.queryOptions(...)` results from the shared browser QueryClient. It requires a live `isUpdateBlocked` getter from router context rather than the mux, rechecks it after readiness, and rejects without querying while an update is active. Loader failures propagate to TanStack Router; intent preloads are marked speculative so QueryCache suppresses their global error toast.
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code consumes streams through the `open*Stream` factories and the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`), and only a short, shrink-only allowlist of low-level consumers may import the primitives from `@/api`.
 
-`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data. `useAction` and `useJobAction` instead take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
+`queryOptions` accepts normal React Query options, including `select` for transformed output data. `useAction` and `useJobAction` instead take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
 
 ### Choosing a member (decision table)
 
 | Situation | Use |
 |-----------|-----|
-| Data rendered by this component | `useQuery` (list of inputs: `useQueries`) — even for on-demand panels: gate with `enabled` and state instead of fetching imperatively. |
+| Data rendered by this component | `useQuery(endpoint.queryOptions(...))` (list of inputs: `useQueries` with one endpoint options object per input) — even for on-demand panels: gate with `enabled` and state instead of fetching imperatively. |
 | Data needed inside an effect, loader, or event handler, then handed to something else (chart backfill, editor content, lazy tree loads) | `useFetcher` — add `staleTime/gcTime: CACHE_TTL_MS.NONE` when the read must not be cached. |
 | Query route invoked as a command (validate, generate download, resolve path) where the result is consumed by the flow, not displayed | `useAction` — declarative toasts + `isPending`; omit the config when a surrounding workflow owns error handling (say so in a comment). |
 | Single mutation triggered by one user action | `useJobAction` with declarative config (`success`/`warning`/`error` strings; side effects via a `success` callback or `options.onSettled`). Fire with `mutate`. |
@@ -158,7 +169,7 @@ The same guard file also fences the byte/mux-level transport primitives (`encode
 
 Refreshes after mutations come from the invalidation manifest by default — do not add `refetch()` calls or `onSuccess` refresh props on top of it; if a list does not refresh, fix the manifest entry instead.
 
-Query invalidation is manifest-driven: `frontend/src/constants/routeInvalidations.ts` maps each job route to the query caches it makes stale, and is the single source of truth for both lifecycles — `useJobAction`/`useJobStreamAction` use it as the default `invalidates` for locally awaited jobs, and the recovered-jobs stream applies it to jobs that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). A guard test (`frontend/src/constants/routeInvalidations.test.ts`) keeps ad-hoc `queryClient.invalidateQueries` calls out of feature code.
+Query invalidation is manifest-driven: `frontend/src/api/job-query-invalidations.ts` maps each job route to the query caches it makes stale, using the same centralized key factory as endpoint `queryOptions`. It is the single source of truth for both lifecycles — `useJobAction`/`useJobStreamAction` use it as the default `invalidates` for locally awaited jobs, and the recovered-jobs stream applies it to jobs that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). Its adjacent guard test keeps ad-hoc `queryClient.invalidateQueries` calls out of feature code.
 
 Input is generated from the Go request contract:
 
@@ -559,14 +570,14 @@ Current shape:
 ```typescript
 await linuxio.system.get_cpu_info();
 await linuxio.jobs.cancel(jobId);
-linuxio.system.get_cpu_info.useQuery();
+useQuery(linuxio.system.get_cpu_info.queryOptions());
 linuxio.docker.start_container.useJobAction({ invalidates, success, error });
 ```
 
 Remaining cleanup:
 
 1. Keep `frontend/src/api/generated/*` generated only.
-2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for direct calls and React Query hooks (including `useJobAction`).
+2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for centralized query options and endpoint action/cache hooks.
 3. Keep stream helpers in `frontend/src/api/linuxio.ts` because streams are not normal request/response endpoints.
 4. Avoid adding another hand-written typed API layer.
 

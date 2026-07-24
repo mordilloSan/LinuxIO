@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
@@ -100,18 +101,21 @@ const SectionHeader = ({
 
 const HardwarePage = () => {
   // ── data ──
-  const { data: sensorGroups, isPending: isSensorsPending } =
-    linuxio.system.get_sensor_info.useQuery({
+  const { data: sensorGroups, isPending: isSensorsPending } = useQuery(
+    linuxio.system.get_sensor_info.queryOptions({
       refetchInterval: 5000,
-    }) as { data: SensorGroup[] | undefined; isPending: boolean };
-  const { data: pciDevices, isPending: isPciPending } =
-    linuxio.system.get_pci_devices.useQuery({
+    }),
+  ) as { data: SensorGroup[] | undefined; isPending: boolean };
+  const { data: pciDevices, isPending: isPciPending } = useQuery(
+    linuxio.system.get_pci_devices.queryOptions({
       staleTime: 300000,
-    });
-  const { data: memoryModules, isPending: isMemoryPending } =
-    linuxio.system.get_memory_modules.useQuery({
+    }),
+  );
+  const { data: memoryModules, isPending: isMemoryPending } = useQuery(
+    linuxio.system.get_memory_modules.queryOptions({
       staleTime: 300000,
-    });
+    }),
+  );
 
   const visibleSensorGroups = useMemo(
     () =>

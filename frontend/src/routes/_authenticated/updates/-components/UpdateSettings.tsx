@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import {
@@ -34,10 +35,11 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   },
 });
 export const useUpdateSettingsState = (enabled = true) => {
-  const { data: rawServerState, isLoading: loading } =
-    linuxio.updates.get_auto_updates.useQuery({
+  const { data: rawServerState, isLoading: loading } = useQuery(
+    linuxio.updates.get_auto_updates.queryOptions({
       enabled,
-    });
+    }),
+  );
   const toast = useScopedToast(UPDATES_TOAST_META);
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),

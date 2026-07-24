@@ -183,6 +183,14 @@ vi.mock("@/api", async (importOriginal) => {
       "resource_get",
       request,
     ],
+    queryOptions: (
+      request: { path: string },
+      options?: Record<string, unknown>,
+    ) => ({
+      queryKey: ["linuxio", "filebrowser", "resource_get", request],
+      queryFn: () => mocks.resourceGet(request),
+      ...options,
+    }),
     useFetcher: () => (request: { path: string }) => mocks.resourceGet(request),
   });
   const resourcePost = Object.assign(mocks.resourcePost, {
@@ -218,21 +226,34 @@ vi.mock("@/api", async (importOriginal) => {
         },
         get: {
           queryKey: (name: string) => ["linuxio", "virt", "get", { name }],
-          useQuery: (name: string) => ({
-            data: mocks.listVMs.find((vm) => vm.name === name),
+          queryOptions: (name: string, options?: Record<string, unknown>) => ({
+            queryKey: ["linuxio", "virt", "get", { name }],
+            queryFn: () =>
+              Promise.resolve(mocks.listVMs.find((vm) => vm.name === name)),
+            initialData: mocks.listVMs.find((vm) => vm.name === name),
+            ...options,
           }),
         },
         list: {
           queryKey: () => ["linuxio", "virt", "list"],
-          useCache: () => ({ set: vi.fn() }),
-          useQuery: () => ({
-            data: mocks.listVMs,
-            isLoading: false,
-            refetch: mocks.refetchList,
+          queryOptions: (options?: Record<string, unknown>) => ({
+            queryKey: ["linuxio", "virt", "list"],
+            queryFn: () => Promise.resolve(mocks.listVMs),
+            initialData: mocks.listVMs,
+            ...options,
           }),
+          useCache: () => ({ set: vi.fn() }),
         },
         preflight: {
-          useQuery: () => ({ data: mocks.preflight, refetch: vi.fn() }),
+          queryOptions: (
+            _request: unknown,
+            options?: Record<string, unknown>,
+          ) => ({
+            queryKey: ["linuxio", "virt", "preflight"],
+            queryFn: () => Promise.resolve(mocks.preflight),
+            initialData: mocks.preflight,
+            ...options,
+          }),
         },
         reboot: {
           useJobAction: (config?: JobActionConfig) =>

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
@@ -26,10 +27,11 @@ const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
-  const { data: groups = [], isPending } =
-    linuxio.accounts.list_groups.useQuery({
+  const { data: groups = [], isPending } = useQuery(
+    linuxio.accounts.list_groups.queryOptions({
       refetchInterval: 10000,
-    });
+    }),
+  );
 
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
 
@@ -93,20 +94,23 @@ const SystemHealth = () => {
   const { user: currentUser } = useAuth();
   const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
 
-  const { data: health, isPending: healthPending } =
-    linuxio.system.get_health_summary.useQuery({ refetchInterval: 50000 });
+  const { data: health, isPending: healthPending } = useQuery(
+    linuxio.system.get_health_summary.queryOptions({ refetchInterval: 50000 }),
+  );
 
   const {
     data: failedLoginEvents = [],
     isLoading: failedLoginEventsLoading,
     isError: failedLoginEventsError,
     error: failedLoginEventsErrorValue,
-  } = linuxio.system.list_failed_login_events.useQuery(
-    { limit: "24" },
-    {
-      enabled: failedLoginsOpen,
-      refetchInterval: failedLoginsOpen ? 30000 : false,
-    },
+  } = useQuery(
+    linuxio.system.list_failed_login_events.queryOptions(
+      { limit: "24" },
+      {
+        enabled: failedLoginsOpen,
+        refetchInterval: failedLoginsOpen ? 30000 : false,
+      },
+    ),
   );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =

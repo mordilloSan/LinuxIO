@@ -1,4 +1,5 @@
 import {
+  onlineManager,
   QueryCache,
   QueryClient,
   QueryClientProvider,
@@ -6,7 +7,29 @@ import {
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
-import { CACHE_TTL_MS } from "@/api";
+import {
+  CACHE_TTL_MS,
+  isRequestAvailable,
+  subscribeRequestAvailability,
+} from "@/api";
+
+onlineManager.setEventListener((setOnline) => {
+  const updateOnlineState = () => {
+    const browserOnline = typeof navigator === "undefined" || navigator.onLine;
+    setOnline(browserOnline && isRequestAvailable());
+  };
+
+  updateOnlineState();
+  const unsubscribeTransport = subscribeRequestAvailability(updateOnlineState);
+  globalThis.addEventListener?.("online", updateOnlineState);
+  globalThis.addEventListener?.("offline", updateOnlineState);
+
+  return () => {
+    unsubscribeTransport();
+    globalThis.removeEventListener?.("online", updateOnlineState);
+    globalThis.removeEventListener?.("offline", updateOnlineState);
+  };
+});
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
@@ -42,10 +43,12 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   const isProtected =
     user.username === "root" || user.username === currentUser?.name;
 
-  const { data: shells = [], isLoading: shellsLoading } =
-    linuxio.accounts.list_shells.useQuery({ enabled: open });
-  const { data: groups = [], isLoading: groupsLoading } =
-    linuxio.accounts.list_groups.useQuery({ enabled: open });
+  const { data: shells = [], isLoading: shellsLoading } = useQuery(
+    linuxio.accounts.list_shells.queryOptions({ enabled: open }),
+  );
+  const { data: groups = [], isLoading: groupsLoading } = useQuery(
+    linuxio.accounts.list_groups.queryOptions({ enabled: open }),
+  );
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];

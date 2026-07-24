@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
@@ -30,19 +31,19 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkPending,
     error: networkError,
-  } = linuxio.network.get_network_info.useQuery();
+  } = useQuery(linuxio.network.get_network_info.queryOptions());
 
   // Fetch existing WireGuard interfaces via stream API
   const {
     data: wgInterfaces,
     isPending: interfacesPending,
     error: interfacesError,
-  } = linuxio.wireguard.list_interfaces.useQuery();
+  } = useQuery(linuxio.wireguard.list_interfaces.queryOptions());
   const queriesPending = networkPending || interfacesPending;
   const queryError = networkError ?? interfacesError;
 
   // Job action for adding an interface; invalidation comes from the
-  // ROUTE_INVALIDATIONS manifest.
+  // JOB_QUERY_INVALIDATIONS manifest.
   const { mutate: addInterface, isPending: isAddingInterface } =
     linuxio.wireguard.add_interface.useJobAction({
       error: (error) => {

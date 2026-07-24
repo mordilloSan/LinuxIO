@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type MouseEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
@@ -354,10 +355,12 @@ const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
     });
 
   // Browsing is best-effort; on error the field falls back to free text.
-  const exportsQuery = linuxio.storage.list_nfs_exports.useQuery(browseServer, {
-    enabled: browseServer !== "",
-    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-  });
+  const exportsQuery = useQuery(
+    linuxio.storage.list_nfs_exports.queryOptions(browseServer, {
+      enabled: browseServer !== "",
+      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+    }),
+  );
   const exports = exportsQuery.data ?? [];
   const loadingExports = browseServer !== "" && exportsQuery.isLoading;
   const buildOptions = () => {
@@ -835,10 +838,11 @@ const NFSMounts = ({
   const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
     null,
   );
-  const { data: mounts = [], isPending } =
-    linuxio.storage.list_nfs_mounts.useQuery({
+  const { data: mounts = [], isPending } = useQuery(
+    linuxio.storage.list_nfs_mounts.queryOptions({
       refetchInterval: 10000,
-    });
+    }),
+  );
   const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useJobAction(
     {
       success: "NFS entry mounted",

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -66,9 +67,11 @@ const PowerSettingsSection = () => {
     data: status,
     isPending,
     error,
-  } = linuxio.power.get_status.useQuery({
-    refetchInterval: 15000,
-  });
+  } = useQuery(
+    linuxio.power.get_status.queryOptions({
+      refetchInterval: 15000,
+    }),
+  );
 
   const powerActionConfig = (message: string) => ({
     success: (nextStatus: PowerStatus) => {

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -52,11 +53,12 @@ const Drive = () => {
     data: rawDrives = [],
     isPending,
     isError,
-  } = linuxio.storage.get_drive_info.useQuery();
-  const { data: diskThroughput, isPending: throughputPending } =
-    linuxio.system.get_disk_throughput.useQuery({
+  } = useQuery(linuxio.storage.get_drive_info.queryOptions());
+  const { data: diskThroughput, isPending: throughputPending } = useQuery(
+    linuxio.system.get_disk_throughput.queryOptions({
       refetchInterval: 1000,
-    });
+    }),
+  );
 
   const drives = useMemo<DriveInfo[]>(
     () =>

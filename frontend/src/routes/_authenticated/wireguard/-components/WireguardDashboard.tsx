@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -30,9 +31,11 @@ const WireGuardDashboard = () => {
     isPending,
     isError,
     error,
-  } = linuxio.wireguard.list_interfaces.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.wireguard.list_interfaces.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
 
   const interfaceActionConfig = (verb: string, fallback: string) => ({
     success: (_result: void, variables: { name: string }) =>

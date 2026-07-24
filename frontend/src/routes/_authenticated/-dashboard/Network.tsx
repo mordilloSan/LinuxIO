@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -10,10 +11,11 @@ import NetworkGraph from "./NetworkGraph";
 
 const NetworkInterfacesCard = () => {
   const theme = useAppTheme();
-  const { data: rawInterfaces = [], isPending } =
-    linuxio.system.get_network_info.useQuery({
+  const { data: rawInterfaces = [], isPending } = useQuery(
+    linuxio.system.get_network_info.queryOptions({
       refetchInterval: 1000,
-    });
+    }),
+  );
 
   const interfaces = useMemo(
     () =>

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
@@ -91,10 +92,12 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
     });
 
   // Browsing is best-effort; on error the field falls back to free text.
-  const sharesQuery = linuxio.storage.list_cifs_shares.useQuery(browseServer, {
-    enabled: browseServer !== "",
-    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-  });
+  const sharesQuery = useQuery(
+    linuxio.storage.list_cifs_shares.queryOptions(browseServer, {
+      enabled: browseServer !== "",
+      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+    }),
+  );
   const shares = sharesQuery.data ?? [];
   const loadingShares = browseServer !== "" && sharesQuery.isLoading;
 
@@ -426,10 +429,11 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
 
-  const { data: mounts = [], isPending } =
-    linuxio.storage.list_cifs_mounts.useQuery({
+  const { data: mounts = [], isPending } = useQuery(
+    linuxio.storage.list_cifs_mounts.queryOptions({
       refetchInterval: 10000,
-    });
+    }),
+  );
 
   const { mutate: mountExisting } = linuxio.storage.mount_cifs.useJobAction({
     success: "SMB entry mounted",

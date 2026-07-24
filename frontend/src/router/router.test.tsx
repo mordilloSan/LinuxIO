@@ -46,9 +46,6 @@ describe("generated application router", () => {
   });
 
   it("gives every protected data page a loader", () => {
-    expect(typeof router.routesById["/_authenticated"].options.loader).toBe(
-      "function",
-    );
     expect(
       leafRoutes
         .filter((route) => route.fullPath !== "/sign-in")
@@ -57,8 +54,9 @@ describe("generated application router", () => {
     ).toEqual([]);
   });
 
-  it("does not add empty loaders to data-free routes", () => {
+  it("does not add empty loaders to data-free layout routes", () => {
     expect(router.routesById["/sign-in"].options.loader).toBeUndefined();
+    expect(router.routesById["/_authenticated"].options.loader).toBeUndefined();
     expect(
       typeof router.routesById["/_authenticated"].options.notFoundComponent,
     ).toBe("function");

@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
@@ -304,9 +305,11 @@ const GeneralLogsPage = () => {
   }, [logs]);
 
   // Current systemd unit states, used by the unit-status filter below.
-  const { data: services = [] } = linuxio.systemd.list_services.useQuery({
-    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-  });
+  const { data: services = [] } = useQuery(
+    linuxio.systemd.list_services.queryOptions({
+      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+    }),
+  );
 
   // Set of unit names matching the selected status. `null` means the filter is
   // either "all" (no filter) or "no_unit" (which is handled by checking for an

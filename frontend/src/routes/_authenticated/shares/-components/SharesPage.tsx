@@ -1,4 +1,6 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
 import { useRef, useState, type ReactNode } from "react";
 
 import {
@@ -41,6 +43,8 @@ import { DeleteNFSShareDialog } from "./NFSShares";
 import { DeleteSambaShareDialog } from "./SambaShares";
 import CIFSMounts from "../../storage/-components/CIFSMounts";
 import NFSMounts from "../../storage/-components/NFSMounts";
+
+const sharesRouteApi = getRouteApi("/_authenticated/shares");
 
 type ShareGroup = {
   id: string;
@@ -1139,6 +1143,8 @@ function renderExpandedContent(
 }
 
 const SharesPage = () => {
+  const search = sharesRouteApi.useSearch();
+  const isSharesTab = search.sharesTab !== "mounts";
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
@@ -1162,18 +1168,24 @@ const SharesPage = () => {
     data: nfsShares = [],
     isPending: nfsPending,
     refetch: refetchNFS,
-  } = linuxio.shares.list_nfs_shares.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.shares.list_nfs_shares.queryOptions({
+      enabled: isSharesTab,
+      refetchInterval: isSharesTab ? 10000 : false,
+    }),
+  );
   const {
     data: sambaShares = [],
     isPending: sambaPending,
     refetch: refetchSamba,
-  } = linuxio.shares.list_samba_shares.useQuery({
-    refetchInterval: 10000,
-  });
+  } = useQuery(
+    linuxio.shares.list_samba_shares.queryOptions({
+      enabled: isSharesTab,
+      refetchInterval: isSharesTab ? 10000 : false,
+    }),
+  );
 
-  if (nfsPending || sambaPending) {
+  if (isSharesTab && (nfsPending || sambaPending)) {
     return <PageLoader />;
   }
 

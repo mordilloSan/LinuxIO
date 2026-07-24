@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 
 import type { GpuDevice } from "@/api";
@@ -53,14 +54,16 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
 
 export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
-  const { data: motherboardInfo, isPending: isMotherboardPending } =
-    linuxio.system.get_motherboard_info.useQuery({
+  const { data: motherboardInfo, isPending: isMotherboardPending } = useQuery(
+    linuxio.system.get_motherboard_info.queryOptions({
       staleTime: 300_000,
-    });
-  const { data: systemInfo, isPending: isSystemPending } =
-    linuxio.system.get_system_info.useQuery({
+    }),
+  );
+  const { data: systemInfo, isPending: isSystemPending } = useQuery(
+    linuxio.system.get_system_info.queryOptions({
       staleTime: 300_000,
-    });
+    }),
+  );
   const isPending = isMotherboardPending || isSystemPending;
 
   if (isPending) {
@@ -108,14 +111,16 @@ export const MotherboardInfoCard = () => {
 
 export const CPUDetailsCard = () => {
   const theme = useAppTheme();
-  const { data: cpuInfo, isPending: isCpuPending } =
-    linuxio.system.get_cpu_info.useQuery({
+  const { data: cpuInfo, isPending: isCpuPending } = useQuery(
+    linuxio.system.get_cpu_info.queryOptions({
       staleTime: 300_000,
-    });
-  const { data: systemInfo, isPending: isSystemPending } =
-    linuxio.system.get_system_info.useQuery({
+    }),
+  );
+  const { data: systemInfo, isPending: isSystemPending } = useQuery(
+    linuxio.system.get_system_info.queryOptions({
       staleTime: 300_000,
-    });
+    }),
+  );
   const isPending = isCpuPending || isSystemPending;
 
   if (isPending) {
@@ -160,14 +165,16 @@ export const CPUDetailsCard = () => {
 
 export const BIOSInfoCard = () => {
   const theme = useAppTheme();
-  const { data: motherboardInfo, isPending: isMotherboardPending } =
-    linuxio.system.get_motherboard_info.useQuery({
+  const { data: motherboardInfo, isPending: isMotherboardPending } = useQuery(
+    linuxio.system.get_motherboard_info.queryOptions({
       staleTime: 300_000,
-    });
-  const { data: systemInfo, isPending: isSystemPending } =
-    linuxio.system.get_system_info.useQuery({
+    }),
+  );
+  const { data: systemInfo, isPending: isSystemPending } = useQuery(
+    linuxio.system.get_system_info.queryOptions({
       staleTime: 300_000,
-    });
+    }),
+  );
   const isPending = isMotherboardPending || isSystemPending;
 
   if (isPending) {
@@ -214,10 +221,12 @@ export const BIOSInfoCard = () => {
 export const GPUInfoCard = () => {
   const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
-  const { data: gpus, isPending } = linuxio.system.get_gpu_info.useQuery({
-    staleTime: 60_000,
-    refetchInterval: 15_000,
-  });
+  const { data: gpus, isPending } = useQuery(
+    linuxio.system.get_gpu_info.queryOptions({
+      staleTime: 60_000,
+      refetchInterval: 15_000,
+    }),
+  );
 
   const primaryGpu = useMemo(
     () =>
@@ -516,15 +525,16 @@ export const CPUHistoryCard = ({
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } =
-    linuxio.monitoring.get_cpu_history.useQuery(
+  const { data, isLoading, error } = useQuery(
+    linuxio.monitoring.get_cpu_history.queryOptions(
       { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
       {
         enabled: isEnabled,
         refetchInterval: range.refetchMs,
         placeholderData: (previous) => previous,
       },
-    );
+    ),
+  );
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
 
@@ -605,15 +615,16 @@ export const MemoryHistoryCard = ({
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } =
-    linuxio.monitoring.get_memory_history.useQuery(
+  const { data, isLoading, error } = useQuery(
+    linuxio.monitoring.get_memory_history.queryOptions(
       { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
       {
         enabled: isEnabled,
         refetchInterval: range.refetchMs,
         placeholderData: (previous) => previous,
       },
-    );
+    ),
+  );
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const zfsColor = theme.palette.success.main;
   const dockerColor = theme.chart.rx;
@@ -698,15 +709,16 @@ export const DiskIOHistoryCard = ({
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } =
-    linuxio.monitoring.get_diskio_history.useQuery(
+  const { data, isLoading, error } = useQuery(
+    linuxio.monitoring.get_diskio_history.queryOptions(
       { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
       {
         enabled: isEnabled,
         refetchInterval: range.refetchMs,
         placeholderData: (previous) => previous,
       },
-    );
+    ),
+  );
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const readColor = theme.chart.rx;
@@ -762,15 +774,16 @@ export const NetworkHistoryCard = ({
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } =
-    linuxio.monitoring.get_network_history.useQuery(
+  const { data, isLoading, error } = useQuery(
+    linuxio.monitoring.get_network_history.queryOptions(
       { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
       {
         enabled: isEnabled,
         refetchInterval: range.refetchMs,
         placeholderData: (previous) => previous,
       },
-    );
+    ),
+  );
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const rxColor = theme.chart.rx;

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -297,28 +298,34 @@ const IndexerSettingsSection = () => {
     error,
     refetch,
     isFetching,
-  } = linuxio.indexer.get_config.useQuery({
-    enabled: indexerEnabled,
-    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-  });
+  } = useQuery(
+    linuxio.indexer.get_config.queryOptions({
+      enabled: indexerEnabled,
+      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+    }),
+  );
   const {
     data: daemonStatus,
     error: statusError,
     refetch: refetchStatus,
     isFetching: isStatusFetching,
-  } = linuxio.indexer.get_status.useQuery({
-    enabled: indexerEnabled,
-    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-  });
+  } = useQuery(
+    linuxio.indexer.get_status.queryOptions({
+      enabled: indexerEnabled,
+      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+    }),
+  );
   const {
     data: timerInfo,
     error: timerError,
     refetch: refetchTimer,
     isFetching: isTimerFetching,
-  } = linuxio.systemd.get_unit_info.useQuery(INDEXER_TIMER_UNIT, {
-    enabled: indexerEnabled,
-    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-  });
+  } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(INDEXER_TIMER_UNIT, {
+      enabled: indexerEnabled,
+      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+    }),
+  );
 
   const setConfigMutation = linuxio.indexer.set_config.useJobAction({
     error: "Failed to save indexer settings",

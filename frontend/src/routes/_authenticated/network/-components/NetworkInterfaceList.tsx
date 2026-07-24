@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -29,10 +30,11 @@ const NetworkInterfaceList = () => {
   const navigate = networkRouteApi.useNavigate();
   const expanded = typeof search.iface === "string" ? search.iface : undefined;
 
-  const { data: rawInterfaces = [], isPending } =
-    linuxio.network.get_network_info.useQuery({
+  const { data: rawInterfaces = [], isPending } = useQuery(
+    linuxio.network.get_network_info.queryOptions({
       refetchInterval: 1000,
-    });
+    }),
+  );
 
   // Transform data - filter veths and add type field
   const interfaces = useMemo(

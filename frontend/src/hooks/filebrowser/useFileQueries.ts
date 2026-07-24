@@ -1,3 +1,4 @@
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { CACHE_TTL_MS, linuxio, LinuxIOError } from "@/api";
@@ -24,11 +25,13 @@ export const useFileQueries = ({
     isPending,
     isError,
     error,
-  } = linuxio.filebrowser.resource_get.useQuery(
-    { path: normalizedPath },
-    {
-      staleTime: CACHE_TTL_MS.NONE,
-    },
+  } = useQuery(
+    linuxio.filebrowser.resource_get.queryOptions(
+      { path: normalizedPath },
+      {
+        staleTime: CACHE_TTL_MS.NONE,
+      },
+    ),
   );
 
   const resource = useMemo(
@@ -60,22 +63,24 @@ export const useFileQueries = ({
     data: detailResource,
     isLoading: isDetailLoading,
     error: detailError,
-  } = linuxio.filebrowser.resource_get.useQuery(
-    {
-      path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
-      unused: "",
-      getContent: "true",
-    },
-    {
-      enabled:
-        hasSingleDetailTarget &&
-        detailTarget !== null &&
-        detailTarget.length === 1,
-    },
+  } = useQuery(
+    linuxio.filebrowser.resource_get.queryOptions(
+      {
+        path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
+        unused: "",
+        getContent: "true",
+      },
+      {
+        enabled:
+          hasSingleDetailTarget &&
+          detailTarget !== null &&
+          detailTarget.length === 1,
+      },
+    ),
   );
 
-  const { data: statData, isLoading: isStatLoading } =
-    linuxio.filebrowser.resource_stat.useQuery(
+  const { data: statData, isLoading: isStatLoading } = useQuery(
+    linuxio.filebrowser.resource_stat.queryOptions(
       detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
       {
         enabled:
@@ -83,20 +88,25 @@ export const useFileQueries = ({
           detailTarget !== null &&
           detailTarget.length === 1,
       },
-    );
+    ),
+  );
 
   const multipleDetailTargets =
     hasMultipleDetailTargets && detailTarget !== null && detailTarget.length > 1
       ? detailTarget
       : [];
 
-  const multipleResourceQueries = linuxio.filebrowser.resource_get.useQueries(
-    multipleDetailTargets.map((path) => ({ path })),
-    {
-      staleTime: CACHE_TTL_MS.NONE,
-      enabled: multipleDetailTargets.length > 1,
-    },
-  );
+  const multipleResourceQueries = useQueries({
+    queries: multipleDetailTargets.map((path) =>
+      linuxio.filebrowser.resource_get.queryOptions(
+        { path },
+        {
+          staleTime: CACHE_TTL_MS.NONE,
+          enabled: multipleDetailTargets.length > 1,
+        },
+      ),
+    ),
+  });
 
   // Plain guarded derivation, not useMemo: memoizing would need a
   // variable-length dep array (hooks-contract violation) and the query
@@ -135,11 +145,13 @@ export const useFileQueries = ({
 
   // Editing file resource with content flag
   const { data: editingFileResource, isLoading: isEditingFileLoading } =
-    linuxio.filebrowser.resource_get.useQuery(
-      { path: editingPath || "", unused: "", getContent: "true" },
-      {
-        enabled: !!editingPath,
-      },
+    useQuery(
+      linuxio.filebrowser.resource_get.queryOptions(
+        { path: editingPath || "", unused: "", getContent: "true" },
+        {
+          enabled: !!editingPath,
+        },
+      ),
     );
 
   const shouldShowDetailLoader =

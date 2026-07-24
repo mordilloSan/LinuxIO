@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import type { Socket } from "@/api";
@@ -29,9 +30,11 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
 );
 
 const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
-    refetchInterval: 2000,
-  });
+  const { data: info } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
+      refetchInterval: 2000,
+    }),
+  );
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
 
   return (
@@ -61,9 +64,11 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
 };
 
 const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = linuxio.systemd.get_unit_info.useQuery(socket.name, {
-    refetchInterval: 2000,
-  });
+  const { data: info } = useQuery(
+    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
+      refetchInterval: 2000,
+    }),
+  );
   return (
     <UnitCardActions
       activeState={socket.active_state}

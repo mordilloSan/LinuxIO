@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
@@ -240,19 +241,23 @@ const MonitoringSettingsSection = () => {
     error,
     refetch,
     isFetching,
-  } = linuxio.monitoring.get_config.useQuery({
-    enabled: monitoringEnabled,
-    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-  });
+  } = useQuery(
+    linuxio.monitoring.get_config.queryOptions({
+      enabled: monitoringEnabled,
+      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+    }),
+  );
   const {
     data: agentStatus,
     error: statusError,
     refetch: refetchStatus,
     isFetching: isStatusFetching,
-  } = linuxio.monitoring.get_status.useQuery({
-    enabled: monitoringEnabled,
-    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-  });
+  } = useQuery(
+    linuxio.monitoring.get_status.queryOptions({
+      enabled: monitoringEnabled,
+      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+    }),
+  );
 
   const configSchemaError = config ? getConfigSchemaError(config) : null;
   const savedDraft = useMemo(

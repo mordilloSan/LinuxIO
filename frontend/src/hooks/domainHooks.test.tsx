@@ -1,3 +1,5 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PowerActionContext } from "@/contexts/PowerActionContext";
@@ -12,10 +14,15 @@ import {
   useUpdateCanNavigate,
 } from "@/hooks/useLinuxIOUpdater";
 import usePowerAction from "@/hooks/usePowerAction";
-import { renderHook } from "@/test/render";
+import { createTestQueryClient, renderHook } from "@/test/render";
+
+const queryClient = createTestQueryClient();
+const queryWrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
 
 const apiMocks = vi.hoisted(() => ({
-  getIconUriUseQuery: vi.fn(),
+  getIconUriQueryOptions: vi.fn(),
 }));
 
 vi.mock("@/api", async () => {
@@ -27,7 +34,7 @@ vi.mock("@/api", async () => {
       docker: {
         ...actual.linuxio.docker,
         get_icon_uri: {
-          useQuery: apiMocks.getIconUriUseQuery,
+          queryOptions: apiMocks.getIconUriQueryOptions,
         },
       },
     },
@@ -51,19 +58,25 @@ const updateValue: UpdateContextValue = {
 
 describe("useDockerIcon", () => {
   beforeEach(() => {
-    apiMocks.getIconUriUseQuery.mockReturnValue({
-      data: { uri: "data:image/svg+xml;base64,abc" },
-      error: null,
-      isError: false,
-      isLoading: false,
-    });
+    queryClient.clear();
+    apiMocks.getIconUriQueryOptions.mockImplementation(
+      (identifier: string, options: Record<string, unknown>) => ({
+        queryKey: ["test", "docker-icon", identifier],
+        queryFn: () =>
+          Promise.resolve({ uri: "data:image/svg+xml;base64,abc" }),
+        initialData: { uri: "data:image/svg+xml;base64,abc" },
+        ...options,
+      }),
+    );
   });
 
   it("enables icon lookup only when an identifier is present and enabled", () => {
-    const { result } = renderHook(() => useDockerIcon("si:nginx"));
+    const { result } = renderHook(() => useDockerIcon("si:nginx"), {
+      wrapper: queryWrapper,
+    });
 
     expect(result.current.iconUri).toBe("data:image/svg+xml;base64,abc");
-    expect(apiMocks.getIconUriUseQuery).toHaveBeenCalledWith(
+    expect(apiMocks.getIconUriQueryOptions).toHaveBeenCalledWith(
       "si:nginx",
       expect.objectContaining({
         enabled: true,
@@ -73,18 +86,22 @@ describe("useDockerIcon", () => {
   });
 
   it("returns null and disables the query for missing or disabled identifiers", () => {
-    const missing = renderHook(() => useDockerIcon(undefined));
-    const disabled = renderHook(() => useDockerIcon("si:nginx", false));
+    const missing = renderHook(() => useDockerIcon(undefined), {
+      wrapper: queryWrapper,
+    });
+    const disabled = renderHook(() => useDockerIcon("si:nginx", false), {
+      wrapper: queryWrapper,
+    });
 
     expect(missing.result.current.iconUri).toBeNull();
     expect(disabled.result.current.iconUri).toBe(
       "data:image/svg+xml;base64,abc",
     );
-    expect(apiMocks.getIconUriUseQuery.mock.calls[0]).toEqual([
+    expect(apiMocks.getIconUriQueryOptions.mock.calls[0]).toEqual([
       "",
       expect.objectContaining({ enabled: false }),
     ]);
-    expect(apiMocks.getIconUriUseQuery.mock.calls[1]).toEqual([
+    expect(apiMocks.getIconUriQueryOptions.mock.calls[1]).toEqual([
       "si:nginx",
       expect.objectContaining({ enabled: false }),
     ]);
