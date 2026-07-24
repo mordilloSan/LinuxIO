@@ -3,8 +3,8 @@ import type { ElementType } from "react";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
-import RouteError from "@/routes/-components/RouteError";
 import type { LinuxIORouterContext } from "@/routes/-auth";
+import RouteError from "@/routes/-components/RouteError";
 import { routeTree } from "@/routeTree.gen";
 
 interface RouteNavigation {
