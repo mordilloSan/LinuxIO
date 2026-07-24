@@ -107,3 +107,125 @@ unreliable hover preload does not create a global error toast.
 
 `routeTree.gen.ts` is generated code. It is committed for TypeScript consumers
 but excluded from formatting.
+
+
+Resposta curta:
+Migração de React Router para TanStack Router: sim, está concluída.
+Todos os padrões 100% idiomáticos TanStack Router + Query: ainda não.
+Todas as rotas com dados próprios têm loader: sim.
+Todo dado crítico segue loader → Query cache → Suspense: ainda existem alguns casos híbridos.
+A documentação recomenda loader + ensureQueryData + useSuspenseQuery para dados críticos da primeira renderização. É exatamente o padrão predominante atual, mas ainda não é universal. TanStack External Data Loading
+O que está finalizado
+A estrutura Router está correta:
+Zero dependências ou imports de React Router.
+TanStack Router montado em produção.
+File-based routing com autoCodeSplitting.
+Não existe a antiga pasta pages.
+Uma única declaração de Register.
+Contexto tipado com auth, access e QueryClient.
+Guards em beforeLoad.
+Search params e loaderDeps.
+ensureQueryData partilhando exatamente a mesma cache dos componentes.
+defaultPreload: "intent".
+defaultPreloadStaleTime: 0, recomendado quando a frescura é controlada pelo TanStack Query. TanStack preloading
+Pending e error components globais.
+queryOptions e query keys centralizados.
+Não existem wrappers .useQuery.
+Existem 17 ficheiros de definição de rota:
+14 rotas de aplicação têm loader.
+As únicas sem loader são __root, _authenticated e sign-in, porque não têm dados remotos próprios.
+Logs e Terminal têm loaders de transporte, porque os dados principais chegam por streams.
+Dados críticos ainda sem Suspense
+Estes são os casos que impedem dizer “100% finalizado”:
+Updates
+O loader carrega get_updates_basic, mas [UpdatesPage.tsx (line 33)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/updates/-components/UpdatesPage.tsx:33) ainda consome com useQuery.
+Deveria existir um componente renderizado apenas quando PackageKit está disponível e usar useSuspenseQuery.
+Shares
+O loader carrega NFS/Samba apenas no tab Shares, corretamente. Contudo, [SharesPage.tsx (line 1168)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/shares/-components/SharesPage.tsx:1168) consome ambas com useQuery.
+O padrão mais idiomático seria separar SharesTab e MountsTab; cada componente ativo consumiria os seus dados com Suspense.
+Hardware history inicial
+O loader carrega os quatro histories de 1h, mas [HardwareHistoryCards.tsx (line 496)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx:496) usa useQuery.
+Depois da alteração de range, useQuery + placeholderData + polling está correto. O estado inicial é híbrido: ou é crítico e deve usar Suspense, ou deixa de pertencer ao loader.
+Docker dashboard toolbar
+[DockerPage.tsx (line 58)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/docker/-components/DockerPage.tsx:58) observa list_containers com useQuery para as ações globais do dashboard, embora o loader já carregue os containers.
+Não é um fetch duplicado graças à mesma query key, mas continua a ser um consumidor crítico não-Suspense.
+Docker auto-update
+[useContainerAutoUpdateState.ts (line 51)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/docker/-components/useContainerAutoUpdateState.ts:51) usa useQuery e está montado acima de todos os tabs.
+Isto foi deliberado para não bloquear todos os tabs. Para ficar totalmente limpo, o controller deveria ser montado apenas no tab Containers ou quando o diálogo é aberto.
+VM selecionada
+O loader carrega o detalhe da primeira VM, mas [VMPage.tsx (line 76)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/vm/-components/VMPage.tsx:76) usa useQuery para a VM selecionada.
+Como a seleção é estado React local, não pode ser migrado cegamente para Suspense. O padrão Router mais completo seria colocar a VM selecionada no search param, adicioná-la a loaderDeps e carregar o respetivo detalhe no loader.
+WireGuard Create
+A rota e o dashboard usam loader + Suspense para list_interfaces, mas [CreateInterfaceButton.tsx (line 28)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/wireguard/-components/CreateInterfaceButton.tsx:28) volta a observar a mesma query com useQuery.
+Além disso, network_info começa imediatamente, embora só seja necessário para abrir o diálogo. Não bloqueia a rota, mas deveria ser lazy ou receber os interfaces já carregados.
+Onde não usamos loader/Suspense intencionalmente
+Estes casos estão corretos com useQuery, useQueries ou fetch imperativo:
+WireGuard peers depois de selecionar uma interface.
+QR code depois de selecionar um peer.
+Changelog quando se expande um update.
+NFS/CIFS remote browsing depois de introduzir um servidor.
+VM preflight dependente dos campos do diálogo.
+Shells, groups e users necessários em diálogos de Accounts.
+Date/time settings quando o diálogo abre.
+Failed-login events quando o painel abre.
+Terminal shells quando o diálogo abre.
+Filebrowser search, details, stat, editor, subfolders e directory sizes.
+Docker icons carregados individualmente e mantidos em cache.
+Footer version, power status, monitoring e indexer settings.
+Logs live stream e Terminal stream.
+Fetches imperativos usados em ações, validação, backfill de gráficos e resolução de paths.
+Suspense não é obrigatório para queries lazy. Aliás, useSuspenseQuery não suporta enabled, tornando useQuery o padrão correto nesses casos. TanStack lazy queries
+Outra pendência: error boundaries antigas
+A boundary TanStack global existe, mas ainda temos [ErrorBoundary.tsx (line 15)](/home/miguelmariz/LinuxIO/frontend/src/components/errors/ErrorBoundary.tsx:15) dentro de:
+Todos os tabs através de [TabPanel.tsx (line 16)](/home/miguelmariz/LinuxIO/frontend/src/components/tabbar/TabPanel.tsx:16).
+Dashboard widgets.
+Hardware cards.
+Settings e Footer.
+Essa boundary pode capturar erros lançados por useSuspenseQuery antes de chegarem à RouteError, mas não integra useQueryErrorResetBoundary. Portanto, error handling ainda não está verdadeiramente centralizado.
+Também [RouteError.tsx (line 8)](/home/miguelmariz/LinuxIO/frontend/src/routes/-components/RouteError.tsx:8) faz reset ao clicar em retry, mas ainda não segue completamente o lifecycle recomendado pela documentação, que também reseta a Query boundary quando a error component monta.
+Outra pendência: tabs/search
+[useTabUrlState.ts (line 25)](/home/miguelmariz/LinuxIO/frontend/src/hooks/useTabUrlState.ts:25) usa:
+useSearch({ strict: false });
+uma lista manual de nomes de search params;
+valores de tab validados apenas como string.
+Funciona com TanStack Router, mas não é o padrão mais fortemente tipado. Para ficar totalmente idiomático, cada rota deve validar os valores possíveis do tab e consumir Route.useSearch()/Route.useNavigate() de forma estrita.
+Conclusão: o cutover do Router está concluído e a arquitetura geral está correta. A migração estritamente idiomática ainda precisa de uma última fase pequena: resolver os sete consumidores híbridos, substituir/integrar as boundaries antigas e tornar os tabs route-typed.
+
+
+8:12 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
+
+
+
+
+
+
+
+5.6 SolExtra High
+
+
+
+
+
+
+
+
+
+
+Work locallyLocal
