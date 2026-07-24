@@ -108,85 +108,155 @@ unreliable hover preload does not create a global error toast.
 `routeTree.gen.ts` is generated code. It is committed for TypeScript consumers
 but excluded from formatting.
 
+## Approved simplification plan
 
-Resposta curta:
-Migração de React Router para TanStack Router: sim, está concluída.
-Todos os padrões 100% idiomáticos TanStack Router + Query: ainda não.
-Todas as rotas com dados próprios têm loader: sim.
-Todo dado crítico segue loader → Query cache → Suspense: ainda existem alguns casos híbridos.
-A documentação recomenda loader + ensureQueryData + useSuspenseQuery para dados críticos da primeira renderização. É exatamente o padrão predominante atual, mas ainda não é universal. TanStack External Data Loading
-O que está finalizado
-A estrutura Router está correta:
-Zero dependências ou imports de React Router.
-TanStack Router montado em produção.
-File-based routing com autoCodeSplitting.
-Não existe a antiga pasta pages.
-Uma única declaração de Register.
-Contexto tipado com auth, access e QueryClient.
-Guards em beforeLoad.
-Search params e loaderDeps.
-ensureQueryData partilhando exatamente a mesma cache dos componentes.
-defaultPreload: "intent".
-defaultPreloadStaleTime: 0, recomendado quando a frescura é controlada pelo TanStack Query. TanStack preloading
-Pending e error components globais.
-queryOptions e query keys centralizados.
-Não existem wrappers .useQuery.
-Existem 17 ficheiros de definição de rota:
-14 rotas de aplicação têm loader.
-As únicas sem loader são __root, _authenticated e sign-in, porque não têm dados remotos próprios.
-Logs e Terminal têm loaders de transporte, porque os dados principais chegam por streams.
-Dados críticos ainda sem Suspense
-Estes são os casos que impedem dizer “100% finalizado”:
-Updates
-O loader carrega get_updates_basic, mas [UpdatesPage.tsx (line 33)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/updates/-components/UpdatesPage.tsx:33) ainda consome com useQuery.
-Deveria existir um componente renderizado apenas quando PackageKit está disponível e usar useSuspenseQuery.
-Shares
-O loader carrega NFS/Samba apenas no tab Shares, corretamente. Contudo, [SharesPage.tsx (line 1168)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/shares/-components/SharesPage.tsx:1168) consome ambas com useQuery.
-O padrão mais idiomático seria separar SharesTab e MountsTab; cada componente ativo consumiria os seus dados com Suspense.
-Hardware history inicial
-O loader carrega os quatro histories de 1h, mas [HardwareHistoryCards.tsx (line 496)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx:496) usa useQuery.
-Depois da alteração de range, useQuery + placeholderData + polling está correto. O estado inicial é híbrido: ou é crítico e deve usar Suspense, ou deixa de pertencer ao loader.
-Docker dashboard toolbar
-[DockerPage.tsx (line 58)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/docker/-components/DockerPage.tsx:58) observa list_containers com useQuery para as ações globais do dashboard, embora o loader já carregue os containers.
-Não é um fetch duplicado graças à mesma query key, mas continua a ser um consumidor crítico não-Suspense.
-Docker auto-update
-[useContainerAutoUpdateState.ts (line 51)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/docker/-components/useContainerAutoUpdateState.ts:51) usa useQuery e está montado acima de todos os tabs.
-Isto foi deliberado para não bloquear todos os tabs. Para ficar totalmente limpo, o controller deveria ser montado apenas no tab Containers ou quando o diálogo é aberto.
-VM selecionada
-O loader carrega o detalhe da primeira VM, mas [VMPage.tsx (line 76)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/vm/-components/VMPage.tsx:76) usa useQuery para a VM selecionada.
-Como a seleção é estado React local, não pode ser migrado cegamente para Suspense. O padrão Router mais completo seria colocar a VM selecionada no search param, adicioná-la a loaderDeps e carregar o respetivo detalhe no loader.
-WireGuard Create
-A rota e o dashboard usam loader + Suspense para list_interfaces, mas [CreateInterfaceButton.tsx (line 28)](/home/miguelmariz/LinuxIO/frontend/src/routes/_authenticated/wireguard/-components/CreateInterfaceButton.tsx:28) volta a observar a mesma query com useQuery.
-Além disso, network_info começa imediatamente, embora só seja necessário para abrir o diálogo. Não bloqueia a rota, mas deveria ser lazy ou receber os interfaces já carregados.
-Onde não usamos loader/Suspense intencionalmente
-Estes casos estão corretos com useQuery, useQueries ou fetch imperativo:
-WireGuard peers depois de selecionar uma interface.
-QR code depois de selecionar um peer.
-Changelog quando se expande um update.
-NFS/CIFS remote browsing depois de introduzir um servidor.
-VM preflight dependente dos campos do diálogo.
-Shells, groups e users necessários em diálogos de Accounts.
-Date/time settings quando o diálogo abre.
-Failed-login events quando o painel abre.
-Terminal shells quando o diálogo abre.
-Filebrowser search, details, stat, editor, subfolders e directory sizes.
-Docker icons carregados individualmente e mantidos em cache.
-Footer version, power status, monitoring e indexer settings.
-Logs live stream e Terminal stream.
-Fetches imperativos usados em ações, validação, backfill de gráficos e resolução de paths.
-Suspense não é obrigatório para queries lazy. Aliás, useSuspenseQuery não suporta enabled, tornando useQuery o padrão correto nesses casos. TanStack lazy queries
-Outra pendência: error boundaries antigas
-A boundary TanStack global existe, mas ainda temos [ErrorBoundary.tsx (line 15)](/home/miguelmariz/LinuxIO/frontend/src/components/errors/ErrorBoundary.tsx:15) dentro de:
-Todos os tabs através de [TabPanel.tsx (line 16)](/home/miguelmariz/LinuxIO/frontend/src/components/tabbar/TabPanel.tsx:16).
-Dashboard widgets.
-Hardware cards.
-Settings e Footer.
-Essa boundary pode capturar erros lançados por useSuspenseQuery antes de chegarem à RouteError, mas não integra useQueryErrorResetBoundary. Portanto, error handling ainda não está verdadeiramente centralizado.
-Também [RouteError.tsx (line 8)](/home/miguelmariz/LinuxIO/frontend/src/routes/-components/RouteError.tsx:8) faz reset ao clicar em retry, mas ainda não segue completamente o lifecycle recomendado pela documentação, que também reseta a Query boundary quando a error component monta.
-Outra pendência: tabs/search
-[useTabUrlState.ts (line 25)](/home/miguelmariz/LinuxIO/frontend/src/hooks/useTabUrlState.ts:25) usa:
-useSearch({ strict: false });
-uma lista manual de nomes de search params;
-valores de tab validados apenas como string.
-Funciona com TanStack Router, mas não é o padrão mais fortemente tipado. Para ficar totalmente idiomático, cada rota deve validar os valores possíveis do tab e consumir Route.useSearch()/Route.useNavigate() de forma estrita.
-Conclusão: o cutover do Router está concluído e a arquitetura geral está correta. A migração estritamente idiomática ainda precisa de uma última fase pequena: resolver os sete consumidores híbridos, substituir/integrar as boundaries antigas e tornar os tabs route-typed.
+Status: direction reviewed and approved on 2026-07-24; implementation is
+pending.
+
+This plan follows the reusable query-options pattern described in
+[The Better Way to Use React Query](https://www.youtube.com/watch?v=e2OC3aaiGhI).
+The existing endpoint layer already implements the important parts of that
+pattern:
+
+- Query keys and query functions are exposed together through reusable,
+  generated `endpoint.queryOptions(...)`.
+- Components choose the appropriate observer (`useQuery`,
+  `useSuspenseQuery`, or `useQueries`) instead of being forced through a
+  query-specific custom hook.
+- Route loaders reuse the same options with `ensureQueryData`.
+- Mutations and cache invalidation reuse generated endpoint keys.
+- Multiple components may observe the same cache entry. This is intentional
+  and is not prop-drilled or wrapped in another abstraction.
+
+The endpoint API, query-key scheme, loader helper, and mutation invalidation
+layer remain the canonical central abstractions. Do not add parallel
+`queryOptions` factories, duplicate query-key constants, or custom
+`useSomethingQuery` wrappers that only hide a TanStack Query observer.
+
+### Page-level tabs become child routes
+
+Tabs that represent independently navigable pages will use traditional child
+routes:
+
+- Accounts: Users and Groups
+- Services: Services, Timers, and Sockets
+- Storage: Disks and LVM
+- Shares: Shares and Mounts
+- Updates: Updates and History
+- Docker: Dashboard, Containers, Compose, Networks, Volumes, and Images
+- VMs: Dashboard, Networks, Images, and Machines
+
+A route group should have this shape:
+
+```text
+docker/
+  route.tsx
+  index.tsx
+  containers.tsx
+  compose.tsx
+  networks.tsx
+  volumes.tsx
+  images.tsx
+```
+
+The parent route owns shared layout, navigation links, guards, and genuinely
+shared critical data. It renders an `Outlet`. Each child route owns its URL,
+search validation, loader, and route-specific component. Tab controls become
+typed `Link` navigation and inherit the global intent-preload policy.
+
+This removes the page-level dependency on `TabContainer`, `useTabUrlState`,
+untyped `useSearch({ strict: false })`, manual tab-key unions, and loaders that
+switch data requirements based on a tab string. It also gives every page-level
+tab its own automatic code-split boundary.
+
+Changing child routes still unmounts the previous child component. That is the
+expected navigation lifecycle, not a cache reset:
+
+- Server state remains in the TanStack Query cache.
+- Shareable selection and filter state belongs in validated URL search
+  parameters.
+- State shared by sibling routes belongs in the closest common parent.
+- Only genuinely transient UI state remains local to the child.
+
+Do not keep every page-level tab mounted and hidden. Doing so would keep
+observers, polling, effects, and heavy component trees active for inactive
+pages.
+
+Tabs that do not represent pages remain local UI state. This includes settings
+dialog tabs and detail tabs within a selected disk or other single resource.
+
+### Data ownership rules
+
+| Data category | Owner and consumption pattern |
+| --- | --- |
+| Critical for rendering the current URL | Closest route loader uses `ensureQueryData`; component uses `useSuspenseQuery` with the same endpoint options |
+| Shared by sibling routes | Loader and observer in the closest common parent route |
+| Specific to one child route | Child loader and child `useSuspenseQuery` observer |
+| Dialog, expansion, or optional selection | Conditionally mounted or enabled `useQuery` |
+| Polling, variable-range charts, or progressive data | `useQuery`; no speculative route-loader requirement |
+| Event-driven validation, backfill, or path resolution | Existing endpoint `useFetcher` or `useAction` surface |
+| Logs and terminal streams | Transport-readiness loader plus the existing stream lifecycle hook |
+
+The presence of both a loader and a mounted query observer is not a hybrid
+architecture. They coordinate through the same QueryClient entry. The decision
+is whether a query is critical to the route's first render or intentionally
+lazy/progressive.
+
+### Targeted query cleanup
+
+- **Updates and Shares:** child routes replace tab-dependent switch loaders.
+  Critical child data is consumed with `useSuspenseQuery`.
+- **Hardware:** initial history charts are progressive, range-dependent, and
+  polled. Remove their speculative one-hour queries from the route loader and
+  keep their existing `useQuery` behavior.
+- **Docker:** place each observer at the lowest route that consumes it.
+  Container auto-update state belongs to the Containers child unless a
+  documented product requirement makes it common to the Docker parent.
+- **VMs:** make Machines a child route. Store the selected VM in validated
+  search state with `loaderDeps`, unless VM detail later becomes a standalone
+  path route.
+- **WireGuard:** reuse the cached interface list. Load network information only
+  when the create-interface workflow is opened.
+- **Logs:** load the service list only when the status filter requires it.
+- **Services:** repeated observers for the selected unit are valid because they
+  share generated query options and one cache entry. Do not replace them with
+  prop drilling or another wrapper.
+- **Dashboard:** do not complicate its loader to account for hidden widgets
+  until profiling demonstrates a material cost.
+
+Interaction-driven queries remain intentionally lazy: selected WireGuard peer
+data, QR codes, expanded changelogs, remote NFS/CIFS browsing, dialog
+preflight/options, failed-login panels, file-browser details/search/editor
+data, directory sizes, Docker icons, and similar on-demand reads.
+
+### Suspense and error boundaries
+
+Critical route data should suspend and fail at the route boundary. Removing
+page-level `TabPanel` wrappers also removes their legacy catch-all boundary
+from routed content.
+
+Local error boundaries remain appropriate only where partial failure isolation
+is deliberate, such as an optional dashboard widget or hardware card. Any
+local boundary containing a Suspense query must integrate TanStack Query reset
+behavior.
+
+The route error component must reset `useQueryErrorResetBoundary` when it
+mounts. Its retry action invalidates the router so the loader reruns and the
+route boundary resets.
+
+### Implementation order
+
+1. Use Shares as the smallest vertical proof: parent layout plus Shares and
+   Mounts child routes.
+2. Verify direct links, refresh, back/forward navigation, intent preload,
+   pending UI, errors, query reuse, and code splitting.
+3. Apply the same route shape to Accounts, Services, Storage, Updates, Docker,
+   and VMs.
+4. Perform the non-tab query cleanup for Hardware, WireGuard, Logs, and Docker.
+5. Remove obsolete page-tab state helpers and integrate the remaining error
+   boundaries.
+6. Update route topology, loader, navigation, and boundary regression tests.
+
+The migration should stay incremental. Do not redesign the generated API
+layer, add a generic route builder, convert every lazy query to Suspense, or
+introduce a new global state store as part of this work.
