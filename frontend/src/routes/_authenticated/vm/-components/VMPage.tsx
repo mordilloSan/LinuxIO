@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, openVMConsoleStream } from "@/api";
@@ -11,7 +12,6 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useTabUrlState } from "@/hooks/useTabUrlState";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -34,8 +34,18 @@ import {
   VMPreflightCard,
 } from "./VMTabs";
 
+const vmRouteApi = getRouteApi("/_authenticated/vm");
+
 const VMPage = () => {
   const theme = useAppTheme();
+  const navigate = vmRouteApi.useNavigate();
+  const search = vmRouteApi.useSearch();
+  const activeTab =
+    search.vmTab === "networks" ||
+    search.vmTab === "images" ||
+    search.vmTab === "machines"
+      ? search.vmTab
+      : "dashboard";
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const vmListCache = linuxio.virt.list.useCache();
@@ -51,7 +61,14 @@ const VMPage = () => {
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
-  const [, setActiveTab] = useTabUrlState("dashboard", "vmTab");
+  const setActiveTab = useCallback(
+    (vmTab: typeof activeTab) =>
+      navigate({
+        to: "/vm",
+        search: (previous) => ({ ...previous, vmTab }),
+      }),
+    [navigate],
+  );
 
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
@@ -266,7 +283,8 @@ const VMPage = () => {
   return (
     <>
       <TabContainer
-        defaultTab="dashboard"
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         tabs={[
           {
             component: (
@@ -344,7 +362,6 @@ const VMPage = () => {
             value: "machines",
           },
         ]}
-        urlParam="vmTab"
       />
 
       {createOpen && (

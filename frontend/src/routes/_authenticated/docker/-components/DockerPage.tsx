@@ -51,7 +51,11 @@ const DockerPage = () => {
     () => new Set(),
   );
   const activeDockerTab =
-    typeof searchParams.dockerTab === "string"
+    searchParams.dockerTab === "containers" ||
+    searchParams.dockerTab === "compose" ||
+    searchParams.dockerTab === "networks" ||
+    searchParams.dockerTab === "volumes" ||
+    searchParams.dockerTab === "images"
       ? searchParams.dockerTab
       : "dashboard";
   const isDashboardTab = activeDockerTab === "dashboard";
@@ -288,7 +292,13 @@ const DockerPage = () => {
   return (
     <>
       <TabContainer
-        defaultTab="dashboard"
+        activeTab={activeDockerTab}
+        onTabChange={(dockerTab) =>
+          navigate({
+            to: "/docker",
+            search: (previous) => ({ ...previous, dockerTab }),
+          })
+        }
         tabs={[
           {
             value: "dashboard",
@@ -587,7 +597,6 @@ const DockerPage = () => {
             ),
           },
         ]}
-        urlParam="dockerTab"
       />
       <PruneDialog
         isLoading={isPruning}

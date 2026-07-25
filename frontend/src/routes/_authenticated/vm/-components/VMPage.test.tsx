@@ -75,6 +75,8 @@ const mocks = vi.hoisted(() => {
     openVMConsoleStream: vi.fn(),
     readyPreflight,
     preflight: readyPreflight,
+    routeNavigate: vi.fn(),
+    routeSearch: { vmTab: "machines" } as { vmTab?: string },
     resourceGet: vi.fn(),
     resourcePost: vi.fn(),
     resourceStat: vi.fn(),
@@ -85,6 +87,18 @@ const mocks = vi.hoisted(() => {
     virtCreate: vi.fn(),
     virtDelete: vi.fn(),
     waitForStreamResult: vi.fn(),
+  };
+});
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    getRouteApi: () => ({
+      useNavigate: () => mocks.routeNavigate,
+      useSearch: () => mocks.routeSearch,
+    }),
   };
 });
 
@@ -355,10 +369,10 @@ async function renderVMPage(libvirtAvailable = true) {
   return result;
 }
 
-async function openVirtualMachinesTab(user: {
+async function openVirtualMachinesTab(_user: {
   click: (target: Element) => unknown;
 }) {
-  await user.click(screen.getByRole("tab", { name: /virtual machines/i }));
+  // The isolated page harness starts on the route-owned "machines" tab.
 }
 
 beforeEach(() => {
@@ -380,6 +394,8 @@ beforeEach(() => {
     firmware: { ...mocks.readyPreflight.firmware },
     warnings: [],
   };
+  mocks.routeNavigate.mockReset();
+  mocks.routeSearch = { vmTab: "machines" };
   mocks.resourceGet.mockReset();
   mocks.resourceGet.mockImplementation(({ path }: { path: string }) => {
     if (path === "/") {

@@ -22,11 +22,19 @@ const AccountsPage = () => {
   const [usersView, setUsersView] = useViewMode("accounts.users", "table");
   const [groupsView, setGroupsView] = useViewMode("accounts.groups", "table");
   const search = accountsRouteApi.useSearch();
+  const navigate = accountsRouteApi.useNavigate();
+  const activeTab = search.accountsTab === "groups" ? "groups" : "users";
   const isUserDetailOpen = typeof search.user === "string";
 
   return (
     <TabContainer
-      defaultTab="users"
+      activeTab={activeTab}
+      onTabChange={(accountsTab) =>
+        navigate({
+          to: "/accounts",
+          search: (previous) => ({ ...previous, accountsTab }),
+        })
+      }
       tabs={[
         {
           value: "users",
@@ -121,7 +129,6 @@ const AccountsPage = () => {
           ),
         },
       ]}
-      urlParam="accountsTab"
     />
   );
 };

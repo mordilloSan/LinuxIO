@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { TabContainer } from "@/components/tabbar";
@@ -7,14 +8,25 @@ import AppButton from "@/components/ui/AppButton";
 import DiskOverview from "./DiskOverview";
 import LVMManagement from "./LVMManagement";
 
+const storageRouteApi = getRouteApi("/_authenticated/storage");
+
 const StoragePage = () => {
+  const navigate = storageRouteApi.useNavigate();
+  const search = storageRouteApi.useSearch();
+  const activeTab = search.storageTab === "lvm" ? "lvm" : "disks";
   const [createLVHandler, setCreateLVHandler] = useState<(() => void) | null>(
     null,
   );
 
   return (
     <TabContainer
-      defaultTab="disks"
+      activeTab={activeTab}
+      onTabChange={(storageTab) =>
+        navigate({
+          to: "/storage",
+          search: (previous) => ({ ...previous, storageTab }),
+        })
+      }
       tabs={[
         {
           value: "disks",
@@ -43,7 +55,6 @@ const StoragePage = () => {
           ) : undefined,
         },
       ]}
-      urlParam="storageTab"
     />
   );
 };

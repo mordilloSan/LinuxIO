@@ -1,3 +1,5 @@
+import { getRouteApi } from "@tanstack/react-router";
+
 import TabContainer from "@/components/tabbar/TabContainer";
 
 import ServicesTab from "./ServicesTab";
@@ -5,7 +7,15 @@ import SocketsTab from "./SocketsTab";
 import TimersTab from "./TimersTab";
 import UnitViewToggle from "./UnitViewToggle";
 
+const servicesRouteApi = getRouteApi("/_authenticated/services");
+
 const ServicesPage = () => {
+  const navigate = servicesRouteApi.useNavigate();
+  const search = servicesRouteApi.useSearch();
+  const activeTab =
+    search.section === "timers" || search.section === "sockets"
+      ? search.section
+      : "services";
   const tabs = [
     {
       value: "services",
@@ -29,10 +39,15 @@ const ServicesPage = () => {
 
   return (
     <TabContainer
+      activeTab={activeTab}
       containerStyle={{ paddingInline: 0 }}
-      defaultTab="services"
+      onTabChange={(section) =>
+        navigate({
+          to: "/services",
+          search: (previous) => ({ ...previous, section }),
+        })
+      }
       tabs={tabs}
-      urlParam="section"
     />
   );
 };

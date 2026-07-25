@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
@@ -22,9 +23,13 @@ const UPDATES_TOAST_META = {
   label: "Open updates",
   to: "/updates",
 } as const;
+const updatesRouteApi = getRouteApi("/_authenticated/updates");
 
 const UpdatesPage = () => {
   const theme = useAppTheme();
+  const navigate = updatesRouteApi.useNavigate();
+  const search = updatesRouteApi.useSearch();
+  const activeTab = search.updateTab === "history" ? "history" : "updates";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { status: packageKitStatus, reason: packageKitReason } = useCapability(
     "packageKitAvailable",
@@ -64,8 +69,14 @@ const UpdatesPage = () => {
   return (
     <>
       <TabContainer
+        activeTab={activeTab}
         containerStyle={{ paddingInline: 0 }}
-        defaultTab="updates"
+        onTabChange={(updateTab) =>
+          navigate({
+            to: "/updates",
+            search: (previous) => ({ ...previous, updateTab }),
+          })
+        }
         tabs={[
           {
             value: "updates",
@@ -150,7 +161,6 @@ const UpdatesPage = () => {
             component: <UpdateHistory />,
           },
         ]}
-        urlParam="updateTab"
       />
 
       <UpdateSettingsDialog

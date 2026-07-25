@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 
-import { useTabUrlState } from "@/hooks/useTabUrlState";
-import { TabContainerProps } from "@/types/tabcontainer";
+import type { TabContainerProps } from "@/types/tabcontainer";
 
 import TabPanel from "./TabPanel";
 import TabSelector from "./TabSelector";
@@ -11,10 +10,11 @@ import "./tab-container.css";
 /**
  * TabContainer - A declarative component for managing tabbed interfaces
  *
- * Provides automatic:
- * - URL query parameter persistence (tab state survives page reload)
+ * Controlled tab layout. The owning route validates URL state and supplies
+ * the selected tab plus its typed navigation callback.
+ *
+ * Provides:
  * - Lazy loading (tabs only mount when active)
- * - Error boundary wrapping (errors in one tab don't crash others)
  * - Per-tab action buttons in the tab bar
  *
  * @example
@@ -33,31 +33,21 @@ import "./tab-container.css";
  *       component: <GroupsPage />
  *     }
  *   ]}
- *   defaultTab="users"
- *   urlParam="accountsTab"
+ *   activeTab={activeTab}
+ *   onTabChange={setActiveTab}
  * />
  * ```
  */
-const TabContainer = ({
+const TabContainer = <TValue extends string>({
+  activeTab,
   tabs,
-  defaultTab,
-  urlParam,
+  onTabChange,
   containerStyle = {},
-  errorFallback,
-}: TabContainerProps) => {
-  // Sync tab state with URL query parameter
-  const [activeTab, setActiveTab] = useTabUrlState(defaultTab, urlParam);
-
-  // Validate that activeTab exists in tabs array, fallback to default if invalid
-  const validTab = useMemo(() => {
-    const isValid = tabs.some((tab) => tab.value === activeTab);
-    return isValid ? activeTab : defaultTab;
-  }, [activeTab, tabs, defaultTab]);
-
+}: TabContainerProps<TValue>) => {
   // Get the configuration for the currently active tab
   const activeTabConfig = useMemo(
-    () => tabs.find((tab) => tab.value === validTab),
-    [tabs, validTab],
+    () => tabs.find((tab) => tab.value === activeTab),
+    [activeTab, tabs],
   );
 
   // Build options array for TabSelector component
@@ -71,16 +61,16 @@ const TabContainer = ({
       {/* Tab selector with optional rightContent from active tab */}
       <TabSelector
         className="tab-container__selector"
-        onChange={setActiveTab}
+        onChange={onTabChange}
         options={tabOptions}
         rightContent={activeTabConfig?.rightContent}
-        value={validTab}
+        value={activeTab}
       />
 
       {/* Only mount the active panel so large tab views do not overlap. */}
       <div className="tab-container__panels">
         {activeTabConfig && (
-          <TabPanel errorFallback={errorFallback} key={activeTabConfig.value}>
+          <TabPanel key={activeTabConfig.value}>
             {activeTabConfig.component}
           </TabPanel>
         )}

@@ -7,27 +7,27 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
-interface TabOption {
+interface TabOption<TValue extends string> {
   label: string;
-  value: string;
+  value: TValue;
 }
-interface TabSelectorProps {
+interface TabSelectorProps<TValue extends string> {
   className?: string;
-  onChange: (value: string) => void;
-  options: TabOption[];
+  onChange: (value: TValue) => void;
+  options: readonly TabOption<TValue>[];
   rightContent?: ReactNode;
   style?: CSSProperties;
-  value: string;
+  value: TValue;
 }
 
-const TabSelector = ({
+const TabSelector = <TValue extends string>({
   value,
   onChange,
   options,
   rightContent,
   className,
   style,
-}: TabSelectorProps) => {
+}: TabSelectorProps<TValue>) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);

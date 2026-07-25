@@ -1145,6 +1145,8 @@ function renderExpandedContent(
 
 const SharesPage = () => {
   const search = sharesRouteApi.useSearch();
+  const navigate = sharesRouteApi.useNavigate();
+  const activeTab = search.sharesTab === "mounts" ? "mounts" : "shares";
   const isSharesTab = search.sharesTab !== "mounts";
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
@@ -1320,7 +1322,13 @@ const SharesPage = () => {
       }}
     >
       <TabContainer
-        defaultTab="shares"
+        activeTab={activeTab}
+        onTabChange={(sharesTab) =>
+          navigate({
+            to: "/shares",
+            search: (previous) => ({ ...previous, sharesTab }),
+          })
+        }
         tabs={[
           {
             value: "shares",
@@ -1396,7 +1404,6 @@ const SharesPage = () => {
             ),
           },
         ]}
-        urlParam="sharesTab"
       />
 
       <CreateFolderShareDialog
