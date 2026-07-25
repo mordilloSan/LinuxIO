@@ -7,17 +7,15 @@ import ErrorBoundary from "@/components/errors/ErrorBoundary";
 interface TabPanelProps {
   /** The tab content to render */
   children: ReactNode;
-  /** Optional custom error fallback UI */
-  errorFallback?: ReactNode;
 }
 
 /**
  * Internal layout and error boundary for the active tab panel.
  */
-const TabPanel = ({ errorFallback, children }: TabPanelProps) => {
+const TabPanel = ({ children }: TabPanelProps) => {
   return (
     <div className="tab-panel">
-      <ErrorBoundary fallback={errorFallback}>
+      <ErrorBoundary>
         <div className="tab-panel__content">{children}</div>
       </ErrorBoundary>
     </div>

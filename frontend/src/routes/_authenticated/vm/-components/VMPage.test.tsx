@@ -369,12 +369,6 @@ async function renderVMPage(libvirtAvailable = true) {
   return result;
 }
 
-async function openVirtualMachinesTab(_user: {
-  click: (target: Element) => unknown;
-}) {
-  // The isolated page harness starts on the route-owned "machines" tab.
-}
-
 beforeEach(() => {
   mocks.listVMs = [mocks.alpha];
   mocks.openJobAttachStream.mockReset();
@@ -493,8 +487,6 @@ describe("Virtual Machines page", () => {
   it("renders VM rows and dispatches lifecycle actions", async () => {
     const { user } = await renderVMPage();
 
-    await openVirtualMachinesTab(user);
-
     expect(screen.getByRole("button", { name: "alpha" })).toBeInTheDocument();
     expect(screen.getAllByText("192.168.122.57").length).toBeGreaterThanOrEqual(
       1,
@@ -509,7 +501,6 @@ describe("Virtual Machines page", () => {
   it("does not crash when delete success has no disk arrays", async () => {
     const { user } = await renderVMPage();
 
-    await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
 
@@ -532,7 +523,6 @@ describe("Virtual Machines page", () => {
     );
     const { user } = await renderVMPage();
 
-    await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
 
@@ -816,7 +806,6 @@ describe("Virtual Machines page", () => {
   it("opens the noVNC console over a mux stream", async () => {
     const { user } = await renderVMPage();
 
-    await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Console" }));
 
     expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha");
@@ -826,7 +815,6 @@ describe("Virtual Machines page", () => {
   it("shows console stream result errors", async () => {
     const { user } = await renderVMPage();
 
-    await openVirtualMachinesTab(user);
     await user.click(screen.getByRole("button", { name: "Console" }));
     const stream = mocks.openVMConsoleStream.mock.results[0]?.value;
 
