@@ -7,6 +7,7 @@ import {
   within,
 } from "@/test/render";
 
+import VMMachinesPage from "./VMMachinesPage";
 import VMPage from "./VMPage";
 
 const mocks = vi.hoisted(() => {
@@ -76,7 +77,7 @@ const mocks = vi.hoisted(() => {
     readyPreflight,
     preflight: readyPreflight,
     routeNavigate: vi.fn(),
-    routeSearch: { vmTab: "machines" } as { vmTab?: string },
+    routeSearch: { vm: "alpha" } as { vm?: string },
     resourceGet: vi.fn(),
     resourcePost: vi.fn(),
     resourceStat: vi.fn(),
@@ -358,13 +359,18 @@ function fakeJobSnapshot(id: string, type: string) {
 }
 
 async function renderVMPage(libvirtAvailable = true) {
-  const result = renderWithTanStackRouter(<VMPage />, {
-    auth: {
-      isAuthenticated: true,
-      libvirtAvailable,
-      privileged: true,
+  const result = renderWithTanStackRouter(
+    <VMPage>
+      <VMMachinesPage />
+    </VMPage>,
+    {
+      auth: {
+        isAuthenticated: true,
+        libvirtAvailable,
+        privileged: true,
+      },
     },
-  });
+  );
   await waitFor(() => expect(document.body.textContent).not.toBe(""));
   return result;
 }
@@ -389,7 +395,7 @@ beforeEach(() => {
     warnings: [],
   };
   mocks.routeNavigate.mockReset();
-  mocks.routeSearch = { vmTab: "machines" };
+  mocks.routeSearch = { vm: "alpha" };
   mocks.resourceGet.mockReset();
   mocks.resourceGet.mockImplementation(({ path }: { path: string }) => {
     if (path === "/") {

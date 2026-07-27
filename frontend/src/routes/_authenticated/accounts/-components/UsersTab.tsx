@@ -22,7 +22,7 @@ const ACCOUNTS_TOAST_META = {
   label: "Open accounts",
   to: "/accounts",
 } as const;
-const accountsRouteApi = getRouteApi("/_authenticated/accounts");
+const accountsRouteApi = getRouteApi("/_authenticated/accounts/");
 
 interface UsersTabProps {
   onMountCreateHandler?: (handler: () => void) => void;

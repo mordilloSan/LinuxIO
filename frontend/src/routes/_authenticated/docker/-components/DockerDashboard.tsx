@@ -73,7 +73,7 @@ const StateChip = ({
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 const RESOURCE_TABLE_MAX_HEIGHT = 201;
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
-const dockerRouteApi = getRouteApi("/_authenticated/docker");
+const dockerRouteApi = getRouteApi("/_authenticated/docker/");
 
 const getContainerDisplayName = (names?: string[]) =>
   names?.[0]?.replace(/^\//, "") || "Unnamed";
@@ -130,14 +130,14 @@ const DockerDashboard = ({
   const images = rawImages;
   const networks = rawNetworks;
   const volumes = rawVolumes;
-  const navigateToTab = (tab: string) => {
-    navigate({
-      to: "/docker",
-      search: (previous) => ({
-        ...previous,
-        dockerTab: tab,
-      }),
-    });
+  const navigateToTab = (
+    to:
+      | "/docker/containers"
+      | "/docker/images"
+      | "/docker/networks"
+      | "/docker/volumes",
+  ) => {
+    navigate({ to });
   };
   const [dockerDashboardSections, setDockerDashboardSections] = useConfigValue(
     "dockerDashboardSections",
@@ -450,7 +450,7 @@ const DockerDashboard = ({
             [
               {
                 label: "Containers",
-                tab: "containers",
+                to: "/docker/containers",
                 value: `${containers.length}`,
                 detail: [
                   `${runningContainers.length} running`,
@@ -468,29 +468,33 @@ const DockerDashboard = ({
               },
               {
                 label: "Images",
-                tab: "images",
+                to: "/docker/images",
                 value: `${images.length}`,
                 detail: `${formatFileSize(totalImageSize)} on disk`,
               },
               {
                 label: "Networks",
-                tab: "networks",
+                to: "/docker/networks",
                 value: `${networks.length}`,
                 detail: `${networks.filter((n) => !n.Internal).length} external`,
               },
               {
                 label: "Volumes",
-                tab: "volumes",
+                to: "/docker/volumes",
                 value: `${volumes.length}`,
                 detail: `${volumes.filter((v) => v.Driver === "local").length} local`,
               },
             ] as {
               label: string;
-              tab: string;
+              to:
+                | "/docker/containers"
+                | "/docker/images"
+                | "/docker/networks"
+                | "/docker/volumes";
               value: string;
               detail: string;
             }[]
-          ).map(({ label, tab, value, detail }) => (
+          ).map(({ label, to, value, detail }) => (
             <AppGrid
               key={label}
               size={{
@@ -501,7 +505,7 @@ const DockerDashboard = ({
               <DockerStatCard
                 detail={detail}
                 label={label}
-                onClick={() => navigateToTab(tab)}
+                onClick={() => navigateToTab(to)}
                 value={value}
               />
             </AppGrid>
@@ -794,7 +798,7 @@ const DockerDashboard = ({
                   width={28}
                 />
               }
-              onViewAll={() => navigateToTab("containers")}
+              onViewAll={() => navigateToTab("/docker/containers")}
               subtitle={
                 <AppSelect
                   disableUnderline
@@ -846,7 +850,7 @@ const DockerDashboard = ({
                   width={28}
                 />
               }
-              onViewAll={() => navigateToTab("images")}
+              onViewAll={() => navigateToTab("/docker/images")}
               subtitle={
                 <AppSelect
                   disableUnderline

@@ -1,7 +1,8 @@
 # TanStack Router architecture
 
 Status: TanStack Router is the application's only routing path as of
-2026-07-23.
+2026-07-23. The approved page-level child-route phase and its query,
+error-boundary, and browser-regression follow-ups were completed on 2026-07-25.
 
 ## Route architecture
 
@@ -13,7 +14,7 @@ Status: TanStack Router is the application's only routing path as of
 - `@tanstack/router-plugin` generates `routeTree.gen.ts` and automatically
   code-splits route components.
 - `router.tsx` creates the typed application router from the generated tree.
-- `routes/-provider.tsx` injects the live auth, capability, QueryClient, and
+- `router/provider.tsx` injects the live auth, capability, QueryClient, and
   update-blocking context into that router.
 - `_authenticated.tsx` is the pathless authenticated layout. Its native
   `beforeLoad` guard runs before protected child loaders.
@@ -25,7 +26,8 @@ Status: TanStack Router is the application's only routing path as of
 - File Browser uses the native `filebrowser/$` splat and `_splat` parameter.
 - Unmatched authenticated URLs use the pathless layout's native
   `notFoundComponent`, preserving the authenticated shell. The root route owns
-  the global not-found and error components.
+  the global not-found component; `router.tsx` configures the global default
+  error component.
 
 The former code-based router factory, component registry, protected-route
 catalog, loader registry, and lazy-component wrappers have been removed.
@@ -56,19 +58,18 @@ Every protected page that owns initial route data has a co-located loader:
 
 | Route | Initial loader data |
 | --- | --- |
-| Authenticated shell | application version shown in the persistent footer |
 | Dashboard | health, host, uptime, time, CPU, memory, filesystems, network, motherboard, GPU, drives, disk throughput, and Docker summaries when available |
 | Network | network interfaces |
-| Updates | available updates and history when the history tab is active |
-| Services | active unit list for the selected section and selected-unit details |
+| Updates / History | available updates or update history, in the owning child route |
+| Services / Timers / Sockets | the child route's unit list and selected-unit details |
 | Logs | request-transport readiness; service filter data loads in background |
-| Storage | disks/filesystems/NFS mounts, or LVM physical volumes, volume groups, and logical volumes |
-| Docker | data for the active tab; auto-update state only for Containers |
-| VMs | VM list, preflight status, and the initially selected VM detail |
-| Accounts | active users/groups list and selected-user details/login history |
-| Shares | NFS/Samba shares or NFS/CIFS mounts, according to the active tab |
+| Disks / LVM | disks, filesystems, and NFS mounts; or LVM physical volumes, volume groups, and logical volumes |
+| Docker child routes | data for that page; auto-update state only for Containers |
+| VMs | shared VM list and preflight status; Machines also loads the URL-selected VM detail |
+| Users / Groups | the child route's account list; Users also loads selected-user details/login history |
+| Shares / Mounts | NFS/Samba shares or NFS/CIFS mounts, in the owning child route |
 | WireGuard | WireGuard interfaces |
-| Hardware | sensors, PCI devices, memory modules, hardware summaries, and monitoring histories when available |
+| Hardware | sensors, PCI devices, memory modules, and hardware summaries; variable-range monitoring histories load progressively in their cards |
 | Navigator | the resource for the current splat path |
 | Terminal | request-transport readiness before the stream-only page mounts |
 
@@ -76,7 +77,7 @@ Search-dependent data is declared through `loaderDeps`, so a relevant search
 change reruns the loader with a distinct dependency identity. Each query loader
 returns the result of generated endpoint `queryOptions` loaded through the
 router's shared QueryClient. Request failures propagate to the route error
-boundary. The mounted `useQuery` observer consumes and subscribes to those same
+boundary. The mounted query observer consumes and subscribes to those same
 cache entries instead of starting an independent initial request.
 
 Sign-in, not-found, and root routes own no backend data and therefore do not
@@ -102,16 +103,28 @@ unreliable hover preload does not create a global error toast.
 - `routes/_authenticated/-components/sidebar/useSidebarItems.test.tsx` checks
   access filtering, static-data
   ordering, and the absence of per-link preload overrides.
-- `routes/-provider.test.tsx` checks bootstrap gating and live
+- `router/provider.test.tsx` checks bootstrap gating and live
   router-context invalidation.
+- `routes/_authenticated/-query-ownership.test.ts` prevents progressive
+  Hardware history queries, dialog-only WireGuard network data, and
+  filter-only Logs service data from moving back into eager page loading.
+- `components/errors/ErrorBoundary.test.tsx` and
+  `routes/-components/RouteError.test.tsx` verify recovery from failed
+  Suspense queries at local and route boundaries.
+- `src/test/browser/router.spec.ts` runs the routed-tab lifecycle in Chromium:
+  direct links, refresh, back/forward navigation, pending and error UI, and
+  first-navigation chunk loading. It also inspects the production manifest to
+  keep all 21 page-level child-route components in distinct dynamic entries.
 
 `routeTree.gen.ts` is generated code. It is committed for TypeScript consumers
 but excluded from formatting.
 
 ## Approved simplification plan
 
-Status: direction reviewed and approved on 2026-07-24; implementation is
-pending.
+Status: direction reviewed and approved on 2026-07-24; the child-route phase
+and the independent query, boundary, and browser follow-ups were implemented on
+2026-07-25. No Phase 3 is defined for this migration. Broader authenticated and
+privileged end-to-end coverage belongs to the separate three-tier test plan.
 
 This plan follows the reusable query-options pattern described in
 [The Better Way to Use React Query](https://www.youtube.com/watch?v=e2OC3aaiGhI).
@@ -135,7 +148,7 @@ layer remain the canonical central abstractions. Do not add parallel
 
 ### Page-level tabs become child routes
 
-Tabs that represent independently navigable pages will use traditional child
+Tabs that represent independently navigable pages use traditional child
 routes:
 
 - Accounts: Users and Groups
@@ -146,7 +159,7 @@ routes:
 - Docker: Dashboard, Containers, Compose, Networks, Volumes, and Images
 - VMs: Dashboard, Networks, Images, and Machines
 
-A route group should have this shape:
+A route group has this shape:
 
 ```text
 docker/
@@ -206,18 +219,20 @@ lazy/progressive.
 
 - **Updates and Shares:** child routes replace tab-dependent switch loaders.
   Critical child data is consumed with `useSuspenseQuery`.
-- **Hardware:** initial history charts are progressive, range-dependent, and
-  polled. Remove their speculative one-hour queries from the route loader and
-  keep their existing `useQuery` behavior.
+- **Hardware:** history charts are progressive, range-dependent, and polled.
+  Their speculative one-hour queries are excluded from the route loader; the
+  cards retain their existing `useQuery` behavior.
 - **Docker:** place each observer at the lowest route that consumes it.
   Container auto-update state belongs to the Containers child unless a
   documented product requirement makes it common to the Docker parent.
 - **VMs:** make Machines a child route. Store the selected VM in validated
   search state with `loaderDeps`, unless VM detail later becomes a standalone
   path route.
-- **WireGuard:** reuse the cached interface list. Load network information only
-  when the create-interface workflow is opened.
-- **Logs:** load the service list only when the status filter requires it.
+- **WireGuard:** the page owns one interface-list observer and passes that
+  cached result to the dashboard and create action. Network information is
+  enabled only while the create-interface dialog is open.
+- **Logs:** the service-list observer is enabled only for status filters that
+  require service membership; `no_unit` and unfiltered logs do not request it.
 - **Services:** repeated observers for the selected unit are valid because they
   share generated query options and one cache entry. Do not replace them with
   prop drilling or another wrapper.
@@ -236,27 +251,28 @@ page-level `TabPanel` wrappers also removes their legacy catch-all boundary
 from routed content.
 
 Local error boundaries remain appropriate only where partial failure isolation
-is deliberate, such as an optional dashboard widget or hardware card. Any
-local boundary containing a Suspense query must integrate TanStack Query reset
-behavior.
+is deliberate, such as an optional dashboard widget or hardware card. The
+shared local boundary integrates `useQueryErrorResetBoundary`; its retry action
+resets the failed query before remounting the widget. The only custom static
+fallback is used by settings sections, which use non-Suspense queries.
 
-The route error component must reset `useQueryErrorResetBoundary` when it
-mounts. Its retry action invalidates the router so the loader reruns and the
-route boundary resets.
+The route error component resets `useQueryErrorResetBoundary` when it mounts.
+Its retry action invalidates the router so the loader reruns and the route
+boundary resets.
 
-### Implementation order
+### Completion record
 
-1. Use Shares as the smallest vertical proof: parent layout plus Shares and
-   Mounts child routes.
-2. Verify direct links, refresh, back/forward navigation, intent preload,
-   pending UI, errors, query reuse, and code splitting.
-3. Apply the same route shape to Accounts, Services, Storage, Updates, Docker,
-   and VMs.
-4. Perform the non-tab query cleanup for Hardware, WireGuard, Logs, and Docker.
-5. Remove obsolete page-tab state helpers and integrate the remaining error
-   boundaries.
-6. Update route topology, loader, navigation, and boundary regression tests.
+The child-route work is complete for Shares, Accounts, Services, Storage,
+Updates, Docker, and VMs, including typed links, route-owned loaders/search,
+and topology regressions. The follow-up sequence is also complete:
 
-The migration should stay incremental. Do not redesign the generated API
-layer, add a generic route builder, convert every lazy query to Suspense, or
-introduce a new global state store as part of this work.
+1. Hardware, WireGuard, and Logs use the targeted lazy/progressive query
+   ownership described above.
+2. Local and route error boundaries reset failed TanStack Query state and have
+   recovery regressions.
+3. Browser-level coverage verifies direct links, refresh, back/forward
+   navigation, pending/error UI, and production chunk boundaries.
+
+Future work should not redesign the generated API layer, add a generic route
+builder, convert every lazy query to Suspense, or introduce a new global state
+store without a separate product or performance requirement.

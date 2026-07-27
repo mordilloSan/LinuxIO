@@ -38,6 +38,7 @@
   line-height: 1;
   font-weight: 500;
   white-space: nowrap;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 120ms ease,

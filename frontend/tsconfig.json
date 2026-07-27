@@ -37,11 +37,15 @@
       // Files
       "@/api": ["./src/api/index"],
       "@/config": ["./src/config"],
-      "@/query-client": ["./src/query-client"],
-      "@/router": ["./src/router"],
       "@/routeTree.gen": ["./src/routeTree.gen"],
       "@/theme": ["./src/theme/index"]
     }
   },
-  "include": ["src", "config/vite.config.ts", "config/vitest.config.ts"]
+  "include": [
+    "src",
+    "config/browser.vite.config.ts",
+    "config/playwright.config.ts",
+    "config/vite.config.ts",
+    "config/vitest.config.ts"
+  ]
 }

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { linuxio, type NetworkInterface } from "@/api";
+import { linuxio, type NetworkInterface, type WireGuardInterface } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -12,7 +12,11 @@ const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
 
-const CreateInterfaceButton = () => {
+interface CreateInterfaceButtonProps {
+  interfaces: WireGuardInterface[];
+}
+
+const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   const toast = useScopedToast({
     label: "Open WireGuard",
     to: "/wireguard",
@@ -26,21 +30,17 @@ const CreateInterfaceButton = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
 
-  // Fetch network info via stream API
+  // Network data is only needed by the create workflow. Keeping this observer
+  // disabled until the dialog opens avoids a page-level speculative request.
   const {
     data: networkData,
     isPending: networkPending,
     error: networkError,
-  } = useQuery(linuxio.network.get_network_info.queryOptions());
-
-  // Fetch existing WireGuard interfaces via stream API
-  const {
-    data: wgInterfaces,
-    isPending: interfacesPending,
-    error: interfacesError,
-  } = useQuery(linuxio.wireguard.list_interfaces.queryOptions());
-  const queriesPending = networkPending || interfacesPending;
-  const queryError = networkError ?? interfacesError;
+  } = useQuery(
+    linuxio.network.get_network_info.queryOptions({
+      enabled: showDialog,
+    }),
+  );
 
   // Job action for adding an interface; invalidation comes from the
   // JOB_QUERY_INVALIDATIONS manifest.
@@ -55,12 +55,6 @@ const CreateInterfaceButton = () => {
         );
       },
     });
-
-  // Memoize WireGuard interfaces array
-  const wgArray = useMemo(
-    () => (Array.isArray(wgInterfaces) ? wgInterfaces : []),
-    [wgInterfaces],
-  );
 
   // Memoize helper to get physical NICs
   const getPhysicalNICs = useCallback(
@@ -136,38 +130,28 @@ const CreateInterfaceButton = () => {
     [parseCidrThirdOctet],
   );
 
-  // Preselect NIC, name, port, and CIDR when opening dialog
+  // Preselect values derived from the already observed route-level interface
+  // list. The NIC falls back to the first suitable result from the
+  // dialog-owned network query without synchronizing derived state.
   const handleOpenDialog = useCallback(() => {
-    if (queriesPending || queryError) return;
-
-    // Set NIC
-    const availableNICs = getPhysicalNICs(networkData);
-    if (availableNICs.length > 0) {
-      const firstOnline = availableNICs.find(
-        (nic) => !nic.label.includes("disconnected"),
-      );
-      setNic(firstOnline ? firstOnline.name : availableNICs[0].name);
-    }
-    // Set name/port/CIDR from WireGuard interfaces
-    const names = wgArray.map((iface: any) => iface.name);
-    const ports = wgArray.map((iface: any) => iface.port);
-    const cidrs = wgArray.map((iface: any) => iface.address);
+    const names = interfaces.map((iface) => iface.name);
+    const ports = interfaces.map((iface) => iface.port);
+    const cidrs = interfaces.map((iface) => iface.address);
 
     setServerName(nextAvailableWgName(names));
     setPort(nextAvailablePort(ports));
     setCIDR(nextAvailableCIDR(cidrs));
-
+    setNic("");
+    setError(null);
     setShowDialog(true);
-  }, [
-    networkData,
-    wgArray,
-    getPhysicalNICs,
-    nextAvailableWgName,
-    nextAvailablePort,
-    nextAvailableCIDR,
-    queriesPending,
-    queryError,
-  ]);
+  }, [interfaces, nextAvailableWgName, nextAvailablePort, nextAvailableCIDR]);
+
+  const availableNICs = networkData ? getPhysicalNICs(networkData) : [];
+  const firstOnlineNIC = availableNICs.find(
+    (candidate) => !candidate.label.includes("disconnected"),
+  );
+  const selectedNIC =
+    nic || firstOnlineNIC?.name || availableNICs[0]?.name || "";
 
   const handleCreateInterface = () => {
     setError(null);
@@ -183,7 +167,7 @@ const CreateInterfaceButton = () => {
         name: serverName,
         addresses: CIDR,
         listenPort: String(port),
-        egressNic: nic,
+        egressNic: selectedNIC,
         dns: dnsStr,
         mtu: "0",
         peersJson: "[]",
@@ -199,38 +183,30 @@ const CreateInterfaceButton = () => {
     );
   };
 
-  const availableNICs =
-    queriesPending || queryError ? [] : getPhysicalNICs(networkData);
-
   // Pass down for validation
-  const existingNames = wgArray.map((iface: any) => iface.name);
-  const existingPorts = wgArray.map((iface: any) => iface.port);
-  const existingCIDRs = wgArray.map((iface: any) => iface.address);
+  const existingNames = interfaces.map((iface) => iface.name);
+  const existingPorts = interfaces.map((iface) => iface.port);
+  const existingCIDRs = interfaces.map((iface) => iface.address);
 
   return (
     <>
-      <AppButton
-        color="primary"
-        disabled={queriesPending || Boolean(queryError)}
-        onClick={handleOpenDialog}
-        title={queryError?.message}
-        variant="contained"
-      >
-        {queriesPending ? "Loading interfaces..." : "Create New Interface"}
+      <AppButton color="primary" onClick={handleOpenDialog} variant="contained">
+        Create New Interface
       </AppButton>
       <CreateInterfaceDialog
         availableNICs={availableNICs}
         CIDR={CIDR}
         dns={dns}
-        error={error || undefined}
+        error={error ?? networkError?.message}
         existingCIDRs={existingCIDRs}
         existingNames={existingNames}
         existingPorts={existingPorts}
         loading={isAddingInterface}
-        nic={nic}
+        nic={selectedNIC}
         onClose={() => setShowDialog(false)}
         onCreate={handleCreateInterface}
         open={showDialog}
+        optionsLoading={networkPending}
         peers={peers}
         port={port}
         serverName={serverName}

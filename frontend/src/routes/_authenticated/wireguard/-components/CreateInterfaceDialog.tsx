@@ -23,6 +23,7 @@ interface CreateInterfaceDialogProps {
   onClose: () => void;
   onCreate: () => void;
   open: boolean;
+  optionsLoading: boolean;
   peers: number;
   port: string | number;
   serverName: string;
@@ -39,6 +40,7 @@ const CreateInterfaceDialog = ({
   onClose,
   onCreate,
   loading,
+  optionsLoading,
   error,
   serverName,
   setServerName,
@@ -124,7 +126,11 @@ const CreateInterfaceDialog = ({
             style={{ marginBlock: 8 }}
             value={nic}
           >
-            {availableNICs.length === 0 ? (
+            {optionsLoading ? (
+              <option disabled value="">
+                Loading NICs…
+              </option>
+            ) : availableNICs.length === 0 ? (
               <option disabled value="">
                 No NICs Available
               </option>
@@ -153,10 +159,12 @@ const CreateInterfaceDialog = ({
             !serverName ||
             Number(port) === 0 ||
             !CIDR ||
+            !nic ||
             loading ||
             !!nameTaken ||
             !!portTaken ||
-            !!cidrTaken
+            !!cidrTaken ||
+            optionsLoading
           }
           onClick={onCreate}
         >

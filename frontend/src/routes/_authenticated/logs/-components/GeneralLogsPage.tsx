@@ -47,6 +47,11 @@ const MAX_BUFFER = 5000;
 // to the array, not to visible rows. Copy / Download still operate on the
 // full matched set.
 const DISPLAY_LIMIT = 1000;
+const UNIT_STATUS_FILTERS_REQUIRING_SERVICES = new Set([
+  "running",
+  "failed",
+  "inactive",
+]);
 
 // Log priority levels (syslog standard)
 enum LogPriority {
@@ -164,7 +169,7 @@ const getPriorityIcon = (priority: LogPriority) => {
 
 const resolveUnitTarget = (
   log: LogEntry,
-): { section: string; param: string; unit: string } | null => {
+): { section: "services" | "sockets" | "timers"; unit: string } | null => {
   const raw = log.rawJson;
   const systemdUnit =
     typeof raw?._SYSTEMD_UNIT === "string" && raw._SYSTEMD_UNIT
@@ -181,13 +186,13 @@ const resolveUnitTarget = (
   }
 
   if (unit.endsWith(".timer")) {
-    return { section: "timers", param: "timer", unit };
+    return { section: "timers", unit };
   }
   if (unit.endsWith(".socket")) {
-    return { section: "sockets", param: "socket", unit };
+    return { section: "sockets", unit };
   }
   if (unit.endsWith(".service")) {
-    return { section: "services", param: "service", unit };
+    return { section: "services", unit };
   }
   return null;
 };
@@ -305,8 +310,11 @@ const GeneralLogsPage = () => {
   }, [logs]);
 
   // Current systemd unit states, used by the unit-status filter below.
-  const { data: services = [] } = useQuery(
+  const unitStatusNeedsServices =
+    UNIT_STATUS_FILTERS_REQUIRING_SERVICES.has(unitStatusFilter);
+  const { data: services } = useQuery(
     linuxio.systemd.list_services.queryOptions({
+      enabled: unitStatusNeedsServices,
       staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
     }),
   );
@@ -315,7 +323,7 @@ const GeneralLogsPage = () => {
   // either "all" (no filter) or "no_unit" (which is handled by checking for an
   // empty _SYSTEMD_UNIT field, not by Set membership).
   const matchingUnitNames = useMemo<Set<string> | null>(() => {
-    if (unitStatusFilter === "all" || unitStatusFilter === "no_unit") {
+    if (!unitStatusNeedsServices || !services) {
       return null;
     }
     const wanted = new Set<string>();
@@ -335,7 +343,7 @@ const GeneralLogsPage = () => {
       }
     }
     return wanted;
-  }, [services, unitStatusFilter]);
+  }, [services, unitStatusFilter, unitStatusNeedsServices]);
 
   // Scroll to top when new logs arrive (before paint to avoid a visible jump)
   useLayoutEffect(() => {
@@ -602,10 +610,11 @@ const GeneralLogsPage = () => {
         if (unitStatusFilter === "no_unit") {
           return systemdUnit === "" && aboutUnit === "";
         }
+        if (matchingUnitNames === null) {
+          return true;
+        }
         return (
-          matchingUnitNames !== null &&
-          (matchingUnitNames.has(systemdUnit) ||
-            matchingUnitNames.has(aboutUnit))
+          matchingUnitNames.has(systemdUnit) || matchingUnitNames.has(aboutUnit)
         );
       });
     }
@@ -679,10 +688,22 @@ const GeneralLogsPage = () => {
       event.stopPropagation();
       const target = resolveUnitTarget(log);
       if (!target) return;
-      navigate({
-        to: "/services",
-        search: { section: target.section, [target.param]: target.unit },
-      });
+      if (target.section === "timers") {
+        navigate({
+          to: "/services/timers",
+          search: { timer: target.unit },
+        });
+      } else if (target.section === "sockets") {
+        navigate({
+          to: "/services/sockets",
+          search: { socket: target.unit },
+        });
+      } else {
+        navigate({
+          to: "/services",
+          search: { service: target.unit },
+        });
+      }
     },
     [navigate],
   );

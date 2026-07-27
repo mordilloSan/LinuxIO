@@ -5,7 +5,6 @@ import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { VirtualMachineIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
-import { optionalString } from "@/routes/-search";
 
 import VMPage from "./-components/VMPage";
 
@@ -15,28 +14,12 @@ const access = {
 } satisfies AccessPolicy;
 
 export const Route = createFileRoute("/_authenticated/vm")({
-  validateSearch: (search) => ({
-    ...optionalString(search, "vmTab"),
-  }),
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: async ({ context, preload }) => {
-    const [virtualMachines, preflight] = await loadRouteQueries(
-      { context, preload },
-      [
-        linuxio.virt.list.queryOptions(),
-        linuxio.virt.preflight.queryOptions({}),
-      ],
-    );
-
-    const firstVirtualMachine = virtualMachines?.[0];
-    const [initialVirtualMachine] = firstVirtualMachine
-      ? await loadRouteQueries({ context, preload }, [
-          linuxio.virt.get.queryOptions(firstVirtualMachine.name),
-        ])
-      : [undefined];
-
-    return { initialVirtualMachine, preflight, virtualMachines };
-  },
+  loader: ({ context, preload }) =>
+    loadRouteQueries({ context, preload }, [
+      linuxio.virt.list.queryOptions(),
+      linuxio.virt.preflight.queryOptions({}),
+    ]),
   component: VMPage,
   staticData: {
     access,

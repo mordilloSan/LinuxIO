@@ -1,11 +1,15 @@
 import { Icon } from "@iconify/react";
-import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useSuspenseQueries } from "@tanstack/react-query";
+import { getRouteApi, Outlet } from "@tanstack/react-router";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
-import { linuxio, openVMConsoleStream } from "@/api";
-import type { VMCreateProgress, VMDeleteResult, VirtualMachine } from "@/api";
-import { TabContainer } from "@/components/tabbar";
+import {
+  linuxio,
+  type VMCreateProgress,
+  type VMPreflight,
+  type VirtualMachine,
+} from "@/api";
+import { RoutedTabContainer } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -15,61 +19,41 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-import ConsoleDialog from "./ConsoleDialog";
 import CreateVMDialog from "./CreateVMDialog";
-import DeleteVMDialog from "./DeleteVMDialog";
-import VMDetailsPanel from "./VMDetailsPanel";
-import VMListTable from "./VMListTable";
-import {
-  type ConsoleSession,
-  type VMAction,
-  VM_TOAST,
-  normalizeVMDeleteResult,
-  preflightReady,
-} from "./vmShared";
-import {
-  VMDashboardTab,
-  VMImagesTab,
-  VMNetworksTab,
-  VMPreflightCard,
-} from "./VMTabs";
+import { VM_TOAST, preflightReady } from "./vmShared";
+import { VM_TABS } from "./vmTabs";
 
+export interface VMRouteData {
+  preflight?: VMPreflight;
+  vms: VirtualMachine[];
+}
+
+const VMRouteDataContext = createContext<VMRouteData | null>(null);
 const vmRouteApi = getRouteApi("/_authenticated/vm");
 
-const VMPage = () => {
+export function useVMRouteData(): VMRouteData {
+  const value = useContext(VMRouteDataContext);
+  if (!value) {
+    throw new Error("VM child content must render inside VMPage");
+  }
+  return value;
+}
+
+interface VMPageProps {
+  children?: ReactNode;
+}
+
+const VMPage = ({ children }: VMPageProps) => {
   const theme = useAppTheme();
-  const navigate = vmRouteApi.useNavigate();
-  const search = vmRouteApi.useSearch();
-  const activeTab =
-    search.vmTab === "networks" ||
-    search.vmTab === "images" ||
-    search.vmTab === "machines"
-      ? search.vmTab
-      : "dashboard";
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const vmListCache = linuxio.virt.list.useCache();
+  const navigate = vmRouteApi.useNavigate();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
     useCapability("libvirtAvailable");
-  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createProgress, setCreateProgress] = useState<VMCreateProgress | null>(
     null,
   );
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
-    null,
-  );
-  const setActiveTab = useCallback(
-    (vmTab: typeof activeTab) =>
-      navigate({
-        to: "/vm",
-        search: (previous) => ({ ...previous, vmTab }),
-      }),
-    [navigate],
-  );
-
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
       linuxio.virt.list.queryOptions({
@@ -82,28 +66,6 @@ const VMPage = () => {
         },
       ),
     ],
-  });
-  const vms = listQuery.data;
-  const effectiveSelectedName = useMemo(() => {
-    if (selectedName && vms.some((vm) => vm.name === selectedName)) {
-      return selectedName;
-    }
-    return vms[0]?.name ?? null;
-  }, [selectedName, vms]);
-  const detailQuery = useQuery(
-    linuxio.virt.get.queryOptions(effectiveSelectedName ?? "", {
-      enabled: libvirtStatus === "available" && Boolean(effectiveSelectedName),
-    }),
-  );
-  const selectedVM =
-    detailQuery.data ??
-    vms.find((vm) => vm.name === effectiveSelectedName) ??
-    null;
-
-  const actionConfig = (successText: string, fallback: string) => ({
-    success: successText,
-    error: fallback,
-    toast: VM_TOAST,
   });
 
   const createMutation = linuxio.virt.create.useJobStreamAction<
@@ -121,11 +83,13 @@ const VMPage = () => {
       toast.success(`Created ${vm.name}`);
       setCreateProgress(null);
       setCreateOpen(false);
-      setSelectedName(vm.name);
-      setActiveTab("machines");
+      navigate({
+        search: { vm: vm.name },
+        to: "/vm/machines",
+      });
     },
-    error: (err) => {
-      const message = getMutationErrorMessage(err, "Failed to create VM");
+    error: (error) => {
+      const message = getMutationErrorMessage(error, "Failed to create VM");
       setCreateProgress({
         message,
         phase: "error",
@@ -141,92 +105,6 @@ const VMPage = () => {
       },
     },
   });
-  const deleteMutation = linuxio.virt.delete.useJobStreamAction<VMDeleteResult>(
-    {
-      closeMessage:
-        "VM delete connection closed before final result. Refresh the VM list to check whether deletion completed.",
-      // Only virt.list: invalidating virt.get for the deleted VM would refetch
-      // a missing domain and surface a spurious "domain not found" error toast.
-      invalidates: [linuxio.virt.list.queryKey()],
-      success: (result, request) => {
-        const deleteResult = normalizeVMDeleteResult(result);
-        const diskText =
-          deleteResult.removed.length > 0
-            ? ` Removed ${deleteResult.removed.length} disk(s).`
-            : "";
-        toast.success(`Deleted ${request.name}.${diskText}`);
-        setDeleteOpen(false);
-        setSelectedName(null);
-        // The domain is gone. Optimistically drop it from the cached list so
-        // the detail query stops targeting it while the refetch is in flight.
-        vmListCache.set((current) =>
-          current?.filter((vm) => vm.name !== request.name),
-        );
-      },
-      error: (err) =>
-        toast.error(getMutationErrorMessage(err, "Failed to delete VM")),
-    },
-  );
-  const startMutation = linuxio.virt.start.useJobAction(
-    actionConfig("VM started", "Failed to start VM"),
-  );
-  const shutdownMutation = linuxio.virt.shutdown.useJobAction(
-    actionConfig("VM shutdown requested", "Failed to shutdown VM"),
-  );
-  const rebootMutation = linuxio.virt.reboot.useJobAction(
-    actionConfig("VM reboot requested", "Failed to reboot VM"),
-  );
-  const forceOffMutation = linuxio.virt.force_off.useJobAction(
-    actionConfig("VM powered off", "Failed to force off VM"),
-  );
-  const suspendMutation = linuxio.virt.suspend.useJobAction(
-    actionConfig("VM suspended", "Failed to suspend VM"),
-  );
-  const resumeMutation = linuxio.virt.resume.useJobAction(
-    actionConfig("VM resumed", "Failed to resume VM"),
-  );
-
-  const actionPending =
-    startMutation.isPending ||
-    shutdownMutation.isPending ||
-    rebootMutation.isPending ||
-    forceOffMutation.isPending ||
-    suspendMutation.isPending ||
-    resumeMutation.isPending;
-
-  const runAction = useCallback(
-    (action: VMAction, vm: VirtualMachine) => {
-      const request = { name: vm.name };
-      switch (action) {
-        case "start":
-          startMutation.mutate(request);
-          break;
-        case "shutdown":
-          shutdownMutation.mutate(request);
-          break;
-        case "reboot":
-          rebootMutation.mutate(request);
-          break;
-        case "force_off":
-          forceOffMutation.mutate(request);
-          break;
-        case "suspend":
-          suspendMutation.mutate(request);
-          break;
-        case "resume":
-          resumeMutation.mutate(request);
-          break;
-      }
-    },
-    [
-      forceOffMutation,
-      rebootMutation,
-      resumeMutation,
-      shutdownMutation,
-      startMutation,
-      suspendMutation,
-    ],
-  );
 
   const tabActions = (
     <div
@@ -281,88 +159,15 @@ const VMPage = () => {
   }
 
   return (
-    <>
-      <TabContainer
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        tabs={[
-          {
-            component: (
-              <VMDashboardTab preflight={preflightQuery.data} vms={vms} />
-            ),
-            label: "Global dashboard",
-            rightContent: tabActions,
-            value: "dashboard",
-          },
-          {
-            component: <VMNetworksTab vms={vms} />,
-            label: "Networks",
-            rightContent: tabActions,
-            value: "networks",
-          },
-          {
-            component: <VMImagesTab preflight={preflightQuery.data} />,
-            label: "Images",
-            rightContent: tabActions,
-            value: "images",
-          },
-          {
-            component: (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: theme.spacing(4.5),
-                  minHeight: 0,
-                }}
-              >
-                <VMPreflightCard preflight={preflightQuery.data} />
-                <div
-                  style={{
-                    alignItems: "stretch",
-                    display: "grid",
-                    gap: theme.spacing(4.5),
-                    gridTemplateColumns: isCompactLayout
-                      ? "1fr"
-                      : "minmax(0, 1fr) minmax(280px, 360px)",
-                    minHeight: 0,
-                  }}
-                >
-                  <VMListTable
-                    actionPending={actionPending}
-                    effectiveSelectedName={effectiveSelectedName}
-                    onDelete={(vm) => {
-                      setSelectedName(vm.name);
-                      setDeleteOpen(true);
-                    }}
-                    onOpenConsole={(vm) =>
-                      setConsoleSession({
-                        stream: openVMConsoleStream(vm.name),
-                        vm,
-                      })
-                    }
-                    onRunAction={runAction}
-                    onSelect={setSelectedName}
-                    vms={vms}
-                  />
-                  <VMDetailsPanel
-                    error={
-                      detailQuery.isLoadingError
-                        ? detailQuery.error?.message
-                        : undefined
-                    }
-                    isLoading={detailQuery.isLoading}
-                    vm={selectedVM}
-                  />
-                </div>
-              </div>
-            ),
-            label: "Virtual machines",
-            rightContent: tabActions,
-            value: "machines",
-          },
-        ]}
-      />
+    <VMRouteDataContext
+      value={{
+        preflight: preflightQuery.data,
+        vms: listQuery.data,
+      }}
+    >
+      <RoutedTabContainer rightContent={tabActions} tabs={VM_TABS}>
+        {children ?? <Outlet />}
+      </RoutedTabContainer>
 
       {createOpen && (
         <CreateVMDialog
@@ -376,27 +181,7 @@ const VMPage = () => {
           open={createOpen}
         />
       )}
-      {deleteOpen && (
-        <DeleteVMDialog
-          isDeleting={deleteMutation.isPending}
-          onClose={() => setDeleteOpen(false)}
-          onDelete={(deleteDisks) => {
-            if (selectedVM) {
-              deleteMutation.mutate({ deleteDisks, name: selectedVM.name });
-            }
-          }}
-          open={deleteOpen}
-          vm={selectedVM}
-        />
-      )}
-      {consoleSession && (
-        <ConsoleDialog
-          onClose={() => setConsoleSession(null)}
-          open={Boolean(consoleSession)}
-          session={consoleSession}
-        />
-      )}
-    </>
+    </VMRouteDataContext>
   );
 };
 

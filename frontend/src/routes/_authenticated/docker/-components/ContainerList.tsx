@@ -57,7 +57,7 @@ interface ContainerListProps {
 }
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
-const dockerRouteApi = getRouteApi("/_authenticated/docker");
+const dockerRouteApi = getRouteApi("/_authenticated/docker/containers");
 
 const ContainerList = ({
   checkingUpdates = false,
@@ -96,7 +96,7 @@ const ContainerList = ({
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
       navigate({
-        to: "/docker",
+        to: "/docker/containers",
         search: (previous) => ({
           ...previous,
           container: containerId ?? undefined,

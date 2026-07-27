@@ -479,6 +479,18 @@ check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 test-frontend: ensure-node setup
 	@$(MAKE) --no-print-directory test-frontend-only
 
+setup-frontend-browser: ensure-node setup
+	@echo "🌐 Installing Playwright Chromium..."
+	@bash -c 'cd frontend && ./node_modules/.bin/playwright install chromium'
+	@echo "✅ Playwright Chromium installed!"
+
+test-frontend-browser: ensure-node setup
+	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
+	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
+	@echo "🌐 Running frontend browser tests..."
+	@bash -c 'cd frontend && ./node_modules/.bin/playwright test --config config/playwright.config.ts'
+	@echo "✅ Frontend browser tests passed!"
+
 test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
 	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --config config/vitest.config.ts --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
@@ -499,7 +511,7 @@ lint-only:
 	  cd frontend; \
 	  lint_output="$$(mktemp)"; \
 	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src 2>&1 | tee "$$lint_output"; \
+	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
 	  if [ -n "$$warning_count" ]; then \
@@ -507,7 +519,7 @@ lint-only:
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
-	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "!src/routeTree.gen.ts"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
@@ -921,6 +933,8 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make setup-frontend-browser$(COLOR_RESET) Install Playwright Chromium"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
@@ -985,7 +999,7 @@ cloc-breakdown:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   cloc cloc-clean cloc-breakdown

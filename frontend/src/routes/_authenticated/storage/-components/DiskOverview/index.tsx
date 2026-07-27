@@ -33,7 +33,7 @@ import type {
 } from "./types";
 import { parseSizeToBytes } from "./utils";
 
-const storageRouteApi = getRouteApi("/_authenticated/storage");
+const storageRouteApi = getRouteApi("/_authenticated/storage/");
 const STORAGE_TOAST_META = {
   label: "Open storage",
   to: "/storage",

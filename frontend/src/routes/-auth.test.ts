@@ -65,15 +65,59 @@ describe("router context guards", () => {
             user: { id: "root", name: "root" },
           },
         }),
-        { redirect: "/storage?storageTab=lvm" },
+        { redirect: "/storage/lvm" },
       ),
     );
 
     expect(isRedirect(result)).toBe(true);
     if (!isRedirect(result)) return;
     expect(result.options).toMatchObject({
-      href: "/storage?storageTab=lvm",
+      href: "/storage/lvm",
       replace: true,
+    });
+  });
+
+  it.each([
+    "https://attacker.example/phish",
+    "//attacker.example/phish",
+    "/\\attacker.example/phish",
+  ])("rejects an external post-auth redirect: %s", (redirectTarget) => {
+    const result = captureThrow(() =>
+      requireGuest(
+        context({
+          auth: {
+            isAuthenticated: true,
+            isInitialized: true,
+            user: { id: "root", name: "root" },
+          },
+        }),
+        { redirect: redirectTarget },
+      ),
+    );
+
+    expect(isRedirect(result)).toBe(true);
+    if (!isRedirect(result)) return;
+    expect(result.options).toMatchObject({
+      href: "/",
+      replace: true,
+    });
+  });
+
+  it("does not preserve an external redirect through the auth guard", () => {
+    const result = captureThrow(() =>
+      requireAuthentication(context(), {
+        href: "/storage?redirect=https://attacker.example/phish",
+        search: { redirect: "https://attacker.example/phish" },
+      }),
+    );
+
+    expect(isRedirect(result)).toBe(true);
+    if (!isRedirect(result)) return;
+    expect(result.options).toMatchObject({
+      search: {
+        redirect: "/storage?redirect=https://attacker.example/phish",
+      },
+      to: "/sign-in",
     });
   });
 

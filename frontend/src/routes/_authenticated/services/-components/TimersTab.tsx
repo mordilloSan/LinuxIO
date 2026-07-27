@@ -50,7 +50,12 @@ function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
   ];
 }
 
-const TimersTab = () => {
+interface TimersTabProps {
+  onSelectedChange: (name: string | null) => void;
+  selected?: string;
+}
+
+const TimersTab = ({ onSelectedChange, selected }: TimersTabProps) => {
   const [viewMode, setViewMode] = useViewMode("timers.list", "table");
   const { data } = useTimersQuery(viewMode);
 
@@ -59,6 +64,7 @@ const TimersTab = () => {
       compareItems={compareTimersByName}
       data={data}
       matchesSearch={matchesTimerSearch}
+      onSelectedChange={onSelectedChange}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <TimerCardsView
           expanded={expanded}
@@ -83,8 +89,8 @@ const TimersTab = () => {
         />
       )}
       searchPlaceholder="Search timers…"
+      selected={selected}
       setViewMode={setViewMode}
-      urlParam="timer"
       viewMode={viewMode}
     />
   );

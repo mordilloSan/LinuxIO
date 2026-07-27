@@ -1,0 +1,65 @@
+import { Icon } from "@iconify/react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useState } from "react";
+
+import { RoutedTabContainer } from "@/components/tabbar";
+import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppTooltip from "@/components/ui/AppTooltip";
+import { useViewMode } from "@/hooks/useViewMode";
+
+import { ACCOUNTS_TABS } from "./accountsTabs";
+import UsersTab from "./UsersTab";
+
+const accountsUsersRouteApi = getRouteApi("/_authenticated/accounts/");
+
+const AccountsUsersPage = () => {
+  const [createUserHandler, setCreateUserHandler] = useState<
+    (() => void) | null
+  >(null);
+  const [usersView, setUsersView] = useViewMode("accounts.users", "table");
+  const search = accountsUsersRouteApi.useSearch();
+  const isUserDetailOpen = typeof search.user === "string";
+
+  const actions = isUserDetailOpen ? null : (
+    <>
+      <AppTooltip
+        title={
+          usersView === "table" ? "Switch to card view" : "Switch to table view"
+        }
+      >
+        <AppIconButton
+          onClick={() => setUsersView(usersView === "table" ? "card" : "table")}
+          size="small"
+        >
+          {usersView === "table" ? (
+            <Icon height={20} icon="mdi:card-multiple" width={20} />
+          ) : (
+            <Icon height={20} icon="mdi:table" width={20} />
+          )}
+        </AppIconButton>
+      </AppTooltip>
+      {createUserHandler && (
+        <AppButton
+          onClick={createUserHandler}
+          size="small"
+          startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
+          variant="contained"
+        >
+          Add User
+        </AppButton>
+      )}
+    </>
+  );
+
+  return (
+    <RoutedTabContainer rightContent={actions} tabs={ACCOUNTS_TABS}>
+      <UsersTab
+        onMountCreateHandler={(handler) => setCreateUserHandler(() => handler)}
+        viewMode={usersView}
+      />
+    </RoutedTabContainer>
+  );
+};
+
+export default AccountsUsersPage;

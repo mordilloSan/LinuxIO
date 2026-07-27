@@ -13,13 +13,7 @@ function Harness({ isUpdating }: { isUpdating: boolean }) {
       <span data-testid="loc">
         {[location.pathname, location.searchStr, location.hash].join("|")}
       </span>
-      <button
-        onClick={() =>
-          navigate({ to: "/docker", search: { dockerTab: "images" } })
-        }
-      >
-        go
-      </button>
+      <button onClick={() => navigate({ to: "/docker/images" })}>go</button>
     </>
   );
 }
@@ -55,9 +49,7 @@ describe("useUpdateNavigationGuard", () => {
     await user.click(await screen.findByRole("button", { name: "go" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("loc").textContent).toBe(
-        "/docker|?dockerTab=images|",
-      ),
+      expect(screen.getByTestId("loc").textContent).toBe("/docker/images||"),
     );
   });
 });

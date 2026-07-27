@@ -1,0 +1,102 @@
+import {
+  createBrowserHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { lazy, StrictMode, Suspense } from "react";
+import { createRoot } from "react-dom/client";
+
+import { RoutedTabContainer, type RoutedTab } from "@/components/tabbar";
+import buildAppTheme, { AppThemeProvider } from "@/theme";
+
+import "@/theme/variables.css";
+
+const UsersPage = lazy(() => import("./routes/UsersPage"));
+const GroupsPage = lazy(() => import("./routes/GroupsPage"));
+
+const tabs = [
+  { label: "Users", to: "/accounts" },
+  { label: "Groups", to: "/accounts/groups" },
+] as const satisfies readonly RoutedTab[];
+
+const waitForPendingState = () =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 350);
+  });
+
+function RootLayout() {
+  return (
+    <AppThemeProvider value={buildAppTheme("DARK")}>
+      <Outlet />
+    </AppThemeProvider>
+  );
+}
+
+function AccountsLayout() {
+  return (
+    <RoutedTabContainer tabs={tabs}>
+      <Suspense fallback={<div role="status">Loading route chunk…</div>}>
+        <Outlet />
+      </Suspense>
+    </RoutedTabContainer>
+  );
+}
+
+function PendingRoute() {
+  return <div role="status">Loading child route…</div>;
+}
+
+function FailedRoute({ error }: { error: Error }) {
+  return <div role="alert">Route failed: {error.message}</div>;
+}
+
+const rootRoute = createRootRoute({ component: RootLayout });
+const accountsRoute = createRoute({
+  component: AccountsLayout,
+  getParentRoute: () => rootRoute,
+  path: "accounts",
+});
+const accountsIndexRoute = createRoute({
+  component: UsersPage,
+  getParentRoute: () => accountsRoute,
+  path: "/",
+});
+const groupsRoute = createRoute({
+  component: GroupsPage,
+  getParentRoute: () => accountsRoute,
+  loader: waitForPendingState,
+  pendingComponent: PendingRoute,
+  pendingMinMs: 0,
+  pendingMs: 0,
+  path: "groups",
+});
+const failedRoute = createRoute({
+  errorComponent: FailedRoute,
+  getParentRoute: () => accountsRoute,
+  loader: () => {
+    throw new Error("fixture loader rejected");
+  },
+  path: "error",
+});
+
+const routeTree = rootRoute.addChildren([
+  accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
+]);
+const router = createRouter({
+  defaultPendingMinMs: 0,
+  defaultPendingMs: 0,
+  defaultPreload: "intent",
+  defaultPreloadDelay: 150,
+  history: createBrowserHistory(),
+  routeTree,
+});
+
+const container = document.getElementById("root");
+createRoot(container!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);

@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { CpuIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
-import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
+import { loadRouteQueries } from "@/routes/-loader";
 
 import HardwarePage from "./-components/HardwarePage";
 
@@ -14,8 +14,8 @@ const access = {
 
 export const Route = createFileRoute("/_authenticated/hardware")({
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: ({ context, preload }) => {
-    const queries: LoaderQueryOptions[] = [
+  loader: ({ context, preload }) =>
+    loadRouteQueries({ context, preload }, [
       linuxio.system.get_sensor_info.queryOptions(),
       linuxio.system.get_pci_devices.queryOptions(),
       linuxio.system.get_memory_modules.queryOptions(),
@@ -23,20 +23,7 @@ export const Route = createFileRoute("/_authenticated/hardware")({
       linuxio.system.get_system_info.queryOptions(),
       linuxio.system.get_cpu_info.queryOptions(),
       linuxio.system.get_gpu_info.queryOptions(),
-    ];
-
-    if (context.access.monitoringAvailable === true) {
-      const historyRequest = { limit: 400, resolution: "1m" } as const;
-      queries.push(
-        linuxio.monitoring.get_cpu_history.queryOptions(historyRequest),
-        linuxio.monitoring.get_memory_history.queryOptions(historyRequest),
-        linuxio.monitoring.get_diskio_history.queryOptions(historyRequest),
-        linuxio.monitoring.get_network_history.queryOptions(historyRequest),
-      );
-    }
-
-    return loadRouteQueries({ context, preload }, queries);
-  },
+    ]),
   component: HardwarePage,
   staticData: {
     access,

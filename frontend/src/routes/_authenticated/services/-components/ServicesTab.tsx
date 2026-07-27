@@ -31,7 +31,12 @@ function useServicesQuery(viewMode: TableCardViewMode) {
   );
 }
 
-const ServicesTab = () => {
+interface ServicesTabProps {
+  onSelectedChange: (name: string | null) => void;
+  selected?: string;
+}
+
+const ServicesTab = ({ onSelectedChange, selected }: ServicesTabProps) => {
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const { data } = useServicesQuery(viewMode);
 
@@ -40,6 +45,7 @@ const ServicesTab = () => {
       compareItems={compareServicesByName}
       data={data}
       matchesSearch={matchesServiceSearch}
+      onSelectedChange={onSelectedChange}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <ServiceCardsView
           expanded={expanded}
@@ -60,8 +66,8 @@ const ServicesTab = () => {
         />
       )}
       searchPlaceholder="Search services…"
+      selected={selected}
       setViewMode={setViewMode}
-      urlParam="service"
       viewMode={viewMode}
     />
   );

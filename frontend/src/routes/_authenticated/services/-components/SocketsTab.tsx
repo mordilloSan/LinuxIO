@@ -55,7 +55,12 @@ function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
   ];
 }
 
-const SocketsTab = () => {
+interface SocketsTabProps {
+  onSelectedChange: (name: string | null) => void;
+  selected?: string;
+}
+
+const SocketsTab = ({ onSelectedChange, selected }: SocketsTabProps) => {
   const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
   const { data } = useSocketsQuery(viewMode);
 
@@ -64,6 +69,7 @@ const SocketsTab = () => {
       compareItems={compareSocketsByName}
       data={data}
       matchesSearch={matchesSocketSearch}
+      onSelectedChange={onSelectedChange}
       renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
         <SocketCardsView
           expanded={expanded}
@@ -88,8 +94,8 @@ const SocketsTab = () => {
         />
       )}
       searchPlaceholder="Search sockets…"
+      selected={selected}
       setViewMode={setViewMode}
-      urlParam="socket"
       viewMode={viewMode}
     />
   );

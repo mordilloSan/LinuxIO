@@ -30,17 +30,36 @@ type RouteLocation = Pick<ParsedLocation, "href"> & {
   search: Record<string, unknown>;
 };
 
+const INTERNAL_REDIRECT_BASE = "https://linuxio.invalid";
+
+export function sanitizeInternalRedirect(value: unknown): string | undefined {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value, INTERNAL_REDIRECT_BASE);
+    if (url.origin !== INTERNAL_REDIRECT_BASE) return undefined;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function requireAuthentication(
   context: LinuxIORouterContext,
   location: RouteLocation,
 ): void {
   if (context.auth.isAuthenticated) return;
 
-  const existingRedirect = location.search.redirect;
   const redirectTarget =
-    typeof existingRedirect === "string" && existingRedirect
-      ? existingRedirect
-      : location.href;
+    sanitizeInternalRedirect(location.search.redirect) ??
+    sanitizeInternalRedirect(location.href) ??
+    "/";
 
   throw redirect({
     replace: true,
@@ -55,10 +74,7 @@ export function requireGuest(
 ): void {
   if (!context.auth.isAuthenticated) return;
 
-  const redirectTarget =
-    typeof search.redirect === "string" && search.redirect
-      ? search.redirect
-      : "/";
+  const redirectTarget = sanitizeInternalRedirect(search.redirect) ?? "/";
 
   throw redirect({ href: redirectTarget, replace: true });
 }

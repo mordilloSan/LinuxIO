@@ -56,7 +56,6 @@ function accountDetailSearch(
   },
 ) {
   return {
-    accountsTab: "users",
     autoDismissFailedLoginAlert: focusLogin?.autoDismissFailedLoginAlert,
     failedLoginAlertId: focusLogin?.failedLoginAlertId,
     focusLoginEventId: focusLogin?.eventId,
@@ -147,7 +146,7 @@ const SystemHealth = () => {
       onClick: () =>
         navigate({
           to: "/services",
-          search: failed ? { section: "services", service: failed } : undefined,
+          search: failed ? { service: failed } : undefined,
         }),
       detail: health.failedServices?.slice(0, 2).join(", "),
     });

@@ -1,4 +1,3 @@
-import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   useCallback,
@@ -34,24 +33,21 @@ interface UnitCardsViewRenderProps<T> {
   renderDetailPanel: (item: T) => ReactNode;
 }
 
-type ServiceSearchKey = "section" | "service" | "socket" | "timer";
-
 interface UnitListTabProps<T extends UnitListItem> {
   compareItems: (a: T, b: T) => number;
   data: T[];
   matchesSearch: (item: T, search: string) => boolean;
+  onSelectedChange: (name: string | null) => void;
   renderCardsView: (props: UnitCardsViewRenderProps<T>) => ReactNode;
   renderDetailPanel: (item: T, onClose: () => void) => ReactNode;
   renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
+  selected?: string;
   setViewMode: (
     next: TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),
   ) => void;
-  urlParam: ServiceSearchKey;
   viewMode: TableCardViewMode;
 }
-
-const servicesRouteApi = getRouteApi("/_authenticated/services");
 
 function UnitListTab<T extends UnitListItem>({
   viewMode,
@@ -63,26 +59,16 @@ function UnitListTab<T extends UnitListItem>({
   renderTableView,
   renderCardsView,
   renderDetailPanel,
-  urlParam,
+  selected,
+  onSelectedChange,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
-  const navigate = servicesRouteApi.useNavigate();
-  const routeSearch = servicesRouteApi.useSearch();
-  const selected = routeSearch[urlParam];
-  const expanded = typeof selected === "string" ? selected : undefined;
+  const expanded = selected;
   const setExpanded = useCallback(
-    (name: string | null) => {
-      navigate({
-        to: "/services",
-        search: (previous) => ({
-          ...previous,
-          [urlParam]: name ?? undefined,
-        }),
-      });
-    },
-    [navigate, urlParam],
+    (name: string | null) => onSelectedChange(name),
+    [onSelectedChange],
   );
   const [returnToTable, setReturnToTable] = useState(false);
 

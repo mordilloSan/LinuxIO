@@ -5,19 +5,23 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const configDirectory = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoot = path.resolve(configDirectory, "..");
 
 export default defineConfig({
+  cacheDir: path.join(frontendRoot, "node_modules/.vite"),
   plugins: [
     tanstackRouter({ disableLogging: true, target: "react" }),
     react(),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "../src"),
+      "@": path.join(frontendRoot, "src"),
     },
   },
+  root: frontendRoot,
   test: {
+    exclude: ["src/test/browser/**", "node_modules/**"],
     pool: "vmThreads",
     clearMocks: true,
     // Silence intercepted console output from passing tests; failing tests

@@ -42,7 +42,7 @@ import { useAppTheme } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
 import "./user-account-details.css";
-const accountsRouteApi = getRouteApi("/_authenticated/accounts");
+const accountsRouteApi = getRouteApi("/_authenticated/accounts/");
 
 interface UserDetailsPanelProps {
   currentUsername?: string;

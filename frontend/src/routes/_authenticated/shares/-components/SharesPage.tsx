@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useRef, useState, type ReactNode } from "react";
 
 import {
@@ -11,7 +10,7 @@ import {
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import TabContainer from "@/components/tabbar/TabContainer";
+import { RoutedTabContainer } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -42,10 +41,7 @@ import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
 } from "./DeleteShareDialogs";
-import CIFSMounts from "../../storage/-components/CIFSMounts";
-import NFSMounts from "../../storage/-components/NFSMounts";
-
-const sharesRouteApi = getRouteApi("/_authenticated/shares");
+import { SHARES_TABS } from "./sharesTabs";
 
 type ShareGroup = {
   id: string;
@@ -1144,39 +1140,20 @@ function renderExpandedContent(
 }
 
 const SharesPage = () => {
-  const search = sharesRouteApi.useSearch();
-  const navigate = sharesRouteApi.useNavigate();
-  const activeTab = search.sharesTab === "mounts" ? "mounts" : "shares";
-  const isSharesTab = search.sharesTab !== "mounts";
-  const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsClientAvailable");
-  const nfsUnavailable = nfsStatus === "unavailable";
-  const { reason: sambaClientReason, status: sambaClientStatus } =
-    useCapability("sambaClientAvailable");
-  const sambaClientUnavailable = sambaClientStatus === "unavailable";
   const [viewMode, setViewMode] = useViewMode("shares", "table");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
-  const [mountNFSHandler, setMountNFSHandler] = useState<(() => void) | null>(
-    null,
-  );
-  const [mountSMBHandler, setMountSMBHandler] = useState<(() => void) | null>(
-    null,
-  );
-  const [nfsView, setNfsView] = useViewMode("shares.mounts", "table");
 
-  const { data: nfsShares = [], refetch: refetchNFS } = useQuery(
+  const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery(
     linuxio.shares.list_nfs_shares.queryOptions({
-      enabled: isSharesTab,
-      refetchInterval: isSharesTab ? 10000 : false,
+      refetchInterval: 10000,
     }),
   );
-  const { data: sambaShares = [], refetch: refetchSamba } = useQuery(
+  const { data: sambaShares, refetch: refetchSamba } = useSuspenseQuery(
     linuxio.shares.list_samba_shares.queryOptions({
-      enabled: isSharesTab,
-      refetchInterval: isSharesTab ? 10000 : false,
+      refetchInterval: 10000,
     }),
   );
 
@@ -1221,7 +1198,7 @@ const SharesPage = () => {
     </div>
   );
 
-  const sharesContent = (
+  const content = (
     <div
       style={{
         display: "flex",
@@ -1281,36 +1258,6 @@ const SharesPage = () => {
     </div>
   );
 
-  const mountsContent = (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 24,
-        height: "100%",
-        minHeight: 0,
-      }}
-    >
-      <div>
-        <AppTypography fontWeight={600} gutterBottom variant="subtitle1">
-          NFS
-        </AppTypography>
-        <NFSMounts
-          onMountCreateHandler={(handler) => setMountNFSHandler(() => handler)}
-          viewMode={nfsView}
-        />
-      </div>
-      <div>
-        <AppTypography fontWeight={600} gutterBottom variant="subtitle1">
-          SMB / CIFS
-        </AppTypography>
-        <CIFSMounts
-          onMountCreateHandler={(handler) => setMountSMBHandler(() => handler)}
-        />
-      </div>
-    </div>
-  );
-
   return (
     <div
       style={{
@@ -1321,90 +1268,9 @@ const SharesPage = () => {
         minHeight: 0,
       }}
     >
-      <TabContainer
-        activeTab={activeTab}
-        onTabChange={(sharesTab) =>
-          navigate({
-            to: "/shares",
-            search: (previous) => ({ ...previous, sharesTab }),
-          })
-        }
-        tabs={[
-          {
-            value: "shares",
-            label: "Shares",
-            component: sharesContent,
-            rightContent: sharesActions,
-          },
-          {
-            value: "mounts",
-            label: "Mounts",
-            component: mountsContent,
-            rightContent: (
-              <>
-                <AppTooltip
-                  title={
-                    nfsView === "table"
-                      ? "Switch to card view"
-                      : "Switch to table view"
-                  }
-                >
-                  <AppIconButton
-                    onClick={() =>
-                      setNfsView(nfsView === "table" ? "card" : "table")
-                    }
-                    size="small"
-                  >
-                    {nfsView === "table" ? (
-                      <Icon height={20} icon="mdi:card-multiple" width={20} />
-                    ) : (
-                      <Icon height={20} icon="mdi:table" width={20} />
-                    )}
-                  </AppIconButton>
-                </AppTooltip>
-                {mountNFSHandler && (
-                  <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
-                    <span>
-                      <AppButton
-                        disabled={nfsUnavailable}
-                        onClick={mountNFSHandler}
-                        size="small"
-                        startIcon={
-                          <Icon height={20} icon="mdi:plus" width={20} />
-                        }
-                        variant="contained"
-                      >
-                        Mount NFS
-                      </AppButton>
-                    </span>
-                  </AppTooltip>
-                )}
-                {mountSMBHandler && (
-                  <AppTooltip
-                    title={
-                      sambaClientUnavailable ? sambaClientReason : "Mount SMB"
-                    }
-                  >
-                    <span>
-                      <AppButton
-                        disabled={sambaClientUnavailable}
-                        onClick={mountSMBHandler}
-                        size="small"
-                        startIcon={
-                          <Icon height={20} icon="mdi:plus" width={20} />
-                        }
-                        variant="contained"
-                      >
-                        Mount SMB
-                      </AppButton>
-                    </span>
-                  </AppTooltip>
-                )}
-              </>
-            ),
-          },
-        ]}
-      />
+      <RoutedTabContainer rightContent={sharesActions} tabs={SHARES_TABS}>
+        {content}
+      </RoutedTabContainer>
 
       <CreateFolderShareDialog
         onClose={() => setCreateDialogOpen(false)}

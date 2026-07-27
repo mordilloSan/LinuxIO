@@ -10,9 +10,9 @@
   },
   "scripts": {
     "dev": "vite --config config/vite.config.ts",
-    "lint": "oxlint --type-aware --fix -c config/.oxlintrc.json src && npm run format",
-    "format": "oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"!src/routeTree.gen.ts\"",
-    "format:check": "oxfmt -c config/.oxfmtrc.json --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"!src/routeTree.gen.ts\"",
+    "lint": "oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs && npm run format",
+    "format": "oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/browser.vite.config.ts\" \"config/playwright.config.ts\" \"scripts/run-browser-fixture.mjs\"",
+    "format:check": "oxfmt -c config/.oxfmtrc.json --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/browser.vite.config.ts\" \"config/playwright.config.ts\" \"scripts/run-browser-fixture.mjs\"",
     "icons:generate": "node scripts/generate-icons.mjs",
     "build": "vite build --config config/vite.config.ts",
     "analyze": "BUNDLE_ANALYZE=true vite build --config config/vite.config.ts",
@@ -20,6 +20,7 @@
     "bundle:budget": "node scripts/bundle-metrics.mjs --check",
     "compiler:coverage": "node scripts/compiler-coverage.mjs",
     "test": "vitest run --config config/vitest.config.ts",
+    "test:browser": "playwright test --config config/playwright.config.ts",
     "test:watch": "vitest --config config/vitest.config.ts",
     "test:coverage": "vitest run --coverage --config config/vitest.config.ts",
     "update": "npm update && npm outdated"
@@ -57,6 +58,7 @@
     "@iconify-json/la": "^1.2.1",
     "@iconify-json/mdi": "^1.2.3",
     "@iconify-json/ph": "^1.2.2",
+    "@playwright/test": "^1.62.0",
     "@tanstack/eslint-plugin-query": "^5.101.4",
     "@tanstack/react-query-devtools": "^5.101.4",
     "@tanstack/router-plugin": "^1.168.23",

@@ -1,4 +1,3 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -16,7 +15,11 @@ const WIREGUARD_TOAST_META = {
   to: "/wireguard",
 } as const;
 
-const WireGuardDashboard = () => {
+interface WireGuardDashboardProps {
+  interfaces: WireGuardInterface[];
+}
+
+const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
@@ -24,12 +27,6 @@ const WireGuardDashboard = () => {
   );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
-
-  const { data: interfaceData } = useSuspenseQuery(
-    linuxio.wireguard.list_interfaces.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
 
   const interfaceActionConfig = (verb: string, fallback: string) => ({
     success: (_result: void, variables: { name: string }) =>
@@ -80,8 +77,6 @@ const WireGuardDashboard = () => {
         "Failed to disable boot persistence",
       ),
     );
-
-  const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
   const handleClickOutside = useEffectEvent(
     (event: MouseEvent | KeyboardEvent) => {
@@ -147,11 +142,11 @@ const WireGuardDashboard = () => {
 
   return (
     <>
-      {WGinterfaces.length > 0 ? (
+      {interfaces.length > 0 ? (
         <>
           <AnimatePresence>
             <AppGrid container spacing={3}>
-              {WGinterfaces.map((iface) => (
+              {interfaces.map((iface) => (
                 <AppGrid
                   key={iface.name}
                   size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
