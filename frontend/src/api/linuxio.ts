@@ -400,6 +400,8 @@ export function openGeneralLogsStream(
   priority: string = "",
   identifier: string = "",
   fieldFilters: string[] = [],
+  follow: boolean = true,
+  afterCursor: string = "",
 ): Stream | null {
   return openJobBackedDataStream("logs.general.follow", {
     lines,
@@ -407,6 +409,8 @@ export function openGeneralLogsStream(
     priority,
     identifier,
     fieldFilters,
+    follow,
+    afterCursor,
   });
 }
 

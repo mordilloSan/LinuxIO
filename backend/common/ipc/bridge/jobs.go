@@ -126,16 +126,21 @@ type Job struct {
 	state       State
 	progress    any
 	progressLog []Event
-	result      any
-	err         *Error
-	createdAt   time.Time
-	startedAt   *time.Time
-	updatedAt   time.Time
-	finishedAt  *time.Time
-	cancel      context.CancelFunc
-	done        chan struct{}
-	doneOnce    sync.Once
-	subscribers map[chan Event]*eventSubscriber
+	// progressLogBytes tracks transient data payload bytes. Before the first
+	// replay subscriber, the event-count window covers the start/attach race;
+	// afterwards replaySubscribed enables a much smaller rolling byte window.
+	progressLogBytes int
+	replaySubscribed bool
+	result           any
+	err              *Error
+	createdAt        time.Time
+	startedAt        *time.Time
+	updatedAt        time.Time
+	finishedAt       *time.Time
+	cancel           context.CancelFunc
+	done             chan struct{}
+	doneOnce         sync.Once
+	subscribers      map[chan Event]*eventSubscriber
 }
 
 var DefaultRegistry = NewRegistry()
@@ -144,13 +149,25 @@ const (
 	DefaultTerminalJobTTL         = 30 * time.Minute
 	DefaultTerminalJobSweepPeriod = time.Minute
 	DefaultJobProgressReplayLimit = 1024
-	slowSubscriberLogInterval     = 30 * time.Second
+	// Once at least one direct subscriber has received the initial replay, only
+	// retain a small reconnect window. This prevents 64 KiB follow frames from
+	// pinning roughly 64 MiB per active job indefinitely.
+	DefaultSubscribedJobProgressReplayBytes = 4 * 1024 * 1024
+	slowSubscriberLogInterval               = 30 * time.Second
 )
 
 type eventSubscriber struct {
 	ch          chan Event
+	lagged      chan struct{}
 	dropped     atomic.Uint64
 	lastDropLog atomic.Int64
+}
+
+func newEventSubscriber(ch chan Event) *eventSubscriber {
+	return &eventSubscriber{
+		ch:     ch,
+		lagged: make(chan struct{}, 1),
+	}
 }
 
 // NewRegistry creates a new job registry with automatic cleanup of terminal jobs.
@@ -317,7 +334,7 @@ func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 	ch := make(chan Event, buffer)
 	r.mu.Lock()
-	r.subscribers[ch] = &eventSubscriber{ch: ch}
+	r.subscribers[ch] = newEventSubscriber(ch)
 	r.mu.Unlock()
 
 	unsubscribe := func() {
@@ -480,8 +497,38 @@ func (j *Job) ReportTransientProgress(progress any) {
 
 func (j *Job) appendProgressLogLocked(event Event) {
 	j.progressLog = append(j.progressLog, event)
-	if limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog) > limit {
-		j.progressLog = append([]Event(nil), j.progressLog[len(j.progressLog)-limit:]...)
+	j.progressLogBytes += jobDataProgressBytes(event.Progress)
+	j.trimProgressLogLocked()
+}
+
+func jobDataProgressBytes(progress any) int {
+	payload, ok := progress.(map[string]any)
+	if !ok || payload["type"] != "data" {
+		return 0
+	}
+	data, ok := payload["data"].(string)
+	if !ok {
+		return 0
+	}
+	return len(data)
+}
+
+func (j *Job) trimProgressLogLocked() {
+	start := 0
+	for limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog)-start > limit; {
+		j.progressLogBytes -= jobDataProgressBytes(j.progressLog[start].Progress)
+		start++
+	}
+	if j.replaySubscribed {
+		for limit := DefaultSubscribedJobProgressReplayBytes; limit > 0 &&
+			j.progressLogBytes > limit &&
+			start < len(j.progressLog); {
+			j.progressLogBytes -= jobDataProgressBytes(j.progressLog[start].Progress)
+			start++
+		}
+	}
+	if start > 0 {
+		j.progressLog = append([]Event(nil), j.progressLog[start:]...)
 	}
 }
 
@@ -495,13 +542,24 @@ func (j *Job) Subscribe(buffer int) (<-chan Event, func()) {
 // events for replay, and an unsubscribe function. The replay contains up to
 // DefaultJobProgressReplayLimit recent progress events.
 func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
+	ch, replay, _, unsubscribe := j.subscribeWithReplayStatus(buffer)
+	return ch, replay, unsubscribe
+}
+
+// subscribeWithReplayStatus additionally reports when the bounded live-event
+// channel has overflowed. Attach streams use this to fail explicitly so a
+// cursor-aware client can reconnect instead of silently accepting a gap.
+func (j *Job) subscribeWithReplayStatus(buffer int) (<-chan Event, []Event, <-chan struct{}, func()) {
 	if buffer <= 0 {
 		buffer = 8
 	}
 	ch := make(chan Event, buffer)
+	subscriber := newEventSubscriber(ch)
 	j.mu.Lock()
 	replay := append([]Event(nil), j.progressLog...)
-	j.subscribers[ch] = &eventSubscriber{ch: ch}
+	j.replaySubscribed = true
+	j.trimProgressLogLocked()
+	j.subscribers[ch] = subscriber
 	j.mu.Unlock()
 
 	unsubscribe := func() {
@@ -512,7 +570,7 @@ func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 		}
 		j.mu.Unlock()
 	}
-	return ch, replay, unsubscribe
+	return ch, replay, subscriber.lagged, unsubscribe
 }
 
 func (j *Job) run(ctx context.Context, runner Runner) {
@@ -673,6 +731,11 @@ func (s *eventSubscriber) dropOldest() bool {
 }
 
 func (s *eventSubscriber) logDropped(event Event, scope string) {
+	select {
+	case s.lagged <- struct{}{}:
+	default:
+	}
+
 	if event.transient || isJobDataProgress(event.Progress) {
 		return
 	}
