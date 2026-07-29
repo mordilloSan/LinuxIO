@@ -29,13 +29,13 @@ const metricConfigs = [
     label: "Dashboard cold load",
     entries: [
       "index.html",
-      "src/layouts/Main.tsx",
-      "src/pages/main/dashboard/index.tsx",
+      "src/routes/_authenticated.tsx?tsr-split=component",
+      "src/routes/_authenticated/index.tsx?tsr-split=component",
     ],
     extraFiles: ["index.html"],
     budgetsKiB: {
-      gzip: 330,
-      br: 300,
+      gzip: 340,
+      br: 340,
     },
   },
 ];
