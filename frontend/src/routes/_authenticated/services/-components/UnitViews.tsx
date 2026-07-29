@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import type { RowData } from "@tanstack/react-table";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import {
   Children,
   Fragment,

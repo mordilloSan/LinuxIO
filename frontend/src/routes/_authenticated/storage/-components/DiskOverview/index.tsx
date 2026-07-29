@@ -1,6 +1,6 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
