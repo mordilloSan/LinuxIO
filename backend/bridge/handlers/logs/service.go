@@ -91,6 +91,21 @@ func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, st
 	return serviceName, lines, nil
 }
 
+func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, label string) bool {
+	select {
+	case <-ctx.Done():
+		if killErr := cmd.Process.Kill(); killErr != nil {
+			slog.Debug("failed to kill journalctl process",
+				"component", "logs",
+				"stream_label", label,
+				"error", killErr)
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func streamServiceLogs(ctx context.Context, job *bridgeipc.Job, stdout io.Reader, cmd *exec.Cmd) (bool, error) {
 	reader := bufio.NewReader(stdout)
 	sentData := false

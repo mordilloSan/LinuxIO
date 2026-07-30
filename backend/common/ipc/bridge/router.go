@@ -89,6 +89,11 @@ type JobPolicy struct {
 	// When it expires, bridgeipc cancels the runner context and fails the job with 504.
 	Timeout               time.Duration
 	DuplicateActiveReject bool
+	// SkipInitialSettle skips the InitialJobSettleTimeout wait before returning
+	// the start snapshot. The wait lets short jobs return a terminal snapshot in
+	// one round trip; follow-style streams never finish that fast, so for them
+	// it is pure added latency before the client can attach.
+	SkipInitialSettle bool
 }
 
 var (
@@ -123,6 +128,17 @@ var (
 		// rejected large folder uploads mid-batch. Concurrency is still
 		// bounded by MaxActivePerRoute / MaxActivePerOwnerRoute.
 		StartRatePerMinuteOwner: 0,
+	}
+	// StreamFollow is StreamDefault for follow-style streams (log tails) that
+	// by design never settle: the initial 25ms settle wait is skipped so the
+	// client gets the snapshot — and can attach — immediately.
+	StreamFollow = JobPolicy{
+		Name:                    "stream_follow",
+		MaxActivePerRoute:       64,
+		MaxActivePerOwnerRoute:  8,
+		QueueLimit:              0,
+		StartRatePerMinuteOwner: 0,
+		SkipInitialSettle:       true,
 	}
 )
 
@@ -315,7 +331,7 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
 		return err
 	}
-	if started {
+	if started && !route.Policy.SkipInitialSettle {
 		select {
 		case <-job.Done():
 		case <-time.After(InitialJobSettleTimeout):

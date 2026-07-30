@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 
 import type { AccountUser } from "@/api";
 import UserCard from "@/components/cards/UserCard";

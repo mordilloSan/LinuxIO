@@ -22,6 +22,7 @@ import {
   type MouseEvent,
   type ReactNode,
   type RefObject,
+  type UIEventHandler,
 } from "react";
 
 import { appTableFeatures } from "@/components/tables/AppDataTable.types";
@@ -82,6 +83,7 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
   manualSorting?: boolean;
   maxHeight?: CSSProperties["maxHeight"];
   onExpandedChange?: OnChangeFn<ExpandedState>;
+  onScroll?: UIEventHandler<HTMLDivElement>;
   onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
   onRowContextMenu?: (
     row: Row<AppTableFeatures, TData>,
@@ -181,6 +183,7 @@ function AppVirtualDataTable<TData extends RowData>({
   manualSorting = false,
   maxHeight,
   onExpandedChange,
+  onScroll,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
@@ -636,6 +639,7 @@ function AppVirtualDataTable<TData extends RowData>({
 
       <div
         className="app-vdt__scroll custom-scrollbar"
+        onScroll={onScroll}
         ref={scrollRef}
         role="presentation"
       >

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { RefObject, useState } from "react";
 
 import type { WireGuardInterface } from "@/api";

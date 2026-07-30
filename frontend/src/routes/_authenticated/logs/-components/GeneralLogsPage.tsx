@@ -11,6 +11,7 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type UIEvent,
 } from "react";
 
 import type { Service } from "@/api";
@@ -38,15 +39,32 @@ import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { useAppTheme } from "@/theme";
 
-const DEFAULT_TAIL = "200";
-// Hard cap on in-memory buffer. Protects against the "All in window" tail blowing
-// up memory on busy systems; oldest entries are dropped beyond this.
-const MAX_BUFFER = 5000;
-// Hard cap on how many rows we actually feed to the table. Each row carries
-// an always-mounted AppCollapse + motion.div, so render cost is proportional
-// to the array, not to visible rows. Copy / Download still operate on the
-// full matched set.
+// A fixed first page replaces the old "Lines" selector. Older entries are
+// fetched by cursor as the user scrolls, so choosing an up-front count no
+// longer changes which history is reachable.
+const INITIAL_PAGE_LINES = "500";
+// Live updates retain at least this many rows. Once history pages are loaded,
+// the retention window grows to preserve everything the user has reached.
+const INITIAL_BUFFER_LIMIT = 5000;
+// Rows fed to the table start capped at DISPLAY_LIMIT (bounds the TanStack
+// row-model rebuild cost per live flush, not DOM size — rows are virtualized)
+// and grow by DISPLAY_CHUNK as the user scrolls. Copy / Download always
+// operate on the full matched set.
 const DISPLAY_LIMIT = 1000;
+const DISPLAY_CHUNK = 1000;
+// "Load earlier" pagination: page size requested per backend fetch and the
+// scroll distance from the bottom that triggers loading.
+const PAGE_SIZE = "1000";
+// Start the cached React Query fetch roughly 25 compact rows before the end,
+// so the virtual table normally has the next page before the user arrives.
+const SCROLL_LOAD_THRESHOLD_PX = 1200;
+// A follow stream that dies without us closing it is reopened after this
+// delay, giving up after MAX_RECONNECT_ATTEMPTS consecutive failures.
+const RECONNECT_DELAY_MS = 1500;
+const MAX_RECONNECT_ATTEMPTS = 3;
+// Fallback: never leave the spinner up longer than this if the stream stays
+// silent and the backlog-complete signal is lost.
+const LOADING_FALLBACK_TIMEOUT_MS = 10_000;
 const UNIT_STATUS_FILTERS_REQUIRING_SERVICES = new Set([
   "running",
   "failed",
@@ -66,11 +84,36 @@ enum LogPriority {
 }
 
 interface LogEntry {
+  /** Stable row identity: the journal cursor, or a synthetic fallback. */
+  id: string;
+  cursor: string | null;
   identifier: string;
   message: string;
   priority: LogPriority;
   rawJson?: Record<string, unknown>;
   timestamp: string;
+}
+
+// Hoisted formatter: toLocaleTimeString with an options object constructs a
+// new Intl.DateTimeFormat per call (~30x slower than reusing one). The time
+// components must be spelled out — a DateTimeFormat built from { hour12 }
+// alone formats a date, not a time.
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+// Progress frames emitted by the general-logs job alongside data frames. The
+// backend sends backlog_complete once the one-shot history query finishes, so
+// "no matches" is distinguishable from "still loading" even though the follow
+// process never exits.
+interface GeneralLogsProgress {
+  count?: number;
+  resumed?: boolean;
+  truncated?: boolean;
+  type?: string;
 }
 
 const getPriorityLabel = (priority: LogPriority): string => {
@@ -197,6 +240,236 @@ const resolveUnitTarget = (
   return null;
 };
 
+// Extract priority from message content
+const extractPriorityFromMessage = (message: string): LogPriority | null => {
+  const match = message.match(
+    /^\[(EMERGENCY|ALERT|CRITICAL|ERROR|WARN(?:ING)?|NOTICE|INFO|DEBUG)\]/i,
+  );
+  if (!match) return null;
+
+  const level = match[1].toUpperCase();
+  switch (level) {
+    case "EMERGENCY":
+      return LogPriority.EMERGENCY;
+    case "ALERT":
+      return LogPriority.ALERT;
+    case "CRITICAL":
+      return LogPriority.CRITICAL;
+    case "ERROR":
+      return LogPriority.ERROR;
+    case "WARN":
+    case "WARNING":
+      return LogPriority.WARNING;
+    case "NOTICE":
+      return LogPriority.NOTICE;
+    case "INFO":
+      return LogPriority.INFO;
+    case "DEBUG":
+      return LogPriority.DEBUG;
+    default:
+      return null;
+  }
+};
+
+let syntheticLogId = 0;
+
+// Parse one journalctl -o json line (fields pre-trimmed by the backend).
+const parseLogEntry = (jsonStr: string): LogEntry | null => {
+  try {
+    const data = JSON.parse(jsonStr);
+
+    const timestamp = TIME_FORMATTER.format(
+      data.__REALTIME_TIMESTAMP
+        ? new Date(parseInt(data.__REALTIME_TIMESTAMP) / 1000)
+        : new Date(),
+    );
+
+    const rawMessage = data.MESSAGE;
+    const message =
+      typeof rawMessage === "string"
+        ? rawMessage
+        : rawMessage == null
+          ? ""
+          : "[binary data]";
+
+    const messagePriority = extractPriorityFromMessage(message);
+    const journalPriority =
+      typeof data.PRIORITY === "string"
+        ? parseInt(data.PRIORITY, 10)
+        : typeof data.PRIORITY === "number"
+          ? data.PRIORITY
+          : LogPriority.INFO;
+    const priority = messagePriority ?? journalPriority;
+
+    const identifier = data.SYSLOG_IDENTIFIER || data._COMM || "system";
+
+    const cursor =
+      typeof data.__CURSOR === "string" && data.__CURSOR !== ""
+        ? data.__CURSOR
+        : null;
+
+    return {
+      id: cursor ?? `synthetic-${syntheticLogId++}`,
+      cursor,
+      timestamp,
+      priority,
+      identifier,
+      message,
+      rawJson: data,
+    };
+  } catch (e) {
+    console.error("Failed to parse log entry:", e);
+    return null;
+  }
+};
+
+const getLogRowId = (row: LogEntry) => row.id;
+
+const prependUniqueLogs = (
+  current: LogEntry[],
+  incomingNewestFirst: LogEntry[],
+  limit: number,
+): LogEntry[] => {
+  if (incomingNewestFirst.length === 0) return current;
+  const seen = new Set(current.map((log) => log.id));
+  const unique: LogEntry[] = [];
+  for (const log of incomingNewestFirst) {
+    if (seen.has(log.id)) continue;
+    seen.add(log.id);
+    unique.push(log);
+  }
+  if (unique.length === 0) return current;
+  return [...unique, ...current].slice(0, limit);
+};
+
+const appendUniqueLogs = (
+  current: LogEntry[],
+  incomingOlderFirst: LogEntry[],
+  limit: number,
+): LogEntry[] => {
+  if (incomingOlderFirst.length === 0 || current.length >= limit)
+    return current;
+  const seen = new Set(current.map((log) => log.id));
+  const unique: LogEntry[] = [];
+  for (const log of incomingOlderFirst) {
+    if (seen.has(log.id)) continue;
+    seen.add(log.id);
+    unique.push(log);
+    if (current.length + unique.length >= limit) break;
+  }
+  if (unique.length === 0) return current;
+  return [...current, ...unique];
+};
+
+// Expanded-row detail: the stream only carries the fields the list needs, so
+// the full raw entry is fetched by cursor on demand (journal entries are
+// immutable — cache forever).
+const LogEntryDetails = ({
+  fieldFilters,
+  log,
+  onAddFieldFilter,
+}: {
+  fieldFilters: string[];
+  log: LogEntry;
+  onAddFieldFilter: (filter: string) => void;
+}) => {
+  const theme = useAppTheme();
+  const { data: fullEntry, isError } = useQuery(
+    linuxio.logs.general_entry.queryOptions(log.cursor ?? "", {
+      enabled: log.cursor !== null,
+      staleTime: Infinity,
+    }),
+  );
+
+  const entry =
+    (fullEntry as Record<string, unknown> | undefined) ?? log.rawJson;
+  const filterableEntries = collectFilterableFields(entry, fieldFilters);
+
+  return (
+    <div className="expand-panel">
+      {filterableEntries.length > 0 && (
+        <div className="expand-panel__chips">
+          {filterableEntries.map(({ key, value }) => {
+            const filter = `${key}=${value}`;
+            return (
+              <Chip
+                color="primary"
+                key={filter}
+                label={`${key}=${value}`}
+                onClick={() => onAddFieldFilter(filter)}
+                size="small"
+                style={{ fontSize: "0.7rem", maxWidth: 360 }}
+                title={`Filter to entries where ${key}=${value}`}
+                variant="soft"
+              />
+            );
+          })}
+        </div>
+      )}
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Full Message:</b>
+        </AppTypography>
+        <AppPaper
+          style={{
+            padding: 8,
+            backgroundColor: theme.codeBlock.background,
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxWidth: "100%",
+            overflowX: "auto",
+          }}
+        >
+          {log.message}
+        </AppPaper>
+      </div>
+
+      {entry && (
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Raw Journal Entry:</b>
+          </AppTypography>
+          {isError && (
+            <AppTypography
+              color="text.secondary"
+              style={{ fontSize: "0.75rem" }}
+              variant="body2"
+            >
+              Full entry unavailable — showing streamed fields only.
+            </AppTypography>
+          )}
+          <AppPaper
+            className="custom-scrollbar"
+            style={{
+              padding: 8,
+              backgroundColor: theme.codeBlock.background,
+              fontFamily: "monospace",
+              fontSize: "0.75rem",
+              maxHeight: 300,
+              overflowY: "auto",
+              maxWidth: "100%",
+              overflowX: "auto",
+            }}
+          >
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {JSON.stringify(entry, null, 2)}
+            </pre>
+          </AppPaper>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const GeneralLogsPage = () => {
   const theme = useAppTheme();
   const navigate = useNavigate();
@@ -205,7 +478,6 @@ const GeneralLogsPage = () => {
   const [search, setSearch] = useState("");
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [tailSize, setTailSize] = useState<string>(DEFAULT_TAIL);
   const [unitStatusFilter, setUnitStatusFilter] = useState<string>("all");
   const [identifierFilter, setIdentifierFilter] = useState("all");
   const [identifierIsExact, setIdentifierIsExact] = useState(true);
@@ -216,9 +488,32 @@ const GeneralLogsPage = () => {
   const [fieldFilters, setFieldFilters] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumped to force the open effect to run again after an unexpected close.
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  // True when the backend hit its backlog cap for "All in window".
+  const [backlogTruncated, setBacklogTruncated] = useState(false);
+  // Infinite scroll: rows currently revealed to the table, whether older
+  // journal entries remain beyond the buffer, and an in-flight guard.
+  const [displayLimit, setDisplayLimit] = useState(DISPLAY_LIMIT);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [paginationError, setPaginationError] = useState<string | null>(null);
+  const isLoadingOlderRef = useRef(false);
+  const paginationGenerationRef = useRef(0);
+  // Live-flush retention cap. It starts at a safe baseline and grows with
+  // every history page the user reaches, so live prepends preserve that
+  // navigated history without imposing an artificial entry-count ceiling.
+  const bufferLimitRef = useRef(INITIAL_BUFFER_LIMIT);
+  const newestCursorRef = useRef<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const hasReceivedData = useRef(false);
-  const hasOpenedOnce = useRef(false);
+  // Whether the buffer holds (or is about to hold) entries — decides between
+  // a fresh tail request and a "new entries only" reopen. A ref (not state):
+  // read inside the open effect without retriggering it per flush.
+  const hasBufferedDataRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const loadingFallbackTimerRef = useRef<number | null>(null);
   // Pending log entries waiting for the next animation-frame flush. Buffering
   // here turns a per-line setState (potentially thousands per second on a
   // chatty journal) into ~60 batched updates per second.
@@ -227,80 +522,21 @@ const GeneralLogsPage = () => {
   const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
+  const fetchLogsPage = linuxio.logs.general_page.useFetcher();
 
-  // Extract priority from message content
-  const extractPriorityFromMessage = useCallback(
-    (message: string): LogPriority | null => {
-      const match = message.match(
-        /^\[(EMERGENCY|ALERT|CRITICAL|ERROR|WARN(?:ING)?|NOTICE|INFO|DEBUG)\]/i,
-      );
-      if (!match) return null;
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
 
-      const level = match[1].toUpperCase();
-      switch (level) {
-        case "EMERGENCY":
-          return LogPriority.EMERGENCY;
-        case "ALERT":
-          return LogPriority.ALERT;
-        case "CRITICAL":
-          return LogPriority.CRITICAL;
-        case "ERROR":
-          return LogPriority.ERROR;
-        case "WARN":
-        case "WARNING":
-          return LogPriority.WARNING;
-        case "NOTICE":
-          return LogPriority.NOTICE;
-        case "INFO":
-          return LogPriority.INFO;
-        case "DEBUG":
-          return LogPriority.DEBUG;
-        default:
-          return null;
-      }
-    },
-    [],
-  );
-
-  // Parse JSON log entry
-  const parseLogEntry = useCallback(
-    (jsonStr: string): LogEntry | null => {
-      try {
-        const data = JSON.parse(jsonStr);
-
-        const timestamp = data.__REALTIME_TIMESTAMP
-          ? new Date(
-              parseInt(data.__REALTIME_TIMESTAMP) / 1000,
-            ).toLocaleTimeString([], { hour12: false })
-          : new Date().toLocaleTimeString([], { hour12: false });
-
-        const message = data.MESSAGE || "";
-
-        const messagePriority = extractPriorityFromMessage(message);
-        const journalPriority =
-          typeof data.PRIORITY === "string"
-            ? parseInt(data.PRIORITY, 10)
-            : typeof data.PRIORITY === "number"
-              ? data.PRIORITY
-              : LogPriority.INFO;
-        const priority = messagePriority ?? journalPriority;
-
-        const identifier = data.SYSLOG_IDENTIFIER || data._COMM || "system";
-
-        return {
-          timestamp,
-          priority,
-          identifier,
-          message,
-          rawJson: data,
-        };
-      } catch (e) {
-        console.error("Failed to parse log entry:", e);
-        return null;
-      }
-    },
-    [extractPriorityFromMessage],
-  );
+  const clearLoadingFallbackTimer = useCallback(() => {
+    if (loadingFallbackTimerRef.current !== null) {
+      window.clearTimeout(loadingFallbackTimerRef.current);
+      loadingFallbackTimerRef.current = null;
+    }
+  }, []);
 
   // Get unique identifiers from logs
   const uniqueIdentifiers = useMemo(() => {
@@ -345,10 +581,14 @@ const GeneralLogsPage = () => {
     return wanted;
   }, [services, unitStatusFilter, unitStatusNeedsServices]);
 
-  // Scroll to top when new logs arrive (before paint to avoid a visible jump)
+  // Keep the viewport pinned to the newest entry, but only while the user is
+  // already at the top. Unconditionally resetting scrollTop on every flush
+  // made scrolling impossible in live mode.
   useLayoutEffect(() => {
-    if (liveMode && logsBoxRef.current) {
-      logsBoxRef.current.scrollTop = 0;
+    if (!liveMode) return;
+    const el = logsBoxRef.current;
+    if (el && el.scrollTop <= 2) {
+      el.scrollTop = 0;
     }
   }, [logs, liveMode]);
 
@@ -365,100 +605,163 @@ const GeneralLogsPage = () => {
       // Pending arrived in chronological order; the table renders newest-first,
       // so reverse before prepending.
       const reversed = pending.reverse();
-      setLogs((prev) => {
-        const combined =
-          reversed.length + prev.length > MAX_BUFFER
-            ? [...reversed, ...prev].slice(0, MAX_BUFFER)
-            : [...reversed, ...prev];
-        return combined;
-      });
+      setLogs((prev) =>
+        prependUniqueLogs(prev, reversed, bufferLimitRef.current),
+      );
     });
   }, []);
 
-  const openLogsStream = useCallback(
-    (
-      lines: string,
-      timePeriod: string,
-      priority: string,
-      identifier: string,
-      fields: string[],
-    ) => {
-      if (!muxIsOpen) return false;
+  const handleStreamOpenError = useEffectEvent(() => {
+    queueMicrotask(() => {
+      setError("Failed to connect to log stream");
+      setIsLoading(false);
+    });
+  });
 
-      hasReceivedData.current = false;
+  const handleStreamText = useEffectEvent((text: string) => {
+    if (!hasReceivedData.current) {
+      hasReceivedData.current = true;
+      reconnectAttemptsRef.current = 0;
+      clearLoadingFallbackTimer();
+      setIsLoading(false);
+      setError(null);
+    }
+    const pending = pendingLogsRef.current;
+    // Frames are batched server-side and may carry many lines.
+    for (const line of text.split("\n")) {
+      if (!line) continue;
+      const logEntry = parseLogEntry(line);
+      if (logEntry) {
+        pending.push(logEntry);
+        if (logEntry.cursor !== null) {
+          newestCursorRef.current = logEntry.cursor;
+        }
+      }
+    }
+    // rAF is paused in background tabs; bound this single-frame staging area.
+    // Navigated history is kept separately in logs and is not capped here.
+    if (pending.length > INITIAL_BUFFER_LIMIT) {
+      pending.splice(0, pending.length - INITIAL_BUFFER_LIMIT);
+    }
+    if (pending.length > 0) {
+      hasBufferedDataRef.current = true;
+      scheduleFlush();
+    }
+  });
 
-      return openStream({
-        open: () =>
-          openGeneralLogsStream(
-            lines,
-            timePeriod,
-            priority,
-            identifier,
-            fields,
-          ),
-        onOpenError: () => {
-          queueMicrotask(() => {
-            setError("Failed to connect to log stream");
-            setIsLoading(false);
-          });
-        },
-        onText: (text) => {
-          if (!hasReceivedData.current) {
-            hasReceivedData.current = true;
-            setIsLoading(false);
-            setError(null);
-          }
-          const logEntry = parseLogEntry(text.trimEnd());
-          if (logEntry) {
-            pendingLogsRef.current.push(logEntry);
-            scheduleFlush();
-          }
-        },
-        onClose: () => {
-          if (!hasReceivedData.current) {
-            setIsLoading(false);
-          }
-        },
-      });
+  const handleStreamProgress = useEffectEvent(
+    (progress: GeneralLogsProgress) => {
+      if (progress?.type === "backlog_complete") {
+        clearLoadingFallbackTimer();
+        setIsLoading(false);
+        if (!progress.resumed) {
+          setBacklogTruncated(Boolean(progress.truncated));
+          // Older history remains when the backlog hit the server cap, or when
+          // a numeric tail came back full (the window likely holds more).
+          const requested = Number.parseInt(INITIAL_PAGE_LINES, 10);
+          setHasMoreOlder(
+            Boolean(progress.truncated) ||
+              (Number.isFinite(requested) &&
+                (progress.count ?? 0) >= requested),
+          );
+        }
+      }
     },
-    [muxIsOpen, parseLogEntry, openStream, scheduleFlush],
   );
 
-  // Open stream on mount and when filters change
-  useEffect(() => {
-    if (!muxIsOpen || !liveMode || streamRef.current) {
-      return;
-    }
+  const handleStreamResult = useEffectEvent(
+    (result: { status: "ok" | "error"; error?: string }) => {
+      clearLoadingFallbackTimer();
+      if (result.status === "error") {
+        setError(result.error || "Log stream failed");
+        setIsLoading(false);
+      }
+    },
+  );
 
-    const tail = hasOpenedOnce.current ? "0" : tailSize;
+  const handleStreamClosed = useEffectEvent(() => {
+    clearLoadingFallbackTimer();
+    if (!hasReceivedData.current) {
+      setIsLoading(false);
+    }
+    // One-shot (paused) jobs close normally after the backlog; only a live
+    // follow stream dying warrants a reconnect.
+    if (!liveMode || !muxIsOpen) return;
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) return;
+    reconnectAttemptsRef.current += 1;
+    if (reconnectTimerRef.current !== null) return;
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      setStreamEpoch((epoch) => epoch + 1);
+    }, RECONNECT_DELAY_MS);
+  });
+
+  // Effect event so the open effect reads the latest filter state without the
+  // handlers ending up in its dependency array (same pattern as useLogStream).
+  const startStream = useEffectEvent((tail: string, afterCursor: string) => {
+    hasReceivedData.current = false;
+    setError(null);
     const backendIdentifier =
       identifierFilter === "all"
         ? ""
         : identifierIsExact
           ? identifierFilter
           : "";
-    if (
-      openLogsStream(
-        tail,
-        timePeriod,
-        priorityFilter === "all" ? "" : priorityFilter,
-        backendIdentifier,
-        fieldFilters,
-      )
-    ) {
-      hasOpenedOnce.current = true;
+    const opened = openStream<GeneralLogsProgress>({
+      open: () =>
+        openGeneralLogsStream(
+          tail,
+          timePeriod,
+          priorityFilter === "all" ? "" : priorityFilter,
+          backendIdentifier,
+          fieldFilters,
+          liveMode,
+          afterCursor,
+        ),
+      onOpenError: handleStreamOpenError,
+      onText: handleStreamText,
+      onProgress: handleStreamProgress,
+      onResult: handleStreamResult,
+      onClose: handleStreamClosed,
+    });
+
+    if (opened) {
+      clearLoadingFallbackTimer();
+      loadingFallbackTimerRef.current = window.setTimeout(() => {
+        loadingFallbackTimerRef.current = null;
+        if (!hasReceivedData.current) {
+          setIsLoading(false);
+        }
+      }, LOADING_FALLBACK_TIMEOUT_MS);
     }
+  });
+
+  // Open stream on mount, on filter changes, and on reconnect epochs.
+  useEffect(() => {
+    if (!muxIsOpen || streamRef.current) {
+      return;
+    }
+    // Paused with data on screen: keep it, don't re-query.
+    if (!liveMode && hasBufferedDataRef.current) {
+      return;
+    }
+
+    // With entries already buffered (live toggle, reconnect) only new entries
+    // are needed; a fresh buffer gets the full tail.
+    const afterCursor = hasBufferedDataRef.current
+      ? (newestCursorRef.current ?? "")
+      : "";
+    startStream(afterCursor !== "" ? "0" : INITIAL_PAGE_LINES, afterCursor);
   }, [
     muxIsOpen,
     liveMode,
+    streamEpoch,
     streamRef,
     timePeriod,
     priorityFilter,
-    tailSize,
     identifierFilter,
     identifierIsExact,
     fieldFilters,
-    openLogsStream,
   ]);
 
   const handleLiveModeChange = (
@@ -467,23 +770,40 @@ const GeneralLogsPage = () => {
   ) => {
     setLiveMode(checked);
     if (!checked) {
+      clearReconnectTimer();
+      clearLoadingFallbackTimer();
       closeStream();
       if (!hasReceivedData.current) {
         setIsLoading(false);
       }
       return;
     }
+    reconnectAttemptsRef.current = 0;
     setError(null);
   };
 
   // Close the stream and drop both rendered logs and queued (pre-flush) logs.
   // Used by every filter change that needs to re-issue the backend stream.
   const resetBuffer = useCallback(() => {
+    paginationGenerationRef.current += 1;
+    clearReconnectTimer();
+    clearLoadingFallbackTimer();
     closeStream();
     setLogs([]);
     pendingLogsRef.current = [];
-    hasOpenedOnce.current = false;
-  }, [closeStream]);
+    hasBufferedDataRef.current = false;
+    newestCursorRef.current = null;
+    reconnectAttemptsRef.current = 0;
+    isLoadingOlderRef.current = false;
+    bufferLimitRef.current = INITIAL_BUFFER_LIMIT;
+    setBacklogTruncated(false);
+    setDisplayLimit(DISPLAY_LIMIT);
+    setHasMoreOlder(false);
+    setIsLoadingOlder(false);
+    setPaginationError(null);
+    setError(null);
+    setIsLoading(true);
+  }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
 
   // Filter change handlers
   const handleTimePeriodChange = (value: string) => {
@@ -494,11 +814,6 @@ const GeneralLogsPage = () => {
   const handlePriorityFilterChange = (value: string) => {
     resetBuffer();
     setPriorityFilter(value);
-  };
-
-  const handleTailSizeChange = (value: string) => {
-    resetBuffer();
-    setTailSize(value);
   };
 
   // Apply an identifier value as the active filter. Re-streams the backend
@@ -570,12 +885,118 @@ const GeneralLogsPage = () => {
     setFieldFilters([]);
   }, [resetBuffer]);
 
-  // Cleanup stream
+  const loadOlderLogs = useCallback(async () => {
+    if (isLoadingOlderRef.current || !hasMoreOlder) return;
+    // backlog_complete can arrive before the animation-frame buffer flushes
+    // its data rows. Keep hasMoreOlder intact so the next explicit scroll or
+    // "Load older logs" action can continue after that flush.
+    if (logs.length === 0) return;
+    let boundaryCursor: string | null = null;
+    for (let index = logs.length - 1; index >= 0; index -= 1) {
+      if (logs[index].cursor !== null) {
+        boundaryCursor = logs[index].cursor;
+        break;
+      }
+    }
+    if (boundaryCursor === null) {
+      setHasMoreOlder(false);
+      return;
+    }
+
+    const generation = paginationGenerationRef.current;
+    const backendIdentifier =
+      identifierFilter === "all"
+        ? ""
+        : identifierIsExact
+          ? identifierFilter
+          : "";
+
+    // Reserve room before awaiting the query so live prepends do not evict the
+    // cursor boundary while this page is in flight.
+    bufferLimitRef.current = Math.max(
+      bufferLimitRef.current,
+      logs.length + Number.parseInt(PAGE_SIZE, 10),
+    );
+    isLoadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+    setPaginationError(null);
+    try {
+      const page = await fetchLogsPage(
+        {
+          cursor: boundaryCursor,
+          lines: PAGE_SIZE,
+          timePeriod,
+          priority: priorityFilter === "all" ? "" : priorityFilter,
+          identifier: backendIdentifier,
+          fieldFilters,
+        },
+        {
+          // The parsed rows below are the source of truth. Do not retain a
+          // second raw copy of every history page in React Query's cache.
+          gcTime: CACHE_TTL_MS.NONE,
+          staleTime: CACHE_TTL_MS.NONE,
+        },
+      );
+      if (generation !== paginationGenerationRef.current) return;
+
+      const olderLogs = (Array.isArray(page.entries) ? page.entries : [])
+        .map(parseLogEntry)
+        .filter((entry): entry is LogEntry => entry !== null);
+      setLogs((current) => {
+        // A very chatty follow stream may still have displaced part of the
+        // snapshot while the query ran. Restore that tail before appending its
+        // strictly-older page so the cursor boundary stays gap-free.
+        const withBoundary = appendUniqueLogs(
+          current,
+          logs,
+          Number.POSITIVE_INFINITY,
+        );
+        const merged = appendUniqueLogs(
+          withBoundary,
+          olderLogs,
+          Number.POSITIVE_INFINITY,
+        );
+        bufferLimitRef.current = Math.max(
+          bufferLimitRef.current,
+          merged.length,
+        );
+        return merged;
+      });
+      setDisplayLimit((current) => current + DISPLAY_CHUNK);
+      setHasMoreOlder(page.hasMore && olderLogs.length > 0);
+    } catch (loadError) {
+      if (generation !== paginationGenerationRef.current) return;
+      setPaginationError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load older logs",
+      );
+    } finally {
+      if (generation === paginationGenerationRef.current) {
+        isLoadingOlderRef.current = false;
+        setIsLoadingOlder(false);
+      }
+    }
+  }, [
+    fetchLogsPage,
+    fieldFilters,
+    hasMoreOlder,
+    identifierFilter,
+    identifierIsExact,
+    logs,
+    priorityFilter,
+    timePeriod,
+  ]);
+
+  // Cleanup stream and timers
   useEffect(() => {
     return () => {
+      paginationGenerationRef.current += 1;
+      clearReconnectTimer();
+      clearLoadingFallbackTimer();
       closeStream();
     };
-  }, [closeStream]);
+  }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
 
   const filteredLogs = useMemo(() => {
     let filtered = logs;
@@ -635,10 +1056,43 @@ const GeneralLogsPage = () => {
   // Cap what we actually feed the table. Copy/Download still use the full
   // matched set above — the cap is purely a render-cost guard.
   const displayedLogs = useMemo(
-    () => filteredLogs.slice(0, DISPLAY_LIMIT),
-    [filteredLogs],
+    () => filteredLogs.slice(0, displayLimit),
+    [displayLimit, filteredLogs],
   );
-  const isTruncated = filteredLogs.length > DISPLAY_LIMIT;
+  const isTruncated = filteredLogs.length > displayLimit;
+
+  // The virtual table owns its scroll viewport and forwards its React scroll
+  // event here. Reveal already-buffered rows first, then prefetch the next
+  // cursor page shortly before the user reaches the rendered end.
+  const handleLogsScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (isLoading || error) return;
+      const scrollElement = event.currentTarget;
+      const distanceFromBottom =
+        scrollElement.scrollHeight -
+        scrollElement.scrollTop -
+        scrollElement.clientHeight;
+      if (distanceFromBottom > SCROLL_LOAD_THRESHOLD_PX) return;
+
+      if (displayLimit < filteredLogs.length) {
+        setDisplayLimit((current) =>
+          Math.min(filteredLogs.length, current + DISPLAY_CHUNK),
+        );
+        return;
+      }
+      if (hasMoreOlder) {
+        void loadOlderLogs();
+      }
+    },
+    [
+      displayLimit,
+      error,
+      filteredLogs.length,
+      hasMoreOlder,
+      isLoading,
+      loadOlderLogs,
+    ],
+  );
 
   const handleCopy = () => {
     if (filteredLogs.length === 0) return;
@@ -708,184 +1162,116 @@ const GeneralLogsPage = () => {
     [navigate],
   );
 
-  const columns: AppVirtualDataTableColumnDef<LogEntry>[] = [
-    {
-      id: "severityIcon",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => renderIcon(row.original),
-      meta: { width: "40px" },
-    },
-    {
-      accessorKey: "priority",
-      header: "Priority",
-      cell: ({ row }) => (
-        <Chip
-          color={getPriorityColor(row.original.priority) as any}
-          label={getPriorityLabel(row.original.priority)}
-          size="small"
-          style={{ fontSize: "0.7rem" }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        hideBelow: "sm",
-        width: "120px",
+  // Memoized so cell component identities stay stable across flushes — a
+  // fresh cell function per render remounts every visible cell in dev, where
+  // the React Compiler doesn't run.
+  const columns = useMemo<AppVirtualDataTableColumnDef<LogEntry>[]>(
+    () => [
+      {
+        id: "severityIcon",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => renderIcon(row.original),
+        meta: { width: "40px" },
       },
-    },
-    {
-      accessorKey: "identifier",
-      header: "Identifier",
-      cell: ({ row }) => {
-        const log = row.original;
-        const target = resolveUnitTarget(log);
-        const isLinkable = target !== null;
-        return isLinkable ? (
-          <AppTooltip title={`Open ${target.unit} in services`}>
+      {
+        accessorKey: "priority",
+        header: "Priority",
+        cell: ({ row }) => (
+          <Chip
+            color={getPriorityColor(row.original.priority) as any}
+            label={getPriorityLabel(row.original.priority)}
+            size="small"
+            style={{ fontSize: "0.7rem" }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          hideBelow: "sm",
+          width: "120px",
+        },
+      },
+      {
+        accessorKey: "identifier",
+        header: "Identifier",
+        cell: ({ row }) => {
+          const log = row.original;
+          const target = resolveUnitTarget(log);
+          const isLinkable = target !== null;
+          return isLinkable ? (
+            <AppTooltip title={`Open ${target.unit} in services`}>
+              <AppTypography
+                className="log-identifier-link"
+                noWrap
+                onClick={(event) => handleIdentifierClick(log, event)}
+                role="link"
+                style={{
+                  fontSize: "0.85rem",
+                  display: "inline-block",
+                }}
+                tabIndex={0}
+                title={log.identifier}
+                variant="body2"
+              >
+                {log.identifier}
+              </AppTypography>
+            </AppTooltip>
+          ) : (
             <AppTypography
-              className="log-identifier-link"
               noWrap
-              onClick={(event) => handleIdentifierClick(log, event)}
-              role="link"
-              style={{
-                fontSize: "0.85rem",
-                display: "inline-block",
-              }}
-              tabIndex={0}
+              style={{ fontSize: "0.85rem" }}
               title={log.identifier}
               variant="body2"
             >
               {log.identifier}
             </AppTypography>
-          </AppTooltip>
-        ) : (
+          );
+        },
+        meta: { width: "minmax(120px, 180px)" },
+      },
+      {
+        accessorKey: "timestamp",
+        header: "Timestamp",
+        cell: ({ row }) => (
           <AppTypography
             noWrap
-            style={{ fontSize: "0.85rem" }}
-            title={log.identifier}
+            style={{ fontSize: "0.83rem" }}
+            title={row.original.timestamp}
             variant="body2"
           >
-            {log.identifier}
+            {row.original.timestamp}
           </AppTypography>
-        );
+        ),
+        meta: { width: "120px" },
       },
-      meta: { width: "minmax(120px, 180px)" },
-    },
-    {
-      accessorKey: "timestamp",
-      header: "Timestamp",
-      cell: ({ row }) => (
-        <AppTypography
-          noWrap
-          style={{ fontSize: "0.83rem" }}
-          title={row.original.timestamp}
-          variant="body2"
-        >
-          {row.original.timestamp}
-        </AppTypography>
-      ),
-      meta: { width: "120px" },
-    },
-    {
-      accessorKey: "message",
-      header: "Message",
-      cell: ({ row }) => (
-        <AppTypography
-          color="text.secondary"
-          noWrap
-          style={{ fontSize: "0.75rem" }}
-          variant="body2"
-        >
-          {row.original.message}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-  ];
+      {
+        accessorKey: "message",
+        header: "Message",
+        cell: ({ row }) => (
+          <AppTypography
+            color="text.secondary"
+            noWrap
+            style={{ fontSize: "0.75rem" }}
+            variant="body2"
+          >
+            {row.original.message}
+          </AppTypography>
+        ),
+        meta: { align: "left" },
+      },
+    ],
+    [renderIcon, handleIdentifierClick],
+  );
 
-  // Render expanded content
-  const renderExpandedContent = useCallback(
-    (log: LogEntry) => {
-      const filterableEntries = collectFilterableFields(
-        log.rawJson,
-        fieldFilters,
-      );
-      return (
-        <div className="expand-panel">
-          {filterableEntries.length > 0 && (
-            <div className="expand-panel__chips">
-              {filterableEntries.map(({ key, value }) => {
-                const filter = `${key}=${value}`;
-                return (
-                  <Chip
-                    color="primary"
-                    key={filter}
-                    label={`${key}=${value}`}
-                    onClick={() => addFieldFilter(filter)}
-                    size="small"
-                    style={{ fontSize: "0.7rem", maxWidth: 360 }}
-                    title={`Filter to entries where ${key}=${value}`}
-                    variant="soft"
-                  />
-                );
-              })}
-            </div>
-          )}
-          <div>
-            <AppTypography gutterBottom variant="subtitle2">
-              <b>Full Message:</b>
-            </AppTypography>
-            <AppPaper
-              style={{
-                padding: 8,
-                backgroundColor: theme.codeBlock.background,
-                fontFamily: "monospace",
-                fontSize: "0.85rem",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                maxWidth: "100%",
-                overflowX: "auto",
-              }}
-            >
-              {log.message}
-            </AppPaper>
-          </div>
-
-          {log.rawJson && (
-            <div>
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>Raw Journal Entry:</b>
-              </AppTypography>
-              <AppPaper
-                className="custom-scrollbar"
-                style={{
-                  padding: 8,
-                  backgroundColor: theme.codeBlock.background,
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                  maxHeight: 300,
-                  overflowY: "auto",
-                  maxWidth: "100%",
-                  overflowX: "auto",
-                }}
-              >
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {JSON.stringify(log.rawJson, null, 2)}
-                </pre>
-              </AppPaper>
-            </div>
-          )}
-        </div>
-      );
-    },
-    [theme, fieldFilters, addFieldFilter],
+  const renderExpandedRow = useCallback(
+    (row: { original: LogEntry }) => (
+      <LogEntryDetails
+        fieldFilters={fieldFilters}
+        log={row.original}
+        onAddFieldFilter={addFieldFilter}
+      />
+    ),
+    [fieldFilters, addFieldFilter],
   );
 
   return (
@@ -940,21 +1326,11 @@ const GeneralLogsPage = () => {
         </AppSelect>
 
         <AppSelect
-          label="Lines"
-          onChange={(e) => handleTailSizeChange(e.target.value)}
-          size="small"
-          style={{ minWidth: 130 }}
-          value={tailSize}
-        >
-          <option value="200">200</option>
-          <option value="500">500</option>
-          <option value="2000">2000</option>
-          <option value="all">All in window</option>
-        </AppSelect>
-
-        <AppSelect
           label="Service status"
-          onChange={(e) => setUnitStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setUnitStatusFilter(e.target.value);
+            setDisplayLimit(DISPLAY_LIMIT);
+          }}
           size="small"
           style={{ minWidth: 160 }}
           value={unitStatusFilter}
@@ -977,9 +1353,13 @@ const GeneralLogsPage = () => {
           onChange={(value) => {
             const next = value || "";
             setIdentifierInput(next);
+            setDisplayLimit(DISPLAY_LIMIT);
             applyIdentifierFilter(next);
           }}
-          onInputChange={(value) => setIdentifierInput(value)}
+          onInputChange={(value) => {
+            setIdentifierInput(value);
+            setDisplayLimit(DISPLAY_LIMIT);
+          }}
           options={uniqueIdentifiers}
           placeholder="All"
           shrinkLabel={true}
@@ -990,11 +1370,24 @@ const GeneralLogsPage = () => {
 
         <AppSearchField
           label="Search logs"
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setDisplayLimit(DISPLAY_LIMIT);
+          }}
           startAdornment={<Icon height={20} icon="mdi:magnify" width={20} />}
           style={{ minWidth: 220, flex: "1 1 260px" }}
           value={search}
         />
+        {hasMoreOlder && (
+          <AppActionIconButton
+            disabled={logs.length === 0}
+            icon="mdi:history"
+            iconSize={20}
+            label="Load older logs"
+            loading={isLoadingOlder}
+            onClick={() => void loadOlderLogs()}
+          />
+        )}
         <AppActionIconButton
           disabled={filteredLogs.length === 0}
           icon="mdi:content-copy"
@@ -1025,8 +1418,11 @@ const GeneralLogsPage = () => {
         </AppTooltip>
         <AppTypography fontWeight={700}>
           {isTruncated
-            ? `${DISPLAY_LIMIT} of ${filteredLogs.length} shown`
+            ? `${displayedLogs.length} of ${filteredLogs.length} shown`
             : `${filteredLogs.length} shown`}
+          {isLoadingOlder ? " · loading older…" : ""}
+          {!isLoadingOlder && hasMoreOlder ? " · more available" : ""}
+          {backlogTruncated ? " · initial batch truncated" : ""}
         </AppTypography>
       </div>
 
@@ -1071,19 +1467,27 @@ const GeneralLogsPage = () => {
 
       {error && <AppAlert severity="error">{error}</AppAlert>}
 
+      {paginationError && (
+        <AppAlert severity="warning">
+          Could not load older logs: {paginationError}. Scroll to the bottom or
+          use “Load older logs” to retry.
+        </AppAlert>
+      )}
+
       {!isLoading && !error && (
         <AppVirtualDataTable
           ariaLabel="General logs"
           columns={columns}
           data={displayedLogs}
           emptyMessage={
-            logs.length === 0 ? "No logs available." : "No matching logs."
+            logs.length === 0
+              ? "No logs match the current filters."
+              : "No matching logs."
           }
           fillAvailable
-          getRowId={(_, index) => String(index)}
-          renderExpandedContent={({ original: log }) =>
-            renderExpandedContent(log)
-          }
+          getRowId={getLogRowId}
+          onScroll={handleLogsScroll}
+          renderExpandedContent={renderExpandedRow}
           scrollElementRef={logsBoxRef}
         />
       )}

@@ -112,6 +112,8 @@ export const ROUTE_MODES = {
   "jobs.get": "query",
   "jobs.list": "query",
   "logs.general.follow": "job",
+  "logs.general_entry": "query",
+  "logs.general_page": "query",
   "logs.service.follow": "job",
   "monitoring.get_config": "query",
   "monitoring.get_cpu_history": "query",

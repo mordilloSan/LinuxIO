@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -371,6 +372,47 @@ func TestTransientProgressDoesNotReachRegistryEvents(t *testing.T) {
 	}
 }
 
+func TestProgressReplayShrinksByBytesAfterFirstSubscriber(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("logs.general.follow", nil)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	chunk := strings.Repeat(
+		"x",
+		DefaultSubscribedJobProgressReplayBytes/2+1,
+	)
+	job.ReportData(chunk)
+	job.ReportData(chunk)
+	job.ReportData(chunk)
+
+	_, replay, unsubscribe := job.SubscribeWithReplay(8)
+	defer unsubscribe()
+	if len(replay) != 3 {
+		t.Fatalf("initial replay length = %d, want all 3 pre-attach events", len(replay))
+	}
+
+	job.mu.RLock()
+	retainedBytes := job.progressLogBytes
+	retainedEvents := len(job.progressLog)
+	job.mu.RUnlock()
+	if retainedBytes > DefaultSubscribedJobProgressReplayBytes {
+		t.Fatalf(
+			"post-subscribe replay bytes = %d, limit %d",
+			retainedBytes,
+			DefaultSubscribedJobProgressReplayBytes,
+		)
+	}
+	if retainedEvents >= len(replay) {
+		t.Fatalf(
+			"post-subscribe replay retained %d events, want fewer than initial %d",
+			retainedEvents,
+			len(replay),
+		)
+	}
+}
+
 func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	registry := NewRegistry()
 	job, err := startTestJob(registry, "test.attach.replay", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
@@ -414,6 +456,75 @@ func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
+	frame, err = relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamClose {
+		t.Fatalf("opcode = 0x%02x, want OpStreamClose", frame.Opcode)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("AttachJobStream returned error: %v", err)
+	}
+}
+
+func TestAttachJobStreamReportsLagInsteadOfSilentlyDroppingData(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("test.attach.lag", nil)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	job.ReportData("replay\n")
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- AttachJobStream(server, job)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		job.mu.RLock()
+		subscribers := len(job.subscribers)
+		job.mu.RUnlock()
+		if subscribers == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for attach subscriber")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// AttachJobStream is blocked writing the replay to net.Pipe while the
+	// client is not reading. Overflow its bounded live channel during that
+	// window and then let the writer continue.
+	for index := 0; index <= DefaultJobProgressReplayLimit; index++ {
+		job.ReportData("live\n")
+	}
+
+	if got := readProgressData(t, client); got != "replay\n" {
+		t.Fatalf("replay progress = %q, want replay line", got)
+	}
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(lag result): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamResult {
+		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
+	}
+	var result relay.ResultFrame
+	if err = json.Unmarshal(frame.Payload, &result); err != nil {
+		t.Fatalf("json.Unmarshal(lag result): %v", err)
+	}
+	if result.Status != "error" || result.Code != 503 {
+		t.Fatalf("lag result = %#v, want status error and code 503", result)
+	}
+
 	frame, err = relay.ReadRelayFrame(client)
 	if err != nil {
 		t.Fatalf("ReadRelayFrame(close): %v", err)
