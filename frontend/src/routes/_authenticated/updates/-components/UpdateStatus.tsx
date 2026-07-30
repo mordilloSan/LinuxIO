@@ -30,12 +30,20 @@ const UpdateStatus = ({
 }: UpdateStatusProps) => {
   return (
     <div>
+      {/*
+        The progress panel follows the adopted transaction, not the recovery
+        scan: `recoveryPending` is true on every entry into the section, and
+        painting "Preparing… 0%" before a job is found reports an update that
+        may not exist. Cancel stays wired throughout — it no-ops until the hook
+        holds a job id, and suppressing it would strand the resume window with
+        no page-level cancel.
+      */}
       <UpdateActions
         currentPackage={updatingPackage}
         error={error}
         eventLog={eventLog}
-        isUpdating={recoveryPending || !!updatingPackage}
-        onCancel={recoveryPending ? undefined : onCancel}
+        isUpdating={!!updatingPackage}
+        onCancel={onCancel}
         onClearError={onClearError}
         progress={progress}
         status={status}

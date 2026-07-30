@@ -23,6 +23,21 @@ export function jobSnapshotResult<T>(value: T | JobSnapshot): T {
   return value;
 }
 
+/** Status code the bridge publishes for a canceled job (markCanceledLocked). */
+export const JOB_CANCELED_CODE = 499;
+
+/**
+ * True when a job stream ended because the job was canceled — by this page, the
+ * navbar chip, or another session — rather than because it failed. Cancellation
+ * arrives as an ordinary result-error frame, so every terminal-error surface has
+ * to tell the two apart before reporting a failure.
+ */
+export function isJobCancellationError(error: unknown): boolean {
+  return (
+    error instanceof LinuxIOError && Number(error.code) === JOB_CANCELED_CODE
+  );
+}
+
 const LOCAL_HANDLER_RETENTION_MS = 5_000;
 const locallyHandledJobIds = new Set<string>();
 

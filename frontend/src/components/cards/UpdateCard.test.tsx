@@ -33,11 +33,15 @@ describe("UpdateCard", () => {
       />,
     );
 
-    expect(screen.getByText("Available later")).toBeInTheDocument();
+    const availabilityChip = screen.getByText("Available later");
+    expect(availabilityChip).toBeInTheDocument();
     expect(
       screen.getByText(/commonly happens during phased rollouts/i),
     ).toBeInTheDocument();
     const updateAction = screen.getByRole("button", { name: "Update" });
+    expect(
+      updateAction.closest(".app-tooltip-trigger")?.parentElement,
+    ).toContainElement(availabilityChip);
     expect(updateAction).toHaveAttribute("aria-disabled", "true");
     await user.click(updateAction);
     expect(onUpdate).not.toHaveBeenCalled();

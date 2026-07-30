@@ -13,6 +13,7 @@ import {
   CAPABILITIES,
   type CapabilityDef,
   type InstallCapabilityResult,
+  isJobCancellationError,
   isJobLocallyHandled,
   isTerminalJobState,
   type JobEvent,
@@ -449,7 +450,12 @@ export function useRecoveredJobs(
             onError: (error) => {
               if (abortController.signal.aborted) return;
               if (job.type === JobTypes.JOB_TYPE_PACKAGE_UPDATE) {
-                emitPackageUpdateFailure(job.id, error);
+                // Only the navbar cancel aborts the controller above; a cancel
+                // from the Updates page or another session arrives here as an
+                // ordinary 499 stream error and must not toast as a failure.
+                if (!isJobCancellationError(error)) {
+                  emitPackageUpdateFailure(job.id, error);
+                }
                 return;
               }
               // Capability install is now surfaced here (survives the Settings

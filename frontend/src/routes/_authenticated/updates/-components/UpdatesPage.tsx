@@ -129,14 +129,6 @@ const AvailableUpdatesPage = () => {
   return (
     <>
       <RoutedTabActions>{actions}</RoutedTabActions>
-      {deferredUpdateCount > 0 ? (
-        <AppAlert severity="info">
-          {deferredUpdateCount} update
-          {deferredUpdateCount === 1 ? " is" : "s are"} available later. These
-          updates are currently deferred by PackageKit, which commonly happens
-          during phased rollouts.
-        </AppAlert>
-      ) : null}
       <UpdateStatus
         error={error}
         eventLog={eventLog}

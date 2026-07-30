@@ -67,12 +67,6 @@ const UpdateCard = ({
 
         {isDeferred ? (
           <>
-            <Chip
-              color="warning"
-              label="Available later"
-              size="small"
-              variant="soft"
-            />
             <AppTypography
               color="text.secondary"
               style={{ marginTop: 12 }}
@@ -104,6 +98,14 @@ const UpdateCard = ({
             marginTop: 12,
           }}
         >
+          {isDeferred ? (
+            <Chip
+              color="warning"
+              label="Available later"
+              size="small"
+              variant="soft"
+            />
+          ) : null}
           <Chip
             label="View Changelog"
             onClick={onToggleChangelog}

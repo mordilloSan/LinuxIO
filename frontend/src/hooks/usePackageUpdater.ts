@@ -1,7 +1,7 @@
 // src/hooks/usePackageUpdater.ts
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio, type Stream } from "@/api";
+import { isJobCancellationError, linuxio, type Stream } from "@/api";
 import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 
@@ -49,6 +49,9 @@ export const usePackageUpdater = () => {
   const streamRef = useRef<Stream | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
+  // When this transaction became visible, so the 1.5 s minimum only tops up
+  // updates that finish faster than that instead of padding every one of them.
+  const startedAtRef = useRef<number | null>(null);
   const detachedRef = useRef(false);
   const recoveryAttachedRef = useRef(false);
   // Cancels are fire-and-forget; a plain job action reports nothing.
@@ -88,14 +91,27 @@ export const usePackageUpdater = () => {
     setProgress(100);
     setStatus("Finished");
     appendEvent("Finished");
-    await ensureMinimumVisible(Date.now());
-    if (detachedRef.current) return;
+    // The transaction is over: drop the handles the cancel affordance keys off
+    // so a click during the minimum-visible hold cannot cancel a finished job.
+    streamRef.current = null;
+    jobIdRef.current = null;
+    await ensureMinimumVisible(startedAtRef.current ?? Date.now());
+    if (detachedRef.current || cancelledRef.current) return;
     setUpdatingPackage(null);
     setStatus(null);
     setRecoveryPending(false);
   }, [appendEvent]);
   const finishError = useCallback((err: unknown, request: unknown) => {
     if (detachedRef.current || cancelledRef.current) return;
+    if (isJobCancellationError(err)) {
+      // Canceled elsewhere (navbar chip, another session): report it the way a
+      // local cancel does instead of blaming the backend for a failure.
+      setUpdatingPackage(null);
+      setStatus(null);
+      setRecoveryPending(false);
+      setError("Update cancelled");
+      return;
+    }
     const packageIds = (request as { packageIds?: string[] }).packageIds ?? [];
     const errorMsg = err instanceof Error ? err.message : "Update failed";
     setError(
@@ -110,10 +126,10 @@ export const usePackageUpdater = () => {
 
   const { mutateAsync: startUpdateJob, attach: attachUpdateJob } =
     linuxio.packages.update.useJobStreamAction<void, PkgUpdateProgress>({
-      // The global jobs owner receives terminal events even after this page's
-      // stream closes, and owns cache invalidation through the manifest.
-      invalidates: [],
-      markHandled: false,
+      // Invalidate through the manifest while this page owns the stream, so the
+      // list refreshes even when the global job-events stream is reconnecting.
+      // Ownership (markHandled) keeps the global handler from invalidating the
+      // same terminal event twice; once this stream ends it takes over again.
       closeOnAbort: "none",
       closeMessage: "Update stream closed unexpectedly",
       onJobStart: (job) => {
@@ -183,6 +199,7 @@ export const usePackageUpdater = () => {
           streamRef.current = null;
           jobIdRef.current = null;
           cancelledRef.current = false;
+          startedAtRef.current = null;
         },
       },
     });
@@ -205,6 +222,7 @@ export const usePackageUpdater = () => {
     onRecover: (job) => {
       if (recoveryAttachedRef.current) return;
       recoveryAttachedRef.current = true;
+      startedAtRef.current = Date.now();
       const request = job.request as { packageIds?: string[] } | undefined;
       const packageIds = request?.packageIds ?? [];
       setUpdatingPackage(
@@ -233,6 +251,7 @@ export const usePackageUpdater = () => {
       setUpdatingPackage(initialLabel);
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
+      startedAtRef.current = Date.now();
 
       await startUpdateJob({ packageIds: packages }).catch(() => undefined);
     },

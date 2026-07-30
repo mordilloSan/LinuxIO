@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
+import type { JobStreamActionMockConfig } from "@/test/jobStreamAction";
 
 const apiMocks = vi.hoisted(() => ({
   cancelJob: vi.fn(),
@@ -9,20 +10,14 @@ const apiMocks = vi.hoisted(() => ({
   updatePackages: vi.fn(),
 }));
 
-const streamResultMocks = vi.hoisted(() => ({
-  run: vi.fn(),
-  streamActionConfigs: [] as unknown[],
+const streamMocks = vi.hoisted(() => ({
+  runStream: vi.fn(),
+  streamActionConfigs: [] as (JobStreamActionMockConfig | undefined)[],
 }));
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
-  interface StreamActionConfig {
-    error?: (error: unknown, variables: unknown) => void;
-    onJobStart?: (job: unknown, variables: unknown) => void;
-    onOpen?: (stream: unknown, job: unknown, variables: unknown) => void;
-    onProgress?: (progress: unknown, job: unknown, variables: unknown) => void;
-    success?: (result: unknown, variables: unknown) => void;
-  }
+  const { createJobStreamActionMock } = await import("@/test/jobStreamAction");
   return {
     ...actual,
     openJobAttachStream: apiMocks.openJobAttachStream,
@@ -42,57 +37,18 @@ vi.mock("@/api", async () => {
       packages: {
         ...actual.linuxio.packages,
         update: {
-          // Mirrors useJobStreamAction: submit -> onJobStart -> attach ->
-          // stream result, with the stream lifecycle driven by
-          // streamResultMocks.run so tests control progress frames.
-          useJobStreamAction: (config?: StreamActionConfig) => {
-            streamResultMocks.streamActionConfigs.push(config);
-            const run = async (request: unknown) => {
-              let job: { id: string };
-              try {
-                job = await apiMocks.updatePackages(request);
-              } catch (error) {
-                config?.error?.(error, request);
-                throw error;
-              }
-              config?.onJobStart?.(job, request);
-              return streamResultMocks
-                .run({
-                  open: () => apiMocks.openJobAttachStream(job.id),
-                  onOpen: (stream: unknown) =>
-                    config?.onOpen?.(stream, job, request),
-                  onProgress: (progress: unknown) =>
-                    config?.onProgress?.(progress, job, request),
-                })
-                .then(
-                  (result: unknown) => {
-                    config?.success?.(result, request);
-                    return result;
-                  },
-                  (error: unknown) => {
-                    config?.error?.(error, request);
-                    throw error;
-                  },
-                );
-            };
+          useJobStreamAction: (config?: JobStreamActionMockConfig) => {
+            streamMocks.streamActionConfigs.push(config);
             return {
-              attach: (job: { id: string }, request: unknown) => {
-                void streamResultMocks
-                  .run({
-                    open: () => apiMocks.openJobAttachStream(job.id),
-                    onOpen: (stream: unknown) =>
-                      config?.onOpen?.(stream, job, request),
-                    onProgress: (progress: unknown) =>
-                      config?.onProgress?.(progress, job, request),
-                  })
-                  .then(() => config?.success?.(undefined, request))
-                  .catch((error: unknown) => config?.error?.(error, request));
-              },
               isPending: false,
-              mutate: (request: unknown) => {
-                void run(request).catch(() => undefined);
-              },
-              mutateAsync: run,
+              ...createJobStreamActionMock(
+                {
+                  openStream: apiMocks.openJobAttachStream,
+                  runStream: streamMocks.runStream,
+                  submit: apiMocks.updatePackages,
+                },
+                config,
+              ),
             };
           },
         },
@@ -101,6 +57,7 @@ vi.mock("@/api", async () => {
   };
 });
 
+const { LinuxIOError } = await import("@/api");
 const { usePackageUpdater } = await import("@/hooks/usePackageUpdater");
 const { act, renderHook } = await import("@/test/render");
 
@@ -137,18 +94,19 @@ describe("usePackageUpdater", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
-    streamResultMocks.streamActionConfigs.length = 0;
+    streamMocks.streamActionConfigs.length = 0;
   });
 
   it("updates one package through the job stream and drives the progress bar", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    apiMocks.updatePackages.mockResolvedValue({ id: "job-1" });
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-1",
+      state: "running",
+    });
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
-    streamResultMocks.run.mockImplementation(async (options) => {
-      const stream = options.open();
-      options.onOpen?.(stream);
-      options.onProgress?.({ type: "percentage", percentage: 40 });
+    streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
+      handlers.onProgress({ type: "percentage", percentage: 40 });
     });
     const { result } = renderHook(() => usePackageUpdater());
 
@@ -168,10 +126,11 @@ describe("usePackageUpdater", () => {
     expect(result.current.progress).toBe(100);
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
-    expect(streamResultMocks.streamActionConfigs.at(-1)).toMatchObject({
-      invalidates: [],
-      markHandled: false,
-    });
+    // The page keeps manifest invalidation and job ownership: opting out would
+    // leave the updates list waiting on the global events stream alone.
+    const config = streamMocks.streamActionConfigs.at(-1);
+    expect(config).not.toHaveProperty("invalidates", []);
+    expect(config).not.toHaveProperty("markHandled", false);
   });
 
   it("reports single-package update failures with the package name", async () => {
@@ -188,21 +147,42 @@ describe("usePackageUpdater", () => {
     expect(result.current.updatingPackage).toBeNull();
   });
 
+  it("reports a cancellation from another surface as a cancel, not a failure", async () => {
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-canceled-elsewhere",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockRejectedValue(
+      new LinuxIOError("operation aborted", 499),
+    );
+    const { result } = renderHook(() => usePackageUpdater());
+
+    await act(async () => {
+      await result.current.updateOne("curl;8.0;amd64;ubuntu");
+    });
+
+    expect(result.current.error).toBe("Update cancelled");
+    expect(result.current.updatingPackage).toBeNull();
+    expect(result.current.status).toBeNull();
+  });
+
   it("drives update-all state from stream progress and keeps global progress monotonic", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    apiMocks.updatePackages.mockResolvedValue({ id: "job-1" });
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-1",
+      state: "running",
+    });
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
-    streamResultMocks.run.mockImplementation(async (options) => {
-      const stream = options.open();
-      options.onOpen?.(stream);
-      options.onProgress?.({ type: "percentage", percentage: 40 });
-      options.onProgress?.({
+    streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
+      handlers.onProgress({ type: "percentage", percentage: 40 });
+      handlers.onProgress({
         type: "status",
         status: "Installing packages",
         percentage: 25,
       });
-      options.onProgress?.({
+      handlers.onProgress({
         type: "item_progress",
         package_id: "nginx;1.24.0;amd64;ubuntu",
         status: "Configuring",
@@ -234,14 +214,16 @@ describe("usePackageUpdater", () => {
   it("uses aggregate progress carried by package failure messages", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    apiMocks.updatePackages.mockResolvedValue({ id: "job-progress-message" });
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-progress-message",
+      state: "running",
+    });
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
     let finishStream!: () => void;
-    streamResultMocks.run.mockImplementation(
-      (options) =>
+    streamMocks.runStream.mockImplementation(
+      (_stream, handlers) =>
         new Promise<void>((resolve) => {
-          options.onOpen?.(options.open());
-          options.onProgress?.({
+          handlers.onProgress({
             type: "message",
             message:
               "Failed to update curl. Continuing with remaining updates.",
@@ -264,22 +246,69 @@ describe("usePackageUpdater", () => {
     await flushMinimumVisibleProgress(promise);
   });
 
+  it("does not hold the panel past an update that already took the minimum", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-slow",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    let finishStream!: () => void;
+    streamMocks.runStream.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    const { result } = renderHook(() => usePackageUpdater());
+
+    let promise!: Promise<void>;
+    await act(async () => {
+      promise = result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+      await Promise.resolve();
+    });
+    let settled = false;
+    void promise.then(() => {
+      settled = true;
+    });
+
+    // The transaction itself ran longer than MIN_PROGRESS_VISIBLE_MS, so the
+    // panel has already been visible long enough and must clear immediately.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await act(async () => {
+      finishStream();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const settledWithoutExtraHold = settled;
+    // Drain any hold before asserting, so a regression fails here instead of
+    // leaking a pending timer into the next test.
+    await flushMinimumVisibleProgress(promise);
+
+    expect(settledWithoutExtraHold).toBe(true);
+    expect(result.current.updatingPackage).toBeNull();
+    expect(result.current.status).toBeNull();
+  });
+
   it("cancels active update streams and backend jobs", async () => {
     const stream = createStream();
-    apiMocks.updatePackages.mockResolvedValue({ id: "job-2" });
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-2",
+      state: "running",
+    });
     apiMocks.openJobAttachStream.mockReturnValue(stream);
     apiMocks.cancelJob.mockResolvedValue(undefined);
-    streamResultMocks.run.mockImplementation((options) => {
-      const opened = options.open();
-      options.onOpen?.(opened);
-      return new Promise(() => undefined);
-    });
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
     const { result } = renderHook(() => usePackageUpdater());
 
     void act(() => {
       void result.current.updateAll(["nginx"]);
     });
-    await vi.waitFor(() => expect(streamResultMocks.run).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
 
     act(() => result.current.cancelUpdate());
 
@@ -287,6 +316,58 @@ describe("usePackageUpdater", () => {
     expect(apiMocks.cancelJob).toHaveBeenCalledWith({ jobId: "job-2" });
     expect(result.current.error).toBe("Update cancelled");
     expect(result.current.updatingPackage).toBeNull();
+  });
+
+  it("leaves cancel inert once the transaction has finished", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-fast",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockResolvedValue(undefined);
+    const { result } = renderHook(() => usePackageUpdater());
+
+    let promise!: Promise<void>;
+    await act(async () => {
+      promise = result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+      await Promise.resolve();
+    });
+
+    // Inside the minimum-visible hold the panel still shows "Finished", so the
+    // cancel button is live — but there is nothing left to cancel.
+    expect(result.current.status).toBe("Finished");
+    act(() => result.current.cancelUpdate());
+    const cancelCalls = apiMocks.cancelJob.mock.calls.length;
+    const errorDuringHold = result.current.error;
+    await flushMinimumVisibleProgress(promise);
+
+    expect(cancelCalls).toBe(0);
+    expect(errorDuringHold).toBeNull();
+    expect(result.current.updatingPackage).toBeNull();
+  });
+
+  it("drops the job handle once a failed run settles", async () => {
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-failed",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockRejectedValue(new Error("dpkg exploded"));
+    const { result } = renderHook(() => usePackageUpdater());
+
+    await act(async () => {
+      await result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+    });
+    expect(result.current.error).toBe("Failed to update nginx: dpkg exploded");
+
+    // onSettled owns this cleanup: a stale job id would let cancel fire against
+    // a dead job and overwrite the failure with "Update cancelled".
+    act(() => result.current.cancelUpdate());
+
+    expect(apiMocks.cancelJob).not.toHaveBeenCalled();
+    expect(result.current.error).toBe("Failed to update nginx: dpkg exploded");
   });
 
   it("adopts a recovered update through completion", async () => {
@@ -301,9 +382,7 @@ describe("usePackageUpdater", () => {
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(stream);
-    streamResultMocks.run.mockImplementation(async (options) => {
-      options.onOpen?.(options.open());
-    });
+    streamMocks.runStream.mockResolvedValue(undefined);
     const { result } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
@@ -312,6 +391,38 @@ describe("usePackageUpdater", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1500));
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
+  });
+
+  it("cancels a recovered update against the adopted job id", async () => {
+    const stream = createStream();
+    apiMocks.listJobs.mockResolvedValue([
+      {
+        id: "recovered-cancel",
+        type: "packages.update",
+        state: "running",
+        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+      },
+    ]);
+    apiMocks.openJobAttachStream.mockReturnValue(stream);
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { result } = renderHook(() => usePackageUpdater());
+
+    await vi.waitFor(() =>
+      expect(apiMocks.openJobAttachStream).toHaveBeenCalledWith(
+        "recovered-cancel",
+      ),
+    );
+
+    act(() => result.current.cancelUpdate());
+
+    // attach fires onJobStart just like a fresh start, so the page-level cancel
+    // reaches the backend instead of only detaching this stream.
+    expect(apiMocks.cancelJob).toHaveBeenCalledWith({
+      jobId: "recovered-cancel",
+    });
+    expect(stream.abort).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a recovered update failure", async () => {
@@ -323,7 +434,8 @@ describe("usePackageUpdater", () => {
         request: { packageIds: ["curl;1.0;amd64;ubuntu"] },
       },
     ]);
-    streamResultMocks.run.mockRejectedValue(new Error("backend failed"));
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockRejectedValue(new Error("backend failed"));
     const { result } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
@@ -335,22 +447,25 @@ describe("usePackageUpdater", () => {
   });
 
   it("closes a stream that opens after the controller unmounts", async () => {
-    let open!: (stream: unknown) => void;
-    apiMocks.updatePackages.mockResolvedValue({ id: "late-open" });
-    streamResultMocks.run.mockImplementation(
-      (options) =>
+    const stream = createStream();
+    let resolveSubmit!: (job: { id: string; state: string }) => void;
+    apiMocks.updatePackages.mockImplementation(
+      () =>
         new Promise((resolve) => {
-          open = options.onOpen!;
-          resolve(undefined);
+          resolveSubmit = resolve;
         }),
     );
-    const stream = createStream();
+    apiMocks.openJobAttachStream.mockReturnValue(stream);
+    streamMocks.runStream.mockResolvedValue(undefined);
     const { result, unmount } = renderHook(() => usePackageUpdater());
     void result.current.updateAll(["nginx"]);
-    await vi.waitFor(() => expect(open).toBeTypeOf("function"));
+    await vi.waitFor(() => expect(apiMocks.updatePackages).toHaveBeenCalled());
     unmount();
-    act(() => open(stream));
-    expect(stream.close).toHaveBeenCalledTimes(1);
+
+    // The job was still being created at unmount, so onOpen lands detached and
+    // has to close the stream itself.
+    resolveSubmit({ id: "late-open", state: "running" });
+    await vi.waitFor(() => expect(stream.close).toHaveBeenCalledTimes(1));
   });
 
   it("attaches a recovered update only once across controller rerenders", async () => {
@@ -363,10 +478,9 @@ describe("usePackageUpdater", () => {
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
-    streamResultMocks.run.mockImplementation((options) => {
-      options.onOpen?.(options.open());
-      return new Promise(() => undefined);
-    });
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
     const { rerender } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
@@ -379,21 +493,23 @@ describe("usePackageUpdater", () => {
 
     expect(apiMocks.listJobs).toHaveBeenCalledTimes(1);
     expect(apiMocks.openJobAttachStream).toHaveBeenCalledTimes(1);
-    expect(streamResultMocks.run).toHaveBeenCalledTimes(1);
+    expect(streamMocks.runStream).toHaveBeenCalledTimes(1);
   });
 
   it("closes a live stream on unmount without treating it as terminal", async () => {
     const stream = createStream();
-    apiMocks.updatePackages.mockResolvedValue({ id: "close-before-terminal" });
-    streamResultMocks.run.mockImplementation((options) => {
-      options.onOpen?.(options.open());
-      return new Promise(() => undefined);
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "close-before-terminal",
+      state: "running",
     });
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
     apiMocks.openJobAttachStream.mockReturnValue(stream);
     const { result, unmount } = renderHook(() => usePackageUpdater());
 
     void result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
-    await vi.waitFor(() => expect(streamResultMocks.run).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
     unmount();
 
     expect(stream.close).toHaveBeenCalledTimes(1);
