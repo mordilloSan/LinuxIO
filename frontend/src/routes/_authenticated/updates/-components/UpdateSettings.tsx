@@ -395,11 +395,14 @@ const AutoUpdateRuntime = ({
               gap: theme.spacing(0.75),
             }}
           >
-            <StatusDot
-              color={schedulerColor}
-              size={9}
-              tooltip={schedulerLabel}
-            />
+            <StatusDot color={schedulerColor} size={9} />
+            <AppTypography
+              color="text.secondary"
+              fontWeight={600}
+              variant="caption"
+            >
+              {schedulerLabel}
+            </AppTypography>
           </div>
         }
         subtitle="Live systemd timer state"

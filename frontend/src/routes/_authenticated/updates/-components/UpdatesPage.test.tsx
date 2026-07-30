@@ -92,9 +92,6 @@ describe("UpdatesPage", () => {
     expect(
       screen.getByRole("button", { name: "Update All (1)" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "1 update is available later",
-    );
     await user.click(screen.getByRole("button", { name: "Update All (1)" }));
     expect(mocks.updateAll).toHaveBeenCalledWith(["ready"]);
   });
@@ -106,8 +103,5 @@ describe("UpdatesPage", () => {
     expect(
       screen.queryByRole("button", { name: /Update All/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "2 updates are available later",
-    );
   });
 });

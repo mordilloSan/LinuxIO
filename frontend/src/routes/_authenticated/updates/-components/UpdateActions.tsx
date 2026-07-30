@@ -8,6 +8,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
 interface UpdateActionsProps {
+  canCancel?: boolean;
   currentPackage: string | null;
   error?: string | null;
   eventLog?: string[];
@@ -19,6 +20,7 @@ interface UpdateActionsProps {
 }
 
 const UpdateActions = ({
+  canCancel = false,
   isUpdating,
   currentPackage,
   progress,
@@ -98,7 +100,7 @@ const UpdateActions = ({
               <AppTypography color="text.secondary" variant="body2">
                 {Math.round(progress)}%
               </AppTypography>
-              {onCancel && (
+              {canCancel && onCancel && (
                 <AppActionIconButton
                   icon="mdi:cancel"
                   iconSize={20}

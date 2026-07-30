@@ -52,11 +52,10 @@ const AvailableUpdatesPage = () => {
   const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
-  const { actionable: actionableUpdates, deferred: deferredUpdates } = useMemo(
+  const { actionable: actionableUpdates } = useMemo(
     () => partitionUpdatesByAvailability(updates),
     [updates],
   );
-  const deferredUpdateCount = deferredUpdates.length;
   const {
     updateOne,
     updateAll,
@@ -67,6 +66,8 @@ const AvailableUpdatesPage = () => {
     eventLog,
     error,
     clearError,
+    isUpdating,
+    canCancel,
     recoveryPending,
   } = usePackageUpdateController();
   const { mutate: refreshCache, isPending: isRefreshingCache } =
@@ -79,7 +80,7 @@ const AvailableUpdatesPage = () => {
       toast: UPDATES_TOAST_META,
     });
   const packageOperationPending =
-    recoveryPending || !!updatingPackage || isRefreshingCache;
+    recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
     <div
       style={{
@@ -132,6 +133,8 @@ const AvailableUpdatesPage = () => {
       <UpdateStatus
         error={error}
         eventLog={eventLog}
+        canCancel={canCancel}
+        isUpdating={isUpdating}
         onCancel={cancelUpdate}
         onClearError={clearError}
         onUpdateOne={updateOne}

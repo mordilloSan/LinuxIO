@@ -1,336 +1,243 @@
-// src/hooks/usePackageUpdater.ts
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useReducer, useRef } from "react";
 
-import { isJobCancellationError, linuxio, type Stream } from "@/api";
+import { isJobCancellationError, linuxio } from "@/api";
 import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
-import {
-  claimTerminalFeedback,
-  markTerminalFeedbackEmitted,
-} from "@/hooks/backgroundJobs/terminalJobFeedback";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { useManagedJobStreamLifecycle } from "@/hooks/backgroundJobs/useManagedJobStreamLifecycle";
+import { useTerminalFeedbackOwnership } from "@/hooks/backgroundJobs/useTerminalFeedbackOwnership";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import {
+  initialPackageUpdateState,
+  packageUpdateReducer,
+} from "./packageUpdateState";
+import { useMountedGuard } from "./useMountedGuard";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function ensureMinimumVisible(startedAtMs: number): Promise<void> {
-  const elapsed = Date.now() - startedAtMs;
-  const remaining = MIN_PROGRESS_VISIBLE_MS - elapsed;
-  if (remaining > 0) {
-    await sleep(remaining);
-  }
+  const remaining = MIN_PROGRESS_VISIBLE_MS - (Date.now() - startedAtMs);
+  if (remaining > 0) await sleep(remaining);
 }
 
-// Progress event types from backend
 interface PkgUpdateProgress {
-  info_code?: number;
   item_pct?: number;
   message?: string;
   package_id?: string;
-  package_summary?: string;
   percentage?: number;
   status?: string;
-  status_code?: number;
   type: "item_progress" | "package" | "status" | "percentage" | "message";
 }
 
-// Extract package name from package ID (e.g., "nginx;1.24.0-1ubuntu1;amd64;ubuntu" -> "nginx")
 function extractPackageName(packageId: string): string {
-  const parts = packageId.split(";");
-  return parts[0] || packageId;
+  return packageId.split(";")[0] || packageId;
 }
 
 export const usePackageUpdater = () => {
-  const [updatingPackage, setUpdatingPackage] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState<string | null>(null);
-  const [eventLog, setEventLog] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const streamRef = useRef<Stream | null>(null);
-  const jobIdRef = useRef<string | null>(null);
-  const cancelledRef = useRef(false);
+  const [state, dispatch] = useReducer(
+    packageUpdateReducer,
+    initialPackageUpdateState,
+  );
   const startedAtRef = useRef<number | null>(null);
-  const detachedRef = useRef(false);
-  const recoveryAttachedRef = useRef(false);
-  const releaseFeedbackClaimRef = useRef<(() => void) | null>(null);
+  const isMounted = useMountedGuard();
+  const feedback = useTerminalFeedbackOwnership(JOB_TYPE_PACKAGE_UPDATE);
 
-  const claimFeedbackOwnership = useCallback(() => {
-    releaseFeedbackClaimRef.current ??= claimTerminalFeedback(
-      JOB_TYPE_PACKAGE_UPDATE,
-    );
-  }, []);
-
-  const releaseFeedbackOwnership = useCallback(() => {
-    releaseFeedbackClaimRef.current?.();
-    releaseFeedbackClaimRef.current = null;
-  }, []);
-
-  // Cancels are fire-and-forget; a plain job action reports nothing.
+  // Cancels are deliberately fire-and-forget; the stream lifecycle owns local
+  // detach/abort while this route-specific action stops the backend job.
   const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
+  const lifecycle = useManagedJobStreamLifecycle((job) => {
+    feedback.release();
+    startedAtRef.current = null;
+    cancelJob({ jobId: job.id });
+  });
 
-  const appendEvent = useCallback((message: string) => {
-    const trimmed = message.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    setEventLog((previous) => {
-      if (previous[previous.length - 1] === trimmed) {
-        return previous;
+  const finishSuccess = useCallback(
+    async (_result: void, request: { packageIds: string[] }) => {
+      if (!lifecycle.accepts(request)) return;
+      const startedAt = startedAtRef.current ?? Date.now();
+      feedback.mark();
+      feedback.release();
+      dispatch({ type: "finishing" });
+      await ensureMinimumVisible(startedAt);
+      if (isMounted() && lifecycle.settle(request)) {
+        dispatch({ type: "complete" });
+        startedAtRef.current = null;
       }
-      const next = [...previous, trimmed];
-      return next.slice(-8);
-    });
-  }, []);
+    },
+    [feedback, isMounted, lifecycle],
+  );
 
-  // Drive the overall bar from the global transaction percentage only,
-  // clamped to [0,100] and kept monotonic so interleaved frames can't pull
-  // it backwards. Per-package item_pct is intentionally NOT used here — it
-  // resets every package and every download/install phase.
-  const bumpProgress = useCallback((pct?: number) => {
-    if (pct === undefined || pct > 100) return;
-    setProgress((prev) => Math.max(prev, pct));
-  }, []);
+  const finishError = useCallback(
+    (err: unknown, request: unknown) => {
+      if (!lifecycle.accepts(request as { packageIds: string[] })) return;
+      feedback.mark();
+      if (isJobCancellationError(err)) {
+        dispatch({ type: "canceled" });
+        lifecycle.settle(request as { packageIds: string[] });
+        startedAtRef.current = null;
+        feedback.release();
+        return;
+      }
+      const packageIds =
+        (request as { packageIds?: string[] }).packageIds ?? [];
+      const message = getMutationErrorMessage(err, "Update failed");
+      dispatch({
+        type: "failed",
+        error:
+          packageIds.length === 1
+            ? `Failed to update ${extractPackageName(packageIds[0])}: ${message}`
+            : message,
+      });
+      lifecycle.settle(request as { packageIds: string[] });
+      startedAtRef.current = null;
+      feedback.release();
+    },
+    [feedback, lifecycle],
+  );
 
-  const [recoveryPending, setRecoveryPending] = useState(true);
-
-  const finishSuccess = useCallback(async () => {
-    if (cancelledRef.current) return;
-    if (detachedRef.current) {
-      return;
-    }
-    setProgress(100);
-    setStatus("Finished");
-    appendEvent("Finished");
-    // This surface has reported the outcome; keep the global fallback silent
-    // even if its copy of the terminal event lands after the claim is released.
-    if (jobIdRef.current) markTerminalFeedbackEmitted(jobIdRef.current);
-    // The transaction is over: drop the handles the cancel affordance keys off
-    // so a click during the minimum-visible hold cannot cancel a finished job.
-    streamRef.current = null;
-    jobIdRef.current = null;
-    await ensureMinimumVisible(startedAtRef.current ?? Date.now());
-    if (detachedRef.current || cancelledRef.current) return;
-    setUpdatingPackage(null);
-    setStatus(null);
-    setRecoveryPending(false);
-  }, [appendEvent]);
-  const finishError = useCallback((err: unknown, request: unknown) => {
-    if (detachedRef.current || cancelledRef.current) return;
-    // This surface is painting the outcome; keep the global fallback silent
-    // even if its copy of the terminal event lands after the claim is released.
-    if (jobIdRef.current) markTerminalFeedbackEmitted(jobIdRef.current);
-    if (isJobCancellationError(err)) {
-      // Canceled elsewhere (navbar chip, another session): report it the way a
-      // local cancel does instead of blaming the backend for a failure.
-      setUpdatingPackage(null);
-      setStatus(null);
-      setRecoveryPending(false);
-      setError("Update cancelled");
-      return;
-    }
-    const packageIds = (request as { packageIds?: string[] }).packageIds ?? [];
-    const errorMsg = getMutationErrorMessage(err, "Update failed");
-    setError(
-      packageIds.length === 1
-        ? `Failed to update ${extractPackageName(packageIds[0])}: ${errorMsg}`
-        : errorMsg,
-    );
-    setUpdatingPackage(null);
-    setStatus(null);
-    setRecoveryPending(false);
-  }, []);
-
-  const { mutateAsync: startUpdateJob, attach: attachUpdateJob } =
-    linuxio.packages.update.useJobStreamAction<void, PkgUpdateProgress>({
-      // Invalidate through the manifest while this page owns the stream, so the
-      // list refreshes even when the global job-events stream is reconnecting.
-      // Ownership (markHandled) keeps the global handler from invalidating the
-      // same terminal event twice; once this stream ends it takes over again.
-      closeOnAbort: "none",
-      closeMessage: "Update stream closed unexpectedly",
-      onJobStart: (job) => {
-        jobIdRef.current = job.id;
-      },
-      onOpen: (stream) => {
-        if (detachedRef.current) {
-          stream.close();
-          return;
+  const streamAction = linuxio.packages.update.useJobStreamAction<
+    void,
+    PkgUpdateProgress
+  >({
+    // Keep manifest invalidation and local-handled ownership as the previous
+    // controller did; recovery/global feedback remain its fallback.
+    closeOnAbort: "none",
+    closeMessage: "Update stream closed unexpectedly",
+    onJobStart: (job, request) => {
+      if (lifecycle.onJobStart(job, request)) feedback.claim(job.id);
+    },
+    onOpen: (stream, job, request) => {
+      lifecycle.onOpen(stream, job, request);
+    },
+    onProgress: (data, _job, request) => {
+      if (!lifecycle.accepts(request)) return;
+      dispatch({ type: "progress", percentage: data.percentage });
+      switch (data.type) {
+        case "item_progress":
+          if (data.package_id) {
+            dispatch({
+              type: "package",
+              packageName: extractPackageName(data.package_id),
+              status: data.status,
+            });
+          } else if (data.status) {
+            dispatch({ type: "status", status: data.status });
+          }
+          break;
+        case "package":
+          if (data.package_id) {
+            const packageName = extractPackageName(data.package_id);
+            dispatch({
+              type: "package",
+              packageName,
+              status: data.status,
+              event: data.status ? `${data.status}: ${packageName}` : undefined,
+            });
+          } else if (data.status) {
+            dispatch({ type: "status", status: data.status });
+          }
+          break;
+        case "status":
+          if (data.status) {
+            dispatch({
+              type: "status",
+              status: data.status,
+              event: data.status,
+            });
+          }
+          break;
+        case "message": {
+          const message = data.message || data.status;
+          if (message)
+            dispatch({ type: "status", status: message, event: message });
+          break;
         }
-        streamRef.current = stream;
-        setRecoveryPending(false);
-      },
-      onProgress: (data) => {
-        if (detachedRef.current) return;
-        // Batch-level progress can accompany any event type. In particular,
-        // the backend reports the completed share of a failed package on the
-        // continuation message before moving to the next package.
-        bumpProgress(data.percentage);
-        switch (data.type) {
-          case "item_progress":
-            // item_pct is a per-package / per-phase sub-percentage, not a
-            // global value — use it only to track the current package and
-            // status, never to set the overall bar.
-            if (data.package_id) {
-              setUpdatingPackage(extractPackageName(data.package_id));
-            }
-            if (data.status) {
-              setStatus(data.status);
-            }
-            break;
-          case "package":
-            if (data.package_id) {
-              const packageName = extractPackageName(data.package_id);
-              setUpdatingPackage(packageName);
-              if (data.status) {
-                appendEvent(`${data.status}: ${packageName}`);
-              }
-            }
-            if (data.status) {
-              setStatus(data.status);
-            }
-            break;
-          case "status":
-            if (data.status) {
-              setStatus(data.status);
-              appendEvent(data.status);
-            }
-            break;
-          case "percentage":
-            break;
-          case "message":
-            if (data.message) {
-              setStatus(data.message);
-              appendEvent(data.message);
-            } else if (data.status) {
-              setStatus(data.status);
-              appendEvent(data.status);
-            }
-            break;
-        }
-      },
-      success: () => finishSuccess(),
-      error: (err, request) => finishError(err, request),
-      options: {
-        onSettled: () => {
-          streamRef.current = null;
-          jobIdRef.current = null;
-          cancelledRef.current = false;
-          startedAtRef.current = null;
-          // finishSuccess/finishError have painted by now (React Query settles
-          // after the success/error callbacks), so ownership can go back to
-          // the global handler.
-          releaseFeedbackOwnership();
-        },
-      },
-    });
+        case "percentage":
+          break;
+      }
+    },
+    success: finishSuccess,
+    error: finishError,
+  });
 
-  useEffect(() => {
-    detachedRef.current = false;
-    return () => {
-      detachedRef.current = true;
-      // Closing only detaches this page's stream; the backend job continues
-      // and is safely adopted by a later controller instance.
-      streamRef.current?.close();
-      streamRef.current = null;
-      // The page can no longer paint feedback — hand ownership back to the
-      // global handler immediately so a failure after navigation still toasts.
-      releaseFeedbackOwnership();
-    };
-  }, [releaseFeedbackOwnership]);
-
-  useActiveJobRecovery({
+  const recovery = useActiveJobRecovery({
     type: JOB_TYPE_PACKAGE_UPDATE,
     scanKey: "package-update-controller",
     match: () => true,
     onRecover: (job) => {
-      if (recoveryAttachedRef.current) return;
-      recoveryAttachedRef.current = true;
-      // Claim before attaching: if the job goes terminal in the attach window,
-      // the short-circuit routes it to finishError/finishSuccess on this page.
-      claimFeedbackOwnership();
+      const packageIds =
+        (job.request as { packageIds?: string[] } | undefined)?.packageIds ??
+        [];
+      const request = { packageIds };
+      if (!lifecycle.begin(request)) return;
+      dispatch({
+        type: "start",
+        packageName:
+          packageIds.length === 1
+            ? extractPackageName(packageIds[0])
+            : "Resuming updates...",
+        status: "Resuming update transaction",
+        event: "Resuming update transaction",
+      });
+      // Claim before attach so a terminal event in its opening window remains
+      // page-owned. onJobStart records the concrete id for deduplication.
+      feedback.claim();
       startedAtRef.current = Date.now();
-      const request = job.request as { packageIds?: string[] } | undefined;
-      const packageIds = request?.packageIds ?? [];
-      setUpdatingPackage(
-        packageIds.length === 1
-          ? extractPackageName(packageIds[0])
-          : "Resuming updates...",
-      );
-      setStatus("Resuming update transaction");
-      setEventLog(["Resuming update transaction"]);
-      attachUpdateJob(job, { packageIds });
+      streamAction.attach(job, request);
     },
-    onMiss: () => setRecoveryPending(false),
   });
 
   const runUpdate = useCallback(
     async (packages: string[], initialLabel: string) => {
-      if (packages.length === 0) {
-        console.log("No packages to update");
-        return;
-      }
-
-      setProgress(0);
-      setEventLog([]);
-      setError(null);
-      setStatus("Initializing");
-      setUpdatingPackage(initialLabel);
-      appendEvent("Initializing update transaction");
-      cancelledRef.current = false;
+      if (packages.length === 0) return;
+      const request = { packageIds: packages };
+      if (!lifecycle.begin(request)) return;
+      dispatch({
+        type: "start",
+        packageName: initialLabel,
+        status: "Initializing",
+        event: "Initializing update transaction",
+      });
       startedAtRef.current = Date.now();
-      // Claim before submitting so even a failure that beats the submit
-      // round trip to the global events stream is owned by this page.
-      claimFeedbackOwnership();
-
-      await startUpdateJob({ packageIds: packages }).catch(() => undefined);
+      // Claim before submission: the job-events fallback may otherwise win a
+      // very fast failed job before its attach stream is open.
+      feedback.claim();
+      await streamAction.mutateAsync(request).catch(() => undefined);
     },
-    [appendEvent, claimFeedbackOwnership, startUpdateJob],
+    [feedback, lifecycle, streamAction],
   );
 
   const updateOne = useCallback(
     (pkg: string) => runUpdate([pkg], extractPackageName(pkg)),
     [runUpdate],
   );
-
   const updateAll = useCallback(
     (packages: string[]) => runUpdate(packages, "Preparing updates..."),
     [runUpdate],
   );
-
   const cancelUpdate = useCallback(() => {
-    if (streamRef.current || jobIdRef.current) {
-      cancelledRef.current = true;
-      streamRef.current?.abort();
-      streamRef.current = null;
-      if (jobIdRef.current) {
-        cancelJob({ jobId: jobIdRef.current });
-        jobIdRef.current = null;
-      }
-      setUpdatingPackage(null);
-      setStatus(null);
-      setError("Update cancelled");
+    if (state.phase === "running" && lifecycle.cancel()) {
+      dispatch({ type: "canceled" });
     }
-  }, [cancelJob]);
+  }, [lifecycle, state.phase]);
+  const clearError = useCallback(() => dispatch({ type: "clearError" }), []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const isUpdating = state.phase !== "idle";
+  const canCancel = state.phase === "running" && lifecycle.isActive;
 
   return {
-    updatingPackage,
-    updateOne,
-    updateAll,
+    ...state,
+    canCancel,
     cancelUpdate,
-    progress,
-    status,
-    eventLog,
-    error,
     clearError,
-    recoveryPending,
+    error: state.error,
+    isUpdating,
+    recoveryPending: recovery.isScanning,
+    updateAll,
+    updateOne,
   };
 };

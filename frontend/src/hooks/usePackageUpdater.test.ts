@@ -324,6 +324,7 @@ describe("usePackageUpdater", () => {
     expect(apiMocks.cancelJob).toHaveBeenCalledWith({ jobId: "job-2" });
     expect(result.current.error).toBe("Update cancelled");
     expect(result.current.updatingPackage).toBeNull();
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
   });
 
   it("leaves cancel inert once the transaction has finished", async () => {
@@ -343,8 +344,8 @@ describe("usePackageUpdater", () => {
       await Promise.resolve();
     });
 
-    // Inside the minimum-visible hold the panel still shows "Finished", so the
-    // cancel button is live — but there is nothing left to cancel.
+    // The panel remains visible during the minimum hold, but Finished is not
+    // cancelable and a direct controller call remains inert as a safety net.
     expect(result.current.status).toBe("Finished");
     act(() => result.current.cancelUpdate());
     const cancelCalls = apiMocks.cancelJob.mock.calls.length;
@@ -423,6 +424,12 @@ describe("usePackageUpdater", () => {
     expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(true);
 
     act(() => finishStream());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Finished is only a UI hold. The job terminal result has already been
+    // surfaced, so another package run must not be suppressed during the hold.
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
     await flushMinimumVisibleProgress(promise);
 
     // Settled runs hand ownership back immediately (no trailing window).

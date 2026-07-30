@@ -48,4 +48,24 @@ describe("UpdateStatus", () => {
     await user.click(screen.getByRole("button", { name: "Cancel update" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the Finished hold visible without exposing cancel", () => {
+    render(
+      <UpdateStatus
+        {...baseProps}
+        canCancel={false}
+        isUpdating
+        onCancel={vi.fn()}
+        progress={100}
+        status="Finished"
+        updatingPackage="nginx"
+      />,
+    );
+
+    expect(screen.getByText("Finished: nginx")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Cancel update" }),
+    ).not.toBeInTheDocument();
+  });
 });

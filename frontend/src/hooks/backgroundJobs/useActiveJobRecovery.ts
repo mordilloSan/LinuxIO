@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import { isTerminalJobState, linuxio, type JobSnapshot } from "@/api";
 
@@ -16,6 +16,8 @@ import { isTerminalJobState, linuxio, type JobSnapshot } from "@/api";
  * scan also falls through to `onMiss`: the start then surfaces the real
  * transport error instead of the dialog hanging silently.
  */
+export type ActiveJobRecoveryStatus = "pending" | "recovered" | "missed";
+
 export function useActiveJobRecovery({
   type,
   scanKey,
@@ -28,37 +30,57 @@ export function useActiveJobRecovery({
   match: (job: JobSnapshot) => boolean;
   onRecover: (job: JobSnapshot) => void;
   onMiss?: () => void;
-}) {
+}): { status: ActiveJobRecoveryStatus; isScanning: boolean } {
+  const [settledScan, setSettledScan] = useState<{
+    request: { scanKey: string | null; type: string };
+    status: Exclude<ActiveJobRecoveryStatus, "pending">;
+  } | null>(null);
+  // A fresh identity records each null -> key re-entry as a new scan while
+  // keeping ordinary rerenders of an unchanged key to exactly one request.
+  const request = useMemo(() => ({ scanKey, type }), [scanKey, type]);
   const matches = useEffectEvent(match);
   const recover = useEffectEvent(onRecover);
   const miss = useEffectEvent(() => onMiss?.());
+  const findMatchingJob = useEffectEvent((jobs: JobSnapshot[]) =>
+    jobs.find(
+      (candidate) =>
+        candidate.type === type &&
+        !isTerminalJobState(candidate.state) &&
+        matches(candidate),
+    ),
+  );
 
   useEffect(() => {
-    if (scanKey === null) return;
+    if (request.scanKey === null) return;
     let canceled = false;
     void (async () => {
       let job: JobSnapshot | undefined;
       try {
         const jobs = await linuxio.jobs.list({ status: "active" });
         if (canceled) return;
-        job = jobs.find(
-          (candidate) =>
-            candidate.type === type &&
-            !isTerminalJobState(candidate.state) &&
-            matches(candidate),
-        );
+        job = findMatchingJob(jobs);
       } catch {
         // Best-effort: a missed recovery only loses in-page progress UI.
       }
       if (canceled) return;
       if (job) {
+        setSettledScan({ request, status: "recovered" });
         recover(job);
       } else {
+        setSettledScan({ request, status: "missed" });
         miss();
       }
     })();
     return () => {
       canceled = true;
     };
-  }, [scanKey, type]);
+  }, [request]);
+
+  const status =
+    request.scanKey === null
+      ? "missed"
+      : settledScan?.request === request
+        ? settledScan.status
+        : "pending";
+  return { status, isScanning: status === "pending" };
 }
