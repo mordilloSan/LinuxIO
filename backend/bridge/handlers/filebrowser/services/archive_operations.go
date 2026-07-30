@@ -79,13 +79,6 @@ func estimateDirSize(root *fsroot.FSRoot, path string) (int64, error) {
 	return total, err
 }
 
-func resolveLinkTargetPath(linkPath, target string) string {
-	if filepath.IsAbs(target) {
-		return utils.CleanAbsPath(target)
-	}
-	return utils.CleanAbsPath(filepath.Join(filepath.Dir(linkPath), target))
-}
-
 func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, string, error) {
 	cleanPath := utils.CleanAbsPath(path)
 
@@ -94,17 +87,14 @@ func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, s
 		return info, cleanPath, nil
 	}
 
-	linkInfo, lstatErr := root.Root.Lstat(relPath(cleanPath))
-	if lstatErr != nil || linkInfo.Mode()&os.ModeSymlink == 0 {
-		return nil, cleanPath, err
+	// os.Root rejects absolute symlink targets even though this file browser is
+	// rooted at /. Resolve the complete chain first, then return to os.Root for
+	// the actual stat/open so normal root-scoped access remains in effect.
+	resolved, resolveErr := filepath.EvalSymlinks(cleanPath)
+	if resolveErr != nil {
+		return nil, cleanPath, resolveErr
 	}
-
-	target, readlinkErr := root.Root.Readlink(relPath(cleanPath))
-	if readlinkErr != nil {
-		return nil, cleanPath, readlinkErr
-	}
-
-	resolved := resolveLinkTargetPath(cleanPath, target)
+	resolved = utils.CleanAbsPath(resolved)
 	info, statErr := root.Root.Stat(relPath(resolved))
 	if statErr != nil {
 		return nil, cleanPath, statErr

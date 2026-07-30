@@ -193,6 +193,25 @@ func TestCreateZip(t *testing.T) {
 		assert.Positive(t, secondStat.Size(), "recreated zip should have content")
 		assert.Positive(t, firstStat.Size(), "original zip should have content")
 	})
+
+	t.Run("create_zip_with_absolute_symlink_chain", func(t *testing.T) {
+		fixtureDir := t.TempDir()
+		sourceDir := createTestDir(t, fixtureDir, "source")
+		target := createTestFile(t, fixtureDir, "python-target", []byte("python binary"))
+
+		require.NoError(t, os.Symlink(target, filepath.Join(sourceDir, "python3")))
+		require.NoError(t, os.Symlink("python3", filepath.Join(sourceDir, "python")))
+
+		zipPath := filepath.Join(fixtureDir, "source.zip")
+		require.NoError(t, CreateZip(zipPath, nil, zipPath, sourceDir))
+
+		extractDir := filepath.Join(fixtureDir, "extracted")
+		require.NoError(t, ExtractArchive(zipPath, extractDir, nil, 0))
+
+		content, err := os.ReadFile(filepath.Join(extractDir, "source", "python"))
+		require.NoError(t, err)
+		assert.Equal(t, "python binary", string(content))
+	})
 }
 
 func TestCreateTarGz(t *testing.T) {
