@@ -9,8 +9,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import CIFSMounts from "../../storage/-components/CIFSMounts";
-import NFSMounts from "../../storage/-components/NFSMounts";
+import CIFSMounts from "./CIFSMounts";
+import NFSMounts from "./NFSMounts";
 
 const MountsPage = () => {
   const { reason: nfsReason, status: nfsStatus } =
