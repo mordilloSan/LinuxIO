@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isJobCancellationError, linuxio, type Stream } from "@/api";
 import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
+import {
+  claimTerminalFeedback,
+  markTerminalFeedbackEmitted,
+} from "@/hooks/backgroundJobs/terminalJobFeedback";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
 
@@ -54,6 +59,22 @@ export const usePackageUpdater = () => {
   const startedAtRef = useRef<number | null>(null);
   const detachedRef = useRef(false);
   const recoveryAttachedRef = useRef(false);
+  // While this page tracks a live transaction it owns packages.update terminal
+  // feedback: the inline alert is the report, so the global handler suppresses
+  // its failure toast. Claim and release are both synchronous — ownership
+  // starts when a run starts (or is adopted) and ends the moment it settles or
+  // the page unmounts, with no trailing window that could swallow a failure
+  // arriving right after navigation (see terminalJobFeedback).
+  const releaseFeedbackClaimRef = useRef<(() => void) | null>(null);
+  const claimFeedbackOwnership = useCallback(() => {
+    releaseFeedbackClaimRef.current ??= claimTerminalFeedback(
+      JOB_TYPE_PACKAGE_UPDATE,
+    );
+  }, []);
+  const releaseFeedbackOwnership = useCallback(() => {
+    releaseFeedbackClaimRef.current?.();
+    releaseFeedbackClaimRef.current = null;
+  }, []);
   // Cancels are fire-and-forget; a plain job action reports nothing.
   const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
 
@@ -91,6 +112,9 @@ export const usePackageUpdater = () => {
     setProgress(100);
     setStatus("Finished");
     appendEvent("Finished");
+    // This surface has reported the outcome; keep the global fallback silent
+    // even if its copy of the terminal event lands after the claim is released.
+    if (jobIdRef.current) markTerminalFeedbackEmitted(jobIdRef.current);
     // The transaction is over: drop the handles the cancel affordance keys off
     // so a click during the minimum-visible hold cannot cancel a finished job.
     streamRef.current = null;
@@ -103,6 +127,9 @@ export const usePackageUpdater = () => {
   }, [appendEvent]);
   const finishError = useCallback((err: unknown, request: unknown) => {
     if (detachedRef.current || cancelledRef.current) return;
+    // This surface is painting the outcome; keep the global fallback silent
+    // even if its copy of the terminal event lands after the claim is released.
+    if (jobIdRef.current) markTerminalFeedbackEmitted(jobIdRef.current);
     if (isJobCancellationError(err)) {
       // Canceled elsewhere (navbar chip, another session): report it the way a
       // local cancel does instead of blaming the backend for a failure.
@@ -113,7 +140,7 @@ export const usePackageUpdater = () => {
       return;
     }
     const packageIds = (request as { packageIds?: string[] }).packageIds ?? [];
-    const errorMsg = err instanceof Error ? err.message : "Update failed";
+    const errorMsg = getMutationErrorMessage(err, "Update failed");
     setError(
       packageIds.length === 1
         ? `Failed to update ${extractPackageName(packageIds[0])}: ${errorMsg}`
@@ -200,6 +227,10 @@ export const usePackageUpdater = () => {
           jobIdRef.current = null;
           cancelledRef.current = false;
           startedAtRef.current = null;
+          // finishSuccess/finishError have painted by now (React Query settles
+          // after the success/error callbacks), so ownership can go back to
+          // the global handler.
+          releaseFeedbackOwnership();
         },
       },
     });
@@ -212,8 +243,11 @@ export const usePackageUpdater = () => {
       // and is safely adopted by a later controller instance.
       streamRef.current?.close();
       streamRef.current = null;
+      // The page can no longer paint feedback — hand ownership back to the
+      // global handler immediately so a failure after navigation still toasts.
+      releaseFeedbackOwnership();
     };
-  }, []);
+  }, [releaseFeedbackOwnership]);
 
   useActiveJobRecovery({
     type: JOB_TYPE_PACKAGE_UPDATE,
@@ -222,6 +256,9 @@ export const usePackageUpdater = () => {
     onRecover: (job) => {
       if (recoveryAttachedRef.current) return;
       recoveryAttachedRef.current = true;
+      // Claim before attaching: if the job goes terminal in the attach window,
+      // the short-circuit routes it to finishError/finishSuccess on this page.
+      claimFeedbackOwnership();
       startedAtRef.current = Date.now();
       const request = job.request as { packageIds?: string[] } | undefined;
       const packageIds = request?.packageIds ?? [];
@@ -252,10 +289,13 @@ export const usePackageUpdater = () => {
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
       startedAtRef.current = Date.now();
+      // Claim before submitting so even a failure that beats the submit
+      // round trip to the global events stream is owned by this page.
+      claimFeedbackOwnership();
 
       await startUpdateJob({ packageIds: packages }).catch(() => undefined);
     },
-    [appendEvent, startUpdateJob],
+    [appendEvent, claimFeedbackOwnership, startUpdateJob],
   );
 
   const updateOne = useCallback(

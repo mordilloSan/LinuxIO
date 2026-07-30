@@ -4,15 +4,11 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
-  useRef,
+  useMemo,
 } from "react";
-import { toast } from "sonner";
 
 import {
   bindStreamHandlers,
-  CAPABILITIES,
-  type CapabilityDef,
-  type InstallCapabilityResult,
   isJobCancellationError,
   isJobLocallyHandled,
   isTerminalJobState,
@@ -33,7 +29,11 @@ import type {
   BackgroundJob,
   Indexer,
 } from "@/types/backgroundJobs";
-import { jobIdentityKey } from "@/utils/backgroundJobs";
+import {
+  jobIdentityKey,
+  requestObject,
+  requestString,
+} from "@/utils/backgroundJobs";
 
 import {
   indexerResultFromFrame,
@@ -41,21 +41,13 @@ import {
   type IndexerProgressFrame,
   type IndexerResultFrame,
 } from "./indexerProgress";
+import {
+  emitTerminalJobFeedback,
+  GENERIC_JOB_FEEDBACK,
+  TERMINAL_JOB_FEEDBACK,
+  terminalSnapshotOutcome,
+} from "./terminalJobFeedback";
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
-
-function requestObject(request: unknown): Record<string, unknown> {
-  return request && typeof request === "object"
-    ? (request as Record<string, unknown>)
-    : {};
-}
-
-function requestString(
-  request: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = request[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 interface RecoveredJobControls {
   /**
@@ -85,64 +77,10 @@ export function useRecoveredJobs(
   const { run: runStreamResult } = useStreamResult();
   const { refreshCapabilities } = useAuth();
 
-  // De-dupes capability-install completion toasts so the attach path and the
-  // terminal fallback (events stream) can never both fire for one job.
-  const installToastedRef = useRef(new Set<string>());
-  const packageUpdateFailureToastedRef = useRef(new Set<string>());
-
-  const emitPackageUpdateFailure = useCallback(
-    (jobId: string, error: unknown) => {
-      if (packageUpdateFailureToastedRef.current.has(jobId)) return;
-      packageUpdateFailureToastedRef.current.add(jobId);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : typeof error === "string" && error
-            ? error
-            : "Package update failed",
-      );
-    },
-    [],
-  );
-
-  // Single source of truth for capability-install completion feedback. Owned by
-  // this global handler (not CapabilityManagerSection) so the toast still fires
-  // when the Settings dialog has been closed mid-install.
-  const emitCapabilityCompletion = useCallback(
-    (
-      jobId: string,
-      wire: string,
-      result?: InstallCapabilityResult,
-      errorMessage?: string,
-    ) => {
-      if (installToastedRef.current.has(jobId)) return;
-      installToastedRef.current.add(jobId);
-
-      const def = CAPABILITIES.find((c) => c.wire === wire) as
-        | CapabilityDef
-        | undefined;
-      const label = def?.label ?? wire;
-      // Surface an "Open …" action link on the notification for capabilities
-      // that have a dedicated page (omitted for ones that don't).
-      const opts = def?.route ? { meta: def.route } : undefined;
-
-      if (errorMessage !== undefined) {
-        toast.error(errorMessage || `Failed to install ${label}`, opts);
-        return;
-      }
-
-      // Any successful job result (available or not) refreshes app-wide state.
-      void refreshCapabilities();
-      if (result?.available) {
-        toast.success(`${label} installed`, opts);
-      } else {
-        const reason = result?.error ? `: ${result.error}` : ".";
-        toast.warning(
-          `${label} installed but is still unavailable${reason}`,
-          opts,
-        );
-      }
-    },
+  // Per-type feedback (which terminal states toast, and how) lives in the
+  // terminalJobFeedback registry; this hook only reports outcomes to it.
+  const feedbackDeps = useMemo(
+    () => ({ refreshCapabilities }),
     [refreshCapabilities],
   );
   const {
@@ -396,6 +334,9 @@ export function useRecoveredJobs(
             return;
           }
           if (activeBackgroundJobIdsRef.current.has(job.id)) return;
+          const feedbackJob = { id: job.id, type: job.type, request };
+          const feedbackEntry =
+            TERMINAL_JOB_FEEDBACK[job.type] ?? GENERIC_JOB_FEEDBACK;
           const initialProgress = genericProgressPct(job.progress);
           const initialMeta = genericProgressMeta(job.progress);
           activeBackgroundJobIdsRef.current.add(job.id);
@@ -437,47 +378,27 @@ export function useRecoveredJobs(
                   item.id === job.id ? { ...item, progress: 100 } : item,
                 ),
               );
-              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-                const cap =
-                  requestString(request, "capability") ?? "capability";
-                emitCapabilityCompletion(
-                  job.id,
-                  cap,
-                  result as InstallCapabilityResult,
-                );
-              }
+              emitTerminalJobFeedback(
+                feedbackJob,
+                { kind: "completed", result },
+                feedbackDeps,
+                feedbackEntry,
+              );
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
-              if (job.type === JobTypes.JOB_TYPE_PACKAGE_UPDATE) {
-                // Only the navbar cancel aborts the controller above; a cancel
-                // from the Updates page or another session arrives here as an
-                // ordinary 499 stream error and must not toast as a failure.
-                if (!isJobCancellationError(error)) {
-                  emitPackageUpdateFailure(job.id, error);
-                }
-                return;
-              }
-              // Capability install is now surfaced here (survives the Settings
-              // dialog closing). storage.run_smart_test is still owned by a
-              // specific page (DiskOverview) that fires its own scoped toast, so
-              // skip the generic one to avoid duplicates.
-              if (job.type === JobTypes.JOB_TYPE_STORAGE_SMART_TEST) {
-                return;
-              }
-              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-                const cap =
-                  requestString(request, "capability") ?? "capability";
-                emitCapabilityCompletion(
-                  job.id,
-                  cap,
-                  undefined,
-                  error instanceof Error ? error.message : "",
-                );
-                return;
-              }
-              toast.error(
-                error instanceof Error ? error.message : "Job failed",
+              // Only the navbar cancel aborts the controller above; a cancel
+              // from an owning page or another session arrives here as an
+              // ordinary 499 stream error and must be classified so the
+              // registry can tell it apart from a failure.
+              emitTerminalJobFeedback(
+                feedbackJob,
+                {
+                  kind: isJobCancellationError(error) ? "canceled" : "failed",
+                  error,
+                },
+                feedbackDeps,
+                feedbackEntry,
               );
             },
             onFinally: () => removeBackgroundJob(job.id),
@@ -491,8 +412,7 @@ export function useRecoveredJobs(
       removeIndexer,
       removeBackgroundJob,
       runStreamResult,
-      emitCapabilityCompletion,
-      emitPackageUpdateFailure,
+      feedbackDeps,
       // Stable runtime refs and setters: they arrive as plain function
       // params, so neither the compiler nor the lint rule can prove them
       // stable without listing them.
@@ -535,35 +455,22 @@ export function useRecoveredJobs(
           //    invalidations).
           if (!isTerminalJobState(job.state)) return;
 
-          // Airtight fallback: attachRecoveredJob() bails on already-terminal
-          // jobs, so a capability install first observed in a terminal state
-          // would never toast via the attach path. emitCapabilityCompletion is
-          // de-duped, so this is a no-op when the attach path already fired.
-          if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-            const cap =
-              requestString(requestObject(job.request), "capability") ??
-              "capability";
-            if (job.state === "failed" || job.state === "canceled") {
-              emitCapabilityCompletion(
-                job.id,
-                cap,
-                undefined,
-                job.error?.message ?? "",
-              );
-            } else {
-              emitCapabilityCompletion(
-                job.id,
-                cap,
-                job.result as InstallCapabilityResult,
-              );
-            }
-          }
-
-          if (
-            job.type === JobTypes.JOB_TYPE_PACKAGE_UPDATE &&
-            job.state === "failed"
-          ) {
-            emitPackageUpdateFailure(job.id, job.error?.message);
+          // Airtight feedback fallback: attachRecoveredJob() bails on
+          // already-terminal jobs, so a job first observed in a terminal state
+          // would never report via the attach path. The emit is de-duped by
+          // job id and registry-only here (no generic fallback), so it is a
+          // no-op when the attach path or an owning page already fired.
+          const outcome = terminalSnapshotOutcome(job);
+          if (outcome) {
+            emitTerminalJobFeedback(
+              {
+                id: job.id,
+                type: job.type,
+                request: requestObject(job.request),
+              },
+              outcome,
+              feedbackDeps,
+            );
           }
 
           if (isJobLocallyHandled(job.id)) return;
@@ -588,11 +495,5 @@ export function useRecoveredJobs(
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [
-    attachRecoveredJob,
-    emitCapabilityCompletion,
-    emitPackageUpdateFailure,
-    queryClient,
-    streamMuxStatus,
-  ]);
+  }, [attachRecoveredJob, feedbackDeps, queryClient, streamMuxStatus]);
 }

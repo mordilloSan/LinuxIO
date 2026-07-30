@@ -2,6 +2,21 @@ export function jobIdentityKey(type: string, request: unknown = {}) {
   return JSON.stringify([type, request ?? {}]);
 }
 
+/** A job snapshot's untyped request payload as an indexable object. */
+export function requestObject(request: unknown): Record<string, unknown> {
+  return request && typeof request === "object"
+    ? (request as Record<string, unknown>)
+    : {};
+}
+
+export function requestString(
+  request: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = request[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 export function makeCountedSet() {
   const counts = new Map<string, number>();
   return {

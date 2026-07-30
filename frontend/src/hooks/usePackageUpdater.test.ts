@@ -58,6 +58,13 @@ vi.mock("@/api", async () => {
 });
 
 const { LinuxIOError } = await import("@/api");
+const { JOB_TYPE_PACKAGE_UPDATE } =
+  await import("@/constants/backgroundJobTypes");
+const {
+  hasTerminalFeedbackOwner,
+  markTerminalFeedbackEmitted,
+  resetTerminalJobFeedback,
+} = await import("@/hooks/backgroundJobs/terminalJobFeedback");
 const { usePackageUpdater } = await import("@/hooks/usePackageUpdater");
 const { act, renderHook } = await import("@/test/render");
 
@@ -95,6 +102,7 @@ describe("usePackageUpdater", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     streamMocks.streamActionConfigs.length = 0;
+    resetTerminalJobFeedback();
   });
 
   it("updates one package through the job stream and drives the progress bar", async () => {
@@ -368,6 +376,123 @@ describe("usePackageUpdater", () => {
 
     expect(apiMocks.cancelJob).not.toHaveBeenCalled();
     expect(result.current.error).toBe("Failed to update nginx: dpkg exploded");
+  });
+
+  it("falls back to a generic message when the backend error is empty", async () => {
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-empty-error",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockRejectedValue(new LinuxIOError("", 500));
+    const { result } = renderHook(() => usePackageUpdater());
+
+    await act(async () => {
+      await result.current.updateOne("nginx;1.0;amd64;ubuntu");
+    });
+
+    expect(result.current.error).toBe("Failed to update nginx: Update failed");
+  });
+
+  it("claims global feedback ownership only while a run is live", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-claimed",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    let finishStream!: () => void;
+    streamMocks.runStream.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    const { result } = renderHook(() => usePackageUpdater());
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
+
+    let promise!: Promise<void>;
+    await act(async () => {
+      promise = result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+      await Promise.resolve();
+    });
+
+    // While this page tracks the run, the global handler must stay silent —
+    // the inline alert is the report.
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(true);
+
+    act(() => finishStream());
+    await flushMinimumVisibleProgress(promise);
+
+    // Settled runs hand ownership back immediately (no trailing window).
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
+  });
+
+  it("releases the feedback claim when unmounted mid-run", async () => {
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-abandoned",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { result, unmount } = renderHook(() => usePackageUpdater());
+
+    void result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(true);
+
+    unmount();
+
+    // The page can no longer paint feedback, so a failure arriving after
+    // navigation must be free to toast globally.
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
+  });
+
+  it("marks a painted failure so the global fallback stays silent", async () => {
+    apiMocks.updatePackages.mockResolvedValue({
+      id: "job-painted",
+      state: "running",
+    });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockRejectedValue(new Error("dpkg exploded"));
+    const { result } = renderHook(() => usePackageUpdater());
+
+    await act(async () => {
+      await result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
+    });
+
+    expect(result.current.error).toBe("Failed to update nginx: dpkg exploded");
+    // The claim is already released, but the job id was marked as surfaced, so
+    // the global copy of the terminal event cannot toast a duplicate.
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(false);
+    expect(markTerminalFeedbackEmitted("job-painted")).toBe(false);
+  });
+
+  it("claims ownership when adopting a recovered update", async () => {
+    apiMocks.listJobs.mockResolvedValue([
+      {
+        id: "recovered-claim",
+        type: "packages.update",
+        state: "running",
+        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+      },
+    ]);
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    streamMocks.runStream.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    renderHook(() => usePackageUpdater());
+
+    await vi.waitFor(() =>
+      expect(apiMocks.openJobAttachStream).toHaveBeenCalledWith(
+        "recovered-claim",
+      ),
+    );
+
+    expect(hasTerminalFeedbackOwner(JOB_TYPE_PACKAGE_UPDATE)).toBe(true);
   });
 
   it("adopts a recovered update through completion", async () => {
