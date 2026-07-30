@@ -1,14 +1,9 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import {
-  linuxio,
-  type VMCreateProgress,
-  type VMPreflight,
-  type VirtualMachine,
-} from "@/api";
+import { linuxio, type VMCreateProgress, type VirtualMachine } from "@/api";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -23,21 +18,7 @@ import CreateVMDialog from "./CreateVMDialog";
 import { VM_TOAST, preflightReady } from "./vmShared";
 import { VM_TABS } from "./vmTabs";
 
-export interface VMRouteData {
-  preflight?: VMPreflight;
-  vms: VirtualMachine[];
-}
-
-const VMRouteDataContext = createContext<VMRouteData | null>(null);
 const vmRouteApi = getRouteApi("/_authenticated/vm");
-
-export function useVMRouteData(): VMRouteData {
-  const value = useContext(VMRouteDataContext);
-  if (!value) {
-    throw new Error("VM child content must render inside VMPage");
-  }
-  return value;
-}
 
 interface VMPageProps {
   children?: ReactNode;
@@ -54,6 +35,9 @@ const VMPage = ({ children }: VMPageProps) => {
   const [createProgress, setCreateProgress] = useState<VMCreateProgress | null>(
     null,
   );
+  // This layout stays mounted for the whole VMs section, so it owns the poll
+  // cadence for both entries. Child routes observe the same keys with no
+  // interval of their own and inherit this freshness.
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
       linuxio.virt.list.queryOptions({
@@ -159,12 +143,7 @@ const VMPage = ({ children }: VMPageProps) => {
   }
 
   return (
-    <VMRouteDataContext
-      value={{
-        preflight: preflightQuery.data,
-        vms: listQuery.data,
-      }}
-    >
+    <>
       <RoutedTabLayout tabs={VM_TABS}>
         <RoutedTabActions>{tabActions}</RoutedTabActions>
         {children ?? <Outlet />}
@@ -182,7 +161,7 @@ const VMPage = ({ children }: VMPageProps) => {
           open={createOpen}
         />
       )}
-    </VMRouteDataContext>
+    </>
   );
 };
 

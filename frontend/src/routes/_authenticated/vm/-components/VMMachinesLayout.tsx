@@ -1,3 +1,4 @@
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
@@ -14,7 +15,6 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 import ConsoleDialog from "./ConsoleDialog";
 import DeleteVMDialog from "./DeleteVMDialog";
 import VMListTable from "./VMListTable";
-import { useVMRouteData } from "./VMPage";
 import {
   type ConsoleSession,
   type VMAction,
@@ -38,7 +38,14 @@ const VMMachinesLayout = () => {
   const vmListCache = linuxio.virt.list.useCache();
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
-  const { preflight, vms } = useVMRouteData();
+  // Both entries were already warmed by the /vm route loader; these observers
+  // reuse them rather than issuing new requests.
+  const [{ data: vms }, { data: preflight }] = useSuspenseQueries({
+    queries: [
+      linuxio.virt.list.queryOptions(),
+      linuxio.virt.preflight.queryOptions({}),
+    ],
+  });
   // Undefined whenever the index child is active, i.e. no machine selected.
   const detailParams = useParams({
     from: "/_authenticated/vm/machines/$name",
