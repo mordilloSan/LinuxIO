@@ -39,7 +39,9 @@ var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
 
 func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.DockerComposeRequest, apischema.JobSnapshot]("docker.compose").Run(
+		apischema.Runner[apischema.DockerComposeRequest, apischema.JobSnapshot]("docker.compose", apischema.WithJobMetadata(func(req apischema.DockerComposeRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
 				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
 			},

@@ -28,7 +28,7 @@ var api = apischema.Bindings(
 	apischema.Job[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs").Handle(handleRemountCIFS),
 	apischema.Job[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
 	apischema.Job[apischema.MountpointNameRequest, apischema.StoragePathResult]("storage.create_btrfs_subvolume").Handle(handleCreateBtrfsSubvolume),
-	apischema.Query[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info").HandleEvents(handleGetDriveInfo),
+	apischema.Query[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info").Handle(handleGetDriveInfo),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes)
@@ -255,10 +255,6 @@ func handleCreateBtrfsSubvolume(ctx context.Context, req apischema.MountpointNam
 	return result, nil
 }
 
-func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	driveInfo, err := FetchDriveInfo(ctx)
-	if err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, driveInfo, nil)
+func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.ApiDisk, error) {
+	return FetchDriveInfo(ctx)
 }

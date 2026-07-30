@@ -11,7 +11,7 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").HandleEvents(handleGetNetworkInfo),
+	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
 	apischema.Job[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(handleSetIPv4Manual),
 	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(handleSetIPv4),
 	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(handleSetIPv6),
@@ -26,9 +26,9 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
 	result, err := GetNetworkInfo(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+	return networkInterfacesToAPI(result), err
 }
 
 func handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {

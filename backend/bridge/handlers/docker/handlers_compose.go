@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ apischema.NoRequest) ([]*apischema.ComposeProject, error) {
@@ -31,13 +30,13 @@ func (h dockerHandlers) handleComposeRestart(ctx context.Context, req apischema.
 	return ComposeRestart(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
-func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.DeleteStackRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.DeleteStackRequest) (apischema.DeleteStackResult, error) {
 	options := DeleteStackOptions{
 		DeleteFile:      req.DeleteFile,
 		DeleteDirectory: req.DeleteDirectory,
 	}
 	result, err := DeleteStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName, options)
-	return bridgeipc.EmitResult(emit, result, err)
+	return result, err
 }
 
 func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.NoRequest) (apischema.DockerFoldersResponse, error) {
@@ -48,9 +47,9 @@ func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema
 	return ValidateComposeFile(ctx, req.Content)
 }
 
-func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischema.ContentRequest, emit bridgeipc.Events) error {
-	normalized, err := NormalizeComposeFile(ctx, req.Content)
-	return bridgeipc.EmitResult(emit, map[string]string{"content": normalized}, err)
+func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischema.ContentRequest) error {
+	_, err := NormalizeComposeFile(ctx, req.Content)
+	return err
 }
 
 func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apischema.StackNameRequest) (apischema.ComposeFilePathResponse, error) {
@@ -61,12 +60,6 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req ap
 	return ValidateStackDirectory(ctx, req.DirPath)
 }
 
-func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	if err := DeleteComposeStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName); err != nil {
-		return err
-	}
-	return bridgeipc.EmitResult(emit, map[string]any{
-		"success": true,
-		"message": "Compose stack deleted successfully",
-	}, nil)
+func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest) error {
+	return DeleteComposeStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }

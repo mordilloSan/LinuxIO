@@ -41,14 +41,15 @@ type UserAdminAccess struct {
 
 // UserHomeHealth summarizes ownership and permission health for the home path.
 type UserHomeHealth struct {
-	Exists       bool   `json:"exists"`
-	IsDirectory  bool   `json:"isDirectory"`
-	OwnerUID     int    `json:"ownerUid,omitempty"`
-	GroupGID     int    `json:"groupGid,omitempty"`
-	GroupName    string `json:"groupName,omitempty"`
-	OwnerMatches bool   `json:"ownerMatches"`
-	Mode         string `json:"mode,omitempty"`
-	Error        string `json:"error,omitempty"`
+	Exists         bool   `json:"exists"`
+	IsDirectory    bool   `json:"isDirectory"`
+	OwnerUID       int    `json:"ownerUid,omitempty"`
+	GroupGID       int    `json:"groupGid,omitempty"`
+	GroupName      string `json:"groupName,omitempty"`
+	OwnerMatches   bool   `json:"ownerMatches"`
+	Mode           string `json:"mode,omitempty"`
+	Error          string `json:"error,omitempty"`
+	ownershipKnown bool
 }
 
 // UserSSHAccess summarizes SSH authorized key availability.

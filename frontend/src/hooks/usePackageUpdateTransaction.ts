@@ -138,8 +138,7 @@ export function usePackageUpdateTransaction({
 
   const attach = useCallback(
     (job: JobSnapshot): boolean => {
-      const packageIds =
-        (job.request as PackageUpdateRequest | undefined)?.packageIds ?? [];
+      const packageIds = job.metadata?.packageIds ?? [];
       const request = { packageIds };
       if (!begin(request)) return false;
       onRecover(request);

@@ -31,7 +31,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 export interface TerminalFeedbackJob {
   id: string;
   type: string;
-  request: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }
 
 export type TerminalJobOutcome =
@@ -110,7 +110,7 @@ export function hasTerminalFeedbackOwner(type: string): boolean {
 }
 
 function capabilityPresentation(job: TerminalFeedbackJob) {
-  const wire = requestString(job.request, "capability") ?? "capability";
+  const wire = requestString(job.metadata, "capability") ?? "capability";
   const def = CAPABILITIES.find((c) => c.wire === wire) as
     | CapabilityDef
     | undefined;

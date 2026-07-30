@@ -23,6 +23,8 @@ import type {
 import {
   createProgressSpeedCalculator,
   jobIdentityKey,
+  jobMetadataObject,
+  requestString,
 } from "@/utils/backgroundJobs";
 import { joinPath } from "@/utils/path";
 
@@ -57,30 +59,6 @@ function batchLabelBase(sources: string[]): string {
   return `${sources.length} items`;
 }
 
-function requestObject(request: unknown): Record<string, unknown> {
-  return request && typeof request === "object"
-    ? (request as Record<string, unknown>)
-    : {};
-}
-
-function requestString(
-  request: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = request[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function requestStringArray(
-  request: Record<string, unknown>,
-  key: string,
-): string[] {
-  const value = request[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 /**
  * Per-kind presentation and recovery data. Everything that differs between
  * the four transfers lives here; the lifecycle (start job → attach → progress
@@ -104,11 +82,11 @@ interface TransferDescriptor {
    */
   awaitCompletion: boolean;
   /**
-   * Rebuild the navbar item from a recovered job's request (page reload,
+   * Rebuild the navbar item from a recovered job's safe metadata (page reload,
    * another session): the candidate label base plus the item builder that
    * receives the possibly de-duplicated label.
    */
-  fromJob: (request: Record<string, unknown>) => {
+  fromJob: (metadata: Record<string, unknown>) => {
     candidate: string;
     build: (labelBase: string) => TransferSeed;
   };
@@ -123,15 +101,15 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
     noun: "compression",
     usesLabelAllocator: true,
     awaitCompletion: false,
-    fromJob: (request) => {
-      const destination = requestString(request, "targetPath") ?? "";
+    fromJob: (metadata) => {
+      const destination = requestString(metadata, "path") ?? "";
       return {
         candidate: basename(destination, "archive"),
         build: (labelBase) => ({
           type: "compression",
           archiveName: labelBase,
           destination,
-          paths: requestStringArray(request, "paths"),
+          paths: [],
         }),
       };
     },
@@ -144,14 +122,14 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
     noun: "extraction",
     usesLabelAllocator: true,
     awaitCompletion: false,
-    fromJob: (request) => {
-      const archivePath = requestString(request, "archivePath") ?? "";
+    fromJob: (metadata) => {
+      const archivePath = requestString(metadata, "path") ?? "";
       return {
         candidate: extractionLabelBase(archivePath),
         build: () => ({
           type: "extraction",
           archivePath,
-          destination: requestString(request, "destination") ?? "",
+          destination: "",
         }),
       };
     },
@@ -164,14 +142,14 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
     noun: "copy",
     usesLabelAllocator: false,
     awaitCompletion: true,
-    fromJob: (request) => {
-      const sources = requestStringArray(request, "sources");
+    fromJob: (metadata) => {
+      const sources: string[] = [];
       return {
-        candidate: batchLabelBase(sources),
+        candidate: requestString(metadata, "label") ?? "items",
         build: () => ({
           type: "copy",
           source: sources[0] ?? "",
-          destination: requestString(request, "destination") ?? "",
+          destination: requestString(metadata, "path") ?? "",
         }),
       };
     },
@@ -184,14 +162,14 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
     noun: "move",
     usesLabelAllocator: false,
     awaitCompletion: true,
-    fromJob: (request) => {
-      const sources = requestStringArray(request, "sources");
+    fromJob: (metadata) => {
+      const sources: string[] = [];
       return {
-        candidate: batchLabelBase(sources),
+        candidate: requestString(metadata, "label") ?? "items",
         build: () => ({
           type: "move",
           source: sources[0] ?? "",
-          destination: requestString(request, "destination") ?? "",
+          destination: requestString(metadata, "path") ?? "",
         }),
       };
     },
@@ -326,7 +304,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
   const startTransfer = useCallback(
     async (
       kind: TransferKind,
-      identity: unknown,
+      identity: readonly string[],
       startJob: () => Promise<JobSnapshot>,
       candidateLabelBase: string,
       makeItem: (labelBase: string) => TransferSeed,
@@ -408,7 +386,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       }
 
       const { candidate, build } = descriptor.fromJob(
-        requestObject(job.request),
+        jobMetadataObject(job.metadata),
       );
       const labelBase = descriptor.usesLabelAllocator
         ? allocateDownloadLabelBase(candidate, job.id)
@@ -479,7 +457,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       };
       return startTransfer(
         "compression",
-        request,
+        [request.targetPath],
         () => linuxio.filebrowser.compress(request),
         archiveName || "archive.zip",
         (labelBase) => ({
@@ -503,9 +481,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       if (!archivePath) {
         throw new Error("No archive specified for extraction");
       }
-      const identity = destination
-        ? { archivePath, destination }
-        : { archivePath };
+      const identity = destination ? [archivePath, destination] : [archivePath];
       return startTransfer(
         "extraction",
         identity,
@@ -534,7 +510,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       }
       return startTransfer(
         "copy",
-        { sources, destination },
+        [...sources, destination],
         () =>
           linuxio.filebrowser.copy_batch({ sources, destination, overwrite }),
         batchLabelBase(sources),
@@ -557,7 +533,7 @@ export function useTransferJobs(runtime: BackgroundJobRuntime) {
       }
       return startTransfer(
         "move",
-        { sources, destination },
+        [...sources, destination],
         () =>
           linuxio.filebrowser.move_batch({ sources, destination, overwrite }),
         batchLabelBase(sources),

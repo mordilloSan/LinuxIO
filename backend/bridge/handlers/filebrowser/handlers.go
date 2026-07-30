@@ -15,9 +15,9 @@ var api = apischema.Bindings(
 	apischema.Job[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
 	apischema.Job[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").HandleEvents(handleResourcePatch),
 	apischema.Query[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
-	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").HandleEvents(handleIndexerStatus),
-	apischema.Query[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").HandleEvents(handleSubfolders),
-	apischema.Query[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").HandleEvents(handleSearch),
+	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
+	apischema.Query[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
+	apischema.Query[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").Handle(handleSearch),
 	apischema.Query[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups").Handle(handleUsersGroups),
 )
 
@@ -56,19 +56,20 @@ func handleDirSize(ctx context.Context, req apischema.PathRequest) (apischema.Di
 	return dirSize(ctx, req)
 }
 
-func handleIndexerStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleIndexerStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerStatusResponse, error) {
 	result, err := indexerStatus(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+	if err != nil {
+		return apischema.IndexerStatusResponse{}, err
+	}
+	return indexerStatusToAPI(result), nil
 }
 
-func handleSubfolders(ctx context.Context, req apischema.PathRequest, emit bridgeipc.Events) error {
-	result, err := subfolders(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleSubfolders(ctx context.Context, req apischema.PathRequest) (apischema.SubfoldersResponse, error) {
+	return subfolders(ctx, req)
 }
 
-func handleSearch(ctx context.Context, req apischema.FileSearchRequest, emit bridgeipc.Events) error {
-	result, err := searchFiles(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleSearch(ctx context.Context, req apischema.FileSearchRequest) (apischema.SearchResponse, error) {
+	return searchFiles(ctx, req)
 }
 
 func handleUsersGroups(ctx context.Context, _ apischema.NoRequest) (apischema.UsersGroupsResponse, error) {

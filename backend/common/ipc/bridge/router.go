@@ -65,6 +65,7 @@ type Route struct {
 	Privileged bool
 	Policy     JobPolicy
 	Decode     RequestDecoder
+	Metadata   JobMetadataBuilder
 }
 
 type RouteOption func(*Route)
@@ -76,6 +77,14 @@ func Privileged(r *Route) {
 func WithRequestDecoder(decode RequestDecoder) RouteOption {
 	return func(r *Route) {
 		r.Decode = decode
+	}
+}
+
+// WithJobMetadata declares the only request-derived data that may be exposed
+// through public job snapshots. Routes without this option expose no metadata.
+func WithJobMetadata(build JobMetadataBuilder) RouteOption {
+	return func(r *Route) {
+		r.Metadata = build
 	}
 }
 
@@ -341,10 +350,15 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-func (r *Router) routeRunner(route Route) Runner {
+// routeRunner reports physical completion through executionDone. A job can
+// become terminal before its handler returns when a timed or canceled handler
+// ignores its context, so admission accounting must wait for this signal rather
+// than relying on Job.Done alone.
+func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner {
 	return func(ctx context.Context, job *Job, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
+			defer close(executionDone)
 			return r.runRoute(ctx, job, request, route)
 		}
 
@@ -353,6 +367,7 @@ func (r *Router) routeRunner(route Route) Runner {
 
 		done := make(chan runnerResult, 1)
 		go func() {
+			defer close(executionDone)
 			result, err := r.runRoute(runCtx, job, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
@@ -421,7 +436,12 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	}
 	r.mu.Unlock()
 
-	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
+	var metadata *JobMetadata
+	if route.Metadata != nil {
+		value := route.Metadata(req.DecodedValue)
+		metadata = &value
+	}
+	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
 	if err != nil {
 		if canStart {
 			// Releasing the reserved slot and promoting the next queued job is
@@ -513,12 +533,14 @@ func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
 	if r.beforeStartHook != nil {
 		r.beforeStartHook(job)
 	}
-	if !job.Start(r.routeRunner(route)) {
+	executionDone := make(chan struct{})
+	if !job.Start(r.routeRunner(route, executionDone)) {
 		r.finishJob(route.Name, ownerRouteKey)
 		return
 	}
 	go func() {
 		<-job.Done()
+		<-executionDone
 		r.finishJob(route.Name, ownerRouteKey)
 	}()
 }

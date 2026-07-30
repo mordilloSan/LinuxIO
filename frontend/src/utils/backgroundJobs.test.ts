@@ -7,13 +7,11 @@ import {
 } from "@/utils/backgroundJobs";
 
 describe("background job utilities", () => {
-  it("creates stable identity keys for job type and request payload", () => {
-    expect(jobIdentityKey("copy", { destination: "/b", source: "/a" })).toBe(
-      JSON.stringify(["copy", { destination: "/b", source: "/a" }]),
+  it("creates stable identity keys for job type and safe identity parts", () => {
+    expect(jobIdentityKey("copy", ["/a", "/b"])).toBe(
+      JSON.stringify(["copy", ["/a", "/b"]]),
     );
-    expect(jobIdentityKey("reindex", null)).toBe(
-      JSON.stringify(["reindex", {}]),
-    );
+    expect(jobIdentityKey("reindex")).toBe(JSON.stringify(["reindex", []]));
   });
 
   it("tracks counted membership until every duplicate is deleted", () => {

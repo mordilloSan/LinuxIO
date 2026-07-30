@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerImage, error) {
@@ -19,9 +18,8 @@ func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.Ima
 	return err
 }
 
-func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := ListDockerNetworks(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerNetwork, error) {
+	return ListDockerNetworks(ctx)
 }
 
 func (h dockerHandlers) handleCreateNetwork(ctx context.Context, req apischema.NameRequest) error {
@@ -34,9 +32,8 @@ func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, req apischema.I
 	return err
 }
 
-func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := ListVolumes(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerVolume, error) {
+	return ListVolumes(ctx)
 }
 
 func (h dockerHandlers) handleCreateVolume(ctx context.Context, req apischema.NameRequest) error {

@@ -981,6 +981,7 @@ preference.
 | Wrap a route builder around `createFileRoute` | The plugin matches the literal callee name, so a wrapper silently disables code splitting for that route |
 | Keep every page-level tab mounted and hidden | Keeps observers, polling, and effects alive for invisible pages |
 | Move progressive, polled, or dialog-only queries into a route loader | Guarded by `-query-ownership.test.ts` |
+| Suspend on an endpoint no loader in the route's branch warms | Intent preload never prefetches it, the transport-readiness wait is skipped, and the update block does not apply — silently. Guarded by `-suspense-loader-coverage.test.ts` |
 | Build a generic route builder, component registry, or route catalogue | All previously existed and were removed; file-based routing replaces them |
 | Convert every lazy query to Suspense | Lazy is deliberate for interaction-driven reads |
 | Introduce another global state store | Query cache + URL + closest common parent has covered every case so far |
@@ -1013,6 +1014,7 @@ For a component that calls `getRouteApi(...)`, mock the module's `getRouteApi`
 | `src/routes/-auth.test.ts` | Redirect preservation, external-redirect rejection, `requireAccess` policies |
 | `src/routes/-loader.test.tsx` | Shared-cache reuse, dedup, update races, declaration order, silent preload metadata, error propagation |
 | `src/routes/_authenticated/-query-ownership.test.ts` | Keeps lazy/progressive queries out of loaders |
+| `src/routes/-suspense-loader-coverage.test.ts` | The converse: walks the import graph from every route and proves each `useSuspenseQuery`/`useSuspenseQueries` endpoint is warmed by a loader on that route or an ancestor |
 | `src/routes/-components/RouteError.test.tsx` | Route-boundary recovery |
 | `src/components/errors/ErrorBoundary.test.tsx` | Widget-boundary recovery |
 | `src/components/tabbar/RoutedTabContainer.test.tsx` | Tab links, active child URL, `matchChildren`, mobile action slot |

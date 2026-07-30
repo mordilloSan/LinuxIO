@@ -136,6 +136,31 @@ func TestRoutesDeclareContractFields(t *testing.T) {
 	}
 }
 
+func TestJobMetadataBuildersAreAllowlistedRunnerRoutes(t *testing.T) {
+	want := map[string]bool{
+		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
+		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
+		"filebrowser.upload": true, "filebrowser.upload_batch": true, "filebrowser.download": true,
+		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
+		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
+	}
+	for _, route := range handlers.Routes {
+		if route.Metadata == nil {
+			continue
+		}
+		if !want[route.Route] {
+			t.Fatalf("%s unexpectedly declares public job metadata", route.Route)
+		}
+		if route.Kind != apischema.KindRunner || route.Mode != bridgeipc.ModeJob {
+			t.Fatalf("%s metadata is not a job runner", route.Route)
+		}
+		delete(want, route.Route)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing metadata builders: %v", want)
+	}
+}
+
 // recordingEmitter captures what a binding emitted so the tests can assert on
 // the exact value that reaches the wire — in particular nil vs a zero struct.
 type recordingEmitter struct {

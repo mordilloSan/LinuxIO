@@ -42,6 +42,7 @@ interface NetworkListProps {
 }
 
 interface ConnectedContainerRow {
+  endpointId: string;
   id: string;
   ipv4: string;
   ipv6: string;
@@ -72,6 +73,21 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
           }}
         >
           {row.original.id.slice(0, 12)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "endpointId",
+      header: "Endpoint ID",
+      cell: ({ row }) => (
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            ...longTextStyles,
+          }}
+        >
+          {row.original.endpointId.slice(0, 12) || "-"}
         </span>
       ),
     },
@@ -499,6 +515,43 @@ const NetworkList = ({
       },
     },
     {
+      id: "features",
+      header: "Features",
+      cell: ({ row }) => {
+        const features = [
+          row.original.Attachable && "Attachable",
+          row.original.Ingress && "Ingress",
+          row.original.ConfigOnly && "Config only",
+        ].filter(Boolean);
+        return (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {features.length > 0 ? features.join(", ") : "-"}
+          </AppTypography>
+        );
+      },
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "150px",
+      },
+    },
+    {
+      accessorKey: "Created",
+      header: "Created",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {row.original.Created
+            ? new Date(row.original.Created).toLocaleDateString()
+            : "-"}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "120px",
+      },
+    },
+    {
       accessorKey: "EnableIPv4",
       header: "IPv4",
       cell: ({ row }) => (
@@ -668,6 +721,106 @@ const NetworkList = ({
 
               <div>
                 <AppTypography gutterBottom variant="subtitle2">
+                  <b>Network Details:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {network.Created && (
+                    <Chip
+                      label={`Created: ${new Date(network.Created).toLocaleString()}`}
+                      size="small"
+                      variant="soft"
+                    />
+                  )}
+                  <Chip
+                    label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
+                    size="small"
+                    variant="soft"
+                  />
+                  <Chip
+                    label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
+                    size="small"
+                    variant="soft"
+                  />
+                  <Chip
+                    label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
+                    size="small"
+                    variant="soft"
+                  />
+                </div>
+              </div>
+
+              {(network.IPAM?.Driver ||
+                (network.IPAM?.Options &&
+                  Object.keys(network.IPAM.Options).length > 0)) && (
+                <div>
+                  <AppTypography gutterBottom variant="subtitle2">
+                    <b>IPAM:</b>
+                  </AppTypography>
+                  <div className="expand-panel__chips">
+                    {network.IPAM?.Driver && (
+                      <Chip
+                        label={`Driver: ${network.IPAM.Driver}`}
+                        size="small"
+                        variant="soft"
+                      />
+                    )}
+                    {Object.entries(network.IPAM?.Options ?? {}).map(
+                      ([key, value]) => (
+                        <Chip
+                          key={key}
+                          label={`${key}: ${value}`}
+                          size="small"
+                          style={wrappableChipStyle}
+                          labelStyle={wrappableChipLabelStyle}
+                          variant="soft"
+                        />
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {network.IPAM?.Config?.some(
+                (config) =>
+                  config.IPRange ||
+                  (config.AuxiliaryAddresses &&
+                    Object.keys(config.AuxiliaryAddresses).length > 0),
+              ) && (
+                <div>
+                  <AppTypography gutterBottom variant="subtitle2">
+                    <b>IPAM Ranges:</b>
+                  </AppTypography>
+                  <div className="expand-panel__chips">
+                    {network.IPAM.Config.flatMap((config, index) => [
+                      ...(config.IPRange
+                        ? [
+                            <Chip
+                              key={`${index}-range`}
+                              label={`Range: ${config.IPRange}`}
+                              size="small"
+                              variant="soft"
+                            />,
+                          ]
+                        : []),
+                      ...Object.entries(config.AuxiliaryAddresses ?? {}).map(
+                        ([key, value]) => (
+                          <Chip
+                            key={`${index}-${key}`}
+                            label={`${key}: ${value}`}
+                            size="small"
+                            style={wrappableChipStyle}
+                            labelStyle={wrappableChipLabelStyle}
+                            variant="soft"
+                          />
+                        ),
+                      ),
+                    ])}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
                   <b>Options:</b>
                 </AppTypography>
                 <div className="expand-panel__chips">
@@ -731,6 +884,7 @@ const NetworkList = ({
                           DockerNetworkContainer
                         >,
                       ).map(([id, info]) => ({
+                        endpointId: info.EndpointID || "",
                         id,
                         ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
                         ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",

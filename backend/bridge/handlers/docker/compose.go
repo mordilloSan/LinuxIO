@@ -366,7 +366,7 @@ type DeleteStackOptions struct {
 }
 
 // DeleteStack removes a compose stack with options to delete files
-func DeleteStack(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (any, error) {
+func DeleteStack(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
 	// Get project info first
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
@@ -374,13 +374,13 @@ func DeleteStack(ctx context.Context, username string, store *config.UserStore, 
 		// Try to find compose file in configured Docker folders.
 		configFile, workingDir, findErr := findComposeFile(ctx, username, store, projectName)
 		if findErr != nil {
-			return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
+			return apischema.DeleteStackResult{}, fmt.Errorf("project '%s' not found: %w", projectName, err)
 		}
 
 		// No containers, just handle file deletion
 		result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
 		if delErr != nil {
-			return nil, delErr
+			return apischema.DeleteStackResult{}, delErr
 		}
 		slog.Info("delete stack complete", "project", projectName)
 		return result, nil
@@ -415,21 +415,15 @@ func DeleteStack(ctx context.Context, username string, store *config.UserStore, 
 	// Handle file deletion
 	result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
 	if delErr != nil {
-		return nil, delErr
+		return apischema.DeleteStackResult{}, delErr
 	}
 	slog.Info("delete stack complete", "project", projectName)
 	return result, nil
 }
 
 // deleteStackFiles handles the file/directory deletion part of stack removal
-func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir string, options DeleteStackOptions) (any, error) {
-	result := map[string]any{
-		"message":       "Stack removed successfully",
-		"project":       projectName,
-		"files_deleted": false,
-		"dir_deleted":   false,
-		"deleted_path":  "",
-	}
+func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
+	result := apischema.DeleteStackResult{Message: "Stack removed successfully", Project: projectName}
 
 	if options.DeleteDirectory && workingDir != "" {
 		return deleteStackDirectory(ctx, result, projectName, workingDir)
@@ -442,37 +436,37 @@ func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir s
 	return result, nil
 }
 
-func deleteStackDirectory(ctx context.Context, result map[string]any, projectName, workingDir string) (any, error) {
+func deleteStackDirectory(ctx context.Context, result apischema.DeleteStackResult, projectName, workingDir string) (apischema.DeleteStackResult, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.DeleteStackResult{}, err
 	}
 	if workingDir == "/" || workingDir == os.Getenv("HOME") || workingDir == "/home" {
-		return nil, fmt.Errorf("refusing to delete protected directory: %s", workingDir)
+		return apischema.DeleteStackResult{}, fmt.Errorf("refusing to delete protected directory: %s", workingDir)
 	}
 	if _, err := os.Stat(workingDir); err != nil {
 		return result, nil
 	}
 	if err := os.RemoveAll(workingDir); err != nil {
-		return nil, fmt.Errorf("failed to delete directory %s: %w", workingDir, err)
+		return apischema.DeleteStackResult{}, fmt.Errorf("failed to delete directory %s: %w", workingDir, err)
 	}
-	result["dir_deleted"] = true
-	result["deleted_path"] = workingDir
+	result.DirDeleted = true
+	result.DeletedPath = workingDir
 	slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
 	return result, nil
 }
 
-func deleteComposeFile(ctx context.Context, result map[string]any, projectName, configFile string) (any, error) {
+func deleteComposeFile(ctx context.Context, result apischema.DeleteStackResult, projectName, configFile string) (apischema.DeleteStackResult, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.DeleteStackResult{}, err
 	}
 	if _, err := os.Stat(configFile); err != nil {
 		return result, nil
 	}
 	if err := os.Remove(configFile); err != nil {
-		return nil, fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
+		return apischema.DeleteStackResult{}, fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
 	}
-	result["files_deleted"] = true
-	result["deleted_path"] = configFile
+	result.FilesDeleted = true
+	result.DeletedPath = configFile
 	slog.Info("deleted compose file", "project", projectName, "path", configFile)
 	return result, nil
 }

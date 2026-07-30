@@ -174,15 +174,15 @@ const DriveDetails = ({
     type: JOB_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
     match: (job) => {
-      const request = job.request as { device?: string } | undefined;
-      return request?.device === rawDrive?.name;
+      const metadata = job.metadata as { device?: string } | undefined;
+      return metadata?.device === rawDrive?.name;
     },
     onRecover: (job) => {
       const deviceName = rawDrive?.name;
       if (!deviceName) return;
-      const request = job.request as { testType?: string } | undefined;
+      const metadata = job.metadata as { testType?: string } | undefined;
       const testType: "short" | "long" =
-        request?.testType === "long" ? "long" : "short";
+        metadata?.testType === "long" ? "long" : "short";
       setStartPending(testType);
       setTestProgress({
         type: "status",

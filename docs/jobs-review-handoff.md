@@ -1,6 +1,6 @@
 # Jobs review — status and handoff
 
-**Started:** 2026-07-30. **Branch:** `dev/v0.17.0`.
+**Started:** 2026-07-30. **Updated:** 2026-07-30. **Branch:** `dev/v0.17.0`.
 **Companion docs:** `docs/jobs-architecture-migration-plan.md` (the strategy), `CODE_REVIEW_FINDINGS.md` (the prior working-tree review).
 
 ---
@@ -13,7 +13,7 @@ That is still the goal, and **the main body of it has not started.** Everything 
 
 ### What the review found
 
-The jobs framework itself is sound — `jobs.go` / `router.go` are careful, well-tested concurrency code. The problem is **scope**: it is applied to ~107 routes that need one round trip and a plain React Query mutation.
+The jobs framework is now on a sounder footing — `jobs.go` / `router.go` are careful, well-tested concurrency code, including the physical-execution admission fix described below. The remaining problem is **scope**: it is applied to ~107 routes that need one round trip and a plain React Query mutation.
 
 The codebase had already drawn the correct line without knowing it:
 
@@ -53,11 +53,11 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 
 | Form | Shape | Count |
 | --- | --- | ---: |
-| `Handle` | `func(ctx, Req) (Result, error)` — **Result is compile-checked** | 112 |
-| `HandleVoid` | `func(ctx, Req) error` — panics at bind time if Result isn't `NoResponse` | 58 |
-| `HandleEvents` | `func(ctx, Req, emit) error` — raw emitter, the old shape | 32 |
+| `Handle` | `func(ctx, Req) (Result, error)` — **Result is compile-checked** | 138 |
+| `HandleVoid` | `func(ctx, Req) error` — panics at bind time if Result isn't `NoResponse` | 61 |
+| `HandleEvents` | `func(ctx, Req, emit) error` — raw emitter, the old shape | 3 |
 
-`EmitResult` call sites went **205 → 32**. Before this, `Events.Result` was `any` and the declared `Result` type param was **never** checked against handler output.
+`EmitResult` call sites went **205 → 3**. Before this, `Events.Result` was `any` and the declared `Result` type param was **never** checked against handler output.
 
 `NoResponse` must stay off the wire as `nil` — it generates TypeScript `void`, so emitting the zero struct would send `{}` to a `void` consumer and stop job snapshots from omitting `result`. Both binding forms enforce this; `TestNoResponseRoutesEmitNilNotZeroStruct` is mutation-tested.
 
@@ -67,7 +67,13 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 
 **5. ~78 routes moved off the raw emitter** across wireguard, docker, storage, system, filebrowser, config, packages, monitoring, systemd, network, accounts, datetime, control, hostname, terminal, indexer, logs, virt, shares, power.
 
-### Two bugs fixed en route
+**6. B7 admission accounting now follows physical handler execution.** A canceled or timed-out job may publish its terminal state promptly, but its route/owner slot is not released until the underlying handler goroutine actually exits. Queued successors therefore cannot push real execution above `MaxActivePerRoute` or `MaxActivePerOwnerRoute`, even when a handler ignores cancellation. Tests cover cancel, timeout, and the direct `Timeout=0` path.
+
+**7. Public job snapshots no longer contain decoded requests.** `request` was removed from the bridge snapshot, apischema model, generated TypeScript, and frontend consumers. The request remains private execution state and is cleared from the registry-held job on queued cancellation or any terminal transition. Exactly 15 recoverable Runner routes opt into a fixed `JobMetadata` projection; credential-bearing handler jobs expose no metadata. Transport-level tests cover start, get/list/cancel, `jobs.events` initial/live frames, and attach replay/terminal frames with a sentinel secret.
+
+**8. Contract drift went from 32 routes to 3.** Apischema is authoritative for the duplicate models, progressless `any` domains now return their declared types, Docker preserves its extra SDK data in typed contracts and surfaces it in the UI, and filebrowser search/subfolder responses are canonicalized. The three intentional/deferred routes are listed below.
+
+### Bugs fixed en route
 
 **`wireguard.add_interface` leaked a private key into a job snapshot.** `AddInterface` returned `map[string]any{… "private_key": privKey.String() …}` on a route declaring `NoResponse` (generated TS: `void`, read by nobody). Because it is a `Job` route, that key sat in the snapshot for `DefaultTerminalJobTTL` (30 min), readable via `jobs.get` / `jobs.list` / `jobs.events` by any session of the same user. Now bound `HandleVoid`, so it emits `nil`.
 
@@ -76,14 +82,11 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 ### Verification (all green)
 
 ```
-cd backend && go build ./...          # clean
-gofmt -l ./bridge/ ./common/           # clean
-make golint-only                       # 0 issues
-go test ./... -count=1                 # 42 packages ok
-make generate                          # generated API byte-identical throughout
+make check-backend  # B7/backend audit
+make generate       # regenerated frontend contracts after schema changes
+make test           # final cross-stack audit: backend clean; 99 frontend files / 552 tests
+git diff --check    # clean
 ```
-
-One **pre-existing** failure: `TestValidateComposeFileAllowsPiHoleDNSProtocols`. Confirmed failing at clean backend HEAD — unrelated to this work.
 
 **`make generate` leaves the generated TS unformatted.** The committed files are post-`oxfmt`, so a bare `make generate` produces ~700 lines of formatting churn. Always follow it with:
 ```
@@ -93,42 +96,36 @@ Folding that into the `generate` target would remove the trap.
 
 ---
 
-## Remaining contract drift — 32 routes
+## Remaining contract drift — 3 routes
 
 The authority is **`handleEventsInventory`** in `backend/bridge/handlers/handler_pattern_test.go`. It is a checked table, not prose: `TestHandleEventsInventoryIsCurrent` fails if a route is bound with `HandleEvents` and missing from it, if an entry is no longer bound that way, or if the counts disagree. **Do not describe drift in per-file comments** — that is what this replaced, and two of those comments had already gone stale.
 
 | Category | Count | Meaning |
 | --- | ---: | --- |
-| `duplicate-model` | 18 | A handler package keeps its own copy of an apischema model and returns that |
-| `any-domain` | 11 | The domain function returns bare `any`, so the declared Result is checked against nothing |
 | `map-vs-struct` | 1 | `systemd.get_unit_info` — `map[string]any` against a declared struct |
 | `progress-emitter` | 2 | `filebrowser.resource_patch`, `virt.create` — **legitimate and permanent** |
 
 Verify the tally against the source of truth rather than trusting this table:
 ```bash
 sed -n '/handleEventsInventory = map/,/^}/p' backend/bridge/handlers/handler_pattern_test.go \
-  | grep -oE "duplicateModel|anyDomain|mapVsStruct|progressEmitter" | sort | uniq -c
+  | grep -oE "mapVsStruct|progressEmitter" | sort | uniq -c
 ```
 
-Sampling showed the drifted routes are **wire-correct today** (`storage.mount_nfs`, `system.dismiss_*`, `wireguard.list_interfaces` all matched their declared struct exactly). This is a missing-enforcement problem, not a field of live bugs — so it does not block anything.
+`systemd.get_unit_info` remains wire-correct and intentionally deferred: converting the dynamic D-Bus map still has the worst effort-to-value ratio, especially where D-Bus numeric types do not match the public struct exactly.
 
-### Open decisions
+### Decisions applied
 
-**D1 — Duplicate models (18 routes): which side is authoritative?**
-`accounts.UserDetails`/`UserLogin`/`Group`, `systemd.TimerStatus`/`SocketStatus`/`ServiceStatus`, `network.NetworkInterfaceInfo`, `storage.DriveInfo`, `packages.UpdateDetail`, `indexer.Status`, `appupdate.VersionInfo`, docker icon types, `system.get_host_info` (`*host.InfoStat`), `system.get_uptime` (`uint64` vs declared `float64`).
-- (a) **apischema wins** — delete the local type, handlers build apischema types directly. *Recommended*: apischema is what the generated TypeScript derives from and what the frontend codes against, and it shrinks ToDo #8 rather than entrenching it. Cost: pairs that differ by pointer-ness (`FailedLoginAttemptsError string` vs `*string`) make construction sites noisier; no wire change, both are `omitempty`.
-- (b) local wins — change the route declaration; generator picks it up.
-- (c) alias where field-compatible, convert where not.
+**D1 — Apischema is authoritative for the 18 duplicate-model routes.** Local domain values are converted at the boundary where needed. Ordinary optional strings are scalar `string` with `omitempty`; pointers remain only where absence must stay distinguishable from a valid zero, such as UID/GID `0`, password-aging counters, or known-zero WireGuard runtime statistics.
 
-**D2 — `docker.list_volumes`: drop the extra Docker SDK fields?** Returns raw `[]volume.Volume`, carrying `Status` and `UsageData` beyond the declared `DockerVolume`. Generated TS never declared them; no frontend reference found. *Recommended: convert* — makes the wire match the contract instead of quietly exceeding it.
+**D2 — `docker.list_volumes` preserves the SDK extras.** The typed contract includes `Status`, `UsageData` (`RefCount`/`Size`, including `0` and `-1`), and optional `ClusterVolume`; the table/card/expanded UI uses them. The list still uses only `VolumeList` on its existing 10-second poll. It does not call Docker disk usage to fill missing size/reference data.
 
-**D3 — `docker.list_networks`: same question.** Builds `[]map[string]any` against `[]apischema.DockerNetwork`. Key sets not yet compared; apply the D2 answer once they are.
+**D3 — `docker.list_networks` also preserves the SDK extras.** The typed contract and UI include `Created`, `Attachable`, `Ingress`, `ConfigOnly`, container `EndpointID`, and the full previously exposed IPAM shape (`Driver`, `Options`, `IPRange`, and auxiliary addresses).
 
-**D4 — `systemd.get_unit_info`: convert the dynamic D-Bus map?** Every property the handler emits **is** declared in `UnitInfo` (verified), so no data loss. But values arrive as `any` from D-Bus, needing ~26 per-field type assertions, and D-Bus numerics don't always match (uint64 vs `*int64`). *Recommended: defer* — worst effort-to-value ratio in the set; the map is behaviourally correct.
+**D4 — `systemd.get_unit_info` is deferred.** No behavior or contract change was made.
 
-**D5 — `filebrowser.subfolders`: drop `bytes`?** Local `subfoldersResponse` has `Bytes int64 \`json:"bytes,omitempty"\``; `apischema.SubfolderData` doesn't declare it. *Recommended: drop* — `omitempty`, absent from the TS type.
+**D5 — `filebrowser.subfolders` drops `bytes`.** The private decoder and public typed response use only `path`, `name`, `size`, and `mod_time`; the old `bytes` fallback is gone.
 
-**D6 — `filebrowser.searchFiles`: which mod-time key?** `apischema.SearchResult` declares three variants (`mod_time`, `modTime`, `modified`), suggesting it was reverse-engineered from an inconsistent map. Need to know which the map actually sets and whether the other two should be deleted (a contract narrowing).
+**D6 — `filebrowser.search` emits only `mod_time`.** That is the field defined by the upstream indexer's [`EntryResult`](https://github.com/mordilloSan/indexer/blob/main/storage/queries.go#L54-L64). A private compatibility decoder accepts `modTime` and `modified` with precedence `mod_time` → `modTime` → `modified`, but aliases never reach apischema, generated TypeScript, or the frontend. The typed result also preserves `inode` and optional `total_size` / `total_files` / `total_dirs`.
 
 ---
 
@@ -136,10 +133,10 @@ Sampling showed the drifted routes are **wire-correct today** (`storage.mount_nf
 
 **The flip has not started.** Turning the ~107 progressless `Job` routes into Query/Action is the deliverable.
 
-It also closes two findings that are still open:
+The two prerequisite findings that could not wait for the flip are already closed:
 
-- **Secrets in job snapshots.** No redaction exists anywhere in `ipc/bridge` or `apischema`. `Snapshot.Request` holds the decoded request verbatim for 30 minutes, served by `jobs.get` / `jobs.list` / `jobs.events`, owner-scoped by *username* (so any other session of that user). Four routes carry plaintext credentials — **three** (`accounts.change_password`, `accounts.create_user`, `storage.mount_cifs`) are `Job(...).Handle` routes the flip turns into Query, deleting the exposure rather than redacting it. Only `virt.create` needs real redaction, because it genuinely emits progress. (The result-side twin — the wireguard private key — is fixed.)
-- **B7** (`CODE_REVIEW_FINDINGS.md`, the one confirmed correctness bug). `router.go` takes the goroutine path whenever `policy.Timeout > 0`, and `ActionDefault.Timeout` is 120 min — so on cancel the select returns, the job goes terminal, `finishJob` promotes the next queued job, and the handler goroutine is **still executing**. Real concurrency exceeds `MaxActivePerRoute` (empirically reproduced: 3 running at cap 2). Applies to every handler-form job route today; the flip removes it for the ~107 that stop being jobs.
+- **Job-snapshot secrets:** raw requests were removed at the snapshot boundary for every route, including `virt.create`; this no longer depends on moving credential routes to Query.
+- **B7:** admission slots remain occupied until physical handler exit, independently of the job's public terminal state.
 
 ### Suggested first batch: `accounts`
 
@@ -182,7 +179,7 @@ grep -rno "\.useJobAction(\|\.useJobStreamAction" frontend/src/ --include=*.ts -
   | grep -v "\.test\." | grep -v "^frontend/src/api/"
 
 # full check
-cd backend && go build ./... && go test ./... -count=1 && cd .. && make golint-only
+make test
 ```
 
 ### Stale references to be aware of

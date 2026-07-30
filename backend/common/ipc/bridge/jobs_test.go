@@ -58,6 +58,203 @@ func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 	}
 }
 
+func TestSnapshotNeverPublishesRequestAndClearsTerminalReference(t *testing.T) {
+	registry := NewRegistry()
+	secret := map[string]string{"password": "sentinel-secret"}
+	metadata := &JobMetadata{Identity: []string{"safe"}, Label: "safe label"}
+	job, err := registry.CreateForOwner("test.secret", secret, Owner{}, metadata)
+	if err != nil {
+		t.Fatalf("CreateForOwner: %v", err)
+	}
+	if got := string(mustJSON(t, job.Snapshot())); strings.Contains(got, "request") || strings.Contains(got, "sentinel-secret") {
+		t.Fatalf("queued snapshot leaked request: %s", got)
+	}
+	if !job.Start(func(_ context.Context, _ *Job, request any) (any, error) {
+		got, ok := request.(map[string]string)
+		if !ok || got["password"] != secret["password"] {
+			t.Fatal("runner did not receive private request")
+		}
+		return nil, nil
+	}) {
+		t.Fatal("Start returned false")
+	}
+	<-job.Done()
+	if got := string(mustJSON(t, job.Snapshot())); strings.Contains(got, "request") || strings.Contains(got, "sentinel-secret") {
+		t.Fatalf("terminal snapshot leaked request: %s", got)
+	}
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	if job.request != nil {
+		t.Fatal("terminal job retained decoded request")
+	}
+}
+
+// Exercise jobs.get, jobs.list, and jobs.cancel relay payloads with a sentinel
+// credential. Start/events/attach have dedicated transport tests below.
+func TestPublicJobSnapshotsNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	owner := Owner{Username: "alice", UID: 1000}
+	secret := map[string]string{"password": "sentinel-secret"}
+	job, err := registry.CreateForOwner("test.public.secret", secret, owner, &JobMetadata{Label: "safe"})
+	if err != nil {
+		t.Fatalf("CreateForOwner: %v", err)
+	}
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobGet(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+	}))
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobList(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{}`)})
+	}))
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobCancel(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+	}))
+	job.mu.RLock()
+	if job.request != nil {
+		t.Fatal("queued cancellation retained decoded request")
+	}
+	job.mu.RUnlock()
+}
+
+func TestJobStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	owner := Owner{Username: "alice", UID: 1000}
+	secret := map[string]string{"password": "sentinel-secret"}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	router.JobRunner("test.start.secret", func(_ context.Context, _ *Job, _ any) (any, error) {
+		close(started)
+		<-release
+		return nil, nil
+	}, StreamDefault, WithJobMetadata(func(any) JobMetadata { return JobMetadata{Label: "safe"} }))
+
+	server, client := net.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- router.dispatchJob(context.Background(), server, router.routes["test.start.secret"], Request{Route: "test.start.secret", Owner: owner, DecodedValue: secret})
+	}()
+	frame, readErr := relay.ReadRelayFrame(client)
+	if readErr != nil {
+		t.Fatalf("start ReadRelayFrame: %v", readErr)
+	}
+	var start relay.ResultFrame
+	if decodeErr := json.Unmarshal(frame.Payload, &start); decodeErr != nil {
+		t.Fatalf("decode start: %v", decodeErr)
+	}
+	assertNoRequestLeak(t, start.Data)
+	if _, closeErr := relay.ReadRelayFrame(client); closeErr != nil {
+		t.Fatalf("start close: %v", closeErr)
+	}
+	_ = client.Close()
+	if dispatchErr := <-errCh; dispatchErr != nil {
+		t.Fatalf("dispatch job: %v", dispatchErr)
+	}
+	<-started
+
+	job, ok := registry.Get(registry.ListForOwner(owner)[0].ID)
+	if !ok {
+		t.Fatal("started job missing from registry")
+	}
+	eventServer, eventClient := net.Pipe()
+	eventErr := make(chan error, 1)
+	go func() {
+		defer eventServer.Close()
+		eventErr <- router.handleJobEvents(eventServer, Request{Owner: owner})
+	}()
+	initial, err := relay.ReadRelayFrame(eventClient)
+	if err != nil {
+		t.Fatalf("initial event: %v", err)
+	}
+	assertNoRequestLeak(t, initial.Payload)
+	job.ReportProgress(map[string]any{"pct": 1})
+	live, err := relay.ReadRelayFrame(eventClient)
+	if err != nil {
+		t.Fatalf("live event: %v", err)
+	}
+	assertNoRequestLeak(t, live.Payload)
+	_ = eventClient.Close()
+	if err := <-eventErr; err != nil {
+		t.Fatalf("events: %v", err)
+	}
+	close(release)
+	<-job.Done()
+}
+
+func TestAttachReplayAndTerminalNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	secret := map[string]string{"password": "sentinel-secret"}
+	job, err := registry.Create("test.attach.secret", secret)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !job.Start(func(_ context.Context, job *Job, _ any) (any, error) {
+		job.ReportProgress(map[string]any{"phase": "safe"})
+		return map[string]any{"ok": true}, nil
+	}) {
+		t.Fatal("Start returned false")
+	}
+	<-job.Done()
+	server, client := net.Pipe()
+	errCh := make(chan error, 1)
+	go func() { defer server.Close(); errCh <- AttachJobStream(server, job) }()
+	for i := range 2 {
+		frame, err := relay.ReadRelayFrame(client)
+		if err != nil {
+			t.Fatalf("attach frame %d: %v", i, err)
+		}
+		assertNoRequestLeak(t, frame.Payload)
+	}
+	_ = client.Close()
+	if err := <-errCh; err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+}
+
+func relayResultData(t *testing.T, write func(net.Conn) error) []byte {
+	t.Helper()
+	server, client := net.Pipe()
+	defer client.Close()
+	errCh := make(chan error, 1)
+	go func() { defer server.Close(); errCh <- write(server) }()
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame: %v", err)
+	}
+	var result relay.ResultFrame
+	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("result status = %q", result.Status)
+	}
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	return result.Data
+}
+
+func assertNoRequestLeak(t *testing.T, data []byte) {
+	t.Helper()
+	value := string(data)
+	if strings.Contains(value, `"request"`) || strings.Contains(value, "sentinel-secret") {
+		t.Fatalf("public payload leaked decoded request: %s", value)
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	return encoded
+}
+
 func TestJobDoneClosesAfterTerminalSnapshotCommitted(t *testing.T) {
 	registry := NewRegistry()
 	job, err := startTestJob(registry, "test.done.atomic", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {

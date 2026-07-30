@@ -157,10 +157,12 @@ const ComposeOperationDialog = ({
     type: JOB_TYPE_DOCKER_COMPOSE,
     scanKey: open && muxIsOpen ? `${action}:${projectName}` : null,
     match: (job) => {
-      const request = job.request as
+      const metadata = job.metadata as
         | { action?: string; projectName?: string }
         | undefined;
-      return request?.action === action && request?.projectName === projectName;
+      return (
+        metadata?.action === action && metadata?.projectName === projectName
+      );
     },
     onRecover: (job) =>
       beginRun(() =>
