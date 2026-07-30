@@ -39,6 +39,12 @@ const VMMachinesPage = () => {
   // Selecting a row updates search asynchronously, so deriving this from
   // selectedVM could delete the previously selected machine.
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
+  // Deleting undefines the domain before disk cleanup finishes, so the polled
+  // list can drop the row mid-job; this snapshot keeps the dialog mounted
+  // until the mutation settles.
+  const [pendingDeleteVM, setPendingDeleteVM] = useState<VirtualMachine | null>(
+    null,
+  );
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
@@ -70,7 +76,8 @@ const VMMachinesPage = () => {
     detailQuery.data ??
     vms.find((vm) => vm.name === effectiveSelectedName) ??
     null;
-  const deleteTarget = vms.find((vm) => vm.name === deleteTargetName) ?? null;
+  const liveDeleteTarget =
+    vms.find((vm) => vm.name === deleteTargetName) ?? null;
 
   const actionConfig = (successText: string, fallback: string) => ({
     success: successText,
@@ -90,15 +97,20 @@ const VMMachinesPage = () => {
             : "";
         toast.success(`Deleted ${request.name}.${diskText}`);
         setDeleteTargetName(null);
+        setPendingDeleteVM(null);
         vmListCache.set((current) =>
           current?.filter((vm) => vm.name !== request.name),
         );
         setSelectedName(null);
       },
-      error: (error) =>
-        toast.error(getMutationErrorMessage(error, "Failed to delete VM")),
+      error: (error) => {
+        toast.error(getMutationErrorMessage(error, "Failed to delete VM"));
+        setPendingDeleteVM(null);
+      },
     },
   );
+  const deleteTarget =
+    liveDeleteTarget ?? (deleteMutation.isPending ? pendingDeleteVM : null);
   const startMutation = linuxio.virt.start.useJobAction(
     actionConfig("VM started", "Failed to start VM"),
   );
@@ -212,8 +224,12 @@ const VMMachinesPage = () => {
       {deleteTarget && (
         <DeleteVMDialog
           isDeleting={deleteMutation.isPending}
-          onClose={() => setDeleteTargetName(null)}
+          onClose={() => {
+            setDeleteTargetName(null);
+            setPendingDeleteVM(null);
+          }}
           onDelete={(deleteDisks) => {
+            setPendingDeleteVM(deleteTarget);
             deleteMutation.mutate({ deleteDisks, name: deleteTarget.name });
           }}
           open

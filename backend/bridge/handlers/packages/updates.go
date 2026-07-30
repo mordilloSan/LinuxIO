@@ -30,7 +30,7 @@ type UpdateDetail struct {
 	CVEs      []string `json:"cve"`
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
-	InfoEnum  uint32   `json:"info_enum,omitempty"` // PackageKit info enum (severity/type): 0=Unknown, 1-30=various types
+	InfoEnum  uint32   `json:"info_enum"` // PackageKit info enum (severity/type): 0=Unknown, 1-30=various types
 }
 
 // —— use type ALIASES, not new structs —— //

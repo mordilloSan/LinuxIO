@@ -129,6 +129,10 @@ export const usePackageUpdater = () => {
       },
       onProgress: (data) => {
         if (detachedRef.current) return;
+        // Batch-level progress can accompany any event type. In particular,
+        // the backend reports the completed share of a failed package on the
+        // continuation message before moving to the next package.
+        bumpProgress(data.percentage);
         switch (data.type) {
           case "item_progress":
             // item_pct is a per-package / per-phase sub-percentage, not a
@@ -158,10 +162,8 @@ export const usePackageUpdater = () => {
               setStatus(data.status);
               appendEvent(data.status);
             }
-            bumpProgress(data.percentage);
             break;
           case "percentage":
-            bumpProgress(data.percentage);
             break;
           case "message":
             if (data.message) {

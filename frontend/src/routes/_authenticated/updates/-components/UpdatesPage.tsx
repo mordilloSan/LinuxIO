@@ -12,6 +12,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
 
 import { usePackageUpdateController } from "./PackageUpdateController";
 import UpdateSettingsDialog from "./UpdateSettingsDialog";
@@ -51,6 +52,11 @@ const AvailableUpdatesPage = () => {
   const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
+  const { actionable: actionableUpdates, deferred: deferredUpdates } = useMemo(
+    () => partitionUpdatesByAvailability(updates),
+    [updates],
+  );
+  const deferredUpdateCount = deferredUpdates.length;
   const {
     updateOne,
     updateAll,
@@ -106,15 +112,15 @@ const AvailableUpdatesPage = () => {
           <Icon height={20} icon="mdi:cog" width={20} />
         </AppIconButton>
       </AppTooltip>
-      {updates.length > 0 ? (
+      {actionableUpdates.length > 0 ? (
         <AppButton
           disabled={packageOperationPending}
-          onClick={() => updateAll(updates.map((u) => u.package_id))}
+          onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
           size="small"
           startIcon={<Icon height={20} icon="mdi:refresh" width={20} />}
           variant="contained"
         >
-          Update All ({updates.length})
+          Update All ({actionableUpdates.length})
         </AppButton>
       ) : null}
     </div>
@@ -123,6 +129,14 @@ const AvailableUpdatesPage = () => {
   return (
     <>
       <RoutedTabActions>{actions}</RoutedTabActions>
+      {deferredUpdateCount > 0 ? (
+        <AppAlert severity="info">
+          {deferredUpdateCount} update
+          {deferredUpdateCount === 1 ? " is" : "s are"} available later. These
+          updates are currently deferred by PackageKit, which commonly happens
+          during phased rollouts.
+        </AppAlert>
+      ) : null}
       <UpdateStatus
         error={error}
         eventLog={eventLog}

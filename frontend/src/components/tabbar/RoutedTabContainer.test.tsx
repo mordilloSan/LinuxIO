@@ -40,7 +40,6 @@ const mockViewport = (initiallyMobile = true) => {
     },
   } as unknown as MediaQueryList;
 
-  vi.stubGlobal("scrollTo", vi.fn());
   vi.spyOn(window, "matchMedia").mockReturnValue(mediaQueryList);
 
   return {
@@ -68,6 +67,21 @@ const NullableActions = () => {
           Show nullable action
         </button>
       ) : null}
+    </>
+  );
+};
+
+const BooleanActions = () => {
+  // Kept in state so the `&&` collapses to a boolean child at runtime rather
+  // than being folded away by the compiler (and flagged as constant by lint).
+  const [showAction] = useState(false);
+
+  return (
+    <>
+      <RoutedTabActions>
+        {showAction && <button type="button">Hidden action</button>}
+      </RoutedTabActions>
+      <div>Boolean route content</div>
     </>
   );
 };
@@ -235,6 +249,36 @@ describe("RoutedTabContainer", () => {
       expect(container.querySelector(".app-icon-btn")).not.toBeInTheDocument(),
     );
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("does not register a mobile action slot for boolean children", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: BooleanActions,
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { container } = render(<RouterProvider router={router} />);
+
+    await screen.findByText("Boolean route content");
+    expect(container.querySelector(".app-icon-btn")).not.toBeInTheDocument();
   });
 
   it("preserves action-local state across breakpoint changes", async () => {

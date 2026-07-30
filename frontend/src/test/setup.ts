@@ -36,6 +36,16 @@ Object.defineProperty(globalThis, "ResizeObserver", {
   value: ResizeObserverMock,
 });
 
+// jsdom has no layout engine, so window.scrollTo is unimplemented and every
+// router scroll restoration emits a "Not implemented" jsdomError. Those bypass
+// `silent: "passed-only"` (which only suppresses intercepted console output),
+// so stub them to keep `make test` readable.
+Object.defineProperty(window, "scrollTo", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(),
+});
+
 if (!globalThis.crypto?.randomUUID) {
   Object.defineProperty(globalThis, "crypto", {
     configurable: true,

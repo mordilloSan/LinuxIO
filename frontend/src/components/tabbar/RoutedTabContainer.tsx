@@ -52,7 +52,9 @@ const TabActionSlotContext = createContext<{
  */
 export const RoutedTabActions = ({ children }: { children: ReactNode }) => {
   const parentActionSlot = useContext(TabActionSlotContext);
-  const hasActions = children != null;
+  // Booleans cover the `{condition && <Action />}` pattern, which renders
+  // nothing but would otherwise still register a ghost mobile menu.
+  const hasActions = children != null && typeof children !== "boolean";
 
   useLayoutEffect(() => {
     if (!parentActionSlot || !hasActions) return;

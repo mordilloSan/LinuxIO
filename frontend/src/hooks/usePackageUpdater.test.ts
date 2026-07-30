@@ -231,6 +231,39 @@ describe("usePackageUpdater", () => {
     expect(result.current.status).toBeNull();
   });
 
+  it("uses aggregate progress carried by package failure messages", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    apiMocks.updatePackages.mockResolvedValue({ id: "job-progress-message" });
+    apiMocks.openJobAttachStream.mockReturnValue(createStream());
+    let finishStream!: () => void;
+    streamResultMocks.run.mockImplementation(
+      (options) =>
+        new Promise<void>((resolve) => {
+          options.onOpen?.(options.open());
+          options.onProgress?.({
+            type: "message",
+            message:
+              "Failed to update curl. Continuing with remaining updates.",
+            percentage: 50,
+          });
+          finishStream = resolve;
+        }),
+    );
+    const { result } = renderHook(() => usePackageUpdater());
+
+    let promise!: Promise<void>;
+    await act(async () => {
+      promise = result.current.updateAll(["curl", "nginx"]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.progress).toBe(50);
+
+    act(() => finishStream());
+    await flushMinimumVisibleProgress(promise);
+  });
+
   it("cancels active update streams and backend jobs", async () => {
     const stream = createStream();
     apiMocks.updatePackages.mockResolvedValue({ id: "job-2" });

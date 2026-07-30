@@ -165,7 +165,11 @@ export interface AutoUpdateOptions {
   scope: AutoUpdateScope;
 }
 
-export type AutoUpdateRebootPolicy = "never" | "if_needed" | "always" | "schedule";
+export type AutoUpdateRebootPolicy =
+  | "never"
+  | "if_needed"
+  | "always"
+  | "schedule";
 
 export type AutoUpdateScope = "security" | "updates" | "all";
 
@@ -1206,7 +1210,12 @@ export interface JobSnapshot {
   updated_at: string;
 }
 
-export type JobState = "queued" | "running" | "completed" | "failed" | "canceled";
+export type JobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export interface LogicalVolume {
   attributes: string;
@@ -1320,7 +1329,12 @@ export interface MonitoringHistoryRequest {
   limit?: number;
 }
 
-export type MonitoringHistoryResolution = "1m" | "10m" | "20m" | "120m" | "480m";
+export type MonitoringHistoryResolution =
+  | "1m"
+  | "10m"
+  | "20m"
+  | "120m"
+  | "480m";
 
 export interface MonitoringListener {
   address: string;
@@ -1841,6 +1855,7 @@ export interface UnitNameRequest {
 export interface Update {
   changelog: string;
   cve: string[];
+  info_enum: number;
   issued: string;
   package_id: string;
   restart: number;
@@ -2063,9 +2078,21 @@ export interface LinuxIOSchema {
       request: CreateGroupRequest;
       result: void;
     };
-    create_user: { input: [request: CreateUserRequest]; request: CreateUserRequest; result: void };
-    delete_group: { input: [groupName: string]; request: GroupNameRequest; result: void };
-    delete_user: { input: [username: string]; request: UsernameRequest; result: void };
+    create_user: {
+      input: [request: CreateUserRequest];
+      request: CreateUserRequest;
+      result: void;
+    };
+    delete_group: {
+      input: [groupName: string];
+      request: GroupNameRequest;
+      result: void;
+    };
+    delete_user: {
+      input: [username: string];
+      request: UsernameRequest;
+      result: void;
+    };
     get_user_details: {
       input: [username: string];
       request: UsernameRequest;
@@ -2079,28 +2106,48 @@ export interface LinuxIOSchema {
       result: AccountUserLogin[];
     };
     list_users: { input: []; request: void; result: AccountUser[] };
-    lock_user: { input: [username: string]; request: UsernameRequest; result: void };
+    lock_user: {
+      input: [username: string];
+      request: UsernameRequest;
+      result: void;
+    };
     modify_group_members: {
       input: [request: ModifyGroupMembersRequest];
       request: ModifyGroupMembersRequest;
       result: void;
     };
-    modify_user: { input: [request: ModifyUserRequest]; request: ModifyUserRequest; result: void };
+    modify_user: {
+      input: [request: ModifyUserRequest];
+      request: ModifyUserRequest;
+      result: void;
+    };
     terminate_session: {
       input: [request: TerminateSessionRequest];
       request: TerminateSessionRequest;
       result: void;
     };
-    unlock_user: { input: [username: string]; request: UsernameRequest; result: void };
+    unlock_user: {
+      input: [username: string];
+      request: UsernameRequest;
+      result: void;
+    };
   };
 
   config: {
     get: { input: []; request: void; result: AppConfig };
-    set: { input: [request: ConfigSetPayload]; request: ConfigSetPayload; result: ConfigSetResult };
+    set: {
+      input: [request: ConfigSetPayload];
+      request: ConfigSetPayload;
+      result: ConfigSetResult;
+    };
   };
 
   control: {
-    logoff: { input: [sessionID: string]; request: SessionIDRequest; result: void };
+    logoff: {
+      input: [sessionID: string];
+      request: SessionIDRequest;
+      result: void;
+    };
     power_off: { input: []; request: void; result: void };
     reboot: { input: []; request: void; result: void };
     version: { input: []; request: void; result: VersionResponse };
@@ -2110,10 +2157,26 @@ export interface LinuxIOSchema {
     get_ntp_servers: { input: []; request: void; result: string[] };
     get_ntp_status: { input: []; request: void; result: boolean };
     get_timezone: { input: []; request: void; result: string };
-    set_ntp: { input: [enabled: string]; request: EnabledRequest; result: void };
-    set_ntp_servers: { input: [servers: string[]]; request: NTPServersRequest; result: void };
-    set_server_time: { input: [isoTime: string]; request: ISOTimeRequest; result: void };
-    set_timezone: { input: [timezone: string]; request: TimezoneRequest; result: void };
+    set_ntp: {
+      input: [enabled: string];
+      request: EnabledRequest;
+      result: void;
+    };
+    set_ntp_servers: {
+      input: [servers: string[]];
+      request: NTPServersRequest;
+      result: void;
+    };
+    set_server_time: {
+      input: [isoTime: string];
+      request: ISOTimeRequest;
+      result: void;
+    };
+    set_timezone: {
+      input: [timezone: string];
+      request: TimezoneRequest;
+      result: void;
+    };
   };
 
   docker: {
@@ -2122,7 +2185,11 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: DockerUpdateCheckResult;
     };
-    check_updates: { input: []; request: void; result: DockerUpdateCheckResult };
+    check_updates: {
+      input: [];
+      request: void;
+      result: DockerUpdateCheckResult;
+    };
     clear_icon_cache: { input: []; request: void; result: MessageResponse };
     compose: {
       input: [request: DockerComposeRequest];
@@ -2154,16 +2221,32 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: MessageResponse;
     };
-    create_network: { input: [name: string]; request: NameRequest; result: void };
-    create_volume: { input: [name: string]; request: NameRequest; result: void };
-    delete_image: { input: [imageId: string]; request: ImageIDRequest; result: void };
+    create_network: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
+    create_volume: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
+    delete_image: {
+      input: [imageId: string];
+      request: ImageIDRequest;
+      result: void;
+    };
     delete_network: { input: [id: string]; request: IDRequest; result: void };
     delete_stack: {
       input: [request: DeleteStackRequest];
       request: DeleteStackRequest;
       result: DeleteStackResult;
     };
-    delete_volume: { input: [name: string]; request: NameRequest; result: void };
+    delete_volume: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
     disable_caddy: { input: []; request: void; result: MessageResponse };
     enable_caddy: { input: []; request: void; result: MessageResponse };
     get_caddy_status: { input: []; request: void; result: CaddyStatusResponse };
@@ -2177,8 +2260,16 @@ export interface LinuxIOSchema {
       request: ProjectNameRequest;
       result: ComposeProject;
     };
-    get_container_auto_update: { input: []; request: void; result: DockerContainerAutoUpdateState };
-    get_docker_folders: { input: []; request: void; result: DockerFoldersResponse };
+    get_container_auto_update: {
+      input: [];
+      request: void;
+      result: DockerContainerAutoUpdateState;
+    };
+    get_docker_folders: {
+      input: [];
+      request: void;
+      result: DockerFoldersResponse;
+    };
     get_docker_info: { input: []; request: void; result: DockerSystemInfo };
     get_icon: {
       input: [identifier: string];
@@ -2195,23 +2286,51 @@ export interface LinuxIOSchema {
       request: IdentifierRequest;
       result: DockerIconURIResponse;
     };
-    list_compose_projects: { input: []; request: void; result: ComposeProject[] };
+    list_compose_projects: {
+      input: [];
+      request: void;
+      result: ComposeProject[];
+    };
     list_containers: { input: []; request: void; result: ContainerInfo[] };
     list_images: { input: []; request: void; result: DockerImage[] };
     list_networks: { input: []; request: void; result: DockerNetwork[] };
     list_volumes: { input: []; request: void; result: DockerVolume[] };
     reload_caddy: { input: []; request: void; result: MessageResponse };
-    remove_container: { input: [containerId: string]; request: ContainerIDRequest; result: void };
-    restart_container: { input: [containerId: string]; request: ContainerIDRequest; result: void };
+    remove_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
+    restart_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
     set_container_auto_update: {
       input: [request: DockerContainerAutoUpdateOptions];
       request: DockerContainerAutoUpdateOptions;
       result: DockerContainerAutoUpdateState;
     };
-    start_all_stopped: { input: []; request: void; result: DockerStartedFailedResponse };
-    start_container: { input: [containerId: string]; request: ContainerIDRequest; result: void };
-    stop_all_running: { input: []; request: void; result: DockerStoppedFailedResponse };
-    stop_container: { input: [containerId: string]; request: ContainerIDRequest; result: void };
+    start_all_stopped: {
+      input: [];
+      request: void;
+      result: DockerStartedFailedResponse;
+    };
+    start_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
+    stop_all_running: {
+      input: [];
+      request: void;
+      result: DockerStoppedFailedResponse;
+    };
+    stop_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
     system_prune: {
       input: [request: DockerSystemPruneRequest];
       request: DockerSystemPruneRequest;
@@ -2255,9 +2374,21 @@ export interface LinuxIOSchema {
       request: BatchTransferRequest;
       result: JobSnapshot;
     };
-    delete_batch: { input: [paths: string[]]; request: BatchPathRequest; result: JobSnapshot };
-    dir_size: { input: [path: string]; request: PathRequest; result: DirectorySizeData };
-    download: { input: [path: string]; request: PathRequest; result: JobSnapshot };
+    delete_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: JobSnapshot;
+    };
+    dir_size: {
+      input: [path: string];
+      request: PathRequest;
+      result: DirectorySizeData;
+    };
+    download: {
+      input: [path: string];
+      request: PathRequest;
+      result: JobSnapshot;
+    };
     exists_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
@@ -2294,13 +2425,21 @@ export interface LinuxIOSchema {
       request: FileResourcePostRequest;
       result: void;
     };
-    resource_stat: { input: [path: string]; request: PathRequest; result: ResourceStatData };
+    resource_stat: {
+      input: [path: string];
+      request: PathRequest;
+      result: ResourceStatData;
+    };
     search: {
       input: [request: FileSearchRequest];
       request: FileSearchRequest;
       result: SearchResponse;
     };
-    subfolders: { input: [path: string]; request: PathRequest; result: SubfoldersResponse };
+    subfolders: {
+      input: [path: string];
+      request: PathRequest;
+      result: SubfoldersResponse;
+    };
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
@@ -2315,7 +2454,11 @@ export interface LinuxIOSchema {
   };
 
   hostname: {
-    set_hostname: { input: [hostname: string]; request: HostnameRequest; result: void };
+    set_hostname: {
+      input: [hostname: string];
+      request: HostnameRequest;
+      result: void;
+    };
   };
 
   indexer: {
@@ -2334,9 +2477,17 @@ export interface LinuxIOSchema {
   };
 
   jobs: {
-    cancel: { input: [jobId: string]; request: JobIDRequest; result: JobSnapshot };
+    cancel: {
+      input: [jobId: string];
+      request: JobIDRequest;
+      result: JobSnapshot;
+    };
     get: { input: [jobId: string]; request: JobIDRequest; result: JobSnapshot };
-    list: { input: [request: JobListRequest]; request: JobListRequest; result: JobSnapshot[] };
+    list: {
+      input: [request: JobListRequest];
+      request: JobListRequest;
+      result: JobSnapshot[];
+    };
   };
 
   logs: {
@@ -2384,8 +2535,16 @@ export interface LinuxIOSchema {
   };
 
   network: {
-    disable_connection: { input: [iface: string]; request: InterfaceRequest; result: void };
-    enable_connection: { input: [iface: string]; request: InterfaceRequest; result: void };
+    disable_connection: {
+      input: [iface: string];
+      request: InterfaceRequest;
+      result: void;
+    };
+    enable_connection: {
+      input: [iface: string];
+      request: InterfaceRequest;
+      result: void;
+    };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
     set_ipv4: {
       input: [request: InterfaceMethodRequest];
@@ -2402,17 +2561,29 @@ export interface LinuxIOSchema {
       request: InterfaceMethodRequest;
       result: void;
     };
-    set_mtu: { input: [request: InterfaceMTURequest]; request: InterfaceMTURequest; result: void };
+    set_mtu: {
+      input: [request: InterfaceMTURequest];
+      request: InterfaceMTURequest;
+      result: void;
+    };
   };
 
   packages: {
-    update: { input: [packageIds: string[]]; request: PackageUpdateRequest; result: JobSnapshot };
+    update: {
+      input: [packageIds: string[]];
+      request: PackageUpdateRequest;
+      result: JobSnapshot;
+    };
   };
 
   power: {
     disable: { input: []; request: void; result: PowerStatus };
     get_status: { input: []; request: void; result: PowerStatus };
-    set_profile: { input: [profile: string]; request: ProfileRequest; result: PowerStatus };
+    set_profile: {
+      input: [profile: string];
+      request: ProfileRequest;
+      result: PowerStatus;
+    };
     start: { input: []; request: void; result: PowerStatus };
   };
 
@@ -2427,8 +2598,16 @@ export interface LinuxIOSchema {
       request: ShareSambaRequest;
       result: SuccessNameResponse;
     };
-    delete_nfs_share: { input: [path: string]; request: PathRequest; result: SuccessResponse };
-    delete_samba_share: { input: [name: string]; request: NameRequest; result: SuccessResponse };
+    delete_nfs_share: {
+      input: [path: string];
+      request: PathRequest;
+      result: SuccessResponse;
+    };
+    delete_samba_share: {
+      input: [name: string];
+      request: NameRequest;
+      result: SuccessResponse;
+    };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
     update_nfs_share: {
@@ -2461,9 +2640,17 @@ export interface LinuxIOSchema {
     };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
     list_cifs_mounts: { input: []; request: void; result: CIFSMount[] };
-    list_cifs_shares: { input: [server: string]; request: ServerRequest; result: string[] };
+    list_cifs_shares: {
+      input: [server: string];
+      request: ServerRequest;
+      result: string[];
+    };
     list_lvs: { input: []; request: void; result: LogicalVolume[] };
-    list_nfs_exports: { input: [server: string]; request: ServerRequest; result: string[] };
+    list_nfs_exports: {
+      input: [server: string];
+      request: ServerRequest;
+      result: string[];
+    };
     list_nfs_mounts: { input: []; request: void; result: NFSMount[] };
     list_pvs: { input: []; request: void; result: PhysicalVolume[] };
     list_vgs: { input: []; request: void; result: VolumeGroup[] };
@@ -2525,12 +2712,24 @@ export interface LinuxIOSchema {
       request: BootIDRequest;
       result: MessageResponse;
     };
-    get_capabilities: { input: []; request: void; result: CapabilitiesResponse };
+    get_capabilities: {
+      input: [];
+      request: void;
+      result: CapabilitiesResponse;
+    };
     get_cpu_info: { input: []; request: void; result: CPUInfoResponse };
-    get_disk_throughput: { input: []; request: void; result: DiskThroughputResponse };
+    get_disk_throughput: {
+      input: [];
+      request: void;
+      result: DiskThroughputResponse;
+    };
     get_fs_info: { input: []; request: void; result: FilesystemInfo[] };
     get_gpu_info: { input: []; request: void; result: GpuDevice[] };
-    get_health_summary: { input: []; request: void; result: SystemHealthSummary };
+    get_health_summary: {
+      input: [];
+      request: void;
+      result: SystemHealthSummary;
+    };
     get_host_info: { input: []; request: void; result: HostInfo };
     get_memory_info: { input: []; request: void; result: MemoryInfoResponse };
     get_memory_modules: { input: []; request: void; result: MemoryModule[] };
@@ -2557,34 +2756,86 @@ export interface LinuxIOSchema {
   };
 
   systemd: {
-    disable_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    enable_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    get_unit_info: { input: [unitName: string]; request: UnitNameRequest; result: UnitInfo };
+    disable_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    enable_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    get_unit_info: {
+      input: [unitName: string];
+      request: UnitNameRequest;
+      result: UnitInfo;
+    };
     list_services: { input: []; request: void; result: Service[] };
     list_sockets: { input: []; request: void; result: Socket[] };
     list_timers: { input: []; request: void; result: Timer[] };
-    mask_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    reload_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
+    mask_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    reload_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
     reset_failed_service: {
       input: [serviceName: string];
       request: ServiceNameRequest;
       result: void;
     };
-    restart_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    start_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    stop_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
-    unmask_service: { input: [serviceName: string]; request: ServiceNameRequest; result: void };
+    restart_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    start_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    stop_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
+    unmask_service: {
+      input: [serviceName: string];
+      request: ServiceNameRequest;
+      result: void;
+    };
   };
 
   terminal: {
-    list_shells: { input: [containerId: string]; request: ContainerIDRequest; result: string[] };
+    list_shells: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: string[];
+    };
   };
 
   updates: {
-    apply_offline_updates: { input: []; request: void; result: OfflineUpdatesResponse };
+    apply_offline_updates: {
+      input: [];
+      request: void;
+      result: OfflineUpdatesResponse;
+    };
     get_auto_updates: { input: []; request: void; result: AutoUpdateState };
-    get_update_detail: { input: [packageId: string]; request: PackageIDRequest; result: Update };
-    get_update_history: { input: []; request: void; result: UpdateHistoryRow[] };
+    get_update_detail: {
+      input: [packageId: string];
+      request: PackageIDRequest;
+      result: Update;
+    };
+    get_update_history: {
+      input: [];
+      request: void;
+      result: UpdateHistoryRow[];
+    };
     get_updates_basic: { input: []; request: void; result: Update[] };
     refresh_cache: { input: []; request: void; result: SuccessResponse };
     set_auto_updates: {
@@ -2595,10 +2846,22 @@ export interface LinuxIOSchema {
   };
 
   virt: {
-    create: { input: [request: VMCreateRequest]; request: VMCreateRequest; result: VirtualMachine };
-    delete: { input: [request: VMDeleteRequest]; request: VMDeleteRequest; result: VMDeleteResult };
+    create: {
+      input: [request: VMCreateRequest];
+      request: VMCreateRequest;
+      result: VirtualMachine;
+    };
+    delete: {
+      input: [request: VMDeleteRequest];
+      request: VMDeleteRequest;
+      result: VMDeleteResult;
+    };
     force_off: { input: [name: string]; request: NameRequest; result: void };
-    get: { input: [name: string]; request: NameRequest; result: VirtualMachine };
+    get: {
+      input: [name: string];
+      request: NameRequest;
+      result: VirtualMachine;
+    };
     list: { input: []; request: void; result: VirtualMachine[] };
     preflight: {
       input: [request: VMPreflightRequest];
@@ -2618,12 +2881,32 @@ export interface LinuxIOSchema {
       request: WireGuardAddInterfaceRequest;
       result: void;
     };
-    add_peer: { input: [interfaceName: string]; request: InterfaceNameRequest; result: void };
-    disable_interface: { input: [name: string]; request: NameRequest; result: void };
-    down_interface: { input: [name: string]; request: NameRequest; result: void };
-    enable_interface: { input: [name: string]; request: NameRequest; result: void };
+    add_peer: {
+      input: [interfaceName: string];
+      request: InterfaceNameRequest;
+      result: void;
+    };
+    disable_interface: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
+    down_interface: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
+    enable_interface: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
     list_interfaces: { input: []; request: void; result: WireGuardInterface[] };
-    list_peers: { input: [interfaceName: string]; request: InterfaceNameRequest; result: Peer[] };
+    list_peers: {
+      input: [interfaceName: string];
+      request: InterfaceNameRequest;
+      result: Peer[];
+    };
     peer_config_download: {
       input: [request: InterfaceNamePeerNameRequest];
       request: InterfaceNamePeerNameRequest;
@@ -2634,7 +2917,11 @@ export interface LinuxIOSchema {
       request: InterfaceNamePeerNameRequest;
       result: QRCodeResponse;
     };
-    remove_interface: { input: [name: string]; request: NameRequest; result: void };
+    remove_interface: {
+      input: [name: string];
+      request: NameRequest;
+      result: void;
+    };
     remove_peer: {
       input: [request: InterfaceNamePeerNameRequest];
       request: InterfaceNamePeerNameRequest;
@@ -2654,7 +2941,9 @@ export type CommandName<H extends HandlerName> = keyof LinuxIOSchema[H];
 export type CommandInput<
   H extends HandlerName,
   C extends CommandName<H>,
-> = LinuxIOSchema[H][C] extends { input: infer I extends readonly unknown[] } ? I : never;
+> = LinuxIOSchema[H][C] extends { input: infer I extends readonly unknown[] }
+  ? I
+  : never;
 
 /** Extract request type for a handler/command pair */
 export type CommandRequest<

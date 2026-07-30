@@ -1164,6 +1164,7 @@ type JobEvent struct {
 type Update struct {
 	Changelog string   `json:"changelog"`
 	CVE       []string `json:"cve"`
+	InfoEnum  uint32   `json:"info_enum"`
 	Issued    string   `json:"issued"`
 	PackageID string   `json:"package_id"`
 	Restart   int      `json:"restart"`

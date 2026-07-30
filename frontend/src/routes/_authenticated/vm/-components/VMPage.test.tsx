@@ -588,6 +588,48 @@ describe("Virtual Machines page", () => {
     );
   });
 
+  it("keeps the delete dialog open while the delete job outlives the list row", async () => {
+    let resolveDelete!: (result: unknown) => void;
+    mocks.waitForStreamResult.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    const { queryClient, user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(mocks.virtDelete).toHaveBeenCalledWith({
+        deleteDisks: true,
+        name: "alpha",
+      }),
+    );
+
+    // The backend undefines the domain before disk cleanup finishes, so the
+    // polled list drops the row while the delete job is still running.
+    mocks.listVMs = [];
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey(), []);
+    });
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByText(
+        /delete alpha from libvirt/i,
+      ),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveDelete({ failed: [], removed: [] });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
   it("does not show delete success when the delete job fails", async () => {
     mocks.waitForStreamResult.mockRejectedValueOnce(
       new Error("Domain not found: no domain with matching name 'alpha'"),

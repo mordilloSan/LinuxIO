@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -178,34 +179,126 @@ func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, req apischema
 
 func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
 	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
+		return updatePackageBatch(session, packageIDs, report)
+	})
+}
+
+func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, report pkgUpdateReporter) error {
+	failures := make([]string, 0)
+	var firstFailure error
+	updated := 0
+	for index, packageID := range packageIDs {
+		if err := session.Context().Err(); err != nil {
+			return err
+		}
+
+		// PackageKit can list updates that cannot be committed together (for
+		// example while an APT phased update is still deferred). Keep one
+		// PackageKit session and job, but give every package its own transaction
+		// so one package failure does not abandon the batch.
 		trans, err := session.CreateTransaction(100)
 		if err != nil {
-			return err
-		}
-		defer pkgkit.LogClose(session.Context(), trans)
-
-		// Call UpdatePackages with all package IDs at once.
-		// Flag 0 = no special flags (install normally).
-		slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_count", len(packageIDs))
-		if err = trans.Call("UpdatePackages", uint64(0), packageIDs); err != nil {
+			// A transaction cannot be created when the session itself is no
+			// longer usable, so there is no meaningful next package to try.
 			return err
 		}
 
-		waitCtx, cancel := context.WithTimeout(session.Context(), 30*time.Minute)
-		defer cancel()
-		return awaitPackageUpdateSignals(waitCtx, trans, report)
-	})
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{
+			Type:       "status",
+			PackageID:  packageID,
+			Status:     fmt.Sprintf("Updating package %d of %d", index+1, len(packageIDs)),
+			Percentage: new(uint32(uint64(index) * 100 / uint64(len(packageIDs)))),
+		})
+
+		err = updateOnePackageWithProgress(session.Context(), trans, packageID, index, len(packageIDs), report)
+		pkgkit.LogClose(session.Context(), trans)
+		if err == nil {
+			updated++
+			continue
+		}
+		if session.Context().Err() != nil {
+			return session.Context().Err()
+		}
+
+		failures = append(failures, fmt.Sprintf("%s: %v", packageID, err))
+		if firstFailure == nil {
+			firstFailure = err
+		}
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{
+			Type:       "message",
+			PackageID:  packageID,
+			Status:     "Failed, continuing",
+			Message:    fmt.Sprintf("Failed to update %s: %v. Continuing with remaining updates.", packageID, err),
+			Percentage: new(uint32(uint64(index+1) * 100 / uint64(len(packageIDs)))),
+		})
+	}
+
+	if len(failures) == 0 {
+		return nil
+	}
+	if len(packageIDs) == 1 {
+		return firstFailure
+	}
+	return fmt.Errorf(
+		"updated %d of %d packages; %d failed: %s",
+		updated,
+		len(packageIDs),
+		len(failures),
+		strings.Join(failures, "; "),
+	)
+}
+
+func updateOnePackageWithProgress(
+	ctx context.Context,
+	trans *pkgkit.Transaction,
+	packageID string,
+	index int,
+	total int,
+	report pkgUpdateReporter,
+) error {
+	// Flag 0 = no special flags (install normally).
+	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
+	if err := trans.Call("UpdatePackages", uint64(0), []string{packageID}); err != nil {
+		return err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	return awaitPackageUpdateSignals(waitCtx, trans, scalePackageProgress(report, index, total))
+}
+
+func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpdateReporter {
+	return func(progress *PkgUpdateProgress) error {
+		if progress == nil || total == 0 {
+			return report(progress)
+		}
+		copy := *progress
+		if progress.Percentage != nil {
+			scaled := uint32((uint64(index)*100 + uint64(*progress.Percentage)) / uint64(total))
+			copy.Percentage = &scaled
+		}
+		if progress.Type == "status" && progress.Status == "Finished" {
+			copy.Status = fmt.Sprintf("Completed package %d of %d", index+1, total)
+		}
+		return report(&copy)
+	}
 }
 
 func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, report pkgUpdateReporter) error {
 	var lastWorkStatus uint32
+	var transactionErr error
 	for {
 		select {
 		case sig := <-trans.Signals():
 			if sig == nil {
 				continue
 			}
-			done, err := handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, &lastWorkStatus)
+			done, err := consumePackageUpdateSignal(
+				report,
+				sig,
+				&lastWorkStatus,
+				&transactionErr,
+			)
 			if err != nil {
 				return err
 			}
@@ -213,9 +306,30 @@ func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, r
 				return nil
 			}
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for package updates to complete")
+			return ctx.Err()
 		}
 	}
+}
+
+func consumePackageUpdateSignal(
+	report pkgUpdateReporter,
+	sig *dbusclient.Signal,
+	lastWorkStatus *uint32,
+	transactionErr *error,
+) (bool, error) {
+	// PackageKit terminates failed transactions with ErrorCode followed by
+	// Finished. Drain through Finished before starting the next package so
+	// transactions never overlap while the backend unwinds the failed one.
+	if sig.Name == pkgkit.TransactionIface+".ErrorCode" {
+		if *transactionErr == nil {
+			*transactionErr = packageUpdateSignalError(sig)
+		}
+		return false, nil
+	}
+	if sig.Name == pkgkit.TransactionIface+".Finished" && *transactionErr != nil {
+		return true, *transactionErr
+	}
+	return handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, lastWorkStatus)
 }
 
 func handlePackageUpdateSignal(
