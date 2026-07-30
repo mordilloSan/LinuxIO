@@ -53,6 +53,10 @@ function FailedRoute({ error }: { error: Error }) {
   return <div role="alert">Route failed: {error.message}</div>;
 }
 
+function NotFoundRoute() {
+  return <div role="alert">Fixture page not found</div>;
+}
+
 const rootRoute = createRootRoute({ component: RootLayout });
 const accountsRoute = createRoute({
   component: AccountsLayout,
@@ -86,6 +90,7 @@ const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
 ]);
 const router = createRouter({
+  defaultNotFoundComponent: NotFoundRoute,
   defaultPendingMinMs: 0,
   defaultPendingMs: 0,
   defaultPreload: "intent",

@@ -10,6 +10,7 @@ interface UpdateStatusProps {
   onClearError?: () => void;
   onUpdateOne: (pkg: string) => Promise<void>;
   progress: number;
+  recoveryPending?: boolean;
   status?: string | null;
   updates: Update[];
   updatingPackage: string | null;
@@ -25,6 +26,7 @@ const UpdateStatus = ({
   error,
   onClearError,
   onCancel,
+  recoveryPending = false,
 }: UpdateStatusProps) => {
   return (
     <div>
@@ -32,8 +34,8 @@ const UpdateStatus = ({
         currentPackage={updatingPackage}
         error={error}
         eventLog={eventLog}
-        isUpdating={!!updatingPackage}
-        onCancel={onCancel}
+        isUpdating={recoveryPending || !!updatingPackage}
+        onCancel={recoveryPending ? undefined : onCancel}
         onClearError={onClearError}
         progress={progress}
         status={status}
@@ -41,7 +43,7 @@ const UpdateStatus = ({
 
       <UpdateList
         currentPackage={updatingPackage}
-        isUpdating={!!updatingPackage}
+        isUpdating={recoveryPending || !!updatingPackage}
         onUpdateClick={onUpdateOne}
         updates={updates}
       />

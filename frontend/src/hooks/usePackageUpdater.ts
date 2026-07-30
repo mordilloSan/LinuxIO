@@ -1,7 +1,9 @@
 // src/hooks/usePackageUpdater.ts
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { linuxio, type Stream } from "@/api";
+import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
+import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
 
 const MIN_PROGRESS_VISIBLE_MS = 1500;
 
@@ -38,7 +40,7 @@ function extractPackageName(packageId: string): string {
   return parts[0] || packageId;
 }
 
-export const usePackageUpdater = (onComplete: () => unknown) => {
+export const usePackageUpdater = () => {
   const [updatingPackage, setUpdatingPackage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
@@ -47,6 +49,8 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const streamRef = useRef<Stream | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
+  const detachedRef = useRef(false);
+  const recoveryAttachedRef = useRef(false);
   // Cancels are fire-and-forget; a plain job action reports nothing.
   const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
 
@@ -74,17 +78,57 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
     setProgress((prev) => Math.max(prev, pct));
   }, []);
 
-  const { mutateAsync: startUpdateJob } =
+  const [recoveryPending, setRecoveryPending] = useState(true);
+
+  const finishSuccess = useCallback(async () => {
+    if (cancelledRef.current) return;
+    if (detachedRef.current) {
+      return;
+    }
+    setProgress(100);
+    setStatus("Finished");
+    appendEvent("Finished");
+    await ensureMinimumVisible(Date.now());
+    if (detachedRef.current) return;
+    setUpdatingPackage(null);
+    setStatus(null);
+    setRecoveryPending(false);
+  }, [appendEvent]);
+  const finishError = useCallback((err: unknown, request: unknown) => {
+    if (detachedRef.current || cancelledRef.current) return;
+    const packageIds = (request as { packageIds?: string[] }).packageIds ?? [];
+    const errorMsg = err instanceof Error ? err.message : "Update failed";
+    setError(
+      packageIds.length === 1
+        ? `Failed to update ${extractPackageName(packageIds[0])}: ${errorMsg}`
+        : errorMsg,
+    );
+    setUpdatingPackage(null);
+    setStatus(null);
+    setRecoveryPending(false);
+  }, []);
+
+  const { mutateAsync: startUpdateJob, attach: attachUpdateJob } =
     linuxio.packages.update.useJobStreamAction<void, PkgUpdateProgress>({
+      // The global jobs owner receives terminal events even after this page's
+      // stream closes, and owns cache invalidation through the manifest.
+      invalidates: [],
+      markHandled: false,
       closeOnAbort: "none",
       closeMessage: "Update stream closed unexpectedly",
       onJobStart: (job) => {
         jobIdRef.current = job.id;
       },
       onOpen: (stream) => {
+        if (detachedRef.current) {
+          stream.close();
+          return;
+        }
         streamRef.current = stream;
+        setRecoveryPending(false);
       },
       onProgress: (data) => {
+        if (detachedRef.current) return;
         switch (data.type) {
           case "item_progress":
             // item_pct is a per-package / per-phase sub-percentage, not a
@@ -130,11 +174,51 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
             break;
         }
       },
+      success: () => finishSuccess(),
+      error: (err, request) => finishError(err, request),
+      options: {
+        onSettled: () => {
+          streamRef.current = null;
+          jobIdRef.current = null;
+          cancelledRef.current = false;
+        },
+      },
     });
+
+  useEffect(() => {
+    detachedRef.current = false;
+    return () => {
+      detachedRef.current = true;
+      // Closing only detaches this page's stream; the backend job continues
+      // and is safely adopted by a later controller instance.
+      streamRef.current?.close();
+      streamRef.current = null;
+    };
+  }, []);
+
+  useActiveJobRecovery({
+    type: JOB_TYPE_PACKAGE_UPDATE,
+    scanKey: "package-update-controller",
+    match: () => true,
+    onRecover: (job) => {
+      if (recoveryAttachedRef.current) return;
+      recoveryAttachedRef.current = true;
+      const request = job.request as { packageIds?: string[] } | undefined;
+      const packageIds = request?.packageIds ?? [];
+      setUpdatingPackage(
+        packageIds.length === 1
+          ? extractPackageName(packageIds[0])
+          : "Resuming updates...",
+      );
+      setStatus("Resuming update transaction");
+      setEventLog(["Resuming update transaction"]);
+      attachUpdateJob(job, { packageIds });
+    },
+    onMiss: () => setRecoveryPending(false),
+  });
 
   const runUpdate = useCallback(
     async (packages: string[], initialLabel: string) => {
-      const startedAtMs = Date.now();
       if (packages.length === 0) {
         console.log("No packages to update");
         return;
@@ -148,41 +232,9 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       appendEvent("Initializing update transaction");
       cancelledRef.current = false;
 
-      try {
-        await startUpdateJob({ packageIds: packages });
-
-        if (cancelledRef.current) {
-          return;
-        }
-
-        setProgress(100);
-        setStatus("Finished");
-        appendEvent("Finished");
-        await ensureMinimumVisible(startedAtMs);
-        setUpdatingPackage(null);
-        setStatus(null);
-        await Promise.resolve(onComplete()).catch(() => undefined);
-      } catch (err: unknown) {
-        if (cancelledRef.current) {
-          cancelledRef.current = false;
-          return;
-        }
-
-        const errorMsg = err instanceof Error ? err.message : "Update failed";
-        setError(
-          packages.length === 1
-            ? `Failed to update ${extractPackageName(packages[0])}: ${errorMsg}`
-            : errorMsg,
-        );
-        setUpdatingPackage(null);
-        setStatus(null);
-      } finally {
-        streamRef.current = null;
-        jobIdRef.current = null;
-        cancelledRef.current = false;
-      }
+      await startUpdateJob({ packageIds: packages }).catch(() => undefined);
     },
-    [appendEvent, onComplete, startUpdateJob],
+    [appendEvent, startUpdateJob],
   );
 
   const updateOne = useCallback(
@@ -222,5 +274,6 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
     eventLog,
     error,
     clearError,
+    recoveryPending,
   };
 };

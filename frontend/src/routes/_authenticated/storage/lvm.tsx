@@ -3,12 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import { loadRouteQueries } from "@/routes/-loader";
 
 import LVMManagement from "./-components/LVMManagement";
-import { STORAGE_TABS } from "./-components/storageTabs";
 
 export const Route = createFileRoute("/_authenticated/storage/lvm")({
   loader: ({ context, preload }) =>
@@ -36,10 +35,11 @@ function StorageLVMRoute() {
   ) : undefined;
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={STORAGE_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <LVMManagement
         onMountCreateHandler={(handler) => setCreateLVHandler(() => handler)}
       />
-    </RoutedTabContainer>
+    </>
   );
 }

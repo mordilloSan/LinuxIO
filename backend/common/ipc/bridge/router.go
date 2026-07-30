@@ -127,13 +127,17 @@ var (
 )
 
 type Router struct {
-	mu                 sync.RWMutex
-	routes             map[string]Route
-	registry           *Registry
-	activeByRoute      map[string]int
-	activeByOwnerRoute map[string]int
-	queuedByRoute      map[string][]queuedJob
-	startsByOwnerRoute map[string][]time.Time
+	mu                   sync.RWMutex
+	routes               map[string]Route
+	registry             *Registry
+	activeByRoute        map[string]int
+	activeByOwnerRoute   map[string]int
+	queuedByRoute        map[string][]queuedJob
+	pendingQueuedByRoute map[string]int
+	startsByOwnerRoute   map[string][]time.Time
+	// beforeStartHook is a narrow test seam for the promotion/cancel race.
+	// Production never sets it.
+	beforeStartHook func(*Job)
 }
 
 type queuedJob struct {
@@ -152,12 +156,13 @@ func NewRouter(registry *Registry) *Router {
 		registry = DefaultRegistry
 	}
 	return &Router{
-		routes:             make(map[string]Route),
-		registry:           registry,
-		activeByRoute:      make(map[string]int),
-		activeByOwnerRoute: make(map[string]int),
-		queuedByRoute:      make(map[string][]queuedJob),
-		startsByOwnerRoute: make(map[string][]time.Time),
+		routes:               make(map[string]Route),
+		registry:             registry,
+		activeByRoute:        make(map[string]int),
+		activeByOwnerRoute:   make(map[string]int),
+		queuedByRoute:        make(map[string][]queuedJob),
+		pendingQueuedByRoute: make(map[string]int),
+		startsByOwnerRoute:   make(map[string][]time.Time),
 	}
 }
 
@@ -359,6 +364,7 @@ func (r *Router) runRoute(ctx context.Context, job *Job, request any, route Rout
 	return emit.result, nil
 }
 
+//nolint:gocognit // Admission keeps its reserve/create/promote transaction together.
 func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	now := time.Now().UTC()
 	ownerKey := req.Owner.key()
@@ -380,27 +386,62 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 		r.mu.Unlock()
 		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
 	}
-	if !canStart && len(r.queuedByRoute[req.Route]) >= policy.QueueLimit {
+	if !canStart && len(r.queuedByRoute[req.Route])+r.pendingQueuedByRoute[req.Route] >= policy.QueueLimit {
 		r.mu.Unlock()
 		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
 	}
 	r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
+	// Reserve an active slot before creating the job. CreateForOwner can take
+	// long enough for another request to otherwise observe stale capacity.
+	if canStart {
+		r.markActiveLocked(req.Route, ownerRouteKey)
+	} else {
+		// Queue capacity is also reserved before CreateForOwner so concurrent
+		// admission cannot overfill a bounded queue.
+		r.pendingQueuedByRoute[req.Route]++
+	}
 	r.mu.Unlock()
 
 	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
 	if err != nil {
+		var next *queuedJob
+		if canStart {
+			r.mu.Lock()
+			r.unmarkActiveLocked(req.Route, ownerRouteKey)
+			next = r.dequeueStartLocked(req.Route)
+			r.mu.Unlock()
+		}
+		if !canStart {
+			r.mu.Lock()
+			if r.pendingQueuedByRoute[req.Route] > 0 {
+				r.pendingQueuedByRoute[req.Route]--
+			}
+			r.mu.Unlock()
+		}
+		if next != nil {
+			r.startTrackedJob(next.route, next.job, next.owner)
+		}
 		return nil, false, err
 	}
 
 	r.mu.Lock()
 	if canStart {
-		r.markActiveLocked(req.Route, ownerRouteKey)
 		r.mu.Unlock()
 		r.startTrackedJob(route, job, req.Owner)
 		return job, true, nil
 	}
 	r.queuedByRoute[req.Route] = append(r.queuedByRoute[req.Route], queuedJob{route: route, job: job, owner: req.Owner})
+	if r.pendingQueuedByRoute[req.Route] > 0 {
+		r.pendingQueuedByRoute[req.Route]--
+	}
+	// An active job may have finished while CreateForOwner was running. Promote
+	// from the real FIFO queue now so this reservation cannot strand the job.
+	next := r.dequeueStartLocked(req.Route)
 	r.mu.Unlock()
+	if next != nil {
+		r.startTrackedJob(next.route, next.job, next.owner)
+		return job, next.job == job, nil
+	}
 	return job, false, nil
 }
 
@@ -445,9 +486,24 @@ func (r *Router) markActiveLocked(routeName, ownerRouteKey string) {
 	r.activeByOwnerRoute[ownerRouteKey]++
 }
 
+func (r *Router) unmarkActiveLocked(routeName, ownerRouteKey string) {
+	if r.activeByRoute[routeName] > 0 {
+		r.activeByRoute[routeName]--
+	}
+	if r.activeByOwnerRoute[ownerRouteKey] > 0 {
+		r.activeByOwnerRoute[ownerRouteKey]--
+	}
+}
+
 func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
 	ownerRouteKey := route.Name + "\x00" + owner.key()
-	job.Start(r.routeRunner(route))
+	if r.beforeStartHook != nil {
+		r.beforeStartHook(job)
+	}
+	if !job.Start(r.routeRunner(route)) {
+		r.finishJob(route.Name, ownerRouteKey)
+		return
+	}
 	go func() {
 		<-job.Done()
 		r.finishJob(route.Name, ownerRouteKey)
@@ -455,14 +511,20 @@ func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
 }
 
 func (r *Router) finishJob(routeName, ownerRouteKey string) {
-	var next *queuedJob
 	r.mu.Lock()
-	if r.activeByRoute[routeName] > 0 {
-		r.activeByRoute[routeName]--
+	r.unmarkActiveLocked(routeName, ownerRouteKey)
+	next := r.dequeueStartLocked(routeName)
+	r.mu.Unlock()
+
+	if next != nil {
+		r.startTrackedJob(next.route, next.job, next.owner)
 	}
-	if r.activeByOwnerRoute[ownerRouteKey] > 0 {
-		r.activeByOwnerRoute[ownerRouteKey]--
-	}
+}
+
+// dequeueStartLocked promotes the oldest runnable queued job for a route.
+// The caller starts it after releasing r.mu to avoid lock-order surprises.
+func (r *Router) dequeueStartLocked(routeName string) *queuedJob {
+	var next *queuedJob
 	queue := r.queuedByRoute[routeName]
 	for len(queue) > 0 {
 		candidate := queue[0]
@@ -480,11 +542,7 @@ func (r *Router) finishJob(routeName, ownerRouteKey string) {
 		break
 	}
 	r.queuedByRoute[routeName] = queue
-	r.mu.Unlock()
-
-	if next != nil {
-		r.startTrackedJob(next.route, next.job, next.owner)
-	}
+	return next
 }
 
 type streamEmitter struct {

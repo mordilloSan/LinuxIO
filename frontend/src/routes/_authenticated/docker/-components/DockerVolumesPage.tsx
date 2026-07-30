@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import { DOCKER_TABS } from "./dockerTabs";
 import VolumeList from "./VolumeList";
 
 const DockerVolumesPage = () => {
@@ -55,12 +54,13 @@ const DockerVolumesPage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={DOCKER_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <VolumeList
         onMountCreateHandler={handleMountCreateVolumeHandler}
         viewMode={volumesView}
       />
-    </RoutedTabContainer>
+    </>
   );
 };
 

@@ -66,6 +66,14 @@ test.describe("TanStack child-route browser lifecycle", () => {
     await expect(page.getByRole("tablist", { name: "Tabs" })).toBeVisible();
   });
 
+  test("renders the default not-found UI for an unknown nested child", async ({
+    page,
+  }) => {
+    await page.goto("/accounts/does-not-exist");
+
+    await expect(page.getByRole("alert")).toHaveText("Fixture page not found");
+  });
+
   test("loads a child component chunk on first navigation", async ({
     page,
   }) => {

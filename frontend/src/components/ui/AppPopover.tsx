@@ -31,6 +31,7 @@ export interface AppPopoverProps {
   anchorPosition?: { top: number; left: number } | null;
   children: ReactNode;
   className?: string;
+  keepMounted?: boolean;
   matchAnchorWidth?: boolean;
   onClose?: () => void;
   open: boolean;
@@ -79,6 +80,7 @@ const AppPopover = ({
   anchorOrigin = DEFAULT_ORIGIN,
   transformOrigin = DEFAULT_ORIGIN,
   matchAnchorWidth = false,
+  keepMounted = false,
   children,
   className,
   paperClassName,
@@ -248,7 +250,7 @@ const AppPopover = ({
     };
   }, [open]);
 
-  if (!open) {
+  if (!open && !keepMounted) {
     return null;
   }
 
@@ -260,7 +262,11 @@ const AppPopover = ({
   return createPortal(
     <div
       className={`app-popover-root ${className || ""}`.trim()}
-      style={{ zIndex, ...style }}
+      style={{
+        zIndex,
+        ...style,
+        display: open ? style?.display : "none",
+      }}
     >
       <div
         className={`app-popover__paper ${paperClassName || ""}`.trim()}

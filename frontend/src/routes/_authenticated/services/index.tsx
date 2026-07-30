@@ -2,12 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { linuxio } from "@/api";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
 import ServicesTab from "./-components/ServicesTab";
-import { SERVICES_TABS } from "./-components/servicesTabs";
 import UnitViewToggle from "./-components/UnitViewToggle";
 
 export const Route = createFileRoute("/_authenticated/services/")({
@@ -43,12 +42,11 @@ function ServicesRoute() {
   );
 
   return (
-    <RoutedTabContainer
-      containerStyle={{ paddingInline: 0 }}
-      rightContent={<UnitViewToggle viewModeKey="services.list" />}
-      tabs={SERVICES_TABS}
-    >
+    <>
+      <RoutedTabActions>
+        <UnitViewToggle viewModeKey="services.list" />
+      </RoutedTabActions>
       <ServicesTab onSelectedChange={setSelected} selected={search.service} />
-    </RoutedTabContainer>
+    </>
   );
 }

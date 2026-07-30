@@ -35,7 +35,10 @@ const VMMachinesPage = () => {
   const search = vmMachinesRouteApi.useSearch();
   const navigate = vmMachinesRouteApi.useNavigate();
   const { preflight, vms } = useVMRouteData();
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  // Keep the delete subject separate from the URL-driven detail selection.
+  // Selecting a row updates search asynchronously, so deriving this from
+  // selectedVM could delete the previously selected machine.
+  const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
@@ -67,6 +70,7 @@ const VMMachinesPage = () => {
     detailQuery.data ??
     vms.find((vm) => vm.name === effectiveSelectedName) ??
     null;
+  const deleteTarget = vms.find((vm) => vm.name === deleteTargetName) ?? null;
 
   const actionConfig = (successText: string, fallback: string) => ({
     success: successText,
@@ -85,7 +89,7 @@ const VMMachinesPage = () => {
             ? ` Removed ${deleteResult.removed.length} disk(s).`
             : "";
         toast.success(`Deleted ${request.name}.${diskText}`);
-        setDeleteOpen(false);
+        setDeleteTargetName(null);
         vmListCache.set((current) =>
           current?.filter((vm) => vm.name !== request.name),
         );
@@ -181,8 +185,7 @@ const VMMachinesPage = () => {
             actionPending={actionPending}
             effectiveSelectedName={effectiveSelectedName}
             onDelete={(vm) => {
-              setSelectedName(vm.name);
-              setDeleteOpen(true);
+              setDeleteTargetName(vm.name);
             }}
             onOpenConsole={(vm) =>
               setConsoleSession({
@@ -206,17 +209,15 @@ const VMMachinesPage = () => {
         </div>
       </div>
 
-      {deleteOpen && (
+      {deleteTarget && (
         <DeleteVMDialog
           isDeleting={deleteMutation.isPending}
-          onClose={() => setDeleteOpen(false)}
+          onClose={() => setDeleteTargetName(null)}
           onDelete={(deleteDisks) => {
-            if (selectedVM) {
-              deleteMutation.mutate({ deleteDisks, name: selectedVM.name });
-            }
+            deleteMutation.mutate({ deleteDisks, name: deleteTarget.name });
           }}
-          open={deleteOpen}
-          vm={selectedVM}
+          open
+          vm={deleteTarget}
         />
       )}
       {consoleSession && (

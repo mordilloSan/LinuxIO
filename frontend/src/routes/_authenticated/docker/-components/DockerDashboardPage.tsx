@@ -6,13 +6,12 @@ import { linuxio, type ContainerInfo } from "@/api";
 import PruneDialog, {
   type PruneOptions,
 } from "@/components/docker/PruneDialog";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 import DockerDashboard from "./DockerDashboard";
-import { DOCKER_TABS } from "./dockerTabs";
 import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
@@ -146,9 +145,8 @@ const DockerDashboardPage = () => {
 
   return (
     <>
-      <RoutedTabContainer rightContent={actions} tabs={DOCKER_TABS}>
-        <DockerDashboard stoppingContainerIds={stoppingContainerIds} />
-      </RoutedTabContainer>
+      <RoutedTabActions>{actions}</RoutedTabActions>
+      <DockerDashboard stoppingContainerIds={stoppingContainerIds} />
       <PruneDialog
         isLoading={isPruning}
         onClose={() => !isPruning && setPruneDialogOpen(false)}

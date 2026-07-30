@@ -4,6 +4,7 @@ import type { ElementType } from "react";
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import type { LinuxIORouterContext } from "@/routes/-auth";
+import NotFoundPage from "@/routes/-components/NotFoundPage";
 import RouteError from "@/routes/-components/RouteError";
 import { routeTree } from "@/routeTree.gen";
 
@@ -22,6 +23,7 @@ export const router = createRouter({
     queryClient: undefined!,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,
+  defaultNotFoundComponent: NotFoundPage,
   defaultPendingComponent: PageLoader,
   defaultPreload: "intent",
   defaultPreloadDelay: 0,

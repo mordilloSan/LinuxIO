@@ -64,6 +64,10 @@
   flex-shrink: 0;
 }
 
+.tab-selector__action-portal {
+  display: contents;
+}
+
 .tab-selector__mobile-actions {
   display: flex;
   flex-direction: row;

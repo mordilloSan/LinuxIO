@@ -61,6 +61,10 @@ const VM_KEYS = [
  * own invalidation explicitly (conditional logic, cache writes, refetches).
  */
 export const JOB_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
+  // Package-update streams may detach when the Updates layout unmounts; the
+  // global jobs event owner performs this invalidation on terminal state.
+  "packages.update": [endpointQueryPrefix("updates.get_updates_basic")],
+
   "filebrowser.index": INDEXER_KEYS,
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.move_batch": FILEBROWSER_LISTING_KEYS,

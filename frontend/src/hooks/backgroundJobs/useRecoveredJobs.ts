@@ -87,6 +87,22 @@ export function useRecoveredJobs(
   // De-dupes capability-install completion toasts so the attach path and the
   // terminal fallback (events stream) can never both fire for one job.
   const installToastedRef = useRef(new Set<string>());
+  const packageUpdateFailureToastedRef = useRef(new Set<string>());
+
+  const emitPackageUpdateFailure = useCallback(
+    (jobId: string, error: unknown) => {
+      if (packageUpdateFailureToastedRef.current.has(jobId)) return;
+      packageUpdateFailureToastedRef.current.add(jobId);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : typeof error === "string" && error
+            ? error
+            : "Package update failed",
+      );
+    },
+    [],
+  );
 
   // Single source of truth for capability-install completion feedback. Owned by
   // this global handler (not CapabilityManagerSection) so the toast still fires
@@ -432,6 +448,10 @@ export function useRecoveredJobs(
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
+              if (job.type === JobTypes.JOB_TYPE_PACKAGE_UPDATE) {
+                emitPackageUpdateFailure(job.id, error);
+                return;
+              }
               // Capability install is now surfaced here (survives the Settings
               // dialog closing). storage.run_smart_test is still owned by a
               // specific page (DiskOverview) that fires its own scoped toast, so
@@ -466,6 +486,7 @@ export function useRecoveredJobs(
       removeBackgroundJob,
       runStreamResult,
       emitCapabilityCompletion,
+      emitPackageUpdateFailure,
       // Stable runtime refs and setters: they arrive as plain function
       // params, so neither the compiler nor the lint rule can prove them
       // stable without listing them.
@@ -532,6 +553,13 @@ export function useRecoveredJobs(
             }
           }
 
+          if (
+            job.type === JobTypes.JOB_TYPE_PACKAGE_UPDATE &&
+            job.state === "failed"
+          ) {
+            emitPackageUpdateFailure(job.id, job.error?.message);
+          }
+
           if (isJobLocallyHandled(job.id)) return;
           const keys = JOB_QUERY_INVALIDATIONS[job.type];
           if (!keys) return;
@@ -557,6 +585,7 @@ export function useRecoveredJobs(
   }, [
     attachRecoveredJob,
     emitCapabilityCompletion,
+    emitPackageUpdateFailure,
     queryClient,
     streamMuxStatus,
   ]);

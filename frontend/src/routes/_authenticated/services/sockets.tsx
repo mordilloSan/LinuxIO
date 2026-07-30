@@ -2,11 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { linuxio } from "@/api";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import { SERVICES_TABS } from "./-components/servicesTabs";
 import SocketsTab from "./-components/SocketsTab";
 import UnitViewToggle from "./-components/UnitViewToggle";
 
@@ -43,12 +42,11 @@ function SocketsRoute() {
   );
 
   return (
-    <RoutedTabContainer
-      containerStyle={{ paddingInline: 0 }}
-      rightContent={<UnitViewToggle viewModeKey="sockets.list" />}
-      tabs={SERVICES_TABS}
-    >
+    <>
+      <RoutedTabActions>
+        <UnitViewToggle viewModeKey="sockets.list" />
+      </RoutedTabActions>
       <SocketsTab onSelectedChange={setSelected} selected={search.socket} />
-    </RoutedTabContainer>
+    </>
   );
 }

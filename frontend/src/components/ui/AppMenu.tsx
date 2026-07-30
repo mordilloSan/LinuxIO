@@ -18,6 +18,7 @@ export interface AppMenuProps {
   autoFocus?: boolean;
   children: ReactNode;
   className?: string;
+  keepMounted?: boolean;
   minWidth?: number | string;
   onClose: () => void;
   open: boolean;
@@ -47,6 +48,7 @@ const AppMenu = ({
   minWidth,
   children,
   className,
+  keepMounted = false,
   style,
 }: AppMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -121,6 +123,7 @@ const AppMenu = ({
       anchorEl={anchorEl}
       anchorOrigin={anchorOrigin}
       anchorPosition={anchorPosition}
+      keepMounted={keepMounted}
       onClose={onClose}
       open={open}
       paperClassName={`app-menu ${className || ""}`.trim()}

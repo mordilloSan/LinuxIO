@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import { DOCKER_TABS } from "./dockerTabs";
 import DockerNetworksTable from "./NetworkList";
 
 const DockerNetworksPage = () => {
@@ -58,12 +57,13 @@ const DockerNetworksPage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={DOCKER_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <DockerNetworksTable
         onMountCreateHandler={handleMountCreateNetworkHandler}
         viewMode={networksView}
       />
-    </RoutedTabContainer>
+    </>
   );
 };
 

@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -11,7 +11,6 @@ import { useViewMode } from "@/hooks/useViewMode";
 
 import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
 import ContainerList from "./ContainerList";
-import { DOCKER_TABS } from "./dockerTabs";
 import { useContainerAutoUpdateState } from "./useContainerAutoUpdateState";
 import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
@@ -94,14 +93,13 @@ const DockerContainersPage = () => {
 
   return (
     <>
-      <RoutedTabContainer rightContent={actions} tabs={DOCKER_TABS}>
-        <ContainerList
-          checkingUpdates={isCheckingUpdates}
-          containerAutoUpdate={containerAutoUpdate}
-          editMode={containerEditMode}
-          viewMode={containerView}
-        />
-      </RoutedTabContainer>
+      <RoutedTabActions>{actions}</RoutedTabActions>
+      <ContainerList
+        checkingUpdates={isCheckingUpdates}
+        containerAutoUpdate={containerAutoUpdate}
+        editMode={containerEditMode}
+        viewMode={containerView}
+      />
       <ContainerAutoUpdateDialog
         autoUpdate={containerAutoUpdate}
         onClose={() => setAutoUpdateDialogOpen(false)}

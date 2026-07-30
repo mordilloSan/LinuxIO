@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import { ACCOUNTS_TABS } from "./accountsTabs";
 import GroupsTab from "./GroupsTab";
 
 const AccountsGroupsPage = () => {
@@ -52,12 +51,13 @@ const AccountsGroupsPage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={ACCOUNTS_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <GroupsTab
         onMountCreateHandler={(handler) => setCreateGroupHandler(() => handler)}
         viewMode={groupsView}
       />
-    </RoutedTabContainer>
+    </>
   );
 };
 

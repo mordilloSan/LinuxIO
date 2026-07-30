@@ -44,7 +44,13 @@ export function sanitizeInternalRedirect(value: unknown): string | undefined {
   try {
     const url = new URL(value, INTERNAL_REDIRECT_BASE);
     if (url.origin !== INTERNAL_REDIRECT_BASE) return undefined;
-    return `${url.pathname}${url.search}${url.hash}`;
+    const normalized = `${url.pathname}${url.search}${url.hash}`;
+    // URL parsing can normalize a slash/backslash prefix into a network-path
+    // reference. Never hand such a value to a redirect sink.
+    if (!normalized.startsWith("/") || normalized.startsWith("//")) {
+      return undefined;
+    }
+    return normalized;
   } catch {
     return undefined;
   }

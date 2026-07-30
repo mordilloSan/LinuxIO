@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { linuxio } from "@/api";
-import { RoutedTabContainer } from "@/components/tabbar";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
 import DiskOverview from "./-components/DiskOverview";
-import { STORAGE_TABS } from "./-components/storageTabs";
 
 export const Route = createFileRoute("/_authenticated/storage/")({
   validateSearch: (search) => ({
@@ -23,9 +21,5 @@ export const Route = createFileRoute("/_authenticated/storage/")({
 });
 
 function StorageDisksRoute() {
-  return (
-    <RoutedTabContainer tabs={STORAGE_TABS}>
-      <DiskOverview />
-    </RoutedTabContainer>
-  );
+  return <DiskOverview />;
 }

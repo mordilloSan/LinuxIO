@@ -10,7 +10,7 @@ import {
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -41,7 +41,6 @@ import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
 } from "./DeleteShareDialogs";
-import { SHARES_TABS } from "./sharesTabs";
 
 type ShareGroup = {
   id: string;
@@ -1268,9 +1267,8 @@ const SharesPage = () => {
         minHeight: 0,
       }}
     >
-      <RoutedTabContainer rightContent={sharesActions} tabs={SHARES_TABS}>
-        {content}
-      </RoutedTabContainer>
+      <RoutedTabActions>{sharesActions}</RoutedTabActions>
+      {content}
 
       <CreateFolderShareDialog
         onClose={() => setCreateDialogOpen(false)}

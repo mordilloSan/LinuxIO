@@ -9,7 +9,7 @@ import {
   type VMPreflight,
   type VirtualMachine,
 } from "@/api";
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -165,9 +165,10 @@ const VMPage = ({ children }: VMPageProps) => {
         vms: listQuery.data,
       }}
     >
-      <RoutedTabContainer rightContent={tabActions} tabs={VM_TABS}>
+      <RoutedTabLayout tabs={VM_TABS}>
+        <RoutedTabActions>{tabActions}</RoutedTabActions>
         {children ?? <Outlet />}
-      </RoutedTabContainer>
+      </RoutedTabLayout>
 
       {createOpen && (
         <CreateVMDialog

@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -9,7 +9,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import { SHARES_TABS } from "./sharesTabs";
 import CIFSMounts from "../../storage/-components/CIFSMounts";
 import NFSMounts from "../../storage/-components/NFSMounts";
 
@@ -82,7 +81,8 @@ const MountsPage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={SHARES_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <div
         style={{
           display: "flex",
@@ -114,7 +114,7 @@ const MountsPage = () => {
           />
         </div>
       </div>
-    </RoutedTabContainer>
+    </>
   );
 };
 

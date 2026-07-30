@@ -2,13 +2,12 @@ import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import { ACCOUNTS_TABS } from "./accountsTabs";
 import UsersTab from "./UsersTab";
 
 const accountsUsersRouteApi = getRouteApi("/_authenticated/accounts/");
@@ -53,12 +52,13 @@ const AccountsUsersPage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={ACCOUNTS_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <UsersTab
         onMountCreateHandler={(handler) => setCreateUserHandler(() => handler)}
         viewMode={usersView}
       />
-    </RoutedTabContainer>
+    </>
   );
 };
 

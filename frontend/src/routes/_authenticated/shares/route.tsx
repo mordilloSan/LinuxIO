@@ -1,9 +1,14 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
+import { makeTabLayout } from "@/components/tabbar";
 import { ShareIcon } from "@/icons/svg";
 
+import { SHARES_TABS } from "./-components/sharesTabs";
+
+const SharesLayout = makeTabLayout(SHARES_TABS);
+
 export const Route = createFileRoute("/_authenticated/shares")({
-  component: Outlet,
+  component: SharesLayout,
   staticData: {
     navigation: {
       icon: ShareIcon,

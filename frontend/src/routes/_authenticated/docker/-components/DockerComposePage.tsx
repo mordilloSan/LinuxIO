@@ -1,14 +1,13 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState } from "react";
 
-import { RoutedTabContainer } from "@/components/tabbar";
+import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import ComposeStacksPage from "./ComposeStacksPage";
-import { DOCKER_TABS } from "./dockerTabs";
 import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DockerComposePage = () => {
@@ -58,12 +57,13 @@ const DockerComposePage = () => {
   );
 
   return (
-    <RoutedTabContainer rightContent={actions} tabs={DOCKER_TABS}>
+    <>
+      <RoutedTabActions>{actions}</RoutedTabActions>
       <ComposeStacksPage
         onMountCreateHandler={handleMountCreateStackHandler}
         viewMode={stacksView}
       />
-    </RoutedTabContainer>
+    </>
   );
 };
 

@@ -103,6 +103,26 @@ describe("router context guards", () => {
     });
   });
 
+  it.each(["/\\attacker.example/phish", "///attacker.example/phish"])(
+    "rejects normalized network-path redirects: %s",
+    (redirectTarget) => {
+      const result = captureThrow(() =>
+        requireGuest(
+          context({
+            auth: {
+              isAuthenticated: true,
+              isInitialized: true,
+              user: { id: "root", name: "root" },
+            },
+          }),
+          { redirect: redirectTarget },
+        ),
+      );
+      expect(isRedirect(result)).toBe(true);
+      if (isRedirect(result)) expect(result.options.href).toBe("/");
+    },
+  );
+
   it("does not preserve an external redirect through the auth guard", () => {
     const result = captureThrow(() =>
       requireAuthentication(context(), {

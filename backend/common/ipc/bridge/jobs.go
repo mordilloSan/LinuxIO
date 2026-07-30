@@ -372,13 +372,23 @@ func (j *Job) Snapshot() Snapshot {
 // canceled immediately; if running, the context is canceled and the job will
 // transition to canceled when it detects the cancellation.
 func (j *Job) Cancel() {
-	j.cancel()
 	j.mu.Lock()
-	queued := j.state == StateQueued
-	j.mu.Unlock()
-	if queued {
-		j.markCanceled()
+	if j.state == StateQueued {
+		// Queue cancellation and Start contend on this same lock. Once this
+		// transition wins, Start observes a terminal state and cannot run the
+		// handler after a router has reserved the job for promotion.
+		j.cancel()
+		event := j.markCanceledLocked(time.Now().UTC())
+		j.mu.Unlock()
+		j.signalDone()
+		j.broadcast(event)
+		j.closeSubscribers()
+		return
 	}
+	j.mu.Unlock()
+	// A running job owns its runner; cancellation is delivered through its
+	// context and the runner's normal terminal path publishes the event.
+	j.cancel()
 }
 
 // CancelForSession cancels all non-terminal jobs belonging to the given session.
@@ -409,12 +419,25 @@ func (j *Job) Done() <-chan struct{} {
 }
 
 // Start begins executing the job with the given runner. If runner is nil, the job fails immediately.
-func (j *Job) Start(runner Runner) {
+func (j *Job) Start(runner Runner) bool {
 	if runner == nil {
 		j.markFailed(NewError("job runner cannot be nil", 500))
-		return
+		return false
 	}
+	now := time.Now().UTC()
+	j.mu.Lock()
+	if j.state != StateQueued {
+		j.mu.Unlock()
+		return false
+	}
+	j.state = StateRunning
+	j.startedAt = &now
+	j.updatedAt = now
+	event := Event{Type: EventStarted, Job: j.snapshotLocked()}
+	j.mu.Unlock()
+	j.broadcast(event)
 	go j.run(j.ctx, runner)
+	return true
 }
 
 // IsTerminal reports whether the job has reached a terminal state (completed, failed, or canceled).
@@ -516,7 +539,6 @@ func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 }
 
 func (j *Job) run(ctx context.Context, runner Runner) {
-	j.markStarted()
 	result, err := runner(ctx, j, j.request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -535,17 +557,6 @@ func (j *Job) run(ctx context.Context, runner Runner) {
 		return
 	}
 	j.markCompleted(result)
-}
-
-func (j *Job) markStarted() {
-	now := time.Now().UTC()
-	j.mu.Lock()
-	j.state = StateRunning
-	j.startedAt = &now
-	j.updatedAt = now
-	event := Event{Type: EventStarted, Job: j.snapshotLocked()}
-	j.mu.Unlock()
-	j.broadcast(event)
 }
 
 func (j *Job) markCompleted(result any) {
@@ -585,22 +596,27 @@ func (j *Job) markFailed(err *Error) {
 }
 
 func (j *Job) markCanceled() {
-	now := time.Now().UTC()
-	jobErr := NewError("operation aborted", 499)
 	j.mu.Lock()
 	if j.isTerminalLocked() {
 		j.mu.Unlock()
 		return
 	}
-	j.state = StateCanceled
-	j.err = jobErr
-	j.updatedAt = now
-	j.finishedAt = &now
-	event := Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
+	event := j.markCanceledLocked(time.Now().UTC())
 	j.mu.Unlock()
 	j.signalDone()
 	j.broadcast(event)
 	j.closeSubscribers()
+}
+
+// markCanceledLocked records cancellation while j.mu is held. The caller is
+// responsible for signaling and broadcasting after releasing the lock.
+func (j *Job) markCanceledLocked(now time.Time) Event {
+	jobErr := NewError("operation aborted", 499)
+	j.state = StateCanceled
+	j.err = jobErr
+	j.updatedAt = now
+	j.finishedAt = &now
+	return Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
 }
 
 func (j *Job) signalDone() {

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { linuxio } from "@/api";
 import {
+  act,
+  createTestQueryClient,
   renderWithTanStackRouter,
   screen,
   waitFor,
@@ -60,9 +63,11 @@ const mocks = vi.hoisted(() => {
     uuid: "vm-alpha",
     vcpus: 2,
   };
+  const beta = { ...alpha, name: "beta", state: "shut off", uuid: "vm-beta" };
 
   return {
     alpha,
+    beta,
     managedISOPath,
     listVMs: [alpha],
     mutations: {
@@ -358,7 +363,10 @@ function fakeJobSnapshot(id: string, type: string) {
   };
 }
 
-async function renderVMPage(libvirtAvailable = true) {
+async function renderVMPage(
+  libvirtAvailable = true,
+  queryClient = createTestQueryClient(),
+) {
   const result = renderWithTanStackRouter(
     <VMPage>
       <VMMachinesPage />
@@ -369,10 +377,11 @@ async function renderVMPage(libvirtAvailable = true) {
         libvirtAvailable,
         privileged: true,
       },
+      queryClient,
     },
   );
   await waitFor(() => expect(document.body.textContent).not.toBe(""));
-  return result;
+  return { ...result, queryClient };
 }
 
 beforeEach(() => {
@@ -518,6 +527,62 @@ describe("Virtual Machines page", () => {
         name: "alpha",
       });
     });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("deletes the clicked VM even while URL selection still points elsewhere", async () => {
+    mocks.listVMs = [mocks.alpha, mocks.beta];
+    mocks.routeSearch = { vm: "alpha" };
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getAllByRole("button", { name: "Delete" })[1]);
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByText(/delete beta from libvirt/i),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(mocks.virtDelete).toHaveBeenCalledWith({
+        deleteDisks: true,
+        name: "beta",
+      }),
+    );
+  });
+
+  it("keeps the delete dialog synced with the live VM list", async () => {
+    const { queryClient, user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      within(screen.getByRole("dialog")).getByText(
+        "/var/lib/libvirt/images/linuxio-alpha.qcow2",
+      ),
+    ).toBeInTheDocument();
+
+    const refreshedAlpha = {
+      ...mocks.alpha,
+      ownedDisks: ["/var/lib/libvirt/images/refreshed-alpha.qcow2"],
+      state: "shut off",
+    };
+    mocks.listVMs = [refreshedAlpha];
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey(), [refreshedAlpha]);
+    });
+
+    expect(
+      await within(screen.getByRole("dialog")).findByText(
+        "/var/lib/libvirt/images/refreshed-alpha.qcow2",
+      ),
+    ).toBeInTheDocument();
+
+    mocks.listVMs = [];
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey(), []);
+    });
+
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );

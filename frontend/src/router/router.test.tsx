@@ -2,6 +2,7 @@ import type { AnyRoute } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import PageLoader from "@/components/loaders/PageLoader";
+import NotFoundPage from "@/routes/-components/NotFoundPage";
 import RouteError from "@/routes/-components/RouteError";
 
 import { router } from "./router";
@@ -27,6 +28,7 @@ describe("generated application router", () => {
     expect(router.options.defaultPendingMinMs).toBeTypeOf("number");
     expect(router.options.defaultPreloadStaleTime).toBeTypeOf("number");
     expect(router.options.defaultErrorComponent).toBe(RouteError);
+    expect(router.options.defaultNotFoundComponent).toBe(NotFoundPage);
     expect(router.options.defaultPendingComponent).toBe(PageLoader);
 
     for (const route of Object.values(router.routesById)) {

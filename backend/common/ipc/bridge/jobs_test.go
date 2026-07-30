@@ -10,6 +10,30 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
+func TestCanceledQueuedJobCannotStart(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("test.canceled.queued", nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	job.Cancel()
+	ran := make(chan struct{}, 1)
+	if job.Start(func(context.Context, *Job, any) (any, error) {
+		ran <- struct{}{}
+		return nil, nil
+	}) {
+		t.Fatal("Start accepted a canceled queued job")
+	}
+	select {
+	case <-ran:
+		t.Fatal("canceled queued job ran")
+	default:
+	}
+	if !job.IsTerminal() {
+		t.Fatal("canceled job is not terminal")
+	}
+}
+
 func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 	registry := NewRegistry()
 	job, err := startTestJob(registry, "test.complete", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
