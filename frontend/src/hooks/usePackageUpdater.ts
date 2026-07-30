@@ -51,30 +51,26 @@ export const usePackageUpdater = () => {
   const [status, setStatus] = useState<string | null>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
   const streamRef = useRef<Stream | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
-  // When this transaction became visible, so the 1.5 s minimum only tops up
-  // updates that finish faster than that instead of padding every one of them.
   const startedAtRef = useRef<number | null>(null);
   const detachedRef = useRef(false);
   const recoveryAttachedRef = useRef(false);
-  // While this page tracks a live transaction it owns packages.update terminal
-  // feedback: the inline alert is the report, so the global handler suppresses
-  // its failure toast. Claim and release are both synchronous — ownership
-  // starts when a run starts (or is adopted) and ends the moment it settles or
-  // the page unmounts, with no trailing window that could swallow a failure
-  // arriving right after navigation (see terminalJobFeedback).
   const releaseFeedbackClaimRef = useRef<(() => void) | null>(null);
+
   const claimFeedbackOwnership = useCallback(() => {
     releaseFeedbackClaimRef.current ??= claimTerminalFeedback(
       JOB_TYPE_PACKAGE_UPDATE,
     );
   }, []);
+  
   const releaseFeedbackOwnership = useCallback(() => {
     releaseFeedbackClaimRef.current?.();
     releaseFeedbackClaimRef.current = null;
   }, []);
+
   // Cancels are fire-and-forget; a plain job action reports nothing.
   const { mutate: cancelJob } = linuxio.jobs.cancel.useJobAction();
 

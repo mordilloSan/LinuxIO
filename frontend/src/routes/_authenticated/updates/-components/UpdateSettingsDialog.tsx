@@ -63,17 +63,33 @@ const UpdateSettingsDialog = ({ open, onClose }: UpdateSettingsDialogProps) => {
               minWidth: 0,
             }}
           >
-            <AppTypography fontWeight={600} style={{ lineHeight: 1.25 }} variant="subtitle1">
+            <AppTypography
+              fontWeight={600}
+              style={{ lineHeight: 1.25 }}
+              variant="subtitle1"
+            >
               Automatic Updates
             </AppTypography>
-            <AppTypography color="text.secondary" style={{ lineHeight: 1.35 }} variant="caption">
+            <AppTypography
+              color="text.secondary"
+              style={{ lineHeight: 1.35 }}
+              variant="caption"
+            >
               Linux package scheduling and installation policy
             </AppTypography>
           </div>
           {settingsState.serverState ? (
-            <Chip label={settingsState.serverState.backend} size="small" variant="soft" />
+            <Chip
+              label={settingsState.serverState.backend}
+              size="small"
+              variant="soft"
+            />
           ) : null}
-          <AppIconButton aria-label="Close update settings" onClick={onClose} size="small">
+          <AppIconButton
+            aria-label="Close update settings"
+            onClick={onClose}
+            size="small"
+          >
             <Icon height={18} icon="mdi:close" width={18} />
           </AppIconButton>
         </div>

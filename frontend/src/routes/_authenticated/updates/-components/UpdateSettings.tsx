@@ -21,7 +21,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const UPDATES_TOAST_META = {
   label: "Open updates",
@@ -32,9 +31,7 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
     ...s.options,
-    exclude_packages: Array.isArray(s.options.exclude_packages)
-      ? s.options.exclude_packages
-      : [],
+    exclude_packages: Array.isArray(s.options.exclude_packages) ? s.options.exclude_packages : [],
   },
 });
 
@@ -45,9 +42,7 @@ interface ManagedTimer {
   timer?: Timer;
 }
 
-const autoUpdateTimerDefinitions = (
-  state: AutoUpdateState,
-): Omit<ManagedTimer, "timer">[] => {
+const autoUpdateTimerDefinitions = (state: AutoUpdateState): Omit<ManagedTimer, "timer">[] => {
   switch (state.backend) {
     case "apt-unattended":
       return [
@@ -75,10 +70,7 @@ const autoUpdateTimerDefinitions = (
   }
 };
 
-const managedTimers = (
-  state: AutoUpdateState,
-  timers: Timer[],
-): ManagedTimer[] =>
+const managedTimers = (state: AutoUpdateState, timers: Timer[]): ManagedTimer[] =>
   autoUpdateTimerDefinitions(state).map((definition) => ({
     ...definition,
     timer: timers.find((timer) => timer.name === definition.name),
@@ -132,11 +124,8 @@ export const useUpdateSettingsState = (enabled = true) => {
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
   );
-  const [draftOverrides, setDraftOverrides] =
-    useState<Partial<AutoUpdateOptions> | null>(null);
-  const [excludeInputOverride, setExcludeInputOverride] = useState<
-    string | null
-  >(null);
+  const [draftOverrides, setDraftOverrides] = useState<Partial<AutoUpdateOptions> | null>(null);
+  const [excludeInputOverride, setExcludeInputOverride] = useState<string | null>(null);
   const currentOptions = useMemo(() => {
     if (!serverState) return null;
     return {
@@ -161,36 +150,7 @@ export const useUpdateSettingsState = (enabled = true) => {
       error: "Failed to save auto-update settings",
       toast: UPDATES_TOAST_META,
     });
-  const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
-    linuxio.updates.apply_offline_updates.useJobAction({
-      success: (result) => {
-        if (result?.status && result.status !== "ok") {
-          const errMsg = result.error || "Failed to schedule offline update";
-          if (
-            errMsg.includes("no updates available") ||
-            errMsg.includes("Prepared update not found")
-          ) {
-            toast.info("No updates available to schedule");
-          }
-          return;
-        }
-        toast.success("Offline update scheduled for next reboot");
-      },
-      error: (error) => {
-        const errMsg = error?.message || String(error);
-        if (
-          errMsg.includes("no updates available") ||
-          errMsg.includes("Prepared update not found")
-        ) {
-          toast.info("No updates available to schedule");
-        } else {
-          toast.error(
-            getMutationErrorMessage(error, "Failed to schedule offline update"),
-          );
-        }
-      },
-    });
-  const saving = isSettingAutoUpdates || isApplyingOffline;
+  const saving = isSettingAutoUpdates;
   const dirty = useMemo(() => {
     if (!serverState || !currentOptions) return false;
     const draftWithExcludes: AutoUpdateOptions = {
@@ -200,9 +160,7 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    return (
-      JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
-    );
+    return JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes);
   }, [serverState, currentExcludeInput, currentOptions]);
   const save = () => {
     if (!currentOptions) return;
@@ -214,9 +172,6 @@ export const useUpdateSettingsState = (enabled = true) => {
         .filter(Boolean),
     };
     setAutoUpdates(payload);
-  };
-  const applyOffline = () => {
-    applyOfflineUpdates();
   };
   return {
     loading,
@@ -232,7 +187,6 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride,
     reset,
     save,
-    applyOffline,
   };
 };
 
@@ -281,12 +235,7 @@ const UpdateCardHeader = ({
         <Icon height={22} icon={icon} width={22} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <AppTypography
-          component="h3"
-          fontWeight={600}
-          style={{ lineHeight: 1.25 }}
-          variant="body2"
-        >
+        <AppTypography component="h3" fontWeight={600} style={{ lineHeight: 1.25 }} variant="body2">
           {title}
         </AppTypography>
         <AppTypography color="text.secondary" variant="caption">
@@ -343,6 +292,35 @@ const StatusMetric = ({
   </div>
 );
 
+const AptServiceNote = () => {
+  const theme = useAppTheme();
+
+  return (
+    <div
+      aria-label="About unattended-upgrades.service"
+      style={{
+        background: theme.palette.action.hover,
+        borderLeft: `3px solid ${theme.palette.primary.main}`,
+        borderRadius: 6,
+        marginTop: theme.spacing(2),
+        padding: theme.spacing(1, 1.25),
+      }}
+    >
+      <AppTypography fontWeight={600} variant="caption">
+        About unattended-upgrades.service
+      </AppTypography>
+      <AppTypography
+        color="text.secondary"
+        style={{ display: "block", marginTop: 2 }}
+        variant="caption"
+      >
+        This service coordinates shutdown; the timers above schedule updates. Its
+        PyGIDeprecationWarning is an upstream package warning, not an update failure.
+      </AppTypography>
+    </div>
+  );
+};
+
 const AutoUpdateRuntime = ({
   runtimeError,
   runtimeLoading,
@@ -361,8 +339,7 @@ const AutoUpdateRuntime = ({
     requiredUnits.length > 0 &&
     requiredUnits.every(({ timer }) => timerIsActive(timer)) &&
     unexpectedActiveUnits.length === 0;
-  const schedulerStopped =
-    !serverState.options.enabled && activeUnits.length === 0;
+  const schedulerStopped = !serverState.options.enabled && activeUnits.length === 0;
   const schedulerLabel = runtimeLoading
     ? "Checking"
     : runtimeError || units.length === 0
@@ -399,7 +376,7 @@ const AutoUpdateRuntime = ({
               gap: theme.spacing(0.75),
             }}
           >
-            <StatusDot color={schedulerColor} size={9} tooltip={schedulerLabel}/>
+            <StatusDot color={schedulerColor} size={9} tooltip={schedulerLabel} />
           </div>
         }
         subtitle="Live systemd timer state"
@@ -408,8 +385,8 @@ const AutoUpdateRuntime = ({
 
       {runtimeError ? (
         <AppTypography color="text.secondary" variant="body2">
-          LinuxIO could not read the systemd timer state. The saved
-          configuration is still shown below.
+          LinuxIO could not read the systemd timer state. The saved configuration is still shown
+          below.
         </AppTypography>
       ) : units.length > 0 ? (
         <div
@@ -426,24 +403,14 @@ const AutoUpdateRuntime = ({
                 detail={name}
                 key={name}
                 label={label}
-                statusColor={
-                  active
-                    ? theme.palette.success.main
-                    : theme.palette.text.disabled
-                }
-                value={`${active ? "Active" : "Inactive"}${
-                  !required ? " · not required" : ""
-                }`}
+                statusColor={active ? theme.palette.success.main : theme.palette.text.disabled}
+                value={`${active ? "Active" : "Inactive"}${!required ? " · not required" : ""}`}
               />
             );
           })}
           <StatusMetric
             label="Next scheduled run"
-            value={
-              serverState.options.enabled
-                ? formatTimerDate(nextRun)
-                : "Not scheduled"
-            }
+            value={serverState.options.enabled ? formatTimerDate(nextRun) : "Not scheduled"}
           />
         </div>
       ) : (
@@ -451,25 +418,18 @@ const AutoUpdateRuntime = ({
           This backend does not expose a managed systemd timer.
         </AppTypography>
       )}
+      {serverState.backend === "apt-unattended" ? <AptServiceNote /> : null}
     </FrostedCard>
   );
 };
 
-const SavedConfiguration = ({
-  dirty,
-  state,
-}: {
-  dirty: boolean;
-  state: AutoUpdateState;
-}) => {
+const SavedConfiguration = ({ dirty, state }: { dirty: boolean; state: AutoUpdateState }) => {
   const theme = useAppTheme();
   const values = [
     {
       label: "Status",
       value: state.options.enabled ? "Enabled" : "Disabled",
-      statusColor: state.options.enabled
-        ? theme.palette.success.main
-        : theme.palette.text.disabled,
+      statusColor: state.options.enabled ? theme.palette.success.main : theme.palette.text.disabled,
     },
     {
       label: "Schedule",
@@ -481,9 +441,7 @@ const SavedConfiguration = ({
     },
     {
       label: "Install mode",
-      value: state.options.download_only
-        ? "Download only"
-        : "Download and install",
+      value: state.options.download_only ? "Download only" : "Download and install",
     },
     {
       label: "Reboots",
@@ -521,11 +479,7 @@ const SavedConfiguration = ({
               </AppTypography>
             </div>
           ) : (
-            <StatusDot
-              color={theme.palette.success.main}
-              size={9}
-              tooltip="Configuration loaded"
-            />
+            <StatusDot color={theme.palette.success.main} size={9} tooltip="Configuration loaded" />
           )
         }
         subtitle="Settings currently applied on this server"
@@ -539,14 +493,76 @@ const SavedConfiguration = ({
         }}
       >
         {values.map(({ label, statusColor, value }) => (
-          <StatusMetric
-            key={label}
-            label={label}
-            statusColor={statusColor}
-            value={value}
-          />
+          <StatusMetric key={label} label={label} statusColor={statusColor} value={value} />
         ))}
       </div>
+    </FrostedCard>
+  );
+};
+
+const AutomaticUpdatesControl = ({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) => {
+  const theme = useAppTheme();
+  const statusColor = checked ? theme.palette.success.main : theme.palette.text.disabled;
+
+  return (
+    <FrostedCard
+      aria-label="Automatic updates master control"
+      style={{
+        alignItems: "center",
+        display: "flex",
+        gap: theme.spacing(1.5),
+        justifyContent: "space-between",
+        minHeight: 66,
+        padding: 14,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: theme.spacing(0.75),
+          }}
+        >
+          <StatusDot color={statusColor} size={8} />
+          <AppTypography
+            component="h3"
+            fontWeight={600}
+            style={{ lineHeight: 1.25 }}
+            variant="body2"
+          >
+            Automatic updates
+          </AppTypography>
+        </div>
+        <AppTypography
+          color="text.secondary"
+          style={{
+            display: "block",
+            lineHeight: 1.35,
+            marginLeft: theme.spacing(1.75),
+            marginTop: 3,
+          }}
+          variant="caption"
+        >
+          {checked
+            ? "Enabled — updates follow the schedule and policy below"
+            : "Paused — automatic update schedules are disabled"}
+        </AppTypography>
+      </div>
+      <AppSwitch
+        aria-label="Enable automatic updates"
+        checked={checked}
+        disabled={disabled}
+        onChange={(_, nextChecked) => onChange(nextChecked)}
+      />
     </FrostedCard>
   );
 };
@@ -555,10 +571,7 @@ interface UpdateSettingsProps {
   disablePadding?: boolean;
   state: ReturnType<typeof useUpdateSettingsState>;
 }
-const UpdateSettings = ({
-  disablePadding = false,
-  state,
-}: UpdateSettingsProps) => {
+const UpdateSettings = ({ disablePadding = false, state }: UpdateSettingsProps) => {
   const theme = useAppTheme();
   const {
     loading,
@@ -574,7 +587,6 @@ const UpdateSettings = ({
     setExcludeInputOverride,
     reset,
     save,
-    applyOffline,
   } = state;
   if (loading || !serverState || !currentOptions) {
     return <ComponentLoader />;
@@ -596,6 +608,17 @@ const UpdateSettings = ({
 
       <SavedConfiguration dirty={dirty} state={serverState} />
 
+      <AutomaticUpdatesControl
+        checked={currentOptions.enabled}
+        disabled={saving}
+        onChange={(enabled) =>
+          setDraftOverrides((previous) => ({
+            ...previous,
+            enabled,
+          }))
+        }
+      />
+
       <FrostedCard
         aria-label="Edit automatic update policy"
         style={{
@@ -604,36 +627,6 @@ const UpdateSettings = ({
       >
         <UpdateCardHeader
           icon="mdi:tune-variant"
-          indicator={
-            <div
-              style={{
-                alignItems: "center",
-                display: "flex",
-                gap: theme.spacing(1),
-              }}
-            >
-              <AppTypography
-                color={
-                  currentOptions.enabled ? "text.primary" : "text.secondary"
-                }
-                fontWeight={600}
-                variant="caption"
-              >
-                {currentOptions.enabled ? "Enabled" : "Disabled"}
-              </AppTypography>
-              <AppSwitch
-                aria-label="Enable automatic updates"
-                checked={currentOptions.enabled}
-                disabled={saving}
-                onChange={(event) =>
-                  setDraftOverrides((previous) => ({
-                    ...(previous ?? {}),
-                    enabled: event.target.checked,
-                  }))
-                }
-              />
-            </div>
-          }
           subtitle="Choose what Linux installs and when it runs"
           title="Update policy"
         />
@@ -644,6 +637,7 @@ const UpdateSettings = ({
             display: "grid",
             gap: theme.spacing(2),
             gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
+            marginTop: theme.spacing(1),
           }}
         >
           <AppSelect
@@ -652,7 +646,7 @@ const UpdateSettings = ({
             label="Frequency"
             onChange={(event) =>
               setDraftOverrides((previous) => ({
-                ...(previous ?? {}),
+                ...previous,
                 frequency: event.target.value as AutoUpdateFrequency,
               }))
             }
@@ -670,7 +664,7 @@ const UpdateSettings = ({
             label="Update scope"
             onChange={(event) =>
               setDraftOverrides((previous) => ({
-                ...(previous ?? {}),
+                ...previous,
                 scope: event.target.value as AutoUpdateScope,
               }))
             }
@@ -688,7 +682,7 @@ const UpdateSettings = ({
             label="Reboot policy"
             onChange={(event) =>
               setDraftOverrides((previous) => ({
-                ...(previous ?? {}),
+                ...previous,
                 reboot_policy: event.target.value as AutoUpdateRebootPolicy,
               }))
             }
@@ -736,7 +730,7 @@ const UpdateSettings = ({
               disabled={saving}
               onChange={(event) =>
                 setDraftOverrides((previous) => ({
-                  ...(previous ?? {}),
+                  ...previous,
                   download_only: event.target.checked,
                 }))
               }
@@ -777,18 +771,10 @@ const UpdateSettings = ({
           display: "flex",
           flexWrap: "wrap",
           gap: theme.spacing(1),
+          justifyContent: "flex-end",
           paddingTop: theme.spacing(1.5),
         }}
       >
-        <AppButton
-          disabled={saving}
-          onClick={applyOffline}
-          startIcon={<Icon height={18} icon="mdi:restart-alert" width={18} />}
-          style={{ marginRight: "auto" }}
-          variant="outlined"
-        >
-          Apply offline at next reboot
-        </AppButton>
         <AppButton disabled={saving || !dirty} onClick={reset} variant="text">
           Reset
         </AppButton>
