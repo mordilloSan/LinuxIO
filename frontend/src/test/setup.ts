@@ -46,6 +46,19 @@ Object.defineProperty(window, "scrollTo", {
   value: vi.fn(),
 });
 
+// Same story for canvas: jsdom ships no rasterizer, so getContext() is
+// unimplemented and emits a jsdomError. @xterm/xterm calls it at module scope
+// (common/Color.ts) just to parse CSS colours, so every test that imports the
+// router — which statically pulls the terminal route — prints it. jsdom's stub
+// returns null and callers already handle that, so return null silently. Not a
+// vi.fn(): nothing asserts on it. Swap in a context object only once a test
+// genuinely needs to draw.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});
+
 if (!globalThis.crypto?.randomUUID) {
   Object.defineProperty(globalThis, "crypto", {
     configurable: true,
