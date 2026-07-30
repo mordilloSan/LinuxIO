@@ -48,7 +48,7 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const groupsList = Array.isArray(groups) ? groups : [];
 
   const { mutate: createUser, isPending } =
-    linuxio.accounts.create_user.useJobAction({
+    linuxio.accounts.create_user.useAction({
       success: () => {
         toast.success(`User "${username}" created successfully`);
         handleClose();

@@ -77,7 +77,7 @@ const DockerFolderSettingsSection = () => {
   const { config, updateConfig } = useConfig();
   // Errors and toasts are handled by handleSave's try/catch.
   const { mutateAsync: createDockerFolder } =
-    linuxio.filebrowser.resource_post.useJobAction();
+    linuxio.filebrowser.resource_post.useAction();
   const { mutateAsync: validateDockerFolder } =
     linuxio.docker.validate_stack_directory.useAction();
   const dockerFolders = config.docker.folders;

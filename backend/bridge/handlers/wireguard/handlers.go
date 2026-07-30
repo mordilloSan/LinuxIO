@@ -17,17 +17,17 @@ import (
 // DefaultTerminalJobTTL where jobs.get/jobs.list could read them back.
 var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").Handle(handleListInterfaces),
-	apischema.Job[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
+	apischema.Query[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
 	apischema.Query[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").Handle(handleListPeers),
-	apischema.Job[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
-	apischema.Job[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
+	apischema.Query[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
+	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
 	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode").Handle(handlePeerQRCode),
 	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download").Handle(handlePeerConfigDownload),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
 )
 
 var Routes = api.Routes()

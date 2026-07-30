@@ -9,10 +9,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
 import { getRouteMode } from "@/api/generated/route-metadata";
-import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
 import { openJobAttachStream } from "@/api/linuxio";
 import * as core from "@/api/linuxio-core";
 import { LinuxIOError } from "@/api/linuxio-core";
+import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import { createEndpoint } from "@/api/react-query";
 import type { Stream } from "@/api/StreamMultiplexer";
 
@@ -100,10 +100,7 @@ describe("createEndpoint", () => {
     );
 
     expect(() =>
-      createEndpoint("docker", "start_container", {
-        kind: "field",
-        field: "containerId",
-      }).queryOptions("abc"),
+      createEndpoint("virt", "create", { kind: "object" }).queryOptions({}),
     ).toThrow(/not query/);
 
     expect(() =>
@@ -184,65 +181,62 @@ describe("useJobAction", () => {
     vi.spyOn(core, "request").mockResolvedValue(
       jobSnapshot({ result: { updated: true } }),
     );
-    const endpoint = createEndpoint<{ updated: boolean }>(
-      "docker",
-      "update_container",
-      { kind: "object" },
-    );
+    const endpoint = createEndpoint<{ updated: boolean }>("virt", "create", {
+      kind: "object",
+    });
 
     const { result, invalidateSpy } = renderJobAction(() =>
       endpoint.useJobAction({
-        invalidates: [["linuxio", "docker", "list_containers"]],
-        success: "Container updated",
-        toast: { label: "Open Docker", to: "/docker" },
+        invalidates: [["linuxio", "virt", "list"]],
+        success: "VM created",
+        toast: { label: "Open VMs", to: "/vm" },
       }),
     );
 
-    act(() => result.current.mutate({ containerId: "abc" }));
+    act(() => result.current.mutate({ name: "vm" }));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual({ updated: true });
     expect(core.request).toHaveBeenCalledWith(
-      "docker",
-      "update_container",
-      { containerId: "abc" },
+      "virt",
+      "create",
+      { name: "vm" },
       { retryPolicy: "none" },
     );
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["linuxio", "docker", "list_containers"],
+      queryKey: ["linuxio", "virt", "list"],
     });
-    expect(toast.success).toHaveBeenCalledWith("Container updated", {
-      meta: { label: "Open Docker", to: "/docker" },
+    expect(toast.success).toHaveBeenCalledWith("VM created", {
+      meta: { label: "Open VMs", to: "/vm" },
     });
   });
 
   it("passes non-job results through unchanged", async () => {
     vi.spyOn(core, "request").mockResolvedValue({ ok: true });
-    const endpoint = createEndpoint<{ ok: boolean }>(
-      "docker",
-      "start_container",
-      { kind: "field", field: "containerId" },
-    );
+    const endpoint = createEndpoint<{ ok: boolean }>("virt", "create", {
+      kind: "object",
+    });
 
     const { result } = renderJobAction(() => endpoint.useJobAction());
 
-    act(() => result.current.mutate("abc"));
+    act(() => result.current.mutate({ name: "vm" }));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual({ ok: true });
   });
 
-  it("defaults invalidation to the route's job-query manifest entry", async () => {
-    vi.spyOn(core, "request").mockResolvedValue(jobSnapshot());
+  it("applies default invalidation to direct actions", async () => {
+    vi.spyOn(core, "request").mockResolvedValue(undefined);
     const endpoint = createEndpoint("docker", "start_container", {
       kind: "field",
       field: "containerId",
     });
 
-    const manifestKeys = JOB_QUERY_INVALIDATIONS["docker.start_container"];
+    const manifestKeys =
+      OPERATION_QUERY_INVALIDATIONS["docker.start_container"];
     expect(manifestKeys.length).toBeGreaterThan(0);
 
     const { result, invalidateSpy } = renderJobAction(() =>
-      endpoint.useJobAction(),
+      endpoint.useAction(),
     );
     act(() => result.current.mutate("abc"));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -255,15 +249,14 @@ describe("useJobAction", () => {
 
   it("lets explicit invalidates config override or suppress the manifest", async () => {
     vi.spyOn(core, "request").mockResolvedValue(jobSnapshot());
-    const endpoint = createEndpoint("docker", "start_container", {
-      kind: "field",
-      field: "containerId",
+    const endpoint = createEndpoint("virt", "create", {
+      kind: "object",
     });
 
     const override = renderJobAction(() =>
       endpoint.useJobAction({ invalidates: [["custom", "key"]] }),
     );
-    act(() => override.result.current.mutate("abc"));
+    act(() => override.result.current.mutate({ name: "vm" }));
     await waitFor(() => expect(override.result.current.isSuccess).toBe(true));
     expect(override.invalidateSpy).toHaveBeenCalledTimes(1);
     expect(override.invalidateSpy).toHaveBeenCalledWith({
@@ -273,7 +266,7 @@ describe("useJobAction", () => {
     const optOut = renderJobAction(() =>
       endpoint.useJobAction({ invalidates: [] }),
     );
-    act(() => optOut.result.current.mutate("abc"));
+    act(() => optOut.result.current.mutate({ name: "vm" }));
     await waitFor(() => expect(optOut.result.current.isSuccess).toBe(true));
     expect(optOut.invalidateSpy).not.toHaveBeenCalled();
   });
@@ -282,11 +275,9 @@ describe("useJobAction", () => {
     vi.spyOn(core, "request").mockResolvedValue(
       jobSnapshot({ result: { name: "web" } }),
     );
-    const endpoint = createEndpoint<{ name: string }>(
-      "docker",
-      "update_container",
-      { kind: "object" },
-    );
+    const endpoint = createEndpoint<{ name: string }>("virt", "create", {
+      kind: "object",
+    });
 
     const success = vi.fn();
     const onSuccess = vi.fn();
@@ -319,7 +310,7 @@ describe("useJobAction", () => {
   it("prefers the server error message over the config fallback", async () => {
     const { toast } = await import("sonner");
     vi.spyOn(core, "request").mockRejectedValue(new LinuxIOError("exploded"));
-    const endpoint = createEndpoint("docker", "update_container", {
+    const endpoint = createEndpoint("virt", "create", {
       kind: "object",
     });
 
@@ -340,7 +331,7 @@ describe("useJobAction", () => {
         error: { code: 500, message: "disk full" },
       }),
     );
-    const endpoint = createEndpoint("docker", "update_container", {
+    const endpoint = createEndpoint("virt", "create", {
       kind: "object",
     });
 
@@ -361,9 +352,8 @@ describe("useJobAction", () => {
 describe("useAction", () => {
   it("rejects job and duplex routes", () => {
     expect(() =>
-      createEndpoint("docker", "start_container", {
-        kind: "field",
-        field: "containerId",
+      createEndpoint("virt", "create", {
+        kind: "object",
       }).useAction(),
     ).toThrow(/not query/);
 
@@ -397,7 +387,7 @@ describe("useAction", () => {
       { content: "services: {}" },
       { retryPolicy: "connection_closed" },
     );
-    // Query routes have no job-query manifest entry, so nothing invalidates.
+    // This command has no operation manifest entry, so nothing invalidates.
     expect(invalidateSpy).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith(
       "Compose file is valid",

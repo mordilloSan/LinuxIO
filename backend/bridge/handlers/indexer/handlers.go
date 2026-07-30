@@ -12,8 +12,8 @@ import (
 var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
 	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Job[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Job[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
+	apischema.Query[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Query[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
 
 var Routes = api.Routes()

@@ -12,9 +12,9 @@ var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
 	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
 	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
-	apischema.Job[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
-	apischema.Job[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
-	apischema.Job[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
+	apischema.Query[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
+	apischema.Query[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
+	apischema.Query[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
 	apischema.Query[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history").Handle(handleGetUpdateHistory),
 )
 

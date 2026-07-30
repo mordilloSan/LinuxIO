@@ -9,9 +9,12 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Job[apischema.NoRequest, apischema.NoResponse]("control.reboot").HandleVoid(handleReboot),
-	apischema.Job[apischema.NoRequest, apischema.NoResponse]("control.power_off").HandleVoid(handlePowerOff),
-	apischema.Job[apischema.SessionIDRequest, apischema.NoResponse]("control.logoff").HandleVoid(handleLogoff),
+	// These calls are accepted by the native control service before it can tear
+	// down this bridge. A lost response is therefore an expected, ambiguous
+	// transport outcome; callers must not retry it automatically.
+	apischema.Query[apischema.NoRequest, apischema.NoResponse]("control.reboot").HandleVoid(handleReboot),
+	apischema.Query[apischema.NoRequest, apischema.NoResponse]("control.power_off").HandleVoid(handlePowerOff),
+	apischema.Query[apischema.SessionIDRequest, apischema.NoResponse]("control.logoff").HandleVoid(handleLogoff),
 )
 
 var Routes = api.Routes()

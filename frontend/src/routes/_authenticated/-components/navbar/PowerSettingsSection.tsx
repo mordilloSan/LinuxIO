@@ -81,15 +81,15 @@ const PowerSettingsSection = () => {
     error: "Power action failed",
   });
 
-  const startMutation = linuxio.power.start.useJobAction(
+  const startMutation = linuxio.power.start.useAction(
     powerActionConfig("TuneD started"),
   );
 
-  const setProfileMutation = linuxio.power.set_profile.useJobAction(
+  const setProfileMutation = linuxio.power.set_profile.useAction(
     powerActionConfig("Power profile applied"),
   );
 
-  const disableMutation = linuxio.power.disable.useJobAction(
+  const disableMutation = linuxio.power.disable.useAction(
     powerActionConfig("TuneD tunings disabled"),
   );
 

@@ -28,7 +28,7 @@ export const DeleteNFSShareDialog = ({
 }: DeleteNFSShareDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const { mutate: deleteShare, isPending } =
-    linuxio.shares.delete_nfs_share.useJobAction({
+    linuxio.shares.delete_nfs_share.useAction({
       success: () => {
         toast.success(`Removed NFS export for ${share?.path}`);
         onSuccess();
@@ -94,7 +94,7 @@ export const DeleteSambaShareDialog = ({
 }: DeleteSambaShareDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
   const { mutate: deleteShare, isPending } =
-    linuxio.shares.delete_samba_share.useJobAction({
+    linuxio.shares.delete_samba_share.useAction({
       success: () => {
         toast.success(`Removed Samba share "${share?.name}"`);
         onSuccess();

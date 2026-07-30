@@ -90,35 +90,35 @@ const ContainerCard = ({
 
   // ---- actions (start/stop/restart/remove) ----
   const { mutate: startContainer, isPending: isStartPending } =
-    linuxio.docker.start_container.useJobAction({
+    linuxio.docker.start_container.useAction({
       success: `Container ${name} started successfully`,
       error: `Failed to start container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: stopContainer, isPending: isStopPending } =
-    linuxio.docker.stop_container.useJobAction({
+    linuxio.docker.stop_container.useAction({
       success: `Container ${name} stopped successfully`,
       error: `Failed to stop container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: restartContainer, isPending: isRestartPending } =
-    linuxio.docker.restart_container.useJobAction({
+    linuxio.docker.restart_container.useAction({
       success: `Container ${name} restarted successfully`,
       error: `Failed to restart container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
-    linuxio.docker.remove_container.useJobAction({
+    linuxio.docker.remove_container.useAction({
       success: `Container ${name} removed successfully`,
       error: `Failed to remove container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useJobAction({
+    linuxio.docker.update_container.useAction({
       success: (result) => {
         toast.success(
           result.updated

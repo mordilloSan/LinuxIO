@@ -337,7 +337,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const [canSave, setCanSave] = useState(false);
   const { isOpen: isMuxOpen } = useStreamMux();
   const fetchConfigSettings = linuxio.config.get.useFetcher();
-  const { mutate: setConfigRemote } = linuxio.config.set.useJobAction({
+  const { mutate: setConfigRemote } = linuxio.config.set.useAction({
     error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined

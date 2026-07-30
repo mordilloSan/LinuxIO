@@ -113,10 +113,10 @@ const SystemHealth = () => {
   );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    linuxio.system.dismiss_unclean_shutdown.useJobAction();
+    linuxio.system.dismiss_unclean_shutdown.useAction();
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useJobAction({
+    linuxio.system.dismiss_failed_login_alert.useAction({
       success: () => {
         setFailedLoginsOpen(false);
       },

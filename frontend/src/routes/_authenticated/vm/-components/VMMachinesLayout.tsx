@@ -2,12 +2,7 @@ import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
-import {
-  linuxio,
-  openVMConsoleStream,
-  type VMDeleteResult,
-  type VirtualMachine,
-} from "@/api";
+import { linuxio, openVMConsoleStream, type VirtualMachine } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -65,7 +60,7 @@ const VMMachinesLayout = () => {
   // selectedName could delete the previously selected machine.
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   // Deleting undefines the domain before disk cleanup finishes, so the polled
-  // list can drop the row mid-job; this snapshot keeps the dialog mounted
+  // list can drop the row mid-action; this snapshot keeps the dialog mounted
   // until the mutation settles.
   const [pendingDeleteVM, setPendingDeleteVM] = useState<VirtualMachine | null>(
     null,
@@ -91,50 +86,46 @@ const VMMachinesLayout = () => {
     error: fallback,
     toast: VM_TOAST,
   });
-  const deleteMutation = linuxio.virt.delete.useJobStreamAction<VMDeleteResult>(
-    {
-      closeMessage:
-        "VM delete connection closed before final result. Refresh the VM list to check whether deletion completed.",
-      invalidates: [linuxio.virt.list.queryKey()],
-      success: (result, request) => {
-        const deleteResult = normalizeVMDeleteResult(result);
-        const diskText =
-          deleteResult.removed.length > 0
-            ? ` Removed ${deleteResult.removed.length} disk(s).`
-            : "";
-        toast.success(`Deleted ${request.name}.${diskText}`);
-        setDeleteTargetName(null);
-        setPendingDeleteVM(null);
-        vmDetailCache.remove(request.name);
-        vmListCache.set((current) =>
-          current?.filter((vm) => vm.name !== request.name),
-        );
-        if (request.name === selectedName) setSelectedName(null);
-      },
-      error: (error) => {
-        toast.error(getMutationErrorMessage(error, "Failed to delete VM"));
-        setPendingDeleteVM(null);
-      },
+  const deleteMutation = linuxio.virt.delete.useAction({
+    invalidates: [linuxio.virt.list.queryKey()],
+    success: (result, request) => {
+      const deleteResult = normalizeVMDeleteResult(result);
+      const diskText =
+        deleteResult.removed.length > 0
+          ? ` Removed ${deleteResult.removed.length} disk(s).`
+          : "";
+      toast.success(`Deleted ${request.name}.${diskText}`);
+      setDeleteTargetName(null);
+      setPendingDeleteVM(null);
+      vmDetailCache.remove(request.name);
+      vmListCache.set((current) =>
+        current?.filter((vm) => vm.name !== request.name),
+      );
+      if (request.name === selectedName) setSelectedName(null);
     },
-  );
+    error: (error) => {
+      toast.error(getMutationErrorMessage(error, "Failed to delete VM"));
+      setPendingDeleteVM(null);
+    },
+  });
   const deleteTarget =
     liveDeleteTarget ?? (deleteMutation.isPending ? pendingDeleteVM : null);
-  const startMutation = linuxio.virt.start.useJobAction(
+  const startMutation = linuxio.virt.start.useAction(
     actionConfig("VM started", "Failed to start VM"),
   );
-  const shutdownMutation = linuxio.virt.shutdown.useJobAction(
+  const shutdownMutation = linuxio.virt.shutdown.useAction(
     actionConfig("VM shutdown requested", "Failed to shutdown VM"),
   );
-  const rebootMutation = linuxio.virt.reboot.useJobAction(
+  const rebootMutation = linuxio.virt.reboot.useAction(
     actionConfig("VM reboot requested", "Failed to reboot VM"),
   );
-  const forceOffMutation = linuxio.virt.force_off.useJobAction(
+  const forceOffMutation = linuxio.virt.force_off.useAction(
     actionConfig("VM powered off", "Failed to force off VM"),
   );
-  const suspendMutation = linuxio.virt.suspend.useJobAction(
+  const suspendMutation = linuxio.virt.suspend.useAction(
     actionConfig("VM suspended", "Failed to suspend VM"),
   );
-  const resumeMutation = linuxio.virt.resume.useJobAction(
+  const resumeMutation = linuxio.virt.resume.useAction(
     actionConfig("VM resumed", "Failed to resume VM"),
   );
   const actionPending =

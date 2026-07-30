@@ -32,8 +32,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Query[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules").Handle(handleGetMemoryModules),
 		apischema.Query[apischema.NoRequest, *apischema.SystemHealthSummary]("system.get_health_summary").Handle(handlers.handleGetHealthSummary),
 		apischema.Query[apischema.FailedLoginEventsRequest, []apischema.AccountUserLogin]("system.list_failed_login_events", apischema.Privileged()).Handle(handlers.handleListFailedLoginEvents),
-		apischema.Job[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
-		apischema.Job[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
+		apischema.Query[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
+		apischema.Query[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
 		apischema.Query[apischema.NoRequest, string]("system.get_server_time").Handle(handleGetServerTime),
 		apischema.Query[apischema.NoRequest, []string]("system.get_timezones").Handle(handleGetTimezones),
 	)

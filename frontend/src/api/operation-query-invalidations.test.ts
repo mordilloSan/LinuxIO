@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ROUTE_MODES } from "@/api/generated/route-metadata";
-import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
+import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
 const MODES = ROUTE_MODES as Record<string, string>;
 
-describe("JOB_QUERY_INVALIDATIONS", () => {
+describe("OPERATION_QUERY_INVALIDATIONS", () => {
   it("refreshes index-backed data after indexing", () => {
-    expect(JOB_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
+    expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],
       ["linuxio", "filebrowser", "indexer_status"],
       ["linuxio", "filebrowser", "search"],
@@ -20,14 +20,16 @@ describe("JOB_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
-  it("maps only job routes", () => {
-    for (const route of Object.keys(JOB_QUERY_INVALIDATIONS)) {
-      expect(MODES[route], `${route} is not a job route`).toBe("job");
+  it("maps only action or job routes", () => {
+    for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
+      expect(["query", "job"], `${route} is not an operation route`).toContain(
+        MODES[route],
+      );
     }
   });
 
   it("invalidates only real query routes or handler prefixes", () => {
-    for (const [route, keys] of Object.entries(JOB_QUERY_INVALIDATIONS)) {
+    for (const [route, keys] of Object.entries(OPERATION_QUERY_INVALIDATIONS)) {
       for (const queryKey of keys) {
         expect(queryKey[0], `${route}: keys must start with "linuxio"`).toBe(
           "linuxio",
@@ -54,10 +56,10 @@ describe("JOB_QUERY_INVALIDATIONS", () => {
 });
 
 // Files allowed to call queryClient.invalidateQueries directly. Everything
-// else must declare invalidations in JOB_QUERY_INVALIDATIONS (applied by
-// useJobAction/useJobStreamAction and the recovered-jobs stream) or pass an
-// explicit `invalidates` config. Shrink this list over time; never grow it
-// without a reason a manifest entry cannot express.
+// else must declare invalidations in OPERATION_QUERY_INVALIDATIONS (applied by
+// useAction/useJobAction/useJobStreamAction and the recovered-jobs stream) or
+// pass an explicit `invalidates` config. Shrink this list over time; never grow
+// it without a reason a manifest entry cannot express.
 const ALLOWED_INVALIDATE_FILES = new Set([
   // Core invalidation appliers. Feature code that needs path-precise
   // invalidation uses `endpoint.useCache().invalidate(...)` instead.
@@ -79,9 +81,9 @@ describe("invalidation guard", () => {
 
     expect(
       violations,
-      "Job query invalidations belong in api/job-query-invalidations.ts " +
-        "(applied automatically by useJobAction and the recovered-jobs stream) " +
-        "or in a useJobAction `invalidates` config — not in ad-hoc " +
+      "Operation query invalidations belong in api/operation-query-invalidations.ts " +
+        "(applied automatically by useAction/useJobAction and the recovered-jobs stream) " +
+        "or in an action `invalidates` config — not in ad-hoc " +
         "queryClient.invalidateQueries calls.",
     ).toEqual([]);
   });

@@ -158,7 +158,7 @@ const CreateNetworkDialog = ({
   const [internal, setInternal] = useState(false);
 
   const { mutate: createNetwork, isPending: isCreating } =
-    linuxio.docker.create_network.useJobAction({
+    linuxio.docker.create_network.useAction({
       success: () => {
         toast.success(`Network "${networkName}" created successfully`);
         handleClose();
@@ -270,7 +270,7 @@ const DeleteNetworkDialog = ({
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteNetwork, isPending: isDeleting } =
-    linuxio.docker.delete_network.useJobAction();
+    linuxio.docker.delete_network.useAction();
 
   const handleDelete = async () => {
     // Delete networks sequentially

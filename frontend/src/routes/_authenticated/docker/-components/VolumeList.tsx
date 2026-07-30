@@ -72,7 +72,7 @@ const DeleteVolumeDialog = ({
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useJobAction();
+    linuxio.docker.delete_volume.useAction();
   const handleDelete = async () => {
     // Delete volumes sequentially
     const failures: string[] = [];

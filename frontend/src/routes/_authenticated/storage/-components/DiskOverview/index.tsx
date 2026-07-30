@@ -350,7 +350,7 @@ const DiskOverview = () => {
     [nfsMountsData],
   );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    linuxio.storage.unmount_filesystem.useJobAction({
+    linuxio.storage.unmount_filesystem.useAction({
       success: () => {
         toast.success("Filesystem unmounted");
         navigate({
@@ -365,7 +365,7 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    linuxio.storage.create_btrfs_subvolume.useJobAction({
+    linuxio.storage.create_btrfs_subvolume.useAction({
       success: (result) => {
         if (result.path) {
           toast.success(`Created subvolume at ${result.path}`);

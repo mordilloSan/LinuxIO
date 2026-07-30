@@ -152,7 +152,7 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride(null);
   };
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    linuxio.updates.set_auto_updates.useJobAction({
+    linuxio.updates.set_auto_updates.useAction({
       success: () => {
         reset();
         toast.success("Automatic Updates Settings saved");

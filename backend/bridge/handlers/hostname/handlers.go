@@ -9,7 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Job[apischema.HostnameRequest, apischema.NoResponse]("hostname.set_hostname").HandleVoid(handleSetHostname),
+	apischema.Query[apischema.HostnameRequest, apischema.NoResponse]("hostname.set_hostname").HandleVoid(handleSetHostname),
 )
 
 var Routes = api.Routes()

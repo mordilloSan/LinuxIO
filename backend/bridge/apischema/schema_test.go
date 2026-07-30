@@ -53,6 +53,39 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	}
 }
 
+func TestOnlyProgressHandlersRemainJobs(t *testing.T) {
+	remainingProgressJobs := map[string]bool{
+		"filebrowser.resource_patch": true,
+		"virt.create":                true,
+	}
+	modes := map[bridgeipc.Mode]int{}
+
+	for _, route := range handlers.Routes {
+		modes[route.Mode]++
+		if route.Kind != apischema.KindHandler || route.Mode != bridgeipc.ModeJob {
+			continue
+		}
+		if !remainingProgressJobs[route.Route] {
+			t.Errorf("%s is a progressless handler route but remains a job", route.Route)
+			continue
+		}
+		delete(remainingProgressJobs, route.Route)
+	}
+
+	if len(remainingProgressJobs) != 0 {
+		t.Errorf("expected progress handler jobs are missing: %v", remainingProgressJobs)
+	}
+	if got, want := modes[bridgeipc.ModeQuery], 203; got != want {
+		t.Errorf("query route count = %d, want %d", got, want)
+	}
+	if got, want := modes[bridgeipc.ModeJob], 21; got != want {
+		t.Errorf("job route count = %d, want %d", got, want)
+	}
+	if got, want := modes[bridgeipc.ModeDuplex], 6; got != want {
+		t.Errorf("duplex route count = %d, want %d", got, want)
+	}
+}
+
 func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -21,22 +21,22 @@ vi.mock("@/api", async (importOriginal) => {
       network: {
         ...actual.linuxio.network,
         disable_connection: {
-          useJobAction: () => ({
+          useAction: () => ({
             isPending: false,
             mutate: mocks.disableConnection,
           }),
         },
         enable_connection: {
-          useJobAction: () => ({
+          useAction: () => ({
             isPending: false,
             mutate: mocks.enableConnection,
           }),
         },
         set_ipv4: {
-          useJobAction: () => ({ isPending: false, mutate: mocks.setIPv4 }),
+          useAction: () => ({ isPending: false, mutate: mocks.setIPv4 }),
         },
         set_ipv4_manual: {
-          useJobAction: () => ({
+          useAction: () => ({
             isPending: false,
             mutate: mocks.setIPv4Manual,
           }),

@@ -345,7 +345,7 @@ const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
     serverToBrowse ? 500 : 0,
   );
   const { mutate: mountNFS, isPending: isMounting } =
-    linuxio.storage.mount_nfs.useJobAction({
+    linuxio.storage.mount_nfs.useAction({
       success: `NFS share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount NFS share",
@@ -507,7 +507,7 @@ const RemoveDialog = ({ open, onClose, mount }: RemoveDialogProps) => {
       : `Unmounted ${mount.mountpoint}`
     : `Removed saved entry for ${mount?.mountpoint}`;
   const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_nfs.useJobAction({
+    linuxio.storage.unmount_nfs.useAction({
       success: removedMessage,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
@@ -621,7 +621,7 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
     });
   };
   const { mutate: remountNFS, isPending: isRemounting } =
-    linuxio.storage.remount_nfs.useJobAction({
+    linuxio.storage.remount_nfs.useAction({
       success: "NFS mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
@@ -842,16 +842,14 @@ const NFSMounts = ({
       refetchInterval: 10000,
     }),
   );
-  const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useJobAction(
-    {
-      success: "NFS entry mounted",
-      warning: (result) => result.warning,
-      error: "Failed to mount NFS entry",
-      toast: STORAGE_TOAST_META,
-      options: { onSettled: () => setMountingMountpoint(null) },
-    },
-  );
-  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useJobAction({
+  const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useAction({
+    success: "NFS entry mounted",
+    warning: (result) => result.warning,
+    error: "Failed to mount NFS entry",
+    toast: STORAGE_TOAST_META,
+    options: { onSettled: () => setMountingMountpoint(null) },
+  });
+  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useAction({
     // The message needs `variables`, so the toast stays in a callback; the
     // warning affordance still owns the warning case.
     success: (result, variables) => {

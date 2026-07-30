@@ -113,7 +113,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { useState } = await import("react");
-  // Mirrors useJobAction: on success runs invalidates -> success ->
+  // Mirrors useAction: on success runs invalidates -> success ->
   // options.onSuccess, with the unwrapped job result (undefined here).
   const jobAction = (
     fn: (request: unknown) => unknown,
@@ -198,6 +198,40 @@ vi.mock("@/api", async (importOriginal) => {
       mutateAsync: run,
     };
   };
+  const useDirectActionMock = (
+    runAction: (request: unknown) => Promise<unknown>,
+    config?: JobActionConfig,
+  ) => {
+    const [isPending, setIsPending] = useState(false);
+    const run = async (request: unknown) => {
+      setIsPending(true);
+      try {
+        const result = await runAction(request);
+        if (typeof config?.invalidates === "function") {
+          config.invalidates(result, request);
+        }
+        if (typeof config?.success === "function") {
+          config.success(result, request);
+        }
+        config?.options?.onSuccess?.(result, request);
+        return result;
+      } catch (error) {
+        if (typeof config?.error === "function") {
+          config.error(error, request);
+        }
+        throw error;
+      } finally {
+        setIsPending(false);
+      }
+    };
+    return {
+      isPending,
+      mutate: (request: unknown) => {
+        void run(request).catch(() => undefined);
+      },
+      mutateAsync: run,
+    };
+  };
   const resourceGet = Object.assign(mocks.resourceGet, {
     queryKey: (request: { path: string }) => [
       "linuxio",
@@ -216,7 +250,7 @@ vi.mock("@/api", async (importOriginal) => {
     useFetcher: () => (request: { path: string }) => mocks.resourceGet(request),
   });
   const resourcePost = Object.assign(mocks.resourcePost, {
-    useJobAction: (config?: JobActionConfig) =>
+    useAction: (config?: JobActionConfig) =>
       jobAction(mocks.resourcePost, config),
   });
   const resourceStat = Object.assign(mocks.resourceStat, {
@@ -239,11 +273,11 @@ vi.mock("@/api", async (importOriginal) => {
             useJobStreamActionMock(mocks.virtCreate, config),
         }),
         delete: Object.assign(mocks.virtDelete, {
-          useJobStreamAction: (config?: JobStreamActionConfig) =>
-            useJobStreamActionMock(mocks.virtDelete, config),
+          useAction: (config?: JobActionConfig) =>
+            useDirectActionMock(mocks.virtDelete, config),
         }),
         force_off: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.forceOff, config),
         },
         get: {
@@ -279,23 +313,23 @@ vi.mock("@/api", async (importOriginal) => {
           }),
         },
         reboot: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.reboot, config),
         },
         resume: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.resume, config),
         },
         shutdown: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.shutdown, config),
         },
         start: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.start, config),
         },
         suspend: {
-          useJobAction: (config?: JobActionConfig) =>
+          useAction: (config?: JobActionConfig) =>
             jobAction(mocks.mutations.suspend, config),
         },
       },
@@ -398,9 +432,7 @@ beforeEach(() => {
     fakeJobSnapshot("job-create", "virt.create"),
   );
   mocks.virtDelete.mockReset();
-  mocks.virtDelete.mockResolvedValue(
-    fakeJobSnapshot("job-delete", "virt.delete"),
-  );
+  mocks.virtDelete.mockResolvedValue({ failed: [], removed: [] });
   mocks.virtGetCacheRemove.mockReset();
   mocks.preflight = {
     ...mocks.readyPreflight,
@@ -596,9 +628,9 @@ describe("Virtual Machines page", () => {
     );
   });
 
-  it("keeps the delete dialog open while the delete job outlives the list row", async () => {
+  it("keeps the delete dialog open while the delete action is pending", async () => {
     let resolveDelete!: (result: unknown) => void;
-    mocks.waitForStreamResult.mockImplementationOnce(
+    mocks.virtDelete.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveDelete = resolve;
@@ -617,7 +649,7 @@ describe("Virtual Machines page", () => {
     );
 
     // The backend undefines the domain before disk cleanup finishes, so the
-    // polled list drops the row while the delete job is still running.
+    // polled list drops the row while the delete action is still pending.
     mocks.listVMs = [];
     act(() => {
       queryClient.setQueryData(linuxio.virt.list.queryKey(), []);
@@ -638,8 +670,8 @@ describe("Virtual Machines page", () => {
     );
   });
 
-  it("does not show delete success when the delete job fails", async () => {
-    mocks.waitForStreamResult.mockRejectedValueOnce(
+  it("does not show delete success when the delete action fails", async () => {
+    mocks.virtDelete.mockRejectedValueOnce(
       new Error("Domain not found: no domain with matching name 'alpha'"),
     );
     const { user } = await renderVMPage();

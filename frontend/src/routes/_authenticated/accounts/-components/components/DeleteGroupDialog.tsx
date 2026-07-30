@@ -34,7 +34,7 @@ const DeleteGroupDialog = ({
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteGroup, isPending: isDeleting } =
-    linuxio.accounts.delete_group.useJobAction();
+    linuxio.accounts.delete_group.useAction();
 
   const handleDelete = async () => {
     const failures: string[] = [];

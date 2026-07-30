@@ -6,8 +6,8 @@
  *                            useQueries({ queries: paths.map((path) =>
  *                              linuxio.filebrowser.dir_size.queryOptions(path)) })
  *    Event-driven commands:  linuxio.docker.validate_compose.useAction({ error })
- *    Job routes:             linuxio.docker.start_container.useJobAction({ invalidates, success, error })
- *                            linuxio.docker.compose.useJobStreamAction({ onProgress })
+ *    Direct action routes:   linuxio.docker.start_container.useAction({ invalidates, success, error })
+ *    Progress job routes:    linuxio.docker.compose.useJobStreamAction({ onProgress })
  *    Loader/effect reads:    linuxio.jobs.list.useFetcher()
  *    Cache surgery:          linuxio.virt.list.useCache().set(updater)
  *
@@ -40,7 +40,6 @@ import type {
   HandlerName,
 } from "./generated/linuxio-types";
 import { getRouteMode, routeName } from "./generated/route-metadata";
-import { JOB_QUERY_INVALIDATIONS } from "./job-query-invalidations";
 import {
   isJobSnapshot,
   isTerminalJobState,
@@ -52,6 +51,7 @@ import {
 import { openJobAttachStream } from "./linuxio";
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
+import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
 import {
   endpointQueryKey,
   endpointQueryPrefix,
@@ -138,7 +138,7 @@ type MutationOptions<TRequest, TResult> = Omit<
 export interface ActionConfig<TRequest, TResult> {
   /**
    * Query keys to invalidate after success (static, or derived from
-   * result/variables). Defaults to the route's `JOB_QUERY_INVALIDATIONS`
+   * result/variables). Defaults to the route's `OPERATION_QUERY_INVALIDATIONS`
    * manifest
    * entry; pass `[]` to opt out, or a value to override the manifest.
    */
@@ -338,13 +338,11 @@ export interface CommandEndpoint<
    * unwraps the job result, and handles invalidation + toasts declaratively.
    *
    * @example
-   * const { mutate } = linuxio.docker.start_container.useJobAction({
-   *   invalidates: [linuxio.docker.list_containers.queryKey()],
-   *   success: "Container started",
-   *   error: "Failed to start container",
-   *   toast: { label: "Open Docker", to: "/docker" },
+   * const { mutate } = linuxio.filebrowser.resource_patch.useJobAction({
+   *   success: "Resource updated",
+   *   error: "Failed to update resource",
    * });
-   * mutate({ containerId });
+   * mutate({ action: "rename", src: "/old-name", dst: "/new-name" });
    */
   useJobAction: (
     config?: ActionConfig<TRequest, TResult>,
@@ -428,7 +426,7 @@ function useActionMutation<TResult>(
       const keys =
         typeof invalidates === "function"
           ? invalidates(result, variables)
-          : (invalidates ?? JOB_QUERY_INVALIDATIONS[route] ?? []);
+          : (invalidates ?? OPERATION_QUERY_INVALIDATIONS[route] ?? []);
       for (const queryKey of keys) {
         void queryClient.invalidateQueries({ queryKey });
       }

@@ -45,7 +45,7 @@ const EditGroupMembersDialog = ({
   const usersList = Array.isArray(users) ? users : [];
 
   const { mutate: modifyGroupMembers, isPending } =
-    linuxio.accounts.modify_group_members.useJobAction({
+    linuxio.accounts.modify_group_members.useAction({
       success: () => {
         toast.success(`Group "${group.name}" members updated`);
         onClose();

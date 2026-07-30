@@ -66,14 +66,12 @@ const DockerInfo = () => {
     },
     [theme],
   );
-  const { mutate: startContainer } =
-    linuxio.docker.start_container.useJobAction();
-  const { mutate: stopContainer } =
-    linuxio.docker.stop_container.useJobAction();
+  const { mutate: startContainer } = linuxio.docker.start_container.useAction();
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction();
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useJobAction();
+    linuxio.docker.restart_container.useAction();
   const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useJobAction();
+    linuxio.docker.remove_container.useAction();
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();

@@ -33,13 +33,13 @@ function NavbarUserDropdown() {
 
   // Power actions: the server may die before responding, so errors are
   // expected and only logged.
-  const { mutate: reboot } = linuxio.control.reboot.useJobAction({
+  const { mutate: reboot } = linuxio.control.reboot.useAction({
     error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },
   });
 
-  const { mutate: powerOff } = linuxio.control.power_off.useJobAction({
+  const { mutate: powerOff } = linuxio.control.power_off.useAction({
     error: (error) => {
       console.warn("Power off error (may be expected):", error);
     },

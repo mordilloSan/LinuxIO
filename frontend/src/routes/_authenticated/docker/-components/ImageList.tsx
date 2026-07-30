@@ -50,7 +50,7 @@ const DeleteImageDialog = ({
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteImage, isPending: isDeleting } =
-    linuxio.docker.delete_image.useJobAction();
+    linuxio.docker.delete_image.useAction();
   const handleDelete = async () => {
     // Delete images sequentially
     const failures: string[] = [];

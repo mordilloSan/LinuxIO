@@ -279,7 +279,7 @@ const MonitoringSettingsSection = () => {
     mergeMonitoringDraft,
   );
 
-  const setConfigMutation = linuxio.monitoring.set_config.useJobAction({
+  const setConfigMutation = linuxio.monitoring.set_config.useAction({
     success: (result) => {
       monitoringConfigCache.set(result.config);
       setDraftPatch({});
@@ -293,7 +293,7 @@ const MonitoringSettingsSection = () => {
     },
     error: "Failed to save monitoring settings",
   });
-  const restartMutation = linuxio.monitoring.restart.useJobAction({
+  const restartMutation = linuxio.monitoring.restart.useAction({
     success: () => {
       setRestartRequired(false);
       toast.success("go-monitoring restarted");

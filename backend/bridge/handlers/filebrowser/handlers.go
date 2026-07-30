@@ -12,7 +12,7 @@ var api = apischema.Bindings(
 	apischema.Query[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get").Handle(handleResourceGet),
 	apischema.Query[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
 	apischema.Query[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch").Handle(handleExistsBatch),
-	apischema.Job[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
+	apischema.Query[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
 	apischema.Job[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").HandleEvents(handleResourcePatch),
 	apischema.Query[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
 	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),

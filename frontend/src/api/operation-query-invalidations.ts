@@ -47,12 +47,12 @@ const VM_KEYS = [
 ];
 
 /**
- * Single source of truth for which query caches a completed job makes stale,
- * keyed by route (== job type).
+ * Single source of truth for which query caches a completed operation makes
+ * stale, keyed by route.
  *
- * Consumed from both job lifecycles:
- * - `useJobAction`/`useJobStreamAction` use the entry as the default
- *   `invalidates` for jobs started and awaited locally.
+ * Consumed from direct and job lifecycles:
+ * - `useAction`/`useJobAction`/`useJobStreamAction` use the entry as the
+ *   default `invalidates` for operations started and awaited locally.
  * - `useRecoveredJobs` applies the entry when a job reaches a terminal state
  *   on the events stream with no local handler (page reload, other session),
  *   skipping jobs registered via `markJobLocallyHandled`.
@@ -60,7 +60,7 @@ const VM_KEYS = [
  * Routes without an entry invalidate nothing by default — their call sites
  * own invalidation explicitly (conditional logic, cache writes, refetches).
  */
-export const JOB_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
+export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   // Package-update streams may detach when the Updates layout unmounts; the
   // global jobs event owner performs this invalidation on terminal state.
   "packages.update": [endpointQueryPrefix("updates.get_updates_basic")],

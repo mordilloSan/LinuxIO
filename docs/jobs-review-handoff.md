@@ -9,32 +9,37 @@
 
 > "right now every mutation is a job. Full review of jobs code. I want to keep react query mutations clean."
 
-That is still the goal, and **the main body of it has not started.** Everything completed so far is preparation and defect cleanup that the preparation exposed. Read the next two sections before picking a task.
+That goal is now complete for the existing handler-form routes. The migration
+moved all 106 progressless handlers to the normal Query/`useAction` path; the
+preparation and defect cleanup that made the migration safe are recorded below.
 
-### What the review found
+### What the review found and the migration left
 
-The jobs framework is now on a sounder footing — `jobs.go` / `router.go` are careful, well-tested concurrency code, including the physical-execution admission fix described below. The remaining problem is **scope**: it is applied to ~107 routes that need one round trip and a plain React Query mutation.
+The jobs framework is now on a sounder footing — `jobs.go` / `router.go` are careful, well-tested concurrency code, including the physical-execution admission fix described below. The review's remaining problem was **scope**: it was applied to ~107 routes that needed one round trip and a plain React Query mutation.
 
-The codebase had already drawn the correct line without knowing it:
+The codebase had already drawn the correct line without knowing it. The final
+route inventory now reflects that line:
 
 | Declaration | Count | Emits progress? | In the frontend recovery whitelist? |
 | --- | ---: | --- | --- |
 | `apischema.Runner[…].Run(…)` | 19 | all | **15 of 19 — exactly the whitelist** |
-| `apischema.Job[…].Handle(…)` | 108 | 2 | **0** |
-| `apischema.Query` | 97 | — | — |
+| `apischema.Job[…].HandleEvents(…)` | 2 | both | **0** |
+| `apischema.Query` | 203 | — | — |
 | `apischema.DuplexRoute` | 6 | — | — |
 
 The 15 `Runner` routes (`filebrowser.compress/extract/copy_batch/move_batch/index/upload/upload_batch/download/archive/chmod_batch/delete_batch`, `docker.compose`, `packages.update`, `storage.run_smart_test`, `system.install_capability`) are **identical** to the 15 types in `frontend/src/constants/backgroundJobTypes.ts` and the `useRecoveredJobs` switch. The other 4 Runners are `NoEndpoint()` log-follow / app-update streams.
 
 Only 2 handler files emit progress at all: `filebrowser/filebrowser.go` and `virt/handlers.go`.
 
-**Real jobs ≈ 21. The other ~107 are mutations.** The frontend agrees: **8** `useJobStreamAction` call sites vs **117** `useJobAction`.
+**Real jobs are now the 21 job-mode routes.** The frontend has one production
+`useJobAction` call site (`filebrowser.resource_patch`) and seven
+`useJobStreamAction` call sites; bounded commands use `useAction`.
 
-### What "every mutation is a job" costs
+### What "every mutation is a job" cost
 
-1. **Up to 3 wire ops per mutation instead of 1** — route request (server holds ≤25 ms hoping the job settles, `router.go` `InitialJobSettleTimeout`) → `jobs.attach` (a new yamux stream) → `jobs.get`. Anything that shells out misses the 25 ms window, so this is the normal path.
-2. **`ActionDefault` silently serializes every mutation.** `.Handle()` takes no policy, so every handler-form job route gets `MaxActivePerOwnerRoute: 1`, `QueueLimit: 16`, `Timeout: 120min`. One container start at a time per user; the 18th concurrent → `429 job queue full`. Nobody chose that for `accounts.lock_user`.
-3. **Two possible owners per job → four dedup mechanisms** on the frontend: `locallyHandledJobIds` + 5 s retention (`api/jobs.ts`), five ref-sets in `useBackgroundJobRuntime.ts`, the `terminalJobFeedback` registry, and `useTerminalFeedbackOwnership`. This is the machinery behind the whole B1/B2/D5/D6 cluster in `CODE_REVIEW_FINDINGS.md`. Restrict jobs to ~21 routes and the ambiguity shrinks to those.
+1. **Up to 3 wire ops per mutation instead of 1** — route request (server holds ≤25 ms hoping the job settles, `router.go` `InitialJobSettleTimeout`) → `jobs.attach` (a new yamux stream) → `jobs.get`. Anything that shelled out missed the 25 ms window, so this was the normal path.
+2. **`ActionDefault` silently serialized every mutation.** `.Handle()` took no policy, so every handler-form job route got `MaxActivePerOwnerRoute: 1`, `QueueLimit: 16`, `Timeout: 120min`. One container start at a time per user; the 18th concurrent → `429 job queue full`. Nobody chose that for `accounts.lock_user`.
+3. **Two possible owners per job → four dedup mechanisms** on the frontend: `locallyHandledJobIds` + 5 s retention (`api/jobs.ts`), five ref-sets in `useBackgroundJobRuntime.ts`, the `terminalJobFeedback` registry, and `useTerminalFeedbackOwnership`. This is the machinery behind the whole B1/B2/D5/D6 cluster in `CODE_REVIEW_FINDINGS.md`. Restricting jobs to 21 routes has confined the ambiguity to those.
 4. **~3,240 non-test frontend lines** in `hooks/backgroundJobs/` + contexts + `api/jobs.ts`, serving 8 call sites.
 
 ---
@@ -82,17 +87,17 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 ### Verification (all green)
 
 ```
-make check-backend  # B7/backend audit
-make generate       # regenerated frontend contracts after schema changes
-make test           # final cross-stack audit: backend clean; 99 frontend files / 552 tests
-git diff --check    # clean
+make generate     # regenerate route metadata after schema changes
+make test         # cross-stack audit: backend clean; 99 frontend files / 552 tests
+git diff --check  # clean
 ```
 
 **`make generate` leaves the generated TS unformatted.** The committed files are post-`oxfmt`, so a bare `make generate` produces ~700 lines of formatting churn. Always follow it with:
 ```
-cd frontend && npx oxfmt -c config/.oxfmtrc.json src/api/generated/*.ts
+make test
 ```
-Folding that into the `generate` target would remove the trap.
+The frontend lint phase formats the generated files. Folding that formatting
+into the `generate` target would remove the trap.
 
 ---
 
@@ -129,24 +134,27 @@ sed -n '/handleEventsInventory = map/,/^}/p' backend/bridge/handlers/handler_pat
 
 ---
 
-## Next: the actual goal
+## Direct-action migration
 
-**The flip has not started.** Turning the ~107 progressless `Job` routes into Query/Action is the deliverable.
+**Completed:** all 106 progressless handler-form `Job` routes now use the
+normal Query/`useAction` request-response path. The only handler-form jobs
+left are the two progress emitters, `filebrowser.resource_patch` and
+`virt.create`; the 19 `Runner` routes are unchanged. Generated route modes are
+now **203 Query, 21 Job, and 6 Duplex**, enforced by an apischema test.
 
 The two prerequisite findings that could not wait for the flip are already closed:
 
 - **Job-snapshot secrets:** raw requests were removed at the snapshot boundary for every route, including `virt.create`; this no longer depends on moving credential routes to Query.
 - **B7:** admission slots remain occupied until physical handler exit, independently of the job's public terminal state.
 
-### Suggested first batch: `accounts`
+### Self-severing action decision
 
-Nothing in it emits progress, nothing plausibly needs job semantics, and it contains two of the four credential routes.
-
-Three questions per route — these are the actual work:
-
-1. **Does it rely on `ActionDefault`'s accidental serialization** (`MaxActivePerOwnerRoute: 1`)? Decide explicitly rather than inherit it.
-2. **Is it self-severing?** `control.reboot`/`power_off`/`logoff` and `network.set_ipv4*` destroy the connection by design and need the plan's `expected_loss` / `native_handoff` treatment before Query mode is safe. **Not in batch one.**
-3. **Call-site change** — `useJobAction` → `useAction` for that handler's routes.
+`control.reboot`, `control.power_off`, `control.logoff`, and all six network
+apply routes now use direct actions too. Their handlers complete native service
+acceptance before connection loss can occur; the UI must treat a lost response
+as an expected ambiguous outcome and must not retry it automatically. The route
+declarations carry this decision until the plan's explicit
+`native_handoff`/`expected_loss` manifest fields are introduced.
 
 Two properties that make this safer than it looks:
 
@@ -157,7 +165,9 @@ Two properties that make this safer than it looks:
 
 - Touching the transport. WebSocket + yamux is measured and fine.
 - Starting the durable-jobs core (plan Stages 9–14). Durability beyond the bridge is *new* scope, not a restoration, and is not on the path to "React Query mutations stay clean."
-- Adding `VoidQuery`/`VoidJob` constructors now. The design is right (compile-time void/value separation, no runtime panic) but it adds constructor vocabulary the plan already criticises, and would rewrite 62 declarations that the Action migration will rewrite anyway. Fold it into the `Action` contract at Stage 1.
+- Adding `VoidQuery`/`VoidJob` constructors now. `HandleVoid` already enforces
+  the binding boundary; mode-specific generated endpoint types and any
+  additional constructor vocabulary remain Stage 1 contract work.
 
 ---
 

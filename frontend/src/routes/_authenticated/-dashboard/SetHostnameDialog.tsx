@@ -23,7 +23,7 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
   const toast = useScopedToast(DASHBOARD_TOAST_META);
   const [hostname, setHostname] = useState(current);
 
-  const { mutate, isPending } = linuxio.hostname.set_hostname.useJobAction({
+  const { mutate, isPending } = linuxio.hostname.set_hostname.useAction({
     success: () => {
       toast.success("Hostname updated successfully");
       onClose();

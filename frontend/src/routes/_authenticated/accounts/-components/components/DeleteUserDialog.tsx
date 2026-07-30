@@ -34,7 +34,7 @@ const DeleteUserDialog = ({
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteUser, isPending: isDeleting } =
-    linuxio.accounts.delete_user.useJobAction();
+    linuxio.accounts.delete_user.useAction();
 
   const handleDelete = async () => {
     const failures: string[] = [];

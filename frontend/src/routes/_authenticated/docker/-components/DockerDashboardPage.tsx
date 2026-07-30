@@ -41,7 +41,7 @@ const DockerDashboardPage = () => {
     [containers],
   );
   const { mutate: startAllStopped, isPending: isStartingAll } =
-    linuxio.docker.start_all_stopped.useJobAction({
+    linuxio.docker.start_all_stopped.useAction({
       success: (result) => {
         toast.success(`Started ${result.started} container(s)`);
       },
@@ -49,7 +49,7 @@ const DockerDashboardPage = () => {
       toast: DOCKER_TOAST_META,
     });
   const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useJobAction();
+    linuxio.docker.stop_container.useAction();
   const isStoppingAll = stoppingContainerIds.size > 0;
   const handleStopAllRunning = async () => {
     if (stopAllInFlightRef.current || runningContainers.length === 0) return;
@@ -83,7 +83,7 @@ const DockerDashboardPage = () => {
     }
   };
   const { mutate: systemPrune, isPending: isPruning } =
-    linuxio.docker.system_prune.useJobAction({
+    linuxio.docker.system_prune.useAction({
       success: () => {
         toast.success("Docker prune completed");
         setPruneDialogOpen(false);

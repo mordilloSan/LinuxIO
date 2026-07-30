@@ -200,14 +200,13 @@ export default function CreateVMDialog({
     ),
   );
   const { refetch: refetchPreflight } = preflight;
-  const createISOFolderMutation =
-    linuxio.filebrowser.resource_post.useJobAction({
-      invalidates: (_result, variables) => [
-        linuxio.filebrowser.resource_get.queryKey({
-          path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
-        }),
-      ],
-    });
+  const createISOFolderMutation = linuxio.filebrowser.resource_post.useAction({
+    invalidates: (_result, variables) => [
+      linuxio.filebrowser.resource_get.queryKey({
+        path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
+      }),
+    ],
+  });
   const managedISOPath =
     preflight.data?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
   const managedCloudPath =

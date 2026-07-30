@@ -54,7 +54,7 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   const groupsList = Array.isArray(groups) ? groups : [];
 
   const { mutate: modifyUser, isPending } =
-    linuxio.accounts.modify_user.useJobAction({
+    linuxio.accounts.modify_user.useAction({
       success: () => {
         toast.success(`User "${user.username}" updated successfully`);
         onClose();

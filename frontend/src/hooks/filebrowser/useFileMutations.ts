@@ -71,7 +71,7 @@ export const useFileMutations = ({
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
-  const createFileMutation = linuxio.filebrowser.resource_post.useJobAction({
+  const createFileMutation = linuxio.filebrowser.resource_post.useAction({
     success: () => {
       invalidateListing();
       toast.success("File created successfully");
@@ -88,7 +88,7 @@ export const useFileMutations = ({
     [createFileMutation, normalizedPath],
   );
 
-  const createFolderMutation = linuxio.filebrowser.resource_post.useJobAction({
+  const createFolderMutation = linuxio.filebrowser.resource_post.useAction({
     success: () => {
       invalidateListing();
       toast.success("Folder created successfully");

@@ -56,7 +56,7 @@ export const useContainerAutoUpdateState = () => {
   // This hook reconciles the cache itself (optimistic setQueryData + save
   // loop), so opt out of the manifest invalidation.
   const { mutateAsync: saveAutoUpdateOptions } =
-    linuxio.docker.set_container_auto_update.useJobAction({ invalidates: [] });
+    linuxio.docker.set_container_auto_update.useAction({ invalidates: [] });
 
   const containerNames =
     query.data?.options?.container_names ??
