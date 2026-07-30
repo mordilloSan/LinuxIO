@@ -8,6 +8,7 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
+import { getRouteMode } from "@/api/generated/route-metadata";
 import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
 import { openJobAttachStream } from "@/api/linuxio";
 import * as core from "@/api/linuxio-core";
@@ -107,6 +108,22 @@ describe("createEndpoint", () => {
 
     expect(() =>
       createEndpoint("system", "get_cpu_info", { kind: "none" }).useJobAction(),
+    ).toThrow(/not mutation\/job/);
+  });
+
+  // jobs.cancel returns the *target* job's snapshot rather than starting one.
+  // While it was declared job-mode, `useJobAction` type-checked, then fed that
+  // snapshot to waitForJobCompletion, which threw 499 for an already-canceled
+  // job or opened a second attach stream for a still-running one. Query mode is
+  // what makes `useJobAction` on it fail instead.
+  it("keeps jobs.cancel out of job mode so useJobAction cannot await it", () => {
+    expect(getRouteMode("jobs.cancel")).toBe("query");
+
+    expect(() =>
+      createEndpoint("jobs", "cancel", {
+        kind: "field",
+        field: "jobId",
+      }).useJobAction(),
     ).toThrow(/not mutation\/job/);
   });
 });

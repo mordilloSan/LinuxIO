@@ -39,8 +39,8 @@ const UpdateStatus = ({
         scan: `recoveryPending` is true on every entry into the section, and
         painting "Preparing… 0%" before a job is found reports an update that
         may not exist. Cancelability is supplied separately by the controller:
-        a recovered attachment exposes it as soon as it has a live job, while a
-        finished-but-still-visible panel deliberately does not.
+        a recovered attachment exposes it as soon as it has a live job, then a
+        cancellation request hides it while the terminal frame is pending.
       */}
       <UpdateActions
         currentPackage={updatingPackage}

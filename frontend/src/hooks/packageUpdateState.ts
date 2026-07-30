@@ -1,4 +1,4 @@
-export type PackageUpdatePhase = "idle" | "running" | "finishing";
+export type PackageUpdatePhase = "idle" | "running";
 
 export interface PackageUpdateState {
   error: string | null;
@@ -23,7 +23,6 @@ type PackageUpdateAction =
   | { type: "progress"; percentage?: number }
   | { type: "package"; packageName: string; status?: string; event?: string }
   | { type: "status"; status: string; event?: string }
-  | { type: "finishing" }
   | { type: "complete" }
   | { type: "failed"; error: string }
   | { type: "canceled" }
@@ -70,16 +69,15 @@ export function packageUpdateReducer(
         eventLog: appendEvent(state.eventLog, action.event),
         status: action.status,
       };
-    case "finishing":
+    case "complete":
       return {
         ...state,
         eventLog: appendEvent(state.eventLog, "Finished"),
-        phase: "finishing",
+        phase: "idle",
         progress: 100,
-        status: "Finished",
+        status: null,
+        updatingPackage: null,
       };
-    case "complete":
-      return { ...state, phase: "idle", status: null, updatingPackage: null };
     case "failed":
       return {
         ...state,

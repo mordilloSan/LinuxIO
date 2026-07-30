@@ -41,28 +41,22 @@ describe("packageUpdateReducer", () => {
     ]);
   });
 
-  it("makes finishing visible but no longer running, then gives errors and cancellation terminal state", () => {
+  it("completes immediately and gives errors and cancellation terminal state", () => {
     const running = packageUpdateReducer(initialPackageUpdateState, {
       type: "start",
       packageName: "nginx",
       status: "Initializing",
       event: "Initializing update transaction",
     });
-    const finishing = packageUpdateReducer(running, { type: "finishing" });
+    const complete = packageUpdateReducer(running, { type: "complete" });
 
-    expect(finishing).toMatchObject({
-      phase: "finishing",
+    expect(complete).toMatchObject({
+      phase: "idle",
       progress: 100,
-      status: "Finished",
-      updatingPackage: "nginx",
+      status: null,
+      updatingPackage: null,
     });
-    expect(packageUpdateReducer(finishing, { type: "complete" })).toMatchObject(
-      {
-        phase: "idle",
-        status: null,
-        updatingPackage: null,
-      },
-    );
+    expect(complete.eventLog.at(-1)).toBe("Finished");
     expect(packageUpdateReducer(running, { type: "canceled" })).toMatchObject({
       error: "Update cancelled",
       phase: "idle",

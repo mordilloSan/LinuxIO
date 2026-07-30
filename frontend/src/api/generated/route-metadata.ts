@@ -106,7 +106,7 @@ export const ROUTE_MODES = {
   "indexer.set_config": "job",
   "indexer.set_timer_interval": "job",
   "jobs.attach": "duplex",
-  "jobs.cancel": "job",
+  "jobs.cancel": "query",
   "jobs.data": "duplex",
   "jobs.events": "duplex",
   "jobs.get": "query",

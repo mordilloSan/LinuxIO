@@ -49,20 +49,20 @@ describe("UpdateStatus", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the Finished hold visible without exposing cancel", () => {
+  it("keeps progress visible without cancel after cancellation is requested", () => {
     render(
       <UpdateStatus
         {...baseProps}
         canCancel={false}
         isUpdating
         onCancel={vi.fn()}
-        progress={100}
-        status="Finished"
+        progress={50}
+        status="Installing"
         updatingPackage="nginx"
       />,
     );
 
-    expect(screen.getByText("Finished: nginx")).toBeInTheDocument();
+    expect(screen.getByText("Installing: nginx")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Cancel update" }),
