@@ -38,12 +38,11 @@ The router has one application-wide policy:
 
 ```ts
 defaultPreload: "intent",
-defaultPreloadDelay: 150,
+defaultPreloadDelay: 50,
 defaultPreloadStaleTime: 0,
 ```
 
-Links inherit this policy. There are no per-link or per-route preload delays,
-and no `250 ms` override. `defaultPreloadStaleTime: 0` lets TanStack Query,
+Links inherit this policy. There are no per-link or per-route preload delays. `defaultPreloadStaleTime: 0` lets TanStack Query,
 rather than the router cache, decide whether route data is fresh.
 
 The Vite router plugin runs before the React plugin with

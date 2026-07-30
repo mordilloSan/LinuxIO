@@ -94,7 +94,7 @@ const router = createRouter({
   defaultPendingMinMs: 0,
   defaultPendingMs: 0,
   defaultPreload: "intent",
-  defaultPreloadDelay: 150,
+  defaultPreloadDelay: 50,
   history: createBrowserHistory(),
   routeTree,
 });
