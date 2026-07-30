@@ -301,9 +301,28 @@ A loader plus a mounted observer is not a hybrid architecture — they coordinat
 through one QueryClient entry. Use `useSuspenseQueries` when a component reads
 several.
 
-When a parent loads data for several children, the parent observes it once and
-shares it through a small context — see `VMRouteDataContext` / `useVMRouteData()`
-in `vm/-components/VMPage.tsx`.
+When a parent route loads data that several children need, the children **each
+observe the same options directly**. Do not pass query data down through props or
+a React context: extra observers on one cache entry are free, and each component
+then re-renders only for the data it actually reads.
+
+`/vm` is the worked example. Its loader warms `virt.list` and `virt.preflight`;
+`VMPage` observes both (it owns the poll cadence for the section, since it stays
+mounted throughout), and each child observes only what it needs — `VMImagesPage`
+takes preflight alone, so the 5-second list poll does not re-render it:
+
+```tsx
+const { data: preflight } = useSuspenseQuery(
+  linuxio.virt.preflight.queryOptions({}),
+);
+```
+
+Because the always-mounted parent declares `refetchInterval`, children can omit
+it and still read fresh data — one owner of cadence, no duplicated intervals to
+drift.
+
+The loader is the prefetch-and-readiness layer. The observer is the subscription.
+Both are load-bearing.
 
 ### Loader shapes
 
@@ -411,12 +430,63 @@ loader: ({ context, preload }) => {
   loaders. Currently that means `_authenticated`, `sign-in`, the six tab layouts,
   and `vm/machines`.
 
+### Route data at a glance
+
+Which helper each route uses, and what its loader depends on. `×N` is the number
+of `queryOptions` passed; `+cond` means some are added conditionally. A `—` loader
+means the route inherits its ancestor's.
+
+| Route | File | Loader | Deps | Search | Guard |
+|-------|------|--------|------|--------|-------|
+| `/sign-in` | `sign-in/route.tsx` | — | — | `redirect` | `requireGuest` |
+| *(pathless)* | `_authenticated.tsx` | — | — | — | `requireAuthentication` |
+| `/` | `_authenticated/index.tsx` | `loadRouteQueries` ×16 +cond | — | — | — |
+| `/accounts` | `accounts/route.tsx` | — | — | — | — |
+| `/accounts/` | `accounts/index.tsx` | `loadRouteQueries` ×3 +cond | `user` | `user` +3 | — |
+| `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker` | `docker/route.tsx` | — | — | — | `requireAccess` docker |
+| `/docker/` | `docker/index.tsx` | `loadRouteQueries` ×5 | — | — | — |
+| `/docker/compose` | `docker/compose.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/containers` | `docker/containers.tsx` | `loadRouteQueries` ×2 | — | `container` | — |
+| `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/filebrowser/$` | `filebrowser/$.tsx` | `loadRouteQueries` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
+| `/hardware` | `hardware/route.tsx` | `loadRouteQueries` ×7 | — | — | `requireAccess` lmSensors |
+| `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
+| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `sort`, `tab` | — |
+| `/services` | `services/route.tsx` | — | — | — | — |
+| `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
+| `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
+| `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
+| `/shares` | `shares/route.tsx` | — | — | — | — |
+| `/shares/` | `shares/index.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/shares/mounts` | `shares/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage` | `storage/route.tsx` | — | — | — | — |
+| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs` | — |
+| `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
+| `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
+| `/updates` | `updates/route.tsx` | — | — | — | — |
+| `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
+| `/updates/history` | `updates/history.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
+| `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` libvirt, privileged |
+| `/vm/` | `vm/index.tsx` | — | — | — | — |
+| `/vm/images` | `vm/images.tsx` | — | — | — | — |
+| `/vm/networks` | `vm/networks.tsx` | — | — | — | — |
+| `/vm/machines` | `vm/machines/route.tsx` | — | — | — | — |
+| `/vm/machines/` | `vm/machines/index.tsx` | — | — | — | — |
+| `/vm/machines/$name` | `vm/machines/$name.tsx` | `loadRouteQueries` ×1 | *params* | — | — |
+| `/wireguard` | `wireguard/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` wireguard, privileged |
+
+Paths under `_authenticated/` are shown relative to it. The four `/vm*` rows with
+no loader inherit `/vm`'s — that is the intended shape, not an omission.
+
 ### Who owns which data
 
 | Data | Owner |
 |------|-------|
 | Critical to render the current URL | Closest route loader + `useSuspenseQuery` on the same options |
-| Shared by sibling routes | Loader and observer in the closest common parent |
+| Shared by sibling routes | Loader in the closest common parent; each consumer observes the same options itself |
 | Specific to one child | That child's loader and observer |
 | Dialog, expansion, optional selection | Conditionally mounted or `enabled` `useQuery` |
 | Polling, variable-range charts, progressive | `useQuery`; keep it out of the loader |
@@ -656,10 +726,12 @@ without it the tab uses exact matching and would deselect:
 Changing child routes unmounts the previous child. That is the navigation
 lifecycle, not a cache reset:
 
-- Server state stays in the TanStack Query cache.
+- Server state stays in the TanStack Query cache — siblings re-observe it, they
+  do not receive it as props.
 - Shareable selection and filters belong in validated search params, or in the
   path when they identify the page.
-- State shared by siblings belongs in the closest common parent.
+- Non-server state shared by siblings (drawer open, expanded rows) belongs in the
+  closest common parent.
 - Only genuinely transient UI state stays local to the child.
 
 Do **not** keep every tab mounted and hidden — that keeps observers, polling,
@@ -884,6 +956,8 @@ preference.
 | Call `queryClient.ensureQueryData` in a route | Bypasses transport readiness and the update boundary |
 | Use `Route.useLoaderData()` | Splits the read path; observe the cache instead |
 | Add parallel `queryOptions` factories, duplicate query keys, or `useSomethingQuery` wrappers | The generated endpoint layer is the single definition — see [API Contract](./api-contract.md) |
+| Pass query data to children through props or a React context | Extra observers on one cache entry are free; a shared context value re-renders every consumer on every poll, even ones reading other fields |
+| Wrap a route builder around `createFileRoute` | The plugin matches the literal callee name, so a wrapper silently disables code splitting for that route |
 | Keep every page-level tab mounted and hidden | Keeps observers, polling, and effects alive for invisible pages |
 | Move progressive, polled, or dialog-only queries into a route loader | Guarded by `-query-ownership.test.ts` |
 | Build a generic route builder, component registry, or route catalogue | All previously existed and were removed; file-based routing replaces them |
