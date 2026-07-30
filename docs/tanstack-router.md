@@ -13,8 +13,9 @@ files, where loaders and guards go, and what to do when you add a page.
 - Four shared modules under `src/routes/` supply the primitives every route
   uses: `-auth.ts` (guards), `-loader.ts` (loaders), `-search.ts` (search
   validation), `-components/` (error and not-found UI).
-- Pending, error, and not-found UI are **router-wide defaults**. No route file
-  overrides them.
+- Pending and error UI use **router-wide defaults** with no route overrides.
+  Not-found UI also has a global default, plus deliberate boundaries in
+  `__root.tsx` and `_authenticated.tsx`.
 - The sidebar is *derived* from route `staticData`; it is not a second catalogue
   you have to update.
 - Loaders exist to warm the shared TanStack Query cache and to gate the
@@ -60,8 +61,10 @@ Three files in `frontend/src/router/`:
 
 ### Global defaults
 
-`router/router.tsx` is the only place these are set. No route overrides any of
-them, and `router.test.tsx` asserts that:
+`router/router.tsx` is the only place the global defaults are set. No route
+overrides the error or pending defaults. `__root.tsx` and `_authenticated.tsx`
+deliberately declare local not-found boundaries, described below.
+`router.test.tsx` asserts this policy:
 
 ```ts
 export const router = createRouter({
@@ -221,7 +224,8 @@ Which options you actually need:
 | `validateSearch` | The route owns search params | No search params accepted |
 | `beforeLoad` | Auth, capability, or privilege gating | Inherits `_authenticated` |
 | `staticData` | The route belongs in the sidebar, or is gated | Hidden from sidebar |
-| `errorComponent` / `pendingComponent` / `notFoundComponent` | **Don't** | Router defaults |
+| `errorComponent` / `pendingComponent` | **Don't** | Router defaults |
+| `notFoundComponent` | Only for a deliberate boundary | Router default with fuzzy fallback |
 
 ## Loaders
 
@@ -303,8 +307,10 @@ several.
 
 When a parent route loads data that several children need, the children **each
 observe the same options directly**. Do not pass query data down through props or
-a React context: extra observers on one cache entry are free, and each component
-then re-renders only for the data it actually reads.
+a React context: direct observers share one cache entry, and each component then
+re-renders only for the data it actually reads. Observer options still matter:
+when the parent owns polling, children set `refetchOnMount: false` so mounting a
+tab does not add a stale-query refetch outside that cadence.
 
 `/vm` is the worked example. Its loader warms `virt.list` and `virt.preflight`;
 `VMPage` observes both (it owns the poll cadence for the section, since it stays
@@ -313,13 +319,16 @@ takes preflight alone, so the 5-second list poll does not re-render it:
 
 ```tsx
 const { data: preflight } = useSuspenseQuery(
-  linuxio.virt.preflight.queryOptions({}),
+  linuxio.virt.preflight.queryOptions(
+    {},
+    { refetchOnMount: false },
+  ),
 );
 ```
 
-Because the always-mounted parent declares `refetchInterval`, children can omit
-it and still read fresh data — one owner of cadence, no duplicated intervals to
-drift.
+Because the always-mounted parent declares `refetchInterval`, children omit it
+and disable mount refetches while still reading fresh data — one owner of
+cadence, with no extra intervals or tab-mount requests to drift.
 
 The loader is the prefetch-and-readiness layer. The observer is the subscription.
 Both are load-bearing.
@@ -742,15 +751,27 @@ detail tabs within a single selected disk.
 
 ## Pending, Error, And Not-Found UI
 
-You get all of it from the router defaults. **No route file in `src/routes/`
-declares `errorComponent` or `pendingComponent`** — keep it that way unless you
-have a reason you can write down.
+Error and pending UI come from the router defaults. **No route file in
+`src/routes/` declares `errorComponent` or `pendingComponent`** — keep it that
+way unless you have a reason you can write down. Not-found UI uses the global
+default plus two deliberate local boundaries.
 
 | Situation | Component | Behaviour |
 |-----------|-----------|-----------|
 | Loader in flight > 150 ms | `PageLoader` | Three dots, `role="status"` |
 | Loader or render threw | `RouteError` | Error page with a working retry |
-| No route matched | `NotFoundPage` | `__root__` and `_authenticated` also set it locally, so an unknown authenticated URL keeps the app shell |
+| No route matched | `NotFoundPage` | Fuzzy matching renders the default at the nearest matching route, preserving its parent layout |
+
+The two local not-found boundaries solve cases that fuzzy unmatched-URL fallback
+does not:
+
+- `__root.tsx` renders `RootNotFound`, which adds `BootstrapLoaderReady` beside
+  `NotFoundPage` so a top-level terminal 404 removes the initial HTML splash.
+- `_authenticated.tsx` renders `NotFoundPage` for a manual `notFound()` thrown
+  by an access gate, keeping that 404 inside the authenticated branch. This
+  boundary is not what preserves the layout for an ordinary unknown URL; fuzzy
+  fallback already renders that URL's default not-found UI beneath the nearest
+  matched layout.
 
 `RouteError` is the recovery contract, and it is short:
 
@@ -956,7 +977,7 @@ preference.
 | Call `queryClient.ensureQueryData` in a route | Bypasses transport readiness and the update boundary |
 | Use `Route.useLoaderData()` | Splits the read path; observe the cache instead |
 | Add parallel `queryOptions` factories, duplicate query keys, or `useSomethingQuery` wrappers | The generated endpoint layer is the single definition — see [API Contract](./api-contract.md) |
-| Pass query data to children through props or a React context | Extra observers on one cache entry are free; a shared context value re-renders every consumer on every poll, even ones reading other fields |
+| Pass query data to children through props or a React context | Direct observers share one cache entry and let each consumer track only the data it reads; a shared context value re-renders every consumer on every poll, even ones reading other fields |
 | Wrap a route builder around `createFileRoute` | The plugin matches the literal callee name, so a wrapper silently disables code splitting for that route |
 | Keep every page-level tab mounted and hidden | Keeps observers, polling, and effects alive for invisible pages |
 | Move progressive, polled, or dialog-only queries into a route loader | Guarded by `-query-ownership.test.ts` |

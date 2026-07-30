@@ -48,4 +48,21 @@ describe("targeted route query ownership", () => {
       /list_services\.queryOptions\(\{\s*enabled: unitStatusNeedsServices,/,
     );
   });
+
+  it("keeps VM child observers on the parent polling cadence", () => {
+    const page = readRouteSource("vm/-components/VMPage.tsx");
+    const childObserverCounts = [
+      ["vm/-components/VMDashboardPage.tsx", 2],
+      ["vm/-components/VMImagesPage.tsx", 1],
+      ["vm/-components/VMMachinesLayout.tsx", 2],
+      ["vm/-components/VMNetworksPage.tsx", 1],
+    ] as const;
+
+    expect(page.match(/refetchInterval:/g)).toHaveLength(2);
+    for (const [relativePath, observerCount] of childObserverCounts) {
+      const child = readRouteSource(relativePath);
+      expect(child).not.toContain("refetchInterval");
+      expect(child.match(/refetchOnMount: false/g)).toHaveLength(observerCount);
+    }
+  });
 });

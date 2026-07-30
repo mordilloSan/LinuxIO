@@ -35,6 +35,7 @@ const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 const VMMachinesLayout = () => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const vmDetailCache = linuxio.virt.get.useCache();
   const vmListCache = linuxio.virt.list.useCache();
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
@@ -42,8 +43,15 @@ const VMMachinesLayout = () => {
   // reuse them rather than issuing new requests.
   const [{ data: vms }, { data: preflight }] = useSuspenseQueries({
     queries: [
-      linuxio.virt.list.queryOptions(),
-      linuxio.virt.preflight.queryOptions({}),
+      linuxio.virt.list.queryOptions({
+        refetchOnMount: false,
+      }),
+      linuxio.virt.preflight.queryOptions(
+        {},
+        {
+          refetchOnMount: false,
+        },
+      ),
     ],
   });
   // Undefined whenever the index child is active, i.e. no machine selected.
@@ -97,6 +105,7 @@ const VMMachinesLayout = () => {
         toast.success(`Deleted ${request.name}.${diskText}`);
         setDeleteTargetName(null);
         setPendingDeleteVM(null);
+        vmDetailCache.remove(request.name);
         vmListCache.set((current) =>
           current?.filter((vm) => vm.name !== request.name),
         );

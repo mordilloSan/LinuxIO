@@ -93,6 +93,7 @@ const mocks = vi.hoisted(() => {
     openJobAttachStream: vi.fn(),
     virtCreate: vi.fn(),
     virtDelete: vi.fn(),
+    virtGetCacheRemove: vi.fn(),
     waitForStreamResult: vi.fn(),
   };
 });
@@ -254,6 +255,7 @@ vi.mock("@/api", async (importOriginal) => {
             initialData: mocks.listVMs.find((vm) => vm.name === name),
             ...options,
           }),
+          useCache: () => ({ remove: mocks.virtGetCacheRemove }),
         },
         list: {
           queryKey: () => ["linuxio", "virt", "list"],
@@ -399,6 +401,7 @@ beforeEach(() => {
   mocks.virtDelete.mockResolvedValue(
     fakeJobSnapshot("job-delete", "virt.delete"),
   );
+  mocks.virtGetCacheRemove.mockReset();
   mocks.preflight = {
     ...mocks.readyPreflight,
     firmware: { ...mocks.readyPreflight.firmware },
@@ -533,7 +536,7 @@ describe("Virtual Machines page", () => {
     );
   });
 
-  it("deletes the clicked VM even while URL selection still points elsewhere", async () => {
+  it("deletes and evicts only the clicked VM while URL selection points elsewhere", async () => {
     mocks.listVMs = [mocks.alpha, mocks.beta];
     mocks.routeParams = { name: "alpha" };
     const { user } = await renderVMPage();
@@ -551,6 +554,10 @@ describe("Virtual Machines page", () => {
         name: "beta",
       }),
     );
+    await waitFor(() =>
+      expect(mocks.virtGetCacheRemove).toHaveBeenCalledOnce(),
+    );
+    expect(mocks.virtGetCacheRemove).toHaveBeenCalledWith("beta");
   });
 
   it("keeps the delete dialog synced with the live VM list", async () => {
