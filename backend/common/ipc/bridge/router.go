@@ -380,7 +380,6 @@ func (r *Router) runRoute(ctx context.Context, job *Job, request any, route Rout
 	return emit.result, nil
 }
 
-//nolint:gocognit // Admission keeps its reserve/create/promote transaction together.
 func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	now := time.Now().UTC()
 	ownerKey := req.Owner.key()
@@ -406,7 +405,11 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 		r.mu.Unlock()
 		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
 	}
-	r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
+	// checkRateLocked prunes this history, but only when the owner rate limit
+	// is enabled — with it disabled the append would grow unbounded, so skip it.
+	if policy.StartRatePerMinuteOwner > 0 {
+		r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
+	}
 	// Reserve an active slot before creating the job. CreateForOwner can take
 	// long enough for another request to otherwise observe stale capacity.
 	if canStart {
@@ -420,22 +423,16 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 
 	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
 	if err != nil {
-		var next *queuedJob
 		if canStart {
-			r.mu.Lock()
-			r.unmarkActiveLocked(req.Route, ownerRouteKey)
-			next = r.dequeueStartLocked(req.Route)
-			r.mu.Unlock()
-		}
-		if !canStart {
+			// Releasing the reserved slot and promoting the next queued job is
+			// exactly the finished-job path.
+			r.finishJob(req.Route, ownerRouteKey)
+		} else {
 			r.mu.Lock()
 			if r.pendingQueuedByRoute[req.Route] > 0 {
 				r.pendingQueuedByRoute[req.Route]--
 			}
 			r.mu.Unlock()
-		}
-		if next != nil {
-			r.startTrackedJob(next.route, next.job, next.owner)
 		}
 		return nil, false, err
 	}

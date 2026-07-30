@@ -65,7 +65,7 @@ export const usePackageUpdater = () => {
       JOB_TYPE_PACKAGE_UPDATE,
     );
   }, []);
-  
+
   const releaseFeedbackOwnership = useCallback(() => {
     releaseFeedbackClaimRef.current?.();
     releaseFeedbackClaimRef.current = null;

@@ -31,7 +31,9 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
     ...s.options,
-    exclude_packages: Array.isArray(s.options.exclude_packages) ? s.options.exclude_packages : [],
+    exclude_packages: Array.isArray(s.options.exclude_packages)
+      ? s.options.exclude_packages
+      : [],
   },
 });
 
@@ -42,7 +44,9 @@ interface ManagedTimer {
   timer?: Timer;
 }
 
-const autoUpdateTimerDefinitions = (state: AutoUpdateState): Omit<ManagedTimer, "timer">[] => {
+const autoUpdateTimerDefinitions = (
+  state: AutoUpdateState,
+): Omit<ManagedTimer, "timer">[] => {
   switch (state.backend) {
     case "apt-unattended":
       return [
@@ -70,7 +74,10 @@ const autoUpdateTimerDefinitions = (state: AutoUpdateState): Omit<ManagedTimer, 
   }
 };
 
-const managedTimers = (state: AutoUpdateState, timers: Timer[]): ManagedTimer[] =>
+const managedTimers = (
+  state: AutoUpdateState,
+  timers: Timer[],
+): ManagedTimer[] =>
   autoUpdateTimerDefinitions(state).map((definition) => ({
     ...definition,
     timer: timers.find((timer) => timer.name === definition.name),
@@ -124,8 +131,11 @@ export const useUpdateSettingsState = (enabled = true) => {
     () => (rawServerState ? normalizeState(rawServerState) : null),
     [rawServerState],
   );
-  const [draftOverrides, setDraftOverrides] = useState<Partial<AutoUpdateOptions> | null>(null);
-  const [excludeInputOverride, setExcludeInputOverride] = useState<string | null>(null);
+  const [draftOverrides, setDraftOverrides] =
+    useState<Partial<AutoUpdateOptions> | null>(null);
+  const [excludeInputOverride, setExcludeInputOverride] = useState<
+    string | null
+  >(null);
   const currentOptions = useMemo(() => {
     if (!serverState) return null;
     return {
@@ -160,7 +170,9 @@ export const useUpdateSettingsState = (enabled = true) => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    return JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes);
+    return (
+      JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
+    );
   }, [serverState, currentExcludeInput, currentOptions]);
   const save = () => {
     if (!currentOptions) return;
@@ -235,7 +247,12 @@ const UpdateCardHeader = ({
         <Icon height={22} icon={icon} width={22} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <AppTypography component="h3" fontWeight={600} style={{ lineHeight: 1.25 }} variant="body2">
+        <AppTypography
+          component="h3"
+          fontWeight={600}
+          style={{ lineHeight: 1.25 }}
+          variant="body2"
+        >
           {title}
         </AppTypography>
         <AppTypography color="text.secondary" variant="caption">
@@ -314,8 +331,9 @@ const AptServiceNote = () => {
         style={{ display: "block", marginTop: 2 }}
         variant="caption"
       >
-        This service coordinates shutdown; the timers above schedule updates. Its
-        PyGIDeprecationWarning is an upstream package warning, not an update failure.
+        This service coordinates shutdown; the timers above schedule updates.
+        Its PyGIDeprecationWarning is an upstream package warning, not an update
+        failure.
       </AppTypography>
     </div>
   );
@@ -339,7 +357,8 @@ const AutoUpdateRuntime = ({
     requiredUnits.length > 0 &&
     requiredUnits.every(({ timer }) => timerIsActive(timer)) &&
     unexpectedActiveUnits.length === 0;
-  const schedulerStopped = !serverState.options.enabled && activeUnits.length === 0;
+  const schedulerStopped =
+    !serverState.options.enabled && activeUnits.length === 0;
   const schedulerLabel = runtimeLoading
     ? "Checking"
     : runtimeError || units.length === 0
@@ -376,7 +395,11 @@ const AutoUpdateRuntime = ({
               gap: theme.spacing(0.75),
             }}
           >
-            <StatusDot color={schedulerColor} size={9} tooltip={schedulerLabel} />
+            <StatusDot
+              color={schedulerColor}
+              size={9}
+              tooltip={schedulerLabel}
+            />
           </div>
         }
         subtitle="Live systemd timer state"
@@ -385,8 +408,8 @@ const AutoUpdateRuntime = ({
 
       {runtimeError ? (
         <AppTypography color="text.secondary" variant="body2">
-          LinuxIO could not read the systemd timer state. The saved configuration is still shown
-          below.
+          LinuxIO could not read the systemd timer state. The saved
+          configuration is still shown below.
         </AppTypography>
       ) : units.length > 0 ? (
         <div
@@ -403,14 +426,22 @@ const AutoUpdateRuntime = ({
                 detail={name}
                 key={name}
                 label={label}
-                statusColor={active ? theme.palette.success.main : theme.palette.text.disabled}
+                statusColor={
+                  active
+                    ? theme.palette.success.main
+                    : theme.palette.text.disabled
+                }
                 value={`${active ? "Active" : "Inactive"}${!required ? " · not required" : ""}`}
               />
             );
           })}
           <StatusMetric
             label="Next scheduled run"
-            value={serverState.options.enabled ? formatTimerDate(nextRun) : "Not scheduled"}
+            value={
+              serverState.options.enabled
+                ? formatTimerDate(nextRun)
+                : "Not scheduled"
+            }
           />
         </div>
       ) : (
@@ -423,13 +454,21 @@ const AutoUpdateRuntime = ({
   );
 };
 
-const SavedConfiguration = ({ dirty, state }: { dirty: boolean; state: AutoUpdateState }) => {
+const SavedConfiguration = ({
+  dirty,
+  state,
+}: {
+  dirty: boolean;
+  state: AutoUpdateState;
+}) => {
   const theme = useAppTheme();
   const values = [
     {
       label: "Status",
       value: state.options.enabled ? "Enabled" : "Disabled",
-      statusColor: state.options.enabled ? theme.palette.success.main : theme.palette.text.disabled,
+      statusColor: state.options.enabled
+        ? theme.palette.success.main
+        : theme.palette.text.disabled,
     },
     {
       label: "Schedule",
@@ -441,7 +480,9 @@ const SavedConfiguration = ({ dirty, state }: { dirty: boolean; state: AutoUpdat
     },
     {
       label: "Install mode",
-      value: state.options.download_only ? "Download only" : "Download and install",
+      value: state.options.download_only
+        ? "Download only"
+        : "Download and install",
     },
     {
       label: "Reboots",
@@ -479,7 +520,11 @@ const SavedConfiguration = ({ dirty, state }: { dirty: boolean; state: AutoUpdat
               </AppTypography>
             </div>
           ) : (
-            <StatusDot color={theme.palette.success.main} size={9} tooltip="Configuration loaded" />
+            <StatusDot
+              color={theme.palette.success.main}
+              size={9}
+              tooltip="Configuration loaded"
+            />
           )
         }
         subtitle="Settings currently applied on this server"
@@ -493,7 +538,12 @@ const SavedConfiguration = ({ dirty, state }: { dirty: boolean; state: AutoUpdat
         }}
       >
         {values.map(({ label, statusColor, value }) => (
-          <StatusMetric key={label} label={label} statusColor={statusColor} value={value} />
+          <StatusMetric
+            key={label}
+            label={label}
+            statusColor={statusColor}
+            value={value}
+          />
         ))}
       </div>
     </FrostedCard>
@@ -510,7 +560,9 @@ const AutomaticUpdatesControl = ({
   onChange: (checked: boolean) => void;
 }) => {
   const theme = useAppTheme();
-  const statusColor = checked ? theme.palette.success.main : theme.palette.text.disabled;
+  const statusColor = checked
+    ? theme.palette.success.main
+    : theme.palette.text.disabled;
 
   return (
     <FrostedCard
@@ -571,7 +623,10 @@ interface UpdateSettingsProps {
   disablePadding?: boolean;
   state: ReturnType<typeof useUpdateSettingsState>;
 }
-const UpdateSettings = ({ disablePadding = false, state }: UpdateSettingsProps) => {
+const UpdateSettings = ({
+  disablePadding = false,
+  state,
+}: UpdateSettingsProps) => {
   const theme = useAppTheme();
   const {
     loading,

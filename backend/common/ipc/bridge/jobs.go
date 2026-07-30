@@ -397,9 +397,7 @@ func (j *Job) Cancel() {
 		j.cancel()
 		event := j.markCanceledLocked(time.Now().UTC())
 		j.mu.Unlock()
-		j.signalDone()
-		j.broadcast(event)
-		j.closeSubscribers()
+		j.publishTerminal(event)
 		return
 	}
 	j.mu.Unlock()
@@ -617,6 +615,16 @@ func (j *Job) run(ctx context.Context, runner Runner) {
 	j.markCompleted(result)
 }
 
+// publishTerminal is the publication tail shared by every terminal transition:
+// release Done() waiters, broadcast the terminal event, and close direct
+// subscribers. Call exactly once per job, after j.mu has been released — the
+// lock split is required by the Start/Cancel race, the tail is not.
+func (j *Job) publishTerminal(event Event) {
+	j.signalDone()
+	j.broadcast(event)
+	j.closeSubscribers()
+}
+
 func (j *Job) markCompleted(result any) {
 	now := time.Now().UTC()
 	j.mu.Lock()
@@ -630,9 +638,7 @@ func (j *Job) markCompleted(result any) {
 	j.finishedAt = &now
 	event := Event{Type: EventResult, Job: j.snapshotLocked(), Result: result}
 	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	j.publishTerminal(event)
 }
 
 func (j *Job) markFailed(err *Error) {
@@ -648,9 +654,7 @@ func (j *Job) markFailed(err *Error) {
 	j.finishedAt = &now
 	event := Event{Type: EventError, Job: j.snapshotLocked(), Error: err}
 	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	j.publishTerminal(event)
 }
 
 func (j *Job) markCanceled() {
@@ -661,9 +665,7 @@ func (j *Job) markCanceled() {
 	}
 	event := j.markCanceledLocked(time.Now().UTC())
 	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	j.publishTerminal(event)
 }
 
 // markCanceledLocked records cancellation while j.mu is held. The caller is

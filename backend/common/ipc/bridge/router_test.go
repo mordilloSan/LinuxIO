@@ -61,6 +61,65 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 	close(release)
 }
 
+func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	policy := JobPolicy{
+		Name:                    "rate-limited",
+		MaxActivePerRoute:       8,
+		MaxActivePerOwnerRoute:  8,
+		StartRatePerMinuteOwner: 2,
+	}
+	route := Route{
+		Name:   "test.rate.limited",
+		Mode:   ModeJob,
+		Policy: policy,
+		Runner: func(context.Context, *Job, any) (any, error) { return nil, nil },
+	}
+
+	for i := range 2 {
+		job, _, err := router.startOrQueueJob(route, Request{Route: route.Name})
+		if err != nil {
+			t.Fatalf("start %d: %v", i, err)
+		}
+		<-job.Done()
+	}
+	if _, _, err := router.startOrQueueJob(route, Request{Route: route.Name}); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("third start error = %v, want ErrRateLimited", err)
+	}
+}
+
+func TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	policy := ActionDefault // StartRatePerMinuteOwner: 0
+	policy.Name = "rate-disabled"
+	route := Route{
+		Name:   "test.rate.disabled",
+		Mode:   ModeJob,
+		Policy: policy,
+		Runner: func(context.Context, *Job, any) (any, error) { return nil, nil },
+	}
+
+	for i := range 3 {
+		job, _, err := router.startOrQueueJob(route, Request{Route: route.Name})
+		if err != nil {
+			t.Fatalf("start %d: %v", i, err)
+		}
+		<-job.Done()
+	}
+
+	// checkRateLocked never prunes for a disabled limit, so admission must not
+	// record start history at all — it would grow for the bridge lifetime.
+	ownerRouteKey := route.Name + "\x00" + Owner{}.key()
+	router.mu.RLock()
+	tracked := len(router.startsByOwnerRoute[ownerRouteKey])
+	router.mu.RUnlock()
+	if tracked != 0 {
+		t.Fatalf("recorded %d start timestamps with the owner rate limit disabled, want 0", tracked)
+	}
+}
+
 func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
 	registry := NewRegistry()
 	router := NewRouter(registry)
@@ -140,24 +199,9 @@ func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
 		t.Fatalf("canceled job state = %q, want canceled", state)
 	}
 
-	deadline := time.Now().Add(time.Second)
-	for {
-		router.mu.RLock()
-		activeCount := router.activeByRoute[route.Name]
-		queuedCount := len(router.queuedByRoute[route.Name])
-		pendingCount := router.pendingQueuedByRoute[route.Name]
-		router.mu.RUnlock()
-		if activeCount == 0 && queuedCount == 0 && pendingCount == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("router accounting did not settle: active=%d queued=%d pending=%d", activeCount, queuedCount, pendingCount)
-		}
-		time.Sleep(time.Millisecond)
-	}
+	waitForRouterSettle(t, router, route.Name)
 }
 
-//nolint:gocognit // The explicit promotion race timeline is the test contract.
 func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	registry := NewRegistry()
 	router := NewRouter(registry)
@@ -251,12 +295,19 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 		t.Fatalf("candidate state = %q, want canceled", state)
 	}
 
+	waitForRouterSettle(t, router, route.Name)
+}
+
+// waitForRouterSettle polls until the router's accounting for a route drains
+// to zero (no active, queued, or pending-queued entries) or fails the test.
+func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
+	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
 		router.mu.RLock()
-		activeCount := router.activeByRoute[route.Name]
-		queuedCount := len(router.queuedByRoute[route.Name])
-		pendingCount := router.pendingQueuedByRoute[route.Name]
+		activeCount := router.activeByRoute[routeName]
+		queuedCount := len(router.queuedByRoute[routeName])
+		pendingCount := router.pendingQueuedByRoute[routeName]
 		router.mu.RUnlock()
 		if activeCount == 0 && queuedCount == 0 && pendingCount == 0 {
 			return

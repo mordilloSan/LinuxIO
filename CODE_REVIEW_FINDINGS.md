@@ -16,9 +16,9 @@
 
 ## TL;DR — open items worth addressing before commit
 
-1. **`router.go:363`** — canceling a running job on a `Timeout>0` policy promotes the next queued job while the canceled handler goroutine is still executing → real concurrent handler executions exceed `MaxActivePerRoute` (**empirically reproduced**: 3 running at cap 2). Mechanism pre-dates this diff, but the reworked cancel→promotion path formalizes it as the fast path. *(B7 — the one open correctness bug)*
+1. **`router.go:363`** — canceling a running job on a `Timeout>0` policy promotes the next queued job while the canceled handler goroutine is still executing → real concurrent handler executions exceed `MaxActivePerRoute` (**empirically reproduced**: 3 running at cap 2). Mechanism pre-dates this diff, but the reworked cancel→promotion path formalizes it as the fast path. *(B7 — the one open correctness bug, and the only finding still open)*
 2. ~~**`useRecoveredJobs.ts:452/556`** — duplicate failure feedback while the page is open~~ — **resolved** via the terminal-feedback registry (see B2/D5/D6).
-3. **Backend cleanups:** D1 (`finishJob` clone in the admission error path), D2 (fourth copy of the terminal-publish tail), D8 (duplicated settle-poll loop in router tests), and the `router.go` unbounded-growth item in section E.
+3. ~~**Backend cleanups:** D1, D2, D8, and the `router.go` unbounded-growth item in section E~~ — **all resolved** (2026-07-30, fourth pass; details inline). Validated with `go build`, golangci-lint (0 issues, two now-unneeded `//nolint:gocognit` directives dropped), and the bridge package under `-race -count=5`.
 
 **Resolved and verified (2026-07-30):** A1, A2, A3, A4, A5, A6, B1, B2, B3, B4, B5, B6, B8, C1, C2, C3, D3, D4, D5, D6, D7, D9 — plus the A4 residual (`TabSelector.tsx` anchorEl), the B3 residual (boolean children), the B1 residual (generic fallback toasting other sessions' cancels), the `useRecoveredJobs.ts` item in section E, and the two symptoms found while fixing B1/A1 (navbar cancel painting a page failure alert; false "Update cancelled" after success).
 
@@ -117,11 +117,13 @@ Two byte-identical ~30-line runtime/controls/wrapper setups (65-95 and 125-155) 
 
 ## D. Simplification / reuse / API shape
 
-### D1. `startOrQueueJob` error path inlines a `finishJob` clone — `backend/common/ipc/bridge/router.go:407`
+### D1. [Resolved] `startOrQueueJob` error path inlines a `finishJob` clone — `backend/common/ipc/bridge/router.go:407`
 The CreateForOwner error path uses two sequential opposite ifs (`if canStart` … `if !canStart`) with two separate `mu.Lock` windows and a hoisted `next`; the `canStart` branch (unmarkActiveLocked + dequeueStartLocked + startTrackedJob) is byte-for-byte `finishJob` (:511). `if canStart { r.finishJob(...) } else { lock; pendingQueued--; unlock }` is one lock window, no clone, and likely drops the `//nolint:gocognit`. Future promotion-logic changes in `finishJob` would otherwise miss this unlabeled clone. *(simplification finder; over-admission here separately disproven — twice, see F)*
+**Resolution:** exactly the suggested shape — the error path calls `r.finishJob(req.Route, ownerRouteKey)` in the `canStart` branch and only decrements `pendingQueuedByRoute` otherwise; the `//nolint:gocognit` was dropped and the linter confirms it's no longer needed. Behavior-identical (finishJob's body is the removed clone verbatim). Race-detector clean across repeated runs.
 
-### D2. Fourth copy of the terminal-publish tail — `backend/common/ipc/bridge/jobs.go:383`
+### D2. [Resolved] Fourth copy of the terminal-publish tail — `backend/common/ipc/bridge/jobs.go:383`
 `Cancel`'s queued branch inlines signalDone/broadcast/closeSubscribers — alongside markCompleted (:575-577), markFailed (:593-595), markCanceled (:606-608). The lock split is required for the Start/Cancel race; the tail isn't. Extract `publishTerminal(event Event)` called from all four sites, or cancel-while-queued diverges silently when publication grows a step. *(simplification finder)*
+**Resolution:** `Job.publishTerminal(event)` extracted with a doc comment pinning the contract (call once, after `j.mu` is released — the lock split stays, the tail is shared); all four sites call it.
 
 ### D3. [Resolved] Mobile menu JSX duplicated across slot and legacy branches
 The ~28-line mobile menu block was copy-pasted between the slot and `rightContent` branches. *(reuse + simplification + altitude finders)*
@@ -143,8 +145,9 @@ Package-update failure feedback is the third per-type special case (after capabi
 The mock builds the same `{ open, onOpen, onProgress }` literal in `run` (59-66) and `attach` (80-87); and the whole mock re-implements the lifecycle mirror VMPage.test.tsx already built (its copy *does* fire `onSettled`/`onMutate` — the two mirrors have diverged from each other and from the real contract). Hoist one shared builder into `frontend/src/test/`. *(simplification + reuse finders; pairs with C1/C2)*
 **Resolution:** done — `frontend/src/test/jobStreamAction.ts` (see the note at the top of section C). It imports `isTerminalJobState`/`LinuxIOError` from the leaf modules rather than the `@/api` barrel, because test files pull it in from inside their own `vi.mock("@/api")` factory.
 
-### D8. Duplicated settle-poll loop in router tests — `backend/common/ipc/bridge/router_test.go:143`
+### D8. [Resolved] Duplicated settle-poll loop in router tests — `backend/common/ipc/bridge/router_test.go:143`
 Both new tests end with a verbatim ~15-line deadline/poll loop over activeByRoute/queuedByRoute/pendingQueuedByRoute (143-158, 254-268, identical `t.Fatalf` text). jobs_test.go already models this (`waitForState`/`waitForJobEvent` t.Helper()s at :496/:514) — add `waitForRouterSettle(t, router, route)`. *(reuse finder)*
+**Resolution:** `waitForRouterSettle(t, router, routeName)` t.Helper() added; both tests use it. The extraction also dropped the promotion-race test below the gocognit threshold, so its `//nolint:gocognit` was removed (nolintlint flagged it as unused).
 
 ### D9. [Resolved] Five identical tab-layout route wrappers — `frontend/src/routes/_authenticated/accounts/route.tsx`
 Accounts/Docker/Services/Shares/Storage each added `function XLayout() { return <RoutedTabLayout tabs={X_TABS}><Outlet/></RoutedTabLayout> }`. *(simplification finder)*
@@ -154,7 +157,8 @@ Accounts/Docker/Services/Shares/Storage each added `function XLayout() { return 
 
 - **[Resolved] `useRecoveredJobs.ts:90`** — `packageUpdateFailureToastedRef` (like the pre-existing `installToastedRef`) grows one id per failure for the session, never pruned. Bytes-level; fix alongside D5. *(efficiency finder)*
   **Resolution:** both refs are gone; the registry's single dedupe set caps at 200 ids, evicting oldest-first (pinned by "bounds the dedupe set instead of growing one id per job forever").
-- **`router.go:393` — pre-existing, not introduced by this diff** — `startsByOwnerRoute` appends a timestamp per admitted job but prunes only inside `checkRateLocked`, which early-returns when `StartRatePerMinuteOwner <= 0` (ActionDefault, transfers) → unbounded per-owner growth for the bridge lifetime, worst on high-frequency filebrowser routes. Skip the append (or prune) when the owner rate limit is disabled. *(efficiency finder)*
+- **[Resolved] `router.go:393` — pre-existing, not introduced by this diff** — `startsByOwnerRoute` appends a timestamp per admitted job but prunes only inside `checkRateLocked`, which early-returns when `StartRatePerMinuteOwner <= 0` (ActionDefault, transfers) → unbounded per-owner growth for the bridge lifetime, worst on high-frequency filebrowser routes. Skip the append (or prune) when the owner rate limit is disabled. *(efficiency finder)*
+  **Resolution:** the append is skipped when `StartRatePerMinuteOwner <= 0`. The rate limiter previously had **no test coverage at all**, so both directions are now pinned: `TestRouterOwnerStartRateLimitStillEnforced` (third start within a minute → `ErrRateLimited`) and `TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled` (zero timestamps recorded on a disabled-limit policy — verified to fail against the old unconditional append).
 
 ## F. Verified non-issues (checked and cleared)
 
