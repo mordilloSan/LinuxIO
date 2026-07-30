@@ -9,7 +9,7 @@ import {
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
-import { RoutedTabContainer, type RoutedTab } from "@/components/tabbar";
+import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 
 import "@/theme/variables.css";
@@ -37,11 +37,11 @@ function RootLayout() {
 
 function AccountsLayout() {
   return (
-    <RoutedTabContainer tabs={tabs}>
+    <RoutedTabLayout tabs={tabs}>
       <Suspense fallback={<div role="status">Loading route chunk…</div>}>
         <Outlet />
       </Suspense>
-    </RoutedTabContainer>
+    </RoutedTabLayout>
   );
 }
 

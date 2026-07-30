@@ -84,8 +84,8 @@ const VMPage = ({ children }: VMPageProps) => {
       setCreateProgress(null);
       setCreateOpen(false);
       navigate({
-        search: { vm: vm.name },
-        to: "/vm/machines",
+        params: { name: vm.name },
+        to: "/vm/machines/$name",
       });
     },
     error: (error) => {

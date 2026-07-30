@@ -79,6 +79,8 @@ describe("generated application router", () => {
         "/vm/",
         "/vm/images",
         "/vm/machines",
+        "/vm/machines/",
+        "/vm/machines/$name",
         "/vm/networks",
         "/wireguard",
       ].sort((a, b) => a.localeCompare(b)),
@@ -107,6 +109,7 @@ describe("generated application router", () => {
       "/_authenticated/shares",
       "/_authenticated/storage",
       "/_authenticated/updates",
+      "/_authenticated/vm/machines",
     ] as const) {
       expect(router.routesById[routeId].options.loader).toBeUndefined();
     }

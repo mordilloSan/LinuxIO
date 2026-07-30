@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
@@ -81,35 +80,16 @@ const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
 };
 
-export default function VMDetailsPanel({
-  error,
-  isLoading,
-  vm,
-}: {
-  error?: string;
-  isLoading: boolean;
-  vm: VirtualMachine | null;
-}) {
+/**
+ * Renders one VM's detail, or the empty prompt when no machine is selected.
+ *
+ * Loading and failure are owned by the `/vm/machines/$name` route: its loader
+ * suspends on `virt.get` and its errors surface at the route boundary, which
+ * renders here in the parent layout's outlet.
+ */
+export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-
-  if (isLoading) {
-    return (
-      <FrostedCard style={detailPanelEmptyStyle(theme)}>
-        <ComponentLoader />
-      </FrostedCard>
-    );
-  }
-
-  if (error) {
-    return (
-      <FrostedCard style={detailPanelEmptyStyle(theme)}>
-        <AppTypography color="error" variant="body2">
-          Failed to load VM details: {error}
-        </AppTypography>
-      </FrostedCard>
-    );
-  }
 
   if (!vm) {
     return (

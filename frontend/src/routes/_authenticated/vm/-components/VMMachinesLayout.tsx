@@ -1,6 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
+import { useCallback, useState } from "react";
 
 import {
   linuxio,
@@ -14,7 +13,6 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 import ConsoleDialog from "./ConsoleDialog";
 import DeleteVMDialog from "./DeleteVMDialog";
-import VMDetailsPanel from "./VMDetailsPanel";
 import VMListTable from "./VMListTable";
 import { useVMRouteData } from "./VMPage";
 import {
@@ -27,17 +25,29 @@ import { VMPreflightCard } from "./VMTabs";
 
 const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 
-const VMMachinesPage = () => {
+/**
+ * Persistent shell for the Virtual machines tab.
+ *
+ * The list and every lifecycle mutation live here so they survive detail
+ * navigation; the selected machine is a real child route rendered in the
+ * outlet. Selection therefore lives in the path, not in search state.
+ */
+const VMMachinesLayout = () => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const vmListCache = linuxio.virt.list.useCache();
   const toast = useScopedToast(VM_TOAST);
-  const search = vmMachinesRouteApi.useSearch();
   const navigate = vmMachinesRouteApi.useNavigate();
   const { preflight, vms } = useVMRouteData();
+  // Undefined whenever the index child is active, i.e. no machine selected.
+  const detailParams = useParams({
+    from: "/_authenticated/vm/machines/$name",
+    shouldThrow: false,
+  });
+  const selectedName = detailParams?.name ?? null;
   // Keep the delete subject separate from the URL-driven detail selection.
-  // Selecting a row updates search asynchronously, so deriving this from
-  // selectedVM could delete the previously selected machine.
+  // Selecting a row navigates asynchronously, so deriving this from
+  // selectedName could delete the previously selected machine.
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
   // Deleting undefines the domain before disk cleanup finishes, so the polled
   // list can drop the row mid-job; this snapshot keeps the dialog mounted
@@ -49,33 +59,15 @@ const VMMachinesPage = () => {
     null,
   );
 
-  const effectiveSelectedName = useMemo(() => {
-    if (search.vm && vms.some((vm) => vm.name === search.vm)) {
-      return search.vm;
-    }
-    return vms[0]?.name ?? null;
-  }, [search.vm, vms]);
   const setSelectedName = useCallback(
-    (vm: string | null) =>
-      navigate({
-        replace: true,
-        search: (previous) => ({
-          ...previous,
-          vm: vm ?? undefined,
-        }),
-        to: "/vm/machines",
-      }),
+    (name: string | null) =>
+      navigate(
+        name
+          ? { params: { name }, replace: true, to: "/vm/machines/$name" }
+          : { replace: true, to: "/vm/machines" },
+      ),
     [navigate],
   );
-  const detailQuery = useQuery(
-    linuxio.virt.get.queryOptions(effectiveSelectedName ?? "", {
-      enabled: Boolean(effectiveSelectedName),
-    }),
-  );
-  const selectedVM =
-    detailQuery.data ??
-    vms.find((vm) => vm.name === effectiveSelectedName) ??
-    null;
   const liveDeleteTarget =
     vms.find((vm) => vm.name === deleteTargetName) ?? null;
 
@@ -101,7 +93,7 @@ const VMMachinesPage = () => {
         vmListCache.set((current) =>
           current?.filter((vm) => vm.name !== request.name),
         );
-        setSelectedName(null);
+        if (request.name === selectedName) setSelectedName(null);
       },
       error: (error) => {
         toast.error(getMutationErrorMessage(error, "Failed to delete VM"));
@@ -195,7 +187,7 @@ const VMMachinesPage = () => {
         >
           <VMListTable
             actionPending={actionPending}
-            effectiveSelectedName={effectiveSelectedName}
+            effectiveSelectedName={selectedName}
             onDelete={(vm) => {
               setDeleteTargetName(vm.name);
             }}
@@ -209,15 +201,7 @@ const VMMachinesPage = () => {
             onSelect={setSelectedName}
             vms={vms}
           />
-          <VMDetailsPanel
-            error={
-              detailQuery.isLoadingError
-                ? detailQuery.error?.message
-                : undefined
-            }
-            isLoading={detailQuery.isLoading}
-            vm={selectedVM}
-          />
+          <Outlet />
         </div>
       </div>
 
@@ -247,4 +231,4 @@ const VMMachinesPage = () => {
   );
 };
 
-export default VMMachinesPage;
+export default VMMachinesLayout;

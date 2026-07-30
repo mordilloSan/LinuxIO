@@ -17,7 +17,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 
 | Doc | Use |
 |-----|-----|
-| [TanStack Router Architecture](./tanstack-router.md) | File-based routes, generated type tree, automatic code splitting, route-local loaders/static data, and global preload policy. |
+| [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 
 ## Product Areas

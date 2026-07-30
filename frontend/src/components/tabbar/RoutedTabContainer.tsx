@@ -8,7 +8,6 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-  type ComponentType,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -23,10 +22,19 @@ import "./tab-container.css";
 import "./tab-panel.css";
 import "./tab-selector.css";
 
-type RoutedTabTarget = Exclude<FileRouteTypes["to"], "/filebrowser/$">;
+// Tabs render a bare <Link to>, so any route needing path params (splat or
+// named) cannot be a tab target. Matching on "$" keeps this true for routes
+// added later without editing this list.
+type RoutedTabTarget = Exclude<FileRouteTypes["to"], `${string}$${string}`>;
 
 export interface RoutedTab {
   label: string;
+  /**
+   * Keep this pill selected while one of its child routes is active. Set it on
+   * a tab that owns nested detail routes; leave it off for leaf tabs so a
+   * parent path does not stay selected on its siblings.
+   */
+  matchChildren?: boolean;
   to: RoutedTabTarget;
 }
 
@@ -165,7 +173,10 @@ const TabLayout = ({
           <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
             {tabs.map((tab) => (
               <Link
-                activeOptions={{ exact: true, includeSearch: false }}
+                activeOptions={{
+                  exact: !tab.matchChildren,
+                  includeSearch: false,
+                }}
                 activeProps={{
                   "aria-selected": true,
                   className: "tab-selector__pill--active",
@@ -222,13 +233,3 @@ const TabLayout = ({
     </div>
   );
 };
-
-/**
- * Page-level tab layout backed by real child-route links.
- *
- * Routed content deliberately relies on the route error boundary rather than
- * the legacy TabPanel catch-all boundary.
- */
-const RoutedTabContainer: ComponentType<RoutedTabContainerProps> = TabLayout;
-
-export default RoutedTabContainer;

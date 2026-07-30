@@ -10,7 +10,7 @@ import {
   within,
 } from "@/test/render";
 
-import VMMachinesPage from "./VMMachinesPage";
+import VMMachinesLayout from "./VMMachinesLayout";
 import VMPage from "./VMPage";
 
 const mocks = vi.hoisted(() => {
@@ -82,7 +82,8 @@ const mocks = vi.hoisted(() => {
     readyPreflight,
     preflight: readyPreflight,
     routeNavigate: vi.fn(),
-    routeSearch: { vm: "alpha" } as { vm?: string },
+    // Detail selection is a path param on /vm/machines/$name.
+    routeParams: { name: "alpha" } as { name?: string } | undefined,
     resourceGet: vi.fn(),
     resourcePost: vi.fn(),
     resourceStat: vi.fn(),
@@ -103,8 +104,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...actual,
     getRouteApi: () => ({
       useNavigate: () => mocks.routeNavigate,
-      useSearch: () => mocks.routeSearch,
     }),
+    useParams: () => mocks.routeParams,
   };
 });
 
@@ -369,7 +370,7 @@ async function renderVMPage(
 ) {
   const result = renderWithTanStackRouter(
     <VMPage>
-      <VMMachinesPage />
+      <VMMachinesLayout />
     </VMPage>,
     {
       auth: {
@@ -404,7 +405,7 @@ beforeEach(() => {
     warnings: [],
   };
   mocks.routeNavigate.mockReset();
-  mocks.routeSearch = { vm: "alpha" };
+  mocks.routeParams = { name: "alpha" };
   mocks.resourceGet.mockReset();
   mocks.resourceGet.mockImplementation(({ path }: { path: string }) => {
     if (path === "/") {
@@ -534,7 +535,7 @@ describe("Virtual Machines page", () => {
 
   it("deletes the clicked VM even while URL selection still points elsewhere", async () => {
     mocks.listVMs = [mocks.alpha, mocks.beta];
-    mocks.routeSearch = { vm: "alpha" };
+    mocks.routeParams = { name: "alpha" };
     const { user } = await renderVMPage();
 
     await user.click(screen.getAllByRole("button", { name: "Delete" })[1]);
