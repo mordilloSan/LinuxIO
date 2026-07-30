@@ -20,10 +20,10 @@ func GetConfigForUser(ctx context.Context, username string, store *bridgeconfig.
 	return cfg, nil
 }
 
-func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *bridgeconfig.UserStore, privileged bool) (map[string]any, error) {
+func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *bridgeconfig.UserStore, privileged bool) (apischema.ConfigSetResult, error) {
 	payload, err := configSetPayloadFromAPI(req)
 	if err != nil {
-		return nil, err
+		return apischema.ConfigSetResult{}, err
 	}
 
 	var syncDockerMountOrdering bool
@@ -38,18 +38,15 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("update config: %w", err)
+		return apischema.ConfigSetResult{}, fmt.Errorf("update config: %w", err)
 	}
 	if syncDockerMountOrdering {
 		if err := syncDockerServiceMountOrdering(ctx, updated.Docker); err != nil {
-			return nil, fmt.Errorf("sync docker service mount ordering: %w", err)
+			return apischema.ConfigSetResult{}, fmt.Errorf("sync docker service mount ordering: %w", err)
 		}
 	}
 	slog.Info("user config updated", "component", "config", "user", username, "path", cfgPath)
-	return map[string]any{
-		"message": "config updated",
-		"path":    cfgPath,
-	}, nil
+	return apischema.ConfigSetResult{Message: "config updated", Path: cfgPath}, nil
 }
 
 func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *configSetPayload, privileged bool) error {

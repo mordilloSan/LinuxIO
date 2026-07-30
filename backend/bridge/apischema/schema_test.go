@@ -1,7 +1,9 @@
 package apischema_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -132,6 +134,91 @@ func TestRoutesDeclareContractFields(t *testing.T) {
 			t.Fatalf("%s should declare a result contract", route.Route)
 		}
 	}
+}
+
+// recordingEmitter captures what a binding emitted so the tests can assert on
+// the exact value that reaches the wire — in particular nil vs a zero struct.
+type recordingEmitter struct {
+	results  []any
+	progress []any
+}
+
+func (e *recordingEmitter) Data([]byte) error            { return nil }
+func (e *recordingEmitter) Progress(p any) error         { e.progress = append(e.progress, p); return nil }
+func (e *recordingEmitter) Result(r any) error           { e.results = append(e.results, r); return nil }
+func (e *recordingEmitter) Error(err error, _ int) error { return err }
+func (e *recordingEmitter) Close(string) error           { return nil }
+
+func TestHandleEmitsTypedResult(t *testing.T) {
+	binding := apischema.Query[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed").
+		Handle(func(_ context.Context, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
+			return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
+		})
+
+	emit := &recordingEmitter{}
+	if err := binding.Handle(context.Background(), apischema.UsernameRequest{Username: "ada"}, emit); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	want := apischema.SuccessNameResponse{Success: true, Name: "ada"}
+	if len(emit.results) != 1 || emit.results[0] != want {
+		t.Fatalf("emitted %#v, want one %#v", emit.results, want)
+	}
+}
+
+func TestHandleErrorEmitsNoResult(t *testing.T) {
+	sentinel := errors.New("boom")
+	binding := apischema.Query[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed_err").
+		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
+			return apischema.SuccessNameResponse{Success: true}, sentinel
+		})
+
+	emit := &recordingEmitter{}
+	err := binding.Handle(context.Background(), apischema.UsernameRequest{}, emit)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Handle() error = %v, want %v", err, sentinel)
+	}
+	if len(emit.results) != 0 {
+		t.Fatalf("a failing handler emitted %#v; nothing should reach the wire", emit.results)
+	}
+}
+
+// NoResponse generates TypeScript `void`. Both binding forms must put nil on the
+// wire rather than the zero struct: `{}` would contradict the generated type and
+// would stop job snapshots from omitting `result`.
+func TestNoResponseRoutesEmitNilNotZeroStruct(t *testing.T) {
+	typed := apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("test.void_typed").
+		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.NoResponse, error) {
+			return apischema.NoResponse{}, nil
+		})
+	void := apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("test.void_short").
+		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error {
+			return nil
+		})
+
+	for name, binding := range map[string]apischema.HandlerBinding{"Handle": typed, "HandleVoid": void} {
+		t.Run(name, func(t *testing.T) {
+			emit := &recordingEmitter{}
+			if err := binding.Handle(context.Background(), apischema.UsernameRequest{}, emit); err != nil {
+				t.Fatalf("Handle() error = %v", err)
+			}
+			if len(emit.results) != 1 {
+				t.Fatalf("emitted %d results, want 1", len(emit.results))
+			}
+			if emit.results[0] != nil {
+				t.Fatalf("emitted %#v, want nil so the wire stays null", emit.results[0])
+			}
+		})
+	}
+}
+
+func TestHandleVoidRejectsNonVoidResult(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("HandleVoid on a route that declares a real result should panic")
+		}
+	}()
+	apischema.Job[apischema.UsernameRequest, apischema.SuccessResponse]("test.void_mismatch").
+		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error { return nil })
 }
 
 func jsonEquivalent(t *testing.T, got any, want string) bool {

@@ -14,7 +14,7 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := configHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Query[apischema.NoRequest, apischema.AppConfig]("config.get").Handle(handlers.handleGetConfig),
+		apischema.Query[apischema.NoRequest, apischema.AppConfig]("config.get").HandleEvents(handlers.handleGetConfig),
 		apischema.Job[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
 	)
 }
@@ -30,7 +30,6 @@ func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoReque
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload, emit bridgeipc.Events) error {
-	result, err := SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store, h.rt.Session.Privileged)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload) (apischema.ConfigSetResult, error) {
+	return SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store, h.rt.Session.Privileged)
 }

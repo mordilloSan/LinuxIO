@@ -9,19 +9,19 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").Handle(handleListTimers),
-	apischema.Query[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").Handle(handleListSockets),
-	apischema.Query[apischema.NoRequest, []apischema.Service]("systemd.list_services").Handle(handleListServices),
-	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").Handle(handleGetUnitInfo),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").Handle(handleStartService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").Handle(handleStopService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").Handle(handleRestartService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reload_service").Handle(handleReloadService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.enable_service").Handle(handleEnableService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.disable_service").Handle(handleDisableService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.mask_service").Handle(handleMaskService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.unmask_service").Handle(handleUnmaskService),
-	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reset_failed_service").Handle(handleResetFailedService),
+	apischema.Query[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").HandleEvents(handleListTimers),
+	apischema.Query[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").HandleEvents(handleListSockets),
+	apischema.Query[apischema.NoRequest, []apischema.Service]("systemd.list_services").HandleEvents(handleListServices),
+	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").HandleEvents(handleGetUnitInfo),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").HandleVoid(handleStartService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").HandleVoid(handleStopService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").HandleVoid(handleRestartService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reload_service").HandleVoid(handleReloadService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.enable_service").HandleVoid(handleEnableService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.disable_service").HandleVoid(handleDisableService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.mask_service").HandleVoid(handleMaskService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.unmask_service").HandleVoid(handleUnmaskService),
+	apischema.Job[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reset_failed_service").HandleVoid(handleResetFailedService),
 )
 
 var Routes = api.Routes()
@@ -50,38 +50,38 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit 
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleStartService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, StartUnit(ctx, req.ServiceName))
+func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return StartUnit(ctx, req.ServiceName)
 }
 
-func handleStopService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, StopUnit(ctx, req.ServiceName))
+func handleStopService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return StopUnit(ctx, req.ServiceName)
 }
 
-func handleRestartService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, RestartUnit(ctx, req.ServiceName))
+func handleRestartService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return RestartUnit(ctx, req.ServiceName)
 }
 
-func handleReloadService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, ReloadUnit(ctx, req.ServiceName))
+func handleReloadService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return ReloadUnit(ctx, req.ServiceName)
 }
 
-func handleEnableService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, EnableUnit(ctx, req.ServiceName))
+func handleEnableService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return EnableUnit(ctx, req.ServiceName)
 }
 
-func handleDisableService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, DisableUnit(ctx, req.ServiceName))
+func handleDisableService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return DisableUnit(ctx, req.ServiceName)
 }
 
-func handleMaskService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, MaskUnit(ctx, req.ServiceName))
+func handleMaskService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return MaskUnit(ctx, req.ServiceName)
 }
 
-func handleUnmaskService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, UnmaskUnit(ctx, req.ServiceName))
+func handleUnmaskService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return UnmaskUnit(ctx, req.ServiceName)
 }
 
-func handleResetFailedService(ctx context.Context, req apischema.ServiceNameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, ResetFailedUnit(ctx, req.ServiceName))
+func handleResetFailedService(ctx context.Context, req apischema.ServiceNameRequest) error {
+	return ResetFailedUnit(ctx, req.ServiceName)
 }

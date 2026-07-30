@@ -29,14 +29,12 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	)
 }
 
-func handleGeneralLogEntry(ctx context.Context, req apischema.GeneralLogEntryRequest, emit bridgeipc.Events) error {
-	result, err := GetGeneralLogEntry(ctx, req.Cursor)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGeneralLogEntry(ctx context.Context, req apischema.GeneralLogEntryRequest) (map[string]any, error) {
+	return GetGeneralLogEntry(ctx, req.Cursor)
 }
 
-func handleGeneralLogsPage(ctx context.Context, req apischema.GeneralLogsPageRequest, emit bridgeipc.Events) error {
-	result, err := GetGeneralLogsPage(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGeneralLogsPage(ctx context.Context, req apischema.GeneralLogsPageRequest) (apischema.GeneralLogsPageResponse, error) {
+	return GetGeneralLogsPage(ctx, req)
 }
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {

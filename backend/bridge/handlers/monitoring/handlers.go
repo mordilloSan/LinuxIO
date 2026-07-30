@@ -16,7 +16,7 @@ var api = apischema.Bindings(
 	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringDiskIOHistoryPoint]("monitoring.get_diskio_history", apischema.Privileged()).Handle(handleGetDiskIOHistory),
 	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringNetworkHistoryPoint]("monitoring.get_network_history", apischema.Privileged()).Handle(handleGetNetworkHistory),
 	apischema.Job[apischema.MonitoringConfigPatch, apischema.MonitoringConfigSetResult]("monitoring.set_config", apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Job[apischema.NoRequest, apischema.NoResponse]("monitoring.restart", apischema.Privileged()).Handle(handleRestart),
+	apischema.Job[apischema.NoRequest, apischema.NoResponse]("monitoring.restart", apischema.Privileged()).HandleVoid(handleRestart),
 )
 
 var Routes = api.Routes()
@@ -26,47 +26,41 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	cfg, err := FetchConfig(ctx)
-	return bridgeipc.EmitResult(emit, cfg, err)
+func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.MonitoringConfig, error) {
+	return FetchConfig(ctx)
 }
 
-func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	status, err := FetchStatus(ctx)
-	return bridgeipc.EmitResult(emit, status, err)
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.MonitoringStatus, error) {
+	return FetchStatus(ctx)
 }
 
-func handleGetCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, emit bridgeipc.Events) error {
-	points, err := FetchCPUHistory(ctx, req)
-	return bridgeipc.EmitResult(emit, points, err)
+func handleGetCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringCPUHistoryPoint, error) {
+	return FetchCPUHistory(ctx, req)
 }
 
-func handleGetMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, emit bridgeipc.Events) error {
-	points, err := FetchMemoryHistory(ctx, req)
-	return bridgeipc.EmitResult(emit, points, err)
+func handleGetMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringMemoryHistoryPoint, error) {
+	return FetchMemoryHistory(ctx, req)
 }
 
-func handleGetDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, emit bridgeipc.Events) error {
-	points, err := FetchDiskIOHistory(ctx, req)
-	return bridgeipc.EmitResult(emit, points, err)
+func handleGetDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringDiskIOHistoryPoint, error) {
+	return FetchDiskIOHistory(ctx, req)
 }
 
-func handleGetNetworkHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, emit bridgeipc.Events) error {
-	points, err := FetchNetworkHistory(ctx, req)
-	return bridgeipc.EmitResult(emit, points, err)
+func handleGetNetworkHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringNetworkHistoryPoint, error) {
+	return FetchNetworkHistory(ctx, req)
 }
 
-func handleSetConfig(ctx context.Context, req apischema.MonitoringConfigPatch, emit bridgeipc.Events) error {
+func handleSetConfig(ctx context.Context, req apischema.MonitoringConfigPatch) (apischema.MonitoringConfigSetResult, error) {
 	cfg, restartRequired, err := UpdateConfig(ctx, req)
 	if err != nil {
-		return err
+		return apischema.MonitoringConfigSetResult{}, err
 	}
-	return bridgeipc.EmitResult(emit, apischema.MonitoringConfigSetResult{
+	return apischema.MonitoringConfigSetResult{
 		Config:          cfg,
 		RestartRequired: restartRequired,
-	}, nil)
+	}, nil
 }
 
-func handleRestart(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, RestartAgent(ctx))
+func handleRestart(ctx context.Context, _ apischema.NoRequest) error {
+	return RestartAgent(ctx)
 }

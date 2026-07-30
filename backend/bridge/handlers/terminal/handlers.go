@@ -32,10 +32,9 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func handleListShells(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
+func handleListShells(ctx context.Context, req apischema.ContainerIDRequest) ([]string, error) {
 	if req.ContainerID == "" {
-		return bridgeipc.EmitResult(emit, []string{}, nil)
+		return []string{}, nil
 	}
-	shells, err := ListContainerShells(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, shells, err)
+	return ListContainerShells(ctx, req.ContainerID)
 }

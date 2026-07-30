@@ -240,7 +240,7 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func requestShape(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return `{ kind: "none" }`
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -290,14 +290,14 @@ func newTSRenderer() *tsRenderer {
 }
 
 func (r *tsRenderer) requestRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return "void"
 	}
 	return r.typeRef(request)
 }
 
 func (r *tsRenderer) inputTupleRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return "[]"
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -316,10 +316,10 @@ func (r *tsRenderer) reflectType(t reflect.Type) string {
 	if t == nil {
 		return "unknown"
 	}
-	if sameType(t, reflect.TypeFor[apischema.NoResponse]()) {
+	if apischema.IsVoidType(t) {
 		return "void"
 	}
-	if sameType(t, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(t) {
 		return "{}"
 	}
 	if t.PkgPath() == "time" && t.Name() == "Time" {
@@ -523,10 +523,6 @@ func deref(t reflect.Type) reflect.Type {
 		t = t.Elem()
 	}
 	return t
-}
-
-func sameType(a, b reflect.Type) bool {
-	return a == deref(b)
 }
 
 var tsIdentifierRE = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)

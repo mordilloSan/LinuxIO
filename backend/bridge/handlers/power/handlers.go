@@ -21,22 +21,18 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetStatus(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.PowerStatus, error) {
+	return GetStatus(ctx)
 }
 
-func handleStart(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := StartTuned(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleStart(ctx context.Context, _ apischema.NoRequest) (apischema.PowerStatus, error) {
+	return StartTuned(ctx)
 }
 
-func handleSetProfile(ctx context.Context, req apischema.ProfileRequest, emit bridgeipc.Events) error {
-	result, err := SetProfile(ctx, req.Profile)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleSetProfile(ctx context.Context, req apischema.ProfileRequest) (apischema.PowerStatus, error) {
+	return SetProfile(ctx, req.Profile)
 }
 
-func handleDisable(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := DisableTuned(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleDisable(ctx context.Context, _ apischema.NoRequest) (apischema.PowerStatus, error) {
+	return DisableTuned(ctx)
 }

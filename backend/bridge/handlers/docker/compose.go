@@ -29,7 +29,7 @@ var validIPCMode = regexp.MustCompile(`^(host|private|shareable|service:.+)$`)
 var validPIDMode = regexp.MustCompile(`^(host|service:.+)$`)
 
 // ListComposeProjects discovers all compose projects by analyzing container labels and configured Docker folders.
-func ListComposeProjects(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func ListComposeProjects(ctx context.Context, username string, store *config.UserStore) ([]*apischema.ComposeProject, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -228,18 +228,13 @@ func composeProjectUpdateAvailable(project *apischema.ComposeProject) bool {
 }
 
 // GetComposeProject returns detailed information about a specific compose project
-func GetComposeProject(ctx context.Context, username string, store *config.UserStore, projectName string) (any, error) {
+func GetComposeProject(ctx context.Context, username string, store *config.UserStore, projectName string) (*apischema.ComposeProject, error) {
 	projects, err := ListComposeProjects(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
 
-	projectList, ok := projects.([]*apischema.ComposeProject)
-	if !ok {
-		return nil, fmt.Errorf("invalid project list format")
-	}
-
-	for _, project := range projectList {
+	for _, project := range projects {
 		if project.Name == projectName {
 			return project, nil
 		}
@@ -262,10 +257,7 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 		project, err := GetComposeProject(ctx, username, store, projectName)
 		if err == nil {
 			// Project exists with containers
-			composeProject, ok := project.(*apischema.ComposeProject)
-			if !ok {
-				return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
-			}
+			composeProject := project
 
 			if len(composeProject.ConfigFiles) == 0 {
 				return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
@@ -345,10 +337,7 @@ func ComposeDown(ctx context.Context, username string, store *config.UserStore, 
 		return apischema.ComposeActionResult{}, err
 	}
 
-	composeProject, ok := project.(*apischema.ComposeProject)
-	if !ok {
-		return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
-	}
+	composeProject := project
 
 	if len(composeProject.ConfigFiles) == 0 {
 		return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
@@ -397,10 +386,7 @@ func DeleteStack(ctx context.Context, username string, store *config.UserStore, 
 		return result, nil
 	}
 
-	composeProject, ok := project.(*apischema.ComposeProject)
-	if !ok {
-		return nil, fmt.Errorf("invalid project format")
-	}
+	composeProject := project
 
 	var configFile string
 	var workingDir string
@@ -512,10 +498,8 @@ func ComposeRestart(ctx context.Context, username string, store *config.UserStor
 func resolveComposeRestartTarget(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err == nil {
-		if composeProject, ok := project.(*apischema.ComposeProject); ok {
-			if configFile, workingDir := resolveComposeRestartTargetFromProject(ctx, projectName, composeProject); configFile != "" {
-				return configFile, workingDir, nil
-			}
+		if configFile, workingDir := resolveComposeRestartTargetFromProject(ctx, projectName, project); configFile != "" {
+			return configFile, workingDir, nil
 		}
 	}
 
@@ -622,10 +606,7 @@ func ComposeStop(ctx context.Context, username string, store *config.UserStore, 
 		return apischema.ComposeActionResult{}, err
 	}
 
-	composeProject, ok := project.(*apischema.ComposeProject)
-	if !ok {
-		return apischema.ComposeActionResult{}, fmt.Errorf("invalid project format")
-	}
+	composeProject := project
 
 	if len(composeProject.ConfigFiles) == 0 {
 		return apischema.ComposeActionResult{}, fmt.Errorf("no config files found for project '%s'", projectName)
@@ -825,7 +806,7 @@ func NormalizeComposeFile(ctx context.Context, content string) (string, error) {
 }
 
 // ValidateComposeFile validates docker-compose YAML syntax and structure
-func ValidateComposeFile(ctx context.Context, content string) (any, error) {
+func ValidateComposeFile(ctx context.Context, content string) (apischema.ValidateComposeResponse, error) {
 	result := apischema.ValidateComposeResponse{
 		Valid:  true,
 		Errors: []apischema.ValidateComposeError{},
@@ -1026,36 +1007,34 @@ func dockerFoldersFromConfig(cfg *config.Settings) []string {
 }
 
 // GetDockerFolders returns the configured Docker folder paths from user config.
-func GetDockerFolders(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func GetDockerFolders(ctx context.Context, username string, store *config.UserStore) (apischema.DockerFoldersResponse, error) {
 	folders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return apischema.DockerFoldersResponse{}, fmt.Errorf("load config: %w", err)
 	}
 
-	return map[string][]string{
-		"folders": folders,
-	}, nil
+	return apischema.DockerFoldersResponse{Folders: folders}, nil
 }
 
 // GetComposeFilePath builds the full path for a compose file
-func GetComposeFilePath(ctx context.Context, username string, store *config.UserStore, stackName string) (any, error) {
+func GetComposeFilePath(ctx context.Context, username string, store *config.UserStore, stackName string) (apischema.ComposeFilePathResponse, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.ComposeFilePathResponse{}, err
 	}
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return apischema.ComposeFilePathResponse{}, fmt.Errorf("load config: %w", err)
 	}
 
 	// Sanitize stack name
 	sanitized := sanitizeStackName(stackName)
 	if sanitized == "" {
-		return nil, fmt.Errorf("invalid stack name")
+		return apischema.ComposeFilePathResponse{}, fmt.Errorf("invalid stack name")
 	}
 
 	dockerFolders := dockerFoldersFromConfig(cfg)
 	if len(dockerFolders) == 0 {
-		return nil, fmt.Errorf("docker folders not configured")
+		return apischema.ComposeFilePathResponse{}, fmt.Errorf("docker folders not configured")
 	}
 
 	// Build path in the first configured folder: {Docker.Folders[0]}/{stack-name}/docker-compose.yml
@@ -1175,7 +1154,7 @@ func sanitizeStackName(name string) string {
 
 // ValidateStackDirectory performs a read-only, advisory check that a directory is suitable
 // for creating a stack. The job that performs the eventual write remains authoritative.
-func ValidateStackDirectory(ctx context.Context, dirPath string) (any, error) {
+func ValidateStackDirectory(ctx context.Context, dirPath string) (apischema.DirectoryValidationResult, error) {
 	result := apischema.DirectoryValidationResult{}
 
 	if !filepath.IsAbs(dirPath) {
@@ -1185,7 +1164,7 @@ func ValidateStackDirectory(ctx context.Context, dirPath string) (any, error) {
 	dirPath = filepath.Clean(dirPath)
 
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.DirectoryValidationResult{}, err
 	}
 	info, err := os.Stat(dirPath)
 	if err == nil {
@@ -1577,10 +1556,7 @@ func DeleteComposeStack(ctx context.Context, username string, store *config.User
 		return fmt.Errorf("failed to list compose projects: %w", err)
 	}
 
-	projectsList, ok := projects.([]*apischema.ComposeProject)
-	if !ok {
-		return fmt.Errorf("invalid projects format")
-	}
+	projectsList := projects
 
 	// Find the project in the slice
 	var project *apischema.ComposeProject

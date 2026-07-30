@@ -7,14 +7,16 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := ListImages(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerImage, error) {
+	return ListImages(ctx)
 }
 
-func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.ImageIDRequest, emit bridgeipc.Events) error {
-	result, err := DeleteImage(ctx, req.ImageID)
-	return bridgeipc.EmitResult(emit, result, err)
+// The delete/create handlers below are void: their routes declare NoResponse, so
+// the docker object or status string their domain functions return was never
+// reachable — and on a job route it lingered in the snapshot instead.
+func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.ImageIDRequest) error {
+	_, err := DeleteImage(ctx, req.ImageID)
+	return err
 }
 
 func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
@@ -22,14 +24,14 @@ func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRe
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleCreateNetwork(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
-	result, err := CreateDockerNetwork(ctx, req.Name)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleCreateNetwork(ctx context.Context, req apischema.NameRequest) error {
+	_, err := CreateDockerNetwork(ctx, req.Name)
+	return err
 }
 
-func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, req apischema.IDRequest, emit bridgeipc.Events) error {
-	result, err := DeleteDockerNetwork(ctx, req.ID)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, req apischema.IDRequest) error {
+	_, err := DeleteDockerNetwork(ctx, req.ID)
+	return err
 }
 
 func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
@@ -37,12 +39,12 @@ func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoReq
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleCreateVolume(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
-	result, err := CreateVolume(ctx, req.Name)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleCreateVolume(ctx context.Context, req apischema.NameRequest) error {
+	_, err := CreateVolume(ctx, req.Name)
+	return err
 }
 
-func (h dockerHandlers) handleDeleteVolume(ctx context.Context, req apischema.NameRequest, emit bridgeipc.Events) error {
-	result, err := DeleteVolume(ctx, req.Name)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleDeleteVolume(ctx context.Context, req apischema.NameRequest) error {
+	_, err := DeleteVolume(ctx, req.Name)
+	return err
 }

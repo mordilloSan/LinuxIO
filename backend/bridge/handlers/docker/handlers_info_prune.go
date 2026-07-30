@@ -4,15 +4,12 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetDockerInfo(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.DockerSystemInfo, error) {
+	return GetDockerInfo(ctx)
 }
 
-func (h dockerHandlers) handleSystemPrune(ctx context.Context, req apischema.DockerSystemPruneRequest, emit bridgeipc.Events) error {
-	result, err := SystemPrune(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleSystemPrune(ctx context.Context, req apischema.DockerSystemPruneRequest) (*apischema.DockerSystemPruneResponse, error) {
+	return SystemPrune(ctx, req)
 }

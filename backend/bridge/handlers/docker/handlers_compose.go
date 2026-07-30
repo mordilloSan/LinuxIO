@@ -7,34 +7,28 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := ListComposeProjects(ctx, h.rt.Username(), h.rt.Store)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ apischema.NoRequest) ([]*apischema.ComposeProject, error) {
+	return ListComposeProjects(ctx, h.rt.Username(), h.rt.Store)
 }
 
-func (h dockerHandlers) handleGetComposeProject(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	result, err := GetComposeProject(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleGetComposeProject(ctx context.Context, req apischema.ProjectNameRequest) (*apischema.ComposeProject, error) {
+	return GetComposeProject(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
-func (h dockerHandlers) handleComposeUp(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	result, err := ComposeUp(ctx, h.rt.Username(), h.rt.Store, req.ProjectName, "")
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleComposeUp(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeUp(ctx, h.rt.Username(), h.rt.Store, req.ProjectName, "")
 }
 
-func (h dockerHandlers) handleComposeDown(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	result, err := ComposeDown(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleComposeDown(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeDown(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
-func (h dockerHandlers) handleComposeStop(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	result, err := ComposeStop(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleComposeStop(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeStop(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
-func (h dockerHandlers) handleComposeRestart(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {
-	result, err := ComposeRestart(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleComposeRestart(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeRestart(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
 func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.DeleteStackRequest, emit bridgeipc.Events) error {
@@ -46,14 +40,12 @@ func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.Del
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetDockerFolders(ctx, h.rt.Username(), h.rt.Store)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.NoRequest) (apischema.DockerFoldersResponse, error) {
+	return GetDockerFolders(ctx, h.rt.Username(), h.rt.Store)
 }
 
-func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema.ContentRequest, emit bridgeipc.Events) error {
-	result, err := ValidateComposeFile(ctx, req.Content)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema.ContentRequest) (apischema.ValidateComposeResponse, error) {
+	return ValidateComposeFile(ctx, req.Content)
 }
 
 func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischema.ContentRequest, emit bridgeipc.Events) error {
@@ -61,14 +53,12 @@ func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischem
 	return bridgeipc.EmitResult(emit, map[string]string{"content": normalized}, err)
 }
 
-func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apischema.StackNameRequest, emit bridgeipc.Events) error {
-	result, err := GetComposeFilePath(ctx, h.rt.Username(), h.rt.Store, req.StackName)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apischema.StackNameRequest) (apischema.ComposeFilePathResponse, error) {
+	return GetComposeFilePath(ctx, h.rt.Username(), h.rt.Store, req.StackName)
 }
 
-func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req apischema.DirPathRequest, emit bridgeipc.Events) error {
-	result, err := ValidateStackDirectory(ctx, req.DirPath)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req apischema.DirPathRequest) (apischema.DirectoryValidationResult, error) {
+	return ValidateStackDirectory(ctx, req.DirPath)
 }
 
 func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest, emit bridgeipc.Events) error {

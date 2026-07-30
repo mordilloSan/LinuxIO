@@ -9,8 +9,8 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
-	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
+	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").HandleEvents(handleGetUpdatesBasic),
+	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").HandleEvents(handleGetUpdateDetail),
 	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
 	apischema.Job[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
 	apischema.Job[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
@@ -38,13 +38,12 @@ func handleGetUpdateDetail(ctx context.Context, req apischema.PackageIDRequest, 
 	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleGetAutoUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := getAutoUpdates(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGetAutoUpdates(ctx context.Context, _ apischema.NoRequest) (apischema.AutoUpdateState, error) {
+	return getAutoUpdates(ctx)
 }
 
-func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdatesRequest, emit bridgeipc.Events) error {
-	result, err := setAutoUpdates(ctx, AutoUpdateOptions{
+func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdatesRequest) (apischema.AutoUpdateState, error) {
+	return setAutoUpdates(ctx, AutoUpdateOptions{
 		Enabled:         req.Enabled,
 		Frequency:       apischema.AutoUpdateFrequency(req.Frequency),
 		Scope:           apischema.AutoUpdateScope(req.Scope),
@@ -52,20 +51,19 @@ func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdat
 		RebootPolicy:    apischema.AutoUpdateRebootPolicy(req.RebootPolicy),
 		ExcludePackages: req.ExcludePackages,
 	})
-	return bridgeipc.EmitResult(emit, result, err)
 }
 
-func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := applyOfflineUpdates(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest) (apischema.OfflineUpdatesResponse, error) {
+	return applyOfflineUpdates(ctx)
 }
 
-func handleRefreshUpdateCache(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	err := RefreshUpdateCache(ctx)
-	return bridgeipc.EmitResult(emit, apischema.SuccessResponse{Success: true}, err)
+func handleRefreshUpdateCache(ctx context.Context, _ apischema.NoRequest) (apischema.SuccessResponse, error) {
+	if err := RefreshUpdateCache(ctx); err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	return apischema.SuccessResponse{Success: true}, nil
 }
 
-func handleGetUpdateHistory(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetUpdateHistory(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGetUpdateHistory(ctx context.Context, _ apischema.NoRequest) ([]apischema.UpdateHistoryRow, error) {
+	return GetUpdateHistory(ctx)
 }

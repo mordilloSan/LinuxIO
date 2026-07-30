@@ -277,13 +277,13 @@ func mergeManagedMounts(mounts map[string]apischema.NFSMount, managedEntries map
 }
 
 // MountNFS mounts an NFS share
-func MountNFS(ctx context.Context, server, exportPath, mountpoint string, options []string, persist bool) (map[string]any, error) {
+func MountNFS(ctx context.Context, server, exportPath, mountpoint string, options []string, persist bool) (apischema.StorageMountResult, error) {
 	if err := requireNFSClientAvailability(); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	if err := validateNFSMountRequest(server, exportPath, mountpoint); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	source := fmt.Sprintf("%s:%s", server, exportPath)
@@ -292,7 +292,7 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint string, option
 	// Create mountpoint if it doesn't exist
 	if err := os.MkdirAll(mountpoint, 0755); err != nil {
 		slog.Error("failed to create mountpoint", "mountpoint", mountpoint, "error", err)
-		return nil, fmt.Errorf("failed to create mountpoint: %w", err)
+		return apischema.StorageMountResult{}, fmt.Errorf("failed to create mountpoint: %w", err)
 	}
 
 	args := buildNFSMountArgs(source, mountpoint, options)
@@ -301,17 +301,13 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint string, option
 	if err != nil {
 		message := commandFailureMessage(out, err)
 		slog.Error("NFS mount failed", "source", source, "mountpoint", mountpoint, "message", message)
-		return nil, fmt.Errorf("mount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("mount failed: %s", message)
 	}
 	slog.Info("NFS share mounted", "source", source, "mountpoint", mountpoint)
 
-	result := map[string]any{
-		"success":    true,
-		"mountpoint": mountpoint,
-	}
-
-	recordSuccessfulNFSMount(result, source, mountpoint, options, persist)
-	return result, nil
+	var warning string
+	recordSuccessfulNFSMount(&warning, source, mountpoint, options, persist)
+	return mountResult(mountpoint, warning), nil
 }
 
 func validateNFSMountRequest(server, exportPath, mountpoint string) error {
@@ -342,21 +338,21 @@ func buildNFSMountArgs(source, mountpoint string, options []string) []string {
 	return append(args, source, mountpoint)
 }
 
-func recordSuccessfulNFSMount(result map[string]any, source, mountpoint string, options []string, persist bool) {
+func recordSuccessfulNFSMount(warning *string, source, mountpoint string, options []string, persist bool) {
 	if persist {
-		recordPersistentNFSMount(result, source, mountpoint, options)
+		recordPersistentNFSMount(warning, source, mountpoint, options)
 		return
 	}
 	if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: "nfs", Options: options}); err != nil {
 		slog.Warn("mount succeeded but LinuxIO registry update failed", "mountpoint", mountpoint, "error", err)
-		result["warning"] = fmt.Sprintf("mount succeeded but LinuxIO registry update failed: %v", err)
+		*warning = fmt.Sprintf("mount succeeded but LinuxIO registry update failed: %v", err)
 	}
 }
 
-func recordPersistentNFSMount(result map[string]any, source, mountpoint string, options []string) {
+func recordPersistentNFSMount(warning *string, source, mountpoint string, options []string) {
 	if err := addToFstab(source, mountpoint, "nfs", options); err != nil {
 		slog.Warn("mount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
-		result["warning"] = fmt.Sprintf("mount succeeded but fstab update failed: %v", err)
+		*warning = fmt.Sprintf("mount succeeded but fstab update failed: %v", err)
 		if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: "nfs", Options: options}); err != nil {
 			slog.Warn("failed to persist temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
 		}
@@ -369,15 +365,15 @@ func recordPersistentNFSMount(result map[string]any, source, mountpoint string, 
 }
 
 // RemountNFS remounts an NFS share with new options
-func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, updateFstab bool) (map[string]any, error) {
+func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, updateFstab bool) (apischema.StorageMountResult, error) {
 	if err := requireNFSClientAvailability(); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
 		slog.Warn("invalid mountpoint", "mountpoint", mountpoint)
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
 	options := cleanMountOptions(newOptions)
@@ -394,7 +390,7 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 	partitions, err := disk.Partitions(true)
 	if err != nil {
 		slog.Error("failed to get NFS mount info", "error", err)
-		return nil, fmt.Errorf("failed to get mount info: %w", err)
+		return apischema.StorageMountResult{}, fmt.Errorf("failed to get mount info: %w", err)
 	}
 
 	var currentMount *disk.PartitionStat
@@ -405,13 +401,10 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 		}
 	}
 
-	result := map[string]any{
-		"success":    true,
-		"mountpoint": mountpoint,
-	}
+	var warning string
 
 	if currentMount == nil {
-		return remountInactiveNFS(mountpoint, entry, inFstab, managedEntry, inManagedRegistry, updateFstab, options, result)
+		return remountInactiveNFS(mountpoint, entry, inFstab, managedEntry, inManagedRegistry, updateFstab, options)
 	}
 
 	source := currentMount.Device
@@ -428,7 +421,7 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 	if err != nil {
 		message := commandFailureMessage(out, err)
 		slog.Error("NFS unmount during remount failed", "mountpoint", mountpoint, "message", message)
-		return nil, fmt.Errorf("unmount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("unmount failed: %s", message)
 	}
 
 	// Remount with new options
@@ -442,21 +435,21 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 	if err != nil {
 		message := commandFailureMessage(out, err)
 		slog.Error("NFS remount failed", "mountpoint", mountpoint, "message", message)
-		return nil, fmt.Errorf("remount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("remount failed: %s", message)
 	}
 	slog.Info("NFS share remounted", "mountpoint", mountpoint)
-	persistNFSConfig("remount", mountpoint, source, fstype, options, updateFstab, inFstab, result)
-	return result, nil
+	persistNFSConfig("remount", mountpoint, source, fstype, options, updateFstab, inFstab, &warning)
+	return mountResult(mountpoint, warning), nil
 }
 
 func remountInactiveNFS(
 	mountpoint string, entry fstabEntry, inFstab bool,
 	managedEntry managedMountEntry, inManagedRegistry, updateFstab bool,
-	options []string, result map[string]any,
-) (map[string]any, error) {
+	options []string,
+) (apischema.StorageMountResult, error) {
 	if (!inFstab || !isNFSFSType(entry.fstype)) && !inManagedRegistry {
 		slog.Warn("NFS mount not found", "mountpoint", mountpoint)
-		return nil, fmt.Errorf("NFS mount not found at %s", mountpoint)
+		return apischema.StorageMountResult{}, fmt.Errorf("NFS mount not found at %s", mountpoint)
 	}
 
 	source := entry.source
@@ -478,36 +471,34 @@ func remountInactiveNFS(
 	if updateFstab {
 		if err := upsertFstabEntry(mountpoint, source, fstype, options, isConfiguredNFS); err != nil {
 			slog.Error("failed to update stored NFS config", "mountpoint", mountpoint, "error", err)
-			return nil, fmt.Errorf("failed to update stored NFS config: %w", err)
+			return apischema.StorageMountResult{}, fmt.Errorf("failed to update stored NFS config: %w", err)
 		}
 		if err := nfsMountStore.remove(mountpoint); err != nil {
 			slog.Warn("failed to clean up temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
 		}
-		result["warning"] = "mount is not currently active; saved configuration was updated only"
-		return result, nil
+		return mountResult(mountpoint, "mount is not currently active; saved configuration was updated only"), nil
 	}
 
 	if isConfiguredNFS {
 		if err := removeFromFstab(mountpoint); err != nil {
 			slog.Error("failed to remove stored NFS config", "mountpoint", mountpoint, "error", err)
-			return nil, fmt.Errorf("failed to remove stored NFS config: %w", err)
+			return apischema.StorageMountResult{}, fmt.Errorf("failed to remove stored NFS config: %w", err)
 		}
 	}
 	if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: fstype, Options: options}); err != nil {
 		slog.Error("failed to update LinuxIO NFS registry", "mountpoint", mountpoint, "error", err)
-		return nil, fmt.Errorf("failed to update LinuxIO NFS registry: %w", err)
+		return apischema.StorageMountResult{}, fmt.Errorf("failed to update LinuxIO NFS registry: %w", err)
 	}
-	result["warning"] = "mount is not currently active; saved configuration was updated only"
-	return result, nil
+	return mountResult(mountpoint, "mount is not currently active; saved configuration was updated only"), nil
 }
 
 // persistNFSConfig updates fstab and/or the managed NFS registry after a
 // successful mount/unmount operation. Warnings are stored in result["warning"].
-func persistNFSConfig(op, mountpoint, source, fstype string, options []string, wantFstab, inFstab bool, result map[string]any) {
+func persistNFSConfig(op, mountpoint, source, fstype string, options []string, wantFstab, inFstab bool, warning *string) {
 	if wantFstab {
 		if err := upsertFstabEntry(mountpoint, source, fstype, options, inFstab); err != nil {
 			slog.Warn("NFS operation succeeded but fstab update failed", "operation", op, "mountpoint", mountpoint, "error", err)
-			result["warning"] = fmt.Sprintf("%s succeeded but fstab update failed: %v", op, err)
+			*warning = fmt.Sprintf("%s succeeded but fstab update failed: %v", op, err)
 		} else {
 			if inFstab {
 				slog.Info("updated fstab options", "mountpoint", mountpoint)
@@ -524,23 +515,23 @@ func persistNFSConfig(op, mountpoint, source, fstype string, options []string, w
 	if inFstab {
 		if err := removeFromFstab(mountpoint); err != nil {
 			slog.Warn("NFS operation succeeded but fstab removal failed", "operation", op, "mountpoint", mountpoint, "error", err)
-			result["warning"] = fmt.Sprintf("%s succeeded but fstab removal failed: %v", op, err)
+			*warning = fmt.Sprintf("%s succeeded but fstab removal failed: %v", op, err)
 			return
 		}
 		slog.Info("removed mount from fstab", "mountpoint", mountpoint)
 	}
 	if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: fstype, Options: options}); err != nil {
 		slog.Warn("NFS operation succeeded but LinuxIO registry update failed", "operation", op, "mountpoint", mountpoint, "error", err)
-		result["warning"] = fmt.Sprintf("%s succeeded but LinuxIO registry update failed: %v", op, err)
+		*warning = fmt.Sprintf("%s succeeded but LinuxIO registry update failed: %v", op, err)
 	}
 }
 
 // UnmountNFS unmounts an NFS share
-func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (map[string]any, error) {
+func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (apischema.StorageWarningResult, error) {
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
 		slog.Warn("invalid mountpoint", "mountpoint", mountpoint)
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageWarningResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
 	fstabEntries := getFstabEntries()
@@ -556,7 +547,7 @@ func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (map[s
 	partitions, err := disk.Partitions(true)
 	if err != nil {
 		slog.Error("failed to get NFS mount info", "error", err)
-		return nil, fmt.Errorf("failed to get mount info: %w", err)
+		return apischema.StorageWarningResult{}, fmt.Errorf("failed to get mount info: %w", err)
 	}
 
 	var currentMount *disk.PartitionStat
@@ -567,10 +558,10 @@ func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (map[s
 		}
 	}
 
-	result := map[string]any{"success": true}
+	var warning string
 
 	if currentMount == nil {
-		return unmountInactiveNFS(mountpoint, removeFstab, isConfiguredNFS, inManagedRegistry, result)
+		return unmountInactiveNFS(mountpoint, removeFstab, isConfiguredNFS, inManagedRegistry)
 	}
 
 	source, fstype, options := resolveNFSMountInfo(currentMount, entry, isConfiguredNFS, managedEntry, inManagedRegistry)
@@ -579,37 +570,35 @@ func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (map[s
 	if err != nil {
 		message := commandFailureMessage(out, err)
 		slog.Error("NFS unmount failed", "mountpoint", mountpoint, "message", message)
-		return nil, fmt.Errorf("umount failed: %s", message)
+		return apischema.StorageWarningResult{}, fmt.Errorf("umount failed: %s", message)
 	}
 	slog.Info("NFS share unmounted", "mountpoint", mountpoint)
-	persistUnmountConfig(mountpoint, source, fstype, options, removeFstab, isConfiguredNFS, result)
-	return result, nil
+	persistUnmountConfig(mountpoint, source, fstype, options, removeFstab, isConfiguredNFS, &warning)
+	return warningResult(warning), nil
 }
 
-func unmountInactiveNFS(mountpoint string, removeFstab, isConfiguredNFS, inManagedRegistry bool, result map[string]any) (map[string]any, error) {
+func unmountInactiveNFS(mountpoint string, removeFstab, isConfiguredNFS, inManagedRegistry bool) (apischema.StorageWarningResult, error) {
 	if removeFstab && isConfiguredNFS {
 		if err := removeFromFstab(mountpoint); err != nil {
 			slog.Warn("failed to remove mount from fstab", "mountpoint", mountpoint, "error", err)
-			return nil, fmt.Errorf("failed to remove stored mount: %w", err)
+			return apischema.StorageWarningResult{}, fmt.Errorf("failed to remove stored mount: %w", err)
 		}
 		if err := nfsMountStore.remove(mountpoint); err != nil {
 			slog.Warn("failed to remove LinuxIO metadata", "mountpoint", mountpoint, "error", err)
 		}
 		slog.Info("removed inactive NFS entry from fstab", "mountpoint", mountpoint)
-		result["warning"] = "mount was not active; removed saved configuration only"
-		return result, nil
+		return warningResult("mount was not active; removed saved configuration only"), nil
 	}
 	if removeFstab && inManagedRegistry {
 		if err := nfsMountStore.remove(mountpoint); err != nil {
 			slog.Warn("failed to remove LinuxIO metadata", "mountpoint", mountpoint, "error", err)
-			return nil, fmt.Errorf("failed to remove saved mount: %w", err)
+			return apischema.StorageWarningResult{}, fmt.Errorf("failed to remove saved mount: %w", err)
 		}
 		slog.Info("removed inactive temporary NFS entry from LinuxIO registry", "mountpoint", mountpoint)
-		result["warning"] = "mount was not active; removed saved configuration only"
-		return result, nil
+		return warningResult("mount was not active; removed saved configuration only"), nil
 	}
 	slog.Warn("NFS mount not found", "mountpoint", mountpoint)
-	return nil, fmt.Errorf("NFS mount not found at %s", mountpoint)
+	return apischema.StorageWarningResult{}, fmt.Errorf("NFS mount not found at %s", mountpoint)
 }
 
 func resolveNFSMountInfo(
@@ -640,20 +629,20 @@ func resolveNFSMountInfo(
 	return source, fstype, options
 }
 
-func persistUnmountConfig(mountpoint, source, fstype string, options []string, removeFstab, isConfiguredNFS bool, result map[string]any) {
+func persistUnmountConfig(mountpoint, source, fstype string, options []string, removeFstab, isConfiguredNFS bool, warning *string) {
 	if removeFstab {
 		if isConfiguredNFS {
 			if err := removeFromFstab(mountpoint); err != nil {
 				slog.Warn("unmount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
-				result["warning"] = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
+				*warning = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
 			} else {
 				slog.Info("removed mount from fstab", "mountpoint", mountpoint)
 			}
 		}
 		if err := nfsMountStore.remove(mountpoint); err != nil {
 			slog.Warn("failed to remove LinuxIO metadata", "mountpoint", mountpoint, "error", err)
-			if result["warning"] == nil {
-				result["warning"] = fmt.Sprintf("unmount succeeded but LinuxIO registry update failed: %v", err)
+			if *warning == "" {
+				*warning = fmt.Sprintf("unmount succeeded but LinuxIO registry update failed: %v", err)
 			}
 		}
 		return
@@ -668,7 +657,7 @@ func persistUnmountConfig(mountpoint, source, fstype string, options []string, r
 
 	if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: fstype, Options: options}); err != nil {
 		slog.Warn("unmount succeeded but LinuxIO registry update failed", "mountpoint", mountpoint, "error", err)
-		result["warning"] = fmt.Sprintf("unmount succeeded but LinuxIO registry update failed: %v", err)
+		*warning = fmt.Sprintf("unmount succeeded but LinuxIO registry update failed: %v", err)
 	} else {
 		slog.Info("saved temporary NFS entry to LinuxIO registry", "mountpoint", mountpoint)
 	}

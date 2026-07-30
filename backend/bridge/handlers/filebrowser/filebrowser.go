@@ -138,7 +138,7 @@ func formatResourceModTime(modTime time.Time) string {
 }
 
 // resourceStat returns extended metadata.
-func resourceStat(ctx context.Context, req apischema.PathRequest) (any, error) {
+func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.ResourceStatData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1177,14 +1177,14 @@ func indexerStatus(ctx context.Context) (any, error) {
 }
 
 // dirSize calculates the total size of a directory recursively.
-func dirSize(ctx context.Context, req apischema.PathRequest) (any, error) {
+func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
 	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:missing path")
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
@@ -1192,27 +1192,24 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (any, error) {
 	stat, err := root.Root.Stat(fsroot.ToRel(req.Path))
 	if err != nil {
 		slog.Debug("error stating directory", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("bad_request:directory not found")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:directory not found")
 	}
 
 	if !stat.IsDir() {
-		return nil, fmt.Errorf("bad_request:path is not a directory")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:path is not a directory")
 	}
 
 	// Get directory size from the indexer daemon (precomputed)
 	size, err := fetchDirSizeFromIndexer(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
-			return nil, fmt.Errorf("bad_request:indexer unavailable")
+			return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
 		slog.Debug("error fetching directory size from indexer", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("error fetching directory size: %w", err)
+		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory size: %w", err)
 	}
 
-	return map[string]any{
-		"path": req.Path,
-		"size": size,
-	}, nil
+	return apischema.DirectorySizeData{Path: req.Path, Size: size}, nil
 }
 
 // subfoldersResponse represents a subfolder entry from the indexer
@@ -1494,23 +1491,20 @@ func resolveGroupID(identifier string) (int, error) {
 
 // usersGroups returns lists of all users and groups on the system
 // Args: []
-func usersGroups(ctx context.Context) (any, error) {
+func usersGroups(ctx context.Context) (apischema.UsersGroupsResponse, error) {
 	users, err := getAllUsers(ctx)
 	if err != nil {
 		slog.Debug("error getting users", "error", err)
-		return nil, fmt.Errorf("error getting users: %w", err)
+		return apischema.UsersGroupsResponse{}, fmt.Errorf("error getting users: %w", err)
 	}
 
 	groups, err := getAllGroups(ctx)
 	if err != nil {
 		slog.Debug("error getting groups", "error", err)
-		return nil, fmt.Errorf("error getting groups: %w", err)
+		return apischema.UsersGroupsResponse{}, fmt.Errorf("error getting groups: %w", err)
 	}
 
-	return map[string]any{
-		"users":  users,
-		"groups": groups,
-	}, nil
+	return apischema.UsersGroupsResponse{Users: users, Groups: groups}, nil
 }
 
 func getAllUsers(ctx context.Context) ([]string, error) {

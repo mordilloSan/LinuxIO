@@ -83,15 +83,15 @@ func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateStat
 	return b.Read()
 }
 
-func applyOfflineUpdates(ctx context.Context) (any, error) {
+func applyOfflineUpdates(ctx context.Context) (apischema.OfflineUpdatesResponse, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("nil context")
+		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("nil context")
 	}
 	b := autoupdate.NewPkgKitBackendIfAvailable(ctx)
 	if b == nil {
-		return nil, fmt.Errorf("PackageKit not available")
+		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("PackageKit not available")
 	}
-	return nil, b.ApplyOfflineNow(ctx)
+	return apischema.OfflineUpdatesResponse{}, b.ApplyOfflineNow(ctx)
 }
 
 // --- Helpers ---

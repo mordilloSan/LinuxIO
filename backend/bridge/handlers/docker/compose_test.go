@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/moby/moby/api/types/container"
-
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestExtractHostPortsTreatsTCPAndUDPAsDistinct(t *testing.T) {
@@ -52,13 +50,9 @@ services:
       - "53:53/udp"
 `
 
-	resultAny, err := ValidateComposeFile(context.Background(), content)
+	result, err := ValidateComposeFile(context.Background(), content)
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
-	}
-	result, ok := resultAny.(apischema.ValidateComposeResponse)
-	if !ok {
-		t.Fatalf("ValidateComposeFile() type = %T, want ValidationResult", resultAny)
 	}
 	if !result.Valid {
 		t.Fatalf("ValidateComposeFile() valid = false, errors = %#v", result.Errors)
@@ -75,13 +69,9 @@ services:
       - "8080:8080/tcp"
 `
 
-	resultAny, err := ValidateComposeFile(context.Background(), content)
+	result, err := ValidateComposeFile(context.Background(), content)
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
-	}
-	result, ok := resultAny.(apischema.ValidateComposeResponse)
-	if !ok {
-		t.Fatalf("ValidateComposeFile() type = %T, want ValidationResult", resultAny)
 	}
 	if result.Valid {
 		t.Fatalf("ValidateComposeFile() valid = true, want duplicate port error")
@@ -105,8 +95,8 @@ func TestValidateStackDirectoryPreservesExistingContents(t *testing.T) {
 		t.Fatalf("stat directory before validation: %v", err)
 	}
 
-	resultAny, err := ValidateStackDirectory(context.Background(), dirPath)
-	result := requireDirectoryValidationResult(t, resultAny, err)
+	result, err := ValidateStackDirectory(context.Background(), dirPath)
+	requireNoValidationError(t, err)
 	if !result.Exists || !result.IsDirectory || !result.CanWrite || !result.Valid {
 		t.Fatalf("ValidateStackDirectory() result = %#v, want writable existing directory", result)
 	}
@@ -145,8 +135,8 @@ func TestValidateStackDirectoryDoesNotCreateMissingTarget(t *testing.T) {
 		t.Fatalf("stat parent before validation: %v", err)
 	}
 
-	resultAny, err := ValidateStackDirectory(context.Background(), targetPath)
-	result := requireDirectoryValidationResult(t, resultAny, err)
+	result, err := ValidateStackDirectory(context.Background(), targetPath)
+	requireNoValidationError(t, err)
 	if result.Exists || !result.CanCreate || !result.CanWrite || !result.Valid {
 		t.Fatalf("ValidateStackDirectory() result = %#v, want creatable missing directory", result)
 	}
@@ -170,8 +160,8 @@ func TestValidateStackDirectoryRejectsDanglingSymlink(t *testing.T) {
 		t.Fatalf("create dangling symlink: %v", err)
 	}
 
-	resultAny, err := ValidateStackDirectory(context.Background(), targetPath)
-	result := requireDirectoryValidationResult(t, resultAny, err)
+	result, err := ValidateStackDirectory(context.Background(), targetPath)
+	requireNoValidationError(t, err)
 	if !result.Exists || result.Valid {
 		t.Fatalf("ValidateStackDirectory() result = %#v, want existing invalid path", result)
 	}
@@ -180,20 +170,11 @@ func TestValidateStackDirectoryRejectsDanglingSymlink(t *testing.T) {
 	}
 }
 
-func requireDirectoryValidationResult(
-	t *testing.T,
-	resultAny any,
-	err error,
-) apischema.DirectoryValidationResult {
+func requireNoValidationError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("ValidateStackDirectory() error = %v", err)
 	}
-	result, ok := resultAny.(apischema.DirectoryValidationResult)
-	if !ok {
-		t.Fatalf("ValidateStackDirectory() type = %T, want DirectoryValidationResult", resultAny)
-	}
-	return result
 }
 
 func setDirectoryModTime(t *testing.T, dirPath string) {
