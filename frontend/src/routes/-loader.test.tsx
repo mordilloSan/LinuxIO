@@ -21,6 +21,8 @@ vi.mock("@/api", async () => {
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import linuxio from "@/api/generated/client";
+import type { ExtendedFileInfo } from "@/api/generated/linuxio-types";
+import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
 
@@ -44,6 +46,29 @@ function createRouterContext(
     },
     isUpdateBlocked,
     queryClient,
+  };
+}
+
+const fileBrowserListing = {
+  name: "projects",
+  size: 0,
+  modified: "2026-01-01T00:00:00Z",
+  type: "directory",
+  hidden: false,
+  hasPreview: false,
+  symlink: false,
+  files: [],
+  folders: [],
+  path: "/srv/projects",
+} satisfies ExtendedFileInfo;
+
+function fileBrowserListingOptions(queryFn: () => Promise<ExtendedFileInfo>) {
+  return {
+    ...linuxio.filebrowser.resource_get.queryOptions(
+      { path: fileBrowserListing.path },
+      fileBrowserListingQueryOptions,
+    ),
+    queryFn,
   };
 }
 
@@ -71,13 +96,13 @@ describe("loadRouteQueries", () => {
     expect(queryFn).not.toHaveBeenCalled();
   });
 
-  it("seeds the same cache entry for a component observer without another initial request", async () => {
+  it("refetches a loader result on mount when staleTime is zero", async () => {
     apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
     const queryFn = vi.fn().mockResolvedValue("ready");
     const queryOptions = {
-      queryKey: ["shared-query"],
+      queryKey: ["zero-stale-query"],
       queryFn,
-      staleTime: Infinity,
+      staleTime: 0,
     };
     const queryClient = createClient();
     const context = createRouterContext(queryClient);
@@ -98,7 +123,81 @@ describe("loadRouteQueries", () => {
     );
 
     await waitFor(() => expect(view.getByText("ready")).toBeInTheDocument());
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
+  });
+
+  it("uses the File Browser listing options without a duplicate cold-navigation request", async () => {
+    apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
+    const queryFn = vi.fn().mockResolvedValue(fileBrowserListing);
+    const queryOptions = fileBrowserListingOptions(queryFn);
+    const queryClient = createClient();
+    const context = createRouterContext(queryClient);
+
+    await expect(
+      loadRouteQueries({ context, preload: false }, [queryOptions]),
+    ).resolves.toEqual([fileBrowserListing]);
+
+    function Observer() {
+      const query = useQuery(queryOptions);
+      return <span>{query.data?.name}</span>;
+    }
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <Observer />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(view.getByText(fileBrowserListing.name)).toBeInTheDocument(),
+    );
     expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("refetches an invalidated File Browser listing when revisiting the route", async () => {
+    apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
+    const queryFn = vi.fn().mockResolvedValue(fileBrowserListing);
+    const queryOptions = fileBrowserListingOptions(queryFn);
+    const queryClient = createClient();
+    const context = createRouterContext(queryClient);
+
+    await expect(
+      loadRouteQueries({ context, preload: false }, [queryOptions]),
+    ).resolves.toEqual([fileBrowserListing]);
+
+    function Observer() {
+      const query = useQuery(queryOptions);
+      return <span>{query.data?.name}</span>;
+    }
+
+    const firstVisit = render(
+      <QueryClientProvider client={queryClient}>
+        <Observer />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(firstVisit.getByText(fileBrowserListing.name)).toBeInTheDocument(),
+    );
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    firstVisit.unmount();
+
+    await queryClient.invalidateQueries({ queryKey: queryOptions.queryKey });
+    await expect(
+      loadRouteQueries({ context, preload: false }, [queryOptions]),
+    ).resolves.toEqual([fileBrowserListing]);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    const revisit = render(
+      <QueryClientProvider client={queryClient}>
+        <Observer />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(revisit.getByText(fileBrowserListing.name)).toBeInTheDocument(),
+    );
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
   });
 
   it("deduplicates simultaneous route-loader callers for the shared cache key", async () => {

@@ -32,6 +32,8 @@ const INDEXER_KEYS = [
 
 const UNIT_KEYS = [
   endpointQueryPrefix("systemd.list_services"),
+  endpointQueryPrefix("systemd.list_sockets"),
+  endpointQueryPrefix("systemd.list_timers"),
   endpointQueryPrefix("systemd.get_unit_info"),
 ];
 

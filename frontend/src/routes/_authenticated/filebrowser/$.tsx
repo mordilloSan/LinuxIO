@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { linuxio } from "@/api";
+import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { FolderIcon } from "@/icons/svg";
 import { loadRouteQueries } from "@/routes/-loader";
 import {
@@ -22,7 +23,7 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     return loadRouteQueries({ context, preload }, [
       linuxio.filebrowser.resource_get.queryOptions(
         { path },
-        { staleTime: CACHE_TTL_MS.NONE },
+        fileBrowserListingQueryOptions,
       ),
     ]);
   },

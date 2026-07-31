@@ -38,6 +38,8 @@ TanStack Start does not replace this with a second loader system. Start uses
 TanStack Router's lifecycle and adds request-scoped routers, SSR, streaming,
 Query dehydration/hydration, server functions, and server cleanup.
 
+Revisit Router-abort integration separately after defining shared-query behavior.
+
 The most useful Start pattern to adopt is an explicit distinction between:
 
 - navigation-critical queries that must finish before the route renders;

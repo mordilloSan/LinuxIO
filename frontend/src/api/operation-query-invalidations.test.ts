@@ -20,6 +20,15 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes service, socket, and timer lists after unit actions", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["systemd.restart_service"]).toEqual([
+      ["linuxio", "systemd", "list_services"],
+      ["linuxio", "systemd", "list_sockets"],
+      ["linuxio", "systemd", "list_timers"],
+      ["linuxio", "systemd", "get_unit_info"],
+    ]);
+  });
+
   it("maps only action or job routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
       expect(["query", "job"], `${route} is not an operation route`).toContain(
