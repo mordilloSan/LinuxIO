@@ -53,6 +53,17 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	}
 }
 
+func mustRoute(t *testing.T, name string) apischema.RouteSpec {
+	t.Helper()
+	for _, spec := range handlers.Routes {
+		if spec.Route == name {
+			return spec
+		}
+	}
+	t.Fatalf("unknown route %q", name)
+	return apischema.RouteSpec{}
+}
+
 func TestOnlyProgressHandlersRemainJobs(t *testing.T) {
 	remainingProgressJobs := map[string]bool{
 		"filebrowser.resource_patch": true,
@@ -126,8 +137,11 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			spec := handlers.MustRoute(tc.route)
-			decoded, err := apischema.RequestDecoder(spec)(json.RawMessage(tc.raw))
+			spec := mustRoute(t, tc.route)
+			if spec.Decode == nil {
+				t.Fatalf("%s has no request decoder", tc.route)
+			}
+			decoded, err := spec.Decode(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}
@@ -140,20 +154,20 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
 	for _, route := range []string{"jobs.attach", "jobs.data", "terminal.open", "container.open"} {
-		spec := handlers.MustRoute(route)
+		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should not generate a React Query endpoint", route)
 		}
 	}
 
 	for _, route := range []string{"docker.logs.follow", "logs.general.follow", "logs.service.follow"} {
-		spec := handlers.MustRoute(route)
+		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should remain stream-opener only in this phase", route)
 		}
 	}
 
-	if !handlers.MustRoute("system.get_cpu_info").Endpoint() {
+	if !mustRoute(t, "system.get_cpu_info").Endpoint() {
 		t.Fatal("query route should generate an endpoint")
 	}
 }

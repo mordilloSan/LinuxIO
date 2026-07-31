@@ -333,10 +333,6 @@ func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
 	router.Duplex(spec.Route, binding.Handle, opts...)
 }
 
-func RequestDecoder(spec RouteSpec) bridgeipc.RequestDecoder {
-	return requireDecoder(spec, spec.Decode)
-}
-
 func requireRouteSpec(spec RouteSpec) RouteSpec {
 	if spec.Route == "" {
 		panic("apischema: route spec cannot be empty")

@@ -87,20 +87,3 @@ func collectRoutes(families []Family) []apischema.RouteSpec {
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Route < routes[j].Route })
 	return routes
 }
-
-func Route(route string) (apischema.RouteSpec, bool) {
-	for _, spec := range Routes {
-		if spec.Route == route {
-			return spec, true
-		}
-	}
-	return apischema.RouteSpec{}, false
-}
-
-func MustRoute(route string) apischema.RouteSpec {
-	spec, ok := Route(route)
-	if !ok {
-		panic("handlers: unknown route " + route)
-	}
-	return spec
-}

@@ -125,7 +125,7 @@ The bridge is **not** a long-running server that the webserver dials. Instead:
 // bridge/bridge.go — called at login
 func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
     result, _ := Authenticate(req) // dials auth daemon; conn now reaches the forked bridge
-    sess, _ := sm.CreateSessionWithID(sessionID, result.User, result.Privileged)
+    sess, _ := sm.CreateSession(sessionID, result.User, result.Privileged)
     attachBridgeSession(sess, result.Conn)
     return sess, nil
 }

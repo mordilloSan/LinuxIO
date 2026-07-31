@@ -150,7 +150,7 @@ func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, 
 		return nil, fmt.Errorf("auth daemon failed: %w", err)
 	}
 
-	sess, err := sm.CreateSessionWithID(sessionID, result.User, result.Privileged)
+	sess, err := sm.CreateSession(sessionID, result.User, result.Privileged)
 	if err != nil {
 		result.Conn.Close()
 		return nil, fmt.Errorf("failed to create session: %w", err)

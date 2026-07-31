@@ -12,13 +12,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient/testdbus"
 )
 
-func TestWithGateSerializesOperations(t *testing.T) {
+func TestOperationGateSerializesOperations(t *testing.T) {
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
 	firstDone := make(chan error, 1)
 
 	go func() {
-		firstDone <- WithGate(context.Background(), func() error {
+		firstDone <- withOperationGate(context.Background(), func() error {
 			close(firstEntered)
 			<-releaseFirst
 			return nil
@@ -29,7 +29,7 @@ func TestWithGateSerializesOperations(t *testing.T) {
 	secondEntered := make(chan struct{})
 	secondDone := make(chan error, 1)
 	go func() {
-		secondDone <- WithGate(context.Background(), func() error {
+		secondDone <- withOperationGate(context.Background(), func() error {
 			close(secondEntered)
 			return nil
 		})
@@ -43,7 +43,7 @@ func TestWithGateSerializesOperations(t *testing.T) {
 
 	close(releaseFirst)
 	if err := <-firstDone; err != nil {
-		t.Fatalf("first WithGate: %v", err)
+		t.Fatalf("first gate holder: %v", err)
 	}
 	select {
 	case <-secondEntered:
@@ -51,17 +51,17 @@ func TestWithGateSerializesOperations(t *testing.T) {
 		t.Fatal("second operation did not enter after first released the gate")
 	}
 	if err := <-secondDone; err != nil {
-		t.Fatalf("second WithGate: %v", err)
+		t.Fatalf("second gate holder: %v", err)
 	}
 }
 
-func TestWithGateHonorsContextCancellation(t *testing.T) {
+func TestOperationGateHonorsContextCancellation(t *testing.T) {
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
 	firstDone := make(chan error, 1)
 
 	go func() {
-		firstDone <- WithGate(context.Background(), func() error {
+		firstDone <- withOperationGate(context.Background(), func() error {
 			close(firstEntered)
 			<-releaseFirst
 			return nil
@@ -75,21 +75,18 @@ func TestWithGateHonorsContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	err := WithGate(ctx, func() error {
+	err := withOperationGate(ctx, func() error {
 		t.Fatal("canceled gate waiter unexpectedly entered")
 		return nil
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("WithGate error = %v, want context deadline", err)
+		t.Fatalf("operation gate error = %v, want context deadline", err)
 	}
 }
 
 func TestSignalsFlowWhilePackageKitGateHeld(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
-	t.Cleanup(func() {
-		_ = dbusclient.CloseSignals(context.Background())
-	})
 
 	conn := bus.OwnName(t, "org.example.Signals")
 	sub, err := dbusclient.WatchObjectSignals(context.Background(), "/org/example/Object", 1, "org.example.Interface", "Changed")
@@ -102,7 +99,7 @@ func TestSignalsFlowWhilePackageKitGateHeld(t *testing.T) {
 	releaseGate := make(chan struct{})
 	gateDone := make(chan error, 1)
 	go func() {
-		gateDone <- WithGate(context.Background(), func() error {
+		gateDone <- withOperationGate(context.Background(), func() error {
 			close(gateEntered)
 			<-releaseGate
 			return nil

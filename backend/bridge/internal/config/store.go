@@ -174,7 +174,7 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 }
 
 func withExclusiveConfigLock(ctx context.Context, lockPath string, fn func() error) error {
-	return filelock.WithExclusive(
+	return filelock.RunExclusive(
 		ctx,
 		lockPath,
 		fn,

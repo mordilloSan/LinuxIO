@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -271,60 +269,6 @@ func assertSymlinkTarget(t *testing.T, linkPath, expectedTarget string) {
 	assert.Equal(t, expectedTarget, target)
 }
 
-func TestDeleteFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("delete_single_file", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "todelete.txt", []byte("data"))
-
-		err := DeleteFiles(filePath)
-		require.NoError(t, err)
-
-		_, err = os.Stat(filePath)
-		require.Error(t, err, "file should be deleted")
-	})
-
-	t.Run("delete_directory", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "todelete_dir")
-		createTestFile(t, dirPath, "file1.txt", []byte("content"))
-		createTestFile(t, dirPath, "file2.txt", []byte("content"))
-
-		err := DeleteFiles(dirPath)
-		require.NoError(t, err)
-
-		_, err = os.Stat(dirPath)
-		require.Error(t, err, "directory should be deleted")
-	})
-
-	t.Run("delete_nonexistent", func(t *testing.T) {
-		safeDir := createTestDir(t, tmpDir, "safe")
-		missingPath := filepath.Join(tmpDir, "nonexistent.txt")
-
-		err := DeleteFiles(missingPath)
-		require.NoError(t, err, "deleting a nonexistent path should be a no-op")
-
-		_, err = os.Stat(missingPath)
-		require.Error(t, err, "missing path should still not exist")
-
-		// Ensure other directories are untouched
-		_, err = os.Stat(safeDir)
-		require.NoError(t, err, "existing directories must remain intact")
-	})
-
-	t.Run("delete_directory_with_nested_files", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "nested")
-		subDir := createTestDir(t, dirPath, "subdir")
-		createTestFile(t, dirPath, "file1.txt", []byte("root"))
-		createTestFile(t, subDir, "file2.txt", []byte("nested"))
-
-		err := DeleteFiles(dirPath)
-		require.NoError(t, err)
-
-		_, err = os.Stat(dirPath)
-		require.Error(t, err)
-	})
-}
-
 func TestDeleteFilesWithProgress(t *testing.T) {
 	t.Run("single_file_reports_one_item", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -427,145 +371,6 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 	})
 }
 
-func TestCreateDirectory(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("create_directory_success", func(t *testing.T) {
-		newDir := filepath.Join(tmpDir, "newdir")
-		opts := iteminfo.FileOptions{
-			Path:  newDir,
-			IsDir: true,
-		}
-
-		err := CreateDirectory(opts)
-		require.NoError(t, err)
-
-		stat, err := os.Stat(newDir)
-		require.NoError(t, err)
-		assert.True(t, stat.IsDir(), "created path should be a directory")
-	})
-
-	t.Run("create_nested_directory", func(t *testing.T) {
-		newDir := filepath.Join(tmpDir, "parent", "child")
-		opts := iteminfo.FileOptions{
-			Path:  newDir,
-			IsDir: true,
-		}
-
-		err := CreateDirectory(opts)
-		require.NoError(t, err)
-
-		stat, err := os.Stat(newDir)
-		require.NoError(t, err)
-		assert.True(t, stat.IsDir())
-	})
-
-	t.Run("create_existing_directory", func(t *testing.T) {
-		existingDir := createTestDir(t, tmpDir, "existing")
-		opts := iteminfo.FileOptions{
-			Path:  existingDir,
-			IsDir: true,
-		}
-
-		// Should not error if directory already exists
-		err := CreateDirectory(opts)
-		require.NoError(t, err)
-	})
-}
-
-func TestWriteContentInFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("write_content_new_file", func(t *testing.T) {
-		filePath := filepath.Join(tmpDir, "newfile.txt")
-		content := []byte("Hello, World!")
-		reader := bytes.NewReader(content)
-
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			Content: true,
-		}
-
-		err := WriteContentInFile(opts, reader)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, content, data)
-	})
-
-	t.Run("write_content_overwrites_file", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "existing.txt", []byte("old content"))
-		newContent := []byte("new content")
-		reader := bytes.NewReader(newContent)
-
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			Content: true,
-		}
-
-		err := WriteContentInFile(opts, reader)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, newContent, data)
-	})
-
-	t.Run("write_large_content", func(t *testing.T) {
-		filePath := filepath.Join(tmpDir, "large.txt")
-		largeContent := make([]byte, 10*1024*1024) // 10 MB
-		for i := range largeContent {
-			largeContent[i] = byte(i % 256)
-		}
-		reader := bytes.NewReader(largeContent)
-
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			Content: true,
-		}
-
-		err := WriteContentInFile(opts, reader)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, largeContent, data)
-	})
-
-	t.Run("write_empty_content", func(t *testing.T) {
-		filePath := filepath.Join(tmpDir, "empty.txt")
-		reader := bytes.NewReader([]byte{})
-
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			Content: true,
-		}
-
-		err := WriteContentInFile(opts, reader)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, []byte{}, data)
-	})
-
-	t.Run("write_to_directory", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "dirtest")
-		reader := bytes.NewReader([]byte("content"))
-
-		opts := iteminfo.FileOptions{
-			Path:    dirPath,
-			Content: true,
-		}
-
-		// WriteContentInFile may error or may create a file, just verify it handles the case
-		if err := WriteContentInFile(opts, reader); err != nil {
-			t.Logf("WriteContentInFile on directory returned error (acceptable for this case): %v", err)
-		}
-	})
-}
-
 func TestGetContent(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -620,42 +425,5 @@ func TestGetContent(t *testing.T) {
 		content, err := GetContent(filePath)
 		require.NoError(t, err)
 		assert.Equal(t, multilineContent, content)
-	})
-}
-
-func TestCommonPrefix(t *testing.T) {
-	t.Run("single_path", func(t *testing.T) {
-		result := CommonPrefix('/', "/path/to/file")
-		assert.Equal(t, "/path/to/file", result)
-	})
-
-	t.Run("identical_paths", func(t *testing.T) {
-		result := CommonPrefix('/', "/path/to/file", "/path/to/file")
-		assert.Equal(t, "/path/to/file", result)
-	})
-
-	t.Run("common_prefix", func(t *testing.T) {
-		result := CommonPrefix('/', "/path/to/file1", "/path/to/file2")
-		assert.Equal(t, "/path/to", result)
-	})
-
-	t.Run("different_roots", func(t *testing.T) {
-		result := CommonPrefix('/', "/path/a", "/home/b")
-		assert.Empty(t, result)
-	})
-
-	t.Run("no_common_prefix", func(t *testing.T) {
-		result := CommonPrefix('/', "a", "b")
-		assert.Empty(t, result)
-	})
-
-	t.Run("multiple_paths_with_common_prefix", func(t *testing.T) {
-		result := CommonPrefix('/', "/data/files/1", "/data/files/2", "/data/files/3")
-		assert.Equal(t, "/data/files", result)
-	})
-
-	t.Run("custom_separator", func(t *testing.T) {
-		result := CommonPrefix(':', "a:b:c:d", "a:b:c:e")
-		assert.Equal(t, "a:b:c", result)
 	})
 }

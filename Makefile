@@ -558,17 +558,29 @@ test-backend: $(GO_BUILD_PREREQ)
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
 
+# Scan with tests for wholly unreachable code, then without tests to surface
+# production APIs kept alive only by tests. testdbus is deliberately test-only
+# cross-package infrastructure and is the sole production-scan exclusion.
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
-		status=$$?; \
-		if [ $$status -ne 0 ]; then \
+		test_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
+		test_status=$$?; \
+		production_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" ./... 2>&1 )"; \
+		production_status=$$?; \
+		if [ $$production_status -eq 0 ]; then \
+			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
+		fi; \
+		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
-		elif [ -n "$$out" ]; then \
+			if [ $$test_status -ne 0 ]; then printf '%s\n' "$$test_out"; fi; \
+			if [ $$production_status -ne 0 ]; then printf '%s\n' "$$production_out"; fi; \
+		elif [ -n "$$test_out" ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found unreachable functions (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
+			printf '%s\n' "$$test_out"; \
+		elif [ -n "$$production_out" ]; then \
+			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found functions reachable only from tests (informational, not failing):$(COLOR_RESET)"; \
+			printf '%s\n' "$$production_out"; \
 		else \
 			$(PRINTC) "$(COLOR_GREEN)✅ No dead code found!$(COLOR_RESET)"; \
 		fi

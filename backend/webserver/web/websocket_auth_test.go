@@ -62,7 +62,7 @@ func TestWebSocketAuthMiddlewareRejectsExpiredSessionCookieWithPolicyViolation(t
 	sm := newTestSessionManager(cfg)
 	defer sm.Close()
 
-	sess, err := sm.CreateSessionWithID("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
+	sess, err := sm.CreateSession("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
 	if err != nil {
 		t.Fatalf("create expired session: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestProtectedRouteReturnsUnauthorizedForExpiredSessionCookie(t *testing.T) 
 	sm := newTestSessionManager(cfg)
 	defer sm.Close()
 
-	sess, err := sm.CreateSessionWithID("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
+	sess, err := sm.CreateSession("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
 	if err != nil {
 		t.Fatalf("create expired session: %v", err)
 	}

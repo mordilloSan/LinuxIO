@@ -52,9 +52,6 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
-	t.Cleanup(func() {
-		_ = dbusclient.CloseSignals(context.Background())
-	})
 
 	conn := bus.OwnName(t, dbusclient.PackageKitBusName)
 	service := &fakePackageKit{

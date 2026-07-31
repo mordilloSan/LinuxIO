@@ -2,13 +2,11 @@ package relay
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
 type countingWriter struct {
@@ -106,26 +104,6 @@ func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "result payload invalid") {
 		t.Fatalf("WriteResultFrame() error = %v, want result payload invalid", err)
-	}
-}
-
-func TestAbortContextCleanupCancelsContext(t *testing.T) {
-	reader, writer := io.Pipe()
-	ctx, cancelFn, cleanup := AbortContext(context.Background(), reader)
-
-	if cancelFn() {
-		t.Fatalf("cancelFn() = true before abort, want false")
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("writer.Close() error = %v", err)
-	}
-
-	cleanup()
-
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
-		t.Fatalf("cleanup did not cancel context")
 	}
 }
 

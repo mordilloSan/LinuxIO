@@ -63,7 +63,7 @@ func main() {
 		log.Fatalf("mkdir: %v", err)
 	}
 
-	data, err := yaml.Marshal(config.ExampleDefaults())
+	data, err := yaml.Marshal(*config.DefaultSettings("/var/lib/linuxio"))
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
 	}

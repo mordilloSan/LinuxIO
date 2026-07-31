@@ -8,11 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExampleDefaultsUseRuntimeDefaultsWithNeutralBase(t *testing.T) {
-	require.Equal(t, *DefaultSettings("/var/lib/linuxio"), ExampleDefaults())
-	require.Equal(t, []AbsolutePath{"/var/lib/linuxio/docker"}, ExampleDefaults().Docker.Folders)
-}
-
 func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 	cfg := DefaultSettings("/home/miguel")
 	app := cfg.AppSettings

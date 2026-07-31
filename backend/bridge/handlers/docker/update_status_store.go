@@ -237,7 +237,7 @@ func withUpdateStatusWriteLock(ctx context.Context, fn func() error) error {
 	updateStatusMu.Lock()
 	defer updateStatusMu.Unlock()
 
-	return filelock.WithExclusive(
+	return filelock.RunExclusive(
 		ctx,
 		updateStatusLockPath(),
 		fn,
