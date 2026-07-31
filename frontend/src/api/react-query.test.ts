@@ -91,12 +91,15 @@ describe("createEndpoint", () => {
     if (typeof options.queryFn !== "function") {
       throw new Error("Expected queryFn to be callable");
     }
-    await expect(options.queryFn({} as never)).resolves.toEqual({ ok: true });
+    const controller = new AbortController();
+    await expect(
+      options.queryFn({ signal: controller.signal } as never),
+    ).resolves.toEqual({ ok: true });
     expect(request).toHaveBeenLastCalledWith(
       "jobs",
       "get",
       { jobId: "job-1" },
-      { retryPolicy: "none" },
+      { retryPolicy: "none", signal: controller.signal },
     );
 
     expect(() =>
@@ -435,7 +438,7 @@ describe("useFetcher", () => {
       "jobs",
       "get",
       { jobId: "job-1" },
-      { retryPolicy: "none" },
+      { retryPolicy: "none", signal: expect.any(AbortSignal) },
     );
   });
 

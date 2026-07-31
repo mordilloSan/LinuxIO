@@ -325,6 +325,9 @@ func (r *Router) lookup(route string) (Route, bool) {
 }
 
 func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, request any) error {
+	ctx, cleanup := queryAbortContext(ctx, stream)
+	defer cleanup()
+
 	emit := newStreamEmitter(stream)
 	err := route.Handler(ctx, request, emit)
 	if err != nil {

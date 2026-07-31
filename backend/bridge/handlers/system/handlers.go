@@ -45,7 +45,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleGetCapabilities(ctx context.Context, _ apischema.NoRequest) (apischema.CapabilitiesResponse, error) {
-	return buildCapabilitiesResponse(ctx), nil
+	return buildCapabilitiesResponse(ctx)
 }
 
 func handleGetCPUInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.CPUInfoResponse, error) {
@@ -127,7 +127,7 @@ func handleGetMemoryModules(ctx context.Context, _ apischema.NoRequest) ([]apisc
 }
 
 func handleGetServerTime(ctx context.Context, _ apischema.NoRequest) (string, error) {
-	return GetCurrentServerTime(ctx), nil
+	return GetCurrentServerTime(ctx)
 }
 
 func handleGetTimezones(ctx context.Context, _ apischema.NoRequest) ([]string, error) {

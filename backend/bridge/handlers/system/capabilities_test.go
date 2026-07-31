@@ -47,6 +47,31 @@ func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 	}
 }
 
+func TestBuildCapabilitiesResponseStopsBeforeDetectionWhenCanceled(t *testing.T) {
+	originalRegistry := capabilityRegistry
+	detected := false
+	capabilityRegistry = []CapabilitySpec{{
+		Name: "docker",
+		Detect: func(context.Context) (bool, string) {
+			detected = true
+			return true, ""
+		},
+	}}
+	t.Cleanup(func() {
+		capabilityRegistry = originalRegistry
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := buildCapabilitiesResponse(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("buildCapabilitiesResponse error = %v, want context.Canceled", err)
+	}
+	if detected {
+		t.Fatal("capability detection ran after cancellation")
+	}
+}
+
 // wireAvailableFields returns the set of wire prefixes derived from JSON tags
 // shaped `<prefix>_available` on session.CapabilitiesAvailable.
 func wireAvailableFields(t *testing.T) map[string]bool {

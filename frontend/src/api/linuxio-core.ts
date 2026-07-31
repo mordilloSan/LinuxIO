@@ -32,6 +32,7 @@ export class LinuxIOError extends Error {
  */
 export interface RequestOptions {
   retryPolicy?: "connection_closed" | "none";
+  signal?: AbortSignal;
   timeout?: number; // Timeout in milliseconds (default: 30000)
 }
 
@@ -91,7 +92,23 @@ export async function ensureLoaderRequestReady(
   return mux;
 }
 
-async function ensureRequestMuxReady(timeoutMs: number) {
+function abortSignalError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
+  const error = new Error("Operation cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw abortSignalError(signal);
+  }
+}
+
+async function ensureRequestMuxReady(timeoutMs: number, signal?: AbortSignal) {
+  throwIfAborted(signal);
   const existingMux = getStreamMux();
   if (!existingMux) {
     throw new LinuxIOError("StreamMux not initialized", "not_initialized");
@@ -101,7 +118,9 @@ async function ensureRequestMuxReady(timeoutMs: number) {
     initStreamMux();
   }
 
-  const ready = await waitForStreamMux(timeoutMs);
+  const ready = signal
+    ? await waitForStreamMux(timeoutMs, signal)
+    : await waitForStreamMux(timeoutMs);
   if (!ready) {
     throw new LinuxIOError(
       "Connection closed before receiving result",
@@ -125,7 +144,10 @@ async function executeRequestAttempt<T>(
   command: string,
   request: unknown,
   timeoutMs: number,
+  callerSignal?: AbortSignal,
 ): Promise<T> {
+  throwIfAborted(callerSignal);
+  const startedAt = Date.now();
   const route = `${handler}.${command}`;
   const payload = encodeString(
     JSON.stringify({
@@ -134,11 +156,32 @@ async function executeRequestAttempt<T>(
     }),
   );
 
-  const mux = await ensureRequestMuxReady(timeoutMs);
+  const mux = await ensureRequestMuxReady(timeoutMs, callerSignal);
+  throwIfAborted(callerSignal);
+
+  const remainingMs = timeoutMs - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    throw new LinuxIOError("Request timeout", "timeout");
+  }
   const stream = mux.openStream(route, payload);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let abortSource: "caller" | "timeout" | null = null;
+  const abortAttempt = (
+    source: "caller" | "timeout",
+    reason?: unknown,
+  ): void => {
+    if (abortSource !== null) return;
+    abortSource = source;
+    controller.abort(reason);
+  };
+  const handleCallerAbort = () => abortAttempt("caller", callerSignal?.reason);
+  const timer = setTimeout(() => abortAttempt("timeout"), remainingMs);
+  if (callerSignal?.aborted) {
+    handleCallerAbort();
+  } else {
+    callerSignal?.addEventListener("abort", handleCallerAbort, { once: true });
+  }
 
   try {
     return await waitForStreamResult<T>(stream, {
@@ -146,13 +189,17 @@ async function executeRequestAttempt<T>(
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      stream.close();
+    if (
+      error instanceof Error &&
+      error.name === "AbortError" &&
+      abortSource === "timeout"
+    ) {
       throw new LinuxIOError("Request timeout", "timeout");
     }
     throw error;
   } finally {
     clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", handleCallerAbort);
   }
 }
 
@@ -172,6 +219,7 @@ export async function request<T = unknown>(
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    throwIfAborted(options?.signal);
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       throw new LinuxIOError("Request timeout", "timeout");
@@ -183,6 +231,7 @@ export async function request<T = unknown>(
         command,
         payload,
         remainingMs,
+        options?.signal,
       );
     } catch (error) {
       lastError = error;

@@ -543,7 +543,13 @@ export function createEndpoint<TResult>(
     const input = (requestShape.kind === "none" ? [] : [request]) as
       | []
       | [unknown];
-    const queryFn: QueryFunction<TResult, QueryKey> = () => execute(...input);
+    const queryFn: QueryFunction<TResult, QueryKey> = ({ signal }) =>
+      core.request<TResult>(
+        handler,
+        command,
+        requestForWire(requestShape, request),
+        { retryPolicy, signal },
+      );
     const optionsWithTaggedKey = createQueryOptions<
       TResult,
       LinuxIOError,
