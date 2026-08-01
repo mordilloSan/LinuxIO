@@ -2,7 +2,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
-import { useViewMode } from "@/hooks/useViewMode";
 
 import TimerCardsView from "./TimerCardsView";
 import TimerTableView from "./TimerTableView";
@@ -52,11 +51,17 @@ function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
 
 interface TimersTabProps {
   onSelectedChange: (name: string | null) => void;
+  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
+  viewMode: TableCardViewMode;
 }
 
-const TimersTab = ({ onSelectedChange, selected }: TimersTabProps) => {
-  const [viewMode, setViewMode] = useViewMode("timers.list", "table");
+const TimersTab = ({
+  onSelectedChange,
+  onViewModeChange,
+  selected,
+  viewMode,
+}: TimersTabProps) => {
   const { data } = useTimersQuery(viewMode);
 
   return (
@@ -90,7 +95,7 @@ const TimersTab = ({ onSelectedChange, selected }: TimersTabProps) => {
       )}
       searchPlaceholder="Search timers…"
       selected={selected}
-      setViewMode={setViewMode}
+      setViewMode={onViewModeChange}
       viewMode={viewMode}
     />
   );

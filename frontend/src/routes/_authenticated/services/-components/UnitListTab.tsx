@@ -43,9 +43,7 @@ interface UnitListTabProps<T extends UnitListItem> {
   renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
   selected?: string;
-  setViewMode: (
-    next: TableCardViewMode | ((prev: TableCardViewMode) => TableCardViewMode),
-  ) => void;
+  setViewMode: (next: TableCardViewMode) => void;
   viewMode: TableCardViewMode;
 }
 

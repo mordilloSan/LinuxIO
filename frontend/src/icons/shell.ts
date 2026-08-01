@@ -3,7 +3,7 @@
 
 import { addCollection } from "@iconify/react";
 
-// mdi - 14 icons
+// mdi - 16 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -14,6 +14,9 @@ addCollection({
     },
     "alert-outline": {
       body: '<path fill="currentColor" d="M12 2L1 21h22M12 6l7.53 13H4.47M11 10v4h2v-4m-2 6v2h2v-2"/>',
+    },
+    "card-multiple": {
+      body: '<path fill="currentColor" d="M21 3c.53 0 1.04.21 1.41.59c.38.37.59.88.59 1.41v10c0 .53-.21 1.04-.59 1.41c-.37.38-.88.59-1.41.59H7c-.53 0-1.04-.21-1.41-.59C5.21 16.04 5 15.53 5 15V5c0-.53.21-1.04.59-1.41C5.96 3.21 6.47 3 7 3zM3 19h15v2H3c-.53 0-1.04-.21-1.41-.59C1.21 20.04 1 19.53 1 19V8h2z"/>',
     },
     "check-circle-outline": {
       body: '<path fill="currentColor" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10s10-4.5 10-10S17.5 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8s8 3.59 8 8s-3.59 8-8 8m4.59-12.42L10 14.17l-2.59-2.58L6 13l4 4l8-8z"/>',
@@ -50,6 +53,9 @@ addCollection({
     },
     tune: {
       body: '<path fill="currentColor" d="M3 17v2h6v-2zM3 5v2h10V5zm10 16v-2h8v-2h-8v-2h-2v6zM7 9v2H3v2h4v2h2V9zm14 4v-2H11v2zm-6-4h2V7h4V5h-4V3h-2z"/>',
+    },
+    "view-list": {
+      body: '<path fill="currentColor" d="M9 5v4h12V5M9 19h12v-4H9m0-1h12v-4H9M4 9h4V5H4m0 14h4v-4H4m0-1h4v-4H4z"/>',
     },
   },
 });

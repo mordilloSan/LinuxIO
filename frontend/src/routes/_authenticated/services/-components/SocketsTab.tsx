@@ -2,7 +2,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { Socket, TableCardViewMode, UnitInfo } from "@/api";
-import { useViewMode } from "@/hooks/useViewMode";
 
 import SocketCardsView from "./SocketCardsView";
 import SocketTableView from "./SocketTableView";
@@ -57,11 +56,17 @@ function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
 
 interface SocketsTabProps {
   onSelectedChange: (name: string | null) => void;
+  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
+  viewMode: TableCardViewMode;
 }
 
-const SocketsTab = ({ onSelectedChange, selected }: SocketsTabProps) => {
-  const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
+const SocketsTab = ({
+  onSelectedChange,
+  onViewModeChange,
+  selected,
+  viewMode,
+}: SocketsTabProps) => {
   const { data } = useSocketsQuery(viewMode);
 
   return (
@@ -95,7 +100,7 @@ const SocketsTab = ({ onSelectedChange, selected }: SocketsTabProps) => {
       )}
       searchPlaceholder="Search sockets…"
       selected={selected}
-      setViewMode={setViewMode}
+      setViewMode={onViewModeChange}
       viewMode={viewMode}
     />
   );

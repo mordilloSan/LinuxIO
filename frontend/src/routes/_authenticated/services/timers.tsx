@@ -3,11 +3,12 @@ import { useCallback } from "react";
 
 import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import { useViewMode } from "@/hooks/useViewMode";
 import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
 import TimersTab from "./-components/TimersTab";
-import UnitViewToggle from "./-components/UnitViewToggle";
 
 export const Route = createFileRoute("/_authenticated/services/timers")({
   validateSearch: (search) => ({
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/services/timers")({
 function TimersRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const [viewMode, setViewMode] = useViewMode("timers.list", "table");
   const setSelected = useCallback(
     (timer: string | null) =>
       navigate({
@@ -45,9 +47,18 @@ function TimersRoute() {
   return (
     <>
       <RoutedTabActions>
-        <UnitViewToggle viewModeKey="timers.list" />
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setViewMode}
+          viewMode={viewMode}
+        />
       </RoutedTabActions>
-      <TimersTab onSelectedChange={setSelected} selected={search.timer} />
+      <TimersTab
+        onSelectedChange={setSelected}
+        onViewModeChange={setViewMode}
+        selected={search.timer}
+        viewMode={viewMode}
+      />
     </>
   );
 }

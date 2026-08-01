@@ -2,7 +2,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { Service, TableCardViewMode } from "@/api";
-import { useViewMode } from "@/hooks/useViewMode";
 
 import ServiceCardsView from "./ServiceCardsView";
 import ServiceTableView from "./ServiceTableView";
@@ -33,11 +32,17 @@ function useServicesQuery(viewMode: TableCardViewMode) {
 
 interface ServicesTabProps {
   onSelectedChange: (name: string | null) => void;
+  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
+  viewMode: TableCardViewMode;
 }
 
-const ServicesTab = ({ onSelectedChange, selected }: ServicesTabProps) => {
-  const [viewMode, setViewMode] = useViewMode("services.list", "table");
+const ServicesTab = ({
+  onSelectedChange,
+  onViewModeChange,
+  selected,
+  viewMode,
+}: ServicesTabProps) => {
   const { data } = useServicesQuery(viewMode);
 
   return (
@@ -67,7 +72,7 @@ const ServicesTab = ({ onSelectedChange, selected }: ServicesTabProps) => {
       )}
       searchPlaceholder="Search services…"
       selected={selected}
-      setViewMode={setViewMode}
+      setViewMode={onViewModeChange}
       viewMode={viewMode}
     />
   );
