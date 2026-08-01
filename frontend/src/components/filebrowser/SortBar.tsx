@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useState, type CSSProperties } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { getSubtleDividerColor } from "@/theme/surfaces";
@@ -48,6 +49,8 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
     display: "flex",
     alignItems: "center",
     cursor: "pointer",
+    justifyContent: "flex-start",
+    minWidth: 0,
     userSelect: "none",
     paddingBlock: 12,
     paddingInline: 8,
@@ -64,18 +67,12 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
         borderRadius: 8,
       }}
     >
-      <div
+      <AppButton
+        color="inherit"
         onClick={() => onSortChange("name")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            onSortChange("name");
-          }
-        }}
         onMouseEnter={() => setHoveredField("name")}
         onMouseLeave={() => setHoveredField(null)}
-        role="button"
         style={columnStyle}
-        tabIndex={0}
       >
         <AppTypography
           style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
@@ -84,19 +81,13 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
           Name
           {renderSortIcon("name")}
         </AppTypography>
-      </div>
-      <div
+      </AppButton>
+      <AppButton
+        color="inherit"
         onClick={() => onSortChange("size")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            onSortChange("size");
-          }
-        }}
         onMouseEnter={() => setHoveredField("size")}
         onMouseLeave={() => setHoveredField(null)}
-        role="button"
         style={columnStyle}
-        tabIndex={0}
       >
         <AppTypography
           style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
@@ -105,23 +96,17 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
           Size
           {renderSortIcon("size")}
         </AppTypography>
-      </div>
-      <div
+      </AppButton>
+      <AppButton
+        color="inherit"
         onClick={() => onSortChange("modTime")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            onSortChange("modTime");
-          }
-        }}
         onMouseEnter={() => setHoveredField("modTime")}
         onMouseLeave={() => setHoveredField(null)}
-        role="button"
         style={{
           ...columnStyle,
           justifyContent: "center",
           textAlign: "center",
         }}
-        tabIndex={0}
       >
         <AppTypography
           style={{
@@ -136,7 +121,7 @@ const SortBar = ({ sortOrder, onSortChange }: SortBarProps) => {
           Last modified
           {renderSortIcon("modTime")}
         </AppTypography>
-      </div>
+      </AppButton>
     </div>
   );
 };

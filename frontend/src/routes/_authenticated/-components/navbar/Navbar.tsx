@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { memo, type CSSProperties, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppSearchField from "@/components/ui/AppSearchField";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
@@ -41,8 +42,20 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
 
         {isDesktop && (
           <div className="app-navbar__search">
-            <div
+            <AppSearchField
+              aria-label="Search containers or services"
               className="app-navbar-search"
+              fullWidth
+              id="search-input"
+              name="search"
+              placeholder="Search"
+              startAdornment={
+                <Icon
+                  height={iconSize.md}
+                  icon="mdi:magnify"
+                  width={iconSize.md}
+                />
+              }
               style={
                 {
                   "--app-navbar-search-bg": theme.header.background,
@@ -51,23 +64,8 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
                   borderRadius: `${theme.shape.borderRadius * 2}px`,
                 } as CSSProperties
               }
-            >
-              <div aria-hidden="true" className="app-navbar-search__icon">
-                <Icon
-                  height={iconSize.md}
-                  icon="mdi:magnify"
-                  width={iconSize.md}
-                />
-              </div>
-              <input
-                aria-label="Search containers or services"
-                className="app-navbar-search__input"
-                id="search-input"
-                name="search"
-                placeholder="Search"
-                type="search"
-              />
-            </div>
+              type="search"
+            />
           </div>
         )}
 

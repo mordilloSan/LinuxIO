@@ -283,9 +283,18 @@ const SystemHealth = () => {
   };
 
   const stats2 = (
-    <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
+    <AppIconButton
+      aria-label={
+        failedLoginAlert ? "Review failed login alerts" : "View system status"
+      }
+      onClick={handleStatusIconClick}
+      style={{
+        backgroundColor: "transparent",
+        cursor: "pointer",
+      }}
+    >
       <Icon color={statusColor} height={100} icon={iconName} width={100} />
-    </div>
+    </AppIconButton>
   );
 
   const renderItem = (item: HealthItem) => {
@@ -353,26 +362,24 @@ const SystemHealth = () => {
             <Icon height={18} icon={item.secondaryAction.icon} width={18} />
           </AppIconButton>
         ) : item.secondaryAction ? (
-          <span
-            aria-disabled={item.secondaryAction.disabled || undefined}
-            onClick={
-              item.secondaryAction.disabled
-                ? undefined
-                : item.secondaryAction.onClick
-            }
-            role="button"
+          <AppButton
+            color="inherit"
+            disabled={item.secondaryAction.disabled}
+            onClick={item.secondaryAction.onClick}
+            size="small"
             style={{
               marginLeft: theme.spacing(1),
-              cursor: item.secondaryAction.disabled ? "default" : "pointer",
-              opacity: item.secondaryAction.disabled ? 0.5 : 1,
               color: theme.palette.text.secondary,
               fontSize: "0.75rem",
+              minWidth: 0,
+              opacity: item.secondaryAction.disabled ? 0.5 : 1,
+              padding: 0,
               textDecoration: "underline",
               userSelect: "none",
             }}
           >
             {item.secondaryAction.label}
-          </span>
+          </AppButton>
         ) : null}
       </div>
     );

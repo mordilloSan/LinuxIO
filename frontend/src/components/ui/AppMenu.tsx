@@ -15,9 +15,11 @@ export interface AppMenuProps {
   anchorEl?: HTMLElement | null;
   anchorOrigin?: AppPopoverOrigin;
   anchorPosition?: { top: number; left: number } | null;
+  ariaLabel?: string;
   autoFocus?: boolean;
   children: ReactNode;
   className?: string;
+  id?: string;
   keepMounted?: boolean;
   minWidth?: number | string;
   onClose: () => void;
@@ -44,10 +46,12 @@ const AppMenu = ({
   anchorPosition,
   anchorOrigin,
   transformOrigin,
+  ariaLabel,
   autoFocus = true,
   minWidth,
   children,
   className,
+  id,
   keepMounted = false,
   style,
 }: AppMenuProps) => {
@@ -134,7 +138,9 @@ const AppMenu = ({
       transformOrigin={transformOrigin}
     >
       <div
+        aria-label={ariaLabel}
         className="app-menu__content"
+        id={id}
         onKeyDown={handleKeyDown}
         ref={menuRef}
         role="menu"

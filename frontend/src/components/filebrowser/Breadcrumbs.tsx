@@ -1,5 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { isDirectoryPath } from "@/utils/path";
@@ -50,6 +51,7 @@ const breadcrumbStyles = `
     color: var(--linuxio-filebrowser-breadcrumb-text);
     border: none;
     border-radius: 0;
+    min-width: 0;
     cursor: pointer;
     font: inherit;
     font-size: 0.875rem;
@@ -271,32 +273,30 @@ const FilebrowserBreadcrumbs = ({
     >
       <ul className="linuxio-breadcrumb-list">
         <li className="linuxio-breadcrumb-list-item">
-          <button
+          <AppButton
             aria-label="Go to root"
             className="linuxio-breadcrumb-button"
             onClick={handleHome}
             title="Home"
-            type="button"
           >
             <span className="linuxio-breadcrumb-home-icon">
               <HomeFilledIcon />
             </span>
-          </button>
+          </AppButton>
         </li>
         {breadcrumbs.map((crumb, index) => (
           <li
             className="linuxio-breadcrumb-list-item"
             key={`${crumb.path}-${crumb.label}-${index}`}
           >
-            <button
+            <AppButton
               aria-label={`breadcrumb-link-${crumb.label}`}
               className={`linuxio-breadcrumb-button${crumb.isLast ? " active" : ""}`}
               onClick={() => onNavigate(crumb.path)}
               title={crumb.label}
-              type="button"
             >
               {crumb.label}
-            </button>
+            </AppButton>
           </li>
         ))}
       </ul>

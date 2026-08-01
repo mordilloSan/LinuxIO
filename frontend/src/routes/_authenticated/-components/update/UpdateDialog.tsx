@@ -159,9 +159,11 @@ const UpdateDialog = ({
           {/* Output console */}
           {output.length > 0 && (
             <div>
-              <button
+              <AppButton
                 aria-controls={outputId}
                 aria-expanded={outputExpanded}
+                color="inherit"
+                fullWidth
                 onClick={() => setOutputExpanded((expanded) => !expanded)}
                 style={{
                   width: "100%",
@@ -197,7 +199,7 @@ const UpdateDialog = ({
                   icon={outputExpanded ? "mdi:chevron-up" : "mdi:chevron-down"}
                   width={18}
                 />
-              </button>
+              </AppButton>
               <div id={outputId}>
                 <AppCollapse in={outputExpanded} unmountOnExit>
                   <AppPaper

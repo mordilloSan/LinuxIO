@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import { TRANSITION_SLOW_CSS, GAP_SM } from "@/theme/constants";
@@ -29,17 +30,19 @@ const LVMSectionCard = ({
   children,
 }: LVMSectionCardProps) => (
   <FrostedCard style={{ padding: GAP_SM }}>
-    <div
+    <AppButton
+      aria-expanded={expanded}
+      color="inherit"
+      fullWidth
       onClick={onToggle}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle();
-        }
+      style={{
+        cursor: "pointer",
+        display: "block",
+        minWidth: 0,
+        padding: 0,
+        textAlign: "left",
+        userSelect: "none",
       }}
-      role="button"
-      style={{ cursor: "pointer", userSelect: "none" }}
-      tabIndex={0}
     >
       <CardIconHeader
         icon={<Icon color={accent} height={24} icon={icon} width={24} />}
@@ -81,7 +84,7 @@ const LVMSectionCard = ({
         subtitle={subtitle}
         title={title}
       />
-    </div>
+    </AppButton>
     <AppCollapse in={expanded} unmountOnExit>
       <div style={{ marginTop: GAP_SM }}>{children}</div>
     </AppCollapse>

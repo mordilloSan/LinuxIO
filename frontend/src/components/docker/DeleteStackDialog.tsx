@@ -126,9 +126,11 @@ const DeleteStackDialog = ({
                 : theme.palette.primary.main;
 
             return (
-              <button
+              <AppButton
                 aria-pressed={isSelected}
+                color="inherit"
                 disabled={isLoading}
+                fullWidth
                 key={option.value}
                 onClick={() => setDeleteOption(option.value)}
                 style={{
@@ -180,7 +182,7 @@ const DeleteStackDialog = ({
                     width={20}
                   />
                 )}
-              </button>
+              </AppButton>
             );
           })}
         </div>

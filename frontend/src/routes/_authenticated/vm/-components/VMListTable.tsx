@@ -6,6 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 
 import {
@@ -24,10 +25,12 @@ const listPanelStyle: CSSProperties = {
 const nameButtonStyle: CSSProperties = {
   background: "transparent",
   border: 0,
+  borderRadius: 0,
   color: "var(--app-palette-primary-main)",
   cursor: "pointer",
   font: "inherit",
   fontWeight: 600,
+  minWidth: 0,
   padding: 0,
 };
 
@@ -67,13 +70,14 @@ export default function VMListTable({
         cell: ({ row }) => {
           const vm = row.original;
           return (
-            <button
+            <AppButton
+              color="primary"
               onClick={() => onSelect(vm.name)}
+              size="small"
               style={nameButtonStyle}
-              type="button"
             >
               {vm.name}
-            </button>
+            </AppButton>
           );
         },
         meta: { width: "minmax(150px, 1.1fr)" },

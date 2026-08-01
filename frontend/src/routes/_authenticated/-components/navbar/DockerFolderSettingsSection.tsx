@@ -373,29 +373,22 @@ const DockerFolderSettingsSection = () => {
           />
         </FrostedCard>
 
-        <FrostedCard
-          hoverLift
-          onClick={isSaving ? undefined : handleAddFolder}
-          onKeyDown={(event) => {
-            if (isSaving) return;
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              handleAddFolder();
-            }
-          }}
-          role="button"
-          style={{
-            padding: 12,
-            cursor: isSaving ? "default" : "pointer",
-            opacity: isSaving ? 0.65 : 1,
-          }}
-          tabIndex={isSaving ? -1 : 0}
-        >
-          <div
+        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
+          <AppButton
+            color="inherit"
+            disabled={isSaving}
+            fullWidth
+            onClick={handleAddFolder}
             style={{
-              display: "flex",
               alignItems: "center",
+              borderRadius: "inherit",
+              display: "flex",
               gap: theme.spacing(1.5),
+              justifyContent: "flex-start",
+              minWidth: 0,
+              opacity: isSaving ? 0.65 : 1,
+              padding: 12,
+              textAlign: "left",
             }}
           >
             <div style={folderIconStyle}>
@@ -409,7 +402,7 @@ const DockerFolderSettingsSection = () => {
                 Add another directory for compose stacks.
               </AppTypography>
             </div>
-          </div>
+          </AppButton>
         </FrostedCard>
 
         <div

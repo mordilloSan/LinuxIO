@@ -1,5 +1,7 @@
+import { Icon } from "@iconify/react";
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -111,7 +113,7 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
             userSelect: "none",
           }}
         >
-          <button
+          <AppIconButton
             aria-label="Close development tools"
             onClick={onClose}
             onPointerDown={(event) => event.stopPropagation()}
@@ -129,8 +131,8 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
             }}
             type="button"
           >
-            ×
-          </button>
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
         </div>
         <div
           data-testid="devtools-modal-content"

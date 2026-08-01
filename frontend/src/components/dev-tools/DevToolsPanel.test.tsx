@@ -16,6 +16,24 @@ vi.mock("@tanstack/react-router-devtools", () => ({
 const { DevToolsPanel } = await import("./DevToolsPanel");
 
 describe("DevToolsPanel", () => {
+  it("closes from the shared panel action", async () => {
+    const onClose = vi.fn();
+    const { user } = render(
+      <DevToolsPanel
+        isOpen
+        isWebVitalsVisible={false}
+        onClose={onClose}
+        onToggleWebVitals={() => {}}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Close developer tools" }),
+    );
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("delegates the Web Vitals footer toggle", async () => {
     const onToggleWebVitals = vi.fn();
     const { user } = render(

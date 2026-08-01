@@ -364,12 +364,15 @@ const NFSOptionsDropdown = ({
       >
         <div style={{ padding: "6px 0" }}>
           {nfsOptionLabels.map(({ key, label }) => (
-            <button
+            <AppButton
+              color="inherit"
               key={key}
               onClick={() => toggle(key)}
+              fullWidth
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "flex-start",
                 gap: 10,
                 width: "100%",
                 padding: "7px 14px",
@@ -380,9 +383,9 @@ const NFSOptionsDropdown = ({
                 color: "inherit",
                 textAlign: "left",
               }}
-              type="button"
             >
               <span
+                aria-hidden="true"
                 style={{
                   width: 10,
                   height: 10,
@@ -393,7 +396,7 @@ const NFSOptionsDropdown = ({
                 }}
               />
               <span>{label}</span>
-            </button>
+            </AppButton>
           ))}
         </div>
       </AppPopover>

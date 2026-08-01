@@ -1,9 +1,11 @@
+import { Icon } from "@iconify/react";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useState } from "react";
 
 import { DevtoolsModal } from "@/components/dev-tools/DevtoolsModal";
 import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -84,7 +86,8 @@ export const DevToolsPanel = ({
           }}
         >
           <span> Dev Tools</span>
-          <button
+          <AppIconButton
+            aria-label="Close developer tools"
             onClick={onClose}
             style={{
               background: "transparent",
@@ -96,8 +99,8 @@ export const DevToolsPanel = ({
               marginLeft: 8,
             }}
           >
-            ×
-          </button>
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
         </div>
         <AppButton
           color="primary"
