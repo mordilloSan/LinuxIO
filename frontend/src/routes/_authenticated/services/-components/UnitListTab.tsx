@@ -166,18 +166,45 @@ function UnitListTab<T extends UnitListItem>({
   }
 
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+        minWidth: 0,
+      }}
+    >
       {!selectedItem && searchControls}
 
       <motion.div
         layout="position"
+        style={{
+          display: "flex",
+          flex: "1 1 0",
+          flexDirection: "column",
+          minHeight: 0,
+          minWidth: 0,
+        }}
         transition={{
           duration: slowTransitionDurationSeconds,
           ease: EASING_STANDARD,
         }}
       >
-        <AppGrid alignItems="flex-start" container spacing={3}>
-          <AppGrid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+        <AppGrid
+          alignItems="stretch"
+          container
+          spacing={3}
+          style={{ flex: "1 1 0", minHeight: 0 }}
+        >
+          <AppGrid
+            size={{ xs: 12, md: selectedItem ? 7 : 12 }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            }}
+          >
             {renderTableView({
               items: filtered,
               selected: expanded ?? null,
@@ -192,7 +219,7 @@ function UnitListTab<T extends UnitListItem>({
           )}
         </AppGrid>
       </motion.div>
-    </>
+    </div>
   );
 }
 
