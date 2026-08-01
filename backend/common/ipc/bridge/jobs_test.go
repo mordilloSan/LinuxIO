@@ -101,13 +101,13 @@ func TestPublicJobSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleJobGet(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+		return router.handleJobGet(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleJobList(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{}`)})
+		return router.handleJobList(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleJobCancel(stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+		return router.handleJobCancel(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
 	}))
 	job.mu.RLock()
 	if job.request != nil {

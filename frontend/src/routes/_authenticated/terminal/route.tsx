@@ -6,7 +6,8 @@ import { loadRouteTransport } from "@/routes/-loader";
 import Terminal from "./-components/Terminal";
 
 export const Route = createFileRoute("/_authenticated/terminal")({
-  loader: ({ context }) => loadRouteTransport(context),
+  loader: ({ abortController, context }) =>
+    loadRouteTransport(context, abortController.signal),
   component: Terminal,
   staticData: {
     navigation: {

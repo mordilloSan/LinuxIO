@@ -177,11 +177,10 @@ const access = {
 
 export const Route = createFileRoute("/_authenticated/wireguard")({
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: ({ context, preload }) =>
-    loadRouteQueries(
-      { context, preload },
-      [linuxio.wireguard.list_interfaces.queryOptions()],
-    ),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
+      linuxio.wireguard.list_interfaces.queryOptions(),
+    ]),
   component: WireguardPage,
   staticData: {
     access,

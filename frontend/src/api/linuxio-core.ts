@@ -52,7 +52,9 @@ function isConnectionClosedError(error: unknown): boolean {
  */
 export async function ensureLoaderRequestReady(
   timeoutMs = STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+  signal?: AbortSignal,
 ) {
+  throwIfAborted(signal);
   const existingMux = getStreamMux();
   if (!existingMux || existingMux.status === "closed") {
     try {
@@ -67,13 +69,17 @@ export async function ensureLoaderRequestReady(
 
   let ready: boolean;
   try {
-    ready = await waitForStreamMux(timeoutMs);
+    ready = signal
+      ? await waitForStreamMux(timeoutMs, signal)
+      : await waitForStreamMux(timeoutMs);
   } catch {
+    if (signal?.aborted) throw abortSignalError(signal);
     throw new LinuxIOError(
       "Connection closed before receiving result",
       "connection_closed",
     );
   }
+  throwIfAborted(signal);
   if (!ready) {
     throw new LinuxIOError(
       "Connection closed before receiving result",

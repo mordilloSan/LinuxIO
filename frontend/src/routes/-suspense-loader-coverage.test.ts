@@ -6,15 +6,12 @@ import { describe, expect, it } from "vitest";
 import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
 // The router runs one global `defaultPreload: "intent"` policy, so the route
-// loader IS the prefetch: hovering a link runs the loader chain, which warms the
-// shared query cache entries, waits for yamux transport readiness through
-// `ensureLoaderRequestReady`, and applies the update-in-progress hard stop.
-// A component that suspends on an endpoint no loader in its branch warms gets
-// none of that — the read happens on mount instead. It fails silently: no
-// error, no failing assertion, the page just feels slower. This guard closes
-// that gap. Every endpoint observed with useSuspenseQuery/useSuspenseQueries in
-// a module reachable from a route must be warmed by a `loader:` on that route
-// or one of its ancestors.
+// loader IS the prefetch: hovering a link runs the loader chain. Each suspense
+// endpoint must be declared there as either critical awaited work or a deferred
+// best-effort prefetch. Both paths first wait for yamux transport readiness and
+// apply the update-in-progress hard stop; deferred widgets then own local
+// Suspense and error boundaries. This guard verifies declaration coverage, not
+// that conditional deferred work necessarily runs for hidden/collapsed UI.
 // See docs/tanstack-router.md ("Who owns which data", and the loader /
 // useSuspenseQuery shared-cache-entry section).
 
@@ -390,7 +387,7 @@ const parentIdByRouteId = new Map(
   routes.map((route) => [route.id, parentRouteOf(route)?.id]),
 );
 
-/** Endpoints warmed for a route: its own loader plus every ancestor's. */
+/** Endpoints declared for a route: its own loader plus every ancestor's. */
 function warmedEndpointsFor(route: RouteNode): {
   warmed: Set<string>;
   chain: string[];
@@ -504,16 +501,13 @@ const suspenseFilesInTree = sourceFiles().flatMap((file) => {
 });
 
 describe("suspense loader coverage guard", () => {
-  it("warms every suspense endpoint from a loader in that route's branch", () => {
+  it("declares every suspense endpoint in a loader in that route's branch", () => {
     expect(
       coverage.violations,
       "Every endpoint read with useSuspenseQuery/useSuspenseQueries must be " +
-        "warmed by loadRouteQueries in a loader on that route or an " +
-        "ancestor. The router preloads on intent by running the loader " +
-        "chain, so an unwarmed suspense read is never intent-prefetched, " +
-        "skips the transport-readiness wait, and escapes the route-level " +
-        "update block — silently, with no error. Add the endpoint to the " +
-        "loader named in each entry, or make the read a lazy useQuery.",
+        "declared by critical loading or deferred prefetch in a loader on " +
+        "that route or an ancestor. Add the endpoint to the loader named in " +
+        "each entry, or make the read a lazy useQuery.",
     ).toEqual([]);
   });
 

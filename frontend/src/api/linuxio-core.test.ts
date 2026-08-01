@@ -133,6 +133,46 @@ describe("linuxio-core request", () => {
     expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
   });
 
+  it("does not initialize or wait for an already-aborted loader", async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException("superseded", "AbortError"));
+
+    await expect(
+      ensureLoaderRequestReady(5000, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(muxMocks.getStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.waitForStreamMux).not.toHaveBeenCalled();
+  });
+
+  it("propagates navigation abort while loader readiness is pending", async () => {
+    const mux = createMux();
+    const controller = new AbortController();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    muxMocks.waitForStreamMux.mockImplementation(
+      (_timeoutMs: number, signal: AbortSignal) =>
+        new Promise<boolean>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(signal.reason ?? new Error("aborted")),
+            { once: true },
+          );
+        }),
+    );
+
+    const readiness = ensureLoaderRequestReady(5000, controller.signal);
+    await vi.waitFor(() =>
+      expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
+        5000,
+        controller.signal,
+      ),
+    );
+    controller.abort(new DOMException("superseded", "AbortError"));
+
+    await expect(readiness).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("keeps ordinary requests owned by the authenticated mux lifecycle", async () => {
     muxMocks.getStreamMux.mockReturnValue(null);
 

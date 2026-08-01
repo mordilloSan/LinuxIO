@@ -1,19 +1,19 @@
 # TanStack Router, React Query, and Start Loader Audit
 
-Status: review complete; implementation not started.
+Status: review complete; implementation reconciled through Phase 5.
 
 Audit date: 2026-07-30
+
+Implementation reconciliation: 2026-07-31
 
 Repository snapshot: `215217bacdaeea0a0eb400a31b07bc7ee4ace813`
 
 Upstream TanStack Router snapshot inspected:
 `77ed6d5c3a9878adb1ac50bf2881b243e390812e`
 
-Concurrency note: after the read-only audit, a separate uncommitted API
-route-mode/invalidation refactor appeared in the shared worktree. It renames
-`job-query-invalidations` to `operation-query-invalidations`. The Socket/Timer
-gap was rechecked against the new file and remains open. Revalidate all findings
-against the final form of that refactor before implementation.
+This document preserves the original audit evidence below. Each finding now has
+a resolution note, and the checklists reflect the implemented work rather than
+the original handoff state.
 
 Local package versions:
 
@@ -38,7 +38,8 @@ TanStack Start does not replace this with a second loader system. Start uses
 TanStack Router's lifecycle and adds request-scoped routers, SSR, streaming,
 Query dehydration/hydration, server functions, and server cleanup.
 
-Revisit Router-abort integration separately after defining shared-query behavior.
+Router-abort integration now preserves shared-query behavior through per-key
+loader-consumer reference counting.
 
 The most useful Start pattern to adopt is an explicit distinction between:
 
@@ -46,9 +47,9 @@ The most useful Start pattern to adopt is an explicit distinction between:
 - stale-while-revalidate queries that may render cached data immediately;
 - optional/deferred queries that should not make the entire route atomic.
 
-LinuxIO's VM ownership and progressive Hardware history queries already follow
-this principle well. The Dashboard is the main place where route ownership is
-currently too broad.
+LinuxIO's VM ownership and progressive Hardware history queries already followed
+this principle well. Dashboard and Hardware now both use transport-only shell
+gates, conditional deferred prefetch, and local widget boundaries.
 
 ## Scope inspected
 
@@ -60,8 +61,8 @@ All production route loaders and their React Query consumers were inspected.
 - 46 unique Query endpoints
 - Up to 62 query declarations across routes
 
-The detailed route inventory in
-[`docs/tanstack-router.md`](docs/tanstack-router.md) is accurate.
+The counts below describe the original snapshot. The current route inventory and
+loader contract live in [`docs/tanstack-router.md`](docs/tanstack-router.md).
 
 Large or notable loader groups:
 
@@ -130,8 +131,8 @@ some query-ownership decisions.
 | Router lifecycle | TanStack Router SPA | The same TanStack Router lifecycle |
 | QueryClient | One browser singleton | New server client/router per request, then a browser instance |
 | Loader priming | Batched `ensureQueryData` | Usually `ensureQueryData` for critical data |
-| Optional work | Usually awaited with the critical batch | Often started with `prefetchQuery` and rendered progressively |
-| Loader return | Full result arrays, currently unused | Usually `void` when Query owns the data |
+| Optional work | Deferred through `startRouteQueryPrefetches` | Often started with `prefetchQuery` and rendered progressively |
+| Loader return | `Promise<void>` when Query owns the data | Usually `void` when Query owns the data |
 | Rendering | Client-only `createRoot` | SSR, streaming, dehydration, and hydration |
 | Data transport | Authenticated browser WebSocket/RPC mux | Commonly server functions or isomorphic requests |
 
@@ -143,6 +144,9 @@ context, and transport all need a separate request-scoped design.
 ## Findings
 
 ### 1. Correctness: socket and timer lists are not invalidated
+
+**Resolved.** Unit mutations now invalidate Service, Socket, and Timer lists,
+with exact manifest coverage.
 
 `UNIT_KEYS` in the current uncommitted refactor invalidates only:
 
@@ -179,7 +183,13 @@ Related lower-priority invalidation candidates to review:
 
 ### 2. Performance: File Browser performs an immediate second request
 
-Both the File Browser loader and mounted observer specify `staleTime: 0`:
+**Resolved.** Loader and observer share
+`fileBrowserListingQueryOptions` with a two-second `staleTime`. The route uses
+background freshness, so a cold result remains fresh through observer mount and
+stale or invalidated listings revalidate on revisit.
+
+Before the fix, both the File Browser loader and mounted observer specified
+`staleTime: 0`:
 
 - `frontend/src/routes/_authenticated/filebrowser/$.tsx`, lines 20-27
 - `frontend/src/hooks/filebrowser/useFileQueries.ts`, lines 23-30
@@ -204,6 +214,12 @@ Replacing `ensureQueryData` with `fetchQuery` alone would not prevent the
 mount-time refetch.
 
 ### 3. Semantics: `ensureQueryData` ensures presence, not freshness
+
+**Resolved.** `PRESENCE` is the documented default for critical query loaders;
+File Browser explicitly selects `BACKGROUND`, and `BLOCKING` remains available
+when navigation must await fresh data. Query loaders pass Router loader
+arguments directly so the shared helper derives the abort signal. Deferred work
+has its own non-blocking helper.
 
 `loadRouteQueries` calls `ensureQueryData` without
 `revalidateIfStale`:
@@ -241,6 +257,14 @@ should be selected only for routes where stale data is unsafe.
 
 ### 4. Resilience: Dashboard optional widgets make the route atomic
 
+**Resolved.** Dashboard has no data-critical shell query. It gates only on
+transport readiness, prefetches known-visible widgets from the per-user config
+cache, and lets local Suspense/ErrorBoundary pairs own each card. Hardware uses
+the same model for expanded sections and unmounts collapsed query observers.
+Dashboard fallbacks preserve the resolved card frame with `FrostedCard` and
+`AppSkeleton`, using stats-only or split/chart geometry instead of a local
+`PageLoader` animation.
+
 `loadRouteQueries` uses `Promise.all` and propagates any member failure to
 Router's error boundary.
 
@@ -267,6 +291,13 @@ Do not generalize this finding to every `Promise.all`. Small pages may
 legitimately require their complete batches.
 
 ### 5. Cancellation does not reach the transport
+
+**Resolved.** Router signals now flow through loader readiness, Query functions,
+RPC timeout composition, stream abort frames, and query handler contexts.
+Loader cancellation is ref-counted so another loader or mounted observer keeps a
+shared query alive. `jobs.get`, `jobs.list`, and `jobs.cancel` now use the same
+abort context instead of bypassing it; streaming job primitives remain detached
+by design.
 
 TanStack Router supplies an `abortController` to loaders, but LinuxIO routes
 discard it. The generated endpoint query function also ignores React Query's
@@ -299,6 +330,10 @@ query may also have an active observer or another loader awaiting it.
 
 ### 6. Transport readiness runs before cache inspection
 
+**Decided and documented.** LinuxIO continues to require a live backend for
+every route transition, including cache hits. This is intentional for a live
+administration UI; cached Query data is not an offline-navigation contract.
+
 Every Query loader awaits transport readiness before calling
 `ensureQueryData`, even when all required entries are already cached.
 
@@ -324,6 +359,9 @@ Possible implementation directions:
 
 ### 7. Query results are returned as unused Router loader data
 
+**Resolved.** `loadRouteQueries` returns `Promise<void>` and Query remains the
+only data owner.
+
 No production component uses `useLoaderData`, yet `loadRouteQueries` returns an
 array containing every Query result.
 
@@ -341,6 +379,10 @@ Recommended change:
 This also produces a cleaner future SSR contract.
 
 ### 8. Route failures have two visible error owners
+
+**Resolved.** Initial route queries are tagged `routeInitialLoad` and `silent`,
+so `RouteError` is their one visible owner. Stale background failures remain
+toast-visible. Deferred widget work is silent and locally bounded.
 
 Normal loader query failures:
 
@@ -368,6 +410,11 @@ Suggested policy:
 
 ### 9. Smaller observations
 
+**Resolved or preserved intentionally.** Route-owned Query attempts default to
+no Query retry, leaving the bounded connection retry in the transport. Exact
+50/150/0/0 preload and pending timings are pinned in tests. Loaders also consult
+the live mux update flag, closing the first-load provider gap.
+
 - Query retries once globally, while retryable reads may internally retry a
   closed connection. One logical read can therefore produce up to four
   transport attempts.
@@ -387,61 +434,69 @@ Suggested policy:
 
 ### Phase 1: definite fixes
 
-- [ ] Add Socket and Timer list invalidation.
-- [ ] Add exact invalidation tests.
-- [ ] Remove the File Browser's immediate duplicate request.
-- [ ] Add a test using `staleTime: 0`.
+- [x] Add Socket and Timer list invalidation.
+- [x] Add exact invalidation tests.
+- [x] Remove the File Browser's immediate duplicate request.
+- [x] Add a test demonstrating the `staleTime: 0` mount refetch.
 
 ### Phase 2: make loader behavior explicit
 
-- [ ] Make `loadRouteQueries` return `Promise<void>`.
-- [ ] Introduce named presence, background-revalidation, and blocking-freshness
+- [x] Make `loadRouteQueries` return `Promise<void>`.
+- [x] Introduce named presence, background-revalidation, and blocking-freshness
   policies.
-- [ ] Move endpoint/domain `staleTime` choices into shared options factories
+- [x] Make presence the loader default and reserve explicit policy arguments for
+  non-default behavior.
+- [x] Move endpoint/domain `staleTime` choices into shared options factories
   where loaders and observers must agree.
-- [ ] Keep observer-only options such as `refetchInterval` in components.
+- [x] Keep observer-only options such as `refetchInterval` in components.
 
 ### Phase 3: critical versus deferred
 
-- [ ] Classify Dashboard data by rendering criticality.
-- [ ] Do not block the route on hidden or optional widgets.
-- [ ] Verify widget-level Suspense/loading UI before deferring.
-- [ ] Apply the same review to Hardware, but do not assume every one of its
+- [x] Classify Dashboard data by rendering criticality.
+- [x] Do not block the route on hidden or optional widgets.
+- [x] Add widget-level Suspense/loading/error ownership before deferring.
+- [x] Use layout-matched Dashboard card skeletons instead of spinner-per-slot
+  fallbacks.
+- [x] Apply the same review to Hardware, but do not assume every one of its
   seven queries is optional.
 
 ### Phase 4: cancellation and transport
 
-- [ ] Thread Query signals through endpoint query functions.
-- [ ] Add caller-signal support to the RPC transport.
-- [ ] Compose request and timeout signals safely.
-- [ ] Make readiness waits abortable.
-- [ ] Add abandoned-loader and rapid-navigation tests.
-- [ ] Decide the cache-hit/offline readiness policy.
+- [x] Thread Query signals through endpoint query functions.
+- [x] Add caller-signal support to the RPC transport.
+- [x] Compose request and timeout signals safely.
+- [x] Make readiness waits abortable.
+- [x] Pass Router loader arguments directly and derive abort signals in the
+  shared helper.
+- [x] Add abandoned-loader, shared-consumer, and rapid-navigation tests.
+- [x] Apply abort contexts to `jobs.get`, `jobs.list`, and `jobs.cancel`.
+- [x] Preserve and document the live-backend requirement for cache hits.
 
 ### Phase 5: errors and UX
 
-- [ ] Give initial route failures one visible error owner.
-- [ ] Keep background-refetch errors observable.
-- [ ] Review retry multiplication during transport outages.
-- [ ] Measure the 150/0 pending timing before changing it.
-- [ ] Add a first-load update-blocker test.
+- [x] Give initial route failures one visible error owner.
+- [x] Keep background-refetch errors observable.
+- [x] Remove retry multiplication during transport outages.
+- [x] Review and preserve the 150/0 pending timing; pin exact values in tests.
+- [x] Add a first-load update-blocker test using the live mux flag.
 
 ## Suggested test additions
 
-- Stale cached intent preload with `revalidateIfStale` disabled.
-- Stale cached intent preload with background revalidation enabled.
-- Invalidated inactive query followed by intent preload.
-- Blocking-fresh query behavior.
-- File Browser cold navigation request count.
-- Aborted intent preload.
-- Two consumers sharing a query when one route load is aborted.
-- Multi-query partial failure with deferred optional work.
-- Dashboard hidden-widget query ownership.
-- Exact Service, Socket, and Timer action invalidations.
-- Loader-to-observer query-key pairing.
-- Exact global preload and pending timing values.
+- [x] Stale cached intent preload with revalidation disabled.
+- [x] Stale cached intent preload with background revalidation enabled.
+- [x] Invalidated File Browser query followed by route revisit.
+- [x] Blocking-fresh query behavior.
+- [x] File Browser cold navigation request count.
+- [x] Aborted route work and rapid Router navigation.
+- [x] Post-resolution cancellation of orphaned background revalidation.
+- [x] Two consumers sharing a query when one route load is aborted.
+- [x] Deferred optional-work failure ownership.
+- [x] Dashboard and Hardware conditional query ownership.
+- [x] Exact Service, Socket, and Timer action invalidations.
+- [x] Loader-to-observer suspense endpoint coverage.
+- [x] Exact global preload and pending timing values.
 
-All frontend implementation work should be handed off only after:
+Frontend-only implementation work should be handed off only after:
 
 ```text
 make check-frontend
@@ -462,5 +517,5 @@ make check-frontend
 
 ## Handoff note
 
-This audit was read-only before this document was created. No application code
-was changed and no Make target was required for the audit itself.
+The audit began read-only. Its implementation phases are now complete and the
+canonical current behavior is documented in `docs/tanstack-router.md`.

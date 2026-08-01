@@ -13,8 +13,11 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
+import DashboardCardSkeleton, {
+  type DashboardCardSkeletonLayout,
+} from "@/components/cards/DashboardCardSkeleton";
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -49,17 +52,74 @@ const MemoGpuInfo = memo(GpuInfo);
 const MemoDriveInfo = memo(DriveInfo);
 const MemoDockerInfo = memo(DockerInfo);
 
-const allCards = [
-  { id: "overview", label: "System Overview", component: MemoSystemOverview },
-  { id: "system", label: "System Health", component: MemoSystemHealth },
-  { id: "cpu", label: "Processor", component: MemoProcessor },
-  { id: "memory", label: "Memory", component: MemoMemory },
-  { id: "docker", label: "Docker", component: MemoDockerInfo },
-  { id: "nic", label: "Network", component: MemoNetwork },
-  { id: "fs", label: "File System", component: MemoFileSystem },
-  { id: "mb", label: "Motherboard", component: MemoMotherBoardInfo },
-  { id: "gpu", label: "GPU", component: MemoGpuInfo },
-  { id: "drive", label: "Drive", component: MemoDriveInfo },
+interface DashboardCardDefinition {
+  component: typeof MemoSystemOverview;
+  id: string;
+  label: string;
+  skeletonLayout: DashboardCardSkeletonLayout;
+}
+
+const allCards: DashboardCardDefinition[] = [
+  {
+    id: "overview",
+    label: "System Overview",
+    component: MemoSystemOverview,
+    skeletonLayout: "stats",
+  },
+  {
+    id: "system",
+    label: "System Health",
+    component: MemoSystemHealth,
+    skeletonLayout: "split",
+  },
+  {
+    id: "cpu",
+    label: "Processor",
+    component: MemoProcessor,
+    skeletonLayout: "split",
+  },
+  {
+    id: "memory",
+    label: "Memory",
+    component: MemoMemory,
+    skeletonLayout: "split",
+  },
+  {
+    id: "docker",
+    label: "Docker",
+    component: MemoDockerInfo,
+    skeletonLayout: "split",
+  },
+  {
+    id: "nic",
+    label: "Network",
+    component: MemoNetwork,
+    skeletonLayout: "split",
+  },
+  {
+    id: "fs",
+    label: "File System",
+    component: MemoFileSystem,
+    skeletonLayout: "stats",
+  },
+  {
+    id: "mb",
+    label: "Motherboard",
+    component: MemoMotherBoardInfo,
+    skeletonLayout: "stats",
+  },
+  {
+    id: "gpu",
+    label: "GPU",
+    component: MemoGpuInfo,
+    skeletonLayout: "stats",
+  },
+  {
+    id: "drive",
+    label: "Drive",
+    component: MemoDriveInfo,
+    skeletonLayout: "split",
+  },
 ];
 
 const DashboardPage = () => {
@@ -196,15 +256,26 @@ const DashboardPage = () => {
       >
         <SortableContext items={cardIds} strategy={rectSortingStrategy}>
           <AppGrid container spacing={4}>
-            {cards.map(({ id, component: CardComponent }) => (
-              <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
-                <SortableCard editMode={editMode} id={id}>
-                  <ErrorBoundary>
-                    <CardComponent />
-                  </ErrorBoundary>
-                </SortableCard>
-              </AppGrid>
-            ))}
+            {cards.map(
+              ({ id, label, component: CardComponent, skeletonLayout }) => (
+                <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
+                  <SortableCard editMode={editMode} id={id}>
+                    <ErrorBoundary>
+                      <Suspense
+                        fallback={
+                          <DashboardCardSkeleton
+                            layout={skeletonLayout}
+                            title={label}
+                          />
+                        }
+                      >
+                        <CardComponent />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </SortableCard>
+                </AppGrid>
+              ),
+            )}
           </AppGrid>
         </SortableContext>
       </DndContext>

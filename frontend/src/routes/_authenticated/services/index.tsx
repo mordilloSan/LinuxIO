@@ -14,14 +14,15 @@ export const Route = createFileRoute("/_authenticated/services/")({
     ...optionalString(search, "service"),
   }),
   loaderDeps: ({ search }) => ({ service: search.service }),
-  loader: ({ context, deps, preload }) => {
+  loader: (loaderArgs) => {
+    const { deps } = loaderArgs;
     const queries: LoaderQueryOptions[] = [
       linuxio.systemd.list_services.queryOptions(),
     ];
     if (deps.service) {
       queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.service));
     }
-    return loadRouteQueries({ context, preload }, queries);
+    return loadRouteQueries(loaderArgs, queries);
   },
   component: ServicesRoute,
 });

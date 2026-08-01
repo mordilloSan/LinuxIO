@@ -14,14 +14,15 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
     ...optionalString(search, "socket"),
   }),
   loaderDeps: ({ search }) => ({ socket: search.socket }),
-  loader: ({ context, deps, preload }) => {
+  loader: (loaderArgs) => {
+    const { deps } = loaderArgs;
     const queries: LoaderQueryOptions[] = [
       linuxio.systemd.list_sockets.queryOptions(),
     ];
     if (deps.socket) {
       queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.socket));
     }
-    return loadRouteQueries({ context, preload }, queries);
+    return loadRouteQueries(loaderArgs, queries);
   },
   component: SocketsRoute,
 });

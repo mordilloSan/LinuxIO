@@ -6,7 +6,8 @@ import { loadRouteTransport } from "@/routes/-loader";
 import GeneralLogsPage from "./-components/GeneralLogsPage";
 
 export const Route = createFileRoute("/_authenticated/logs")({
-  loader: ({ context }) => loadRouteTransport(context),
+  loader: ({ abortController, context }) =>
+    loadRouteTransport(context, abortController.signal),
   component: GeneralLogsPage,
   staticData: {
     navigation: {

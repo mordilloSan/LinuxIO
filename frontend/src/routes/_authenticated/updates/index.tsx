@@ -6,9 +6,10 @@ import { loadRouteQueries } from "@/routes/-loader";
 import UpdatesPage from "./-components/UpdatesPage";
 
 export const Route = createFileRoute("/_authenticated/updates/")({
-  loader: ({ context, preload }) => {
+  loader: (loaderArgs) => {
+    const { context } = loaderArgs;
     if (context.access.packageKitAvailable !== true) return;
-    return loadRouteQueries({ context, preload }, [
+    return loadRouteQueries(loaderArgs, [
       linuxio.updates.get_updates_basic.queryOptions(),
     ]);
   },

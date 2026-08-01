@@ -26,11 +26,11 @@ type jobDataRequest struct {
 func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req Request) error {
 	switch req.Route {
 	case "jobs.get":
-		return r.handleJobGet(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobGet)
 	case "jobs.list":
-		return r.handleJobList(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobList)
 	case "jobs.cancel":
-		return r.handleJobCancel(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobCancel)
 	case "jobs.attach":
 		return r.handleJobAttach(stream, req)
 	case "jobs.data":
@@ -44,35 +44,78 @@ func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req 
 	}
 }
 
-func (r *Router) handleJobGet(stream net.Conn, req Request) error {
+type jobQueryPrimitiveHandler func(context.Context, net.Conn, Request) error
+
+func (r *Router) dispatchJobQueryPrimitive(
+	ctx context.Context,
+	stream net.Conn,
+	req Request,
+	handler jobQueryPrimitiveHandler,
+) error {
+	ctx, cleanup := queryAbortContext(ctx, stream)
+	defer cleanup()
+	return handler(ctx, stream, req)
+}
+
+func (r *Router) handleJobGet(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
 	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-func (r *Router) handleJobList(stream net.Conn, req Request) error {
+func (r *Router) handleJobList(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobListRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil {
 		return relay.WriteResultErrorAndClose(stream, 0, "invalid jobs list request", 400)
 	}
+	var snapshots []Snapshot
 	if payload.Status == "active" {
-		return relay.WriteResultOKAndClose(stream, 0, r.registry.ListActiveForOwner(req.Owner))
+		snapshots = r.registry.ListActiveForOwner(req.Owner)
+	} else {
+		snapshots = r.registry.ListForOwner(req.Owner)
 	}
-	return relay.WriteResultOKAndClose(stream, 0, r.registry.ListForOwner(req.Owner))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return relay.WriteResultOKAndClose(stream, 0, snapshots)
 }
 
-func (r *Router) handleJobCancel(stream net.Conn, req Request) error {
+func (r *Router) handleJobCancel(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
 	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}

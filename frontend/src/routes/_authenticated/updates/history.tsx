@@ -8,9 +8,10 @@ import { loadRouteQueries } from "@/routes/-loader";
 import UpdateHistory from "./-components/UpdateHistory";
 
 export const Route = createFileRoute("/_authenticated/updates/history")({
-  loader: ({ context, preload }) => {
+  loader: (loaderArgs) => {
+    const { context } = loaderArgs;
     if (context.access.packageKitAvailable !== true) return;
-    return loadRouteQueries({ context, preload }, [
+    return loadRouteQueries(loaderArgs, [
       linuxio.updates.get_update_history.queryOptions(),
     ]);
   },

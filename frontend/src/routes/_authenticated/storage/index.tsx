@@ -11,8 +11,8 @@ export const Route = createFileRoute("/_authenticated/storage/")({
     ...optionalString(search, "drive"),
     ...optionalString(search, "fs"),
   }),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.storage.get_drive_info.queryOptions(),
       linuxio.system.get_fs_info.queryOptions(),
       linuxio.storage.list_nfs_mounts.queryOptions(),

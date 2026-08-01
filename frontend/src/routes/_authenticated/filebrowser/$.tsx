@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { linuxio } from "@/api";
 import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { FolderIcon } from "@/icons/svg";
-import { loadRouteQueries } from "@/routes/-loader";
+import { LOADER_FRESHNESS, loadRouteQueries } from "@/routes/-loader";
 import {
   optionalBoolean,
   optionalNumber,
@@ -18,14 +18,19 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     ...optionalString(search, "redirect"),
     ...optionalNumber(search, "tail"),
   }),
-  loader: ({ context, params, preload }) => {
+  loader: (loaderArgs) => {
+    const { params } = loaderArgs;
     const path = params._splat ? `/${params._splat}` : "/";
-    return loadRouteQueries({ context, preload }, [
-      linuxio.filebrowser.resource_get.queryOptions(
-        { path },
-        fileBrowserListingQueryOptions,
-      ),
-    ]);
+    return loadRouteQueries(
+      loaderArgs,
+      [
+        linuxio.filebrowser.resource_get.queryOptions(
+          { path },
+          fileBrowserListingQueryOptions,
+        ),
+      ],
+      LOADER_FRESHNESS.BACKGROUND,
+    );
   },
   component: FileBrowserPage,
   staticData: {

@@ -8,9 +8,9 @@ import VMDetailsPanel from "../-components/VMDetailsPanel";
 
 export const Route = createFileRoute("/_authenticated/vm/machines/$name")({
   // Path params are automatic loader deps, so no loaderDeps is needed.
-  loader: ({ context, params, preload }) =>
-    loadRouteQueries({ context, preload }, [
-      linuxio.virt.get.queryOptions(params.name),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
+      linuxio.virt.get.queryOptions(loaderArgs.params.name),
     ]),
   component: VMDetailRoute,
 });

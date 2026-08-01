@@ -175,7 +175,7 @@ Everything a route file needs comes from these four `-` prefixed modules:
 | File | Exports | Use |
 |------|---------|-----|
 | `routes/-auth.ts` | `LinuxIORouterContext`, `requireAuthentication`, `requireGuest`, `requireAccess`, `sanitizeInternalRedirect` | `beforeLoad` guards and the router context type |
-| `routes/-loader.ts` | `loadRouteQueries`, `loadRouteTransport`, `LoaderQueryOptions` | The only two loader entry points |
+| `routes/-loader.ts` | `LOADER_FRESHNESS`, `loadRouteQueries`, `loadRouteTransport`, `startRouteQueryPrefetches`, `LoaderQueryOptions` | Critical and deferred route work |
 | `routes/-search.ts` | `optionalString`, `optionalNumber`, `optionalBoolean` | `validateSearch` helpers |
 | `routes/-components/` | `RouteError`, `ErrorPage`, `NotFoundPage` | Wired as router defaults; you rarely touch these |
 
@@ -191,8 +191,8 @@ const access = {
 
 export const Route = createFileRoute("/_authenticated/wireguard")({
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.wireguard.list_interfaces.queryOptions(),
     ]),
   component: WireguardPage,
@@ -237,39 +237,79 @@ file.
 
 ### How they are written
 
-Every loader goes through one of two helpers from `src/routes/-loader.ts`. Route
-code never calls `queryClient.ensureQueryData` directly.
+Every loader goes through the helpers in `src/routes/-loader.ts`. Route code
+never calls QueryClient loading primitives directly.
 
 ```ts
-loadRouteQueries(
-  { context, preload },       // straight from the loader args
-  [ /* endpoint.queryOptions(...) */ ],
-): Promise<[...typed data tuple]>
+loadRouteQueries(loaderArgs, [
+  /* endpoint.queryOptions(...) */
+]): Promise<void>
 ```
 
-`loadRouteQueries` does five things, in order:
+`PRESENCE` is the documented default. A route passes the optional third
+argument only when it needs a different named freshness policy:
 
-1. Throws `LinuxIOError(…, "update_in_progress")` if `context.isUpdateBlocked()`.
-2. Awaits `ensureLoaderRequestReady()` — the RPC transport may need reconnecting.
+| Policy | Behavior |
+|--------|----------|
+| `PRESENCE` | Use any cached value; fetch only when the entry is absent |
+| `BACKGROUND` | Return cached data immediately and revalidate it when stale |
+| `BLOCKING` | Await `fetchQuery`, subject to the query's `staleTime` |
+
+`loadRouteQueries` then does the following:
+
+1. Throws `LinuxIOError(…, "update_in_progress")` if either the router-context
+   getter or the live stream mux reports an update. The mux check covers the
+   first-load window before `UpdateProvider` mounts.
+2. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
+   reconnecting.
 3. **Re-checks** the update state, closing the race where an update starts
    during the transport wait.
-4. `Promise.all` over `queryClient.ensureQueryData` — parallel, deduped by query
-   key, results in declaration order.
-5. When `preload` is true (a hover-intent preload), tags each query
-   `meta: { routeIntentPrefetch: true, silent: true }` so a speculative failure
-   does not raise a global toast.
+4. Runs the selected QueryClient operation in parallel, deduped by query key.
+5. Tags initial and intent-preload failures `silent`, so the route boundary is
+   their single visible error owner. A stale background failure remains eligible
+   for the global toast because cached UI is still visible.
+6. Defaults the Query-layer attempt to `retry: false`; the RPC transport retains
+   its own bounded reconnect retry, so the two layers do not multiply attempts.
+
+Query route loaders pass Router's loader arguments directly. The helper derives
+`abortController.signal`, so cancellation reaches transport readiness and the
+endpoint request without a repeated per-route signal field. Loader consumers
+are ref-counted per query key: an abandoned navigation cancels a loader-started
+Query only when no other loader or mounted observer still needs it. Background
+freshness keeps that registration until its revalidation settles, even though
+the loader itself returns cached data immediately.
+
+On the bridge, ordinary Query routes and the synchronous `jobs.get`,
+`jobs.list`, and `jobs.cancel` primitives consume explicit stream-abort frames.
+Long-lived job attach/events/data streams retain their separate lifecycle.
 
 ```ts
-loadRouteTransport(context): Promise<void>
+loadRouteTransport(context, abortController.signal): Promise<void>
 ```
 
-The stream-only variant for Logs and Terminal: same gating, no queries. Note the
-asymmetric signature — it takes `context` directly, **not** `{ context, preload }`.
+The transport-only variant is used by Logs and Terminal and as the critical
+shell gate for Dashboard and Hardware.
 
-### Three rules
+Optional route work uses the non-blocking helper after that gate:
 
-- **Never call `queryClient.ensureQueryData` from a route.** The gating in
-  `loadRouteQueries` is not optional; bypassing it breaks the update boundary.
+```ts
+startRouteQueryPrefetches(
+  { context, preload, signal: abortController.signal },
+  visibleWidgetQueries,
+): void
+```
+
+Deferred prefetches are always silent and never fail the route. Their mounted
+widget owns Suspense, retry, and error UI.
+
+### Four rules
+
+- **Never call QueryClient loading methods from a route.** Use the shared
+  helpers so readiness, update blocking, retry, error ownership, and
+  cancellation stay intact.
+- **Pass Router loader arguments directly.** `PRESENCE` is the default; pass a
+  named third argument only for an intentional `BACKGROUND` or `BLOCKING`
+  exception. A source guard in `-query-ownership.test.ts` checks this contract.
 - **Never use `Route.useLoaderData()`.** It appears zero times in this codebase
   and should stay that way. A loader's job is to populate the shared cache and
   suspend the transition; the component then observes that cache with
@@ -288,8 +328,8 @@ attaches an observer:
 
 ```tsx
 // wireguard/route.tsx
-loader: ({ context, preload }) =>
-  loadRouteQueries({ context, preload }, [
+loader: (loaderArgs) =>
+  loadRouteQueries(loaderArgs, [
     linuxio.wireguard.list_interfaces.queryOptions(),
   ]),
 ```
@@ -338,35 +378,40 @@ Both are load-bearing.
 Single query — `network/route.tsx`:
 
 ```ts
-loader: ({ context, preload }) =>
-  loadRouteQueries({ context, preload }, [
+loader: (loaderArgs) =>
+  loadRouteQueries(loaderArgs, [
     linuxio.network.get_network_info.queryOptions(),
   ]),
 ```
 
-Many queries, some capability-conditional — `_authenticated/index.tsx`:
+Deferred visible widgets — `_authenticated/index.tsx`:
 
 ```ts
-loader: ({ context, preload }) => {
-  const queries: LoaderQueryOptions[] = [
-    linuxio.system.get_health_summary.queryOptions(),
-    // …eleven more system/storage queries
-  ];
+loader: async ({ abortController, context, preload }) => {
+  await loadRouteTransport(context, abortController.signal);
+  const cachedConfig = readConfigCache(context.auth.user?.id);
+  if (!cachedConfig) return;
 
-  if (context.access.dockerAvailable === true) {
-    queries.push(
-      linuxio.docker.list_containers.queryOptions(),
-      linuxio.docker.list_images.queryOptions(),
-      linuxio.docker.list_networks.queryOptions(),
-      linuxio.docker.list_volumes.queryOptions(),
-    );
+  const hiddenCards = new Set(cachedConfig.appSettings?.hiddenCards ?? []);
+  const queries: LoaderQueryOptions[] = [];
+  if (!hiddenCards.has("overview")) {
+    queries.push(linuxio.system.get_host_info.queryOptions());
   }
-
-  return loadRouteQueries({ context, preload }, queries);
+  // Add the other visible card queries, plus Docker queries when capable.
+  startRouteQueryPrefetches(
+    { context, preload, signal: abortController.signal },
+    queries,
+  );
 },
 ```
 
-Annotate a conditional array as `LoaderQueryOptions[]` so heterogeneous options
+The real route constructs the array inline and also checks the Docker
+capability. It reads only an existing per-user config cache: it never guesses
+which cards are hidden on a first visit. With no cache, mounted visible cards
+start their locally bounded queries themselves. Hardware uses the same pattern
+for expanded sections, and collapsed sections unmount their observers.
+
+Annotate conditional arrays as `LoaderQueryOptions[]` so heterogeneous options
 stay assignable.
 
 Search-dependent, with a conditional detail query — `services/sockets.tsx`:
@@ -374,14 +419,15 @@ Search-dependent, with a conditional detail query — `services/sockets.tsx`:
 ```ts
 validateSearch: (search) => ({ ...optionalString(search, "socket") }),
 loaderDeps: ({ search }) => ({ socket: search.socket }),
-loader: ({ context, deps, preload }) => {
+loader: (loaderArgs) => {
+  const { deps } = loaderArgs;
   const queries: LoaderQueryOptions[] = [
     linuxio.systemd.list_sockets.queryOptions(),
   ];
   if (deps.socket) {
     queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.socket));
   }
-  return loadRouteQueries({ context, preload }, queries);
+  return loadRouteQueries(loaderArgs, queries);
 },
 ```
 
@@ -392,39 +438,52 @@ loader re-runs. **Path params are already loader deps** — do not add
 Path param — `vm/machines/$name.tsx`:
 
 ```ts
-loader: ({ context, params, preload }) =>
-  loadRouteQueries({ context, preload }, [
-    linuxio.virt.get.queryOptions(params.name),
+loader: (loaderArgs) =>
+  loadRouteQueries(loaderArgs, [
+    linuxio.virt.get.queryOptions(loaderArgs.params.name),
   ]),
 ```
 
 Splat — `filebrowser/$.tsx`, the one loader that passes per-call query options:
 
 ```ts
-loader: ({ context, params, preload }) => {
+loader: (loaderArgs) => {
+  const { params } = loaderArgs;
   const path = params._splat ? `/${params._splat}` : "/";
-  return loadRouteQueries({ context, preload }, [
-    linuxio.filebrowser.resource_get.queryOptions(
-      { path },
-      { staleTime: CACHE_TTL_MS.NONE },
-    ),
-  ]);
+  return loadRouteQueries(
+    loaderArgs,
+    [
+      linuxio.filebrowser.resource_get.queryOptions(
+        { path },
+        fileBrowserListingQueryOptions,
+      ),
+    ],
+    LOADER_FRESHNESS.BACKGROUND,
+  );
 },
 ```
+
+`fileBrowserListingQueryOptions` gives both loader and observer the same
+two-second `staleTime`. That short grace keeps the freshly loaded listing fresh
+while the observer mounts, eliminating the immediate duplicate request, while
+the `BACKGROUND` policy still revalidates stale or invalidated listings on a
+later navigation without hiding the cached directory.
 
 Transport only — `logs/route.tsx` and `terminal/route.tsx`:
 
 ```ts
-loader: ({ context }) => loadRouteTransport(context),
+loader: ({ abortController, context }) =>
+  loadRouteTransport(context, abortController.signal),
 ```
 
 Capability early-return, for a page that degrades instead of 404ing —
 `updates/index.tsx`:
 
 ```ts
-loader: ({ context, preload }) => {
+loader: (loaderArgs) => {
+  const { context } = loaderArgs;
   if (context.access.packageKitAvailable !== true) return;
-  return loadRouteQueries({ context, preload }, [
+  return loadRouteQueries(loaderArgs, [
     linuxio.updates.get_updates_basic.queryOptions(),
   ]);
 },
@@ -442,14 +501,15 @@ loader: ({ context, preload }) => {
 ### Route data at a glance
 
 Which helper each route uses, and what its loader depends on. `×N` is the number
-of `queryOptions` passed; `+cond` means some are added conditionally. A `—` loader
-means the route inherits its ancestor's.
+of `queryOptions` declared; `+cond` means some are conditional. Unless labeled
+otherwise, `loadRouteQueries` rows use `PRESENCE`. A `—` loader means the route
+inherits its ancestor's.
 
 | Route | File | Loader | Deps | Search | Guard |
 |-------|------|--------|------|--------|-------|
 | `/sign-in` | `sign-in/route.tsx` | — | — | `redirect` | `requireGuest` |
 | *(pathless)* | `_authenticated.tsx` | — | — | — | `requireAuthentication` |
-| `/` | `_authenticated/index.tsx` | `loadRouteQueries` ×16 +cond | — | — | — |
+| `/` | `_authenticated/index.tsx` | transport + deferred ×16 +cond | — | — | — |
 | `/accounts` | `accounts/route.tsx` | — | — | — | — |
 | `/accounts/` | `accounts/index.tsx` | `loadRouteQueries` ×3 +cond | `user` | `user` +3 | — |
 | `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
@@ -460,8 +520,8 @@ means the route inherits its ancestor's.
 | `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | — | — |
 | `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | — | — |
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | — | — |
-| `/filebrowser/$` | `filebrowser/$.tsx` | `loadRouteQueries` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
-| `/hardware` | `hardware/route.tsx` | `loadRouteQueries` ×7 | — | — | `requireAccess` lmSensors |
+| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
+| `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `sort`, `tab` | — |
 | `/services` | `services/route.tsx` | — | — | — | — |
@@ -498,6 +558,7 @@ no loader inherit `/vm`'s — that is the intended shape, not an omission.
 | Shared by sibling routes | Loader in the closest common parent; each consumer observes the same options itself |
 | Specific to one child | That child's loader and observer |
 | Dialog, expansion, optional selection | Conditionally mounted or `enabled` `useQuery` |
+| Visible optional Dashboard/Hardware widget | Transport gate + deferred prefetch + local Suspense/ErrorBoundary |
 | Polling, variable-range charts, progressive | `useQuery`; keep it out of the loader |
 | Event-driven validation or path resolution | `useFetcher` / `useAction` |
 | Logs and terminal streams | `loadRouteTransport` + the stream lifecycle hook |
@@ -505,9 +566,14 @@ no loader inherit `/vm`'s — that is the intended shape, not an omission.
 Interaction-driven reads stay lazy on purpose: WireGuard peer data and QR codes,
 expanded changelogs, remote NFS/CIFS browsing, dialog preflight, failed-login
 panels, file-browser search and editor content, directory sizes, Docker icons.
-`routes/_authenticated/-query-ownership.test.ts` actively prevents Hardware
-history charts, WireGuard network info, and the Logs service list from being
-moved back into eager route loading.
+`routes/_authenticated/-query-ownership.test.ts` actively preserves Dashboard
+and Hardware's non-atomic shells, default freshness and direct loader-argument
+cancellation, progressive Hardware histories, lazy WireGuard network info, and
+the gated Logs service list.
+
+Dashboard card boundaries use `DashboardCardSkeleton` fallbacks with the same
+frosted frame and stats-only or split/chart geometry as the resolved cards.
+`WidgetLoader` remains the generic fallback for non-card Hardware sections.
 
 For the endpoint layer itself — `queryOptions`, `queryKey`, `useFetcher`,
 `useAction`, `useJobAction`, and the invalidation manifest — see
@@ -773,6 +839,11 @@ does not:
   fallback already renders that URL's default not-found UI beneath the nearest
   matched layout.
 
+The pending values are an intentional low-latency policy: 50 ms intent delay,
+150 ms before pending UI, zero minimum pending duration, and zero Router preload
+staleness. `router.test.tsx` pins the exact values. Change them only with measured
+navigation evidence, not to follow Router's larger defaults mechanically.
+
 `RouteError` is the recovery contract, and it is short:
 
 ```tsx
@@ -809,6 +880,12 @@ Two tiers, and they are not interchangeable:
   dashboard card, a hardware sensor panel, a settings section. Use it only where
   partial failure isolation is deliberate. Its retry also resets the failed query
   before remounting.
+
+Initial critical-query failures are tagged `routeInitialLoad` and `silent`:
+`RouteError` is their one visible owner, without a duplicate global toast.
+Failures refreshing already-visible cached data are not silent and retain the
+global toast. Deferred Dashboard/Hardware prefetches are silent because each
+widget's local boundary owns the retry and error UI after it mounts.
 
 One wiring detail worth knowing: `PageLoader` renders `div.page-loader`, and
 `BootstrapLoaderReady` removes the HTML splash and un-`inert`s `#root` once no
@@ -850,6 +927,10 @@ On top of that, `useUpdateNavigationGuard` installs a `useBlocker` that rejects
 transitions, and sidebar entries go inert via `useUpdateCanNavigate()`.
 Intent-prefetched queries are tagged `silent`, so an unreliable hover preload
 during an update does not produce a toast.
+
+The loader gate checks both `context.isUpdateBlocked()` and the live
+`getStreamMux()?.isUpdating` flag before and after readiness. The latter closes
+the initial-load gap before `UpdateProvider` has published context state.
 
 ## Adding A Route — Checklist
 
@@ -894,8 +975,8 @@ const BackupsLayout = makeTabLayout(BACKUPS_TABS);
 
 export const Route = createFileRoute("/_authenticated/backups")({
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.backups.list_repositories.queryOptions(),
     ]),
   component: BackupsLayout,
@@ -915,9 +996,11 @@ Docker (50).
 export const Route = createFileRoute("/_authenticated/backups/snapshots")({
   validateSearch: (search) => ({ ...optionalString(search, "tag") }),
   loaderDeps: ({ search }) => ({ tag: search.tag }),
-  loader: ({ context, deps, preload }) =>
-    loadRouteQueries({ context, preload }, [
-      linuxio.backups.list_snapshots.queryOptions({ tag: deps.tag }),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
+      linuxio.backups.list_snapshots.queryOptions({
+        tag: loaderArgs.deps.tag,
+      }),
     ]),
   component: SnapshotsLayout,
 });
@@ -928,9 +1011,9 @@ are already deps:
 
 ```tsx
 export const Route = createFileRoute("/_authenticated/backups/snapshots/$id")({
-  loader: ({ context, params, preload }) =>
-    loadRouteQueries({ context, preload }, [
-      linuxio.backups.get_snapshot.queryOptions(params.id),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
+      linuxio.backups.get_snapshot.queryOptions(loaderArgs.params.id),
     ]),
   component: SnapshotDetail,
 });
@@ -950,6 +1033,8 @@ function SnapshotDetail() {
 
 - Does every leaf have a loader on itself or an ancestor?
 - Do the layout routes that own no data have **no** loader?
+- Does every Query loader pass `loaderArgs` directly, leaving the default
+  `PRESENCE` policy implicit and naming only intentional exceptions?
 - Did you avoid `errorComponent`, `pendingComponent`, and per-route `preload`?
 - Is the capability declared in both places
   ([Capabilities](./capabilities.md#adding-a-capability--checklist))?
@@ -981,7 +1066,7 @@ preference.
 | Wrap a route builder around `createFileRoute` | The plugin matches the literal callee name, so a wrapper silently disables code splitting for that route |
 | Keep every page-level tab mounted and hidden | Keeps observers, polling, and effects alive for invisible pages |
 | Move progressive, polled, or dialog-only queries into a route loader | Guarded by `-query-ownership.test.ts` |
-| Suspend on an endpoint no loader in the route's branch warms | Intent preload never prefetches it, the transport-readiness wait is skipped, and the update block does not apply — silently. Guarded by `-suspense-loader-coverage.test.ts` |
+| Suspend on an endpoint no loader in the route's branch declares | It is absent from both critical loading and deferred intent prefetch. Guarded by `-suspense-loader-coverage.test.ts` |
 | Build a generic route builder, component registry, or route catalogue | All previously existed and were removed; file-based routing replaces them |
 | Convert every lazy query to Suspense | Lazy is deliberate for interaction-driven reads |
 | Introduce another global state store | Query cache + URL + closest common parent has covered every case so far |
@@ -1010,11 +1095,11 @@ For a component that calls `getRouteApi(...)`, mock the module's `getRouteApi`
 |------|--------|
 | `src/router/router.test.tsx` | Global defaults, full route topology, loader coverage, no per-route preload, sidebar order, access co-location |
 | `src/router/provider.test.tsx` | Bootstrap gating, one `invalidate()` per context change |
-| `src/router/query-client.test.tsx` | Browser singleton vs. isolated clients |
+| `src/router/query-client.test.tsx` | Browser singleton, isolated clients, and silent-vs-background error ownership |
 | `src/routes/-auth.test.ts` | Redirect preservation, external-redirect rejection, `requireAccess` policies |
-| `src/routes/-loader.test.tsx` | Shared-cache reuse, dedup, update races, declaration order, silent preload metadata, error propagation |
-| `src/routes/_authenticated/-query-ownership.test.ts` | Keeps lazy/progressive queries out of loaders |
-| `src/routes/-suspense-loader-coverage.test.ts` | The converse: walks the import graph from every route and proves each `useSuspenseQuery`/`useSuspenseQueries` endpoint is warmed by a loader on that route or an ancestor |
+| `src/routes/-loader.test.tsx` | Freshness modes, `Promise<void>`, deferred work, rapid-navigation cancellation, shared consumers, retry/error policy, and update races |
+| `src/routes/_authenticated/-query-ownership.test.ts` | Keeps lazy/progressive queries out of critical loading and enforces default freshness, explicit exceptions, and direct loader arguments |
+| `src/routes/-suspense-loader-coverage.test.ts` | Walks the import graph and proves each suspense endpoint is declared as critical or deferred work in its loader branch |
 | `src/routes/-components/RouteError.test.tsx` | Route-boundary recovery |
 | `src/components/errors/ErrorBoundary.test.tsx` | Widget-boundary recovery |
 | `src/components/tabbar/RoutedTabContainer.test.tsx` | Tab links, active child URL, `matchChildren`, mobile action slot |

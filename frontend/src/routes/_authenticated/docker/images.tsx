@@ -6,9 +6,7 @@ import { loadRouteQueries } from "@/routes/-loader";
 import DockerImagesPage from "./-components/DockerImagesPage";
 
 export const Route = createFileRoute("/_authenticated/docker/images")({
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
-      linuxio.docker.list_images.queryOptions(),
-    ]),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [linuxio.docker.list_images.queryOptions()]),
   component: DockerImagesPage,
 });
