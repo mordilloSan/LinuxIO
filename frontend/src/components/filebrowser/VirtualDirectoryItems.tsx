@@ -56,7 +56,6 @@ interface VirtualDirectoryItemsProps {
   containerRef: RefObject<HTMLDivElement | null>;
   cutPaths: Set<string>;
   files: FileItem[];
-  focusedIndex: number;
   folders: FileItem[];
   isLoadingSubfolders: boolean;
   isMarqueeSelecting: boolean;
@@ -71,6 +70,8 @@ interface VirtualDirectoryItemsProps {
   onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
+  /** Item index to scroll into view, or -1 to leave the viewport alone. */
+  revealIndex: number;
   selectedPaths: Set<string>;
   selectionBox: SelectionBoxState | null;
   subfoldersMap: Map<string, SubfolderData>;
@@ -268,7 +269,6 @@ const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
   files,
-  focusedIndex,
   folders,
   isLoadingSubfolders,
   isMarqueeSelecting,
@@ -283,6 +283,7 @@ const VirtualDirectoryItems = ({
   onMarqueeMouseDown,
   onOpenDirectory,
   renamingPath,
+  revealIndex,
   selectedPaths,
   selectionBox,
   subfoldersMap,
@@ -351,12 +352,12 @@ const VirtualDirectoryItems = ({
   }, [columnCount, rows.length, viewMode, virtualizer]);
 
   useLayoutEffect(() => {
-    if (focusedIndex < 0) return;
+    if (revealIndex < 0) return;
 
     const rowIndex = rows.findIndex(
       (row) =>
         row.type === "items" &&
-        row.items.some((item) => item.allItemsIndex === focusedIndex),
+        row.items.some((item) => item.allItemsIndex === revealIndex),
     );
 
     if (rowIndex === -1) return;
@@ -364,7 +365,7 @@ const VirtualDirectoryItems = ({
     virtualizer.scrollToIndex(rowIndex, {
       align: "auto",
     });
-  }, [focusedIndex, rows, virtualizer]);
+  }, [revealIndex, rows, virtualizer]);
 
   return (
     <div

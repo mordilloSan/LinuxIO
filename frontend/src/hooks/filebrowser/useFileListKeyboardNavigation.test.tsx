@@ -184,13 +184,9 @@ describe("useFileListKeyboardNavigation", () => {
     ]);
   });
 
-  it("scrolls focused cards into view", () => {
+  it("does not scroll on focus changes (the virtualizer owns reveal)", () => {
     render(<Harness focusedIndex={1} />);
 
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 });

@@ -229,7 +229,7 @@ const FileCard = memo<FileCardProps>(
           alignItems: "center",
           gap: theme.spacing(1.5),
           padding: theme.spacing(1.5),
-          border: selected ? "2px solid" : "3px solid",
+          border: "3px solid",
           borderColor: borderColor,
           borderRadius: 20,
           backgroundColor: baseBg,

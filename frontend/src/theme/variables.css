@@ -8,6 +8,12 @@
 html {
   height: 100%;
   box-sizing: border-box;
+  /* Mobile browsers flash a translucent highlight over the hit box of anything
+     tappable. It ignores border-radius, so rounded controls (file cards, list
+     rows, buttons) get a hard-edged rectangle on tap. The app draws its own
+     hover/active/selected states, so suppress it tree-wide — the property is
+     inherited, so this one declaration covers every descendant. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 *,

@@ -26,7 +26,6 @@ body.dialog-open #root {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.5);
-  -webkit-tap-highlight-color: transparent;
   animation: app-dialog-fadein var(--app-transition-duration-standard)
     var(--app-easing-decelerate);
 }
