@@ -33,6 +33,12 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* Keep the button as the pointer target even when Iconify replaces its
+   development placeholder with the rendered SVG. */
+.app-icon-btn > .iconify {
+  pointer-events: none;
+}
+
 .app-icon-btn:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
