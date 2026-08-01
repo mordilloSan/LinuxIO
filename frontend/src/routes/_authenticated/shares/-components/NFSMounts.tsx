@@ -1034,8 +1034,7 @@ const NFSMounts = ({
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
+        minWidth: 0,
       }}
     >
       {nfsUnavailable ? (
@@ -1093,7 +1092,6 @@ const NFSMounts = ({
           columns={columns}
           data={filtered}
           emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
-          fillAvailable
           getRowId={(mount) => mount.mountpoint}
           renderExpandedContent={({ original: mount }) => (
             <div className="expand-panel">
