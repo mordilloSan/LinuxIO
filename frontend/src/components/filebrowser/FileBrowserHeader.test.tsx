@@ -55,7 +55,7 @@ describe("FileBrowserHeader", () => {
     expect(onSaveFile).toHaveBeenCalledOnce();
   });
 
-  it("uses the original full-size view switch control with a tooltip", async () => {
+  it("uses the shared view mode toggle", async () => {
     const onSwitchView = vi.fn();
     const { user } = render(
       <FileBrowserHeader
@@ -65,11 +65,13 @@ describe("FileBrowserHeader", () => {
       />,
     );
 
-    const button = screen.getByRole("button", { name: "Switch view" });
-    expect(button).not.toHaveClass("app-icon-btn--small");
+    const button = screen.getByRole("button", { name: "Switch to card view" });
+    expect(button).toHaveAttribute("aria-label", "Switch to card view");
 
     await user.hover(button);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Switch view");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Switch to card view",
+    );
 
     await user.click(button);
     expect(onSwitchView).toHaveBeenCalledOnce();
