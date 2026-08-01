@@ -13,7 +13,14 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { ComponentType, memo, Suspense, useCallback, useMemo, useState } from "react";
+import {
+  ComponentType,
+  memo,
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 
 import DashboardCardSkeleton, {
   type DashboardCardSkeletonLayout,

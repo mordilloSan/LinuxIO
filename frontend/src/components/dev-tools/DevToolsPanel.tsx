@@ -4,16 +4,27 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  useSyncExternalStore,
   type MouseEvent,
 } from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import {
+  getWebVitalsSnapshot,
+  subscribeToWebVitals,
+  WEB_VITAL_NAMES,
+  type WebVitalName,
+} from "@/performance/webVitalsStore";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+function formatWebVital(name: WebVitalName, value: number) {
+  return name === "CLS" ? value.toFixed(3) : `${Math.round(value)} ms`;
 }
 
 /**
@@ -25,6 +36,11 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
+  const webVitals = useSyncExternalStore(
+    subscribeToWebVitals,
+    getWebVitalsSnapshot,
+    getWebVitalsSnapshot,
+  );
 
   // Draggable state for devtools - initialize to center of screen
   const [position, setPosition] = useState(() => ({
@@ -166,6 +182,45 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
         >
           {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
         </AppButton>
+        <div
+          aria-label="Core Web Vitals"
+          style={{
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 6,
+            display: "grid",
+            gap: 4,
+            padding: 8,
+          }}
+          title="Local page-load metrics. INP needs an interaction; final values may update when the tab is hidden."
+        >
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Web Vitals</span>
+          {WEB_VITAL_NAMES.map((name) => {
+            const metric = webVitals.metrics[name];
+            const color = metric
+              ? metric.rating === "good"
+                ? theme.palette.success.main
+                : metric.rating === "needs-improvement"
+                  ? theme.palette.warning.main
+                  : theme.palette.error.main
+              : theme.palette.text.secondary;
+
+            return (
+              <div
+                key={name}
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>{name}</span>
+                <span style={{ color }}>
+                  {metric ? formatWebVital(name, metric.value) : "Pending"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
         {!shown ? (
           <AppButton
             color="warning"

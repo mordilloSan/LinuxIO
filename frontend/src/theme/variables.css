@@ -1,5 +1,8 @@
 :root {
   color-scheme: var(--app-color-scheme, dark);
+  --app-font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 
 html {
@@ -18,7 +21,7 @@ body {
   margin: 0;
   background: var(--app-palette-background-default, #1b2635);
   color: var(--app-palette-text-primary, rgba(255, 255, 255, 0.95));
-  font-family: var(--app-font-family, Inter, sans-serif);
+  font-family: var(--app-font-family);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
