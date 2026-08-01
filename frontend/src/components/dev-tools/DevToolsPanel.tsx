@@ -1,42 +1,34 @@
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 
 import { DevtoolsModal } from "@/components/dev-tools/DevtoolsModal";
 import AppButton from "@/components/ui/AppButton";
-import {
-  getWebVitalsSnapshot,
-  subscribeToWebVitals,
-  WEB_VITAL_NAMES,
-  type WebVitalName,
-} from "@/performance/webVitalsStore";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
+  isWebVitalsVisible: boolean;
   onClose: () => void;
-}
-
-function formatWebVital(name: WebVitalName, value: number) {
-  return name === "CLS" ? value.toFixed(3) : `${Math.round(value)} ms`;
+  onToggleWebVitals: () => void;
 }
 
 /**
  * Dev-only tool panel for testing and debugging.
  * Only rendered when import.meta.env.DEV is true.
  */
-export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
+export const DevToolsPanel = ({
+  isOpen,
+  isWebVitalsVisible,
+  onClose,
+  onToggleWebVitals,
+}: DevToolsPanelProps) => {
   const theme = useAppTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
   const [isRouterDevtoolsOpen, setIsRouterDevtoolsOpen] = useState(false);
-  const webVitals = useSyncExternalStore(
-    subscribeToWebVitals,
-    getWebVitalsSnapshot,
-    getWebVitalsSnapshot,
-  );
 
   const forceUpdateNotification = () => {
     const fakeUpdateInfo = {
@@ -131,6 +123,15 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
         >
           {isRouterDevtoolsOpen ? "Close" : "Open"} TanStack Router Devtools
         </AppButton>
+        <AppButton
+          color="primary"
+          fullWidth
+          onClick={onToggleWebVitals}
+          size="small"
+          variant="contained"
+        >
+          {isWebVitalsVisible ? "Hide" : "Show"} Web Vitals in Footer
+        </AppButton>
         {!shown ? (
           <AppButton
             color="warning"
@@ -152,46 +153,6 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             Hide Update Notification
           </AppButton>
         )}
-        <div
-          aria-label="Core Web Vitals"
-          style={{
-            border: `1px solid ${theme.palette.divider}`,
-            borderRadius: 6,
-            display: "grid",
-            gap: 4,
-            padding: 8,
-          }}
-          title="Local page-load metrics. INP needs an interaction; final values may update when the tab is hidden."
-        >
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Web Vitals</span>
-          {WEB_VITAL_NAMES.map((name) => {
-            const metric = webVitals.metrics[name];
-            const color = metric
-              ? metric.rating === "good"
-                ? theme.palette.success.main
-                : metric.rating === "needs-improvement"
-                  ? theme.palette.warning.main
-                  : theme.palette.error.main
-              : theme.palette.text.secondary;
-
-            return (
-              <div
-                key={name}
-                style={{
-                  alignItems: "center",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>{name}</span>
-                <span style={{ color }}>
-                  {metric ? formatWebVital(name, metric.value) : "Pending"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        
       </div>
 
       {isDevtoolsOpen && (

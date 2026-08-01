@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { memo, useState, type CSSProperties } from "react";
 
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
+import { WebVitalsFooterStats } from "@/components/dev-tools/WebVitalsFooterStats";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
@@ -9,6 +10,7 @@ import { shadowSm } from "@/theme/constants";
 const DevToolsButton = () => {
   const theme = useAppTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const [isWebVitalsVisible, setIsWebVitalsVisible] = useState(false);
 
   // Only show in development mode
   if (!import.meta.env.DEV) {
@@ -17,6 +19,7 @@ const DevToolsButton = () => {
 
   return (
     <>
+      {isWebVitalsVisible && <WebVitalsFooterStats />}
       <div style={{ position: "relative", display: "inline-flex" }}>
         <div
           className="devtools-btn"
@@ -59,7 +62,12 @@ const DevToolsButton = () => {
           </AppTypography>
         </div>
       </div>
-      <DevToolsPanel isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <DevToolsPanel
+        isOpen={isOpen}
+        isWebVitalsVisible={isWebVitalsVisible}
+        onClose={() => setIsOpen(false)}
+        onToggleWebVitals={() => setIsWebVitalsVisible((visible) => !visible)}
+      />
     </>
   );
 };

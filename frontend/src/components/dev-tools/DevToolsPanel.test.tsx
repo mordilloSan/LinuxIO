@@ -16,8 +16,33 @@ vi.mock("@tanstack/react-router-devtools", () => ({
 const { DevToolsPanel } = await import("./DevToolsPanel");
 
 describe("DevToolsPanel", () => {
+  it("delegates the Web Vitals footer toggle", async () => {
+    const onToggleWebVitals = vi.fn();
+    const { user } = render(
+      <DevToolsPanel
+        isOpen
+        isWebVitalsVisible={false}
+        onClose={() => {}}
+        onToggleWebVitals={onToggleWebVitals}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Show Web Vitals in Footer" }),
+    );
+
+    expect(onToggleWebVitals).toHaveBeenCalledOnce();
+  });
+
   it("opens the router devtools in the same panel and closes query devtools", async () => {
-    const { user } = render(<DevToolsPanel isOpen onClose={() => {}} />);
+    const { user } = render(
+      <DevToolsPanel
+        isOpen
+        isWebVitalsVisible={false}
+        onClose={() => {}}
+        onToggleWebVitals={() => {}}
+      />,
+    );
 
     await user.click(
       screen.getByRole("button", { name: "Open TanStack Router Devtools" }),
@@ -41,7 +66,7 @@ describe("DevToolsPanel", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "Open React Query Devtools" }),
+      screen.getByRole("button", { name: "Open Tanstack Query Devtools" }),
     );
 
     expect(screen.queryByTestId("router-devtools")).not.toBeInTheDocument();
