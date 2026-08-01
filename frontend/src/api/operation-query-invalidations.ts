@@ -13,6 +13,15 @@ const CONTAINER_IMAGE_KEYS = [
 const COMPOSE_KEYS = [
   endpointQueryPrefix("docker.list_compose_projects"),
   endpointQueryPrefix("docker.list_containers"),
+  endpointQueryPrefix("docker.list_images"),
+  endpointQueryPrefix("docker.list_networks"),
+  endpointQueryPrefix("docker.list_volumes"),
+  endpointQueryPrefix("docker.get_docker_info"),
+];
+
+const ACCOUNT_USER_KEYS = [
+  endpointQueryPrefix("accounts.list_users"),
+  endpointQueryPrefix("accounts.get_user_details"),
 ];
 
 // Filebrowser listing caches. Fresh transfers refresh the listing via their
@@ -93,28 +102,30 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.compose_down": COMPOSE_KEYS,
   "docker.compose_stop": COMPOSE_KEYS,
   "docker.compose_restart": COMPOSE_KEYS,
+  "docker.compose": COMPOSE_KEYS,
   "docker.delete_stack": COMPOSE_KEYS,
   "docker.system_prune": [
     endpointQueryPrefix("docker.list_containers"),
     endpointQueryPrefix("docker.list_images"),
     endpointQueryPrefix("docker.list_volumes"),
     endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.get_docker_info"),
   ],
   "docker.set_container_auto_update": [
     endpointQueryPrefix("docker.get_container_auto_update"),
   ],
 
-  "accounts.create_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.delete_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.modify_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.lock_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.unlock_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.change_password": [endpointQueryPrefix("accounts.list_users")],
+  "accounts.create_user": ACCOUNT_USER_KEYS,
+  "accounts.delete_user": ACCOUNT_USER_KEYS,
+  "accounts.modify_user": ACCOUNT_USER_KEYS,
+  "accounts.lock_user": ACCOUNT_USER_KEYS,
+  "accounts.unlock_user": ACCOUNT_USER_KEYS,
+  "accounts.change_password": ACCOUNT_USER_KEYS,
   "accounts.create_group": [endpointQueryPrefix("accounts.list_groups")],
   "accounts.delete_group": [endpointQueryPrefix("accounts.list_groups")],
   "accounts.modify_group_members": [
     endpointQueryPrefix("accounts.list_groups"),
-    endpointQueryPrefix("accounts.list_users"),
+    ...ACCOUNT_USER_KEYS,
   ],
   "accounts.terminate_session": [
     endpointQueryPrefix("accounts.get_user_details"),

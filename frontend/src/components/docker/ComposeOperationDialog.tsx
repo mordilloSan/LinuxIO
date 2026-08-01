@@ -101,10 +101,6 @@ const ComposeOperationDialog = ({
       setError(message);
       toast.error(`Failed to ${action} stack: ${message}`);
     },
-    invalidates: [
-      linuxio.docker.list_compose_projects.queryKey(),
-      linuxio.docker.list_containers.queryKey(),
-    ],
     onProgress: (msg) => {
       switch (msg.type) {
         case "progress": {

@@ -29,6 +29,59 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes every compose-owned Docker summary after compose jobs", () => {
+    const expected = [
+      ["linuxio", "docker", "list_compose_projects"],
+      ["linuxio", "docker", "list_containers"],
+      ["linuxio", "docker", "list_images"],
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "list_volumes"],
+      ["linuxio", "docker", "get_docker_info"],
+    ];
+
+    for (const route of [
+      "docker.compose",
+      "docker.compose_up",
+      "docker.compose_down",
+      "docker.compose_stop",
+      "docker.compose_restart",
+      "docker.delete_stack",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(expected);
+    }
+  });
+
+  it("refreshes Docker daemon disk usage after system prune", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.system_prune"]).toEqual([
+      ["linuxio", "docker", "list_containers"],
+      ["linuxio", "docker", "list_images"],
+      ["linuxio", "docker", "list_volumes"],
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "get_docker_info"],
+    ]);
+  });
+
+  it("refreshes selected account details after user mutations", () => {
+    const expected = [
+      ["linuxio", "accounts", "list_users"],
+      ["linuxio", "accounts", "get_user_details"],
+    ];
+
+    for (const route of [
+      "accounts.delete_user",
+      "accounts.modify_user",
+      "accounts.lock_user",
+      "accounts.unlock_user",
+      "accounts.change_password",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(expected);
+    }
+
+    expect(
+      OPERATION_QUERY_INVALIDATIONS["accounts.modify_group_members"],
+    ).toEqual([["linuxio", "accounts", "list_groups"], ...expected]);
+  });
+
   it("maps only action or job routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
       expect(["query", "job"], `${route} is not an operation route`).toContain(

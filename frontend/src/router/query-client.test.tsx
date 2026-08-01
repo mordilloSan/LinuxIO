@@ -3,6 +3,8 @@ import { render } from "@testing-library/react";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LinuxIOError } from "@/api";
+
 const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("sonner", () => ({ toast: toastMocks }));
@@ -41,6 +43,38 @@ describe("AppQueryClientProvider", () => {
 
   it("keeps explicitly created clients isolated for tests and server renders", () => {
     expect(createQueryClient()).not.toBe(createQueryClient());
+  });
+
+  it("does not repeat the transport's closed-connection retry at Query level", async () => {
+    const queryFn = vi
+      .fn()
+      .mockRejectedValue(new LinuxIOError("offline", "connection_closed"));
+
+    await expect(
+      createQueryClient().fetchQuery({
+        networkMode: "always",
+        queryFn,
+        queryKey: ["closed-connection"],
+        retryDelay: 0,
+      }),
+    ).rejects.toMatchObject({ code: "connection_closed" });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains one Query retry for errors without transport recovery", async () => {
+    const queryFn = vi.fn().mockRejectedValue(new Error("temporary failure"));
+
+    await expect(
+      createQueryClient().fetchQuery({
+        networkMode: "always",
+        queryFn,
+        queryKey: ["generic-error"],
+        retryDelay: 0,
+      }),
+    ).rejects.toThrow("temporary failure");
+
+    expect(queryFn).toHaveBeenCalledTimes(2);
   });
 
   it("leaves silent route failures to the route or widget boundary", async () => {

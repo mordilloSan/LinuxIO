@@ -289,6 +289,36 @@ describe("loadRouteQueries", () => {
     expect(queryClient.getQueryData(queryOptions.queryKey)).toBe("cached");
   });
 
+  it("requires transport readiness before serving a cached route query", async () => {
+    let resolveReadiness!: () => void;
+    apiMocks.ensureLoaderRequestReady.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReadiness = resolve;
+        }),
+    );
+    const queryFn = vi.fn().mockResolvedValue("fresh");
+    const queryOptions = {
+      queryKey: ["cached-live-backend"],
+      queryFn,
+      staleTime: Infinity,
+    };
+    const queryClient = createClient();
+    const context = createRouterContext(queryClient);
+    queryClient.setQueryData(queryOptions.queryKey, "cached");
+
+    const loading = loadRouteQueries(createLoaderArgs(context), [queryOptions]);
+
+    await waitFor(() =>
+      expect(apiMocks.ensureLoaderRequestReady).toHaveBeenCalledTimes(1),
+    );
+    expect(queryFn).not.toHaveBeenCalled();
+
+    resolveReadiness();
+    await expect(loading).resolves.toBeUndefined();
+    expect(queryClient.getQueryData(queryOptions.queryKey)).toBe("cached");
+  });
+
   it("returns stale cached data and revalidates it under the background policy", async () => {
     const queryClient = createClient();
     const context = createRouterContext(queryClient);
@@ -661,6 +691,34 @@ describe("loadRouteQueries", () => {
     ).rejects.toThrow("offline");
 
     expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets sibling requests finish and warm the cache after a batch failure", async () => {
+    let resolveSibling!: (value: string) => void;
+    const siblingQuery = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSibling = resolve;
+        }),
+    );
+    const queryClient = createClient();
+    const context = createRouterContext(queryClient);
+
+    const loading = loadRouteQueries(createLoaderArgs(context), [
+      {
+        queryKey: ["failed-batch-member"],
+        queryFn: () => Promise.reject(new Error("route failed")),
+      },
+      { queryKey: ["warming-batch-member"], queryFn: siblingQuery },
+    ]);
+
+    await expect(loading).rejects.toThrow("route failed");
+    expect(siblingQuery).toHaveBeenCalledTimes(1);
+
+    resolveSibling("warm");
+    await waitFor(() =>
+      expect(queryClient.getQueryData(["warming-batch-member"])).toBe("warm"),
+    );
   });
 
   it("resolves void after every declared query completes", async () => {

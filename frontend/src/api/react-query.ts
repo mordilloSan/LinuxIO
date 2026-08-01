@@ -357,7 +357,6 @@ export interface CommandEndpoint<
    * @example
    * const compose = linuxio.docker.compose.useJobStreamAction({
    *   onProgress: (frame) => setProgress(frame),
-   *   invalidates: [linuxio.docker.list_compose_projects.queryKey()],
    * });
    * compose.mutate({ action: "up", projectName });
    */

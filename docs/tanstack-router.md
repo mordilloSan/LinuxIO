@@ -168,6 +168,12 @@ onError: (error, query) => {
 That is what makes speculative hover preloads quiet — see
 [Loaders](#loaders).
 
+The default Query retry handles one ordinary transient failure, but does not
+retry a `connection_closed` error after the RPC transport has already applied
+its own bounded reconnect attempt. Route loaders are stricter still and default
+their Query-layer attempt to `retry: false`. A component may opt into a local
+retry policy when its UX benefits from one, but that is an explicit exception.
+
 ## The Shared Route Toolkit
 
 Everything a route file needs comes from these four `-` prefixed modules:
@@ -261,7 +267,9 @@ argument only when it needs a different named freshness policy:
    getter or the live stream mux reports an update. The mux check covers the
    first-load window before `UpdateProvider` mounts.
 2. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
-   reconnecting.
+   reconnecting. This happens before cache inspection even when every required
+   Query entry already contains usable data: route transitions require a live
+   backend and cached data is not an offline-navigation contract.
 3. **Re-checks** the update state, closing the race where an update starts
    during the transport wait.
 4. Runs the selected QueryClient operation in parallel, deduped by query key.
@@ -278,6 +286,11 @@ are ref-counted per query key: an abandoned navigation cancels a loader-started
 Query only when no other loader or mounted observer still needs it. Background
 freshness keeps that registration until its revalidation settles, even though
 the loader itself returns cached data immediately.
+
+If one required query rejects, `Promise.all` fails the route immediately but
+does not cancel its siblings. Those requests finish and warm the shared cache,
+so a route retry need not repeat successful members. Router cancellation still
+aborts an abandoned batch through the normal ref-counted path.
 
 On the bridge, ordinary Query routes and the synchronous `jobs.get`,
 `jobs.list`, and `jobs.cancel` primitives consume explicit stream-abort frames.
@@ -299,8 +312,10 @@ startRouteQueryPrefetches(
 ): void
 ```
 
-Deferred prefetches are always silent and never fail the route. Their mounted
-widget owns Suspense, retry, and error UI.
+The helper first enforces the same update and abort preconditions synchronously,
+so invoking it while loading is blocked throws into the route. Once the work has
+started, individual prefetch failures are silent and do not fail the route; the
+mounted widget owns Suspense, retry, and error UI.
 
 ### Four rules
 
@@ -922,6 +937,12 @@ traffic — the doc-level distinction matters when debugging:
    updating flag; `isRequestAvailable()` goes false; `query-client.tsx` feeds that
    into `onlineManager`, so React Query treats the app as offline. The
    multiplexer itself does not reject calls.
+
+This distinction is intentional. When the mux is unavailable, a mounted
+observer may keep rendering usable cached data while React Query pauses new
+network work, but a new route transition still waits for transport readiness
+before inspecting that cache and may enter its error boundary. LinuxIO does not
+offer offline route navigation.
 
 On top of that, `useUpdateNavigationGuard` installs a `useBlocker` that rejects
 transitions, and sidebar entries go inert via `useUpdateCanNavigate()`.
