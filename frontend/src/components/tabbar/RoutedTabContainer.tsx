@@ -197,6 +197,8 @@ const TabLayout = ({
           isMobile ? (
             <>
               <AppIconButton
+                aria-expanded={Boolean(anchorEl)}
+                aria-label="Actions"
                 onClick={(event) => setAnchorEl(event.currentTarget)}
                 ref={handleMenuTriggerRef}
                 size="small"

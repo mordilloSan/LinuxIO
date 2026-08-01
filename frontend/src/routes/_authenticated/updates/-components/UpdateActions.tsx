@@ -60,7 +60,7 @@ const UpdateActions = ({
           action={
             onClearError && (
               <AppIconButton
-                aria-label="close"
+                aria-label="Clear update error"
                 color="inherit"
                 onClick={onClearError}
                 size="small"

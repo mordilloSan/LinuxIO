@@ -79,6 +79,7 @@ function NavbarUserDropdown() {
       <div className="app-navbar-dropdown">
         <AppTooltip title="Account">
           <AppIconButton
+            aria-label="Account"
             aria-controls={menuOpen ? "navbar-account-menu" : undefined}
             aria-expanded={menuOpen}
             aria-haspopup="menu"

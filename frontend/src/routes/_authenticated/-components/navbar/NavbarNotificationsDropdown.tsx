@@ -514,6 +514,7 @@ function NavbarNotificationsDropdown() {
       <div className="app-navbar-dropdown" ref={layerRef}>
         <AppTooltip title="Notifications">
           <AppIconButton
+            aria-label="Notifications"
             aria-controls={
               isFullOpen ? "navbar-notifications-panel" : undefined
             }

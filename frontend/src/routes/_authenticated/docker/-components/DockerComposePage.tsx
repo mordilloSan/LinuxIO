@@ -31,6 +31,11 @@ const DockerComposePage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            stacksView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() =>
             setStacksView(stacksView === "table" ? "card" : "table")
           }

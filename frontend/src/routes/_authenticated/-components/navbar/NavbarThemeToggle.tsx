@@ -16,7 +16,11 @@ function NavbarThemeToggle() {
 
   return (
     <AppTooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-      <AppIconButton color="inherit" onClick={toggleTheme}>
+      <AppIconButton
+        aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        color="inherit"
+        onClick={toggleTheme}
+      >
         {isDark ? (
           <Icon
             height={iconSize.md}

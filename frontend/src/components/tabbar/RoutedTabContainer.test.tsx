@@ -291,7 +291,10 @@ describe("RoutedTabContainer", () => {
     await waitFor(() =>
       expect(container.querySelector(".app-icon-btn")).toBeInTheDocument(),
     );
-    await user.click(container.querySelector(".app-icon-btn")!);
+    const actionsTrigger = screen.getByRole("button", { name: "Actions" });
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(actionsTrigger);
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "true");
     await user.click(
       await screen.findByRole("button", { name: "Remove nullable action" }),
     );

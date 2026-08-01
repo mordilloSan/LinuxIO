@@ -9,6 +9,7 @@ import {
 
 import { linuxio, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppButton from "@/components/ui/AppButton";
 import {
   type AppDialogCloseEvent,
   AppDialogContent,
@@ -259,7 +260,11 @@ const ComposeOperationDialog = ({
             {getActionLabel()} Stack: {projectName}
           </AppTypography>
         </div>
-        <AppIconButton onClick={() => handleClose()} size="small">
+        <AppIconButton
+          aria-label="Close compose operation dialog"
+          onClick={() => handleClose()}
+          size="small"
+        >
           <Icon height={20} icon="mdi:close" width={20} />
         </AppIconButton>
       </AppDialogTitle>
@@ -290,17 +295,27 @@ const ComposeOperationDialog = ({
           {(hasTasks || output.length > 0) && (
             <>
               {hasTasks && (
-                <div
+                <AppButton
+                  aria-controls="compose-raw-log"
+                  aria-expanded={showLog}
                   onClick={() => setShowLog((prev) => !prev)}
                   style={{
+                    appearance: "none",
+                    background: "none",
+                    border: 0,
+                    color: "inherit",
+                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: theme.spacing(0.5),
-                    cursor: "pointer",
+                    font: "inherit",
                     userSelect: "none",
                     padding: theme.spacing(1, 2),
                     borderTop: `1px solid ${theme.palette.divider}`,
+                    textAlign: "left",
+                    width: "100%",
                   }}
+                  type="button"
                 >
                   <Icon
                     height={18}
@@ -313,26 +328,28 @@ const ComposeOperationDialog = ({
                   >
                     {showLog ? "Hide raw log" : "Show raw log"}
                   </AppTypography>
-                </div>
+                </AppButton>
               )}
 
-              {(showLog || !hasTasks) && (
-                <div
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "0.8125rem",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    backgroundColor: theme.codeBlock.background,
-                    color: theme.codeBlock.color,
-                    padding: theme.spacing(2),
-                  }}
-                >
-                  {output.map((line, index) => (
-                    <div key={index}>{line}</div>
-                  ))}
-                </div>
-              )}
+              <div id="compose-raw-log">
+                {(showLog || !hasTasks) && (
+                  <div
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "0.8125rem",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      backgroundColor: theme.codeBlock.background,
+                      color: theme.codeBlock.color,
+                      padding: theme.spacing(2),
+                    }}
+                  >
+                    {output.map((line, index) => (
+                      <div key={index}>{line}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 

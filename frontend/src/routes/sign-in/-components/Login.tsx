@@ -126,6 +126,7 @@ function LogIn() {
           className="login-field"
           endAdornment={
             <AppIconButton
+              aria-label={showPassword ? "Hide password" : "Show password"}
               className="login-password-toggle"
               edge="end"
               onClick={() => setShowPassword((p) => !p)}

@@ -899,6 +899,10 @@ const ActionsCell = memo(function ActionsCell({
           </AppTooltip>
         )}
         <AppIconButton
+          aria-label={
+            expanded ? "Collapse container details" : "Expand container details"
+          }
+          aria-expanded={expanded}
           className="container-expand-toggle"
           onClick={() => onToggleExpanded(containerId)}
           size="small"

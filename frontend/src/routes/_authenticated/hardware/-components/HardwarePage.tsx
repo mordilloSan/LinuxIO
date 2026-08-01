@@ -1,12 +1,5 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import {
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
@@ -20,11 +13,9 @@ import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTypography from "@/components/ui/AppTypography";
+import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { cardHeight, TRANSITION_SLOW_CSS } from "@/theme/constants";
-import "@/theme/section.css";
+import { cardHeight } from "@/theme/constants";
 
 import {
   BIOSInfoCard,
@@ -45,59 +36,6 @@ import {
   defaultHardwareSections,
   resolvedHardwareSections,
 } from "./hardwareSections";
-
-// ─── section header ──────────────────────────────────────────────────────────
-
-const SectionHeader = ({
-  title,
-  expanded,
-  onClick,
-  extras,
-}: {
-  title: string;
-  expanded: boolean;
-  onClick: () => void;
-  extras?: ReactNode;
-}) => (
-  <div
-    className="dd-section-header"
-    onClick={onClick}
-    style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 6,
-      cursor: "pointer",
-      userSelect: "none",
-    }}
-  >
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <AppTypography fontWeight={700} variant="subtitle1">
-        {title}
-      </AppTypography>
-      {extras}
-    </div>
-    <AppIconButton
-      className="section-toggle"
-      size="small"
-      style={{
-        opacity: 0,
-        transition: "opacity 0.15s",
-        pointerEvents: "none",
-      }}
-    >
-      <Icon
-        height={24}
-        icon="mdi:chevron-down"
-        style={{
-          transition: `transform ${TRANSITION_SLOW_CSS}`,
-          transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-        }}
-        width={24}
-      />
-    </AppIconButton>
-  </div>
-);
 
 function SensorReadings() {
   const { data } = useSuspenseQuery(
@@ -314,131 +252,146 @@ const HardwarePage = () => {
     <div>
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
+        controlsId="hardware-system-info-panel"
         expanded={sections.systemInfo}
-        onClick={() => toggleSection("systemInfo")}
+        onToggle={() => toggleSection("systemInfo")}
         title="System Information"
       />
-      <AppCollapse in={sections.systemInfo} unmountOnExit>
-        <AppGrid
-          alignItems="stretch"
-          container
-          spacing={4}
-          style={{ marginBottom: 16 }}
-        >
-          {[
-            { id: "motherboard", component: MotherboardInfoCard },
-            { id: "cpu-details", component: CPUDetailsCard },
-            { id: "bios", component: BIOSInfoCard },
-            { id: "gpu-details", component: GPUInfoCard },
-          ].map(({ id, component: CardComponent }) => (
-            <AppGrid key={id} size={{ xs: 12, md: 6, xl: 3 }}>
-              <ErrorBoundary>
-                <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
-                  <CardComponent />
-                </Suspense>
-              </ErrorBoundary>
-            </AppGrid>
-          ))}
-        </AppGrid>
-      </AppCollapse>
+      <div id="hardware-system-info-panel">
+        <AppCollapse in={sections.systemInfo} unmountOnExit>
+          <AppGrid
+            alignItems="stretch"
+            container
+            spacing={4}
+            style={{ marginBottom: 16 }}
+          >
+            {[
+              { id: "motherboard", component: MotherboardInfoCard },
+              { id: "cpu-details", component: CPUDetailsCard },
+              { id: "bios", component: BIOSInfoCard },
+              { id: "gpu-details", component: GPUInfoCard },
+            ].map(({ id, component: CardComponent }) => (
+              <AppGrid key={id} size={{ xs: 12, md: 6, xl: 3 }}>
+                <ErrorBoundary>
+                  <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
+                    <CardComponent />
+                  </Suspense>
+                </ErrorBoundary>
+              </AppGrid>
+            ))}
+          </AppGrid>
+        </AppCollapse>
+      </div>
 
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
+        controlsId="hardware-hardware-panel"
         expanded={sections.hardware}
-        onClick={() => toggleSection("hardware")}
+        onToggle={() => toggleSection("hardware")}
         title="Hardware"
       />
-      <AppCollapse in={sections.hardware} unmountOnExit>
-        <AppGrid
-          alignItems="stretch"
-          container
-          spacing={4}
-          style={{ marginBottom: 16 }}
-        >
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <CPUHistoryCard
-                hoverTime={historyHoverTime}
-                onHoverTimeChange={setHistoryHoverTime}
-                onRangeChange={setHistoryRange}
-                rangeId={historyRange}
-              />
-            </ErrorBoundary>
+      <div id="hardware-hardware-panel">
+        <AppCollapse in={sections.hardware} unmountOnExit>
+          <AppGrid
+            alignItems="stretch"
+            container
+            spacing={4}
+            style={{ marginBottom: 16 }}
+          >
+            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+              <ErrorBoundary>
+                <CPUHistoryCard
+                  hoverTime={historyHoverTime}
+                  onHoverTimeChange={setHistoryHoverTime}
+                  onRangeChange={setHistoryRange}
+                  rangeId={historyRange}
+                />
+              </ErrorBoundary>
+            </AppGrid>
+            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+              <ErrorBoundary>
+                <MemoryHistoryCard
+                  hoverTime={historyHoverTime}
+                  onHoverTimeChange={setHistoryHoverTime}
+                  onRangeChange={setHistoryRange}
+                  rangeId={historyRange}
+                />
+              </ErrorBoundary>
+            </AppGrid>
+            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+              <ErrorBoundary>
+                <DiskIOHistoryCard
+                  hoverTime={historyHoverTime}
+                  onHoverTimeChange={setHistoryHoverTime}
+                  onRangeChange={setHistoryRange}
+                  rangeId={historyRange}
+                />
+              </ErrorBoundary>
+            </AppGrid>
+            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+              <ErrorBoundary>
+                <NetworkHistoryCard
+                  hoverTime={historyHoverTime}
+                  onHoverTimeChange={setHistoryHoverTime}
+                  onRangeChange={setHistoryRange}
+                  rangeId={historyRange}
+                />
+              </ErrorBoundary>
+            </AppGrid>
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <MemoryHistoryCard
-                hoverTime={historyHoverTime}
-                onHoverTimeChange={setHistoryHoverTime}
-                onRangeChange={setHistoryRange}
-                rangeId={historyRange}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <DiskIOHistoryCard
-                hoverTime={historyHoverTime}
-                onHoverTimeChange={setHistoryHoverTime}
-                onRangeChange={setHistoryRange}
-                rangeId={historyRange}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-          <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-            <ErrorBoundary>
-              <NetworkHistoryCard
-                hoverTime={historyHoverTime}
-                onHoverTimeChange={setHistoryHoverTime}
-                onRangeChange={setHistoryRange}
-                rangeId={historyRange}
-              />
-            </ErrorBoundary>
-          </AppGrid>
-        </AppGrid>
-      </AppCollapse>
+        </AppCollapse>
+      </div>
 
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
       <SectionHeader
+        controlsId="hardware-sensors-panel"
         expanded={sections.sensors}
-        onClick={() => toggleSection("sensors")}
+        onToggle={() => toggleSection("sensors")}
         title="Sensors"
       />
-      <AppCollapse in={sections.sensors} unmountOnExit>
-        <ErrorBoundary>
-          <Suspense fallback={<WidgetLoader minHeight={180} />}>
-            <SensorReadings />
-          </Suspense>
-        </ErrorBoundary>
-      </AppCollapse>
+      <div id="hardware-sensors-panel">
+        <AppCollapse in={sections.sensors} unmountOnExit>
+          <ErrorBoundary>
+            <Suspense fallback={<WidgetLoader minHeight={180} />}>
+              <SensorReadings />
+            </Suspense>
+          </ErrorBoundary>
+        </AppCollapse>
+      </div>
 
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
+        controlsId="hardware-memory-panel"
         expanded={sections.memoryModules}
-        onClick={() => toggleSection("memoryModules")}
+        onToggle={() => toggleSection("memoryModules")}
         title="Memory"
       />
-      <AppCollapse in={sections.memoryModules} unmountOnExit>
-        <ErrorBoundary>
-          <Suspense fallback={<WidgetLoader minHeight={280} />}>
-            <MemoryModulesTable />
-          </Suspense>
-        </ErrorBoundary>
-      </AppCollapse>
+      <div id="hardware-memory-panel">
+        <AppCollapse in={sections.memoryModules} unmountOnExit>
+          <ErrorBoundary>
+            <Suspense fallback={<WidgetLoader minHeight={280} />}>
+              <MemoryModulesTable />
+            </Suspense>
+          </ErrorBoundary>
+        </AppCollapse>
+      </div>
 
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
       <SectionHeader
+        controlsId="hardware-pci-panel"
         expanded={sections.pciDevices}
-        onClick={() => toggleSection("pciDevices")}
+        onToggle={() => toggleSection("pciDevices")}
         title="PCI Devices"
       />
-      <AppCollapse in={sections.pciDevices} unmountOnExit>
-        <ErrorBoundary>
-          <Suspense fallback={<WidgetLoader minHeight={420} />}>
-            <PciDevicesTable />
-          </Suspense>
-        </ErrorBoundary>
-      </AppCollapse>
+      <div id="hardware-pci-panel">
+        <AppCollapse in={sections.pciDevices} unmountOnExit>
+          <ErrorBoundary>
+            <Suspense fallback={<WidgetLoader minHeight={420} />}>
+              <PciDevicesTable />
+            </Suspense>
+          </ErrorBoundary>
+        </AppCollapse>
+      </div>
     </div>
   );
 };

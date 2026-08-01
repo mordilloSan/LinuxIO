@@ -207,6 +207,7 @@ const DashboardPage = () => {
       >
         <AppTooltip title="Card visibility">
           <AppIconButton
+            aria-label="Card visibility"
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
@@ -215,6 +216,7 @@ const DashboardPage = () => {
         </AppTooltip>
         <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
           <AppIconButton
+            aria-label={editMode ? "Lock layout" : "Edit layout"}
             color={editMode ? "primary" : "default"}
             onClick={() => setEditMode((prev) => !prev)}
             size="small"

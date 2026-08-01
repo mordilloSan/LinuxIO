@@ -1,9 +1,40 @@
 # Frontend Shared UI Adoption and Accessibility Plan
 
-Status: planned; initial button/shared-UI audit complete, full inventory and
-implementation not started.
+Status: in progress. The initial button/shared-UI audit is complete; the first
+direct-control migration, visible-focus styles, and a narrow source guard have
+landed. The targeted semantic interaction batch described below is implemented
+and passes the required frontend and browser Make targets. Broad card, icon,
+and residual shared-UI adoption remain planned.
 
 Plan date: 2026-08-01
+
+## Current implementation re-baseline
+
+The original audit described the tree before commit `a7bc10de`. That follow-up
+replaced the straightforward native controls listed in Phase 3, added shared
+focus-visible styles, and introduced a source guard for native form controls and
+feature-level button roles. Those items must not be treated as unstarted work.
+
+The current targeted batch completes these additional high-value items:
+
+- a semantic `AppLinkButton` replaces the nested release-notes link/button;
+- System Health navigation rows use links, in-place rows use buttons, and
+  secondary actions are separate siblings;
+- File Browser sort controls expose the active field and direction, with an
+  indicator available to keyboard focus;
+- LVM, Hardware, Docker, and Compose log disclosures use shared buttons with
+  `aria-expanded` and valid `aria-controls` relationships;
+- a residual audit of all 73 production `AppIconButton` call sites keeps the
+  genuine icon-only actions and adds missing programmatic names and state;
+- File Browser quick-save and search actions now preserve disabled behavior
+  when their owning callback or field is unavailable;
+- focused tests cover the new link-button, sorting, System Health interaction,
+  File Browser action state, and representative disclosure contracts.
+
+This batch deliberately does not perform the repository-wide Iconify migration,
+the interactive-card restructuring, or the File Browser composite-widget
+redesign. Those remain inventory-driven follow-up work, not prerequisites for
+the confirmed semantic fixes.
 
 ## Primary goal: all feature UI uses the shared component system
 
@@ -148,9 +179,9 @@ The guard should point developers to the canonical shared component and permit
 the reviewed exception list. It should prevent new bypasses while the existing
 inventory is migrated incrementally.
 
-### 1.4 Current audit baseline
+### 1.4 Original audit baseline and current residual
 
-The source audit found:
+The original source audit found:
 
 - 12 application `role="button"` sites across nine files: nine div-backed
   controls, one span, and two list items;
@@ -159,8 +190,17 @@ The source audit found:
   section headers;
 - straightforward custom controls that duplicate `AppButton`, `AppIconButton`,
   `AppMenuItem`, or `AppSearchField`;
-- no general visible keyboard-focus style for `AppButton`, `AppIconButton`, or
-  interactive `AppChip`.
+- no general visible keyboard-focus style at that time for `AppButton`,
+  `AppIconButton`, or interactive `AppChip`.
+
+After the first migration, the reviewed feature-level exception ledger contains
+four remaining button-role candidates across three files, while the 11
+interactive `FrostedCard` call sites across ten files remain. Shared
+focus-visible selectors now exist for all three primitives named above. The
+current source guard prevents new raw controls and button roles, but it does not
+yet enforce direct-icon imports, clickable non-interactive elements, nested
+interactive markup, or interactive card usage. Those broader rules must wait
+for the residual inventory and reviewed exceptions.
 
 This document is an implementation plan, not evidence that browser behavior has
 already been corrected or verified.
@@ -248,17 +288,18 @@ The inventory is expected to require at least these shared capabilities:
 Add only gaps proven by the inventory. Prefer extending an existing component
 when that keeps one clear ownership model without making its API ambiguous.
 
-### 2.2 Add visible focus treatment
+### 2.2 Visible focus treatment (implemented; browser verification pending)
 
-Add a consistent `:focus-visible` style to:
+A consistent `:focus-visible` style now exists in:
 
 - `frontend/src/components/ui/app-button.css`
 - `frontend/src/components/ui/app-icon-button.css`
 - `frontend/src/components/ui/app-chip.css`
 
-The treatment should use theme tokens, be visible in light and dark modes, not
-depend on hover, and remain visible against cards, dialogs, and navbar surfaces.
-Do not remove outlines without an equivalent visible replacement.
+The selectors use theme tokens and do not depend on hover. Their contrast
+against cards, dialogs, and navbar surfaces still requires browser verification
+in light and dark modes. Do not remove outlines without an equivalent visible
+replacement.
 
 Review other shared interactive primitives for the same contract, especially
 `AppMenuItem`, `AppSelect`, autocomplete options, and directory-tree controls.
@@ -304,6 +345,9 @@ combine a repository-wide mechanical icon rewrite with unrelated behavior
 changes.
 
 ### 3.2 Replace direct controls
+
+The controls in this table were migrated by `a7bc10de`. The release-notes case
+immediately below is completed by the current targeted batch.
 
 | Current site | Target | Required behavior to preserve |
 | --- | --- | --- |
@@ -372,6 +416,11 @@ external anchors. Do not make `AppButton` broadly polymorphic unless that
 materially simplifies real call sites while retaining type safety.
 
 ## Phase 5: Migrate disclosures, sorting, and mouse-only actions
+
+The System Health, Sort Bar, LVM, Hardware, Docker, and Compose disclosure work
+in Sections 5.1 and 5.2 is implemented in the current targeted batch and passes
+the verification required below. Section 5.3 and the interactive-card phases
+remain planned.
 
 ### 5.1 Confirmed accessibility defects
 

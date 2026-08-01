@@ -67,6 +67,11 @@ const DockerContainersPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            containerView === "card"
+              ? "Switch to table view"
+              : "Switch to card view"
+          }
           onClick={() =>
             setContainerView(containerView === "card" ? "table" : "card")
           }
@@ -81,6 +86,7 @@ const DockerContainersPage = () => {
       </AppTooltip>
       <AppTooltip title={containerEditMode ? "Lock layout" : "Edit layout"}>
         <AppIconButton
+          aria-label={containerEditMode ? "Lock layout" : "Edit layout"}
           color={containerEditMode ? "primary" : "default"}
           onClick={handleToggleContainerEditMode}
           size="small"

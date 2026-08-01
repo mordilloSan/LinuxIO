@@ -116,7 +116,11 @@ const IndexerStatusDialog = ({
           )}
           <AppTypography variant="h6">{title}</AppTypography>
         </div>
-        <AppIconButton onClick={onClose} size="small">
+        <AppIconButton
+          aria-label="Close indexer status dialog"
+          onClick={onClose}
+          size="small"
+        >
           <Icon height={20} icon="mdi:close" width={20} />
         </AppIconButton>
       </AppDialogTitle>

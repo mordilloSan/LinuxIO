@@ -308,6 +308,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                     variant="outlined"
                   />
                   <AppIconButton
+                    aria-label="Add NTP server"
                     onClick={addServer}
                     style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
                     title="Add server"
@@ -315,6 +316,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                     <Icon icon="mdi:plus" width={18} />
                   </AppIconButton>
                   <AppIconButton
+                    aria-label="Remove NTP server"
                     onClick={() => removeServer(i)}
                     style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
                     title="Remove server"

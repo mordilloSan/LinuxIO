@@ -18,6 +18,9 @@ const UnitViewToggle = ({ viewModeKey }: UnitViewToggleProps) => {
       }
     >
       <AppIconButton
+        aria-label={
+          viewMode === "table" ? "Switch to card view" : "Switch to table view"
+        }
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
         size="small"
       >

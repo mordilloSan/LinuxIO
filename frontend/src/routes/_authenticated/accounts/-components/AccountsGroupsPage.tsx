@@ -25,6 +25,11 @@ const AccountsGroupsPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            groupsView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() =>
             setGroupsView(groupsView === "table" ? "card" : "table")
           }

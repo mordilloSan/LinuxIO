@@ -86,7 +86,11 @@ const InterfaceCard = ({
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
                 <AppIconButton
-                  aria-label="Power"
+                  aria-label={
+                    iface.isConnected === "Active"
+                      ? "Turn interface off"
+                      : "Turn interface on"
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     handleToggleInterface(
@@ -112,7 +116,11 @@ const InterfaceCard = ({
                 }
               >
                 <AppIconButton
-                  aria-label="Boot Persistence"
+                  aria-label={
+                    iface.isEnabled
+                      ? "Disable boot persistence"
+                      : "Enable boot persistence"
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
@@ -128,6 +136,7 @@ const InterfaceCard = ({
               </AppTooltip>
               <AppTooltip title="Add Peer">
                 <AppIconButton
+                  aria-label="Add peer"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPeer(iface.name, {});
@@ -138,6 +147,7 @@ const InterfaceCard = ({
               </AppTooltip>
               <AppTooltip title="Delete Interface">
                 <AppIconButton
+                  aria-label="Delete interface"
                   color="error"
                   onClick={(e) => {
                     e.stopPropagation();

@@ -28,6 +28,11 @@ const DockerVolumesPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            volumesView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() =>
             setVolumesView(volumesView === "table" ? "card" : "table")
           }

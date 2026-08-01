@@ -31,6 +31,11 @@ const DockerNetworksPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            networksView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() =>
             setNetworksView(networksView === "table" ? "card" : "table")
           }

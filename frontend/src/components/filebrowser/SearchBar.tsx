@@ -42,6 +42,7 @@ const SearchBar = ({
         value ? (
           <AppIconButton
             aria-label="clear search"
+            disabled={disabled}
             edge="end"
             onClick={handleClear}
             size="small"

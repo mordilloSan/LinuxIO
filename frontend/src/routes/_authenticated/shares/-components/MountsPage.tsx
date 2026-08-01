@@ -35,6 +35,9 @@ const MountsPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            nfsView === "table" ? "Switch to card view" : "Switch to table view"
+          }
           onClick={() => setNfsView(nfsView === "table" ? "card" : "table")}
           size="small"
         >

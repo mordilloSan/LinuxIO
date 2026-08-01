@@ -3,6 +3,7 @@ import { Icon } from "@iconify/react";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppLinkButton from "@/components/ui/AppLinkButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
@@ -81,7 +82,7 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
       <AppAlert
         action={
           <AppIconButton
-            aria-label="close"
+            aria-label="Dismiss update notification"
             color="inherit"
             disabled={isUpdating}
             onClick={onDismiss}
@@ -141,21 +142,17 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
             </AppButton>
 
             {updateInfo.release_url && (
-              <a
+              <AppLinkButton
                 href={updateInfo.release_url}
                 rel="noopener noreferrer"
-                style={{ textDecoration: "none" }}
+                style={{ whiteSpace: "nowrap" }}
                 target="_blank"
+                disabled={isUpdating}
+                size="small"
+                variant="outlined"
               >
-                <AppButton
-                  disabled={isUpdating}
-                  size="small"
-                  style={{ whiteSpace: "nowrap" }}
-                  variant="outlined"
-                >
-                  Release Notes
-                </AppButton>
-              </a>
+                Release Notes
+              </AppLinkButton>
             )}
           </div>
         </div>

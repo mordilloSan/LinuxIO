@@ -90,7 +90,11 @@ const LogDialog = ({
             style={{ marginLeft: 4 }}
           />
         </AppTooltip>
-        <AppIconButton onClick={onClose} size="small">
+        <AppIconButton
+          aria-label="Close log dialog"
+          onClick={onClose}
+          size="small"
+        >
           <Icon height={18} icon="mdi:close" width={18} />
         </AppIconButton>
       </AppDialogTitle>

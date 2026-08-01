@@ -150,6 +150,7 @@ const FileBrowserContent = ({
             {data.resource?.type === "directory" && (
               <SortBar
                 onSortChange={chrome.onSortChange}
+                sortField={listing.sortField}
                 sortOrder={chrome.sortOrder}
               />
             )}

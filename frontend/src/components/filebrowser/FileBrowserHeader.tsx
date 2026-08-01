@@ -158,8 +158,9 @@ const FileBrowserHeader = ({
               <>
                 <AppTooltip title="Close editor">
                   <AppIconButton
-                    disabled={isSaving}
-                    onClick={onCloseEditor || (() => {})}
+                    aria-label="Close editor"
+                    disabled={isSaving || !onCloseEditor}
+                    onClick={onCloseEditor}
                   >
                     <Icon height={22} icon="mdi:close" width={22} />
                   </AppIconButton>
@@ -167,8 +168,9 @@ const FileBrowserHeader = ({
 
                 <AppTooltip title="Save changes">
                   <AppIconButton
-                    disabled={isSaving}
-                    onClick={onSaveFile || (() => {})}
+                    aria-label="Save changes"
+                    disabled={isSaving || !onSaveFile}
+                    onClick={onSaveFile}
                   >
                     <Icon height={22} icon="mdi:content-save" width={22} />
                   </AppIconButton>

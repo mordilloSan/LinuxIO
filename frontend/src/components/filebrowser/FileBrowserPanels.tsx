@@ -273,7 +273,7 @@ export const FileBrowserDetailsDialog = ({
         {detailTarget && detailTarget.length > 1
           ? "Multiple Items Details"
           : "File Details"}
-        <AppIconButton onClick={onClose} size="small">
+        <AppIconButton aria-label="Close dialog" onClick={onClose} size="small">
           <Icon height={18} icon="mdi:close" width={18} />
         </AppIconButton>
       </AppDialogTitle>

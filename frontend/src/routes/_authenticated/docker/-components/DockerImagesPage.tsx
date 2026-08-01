@@ -31,6 +31,11 @@ const DockerImagesPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            imagesView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() =>
             setImagesView(imagesView === "table" ? "card" : "table")
           }

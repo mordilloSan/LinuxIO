@@ -28,6 +28,11 @@ const AccountsUsersPage = () => {
         }
       >
         <AppIconButton
+          aria-label={
+            usersView === "table"
+              ? "Switch to card view"
+              : "Switch to table view"
+          }
           onClick={() => setUsersView(usersView === "table" ? "card" : "table")}
           size="small"
         >
