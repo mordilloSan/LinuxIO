@@ -26,6 +26,8 @@ The current targeted batch completes these additional high-value items:
   `aria-expanded` and valid `aria-controls` relationships;
 - a residual audit of all 73 production `AppIconButton` call sites keeps the
   genuine icon-only actions and adds missing programmatic names and state;
+- all card/table and card/list presentation switches use one controlled
+  `ViewModeToggle` that owns the tooltip, action name, and icons;
 - File Browser quick-save and search actions now preserve disabled behavior
   when their owning callback or field is unavailable;
 - focused tests cover the new link-button, sorting, System Health interaction,

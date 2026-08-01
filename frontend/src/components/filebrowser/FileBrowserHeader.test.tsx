@@ -23,7 +23,6 @@ const defaultProps = {
   onToggleHiddenFiles: vi.fn(),
   showHiddenFiles: false,
   showQuickSave: true,
-  viewIcon: <span>view</span>,
   viewMode: "list" as const,
 };
 
@@ -54,5 +53,33 @@ describe("FileBrowserHeader", () => {
     await user.click(enabledSave);
     expect(onCloseEditor).toHaveBeenCalledOnce();
     expect(onSaveFile).toHaveBeenCalledOnce();
+  });
+
+  it("exposes and invokes the shared view switch control", async () => {
+    const onSwitchView = vi.fn();
+    const { rerender, user } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        onSwitchView={onSwitchView}
+        showQuickSave={false}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Switch to card view" }),
+    );
+    expect(onSwitchView).toHaveBeenCalledOnce();
+
+    rerender(
+      <FileBrowserHeader
+        {...defaultProps}
+        onSwitchView={onSwitchView}
+        showQuickSave={false}
+        viewMode="card"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Switch to list view" }),
+    ).toBeInTheDocument();
   });
 });

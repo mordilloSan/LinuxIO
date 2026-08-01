@@ -3,8 +3,7 @@ import { useCallback, useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import VolumeList from "./VolumeList";
@@ -20,31 +19,11 @@ const DockerVolumesPage = () => {
 
   const actions = (
     <>
-      <AppTooltip
-        title={
-          volumesView === "table"
-            ? "Switch to card view"
-            : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          aria-label={
-            volumesView === "table"
-              ? "Switch to card view"
-              : "Switch to table view"
-          }
-          onClick={() =>
-            setVolumesView(volumesView === "table" ? "card" : "table")
-          }
-          size="small"
-        >
-          {volumesView === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setVolumesView}
+        viewMode={volumesView}
+      />
       {createVolumeHandler && (
         <AppButton
           onClick={createVolumeHandler}

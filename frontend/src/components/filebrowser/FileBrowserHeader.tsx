@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useIsIndexing } from "@/hooks/backgroundJobs/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -14,7 +15,7 @@ import { shadowSm } from "@/theme/constants";
 
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
-import { ViewMode } from "../../types/filebrowser";
+import type { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
   editingFileName?: string;
@@ -29,7 +30,6 @@ interface FileBrowserHeaderProps {
   searchQuery?: string;
   showHiddenFiles: boolean;
   showQuickSave?: boolean;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 const FileBrowserHeader = ({
@@ -40,7 +40,7 @@ const FileBrowserHeader = ({
   onSaveFile,
   onCloseEditor,
   isSaving = false,
-  viewIcon,
+  viewMode,
   editingFileName,
   editingFilePath,
   isDirty = false,
@@ -200,17 +200,14 @@ const FileBrowserHeader = ({
                       <div
                         style={{ display: "flex", gap: 8, padding: "4px 8px" }}
                       >
-                        <AppTooltip title="Switch view">
-                          <AppIconButton
-                            aria-label="Switch view"
-                            onClick={() => {
-                              setActionsAnchorEl(null);
-                              onSwitchView();
-                            }}
-                          >
-                            {viewIcon}
-                          </AppIconButton>
-                        </AppTooltip>
+                        <ViewModeToggle
+                          alternateMode="list"
+                          onViewModeChange={() => {
+                            setActionsAnchorEl(null);
+                            onSwitchView();
+                          }}
+                          viewMode={viewMode}
+                        />
                         <AppTooltip
                           title={
                             showHiddenFiles
@@ -273,14 +270,11 @@ const FileBrowserHeader = ({
                   </>
                 ) : (
                   <>
-                    <AppTooltip title="Switch view">
-                      <AppIconButton
-                        aria-label="Switch view"
-                        onClick={onSwitchView}
-                      >
-                        {viewIcon}
-                      </AppIconButton>
-                    </AppTooltip>
+                    <ViewModeToggle
+                      alternateMode="list"
+                      onViewModeChange={onSwitchView}
+                      viewMode={viewMode}
+                    />
                     <AppTooltip
                       title={
                         showHiddenFiles

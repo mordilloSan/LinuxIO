@@ -6,6 +6,7 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -59,31 +60,11 @@ const DockerContainersPage = () => {
         }
         onClick={() => setAutoUpdateDialogOpen(true)}
       />
-      <AppTooltip
-        title={
-          containerView === "card"
-            ? "Switch to table view"
-            : "Switch to card view"
-        }
-      >
-        <AppIconButton
-          aria-label={
-            containerView === "card"
-              ? "Switch to table view"
-              : "Switch to card view"
-          }
-          onClick={() =>
-            setContainerView(containerView === "card" ? "table" : "card")
-          }
-          size="small"
-        >
-          {containerView === "card" ? (
-            <Icon height={20} icon="mdi:table" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setContainerView}
+        viewMode={containerView}
+      />
       <AppTooltip title={containerEditMode ? "Lock layout" : "Edit layout"}>
         <AppIconButton
           aria-label={containerEditMode ? "Lock layout" : "Edit layout"}

@@ -1,7 +1,4 @@
-import { Icon } from "@iconify/react";
-
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
 interface UnitViewToggleProps {
@@ -12,25 +9,11 @@ const UnitViewToggle = ({ viewModeKey }: UnitViewToggleProps) => {
   const [viewMode, setViewMode] = useViewMode(viewModeKey, "table");
 
   return (
-    <AppTooltip
-      title={
-        viewMode === "table" ? "Switch to card view" : "Switch to table view"
-      }
-    >
-      <AppIconButton
-        aria-label={
-          viewMode === "table" ? "Switch to card view" : "Switch to table view"
-        }
-        onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
-        size="small"
-      >
-        {viewMode === "table" ? (
-          <Icon height={20} icon="mdi:card-multiple" width={20} />
-        ) : (
-          <Icon height={20} icon="mdi:table" width={20} />
-        )}
-      </AppIconButton>
-    </AppTooltip>
+    <ViewModeToggle
+      alternateMode="table"
+      onViewModeChange={setViewMode}
+      viewMode={viewMode}
+    />
   );
 };
 

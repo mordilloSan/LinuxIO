@@ -3,9 +3,9 @@ import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -29,25 +29,11 @@ const MountsPage = () => {
 
   const actions = (
     <>
-      <AppTooltip
-        title={
-          nfsView === "table" ? "Switch to card view" : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          aria-label={
-            nfsView === "table" ? "Switch to card view" : "Switch to table view"
-          }
-          onClick={() => setNfsView(nfsView === "table" ? "card" : "table")}
-          size="small"
-        >
-          {nfsView === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setNfsView}
+        viewMode={nfsView}
+      />
       {mountNFSHandler && (
         <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
           <span>

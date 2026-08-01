@@ -25,13 +25,12 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -1173,27 +1172,11 @@ const SharesPage = () => {
         flexWrap: "wrap",
       }}
     >
-      <AppTooltip
-        title={
-          viewMode === "table" ? "Switch to card view" : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          aria-label={
-            viewMode === "table"
-              ? "Switch to card view"
-              : "Switch to table view"
-          }
-          onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
-          size="small"
-        >
-          {viewMode === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setViewMode}
+        viewMode={viewMode}
+      />
       <AppButton
         onClick={() => setCreateDialogOpen(true)}
         size="small"

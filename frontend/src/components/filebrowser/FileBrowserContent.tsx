@@ -1,9 +1,4 @@
-import {
-  memo,
-  type DragEventHandler,
-  type MouseEventHandler,
-  type ReactNode,
-} from "react";
+import { memo, type DragEventHandler, type MouseEventHandler } from "react";
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
@@ -46,7 +41,6 @@ export interface FileBrowserChromeProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   sortOrder: SortOrder;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
@@ -121,7 +115,6 @@ const FileBrowserContent = ({
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
           searchQuery={chrome.searchQuery}
           showHiddenFiles={chrome.showHiddenFiles}
-          viewIcon={chrome.viewIcon}
           viewMode={chrome.viewMode}
         />
       )}

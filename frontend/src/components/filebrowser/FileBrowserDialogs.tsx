@@ -1,4 +1,4 @@
-import { memo, type ChangeEvent, type ReactNode, type RefObject } from "react";
+import { memo, type ChangeEvent, type RefObject } from "react";
 
 import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
@@ -54,7 +54,6 @@ export interface FileBrowserEditorDialogsProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   showQuickSave: boolean;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
@@ -198,7 +197,6 @@ const FileBrowserDialogs = ({
       searchQuery={editor.searchQuery}
       showHiddenFiles={editor.showHiddenFiles}
       showQuickSave={editor.showQuickSave}
-      viewIcon={editor.viewIcon}
       viewMode={editor.viewMode}
     />
 
