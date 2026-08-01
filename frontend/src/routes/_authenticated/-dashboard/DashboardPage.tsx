@@ -13,7 +13,7 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import { memo, Suspense, useCallback, useMemo, useState } from "react";
+import { ComponentType, memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import DashboardCardSkeleton, {
   type DashboardCardSkeletonLayout,
@@ -53,7 +53,7 @@ const MemoDriveInfo = memo(DriveInfo);
 const MemoDockerInfo = memo(DockerInfo);
 
 interface DashboardCardDefinition {
-  component: typeof MemoSystemOverview;
+  component: ComponentType;
   id: string;
   label: string;
   skeletonLayout: DashboardCardSkeletonLayout;
