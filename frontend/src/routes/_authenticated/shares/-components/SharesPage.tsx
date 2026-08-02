@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   linuxio,
@@ -89,6 +89,15 @@ const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
   { key: "insecure", label: "Insecure" },
   { key: "crossmnt", label: "Crossmnt" },
 ];
+
+const protocolSectionStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.03)",
+};
 
 const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
   {
@@ -544,16 +553,7 @@ const CreateFolderShareDialog = ({
             value={path}
           />
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -600,16 +600,7 @@ const CreateFolderShareDialog = ({
             ) : null}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -844,16 +835,7 @@ const EditFolderShareDialog = ({
             value={group.path}
           />
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -900,16 +882,7 @@ const EditFolderShareDialog = ({
             ) : null}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
