@@ -12,13 +12,13 @@ import "./compose-operation-dialog.css";
 import { linuxio, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   type AppDialogCloseEvent,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { JOB_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundJobTypes";
 import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
@@ -58,6 +58,11 @@ const ComposeOperationDialog = ({
   // Started-guard: one run per dialog open (reset on dialog exit). The abort
   // controller is the run's detach handle — aborting closes the attach
   // stream (closeOnAbort: "close") while the job keeps running server-side.
+  // It is dropped as soon as the job reports a terminal state: from then on
+  // the stream is only waiting to deliver its result frame, and that frame is
+  // what resolves the mutation and applies the route's invalidations. Cutting
+  // it short rejects the mutation with an AbortError instead, so nothing would
+  // refresh the Docker caches.
   const startedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const { isOpen: muxIsOpen } = useStreamMux();
@@ -102,10 +107,18 @@ const ComposeOperationDialog = ({
       if (streamError.name === "AbortError") return;
       const message =
         streamError.message || "Failed to start compose operation";
-      setError(message);
+      // The toast still fires for a run the user walked away from; only the
+      // in-dialog state is dropped once this run is no longer the current one.
+      if (startedRef.current) {
+        setError(message);
+      }
       toast.error(`Failed to ${action} stack: ${message}`);
     },
     onProgress: (msg) => {
+      // A finished run stays attached until its result frame lands, so frames
+      // can still arrive after the dialog was closed and reset. Writing them
+      // back would leave the next open showing the previous run's state.
+      if (!startedRef.current) return;
       switch (msg.type) {
         case "progress": {
           setTasks((prev) => mergeTask(prev, msg.progress));
@@ -127,9 +140,11 @@ const ComposeOperationDialog = ({
         case "error":
           // In-dialog display only; the terminal error callback owns the
           // toast, so a failed run toasts once.
+          abortRef.current = null;
           setError(msg.message);
           break;
         case "complete":
+          abortRef.current = null;
           setSuccess(true);
           setOutput((prev) => [...prev, "✓ " + msg.message]);
           break;
@@ -138,7 +153,7 @@ const ComposeOperationDialog = ({
     openErrorMessage: "Failed to attach compose operation",
     signal: () => abortRef.current?.signal,
     success: (msg) => {
-      if (msg?.type === "complete") {
+      if (msg?.type === "complete" && startedRef.current) {
         setSuccess(true);
       }
     },
@@ -244,8 +259,21 @@ const ComposeOperationDialog = ({
             gap: theme.spacing(1),
           }}
         >
-          {isRunning && <AppLinearProgress style={{ width: 100 }} />}
-          {success && (
+          <AppTypography variant="h6">
+            {getActionLabel()} Stack: {projectName}
+          </AppTypography>
+          {/* Outcome marker: spinner while the operation runs, then the state
+              it settled in. */}
+          {isRunning ? (
+            <AppCircularProgress size={20} />
+          ) : error ? (
+            <Icon
+              color={theme.palette.error.main}
+              height={24}
+              icon="mdi:alert-circle"
+              width={24}
+            />
+          ) : (
             <Icon
               color={theme.palette.success.main}
               height={24}
@@ -253,17 +281,6 @@ const ComposeOperationDialog = ({
               width={24}
             />
           )}
-          {error && (
-            <Icon
-              color={theme.palette.error.main}
-              height={24}
-              icon="mdi:alert-circle"
-              width={24}
-            />
-          )}
-          <AppTypography variant="h6">
-            {getActionLabel()} Stack: {projectName}
-          </AppTypography>
         </div>
         <AppIconButton
           aria-label="Close compose operation dialog"
@@ -274,25 +291,25 @@ const ComposeOperationDialog = ({
         </AppIconButton>
       </AppDialogTitle>
 
+      {/* Stable frame; what changes with the content is how the two sections
+          divide it. */}
       <AppDialogContent
         style={{
           padding: 0,
           display: "flex",
           flexDirection: "column",
-          minHeight: "450px",
+          minHeight: "380px",
           maxHeight: "450px",
           overflow: "hidden",
         }}
       >
-        {/* Section 1 — progress. Scrolls on its own so a long task list never
-            pushes the raw-log section out of reach. */}
+        {/* Section 1 — progress. Holds the free space while the log is closed
+            and yields it as the log opens; scrolls on its own once the task
+            tree outgrows what it is left with. */}
         <div
-          className="custom-scrollbar"
-          style={{
-            flex: "1 1 auto",
-            minHeight: 0,
-            overflowY: "auto",
-          }}
+          className={`compose-progress-section custom-scrollbar ${
+            logVisible ? "compose-progress-section--yielded" : ""
+          }`.trim()}
         >
           {hasTasks ? (
             <DockerComposeProgress tasks={taskList} />
@@ -318,11 +335,18 @@ const ComposeOperationDialog = ({
           )}
         </div>
 
-        {/* Section 2 — raw log. Its own scroll container, bounded while the
-            progress section is present and filling the dialog otherwise. */}
+        {/* Section 2 — raw log. Grows into the space the task tree gives up,
+            and scrolls once it has all of it. */}
         {(hasTasks || output.length > 0) && (
           <div
-            className={`compose-log ${hasTasks ? "" : "compose-log--fill"}`.trim()}
+            className={[
+              "compose-log",
+              logVisible && "compose-log--expanded",
+              // No task tree means no toggle bar to offset the panel from.
+              !hasTasks && "compose-log--headless",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             {hasTasks && (
               <AppButton
@@ -368,11 +392,7 @@ const ComposeOperationDialog = ({
               </AppButton>
             )}
 
-            <div
-              className={`compose-log__animator ${
-                logVisible ? "" : "compose-log__animator--collapsed"
-              }`.trim()}
-            >
+            <div className="compose-log__animator">
               <div
                 aria-hidden={!logVisible}
                 className="compose-log__scroller custom-scrollbar"
@@ -383,9 +403,11 @@ const ComposeOperationDialog = ({
                   color: theme.codeBlock.color,
                 }}
               >
-                {output.map((line, index) => (
-                  <div key={index}>{line}</div>
-                ))}
+                <div className="compose-log__lines">
+                  {output.map((line, index) => (
+                    <div key={index}>{line}</div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

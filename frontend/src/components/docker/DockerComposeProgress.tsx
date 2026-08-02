@@ -97,6 +97,7 @@ interface GroupHeaderProps {
   task: ComposeTask;
   percent: number | null; // group completion, or null when it has no layers
   expanded: boolean;
+  first: boolean; // no leading gap on the first group
   hasLayers: boolean;
   controlsId: string;
   onToggle: () => void;
@@ -109,6 +110,7 @@ const GroupHeader = ({
   task,
   percent,
   expanded,
+  first,
   hasLayers,
   controlsId,
   onToggle,
@@ -122,9 +124,12 @@ const GroupHeader = ({
     border: 0,
     cursor: hasLayers ? "pointer" : "default",
     display: "flex",
+    // AppButton centres its content; without the summary bar's flex:1 there is
+    // nothing left to push this row against its left edge.
+    justifyContent: "flex-start",
     gap: theme.spacing(1),
     marginBottom: expanded && hasLayers ? theme.spacing(1.5) : 0,
-    marginTop: theme.spacing(2.5),
+    marginTop: first ? 0 : theme.spacing(2.5),
     padding: 0,
     textAlign: "left",
     userSelect: "none",
@@ -173,7 +178,9 @@ const GroupHeader = ({
         {task.text}
       </AppTypography>
 
-      {!expanded && percent !== null && (
+      {/* A finished group states its outcome in words ("Pulled"), so the
+          summary bar retires with the work it was tracking. */}
+      {!expanded && !done && percent !== null && (
         <>
           <div style={{ flex: 1, minWidth: 80, marginLeft: theme.spacing(1) }}>
             <AppLinearProgress
@@ -224,7 +231,6 @@ const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
   const [collapsedOverride, setCollapsedOverride] = useState<
     Map<string, boolean>
   >(new Map());
-  const overall = aggregatePercent(tasks);
 
   // Groups (Image/Container/…) keep Map insertion order; layers are nested
   // under their parent image. Layers whose parent hasn't appeared yet are
@@ -252,32 +258,7 @@ const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
 
   return (
     <div style={{ padding: theme.spacing(2) }}>
-      {overall !== null && (
-        <div style={{ marginBottom: theme.spacing(2) }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: theme.spacing(0.5),
-            }}
-          >
-            <AppTypography style={{ fontWeight: 600 }}>Overall</AppTypography>
-            <AppTypography
-              color="text.secondary"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {overall}%
-            </AppTypography>
-          </div>
-          <AppLinearProgress
-            color={overall >= 100 ? "success" : "primary"}
-            value={overall}
-            variant="determinate"
-          />
-        </div>
-      )}
-
-      {groups.map((g) => {
+      {groups.map((g, index) => {
         const layers = layersByParent.get(g.id) ?? [];
         const groupPercent =
           layers.length > 0 ? aggregatePercent(layers) : null;
@@ -290,6 +271,7 @@ const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
             <GroupHeader
               controlsId={`compose-progress-${encodeURIComponent(g.id)}`}
               expanded={expanded}
+              first={index === 0}
               hasLayers={layers.length > 0}
               onToggle={() => toggle(g.id, expanded)}
               percent={groupPercent}

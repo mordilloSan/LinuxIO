@@ -1,69 +1,101 @@
-/* Raw-log section of the compose operation dialog: the lower of the two
-   independently scrolling sections in the dialog body. */
-.compose-log {
-  --compose-log-height: 180px;
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  min-height: 0;
-}
+/* The dialog body is two independently scrolling sections that share one fixed
+   height: the task tree and the raw log. Opening the log transfers the free
+   space from one to the other, and it is that transfer — not a height — that
+   is animated, which is why the toggle bar glides instead of jumping.
+   Both sides ease with the same curve, so their grow factors always sum to 1
+   and the log's share moves smoothly from none of the space to all of it.
+   The curve is the slow duration on the decelerate easing. Every transition
+   here has to share BOTH — the two grow factors only sum to 1 while they
+   interpolate identically, and a mismatch makes the toggle bar drift or
+   stutter mid-travel. The chevron rides along for the same reason. */
 
-/* No task tree means the log is the only content, so it fills the body. */
-.compose-log--fill {
+/* Progress section: holds the free space while the log is closed, and hands it
+   over as the log opens. Shrinks and scrolls when the tree outgrows what's
+   left. */
+.compose-progress-section {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  transition: flex-grow var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
 }
 
+.compose-progress-section--yielded {
+  flex-grow: 0;
+}
+
+/* Raw-log section. Its flex basis is the toggle bar alone — the panel is taken
+   out of flow so the section never sizes to the log's content, which would
+   snap it open the moment the class lands. Everything past the bar is free
+   space it grew into.
+   min-height covers the case the transfer can't: a task tree already taller
+   than the body leaves no free space to grow into, so the log claims a floor
+   and the tree scrolls. It eases on the same curve, so whichever term is
+   driving, the panel opens at the same rate. */
+.compose-log {
+  --compose-log-toggle-height: 30px;
+  --compose-log-min: 45%;
+
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  transition:
+    flex-grow var(--app-transition-duration-slow)
+      var(--app-easing-decelerate),
+    min-height var(--app-transition-duration-slow)
+      var(--app-easing-decelerate);
+}
+
+.compose-log--expanded {
+  flex-grow: 1;
+  min-height: var(--compose-log-min);
+}
+
+.compose-log--headless {
+  --compose-log-toggle-height: 0px;
+}
+
+/* Fixed height so the panel below can be positioned off it. */
 .compose-log__toggle {
+  box-sizing: border-box;
   flex-shrink: 0;
+  height: var(--compose-log-toggle-height);
 }
 
 .compose-log__chevron {
   flex-shrink: 0;
-  transition: transform 220ms ease;
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
 }
 
 .compose-log__chevron--expanded {
   transform: rotate(90deg);
 }
 
-/* Collapsing animates max-height, which is only transitionable because the
-   scroller below is capped at the same value — no content measuring needed. */
+/* Out of flow: fills the section below the bar, contributes nothing to it. */
 .compose-log__animator {
-  max-height: var(--compose-log-height);
+  position: absolute;
+  inset: var(--compose-log-toggle-height) 0 0 0;
   overflow: hidden;
-  transition: max-height 220ms ease;
-}
-
-.compose-log__animator--collapsed {
-  max-height: 0;
-}
-
-.compose-log--fill .compose-log__animator {
-  display: flex;
-  flex: 1 1 auto;
-  max-height: none;
-  min-height: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .compose-log__animator,
-  .compose-log__chevron {
-    transition: none;
-  }
 }
 
 .compose-log__scroller {
-  max-height: var(--compose-log-height);
+  height: 100%;
   overflow-y: auto;
-  padding: 8px;
   font-family: monospace;
   font-size: 0.8125rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.compose-log--fill .compose-log__scroller {
-  flex: 1 1 auto;
-  max-height: none;
-  min-height: 0;
+.compose-log__lines {
+  padding: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compose-progress-section,
+  .compose-log,
+  .compose-log__chevron {
+    transition: none;
+  }
 }
