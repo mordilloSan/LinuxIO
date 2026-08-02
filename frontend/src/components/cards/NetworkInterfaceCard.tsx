@@ -5,8 +5,8 @@ import { type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import AppButton from "@/components/ui/AppButton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 
 const getStatusTooltip = (state: number) => {
@@ -52,27 +52,21 @@ const NetworkInterfaceCard = ({
       hoverLift={!expanded}
       style={{ padding: 8, position: "relative" }}
     >
-      <AppTooltip arrow title={getStatusTooltip(iface.state)}>
-        <span
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 8,
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            display: "inline-block",
-            backgroundColor:
-              iface.state === 100
-                ? theme.palette.success.main
-                : iface.state >= 40 && iface.state <= 90
-                  ? theme.palette.warning.main
-                  : iface.state === 30 || iface.state === 120
-                    ? theme.palette.error.main
-                    : theme.palette.text.disabled,
-          }}
-        />
-      </AppTooltip>
+      <StatusDot
+        absolute
+        color={
+          iface.state === 100
+            ? theme.palette.success.main
+            : iface.state >= 40 && iface.state <= 90
+              ? theme.palette.warning.main
+              : iface.state === 30 || iface.state === 120
+                ? theme.palette.error.main
+                : theme.palette.text.disabled
+        }
+        size={10}
+        style={{ top: 16, right: 8 }}
+        tooltip={getStatusTooltip(iface.state)}
+      />
 
       <AppButton
         aria-controls={editorId}

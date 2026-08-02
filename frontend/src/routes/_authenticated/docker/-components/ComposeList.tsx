@@ -16,6 +16,7 @@ import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import {
   getComposeStatusColor,
   getContainerStatusColor,
@@ -235,15 +236,7 @@ const ComposeList = ({
                   variant="soft"
                 />
               ) : (
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    backgroundColor: statusColor,
-                  }}
-                />
+                <StatusDot color={statusColor} size={10} />
               )}
             </div>
           );

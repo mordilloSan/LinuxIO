@@ -441,16 +441,10 @@ const ContainerCard = ({
                   )}
                 </div>
               </div>
-              <span
-                style={{
-                  display: "inline-block",
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: statusColor,
-                  flexShrink: 0,
-                  marginTop: 4,
-                }}
+              <StatusDot
+                color={statusColor}
+                size={8}
+                style={{ marginTop: 4 }}
               />
             </div>
           </AppButton>

@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 
@@ -121,17 +122,7 @@ function UnitCard<T extends UnitListItem>({
               </AppTypography>
             )}
           </div>
-          <span
-            style={{
-              display: "inline-block",
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: statusColor,
-              flexShrink: 0,
-              marginTop: 4,
-            }}
-          />
+          <StatusDot color={statusColor} size={8} style={{ marginTop: 4 }} />
         </div>
 
         <div

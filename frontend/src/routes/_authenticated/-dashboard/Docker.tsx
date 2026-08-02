@@ -16,6 +16,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -281,15 +282,13 @@ const DockerInfo = () => {
               }}
             >
               <DockerIcon alt={name} identifier={c.icon} size={36} />
-              <div
+              <StatusDot
+                color={resolveStateColor(c.State)}
+                size={8}
                 style={{
                   position: "absolute",
                   bottom: 0,
                   right: 0,
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: resolveStateColor(c.State),
                   border: `1.5px solid ${theme.palette.background.paper}`,
                 }}
               />
