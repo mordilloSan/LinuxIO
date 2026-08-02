@@ -9,6 +9,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	dockerhandler "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -181,6 +182,28 @@ func TestRoutesDeclareContractFields(t *testing.T) {
 			t.Fatalf("%s should declare a result contract", route.Route)
 		}
 	}
+}
+
+func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
+	compose := mustRoute(t, "docker.compose")
+	if got, want := compose.Result.GoType, reflect.TypeFor[dockerhandler.ComposeJobResult](); got != want {
+		t.Fatalf("docker.compose result type = %v, want %v", got, want)
+	}
+	if got, want := compose.Progress.GoType, reflect.TypeFor[dockerhandler.ComposeJobMessage](); got != want {
+		t.Fatalf("docker.compose progress type = %v, want %v", got, want)
+	}
+}
+
+func TestWithJobProgressRejectsQueryRoutes(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Query() accepted a job progress contract")
+		}
+	}()
+	_ = apischema.Query[apischema.NoRequest, apischema.NoResponse](
+		"test.progress_query",
+		apischema.WithJobProgress[apischema.MessageResponse](),
+	)
 }
 
 func TestJobMetadataBuildersAreAllowlistedRunnerRoutes(t *testing.T) {

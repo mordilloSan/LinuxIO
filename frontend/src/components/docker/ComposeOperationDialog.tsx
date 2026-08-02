@@ -25,11 +25,7 @@ import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecover
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 
-import {
-  type ComposeMessage,
-  type ComposeTask,
-  mergeTask,
-} from "./composeProgress";
+import { type ComposeTask, mergeTask } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
 
 interface ComposeOperationDialogProps {
@@ -97,10 +93,7 @@ const ComposeOperationDialog = ({
   }, [open]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const composeOperation = linuxio.docker.compose.useJobStreamAction<
-    ComposeMessage,
-    ComposeMessage
-  >({
+  const composeOperation = linuxio.docker.compose.useJobStreamAction({
     closeMessage: "Compose operation stream closed unexpectedly",
     closeOnAbort: "close",
     error: (streamError) => {
@@ -121,10 +114,12 @@ const ComposeOperationDialog = ({
       if (!startedRef.current) return;
       switch (msg.type) {
         case "progress": {
-          setTasks((prev) => mergeTask(prev, msg.progress));
+          const progress = msg.progress;
+          if (!progress) break;
+          setTasks((prev) => mergeTask(prev, progress));
           // Keep the raw log meaningful and bounded: record milestones
           // (status changes / completions), not every download tick.
-          const { text, status } = msg.progress;
+          const { text, status } = progress;
           if (
             status === "Done" ||
             (text !== "Downloading" && text !== "Extracting")
@@ -137,24 +132,15 @@ const ComposeOperationDialog = ({
         case "stderr":
           setOutput((prev) => [...prev, msg.message]);
           break;
-        case "error":
-          // In-dialog display only; the terminal error callback owns the
-          // toast, so a failed run toasts once.
-          abortRef.current = null;
-          setError(msg.message);
-          break;
-        case "complete":
-          abortRef.current = null;
-          setSuccess(true);
-          setOutput((prev) => [...prev, "✓ " + msg.message]);
-          break;
       }
     },
     openErrorMessage: "Failed to attach compose operation",
     signal: () => abortRef.current?.signal,
     success: (msg) => {
       if (msg?.type === "complete" && startedRef.current) {
+        abortRef.current = null;
         setSuccess(true);
+        setOutput((prev) => [...prev, "✓ " + msg.message]);
       }
     },
   });

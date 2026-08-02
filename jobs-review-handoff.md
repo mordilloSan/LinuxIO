@@ -39,7 +39,7 @@ Only 2 handler files emit progress at all: `filebrowser/filebrowser.go` and `vir
 
 1. **Up to 3 wire ops per mutation instead of 1** — route request (server holds ≤25 ms hoping the job settles, `router.go` `InitialJobSettleTimeout`) → `jobs.attach` (a new yamux stream) → `jobs.get`. Anything that shelled out missed the 25 ms window, so this was the normal path.
 2. **`ActionDefault` silently serialized every mutation.** `.Handle()` took no policy, so every handler-form job route got `MaxActivePerOwnerRoute: 1`, `QueueLimit: 16`, `Timeout: 120min`. One container start at a time per user; the 18th concurrent → `429 job queue full`. Nobody chose that for `accounts.lock_user`.
-3. **Two possible owners per job → four dedup mechanisms** on the frontend: `locallyHandledJobIds` + 5 s retention (`api/jobs.ts`), five ref-sets in `useBackgroundJobRuntime.ts`, the `terminalJobFeedback` registry, and `useTerminalFeedbackOwnership`. This is the machinery behind the whole B1/B2/D5/D6 cluster in `CODE_REVIEW_FINDINGS.md`. Restricting jobs to 21 routes has confined the ambiguity to those.
+3. **Two possible owners per job still require progress/feedback de-duplication** on the frontend. Query invalidation is deliberately simpler: every mapped terminal job event invalidates, even when a local mutation also does so, because a harmless duplicate is safer than stale data after detachment. The remaining ref-sets in `useBackgroundJobRuntime.ts` and the `terminalJobFeedback` registry are confined to the 21 real job routes.
 4. **~3,240 non-test frontend lines** in `hooks/backgroundJobs/` + contexts + `api/jobs.ts`, serving 8 call sites.
 
 ---

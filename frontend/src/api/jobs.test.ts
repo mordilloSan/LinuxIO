@@ -31,12 +31,9 @@ vi.mock("@/api/stream-helpers", () => ({
 }));
 
 const {
-  isJobLocallyHandled,
   isJobSnapshot,
   isTerminalJobState,
   jobSnapshotResult,
-  markJobLocallyHandled,
-  unmarkJobLocallyHandled,
   waitForJobCompletion,
 } = await import("@/api/jobs");
 
@@ -73,18 +70,6 @@ describe("jobs helpers", () => {
       ok: true,
     });
     expect(jobSnapshotResult("plain")).toBe("plain");
-  });
-
-  it("retains locally handled job ids briefly", () => {
-    vi.useFakeTimers();
-    markJobLocallyHandled("job-1");
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-
-    unmarkJobLocallyHandled("job-1");
-    vi.advanceTimersByTime(4999);
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(isJobLocallyHandled("job-1")).toBe(false);
   });
 
   it("returns completed snapshots and throws failed terminal snapshots", async () => {
@@ -134,8 +119,7 @@ describe("jobs helpers", () => {
     });
   });
 
-  it("attaches active jobs, refetches final snapshots, and clears local handling", async () => {
-    vi.useFakeTimers();
+  it("attaches active jobs and refetches their final snapshots", async () => {
     const stream = {} as Stream;
     const finalSnapshot = snapshot({ state: "completed", result: "fresh" });
     mocks.openJobAttachStream.mockReturnValue(stream);
@@ -153,9 +137,6 @@ describe("jobs helpers", () => {
       { jobId: "job-1" },
       { retryPolicy: "connection_closed" },
     );
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-    vi.advanceTimersByTime(5000);
-    expect(isJobLocallyHandled("job-1")).toBe(false);
   });
 
   it("falls back to the stream result when final snapshot refetch fails", async () => {

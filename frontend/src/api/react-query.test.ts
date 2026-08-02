@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { linuxio, type ComposeJobMessage, type ComposeJobResult } from "@/api";
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
 import { getRouteMode } from "@/api/generated/route-metadata";
 import { openJobAttachStream } from "@/api/linuxio";
@@ -570,32 +571,37 @@ describe("useJobStreamAction", () => {
   });
 
   it("attaches to the job stream, forwards progress, and completes through React Query", async () => {
-    const { toast } = await import("sonner");
     vi.spyOn(core, "request").mockResolvedValue(
       jobSnapshot({ state: "running" }),
     );
     const stream = createStream();
     vi.mocked(openJobAttachStream).mockReturnValue(stream);
 
-    type ComposeResult = { message: string; type: "complete" };
-    type ComposeProgress = { message: string; type: "progress" };
-
     const onJobStart = vi.fn();
     const onOpen = vi.fn();
     const onProgress = vi.fn();
-    const endpoint = createEndpoint<JobSnapshot>("docker", "compose", {
-      kind: "object",
-    });
+    const success = vi.fn();
+    const endpoint = linuxio.docker.compose;
     const request = { action: "up", projectName: "web" };
 
     const { result, invalidateSpy } = renderJobAction(() =>
-      endpoint.useJobStreamAction<ComposeResult, ComposeProgress>({
+      endpoint.useJobStreamAction({
         invalidates: [["linuxio", "docker", "list_compose_projects"]],
         onJobStart,
         onOpen,
-        onProgress,
-        success: "Compose finished",
+        onProgress: (progress, job, variables) => {
+          const message: ComposeJobMessage = progress;
+          onProgress(message, job, variables);
+        },
+        success,
       }),
+    );
+    let resolveInvalidation!: () => void;
+    invalidateSpy.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInvalidation = resolve;
+        }),
     );
 
     act(() => result.current.mutate(request));
@@ -617,9 +623,19 @@ describe("useJobStreamAction", () => {
 
     const complete = { message: "done", type: "complete" } as const;
     act(() => stream.onResult?.({ data: complete, status: "ok" }));
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["linuxio", "docker", "list_compose_projects"],
+      }),
+    );
+    expect(result.current.isPending).toBe(true);
+    expect(success).not.toHaveBeenCalled();
+
+    act(() => resolveInvalidation());
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data).toEqual(complete);
+    const terminalResult: ComposeJobResult | undefined = result.current.data;
+    expect(terminalResult).toEqual(complete);
     expect(core.request).toHaveBeenCalledWith("docker", "compose", request, {
       retryPolicy: "none",
     });
@@ -628,9 +644,6 @@ describe("useJobStreamAction", () => {
       expect.objectContaining({ id: "job-1" }),
       request,
     );
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["linuxio", "docker", "list_compose_projects"],
-    });
-    expect(toast.success).toHaveBeenCalledWith("Compose finished", undefined);
+    expect(success).toHaveBeenCalledWith(complete, request);
   });
 });

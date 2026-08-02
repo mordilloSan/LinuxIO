@@ -67,14 +67,12 @@ const CapabilityManagerSection = () => {
   const mountedRef = useRef(true);
   // Progress is rendered locally, but the completion toast and app-wide
   // capability refresh stay owned by the global background-job handler
-  // (useRecoveredJobs) so they still fire if this panel closes mid-install —
-  // hence markHandled: false and no success/error config.
+  // (useRecoveredJobs) so they still fire if this panel closes mid-install.
   const { mutateAsync: installCapability } =
     linuxio.system.install_capability.useJobStreamAction<
       InstallCapabilityResult,
       InstallCapabilityProgress
     >({
-      markHandled: false,
       onProgress: (progress) => {
         if (!mountedRef.current) return;
         if (typeof progress?.percentage === "number") {

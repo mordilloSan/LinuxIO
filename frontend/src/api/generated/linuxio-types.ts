@@ -307,6 +307,29 @@ export interface ComposeFilePathResponse {
   directory: string;
 }
 
+export interface ComposeJobMessage {
+  type: string;
+  message: string;
+  code?: number;
+  progress?: ComposeProgress;
+}
+
+export interface ComposeJobResult {
+  type: string;
+  message: string;
+}
+
+export interface ComposeProgress {
+  id: string;
+  parent_id?: string;
+  text: string;
+  status: string;
+  details?: string;
+  current?: number;
+  total?: number;
+  percent?: number;
+}
+
 export interface ComposeProject {
   config_files: string[];
   containers: ContainerInfo[];
@@ -2225,7 +2248,8 @@ export interface LinuxIOSchema {
     compose: {
       input: [request: DockerComposeRequest];
       request: DockerComposeRequest;
-      result: JobSnapshot;
+      result: ComposeJobResult;
+      progress: ComposeJobMessage;
     };
     compose_down: {
       input: [projectName: string];
@@ -2987,6 +3011,12 @@ export type CommandResult<
   H extends HandlerName,
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;
+
+/** Extract a declared job progress type, or never when the route has none */
+export type CommandProgress<
+  H extends HandlerName,
+  C extends CommandName<H>,
+> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;
 
 /**
  * Wire request contracts for stream-consumed routes: duplex opens and job

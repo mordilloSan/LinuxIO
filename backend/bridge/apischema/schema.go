@@ -18,8 +18,9 @@ type RouteSpec struct {
 	Privileged bool
 	NoEndpoint bool
 
-	Request TypeSpec
-	Result  TypeSpec
+	Request  TypeSpec
+	Result   TypeSpec
+	Progress TypeSpec
 
 	Decode   bridgeipc.RequestDecoder
 	Metadata bridgeipc.JobMetadataBuilder
@@ -36,6 +37,14 @@ func Privileged() RouteSpecOption {
 func NoEndpoint() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.NoEndpoint = true
+	}
+}
+
+// WithJobProgress declares the payload emitted by a job's progress frames.
+// The result contract remains the job's terminal payload.
+func WithJobProgress[Progress any]() RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.Progress = TypeOf[Progress]()
 	}
 }
 
@@ -94,6 +103,9 @@ func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, 
 	if spec.Metadata != nil && (spec.Kind != KindRunner || spec.Mode != bridgeipc.ModeJob) {
 		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on job runners", spec.Route))
 	}
+	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeJob {
+		panic(fmt.Sprintf("apischema: route %s progress is allowed only on job routes", spec.Route))
+	}
 	return Route[Request, Result]{spec: spec}
 }
 
@@ -140,6 +152,10 @@ func (r RouteSpec) RequestSpec() TypeSpec {
 
 func (r RouteSpec) ResultSpec() TypeSpec {
 	return r.Result
+}
+
+func (r RouteSpec) ProgressSpec() (TypeSpec, bool) {
+	return r.Progress, r.Progress.GoType != nil
 }
 
 // Handle binds the ordinary request-in/result-out handler for this route.

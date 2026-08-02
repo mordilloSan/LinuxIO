@@ -10,7 +10,6 @@ import {
 import {
   bindStreamHandlers,
   isJobCancellationError,
-  isJobLocallyHandled,
   isTerminalJobState,
   type JobEvent,
   type JobSnapshot,
@@ -458,10 +457,10 @@ export function useRecoveredJobs(
           // 1) Attach progress trackers to jobs that don't have a local handler.
           attachRecoveredJob(job);
 
-          // 2) On terminal events, invalidate query caches for jobs whose type
-          //    has a mapping above and that aren't being tracked by a local
-          //    handler (those handlers are responsible for their own
-          //    invalidations).
+          // 2) On terminal events, always invalidate mapped query caches. A
+          //    local handler may already have done the same, but a duplicate
+          //    invalidation is safe; suppressing this fallback can leave stale
+          //    data when that handler detaches before completion.
           if (!isTerminalJobState(job.state)) return;
 
           // Airtight feedback fallback: attachRecoveredJob() bails on
@@ -482,7 +481,6 @@ export function useRecoveredJobs(
             );
           }
 
-          if (isJobLocallyHandled(job.id)) return;
           const keys = OPERATION_QUERY_INVALIDATIONS[job.type];
           if (!keys) return;
           for (const queryKey of keys) {

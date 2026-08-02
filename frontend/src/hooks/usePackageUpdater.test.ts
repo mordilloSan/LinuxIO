@@ -125,11 +125,9 @@ describe("usePackageUpdater", () => {
     expect(result.current.progress).toBe(100);
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
-    // The page keeps manifest invalidation and job ownership: opting out would
-    // leave the updates list waiting on the global events stream alone.
+    // The page keeps its manifest invalidation as the direct completion path.
     const config = streamMocks.streamActionConfigs.at(-1);
     expect(config).not.toHaveProperty("invalidates", []);
-    expect(config).not.toHaveProperty("markHandled", false);
   });
 
   it("reports single-package update failures with the package name", async () => {

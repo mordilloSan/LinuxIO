@@ -133,12 +133,16 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 			}
 			fmt.Fprintf(
 				&schema,
-				"    %s: { input: %s; request: %s; result: %s };\n",
+				"    %s: { input: %s; request: %s; result: %s",
 				route.Command(),
 				renderer.inputTupleRef(route.RequestSpec()),
 				renderer.requestRef(route.RequestSpec()),
 				renderer.typeRef(route.ResultSpec()),
 			)
+			if progress, ok := route.ProgressSpec(); ok {
+				fmt.Fprintf(&schema, "; progress: %s", renderer.typeRef(progress))
+			}
+			schema.WriteString(" };\n")
 		}
 		schema.WriteString("  };\n\n")
 	}
@@ -164,6 +168,11 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
 	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n\n")
+	schema.WriteString("/** Extract a declared job progress type, or never when the route has none */\n")
+	schema.WriteString("export type CommandProgress<\n")
+	schema.WriteString("  H extends HandlerName,\n")
+	schema.WriteString("  C extends CommandName<H>,\n")
+	schema.WriteString("> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;\n\n")
 
 	schema.WriteString("/**\n")
 	schema.WriteString(" * Wire request contracts for stream-consumed routes: duplex opens and job\n")

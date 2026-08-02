@@ -14,10 +14,16 @@ import (
 
 // ComposeJobMessage represents a message emitted by a Docker compose job.
 type ComposeJobMessage struct {
-	Type     string           `json:"type"`    // "stdout", "stderr", "error", "complete", "progress"
+	Type     string           `json:"type"`    // "stdout", "stderr", or "progress".
 	Message  string           `json:"message"` // The actual message content (humanized for progress)
 	Code     int              `json:"code,omitempty"`
 	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
+}
+
+// ComposeJobResult is the terminal payload returned by a successful compose job.
+type ComposeJobResult struct {
+	Type    string `json:"type"` // "complete".
+	Message string `json:"message"`
 }
 
 // ComposeProgress is a single structured progress event parsed from
@@ -39,7 +45,7 @@ var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
 
 func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.DockerComposeRequest, apischema.JobSnapshot]("docker.compose", apischema.WithJobMetadata(func(req apischema.DockerComposeRequest) bridgejobs.JobMetadata {
+		apischema.Runner[apischema.DockerComposeRequest, ComposeJobResult]("docker.compose", apischema.WithJobProgress[ComposeJobMessage](), apischema.WithJobMetadata(func(req apischema.DockerComposeRequest) bridgejobs.JobMetadata {
 			return bridgejobs.JobMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
@@ -66,7 +72,6 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 
 	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
-		job.ReportProgress(ComposeJobMessage{Type: "error", Message: "compose file not found: " + err.Error()})
 		return nil, bridgejobs.NewError("compose file not found: "+err.Error(), 404)
 	}
 
@@ -77,13 +82,9 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 		}
 		reportMu.Lock()
 		msg := ComposeJobMessage{Type: msgType, Message: message, Progress: progress}
-		// stdout/stderr/progress are high-frequency streaming output; emit them
-		// transiently (no replay). Terminal states use durable progress.
-		if msgType == "stdout" || msgType == "stderr" || msgType == "progress" {
-			job.ReportTransientProgress(msg)
-		} else {
-			job.ReportProgress(msg)
-		}
+		// Compose output is non-terminal streaming progress. The runner's return
+		// value or error is the job's single authoritative terminal signal.
+		job.ReportTransientProgress(msg)
 		reportMu.Unlock()
 	}
 
@@ -105,12 +106,10 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 			return nil, context.Canceled
 		}
 		msg := "command failed: " + err.Error()
-		report("error", msg, nil)
 		return nil, bridgejobs.NewError(msg, 500)
 	}
 
-	result := ComposeJobMessage{Type: "complete", Message: "operation completed successfully"}
-	job.ReportProgress(result)
+	result := ComposeJobResult{Type: "complete", Message: "operation completed successfully"}
 	return result, nil
 }
 

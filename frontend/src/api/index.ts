@@ -29,7 +29,6 @@ export type { RouteMode } from "./generated/route-metadata";
 export {
   isJobCancellationError,
   isJobSnapshot,
-  isJobLocallyHandled,
   isTerminalJobState,
   jobSnapshotResult,
   JOB_CANCELED_CODE,

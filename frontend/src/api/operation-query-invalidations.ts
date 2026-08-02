@@ -65,8 +65,8 @@ const VM_KEYS = [
  * - `useAction`/`useJobAction`/`useJobStreamAction` use the entry as the
  *   default `invalidates` for operations started and awaited locally.
  * - `useRecoveredJobs` applies the entry when a job reaches a terminal state
- *   on the events stream with no local handler (page reload, other session),
- *   skipping jobs registered via `markJobLocallyHandled`.
+ *   on the events stream. Repeating a local invalidation is intentionally
+ *   harmless and preserves freshness when the local handler detached.
  *
  * Routes without an entry invalidate nothing by default — their call sites
  * own invalidation explicitly (conditional logic, cache writes, refetches).
