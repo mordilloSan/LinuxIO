@@ -1,6 +1,4 @@
-import { Link } from "@tanstack/react-router";
-
-import AppButton from "@/components/ui/AppButton";
+import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 
 function NotFoundPage() {
   return (
@@ -19,18 +17,18 @@ function NotFoundPage() {
         The page you are looking for might have been removed.
       </p>
 
-      <Link
+      <AppRouterLinkButton
+        color="secondary"
         style={{
           textDecoration: "none",
           marginTop: 16,
           display: "inline-block",
         }}
         to="/"
+        variant="contained"
       >
-        <AppButton color="secondary" variant="contained">
-          Return to website
-        </AppButton>
-      </Link>
+        Return to website
+      </AppRouterLinkButton>
     </div>
   );
 }

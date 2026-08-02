@@ -111,21 +111,6 @@ const knownClickableNonInteractive: ReviewedException[] = [
   },
 ];
 
-const knownNestedInteractive: ReviewedException[] = [
-  {
-    file: "routes/_authenticated/-components/update/UpdateBanner.tsx",
-    pattern: /<a[\s\S]{0,500}?<AppButton\b/,
-    reason: "audited release-notes link/button nesting defect",
-    protects: "navigation remains one semantic link without nested controls",
-  },
-  {
-    file: "routes/_authenticated/-components/navbar/NavbarNotificationsDropdown.tsx",
-    pattern: /<Link[\s\S]{0,500}?<AppButton\b/,
-    reason: "audited recent-notification link/button nesting defect",
-    protects: "recent-notification navigation remains one semantic link",
-  },
-];
-
 function listProductionTsxFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(dir, entry.name);
@@ -219,13 +204,13 @@ describe("shared UI adoption", () => {
     ).toEqual([]);
   });
 
-  it("keeps audited nested interactive patterns migrated", () => {
+  it("does not nest AppButton inside links", () => {
     expect(
-      knownNestedInteractive.flatMap(({ file, pattern }) => {
-        const source = fs.readFileSync(path.join(srcRoot, file), "utf8");
-        pattern.lastIndex = 0;
-        return pattern.test(source) ? [`${file} matches ${pattern}`] : [];
-      }),
+      collectUnreviewed(
+        /<a\b(?:(?!<\/a>)[\s\S])*?<AppButton\b|<Link\b(?:(?!<\/Link>)[\s\S])*?<AppButton\b/g,
+        [],
+        "nests an AppButton inside a link; use AppLinkButton or AppRouterLinkButton",
+      ),
     ).toEqual([]);
   });
 });

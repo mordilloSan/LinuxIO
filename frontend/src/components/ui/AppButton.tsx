@@ -1,54 +1,11 @@
-import {
-  forwardRef,
-  type ButtonHTMLAttributes,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 import "./app-button.css";
-
-type ButtonColor =
-  | "primary"
-  | "secondary"
-  | "error"
-  | "warning"
-  | "success"
-  | "inherit";
+import { getButtonColorVars, type ButtonColor } from "./app-button-colors";
 
 type ButtonVariant = "contained" | "outlined" | "text";
 
 type ButtonSize = "small" | "medium";
-
-const COLOR_VARS: Record<
-  Exclude<ButtonColor, "inherit">,
-  { main: string; dark: string; contrast: string }
-> = {
-  primary: {
-    main: "var(--app-palette-primary-main)",
-    dark: "var(--app-palette-primary-dark)",
-    contrast: "var(--app-palette-primary-contrast-text)",
-  },
-  secondary: {
-    main: "var(--app-palette-secondary-main)",
-    dark: "var(--app-palette-secondary-dark)",
-    contrast: "var(--app-palette-secondary-contrast-text)",
-  },
-  error: {
-    main: "var(--app-palette-error-main)",
-    dark: "var(--app-palette-error-dark)",
-    contrast: "var(--app-palette-error-contrast-text)",
-  },
-  warning: {
-    main: "var(--app-palette-warning-main)",
-    dark: "var(--app-palette-warning-dark)",
-    contrast: "var(--app-palette-warning-contrast-text)",
-  },
-  success: {
-    main: "var(--app-palette-success-main)",
-    dark: "var(--app-palette-success-dark)",
-    contrast: "var(--app-palette-success-contrast-text)",
-  },
-};
 
 export interface AppButtonProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
@@ -89,14 +46,7 @@ const AppButton = forwardRef<HTMLButtonElement, AppButtonProps>(
       .filter(Boolean)
       .join(" ");
 
-    const colorVars =
-      color === "inherit"
-        ? undefined
-        : ({
-            "--_btn-main": COLOR_VARS[color].main,
-            "--_btn-dark": COLOR_VARS[color].dark,
-            "--_btn-contrast": COLOR_VARS[color].contrast,
-          } as CSSProperties);
+    const colorVars = getButtonColorVars(color);
 
     return (
       <button

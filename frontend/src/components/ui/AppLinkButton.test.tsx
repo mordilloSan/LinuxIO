@@ -30,4 +30,24 @@ describe("AppLinkButton", () => {
     fireEvent.click(link);
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["secondary", "secondary"],
+    ["error", "error"],
+    ["inherit", undefined],
+  ] as const)("applies the %s color contract", (color, mainVariable) => {
+    render(
+      <AppLinkButton color={color} href="/release" variant="contained">
+        Release Notes
+      </AppLinkButton>,
+    );
+    const link = screen.getByRole("link", { name: "Release Notes" });
+    if (mainVariable) {
+      expect(link.style.getPropertyValue("--_btn-main")).toBe(
+        `var(--app-palette-${mainVariable}-main)`,
+      );
+    } else {
+      expect(link.style.getPropertyValue("--_btn-main")).toBe("");
+    }
+  });
 });

@@ -1,10 +1,6 @@
-import {
-  forwardRef,
-  type AnchorHTMLAttributes,
-  type CSSProperties,
-  type MouseEvent,
-} from "react";
+import { forwardRef, type AnchorHTMLAttributes, type MouseEvent } from "react";
 
+import { getButtonColorVars, type ButtonColor } from "./app-button-colors";
 import "./app-button.css";
 import "./app-link-button.css";
 
@@ -16,6 +12,7 @@ export interface AppLinkButtonProps extends Omit<
   "color"
 > {
   disabled?: boolean;
+  color?: ButtonColor;
   fullWidth?: boolean;
   size?: ButtonSize;
   variant?: ButtonVariant;
@@ -25,6 +22,7 @@ const AppLinkButton = forwardRef<HTMLAnchorElement, AppLinkButtonProps>(
   (
     {
       variant = "text",
+      color = "primary",
       size = "medium",
       fullWidth,
       className,
@@ -42,6 +40,7 @@ const AppLinkButton = forwardRef<HTMLAnchorElement, AppLinkButtonProps>(
       "app-btn",
       "app-link-btn",
       variant !== "text" && `app-btn--${variant}`,
+      color === "inherit" && "app-btn--inherit",
       size === "small" && "app-btn--small",
       fullWidth && "app-btn--fullwidth",
       disabled && "app-link-btn--disabled",
@@ -49,11 +48,7 @@ const AppLinkButton = forwardRef<HTMLAnchorElement, AppLinkButtonProps>(
     ]
       .filter(Boolean)
       .join(" ");
-    const colorVars = {
-      "--_btn-main": "var(--app-palette-primary-main)",
-      "--_btn-dark": "var(--app-palette-primary-dark)",
-      "--_btn-contrast": "var(--app-palette-primary-contrast-text)",
-    } as CSSProperties;
+    const colorVars = getButtonColorVars(color);
     const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
       if (disabled) {
         event.preventDefault();
