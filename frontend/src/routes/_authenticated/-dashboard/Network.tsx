@@ -4,12 +4,11 @@ import { useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
+import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";
 
 const NetworkInterfacesCard = () => {
-  const theme = useAppTheme();
   const { data: rawInterfaces } = useSuspenseQuery(
     linuxio.system.get_network_info.queryOptions({
       refetchInterval: 1000,
@@ -64,15 +63,8 @@ const NetworkInterfacesCard = () => {
   );
 
   const content = selectedInterface ? (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignSelf: "flex-start",
-        width: "fit-content",
-      }}
-    >
-      {[
+    <DashboardStatRows
+      rows={[
         {
           label: "IPv4",
           value: selectedInterface.ipv4?.length
@@ -81,40 +73,8 @@ const NetworkInterfacesCard = () => {
         },
         { label: "MAC", value: selectedInterface.mac },
         { label: "Speed", value: selectedInterface.speed },
-      ].map(({ label, value }, index, rows) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <AppTypography fontWeight={500} noWrap variant="body2">
-            {value}
-          </AppTypography>
-        </div>
-      ))}
-    </div>
+      ]}
+    />
   ) : (
     <AppTypography variant="body2">No interface selected.</AppTypography>
   );

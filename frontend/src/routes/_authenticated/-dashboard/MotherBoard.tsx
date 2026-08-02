@@ -7,10 +7,10 @@ import DashboardCard, {
 } from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useAppTheme } from "@/theme";
+
+import DashboardStatRows from "./DashboardStatRows";
 
 const MotherBoardInfo = () => {
-  const theme = useAppTheme();
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const { data: motherboardInfo } = useSuspenseQuery(
     linuxio.system.get_motherboard_info.queryOptions({
@@ -19,15 +19,9 @@ const MotherBoardInfo = () => {
   );
 
   const visibleDetails = motherboardInfo ? (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        minWidth: 0,
-      }}
-    >
-      {[
+    <DashboardStatRows
+      containerStyle={{ alignSelf: "auto", width: "100%", minWidth: 0 }}
+      rows={[
         {
           label: "Board",
           value: `${motherboardInfo.baseboard.manufacturer} - ${motherboardInfo.baseboard.model}`,
@@ -36,47 +30,13 @@ const MotherBoardInfo = () => {
           label: "BIOS",
           value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}`,
         },
-      ].map(({ label, value }, index, rows) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            minWidth: 0,
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <AppTypography
-            fontWeight={500}
-            noWrap
-            style={{ minWidth: 0, flex: 1 }}
-            title={value}
-            variant="body2"
-          >
-            {value}
-          </AppTypography>
-        </div>
-      ))}
-    </div>
+      ].map((row) => ({
+        ...row,
+        rowStyle: { minWidth: 0 },
+        valueStyle: { minWidth: 0, flex: 1 },
+        valueTitle: row.value,
+      }))}
+    />
   ) : (
     <AppTypography variant="body2">
       No system information available.
