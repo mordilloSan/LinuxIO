@@ -1,7 +1,7 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
@@ -233,7 +233,7 @@ const DriveDetails = ({
   const nvmeSelfTestLog = smartData?.nvme_self_test_log;
   return (
     <AppCollapse in={expanded} unmountOnExit>
-      <div onClick={(e: MouseEvent) => e.stopPropagation()}>
+      <div>
         <AppDivider style={{ margin: "16px 0" }} />
 
         <div

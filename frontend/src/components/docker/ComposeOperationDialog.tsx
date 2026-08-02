@@ -7,6 +7,8 @@ import {
   useState,
 } from "react";
 
+import "./compose-operation-dialog.css";
+
 import { linuxio, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -74,11 +76,12 @@ const ComposeOperationDialog = ({
   }, []);
 
   // Pin output to the bottom before paint to avoid a visible scroll jump.
+  // Re-pin on showLog so expanding the panel lands on the newest line.
   useLayoutEffect(() => {
     if (open && outputBoxRef.current) {
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
-  }, [output, open]);
+  }, [output, open, showLog]);
 
   // Detach from the stream when the dialog closes or unmounts; the compose
   // job itself keeps running.
@@ -206,6 +209,8 @@ const ComposeOperationDialog = ({
 
   const taskList = Array.from(tasks.values());
   const hasTasks = taskList.length > 0;
+  // Without a task tree the log is the only content, so it is always shown.
+  const logVisible = showLog || !hasTasks;
 
   return (
     <GeneralDialog
@@ -269,12 +274,23 @@ const ComposeOperationDialog = ({
         </AppIconButton>
       </AppDialogTitle>
 
-      <AppDialogContent style={{ padding: 0 }}>
+      <AppDialogContent
+        style={{
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: "460px",
+          maxHeight: "460px",
+          overflow: "hidden",
+        }}
+      >
+        {/* Section 1 — progress. Scrolls on its own so a long task list never
+            pushes the raw-log section out of reach. */}
         <div
-          ref={outputBoxRef}
+          className="custom-scrollbar"
           style={{
-            minHeight: "400px",
-            maxHeight: "600px",
+            flex: "1 1 auto",
+            minHeight: 0,
             overflowY: "auto",
           }}
         >
@@ -292,67 +308,6 @@ const ComposeOperationDialog = ({
             )
           )}
 
-          {(hasTasks || output.length > 0) && (
-            <>
-              {hasTasks && (
-                <AppButton
-                  aria-controls="compose-raw-log"
-                  aria-expanded={showLog}
-                  onClick={() => setShowLog((prev) => !prev)}
-                  style={{
-                    appearance: "none",
-                    background: "none",
-                    border: 0,
-                    color: "inherit",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: theme.spacing(0.5),
-                    font: "inherit",
-                    userSelect: "none",
-                    padding: theme.spacing(1, 2),
-                    borderTop: `1px solid ${theme.palette.divider}`,
-                    textAlign: "left",
-                    width: "100%",
-                  }}
-                  type="button"
-                >
-                  <Icon
-                    height={18}
-                    icon={showLog ? "mdi:chevron-down" : "mdi:chevron-right"}
-                    width={18}
-                  />
-                  <AppTypography
-                    color="text.secondary"
-                    style={{ fontSize: "0.8rem" }}
-                  >
-                    {showLog ? "Hide raw log" : "Show raw log"}
-                  </AppTypography>
-                </AppButton>
-              )}
-
-              <div id="compose-raw-log">
-                {(showLog || !hasTasks) && (
-                  <div
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "0.8125rem",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      backgroundColor: theme.codeBlock.background,
-                      color: theme.codeBlock.color,
-                      padding: theme.spacing(2),
-                    }}
-                  >
-                    {output.map((line, index) => (
-                      <div key={index}>{line}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
           {error && (
             <AppTypography
               color="error"
@@ -362,6 +317,79 @@ const ComposeOperationDialog = ({
             </AppTypography>
           )}
         </div>
+
+        {/* Section 2 — raw log. Its own scroll container, bounded while the
+            progress section is present and filling the dialog otherwise. */}
+        {(hasTasks || output.length > 0) && (
+          <div
+            className={`compose-log ${hasTasks ? "" : "compose-log--fill"}`.trim()}
+          >
+            {hasTasks && (
+              <AppButton
+                aria-controls="compose-raw-log"
+                aria-expanded={showLog}
+                className="compose-log__toggle"
+                onClick={() => setShowLog((prev) => !prev)}
+                style={{
+                  appearance: "none",
+                  background: "none",
+                  border: 0,
+                  color: "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-start",
+                  gap: theme.spacing(0.5),
+                  font: "inherit",
+                  userSelect: "none",
+                  padding: theme.spacing(1, 2),
+                  borderTop: `1px solid ${theme.palette.divider}`,
+                  textAlign: "left",
+                  width: "100%",
+                }}
+                type="button"
+              >
+                {/* One icon rotated rather than two swapped, so the marker
+                    animates in step with the panel. */}
+                <Icon
+                  className={`compose-log__chevron ${
+                    showLog ? "compose-log__chevron--expanded" : ""
+                  }`.trim()}
+                  height={18}
+                  icon="mdi:chevron-right"
+                  width={18}
+                />
+                <AppTypography
+                  color="text.secondary"
+                  style={{ fontSize: "0.8rem" }}
+                >
+                  {showLog ? "Hide raw log" : "Show raw log"}
+                </AppTypography>
+              </AppButton>
+            )}
+
+            <div
+              className={`compose-log__animator ${
+                logVisible ? "" : "compose-log__animator--collapsed"
+              }`.trim()}
+            >
+              <div
+                aria-hidden={!logVisible}
+                className="compose-log__scroller custom-scrollbar"
+                id="compose-raw-log"
+                ref={outputBoxRef}
+                style={{
+                  backgroundColor: theme.codeBlock.background,
+                  color: theme.codeBlock.color,
+                }}
+              >
+                {output.map((line, index) => (
+                  <div key={index}>{line}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </AppDialogContent>
     </GeneralDialog>
   );

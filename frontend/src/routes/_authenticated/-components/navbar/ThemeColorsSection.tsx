@@ -285,15 +285,7 @@ function ThemeColorsSection() {
             <FrostedCard
               hoverLift
               key={key}
-              onClick={(e) => {
-                const target = e.target as HTMLElement;
-                if (target.closest("button, input")) return;
-                (e.currentTarget as HTMLElement)
-                  .querySelector<HTMLInputElement>('input[type="color"]')
-                  ?.click();
-              }}
               style={{
-                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",

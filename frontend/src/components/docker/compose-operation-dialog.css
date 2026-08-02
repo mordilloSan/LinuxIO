@@ -1,0 +1,69 @@
+/* Raw-log section of the compose operation dialog: the lower of the two
+   independently scrolling sections in the dialog body. */
+.compose-log {
+  --compose-log-height: 180px;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* No task tree means the log is the only content, so it fills the body. */
+.compose-log--fill {
+  flex: 1 1 auto;
+}
+
+.compose-log__toggle {
+  flex-shrink: 0;
+}
+
+.compose-log__chevron {
+  flex-shrink: 0;
+  transition: transform 220ms ease;
+}
+
+.compose-log__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+/* Collapsing animates max-height, which is only transitionable because the
+   scroller below is capped at the same value — no content measuring needed. */
+.compose-log__animator {
+  max-height: var(--compose-log-height);
+  overflow: hidden;
+  transition: max-height 220ms ease;
+}
+
+.compose-log__animator--collapsed {
+  max-height: 0;
+}
+
+.compose-log--fill .compose-log__animator {
+  display: flex;
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compose-log__animator,
+  .compose-log__chevron {
+    transition: none;
+  }
+}
+
+.compose-log__scroller {
+  max-height: var(--compose-log-height);
+  overflow-y: auto;
+  padding: 8px;
+  font-family: monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.compose-log--fill .compose-log__scroller {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+}

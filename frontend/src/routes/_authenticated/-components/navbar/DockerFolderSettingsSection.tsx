@@ -322,19 +322,7 @@ const DockerFolderSettingsSection = () => {
 
         <FrostedCard
           hoverLift
-          onClick={(event) => {
-            if (!privileged) {
-              toast.error(
-                "Privileged mode is required to change Docker startup ordering.",
-              );
-              return;
-            }
-            const target = event.target as HTMLElement;
-            if (target.closest(".app-switch")) return;
-            setRequireMountsForFolders(!requireMountsForFolders);
-          }}
           style={{
-            cursor: privileged ? "pointer" : "not-allowed",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",

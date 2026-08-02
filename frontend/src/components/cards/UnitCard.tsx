@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { TRANSITION_SLOW_CSS } from "@/theme/constants";
@@ -19,7 +20,6 @@ const baseCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   height: "100%",
-  cursor: "pointer",
   borderBottomWidth: 2,
   borderBottomStyle: "solid",
 };
@@ -54,12 +54,12 @@ function UnitCard<T extends UnitListItem>({
   renderActions,
 }: UnitCardProps<T>) {
   const statusColor = getServiceStatusColor(item.active_state);
+  const detailsId = `unit-card-${item.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
   return (
     <FrostedCard
       className="fc-svc-card"
       hoverLift={!isSelected}
-      onClick={() => onExpand(isSelected ? null : item.name)}
       style={
         {
           "--svc-status-color": statusColor,
@@ -68,67 +68,86 @@ function UnitCard<T extends UnitListItem>({
         } as CSSProperties
       }
     >
-      <div
+      <AppButton
+        aria-controls={detailsId}
+        aria-expanded={isSelected}
+        aria-label={`${isSelected ? "Collapse" : "Expand"} ${item.name}`}
+        className="fc-svc-card__trigger"
+        color="inherit"
+        fullWidth
+        onClick={() => onExpand(isSelected ? null : item.name)}
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-          gap: 8,
+          alignItems: "stretch",
+          color: "inherit",
+          flexDirection: "column",
+          justifyContent: "flex-start",
+          padding: 0,
+          textAlign: "left",
         }}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <AppTypography
-            component="div"
-            fontSize="0.875rem"
-            fontWeight="bold"
-            noWrap
-            title={item.name}
-            variant="body2"
-          >
-            {item.name}
-          </AppTypography>
-          {item.description && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 12,
+            gap: 8,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
             <AppTypography
               component="div"
-              color="text.secondary"
-              fontSize="0.7rem"
+              fontSize="0.875rem"
+              fontWeight="bold"
               noWrap
-              style={{
-                marginTop: 2,
-              }}
-              title={item.description}
-              variant="caption"
+              title={item.name}
+              variant="body2"
             >
-              {item.description}
+              {item.name}
             </AppTypography>
-          )}
+            {item.description && (
+              <AppTypography
+                component="div"
+                color="text.secondary"
+                fontSize="0.7rem"
+                noWrap
+                style={{
+                  marginTop: 2,
+                }}
+                title={item.description}
+                variant="caption"
+              >
+                {item.description}
+              </AppTypography>
+            )}
+          </div>
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor: statusColor,
+              flexShrink: 0,
+              marginTop: 4,
+            }}
+          />
         </div>
-        <span
-          style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: statusColor,
-            flexShrink: 0,
-            marginTop: 4,
-          }}
-        />
-      </div>
 
-      <div
-        className="svc-card-details"
-        style={{ flex: 1, display: "flex", flexDirection: "column" }}
-      >
-        <div className="svc-rows-wrapper" style={{ flex: 1 }}>
-          {renderSummaryRows(item)}
-          {isSelected && renderSelectedRows?.(item)}
+        <div
+          className="svc-card-details"
+          id={detailsId}
+          style={{ flex: 1, display: "flex", flexDirection: "column" }}
+        >
+          <div className="svc-rows-wrapper" style={{ flex: 1 }}>
+            {renderSummaryRows(item)}
+            {isSelected && renderSelectedRows?.(item)}
+          </div>
         </div>
-        {isSelected && renderActions && (
-          <div onClick={(e) => e.stopPropagation()}>{renderActions(item)}</div>
-        )}
-      </div>
+      </AppButton>
+      {isSelected && renderActions && (
+        <div style={{ marginTop: 12 }}>{renderActions(item)}</div>
+      )}
     </FrostedCard>
   );
 }

@@ -4,6 +4,7 @@ import { RefObject, useState } from "react";
 
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -58,12 +59,10 @@ const InterfaceCard = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
-        onClick={() => handleSelectInterface(iface)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         ref={isSelected ? selectedCardRef : null}
         style={{
-          cursor: "pointer",
           ...getAccentCardStyles(idleAccentColor),
           transition:
             "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
@@ -71,17 +70,38 @@ const InterfaceCard = ({
         }}
       >
         <AppCardContent>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <AppTypography fontWeight={700} variant="subtitle1">
-              {iface.name}
-            </AppTypography>
-            <div>
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <AppButton
+              aria-pressed={isSelected}
+              color="inherit"
+              onClick={() => handleSelectInterface(iface)}
+              style={{
+                appearance: "none",
+                background: "none",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                display: "block",
+                flex: 1,
+                font: "inherit",
+                padding: 0,
+                textAlign: "left",
+              }}
+            >
+              <AppTypography fontWeight={700} variant="subtitle1">
+                {iface.name}
+              </AppTypography>
+              <div style={{ marginTop: 6 }}>
+                <InfoRow label="Address" wrap>
+                  {iface.address}
+                </InfoRow>
+                <InfoRow label="Port">{iface.port}</InfoRow>
+                <InfoRow label="Peers" noBorder>
+                  {iface.peerCount}
+                </InfoRow>
+              </div>
+            </AppButton>
+            <div style={{ marginLeft: 8 }}>
               <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
@@ -91,8 +111,7 @@ const InterfaceCard = ({
                       ? "Turn interface off"
                       : "Turn interface on"
                   }
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     handleToggleInterface(
                       iface.name,
                       iface.isConnected === "Active" ? "down" : "up",
@@ -121,8 +140,7 @@ const InterfaceCard = ({
                       ? "Disable boot persistence"
                       : "Enable boot persistence"
                   }
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
                   style={{
@@ -137,8 +155,7 @@ const InterfaceCard = ({
               <AppTooltip title="Add Peer">
                 <AppIconButton
                   aria-label="Add peer"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     handleAddPeer(iface.name, {});
                   }}
                 >
@@ -149,8 +166,7 @@ const InterfaceCard = ({
                 <AppIconButton
                   aria-label="Delete interface"
                   color="error"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     handleDelete(iface.name);
                   }}
                 >
@@ -158,15 +174,6 @@ const InterfaceCard = ({
                 </AppIconButton>
               </AppTooltip>
             </div>
-          </div>
-          <div style={{ marginTop: 6 }}>
-            <InfoRow label="Address" wrap>
-              {iface.address}
-            </InfoRow>
-            <InfoRow label="Port">{iface.port}</InfoRow>
-            <InfoRow label="Peers" noBorder>
-              {iface.peerCount}
-            </InfoRow>
           </div>
         </AppCardContent>
       </FrostedCard>

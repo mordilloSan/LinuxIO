@@ -13,4 +13,18 @@ describe("AppButton", () => {
     await user.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("does not activate while disabled", async () => {
+    const onClick = vi.fn();
+    const { user } = render(
+      <AppButton disabled onClick={onClick}>
+        Run
+      </AppButton>,
+    );
+    const button = screen.getByRole("button", { name: "Run" });
+
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

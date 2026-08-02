@@ -485,6 +485,7 @@ setup-frontend-browser: ensure-node setup
 	@echo "✅ Playwright Chromium installed!"
 
 test-frontend-browser: ensure-node setup
+	@set -e
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
 	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
 	@echo "🌐 Running frontend browser tests..."

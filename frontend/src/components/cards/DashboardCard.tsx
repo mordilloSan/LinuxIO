@@ -1,11 +1,13 @@
 import { Icon } from "@iconify/react";
 import {
+  useId,
   useState,
   type ChangeEvent,
   type CSSProperties,
   type ReactNode,
 } from "react";
 
+import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
@@ -125,6 +127,7 @@ const DashboardCard = ({
   const [hovered, setHovered] = useState(false);
   const [iconTextMenuAnchor, setIconTextMenuAnchor] =
     useState<null | HTMLElement>(null);
+  const iconTextMenuId = useId();
 
   const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];
@@ -174,6 +177,41 @@ const DashboardCard = ({
     </AppSelect>
   );
 
+  const iconTextContent = icon && icon_text && (
+    <>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          marginRight: -4,
+        }}
+      >
+        <Icon color={primaryColor} height="24px" icon={icon} width="24px" />
+      </div>
+      <AppTypography
+        color="text.secondary"
+        style={{ marginLeft: 0, lineHeight: 1 }}
+        variant="body2"
+      >
+        {icon_text}
+      </AppTypography>
+    </>
+  );
+
+  const iconTextStyle: CSSProperties = {
+    alignItems: "center",
+    background: "none",
+    border: 0,
+    borderRadius: 4,
+    display: "inline-flex",
+    gap: 0,
+    lineHeight: 1,
+    marginBottom: 4,
+    marginLeft: -4,
+    minWidth: 0,
+    padding: 0,
+  };
+
   return (
     <FrostedCard
       onMouseEnter={() => setHovered(true)}
@@ -214,53 +252,29 @@ const DashboardCard = ({
             {statusDot}
             {renderSelect}
 
-            {icon && icon_text && (
-              <div
-                onClick={
-                  iconTextSelectOptions?.length
-                    ? (e) =>
-                        setIconTextMenuAnchor(e.currentTarget as HTMLElement)
-                    : undefined
-                }
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 0,
-                  lineHeight: 1,
-                  marginLeft: -4,
-                  marginBottom: 4,
-                  cursor: iconTextSelectOptions?.length ? "pointer" : "default",
-                  borderRadius: 4,
-                }}
+            {iconTextContent && iconTextSelectOptions?.length ? (
+              <AppButton
+                aria-controls={iconTextMenuId}
+                aria-expanded={Boolean(iconTextMenuAnchor)}
+                aria-haspopup="menu"
+                aria-label={`Select ${icon_text}`}
+                color="inherit"
+                onClick={(event) => setIconTextMenuAnchor(event.currentTarget)}
+                style={{ ...iconTextStyle, cursor: "pointer" }}
               >
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    marginRight: -4,
-                  }}
-                >
-                  <Icon
-                    color={primaryColor}
-                    height="24px"
-                    icon={icon}
-                    width="24px"
-                  />
-                </div>
-                <AppTypography
-                  color="text.secondary"
-                  style={{ marginLeft: 0, lineHeight: 1 }}
-                  variant="body2"
-                >
-                  {icon_text}
-                </AppTypography>
+                {iconTextContent}
+              </AppButton>
+            ) : iconTextContent ? (
+              <div style={{ ...iconTextStyle, cursor: "default" }}>
+                {iconTextContent}
               </div>
-            )}
+            ) : null}
             {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
               <AppMenu
                 anchorEl={iconTextMenuAnchor}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 minWidth={180}
+                id={iconTextMenuId}
                 onClose={() => setIconTextMenuAnchor(null)}
                 open={Boolean(iconTextMenuAnchor)}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}

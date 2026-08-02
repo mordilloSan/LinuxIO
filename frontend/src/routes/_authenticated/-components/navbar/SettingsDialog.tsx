@@ -146,15 +146,7 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
 
               <FrostedCard
                 hoverLift
-                onClick={(e) => {
-                  const target = e.target as HTMLElement;
-                  if (target.closest("button, input")) return;
-                  (e.currentTarget as HTMLElement)
-                    .querySelector<HTMLButtonElement>("button")
-                    ?.click();
-                }}
                 style={{
-                  cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",

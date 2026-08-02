@@ -16,6 +16,7 @@ import "@/theme/variables.css";
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
+const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -63,6 +64,11 @@ const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "accounts",
 });
+const accessibilityRoute = createRoute({
+  component: AccessibilityPage,
+  getParentRoute: () => rootRoute,
+  path: "accessibility",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -88,6 +94,7 @@ const failedRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
+  accessibilityRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

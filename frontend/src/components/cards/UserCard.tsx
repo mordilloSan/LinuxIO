@@ -1,5 +1,11 @@
 import { Icon } from "@iconify/react";
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -8,6 +14,7 @@ import {
   SummaryRowsList,
 } from "@/components/cards/HardwareCard";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -182,7 +189,7 @@ export interface UserCardProps {
   isUnlocking: boolean;
   onChangePassword: () => void;
   onEdit: () => void;
-  onOpen?: () => void;
+  onOpen: () => void;
   onToggleLock: () => void;
   user: AccountUser;
 }
@@ -229,23 +236,11 @@ const UserCard = ({
   ];
 
   const groups = getAllGroups(user);
+  const detailsId = useId();
 
   return (
     <FrostedCard
-      hoverLift={Boolean(onOpen) && !isSelected}
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (
-          !onOpen ||
-          event.target !== event.currentTarget ||
-          (event.key !== "Enter" && event.key !== " ")
-        ) {
-          return;
-        }
-        event.preventDefault();
-        onOpen();
-      }}
-      role={onOpen ? "button" : undefined}
+      hoverLift={!isSelected}
       style={{
         padding: isSelected ? 12 : 10,
         display: "flex",
@@ -253,7 +248,6 @@ const UserCard = ({
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        cursor: onOpen ? "pointer" : undefined,
         transition:
           "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
         borderBottomWidth: 2,
@@ -262,7 +256,6 @@ const UserCard = ({
           ? "transparent"
           : `color-mix(in srgb, ${accentColor}, transparent 70%)`,
       }}
-      tabIndex={onOpen ? 0 : undefined}
     >
       {/* Header */}
       <div
@@ -274,12 +267,23 @@ const UserCard = ({
           minHeight: isSelected ? 46 : undefined,
         }}
       >
-        <div
+        <AppButton
+          aria-controls={detailsId}
+          aria-expanded={isSelected}
+          aria-label={`Toggle details for ${user.username}`}
+          color="inherit"
+          onClick={onOpen}
           style={{
-            display: "flex",
             alignItems: "center",
+            background: "transparent",
+            border: 0,
+            display: "flex",
+            flex: 1,
             gap: GAP_SM,
+            justifyContent: "flex-start",
             minWidth: 0,
+            padding: 0,
+            textAlign: "left",
           }}
         >
           <div
@@ -354,10 +358,9 @@ const UserCard = ({
               )}
             </div>
           )}
-        </div>
+        </AppButton>
 
         <div
-          onClick={(event) => event.stopPropagation()}
           style={{
             display: "flex",
             alignItems: "center",
@@ -370,29 +373,20 @@ const UserCard = ({
             icon="mdi:pencil"
             iconSize={14}
             label="Edit"
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit();
-            }}
+            onClick={onEdit}
           />
           <AppActionIconButton
             icon="mdi:form-textbox-password"
             iconSize={14}
             label="Change Password"
-            onClick={(event) => {
-              event.stopPropagation();
-              onChangePassword();
-            }}
+            onClick={onChangePassword}
           />
           <AppActionIconButton
             disabled={isProtected || isLocking || isUnlocking}
             icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
             iconSize={14}
             label={user.isLocked ? "Unlock" : "Lock"}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleLock();
-            }}
+            onClick={onToggleLock}
           />
           <StatusDot
             color={statusColor}
@@ -403,55 +397,57 @@ const UserCard = ({
         </div>
       </div>
 
-      {/* Summary rows */}
-      <div style={{ marginTop: 8 }}>
-        {isSelected ? (
-          <SelectedSummaryRows rows={rows} />
-        ) : (
-          <SummaryRowsList rows={rows} />
-        )}
-      </div>
+      <div id={detailsId}>
+        {/* Summary rows */}
+        <div style={{ marginTop: 8 }}>
+          {isSelected ? (
+            <SelectedSummaryRows rows={rows} />
+          ) : (
+            <SummaryRowsList rows={rows} />
+          )}
+        </div>
 
-      {/* Groups footer */}
-      <div style={{ marginTop: "auto", paddingTop: 8 }}>
-        <AppTypography
-          color="text.secondary"
-          style={{
-            letterSpacing: "0.06em",
-            fontSize: "0.62rem",
-            display: "block",
-            marginBottom: 4,
-          }}
-          variant="caption"
-        >
-          Groups ({groups.length})
-        </AppTypography>
-        {isSelected ? (
-          <div
-            className="custom-scrollbar"
+        {/* Groups footer */}
+        <div style={{ marginTop: "auto", paddingTop: 8 }}>
+          <AppTypography
+            color="text.secondary"
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 3,
-              maxHeight: 43,
-              overflowY: "auto",
-              scrollbarGutter: "stable",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              display: "block",
+              marginBottom: 4,
             }}
+            variant="caption"
           >
-            {groups.map((group, idx) => (
-              <Chip
-                color={idx === 0 ? "primary" : "default"}
-                key={`${user.username}-${group}`}
-                label={group}
-                size="small"
-                style={{ fontSize: "0.65rem", height: 20 }}
-                variant="soft"
-              />
-            ))}
-          </div>
-        ) : (
-          <CompactGroupChips groups={groups} username={user.username} />
-        )}
+            Groups ({groups.length})
+          </AppTypography>
+          {isSelected ? (
+            <div
+              className="custom-scrollbar"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 3,
+                maxHeight: 43,
+                overflowY: "auto",
+                scrollbarGutter: "stable",
+              }}
+            >
+              {groups.map((group, idx) => (
+                <Chip
+                  color={idx === 0 ? "primary" : "default"}
+                  key={`${user.username}-${group}`}
+                  label={group}
+                  size="small"
+                  style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
+                />
+              ))}
+            </div>
+          ) : (
+            <CompactGroupChips groups={groups} username={user.username} />
+          )}
+        </div>
       </div>
     </FrostedCard>
   );

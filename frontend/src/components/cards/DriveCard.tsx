@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -75,40 +76,17 @@ const DriveCard = ({
 }: DriveCardProps) => {
   const theme = useAppTheme();
   const temperature = getTemperature(smart);
+  const detailsId = useId();
 
   return (
     <FrostedCard
       hoverLift={!expanded}
-      onClick={onClick}
       style={{
-        padding: 8,
+        padding: 0,
         position: "relative",
-        cursor: "pointer",
       }}
     >
-      {transport.toLowerCase() === "usb" ? (
-        <AppTooltip arrow title="Create Bootable USB">
-          <div
-            className="fc-opacity-hover"
-            onClick={(e) => {
-              e.stopPropagation();
-              // TODO: Add handler for bootable USB creation
-            }}
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              cursor: "pointer",
-            }}
-          >
-            <Icon
-              color={theme.palette.text.secondary}
-              icon="mdi:pencil"
-              width={20}
-            />
-          </div>
-        </AppTooltip>
-      ) : temperature !== null ? (
+      {temperature !== null ? (
         <AppTooltip arrow placement="top" title="Drive Temperature">
           <div
             style={{
@@ -131,58 +109,75 @@ const DriveCard = ({
         </AppTooltip>
       ) : null}
 
-      <div
+      <AppButton
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        color="inherit"
+        onClick={onClick}
         style={{
-          display: "flex",
-          alignItems: "center",
-          marginBottom: 6,
+          appearance: "none",
+          background: "none",
+          border: 0,
+          color: "inherit",
+          cursor: "pointer",
+          display: "block",
+          font: "inherit",
+          padding: 8,
+          textAlign: "left",
+          width: "100%",
         }}
       >
-        <Icon
-          color={theme.palette.primary.main}
-          icon={transport === "nvme" ? "mdi:harddisk" : "mdi:harddisk-plus"}
-          width={32}
-        />
-        <div style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}>
-          <AppTypography fontWeight={600} noWrap variant="subtitle1">
-            /dev/{name}
-          </AppTypography>
-          <AppTypography
-            color="text.secondary"
-            noWrap
-            title={model || "Unknown Model"}
-            variant="body2"
-          >
-            {model || "Unknown Model"}
-          </AppTypography>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+          <Icon
+            color={theme.palette.primary.main}
+            icon={transport === "nvme" ? "mdi:harddisk" : "mdi:harddisk-plus"}
+            width={32}
+          />
+          <div style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}>
+            <AppTypography fontWeight={600} noWrap variant="subtitle1">
+              /dev/{name}
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              noWrap
+              title={model || "Unknown Model"}
+              variant="body2"
+            >
+              {model || "Unknown Model"}
+            </AppTypography>
+          </div>
         </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-        <Chip
-          color="primary"
-          label={formatFileSize(sizeBytes)}
-          size="small"
-          variant="soft"
-        />
-        <Chip label={transport.toUpperCase()} size="small" variant="soft" />
-        {smart?.smart_status && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           <Chip
-            color={getHealthColor(smart)}
-            label={
-              getHealthColor(smart) === "success"
-                ? "Healthy"
-                : getHealthColor(smart) === "error"
-                  ? "Failing"
-                  : "Unknown"
-            }
+            color="primary"
+            label={formatFileSize(sizeBytes)}
             size="small"
             variant="soft"
           />
-        )}
-      </div>
+          <Chip label={transport.toUpperCase()} size="small" variant="soft" />
+          {smart?.smart_status && (
+            <Chip
+              color={getHealthColor(smart)}
+              label={
+                getHealthColor(smart) === "success"
+                  ? "Healthy"
+                  : getHealthColor(smart) === "error"
+                    ? "Failing"
+                    : "Unknown"
+              }
+              size="small"
+              variant="soft"
+            />
+          )}
+        </div>
+      </AppButton>
 
-      {children}
+      <div
+        id={detailsId}
+        style={expanded ? { padding: "0 8px 8px" } : undefined}
+      >
+        {children}
+      </div>
     </FrostedCard>
   );
 };

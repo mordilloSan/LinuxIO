@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 import "./docker-compose-progress.css";
 
+import AppButton from "@/components/ui/AppButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -97,6 +98,7 @@ interface GroupHeaderProps {
   percent: number | null; // group completion, or null when it has no layers
   expanded: boolean;
   hasLayers: boolean;
+  controlsId: string;
   onToggle: () => void;
 }
 
@@ -108,24 +110,29 @@ const GroupHeader = ({
   percent,
   expanded,
   hasLayers,
+  controlsId,
   onToggle,
 }: GroupHeaderProps) => {
   const theme = useAppTheme();
   const done = isDone(task);
 
-  return (
-    <div
-      onClick={hasLayers ? onToggle : undefined}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(1),
-        marginTop: theme.spacing(2.5),
-        marginBottom: expanded && hasLayers ? theme.spacing(1.5) : 0,
-        cursor: hasLayers ? "pointer" : "default",
-        userSelect: "none",
-      }}
-    >
+  const headerStyle: CSSProperties = {
+    alignItems: "center",
+    background: "none",
+    border: 0,
+    cursor: hasLayers ? "pointer" : "default",
+    display: "flex",
+    gap: theme.spacing(1),
+    marginBottom: expanded && hasLayers ? theme.spacing(1.5) : 0,
+    marginTop: theme.spacing(2.5),
+    padding: 0,
+    textAlign: "left",
+    userSelect: "none",
+    width: "100%",
+  };
+
+  const content = (
+    <>
       {hasLayers ? (
         <Icon
           color={theme.palette.text.secondary}
@@ -166,7 +173,6 @@ const GroupHeader = ({
         {task.text}
       </AppTypography>
 
-      {/* Compact summary bar for collapsed sections. */}
       {!expanded && percent !== null && (
         <>
           <div style={{ flex: 1, minWidth: 80, marginLeft: theme.spacing(1) }}>
@@ -190,7 +196,24 @@ const GroupHeader = ({
           </AppTypography>
         </>
       )}
-    </div>
+    </>
+  );
+
+  if (!hasLayers) {
+    return <div style={headerStyle}>{content}</div>;
+  }
+
+  return (
+    <AppButton
+      aria-controls={controlsId}
+      aria-expanded={expanded}
+      aria-label={`${prettyId(task.id)} details`}
+      color="inherit"
+      onClick={onToggle}
+      style={headerStyle}
+    >
+      {content}
+    </AppButton>
   );
 };
 
@@ -265,14 +288,24 @@ const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
         return (
           <div key={g.id}>
             <GroupHeader
+              controlsId={`compose-progress-${encodeURIComponent(g.id)}`}
               expanded={expanded}
               hasLayers={layers.length > 0}
               onToggle={() => toggle(g.id, expanded)}
               percent={groupPercent}
               task={g}
             />
-            {expanded &&
-              layers.map((layer) => <LayerRow key={layer.id} task={layer} />)}
+            {layers.length > 0 && (
+              <div
+                aria-hidden={!expanded}
+                id={`compose-progress-${encodeURIComponent(g.id)}`}
+                style={{ display: expanded ? undefined : "none" }}
+              >
+                {layers.map((layer) => (
+                  <LayerRow key={layer.id} task={layer} />
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

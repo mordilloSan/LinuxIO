@@ -1,8 +1,10 @@
 import { Icon } from "@iconify/react";
+import { useId } from "react";
 
 import { type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
+import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -43,11 +45,12 @@ const NetworkInterfaceCard = ({
 }: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
+  const editorId = useId();
 
   return (
     <FrostedCard
       hoverLift={!expanded}
-      style={{ padding: 8, position: "relative", cursor: "pointer" }}
+      style={{ padding: 8, position: "relative" }}
     >
       <AppTooltip arrow title={getStatusTooltip(iface.state)}>
         <span
@@ -71,9 +74,24 @@ const NetworkInterfaceCard = ({
         />
       </AppTooltip>
 
-      <div
+      <AppButton
+        aria-controls={editorId}
+        aria-expanded={expanded}
+        color="inherit"
         onClick={onToggle}
-        style={{ display: "flex", alignItems: "flex-start" }}
+        style={{
+          appearance: "none",
+          background: "none",
+          border: 0,
+          color: "inherit",
+          cursor: "pointer",
+          display: "flex",
+          font: "inherit",
+          padding: 0,
+          textAlign: "left",
+          alignItems: "flex-start",
+          width: "100%",
+        }}
       >
         <div
           style={{
@@ -112,12 +130,14 @@ const NetworkInterfaceCard = ({
             {formatBps(iface.tx_speed)}
           </AppTypography>
         </div>
+      </AppButton>
+      <div id={editorId}>
+        <NetworkInterfaceEditor
+          expanded={expanded}
+          iface={iface}
+          onClose={onClose}
+        />
       </div>
-      <NetworkInterfaceEditor
-        expanded={expanded}
-        iface={iface}
-        onClose={onClose}
-      />
     </FrostedCard>
   );
 };

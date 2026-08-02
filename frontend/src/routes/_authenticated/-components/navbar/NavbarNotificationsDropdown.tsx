@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { Link } from "@tanstack/react-router";
 import {
   memo,
   useCallback,
@@ -12,6 +11,7 @@ import {
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
@@ -188,6 +188,7 @@ const TransferItem = memo(function TransferItem({
           : undefined
       }
       role={isIndexer ? "button" : undefined}
+      aria-label={isIndexer ? `${label} — open indexer details` : undefined}
       tabIndex={isIndexer ? 0 : undefined}
     >
       <div
@@ -484,15 +485,30 @@ function NavbarNotificationsDropdown() {
   return (
     <>
       {/* Inline peek — compact progress in the navbar */}
-      <div
+      <AppButton
+        aria-label={
+          peekTransfer
+            ? `Open notifications: ${
+                peekTransfer.label
+                  ? removePercentage(peekTransfer.label)
+                  : getTransferTitle(peekTransfer.type)
+              } ${Math.round(peekTransfer.progress)}% complete`
+            : "Open notifications"
+        }
         className="app-navbar-notifications__peek"
+        disabled={!peekVisible}
         onClick={handlePeekClick}
         style={{
           cursor: peekVisible ? "pointer" : undefined,
           overflow: "hidden",
           maxWidth: peekVisible ? 200 : 0,
           opacity: peekVisible ? 1 : 0,
+          minWidth: 0,
+          padding: 0,
+          border: 0,
+          background: "transparent",
         }}
+        tabIndex={peekVisible ? 0 : -1}
       >
         {peekTransfer && (
           <>
@@ -509,7 +525,7 @@ function NavbarNotificationsDropdown() {
             </span>
           </>
         )}
-      </div>
+      </AppButton>
 
       <div className="app-navbar-dropdown" ref={layerRef}>
         <AppTooltip title="Notifications">
@@ -585,6 +601,11 @@ function NavbarNotificationsDropdown() {
                             : undefined
                         }
                         role={isIndexer ? "button" : undefined}
+                        aria-label={
+                          isIndexer
+                            ? `${transfer.label || getCompletedTitle(transfer.type)} — open indexer details`
+                            : undefined
+                        }
                         tabIndex={isIndexer ? 0 : undefined}
                       >
                         <div
@@ -634,40 +655,34 @@ function NavbarNotificationsDropdown() {
                             </p>
                             {toastItem.meta?.to ? (
                               toastItem.meta.to === "/filebrowser/$" ? (
-                                <Link
+                                <AppRouterLinkButton
                                   className="app-navbar-notifications__link"
                                   onClick={handleClose}
                                   params={toastItem.meta.params}
+                                  size="small"
+                                  style={{
+                                    minWidth: "auto",
+                                    padding: 0,
+                                    lineHeight: 1.2,
+                                  }}
                                   to={toastItem.meta.to}
                                 >
-                                  <AppButton
-                                    size="small"
-                                    style={{
-                                      minWidth: "auto",
-                                      padding: 0,
-                                      lineHeight: 1.2,
-                                    }}
-                                  >
-                                    {toastItem.meta.label || "Open"}
-                                  </AppButton>
-                                </Link>
+                                  {toastItem.meta.label || "Open"}
+                                </AppRouterLinkButton>
                               ) : (
-                                <Link
+                                <AppRouterLinkButton
                                   className="app-navbar-notifications__link"
                                   onClick={handleClose}
+                                  size="small"
+                                  style={{
+                                    minWidth: "auto",
+                                    padding: 0,
+                                    lineHeight: 1.2,
+                                  }}
                                   to={toastItem.meta.to}
                                 >
-                                  <AppButton
-                                    size="small"
-                                    style={{
-                                      minWidth: "auto",
-                                      padding: 0,
-                                      lineHeight: 1.2,
-                                    }}
-                                  >
-                                    {toastItem.meta.label || "Open"}
-                                  </AppButton>
-                                </Link>
+                                  {toastItem.meta.label || "Open"}
+                                </AppRouterLinkButton>
                               )
                             ) : null}
                           </div>

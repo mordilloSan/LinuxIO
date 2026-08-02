@@ -1,10 +1,11 @@
 # Frontend Shared UI Adoption and Accessibility Plan
 
-Status: in progress. The initial button/shared-UI audit is complete; the first
-direct-control migration, visible-focus styles, and a narrow source guard have
-landed. The targeted semantic interaction batch described below is implemented
-and passes the required frontend and browser Make targets. Broad card, icon,
-and residual shared-UI adoption remain planned.
+Status: focused accessibility closure complete. The initial button/shared-UI
+audit, direct-control migration, visible-focus styles, targeted semantic
+interaction work, explicit exception ledger, and browser keyboard/focus fixture
+have landed and passed the required Make targets. Broad visual/shared-UI
+architecture, mass icon-wrapper churn, generic card abstraction, and the
+unresolved File Browser composite redesign remain outside this closure.
 
 Plan date: 2026-08-01
 
@@ -33,18 +34,17 @@ The current targeted batch completes these additional high-value items:
 - focused tests cover the new link-button, sorting, System Health interaction,
   File Browser action state, and representative disclosure contracts.
 
-This batch deliberately does not perform the repository-wide Iconify migration,
-the interactive-card restructuring, or the File Browser composite-widget
-redesign. Those remain inventory-driven follow-up work, not prerequisites for
-the confirmed semantic fixes.
+That earlier batch deliberately did not perform the repository-wide Iconify
+migration, interactive-card restructuring, or File Browser composite-widget
+redesign. The focused closure below now covers the audited card interactions;
+the Iconify rewrite and File Browser composite redesign remain non-goals.
 
-## Primary goal: all feature UI uses the shared component system
+## Primary goal: close interaction-accessibility defects with shared controls
 
-Every frontend feature and route must compose LinuxIO's shared UI components.
-Feature code must not create its own buttons, icon buttons, cards, fields,
-selects, switches, menus, dialogs, tooltips, chips, progress indicators,
-standard icons, or other reusable UI primitives when the shared system owns or
-should own that responsibility.
+Every in-scope frontend interaction must use the existing shared control or a
+small, reviewed shared-control extension. Feature code must not hand-roll
+buttons, links, disclosures, fields, menus, or equivalent interactive
+semantics when the shared system already owns that behavior.
 
 The architectural boundary should be:
 
@@ -58,10 +58,10 @@ Native elements and third-party rendering libraries are implementation details
 of the shared UI layer. They should not be independently restyled and given
 parallel behavior throughout feature code.
 
-Keyboard accessibility is an important reason for this policy, but it is not
-the whole objective. Central ownership also keeps theme usage, responsive
-behavior, loading and disabled states, icon sizing, interaction feedback, and
-component APIs consistent across the application.
+Keyboard accessibility and interaction state are the objective of this closure.
+Central ownership should keep names, focus, keyboard activation, disabled and
+expanded/selected state, and interaction isolation consistent. Broad visual
+component consolidation is a separate effort.
 
 ## Shared UI ownership policy
 
@@ -75,8 +75,8 @@ Feature code should use the appropriate canonical component, including:
 
 - `AppButton`, `AppIconButton`, and `AppActionIconButton` for actions;
 - shared link or link-button components for navigation;
-- `FrostedCard`, `AppPaper`, `AppCardContent`, and the planned semantic card
-  action component for surfaces;
+- `FrostedCard`, `AppPaper`, and `AppCardContent` for surfaces, with semantic
+  `AppButton` trigger regions kept separate from nested controls;
 - `AppTextField`, `AppSearchField`, `AppSelect`, `AppAutocomplete`,
   `AppCheckbox`, `AppSwitch`, and `AppFormControlLabel` for form controls;
 - `AppDialog`, `AppFullscreenDialog`, `AppPopover`, `AppMenu`, `AppMenuItem`,
@@ -85,7 +85,9 @@ Feature code should use the appropriate canonical component, including:
   `AppLinearProgress` for feedback and status;
 - `AppTypography`, `AppGrid`, `AppDivider`, and shared table components for
   common presentation;
-- a shared icon component or icon registry for standard application glyphs.
+- `@iconify/react` plus generated local icon collections as the canonical
+  icon rendering/bundling boundary. Interactive owners provide names and state;
+  decorative icons remain non-interactive and appropriately hidden.
 
 The first implementation phase must document which existing components are
 canonical. This does not require a barrel export if one would introduce cycles
@@ -99,8 +101,8 @@ Outside the approved shared layer, production feature code should not:
   list items;
 - render raw text, search, select, checkbox, switch, or textarea controls when
   a shared field component can represent the behavior;
-- import `@iconify/react` directly for ordinary application icons or duplicate
-  icon sizing/color/accessibility rules;
+- turn an icon into an interactive element or make a decorative icon own the
+  accessible name/state that belongs to its parent control;
 - create card surfaces, menu items, dialogs, alerts, chips, loaders, or
   tooltips from one-off markup and inline styles;
 - duplicate hover, focus, disabled, selected, loading, or responsive behavior
@@ -117,9 +119,9 @@ currently lacks one prop.
 Some native or specialized implementations are appropriate, but they must be
 recorded rather than inferred from existing code. Likely exceptions include
 hidden file/color inputs, table-library internals, correct native tab widgets,
-drag surfaces, and complex file-manager composites. Standard glyphs should use
-the shared icon component; a bespoke SVG or illustration should require a real
-design need and a documented exception.
+drag surfaces, and complex file-manager composites. Iconify and generated local
+collections remain the renderer/bundling boundary; a bespoke SVG or
+illustration should require a real design need and a documented exception.
 
 Test fixtures may use simple native controls when the native element itself is
 not under test. Generated files and shared-component internals are outside the
@@ -153,7 +155,7 @@ or an approved exception. The audit should include:
   elements;
 - `role="button"`, conditional button roles, and manual `tabIndex`/key handlers;
 - `onClick` on non-interactive elements and `FrostedCard`;
-- direct `@iconify/react` imports and standard inline SVG/icon markup;
+- focusable or independently interactive icon/SVG markup;
 - custom card, dialog, menu, tooltip, chip, alert, loader, and field styling;
 - repeated CSS or inline styles that reproduce a shared component state;
 - invalid nested interactive markup.
@@ -173,9 +175,9 @@ After the inventory is classified, add the narrowest maintainable automated
 guard. Prefer lint/source rules that reject unapproved feature-level:
 
 - raw UI primitives;
-- direct standard-icon imports;
-- clickable non-interactive elements;
-- newly introduced bespoke card/menu/dialog/field patterns.
+- action-like clickable non-interactive elements;
+- the audited nested-interactive and mouse-only patterns;
+- newly introduced feature-level native controls or button roles.
 
 The guard should point developers to the canonical shared component and permit
 the reviewed exception list. It should prevent new bypasses while the existing
@@ -195,17 +197,45 @@ The original source audit found:
 - no general visible keyboard-focus style at that time for `AppButton`,
   `AppIconButton`, or interactive `AppChip`.
 
-After the first migration, the reviewed feature-level exception ledger contains
-four remaining button-role candidates across three files, while the 11
-interactive `FrostedCard` call sites across ten files remain. Shared
-focus-visible selectors now exist for all three primitives named above. The
-current source guard prevents new raw controls and button roles, but it does not
-yet enforce direct-icon imports, clickable non-interactive elements, nested
-interactive markup, or interactive card usage. Those broader rules must wait
-for the residual inventory and reviewed exceptions.
+After the focused migration, the reviewed feature-level exception ledger
+contains two specialized notification list controls in one file. No audited
+`FrostedCard` retains an outer `onClick`; card activation now belongs to named
+`AppButton` trigger regions and nested controls remain siblings. Shared
+focus-visible selectors exist for all three primitives named above. The source
+guard rejects unreviewed raw controls and button roles, uses exact documented
+exceptions instead of count-based allowances, and protects the audited
+mouse-only and nested-interactive regressions. Direct `@iconify/react` imports
+are not a closure violation: that renderer and generated local collections are
+the canonical rendering/bundling boundary.
 
-This document is an implementation plan, not evidence that browser behavior has
-already been corrected or verified.
+Implementation and browser claims below are scoped to the automated evidence
+recorded for this closure; excluded composite and visual work remains unverified.
+
+### Focused closure implementation
+
+- Settings color and mount-order cards now leave activation to their semantic
+  swatch, icon-button, switch, and add-folder controls.
+- Notification peek and recent-toast navigation use one named button/link each;
+  the two specialized indexer list controls remain explicit exceptions.
+- The remaining audited disclosures and interactive cards use `AppButton`
+  trigger regions with nested actions kept outside.
+- Primitive tests cover disabled buttons, named/disabled icon buttons, and
+  interactive-chip Enter/Space behavior.
+- The source guard now uses explicit file/pattern/reason/behavior exceptions and
+  protects the audited mouse-only and nested-interactive regressions.
+- Required frontend and browser verification passed as recorded below.
+
+### Focused closure verification
+
+Verified on 2026-08-01 after the final implementation diff:
+
+- `make check-frontend`: passed TypeScript, Oxlint/Oxfmt, and all 627 tests in
+  122 test files;
+- `make test-frontend-browser`: passed the production fixture build and all 11
+  Playwright tests, including real Tab focus, computed focus outlines,
+  Enter/Space activation, and Space scroll prevention for the shared controls;
+- the post-test worktree matched the pre-test worktree, with no generated or
+  tooling changes.
 
 ## Why keyboard semantics are important
 
@@ -278,19 +308,21 @@ features.
 
 The inventory is expected to require at least these shared capabilities:
 
-- a standard `AppIcon` component or icon registry that centralizes Iconify,
-  sizes, inherited/theme color, decorative `aria-hidden`, and named-icon use;
+- correct ownership of icon accessibility: `@iconify/react` and generated local
+  icon collections remain the canonical renderer/bundling boundary; interactive
+  controls supply names/state and decorative icons remain non-interactive and
+  appropriately hidden;
 - a valid shared link-button treatment for TanStack Router links and external
   anchors;
 - a shared disclosure/header trigger;
-- a semantic card action area for `FrostedCard` and other card surfaces;
+- semantic `AppButton` card trigger composition for `FrostedCard` surfaces;
 - any field, menu, or status variants currently implemented repeatedly in
   feature code.
 
 Add only gaps proven by the inventory. Prefer extending an existing component
 when that keeps one clear ownership model without making its API ambiguous.
 
-### 2.2 Visible focus treatment (implemented; browser verification pending)
+### 2.2 Visible focus treatment (implemented and browser-verified)
 
 A consistent `:focus-visible` style now exists in:
 
@@ -298,10 +330,12 @@ A consistent `:focus-visible` style now exists in:
 - `frontend/src/components/ui/app-icon-button.css`
 - `frontend/src/components/ui/app-chip.css`
 
-The selectors use theme tokens and do not depend on hover. Their contrast
-against cards, dialogs, and navbar surfaces still requires browser verification
-in light and dark modes. Do not remove outlines without an equivalent visible
-replacement.
+The selectors use theme tokens and do not depend on hover. The browser fixture
+confirms a computed solid two-pixel focus outline for representative
+`AppButton`, `AppIconButton`, and interactive `AppChip` instances in the dark
+fixture theme. Full light/dark visual contrast review across every surface is
+broader visual QA, not part of this focused closure. Do not remove outlines
+without an equivalent visible replacement.
 
 Review other shared interactive primitives for the same contract, especially
 `AppMenuItem`, `AppSelect`, autocomplete options, and directory-tree controls.
@@ -320,31 +354,21 @@ Extend shared-component coverage to confirm:
   observe computed focus presentation. A source-only assertion is not enough
   for a runtime visibility claim.
 
-## Phase 3: Migrate direct feature-level UI bypasses
+## Phase 3: Migrate direct feature-level interaction bypasses
 
 These sites already map cleanly to existing UI primitives and should not wait
 for a new card abstraction.
 
-### 3.1 Replace direct standard-icon usage
+### 3.1 Keep icon rendering non-interactive and correctly owned
 
-After the shared icon API exists, inventory every production import from
-`@iconify/react`. Replace ordinary application glyph rendering with `AppIcon`
-or the approved icon registry so feature code no longer owns:
+Do not require a repository-wide wrapper or mass migration of `@iconify/react`
+imports. Review icon call sites only where they affect interaction semantics:
+the owning button/link supplies the accessible name and state, while decorative
+icons use the existing hidden/non-interactive conventions. Generated local icon
+collections and the Iconify renderer remain the canonical bundling boundary.
+Feature code must not make decorative glyphs independently focusable or
+interactive.
 
-- default icon sizes;
-- theme and inherited color behavior;
-- decorative versus named-icon accessibility attributes;
-- repeated width/height props;
-- loading, action, and status icon conventions.
-
-Keep direct third-party rendering only inside the shared icon implementation or
-for a documented capability the shared API deliberately does not support.
-Bespoke illustrations and logos should use shared assets rather than be
-recreated in feature components.
-
-Migrate icons in bounded feature groups so the diff stays reviewable; do not
-combine a repository-wide mechanical icon rewrite with unrelated behavior
-changes.
 
 ### 3.2 Replace direct controls
 
@@ -391,10 +415,10 @@ The feature component should continue to own the state and `AppCollapse`. The
 shared trigger should own only the semantic interaction and presentation
 contract.
 
-### 4.2 Shared card action area
+### 4.2 Semantic card action area (implemented by composition)
 
-Add a semantic card action/trigger pattern rather than making `FrostedCard`
-itself always interactive. The preferred composition is:
+Use `AppButton` as a semantic card action/trigger rather than making
+`FrostedCard` itself interactive. The implemented composition is:
 
 ```text
 FrostedCard (visual surface)
@@ -403,12 +427,11 @@ FrostedCard (visual surface)
   -> related expanded content
 ```
 
-A simple card with no nested controls may use one full-card native trigger.
+A simple card with no nested controls may use one full-card `AppButton` trigger.
 Cards containing actions or form fields must use a separate trigger region.
 
-Before finalizing the API, prove it against one simple card and one card with
-nested controls. Avoid a polymorphic abstraction that accepts arbitrary
-elements without preserving their types or semantics.
+The focused migration proves this composition against both simple and
+nested-action cards without introducing a generic polymorphic abstraction.
 
 ### 4.3 Link-button support
 
@@ -419,10 +442,9 @@ materially simplifies real call sites while retaining type safety.
 
 ## Phase 5: Migrate disclosures, sorting, and mouse-only actions
 
-The System Health, Sort Bar, LVM, Hardware, Docker, and Compose disclosure work
-in Sections 5.1 and 5.2 is implemented in the current targeted batch and passes
-the verification required below. Section 5.3 and the interactive-card phases
-remain planned.
+The System Health, Sort Bar, LVM, Hardware, Docker, Compose, settings, and
+notification interaction work in this phase is implemented. Verification
+status is recorded separately below.
 
 ### 5.1 Confirmed accessibility defects
 
@@ -467,25 +489,25 @@ Migrate or restructure:
   `DockerFolderSettingsSection.tsx`;
 - the notification peek in `NavbarNotificationsDropdown.tsx`.
 
-The two conditional interactive notification list items may remain specialized
-list controls if tests confirm their current tab, Enter/Space, focus-visible,
-and accessible-name behavior. Do not replace a specialized control solely to
-increase `AppButton` usage.
+The two conditional interactive notification list items remain specialized
+list controls. Source review confirms their explicit names, tab stops,
+Enter/Space handlers, and focus-visible class; the exception ledger locks their
+two exact button-role sites. A future full-dropdown integration harness can add
+runtime coverage without making a mechanical `AppButton` count the goal.
 
 ## Phase 6: Migrate interactive cards in safe groups
 
 ### 6.1 Simple action cards
 
-Start with cards whose whole content represents one action and which contain no
-nested interactive descendants:
+These audited cards now use semantic trigger regions:
 
 - `DockerStatCard.tsx`
 - `DriveCard.tsx`, after resolving or separating its overlay action
-- `WireguardInterfaceCard.tsx`
 - `NetworkInterfaceCard.tsx`
 
-Use the shared card action area and verify accessible names, focus order, hover,
-selected state, and responsive layout.
+`WireguardInterfaceCard.tsx` is handled with the nested-action cards because its
+icon actions must remain siblings of the selection trigger. Verify accessible
+names, focus order, hover, selected state, and responsive layout.
 
 ### 6.2 Cards with nested actions or expanded content
 
@@ -495,6 +517,7 @@ Then migrate:
 - `UserCard.tsx`
 - `UnitCard.tsx`
 - `ContainerCard.tsx`
+- `WireguardInterfaceCard.tsx`
 
 These must not become one outer button. Split the primary selection/disclosure
 trigger from nested edit, delete, start/stop, browse, text-field, and dialog
@@ -513,28 +536,19 @@ composite widget. Then align roles, selection state, focus ownership, Enter/open
 behavior, and renaming with that model. Add or extend a shared file-item
 interaction primitive only after this contract is explicit.
 
-## Phase 7: Close the remaining shared-UI adoption gaps
+## Phase 7: Close focused enforcement gaps
 
-Repeat the Phase 1 audit across every production frontend directory after the
-planned migrations. This is broader than checking `role="button"` again. Review
-all remaining:
+Repeat the interaction audit after the planned migrations. Review native
+controls, action-like links, clickable non-interactive elements, nested
+interactive markup, disclosure state, accessible names, focus behavior, and
+interaction isolation. Direct Iconify imports, broad visual consolidation, and
+generic card abstraction are not this phase's acceptance criteria.
 
-- native controls and action-like links;
-- direct icon-library imports and standard inline SVGs;
-- custom surfaces, typography, fields, menus, overlays, feedback, loaders, and
-  table/tab controls;
-- feature-local components that duplicate an existing shared component;
-- repeated inline/CSS interaction states;
-- temporary compatibility wrappers introduced during migration.
-
-For each remaining result, migrate it, close a demonstrated shared API gap, or
-record a narrow approved exception. Do not leave a pattern merely because it
-was outside the original button audit.
-
-Once the residual list contains only reviewed exceptions, make the Phase 1
-guard fail on new unapproved usage. Document the canonical alternative in each
-diagnostic so contributors can fix violations without rediscovering the UI
-architecture.
+For each in-scope result, migrate it, extend a shared control, or record a
+narrow approved exception with its technical reason and protected behavior.
+Once the residual list contains only reviewed exceptions, make the guard reject
+new unapproved interaction bypasses and document the canonical alternative in
+each diagnostic.
 
 ## Tests and acceptance criteria
 
@@ -582,24 +596,22 @@ For each coherent frontend implementation batch:
 5. inspect the complete diff and worktree after verification, because tooling
    may update files.
 
-Browser behavior must remain described as unverified until the browser target
-passes.
+Browser claims in this closure are limited to the fixture behavior exercised by
+the passing browser target.
 
 ## Recommended implementation batches
 
-1. Canonical component catalog, full feature-code inventory, and reviewed
-   exception ledger.
-2. Shared `AppIcon`, focus-visible foundation, link-button, disclosure, card
-   action, and primitive tests.
-3. Standard-icon migrations in bounded feature groups.
-4. Direct button, field, menu, search, close-action, and release-notes link
+1. Focused interaction inventory and reviewed exception ledger.
+2. Focus-visible foundation, link-button, disclosure, and primitive tests.
+3. Direct button, field, menu, search, close-action, and release-notes link
    migrations.
-5. `SystemHealth`, `SortBar`, `ComposeOperationDialog`, and shared disclosure
+4. `SystemHealth`, `SortBar`, `ComposeOperationDialog`, and shared disclosure
    migrations.
-6. Simple card migrations.
-7. Nested-action card migrations.
-8. File-browser composite interaction, only after its semantic model is agreed.
-9. Full residual shared-UI audit and activation of the regression guard.
+5. Settings, notification, and simple card interaction migrations.
+6. Nested-action card and disclosure isolation migrations.
+7. File-browser composite interaction only after its semantic model is agreed.
+8. Focused residual audit, explicit exception ledger, and activation of the
+   maintainable interaction regression guard.
 
 Each batch should remain independently reviewable and should not combine broad
 visual refactoring with semantic migration.
@@ -608,21 +620,27 @@ visual refactoring with semantic migration.
 
 This plan is complete only when:
 
-- all production feature and route code uses canonical LinuxIO UI components
-  for buttons, links, icons, cards, fields, selection controls, overlays,
-  feedback, loading, typography, layout, tables, tabs, and other ordinary UI;
-- no feature code directly implements a standard control or imports the
-  standard icon renderer except through a documented exception;
-- every demonstrated UI need is covered by an existing shared component, a
-  small shared API extension, or a reviewed specialized composite;
+- every in-scope action and navigation uses a semantic shared control or a
+  reviewed specialized composite;
+- interactive controls expose accessible names and applicable state, while
+  decorative icons remain non-interactive; `@iconify/react` and generated local
+  collections remain the canonical renderer/bundling boundary;
+- the remaining settings, notification, card, and disclosure defects are
+  migrated or explicitly recorded as reviewed exceptions;
 - the exception ledger contains only narrow cases with a technical reason and
   protected behavior;
-- shared components own theme, responsive, hover, focus, disabled, loading,
-  selected, and accessibility behavior for their category;
-- no nested interactive markup or clickable non-interactive control remains;
-- automated enforcement rejects new unapproved shared-UI bypasses;
+- shared controls own focus, keyboard activation, disabled/loading, selected or
+  expanded state, and accessibility behavior for their category;
+- no unreviewed nested interactive markup or clickable non-interactive control
+  remains in the focused inventory;
+- automated enforcement rejects new unapproved bypasses in the audited
+  categories;
 - focused unit tests and the required Make targets pass;
 - browser-dependent claims are backed by `make test-frontend-browser`.
+
+All focused-scope conditions above are satisfied by the implementation and
+verification evidence recorded in this document. The accepted non-goals below
+remain separate follow-up work.
 
 ## Accepted exceptions and non-goals
 
@@ -637,7 +655,8 @@ reviewed and recorded. Likely approved specialized cases include:
 - hidden file and color inputs;
 - compact inline rename and hexadecimal-color inputs;
 - stop-propagation-only wrappers that are not themselves actions;
-- specialized notification list items that pass the acceptance criteria.
+- the two source-reviewed specialized notification list items recorded in the
+  exception ledger.
 
 This plan does not require a visual redesign, replacement of `FrostedCard`, or a
 generic abstraction for every clickable surface. The objective is the smallest
