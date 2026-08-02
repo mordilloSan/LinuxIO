@@ -279,8 +279,8 @@ const ComposeOperationDialog = ({
           padding: 0,
           display: "flex",
           flexDirection: "column",
-          minHeight: "460px",
-          maxHeight: "460px",
+          minHeight: "450px",
+          maxHeight: "450px",
           overflow: "hidden",
         }}
       >
