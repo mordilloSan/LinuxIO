@@ -57,7 +57,10 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
+const (
+	bridgeBinaryPath    = version.BinDir + "/linuxio-bridge"
+	capabilitiesTimeout = 5 * time.Second
+)
 
 func writeCapabilitiesRequest(stream io.Writer) error {
 	payload, err := relay.MarshalStreamOpenPayload("system.get_capabilities", nil)
@@ -121,13 +124,17 @@ func fetchSessionCapabilities(ctx context.Context, sessionID string) (session.Ca
 		return session.CapabilitiesAvailable{}, fmt.Errorf("get yamux session: %w", err)
 	}
 
-	openCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	handshakeCtx, cancel := context.WithTimeout(ctx, capabilitiesTimeout)
 	defer cancel()
-	stream, err := yamuxSession.Open(openCtx)
+	stream, err := yamuxSession.Open(handshakeCtx)
 	if err != nil {
 		return session.CapabilitiesAvailable{}, fmt.Errorf("open capabilities stream: %w", err)
 	}
 	defer stream.Close()
+	deadline, _ := handshakeCtx.Deadline() // WithTimeout always supplies one.
+	if err := stream.SetDeadline(deadline); err != nil {
+		return session.CapabilitiesAvailable{}, fmt.Errorf("set capabilities stream deadline: %w", err)
+	}
 
 	if err := writeCapabilitiesRequest(stream); err != nil {
 		return session.CapabilitiesAvailable{}, fmt.Errorf("write capabilities request: %w", err)

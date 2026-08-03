@@ -2,12 +2,12 @@
 
 - **Date:** 2026-08-03
 - **Original baseline:** `dev/v0.17.0`, HEAD `a6c67227`
-- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `1bda68f4`, plus
+- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `bfc3405d`, plus
   the current working tree
 - **Scope:** full read of `backend/bridge/cmd/` and `backend/webserver/cmd/` (11 files, ~1,100 lines), plus independent verification of an external report covering `backend/webserver/web/tls_redirect.go`, `backend/webserver/bridge/bridge.go`, `backend/common/ipc/relay/protocol.go`, and `backend/auth/linuxio-auth.c`.
 - **Focus:** idiomatic Go, performance, stability. Not a security audit.
 - **Method:** every claim was cross-checked against the packages the code calls (router, relay, logging, session) before being flagged. Original line numbers refer to the original review snapshot; resolution notes cite the current code.
-- **Current code validation:** `make check-backend` passed after the E3
+- **Current code validation:** `make check-backend` passed after the E4
   working-tree fix listed below.
 
 At the original review snapshot the working tree contained uncommitted fixes
@@ -16,16 +16,16 @@ At the original review snapshot the working tree contained uncommitted fixes
 `backend/webserver/bridge/bridge.go`, and `backend/webserver/web/tls_redirect.go`.
 Those fixes, together with the bridge lifecycle/state cleanup, are now committed
 in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`; findings 4,
-7, 8, and most of 9 are committed in `e595eada`. The current working tree fixes
-E3. Statuses below reflect the current tree; the intervening Makefile-only
-commits are outside this review.
+7, 8, and most of 9 are committed in `e595eada`; E3 is committed in `a5802171`.
+The current working tree fixes E4. Statuses below reflect the current tree;
+intervening unrelated commits are outside this review.
 
 ## Current status summary
 
-- **Fixed in committed code:** findings 1-8 and most of 9; E1, E2, E5, and E8.
-- **Fixed in the current working tree:** E3.
-- **Still open:** the channel-direction nit in finding 9; E4, E6, E7, E9, and
-  E10.
+- **Fixed in committed code:** findings 1-8 and most of 9; E1, E2, E3, E5, and
+  E8.
+- **Fixed in the current working tree:** E4.
+- **Still open:** the channel-direction nit in finding 9; E6, E7, E9, and E10.
 
 ## Overall verdict (cmd folders)
 
@@ -241,7 +241,7 @@ Resolution (`a08258bd`, `backend/webserver/bridge/bridge.go` + new
 publish replacement before closing the old session, register the callback outside
 the lock, delete only when the stored instance matches.
 
-### E3. Missing HTTP server timeouts — REAL, FIXED in working tree
+### E3. Missing HTTP server timeouts — REAL, FIXED (`a5802171`)
 
 The `http.Server` at `backend/webserver/cmd/root.go:98-102` has no
 `ReadHeaderTimeout` or `IdleTimeout`. The redirect path now has 5s bounds
@@ -256,7 +256,7 @@ and streaming handlers. `TestNewHTTPServerConnectionTimeouts` locks in all three
 policy choices (`backend/webserver/cmd/root.go`,
 `backend/webserver/cmd/root_test.go`).
 
-### E4. Capability handshake deadline covers only `Open` — REAL, OPEN
+### E4. Capability handshake deadline covers only `Open` — REAL, FIXED in working tree
 
 At `backend/webserver/bridge/bridge.go:124-136` the 5s context wraps only
 `yamuxSession.Open`; the request write and response read ignore the context
@@ -264,6 +264,13 @@ entirely. This runs during `Login` while holding a slot from
 `maxConcurrentLogins = 8` (`backend/webserver/auth/auth.go:15`). A
 live-but-unresponsive bridge parks a slot indefinitely — yamux keepalive only
 catches dead transports — so eight stuck logins lock everyone out.
+
+Resolution: the existing five-second context now supplies one absolute deadline
+for stream open, request write, and response read, while still honoring an earlier
+caller deadline. A real-yamux regression test holds an accepted stream open
+without responding and verifies that `fetchSessionCapabilities` returns a timeout
+promptly (`backend/webserver/bridge/bridge.go`,
+`backend/webserver/bridge/bridge_test.go`).
 
 ### E5. Frame reader allocates declared payload before receiving — REAL, FIXED (`a08258bd`)
 
@@ -353,9 +360,9 @@ streams (terminals), which may matter more than bulk throughput.
 
 Separate confirmed audit findings:
 
-- **DONE in the working tree:** missing `http.Server` handshake/header/idle
-  timeouts (E3).
-- Capabilities handshake lacks a stream deadline while holding a login slot (E4).
+- **DONE (`a5802171`):** missing `http.Server` handshake/header/idle timeouts
+  (E3).
+- **DONE in the working tree:** capabilities handshake stream deadline (E4).
 - C auth daemon: blocking lastlog lock (E6), four-byte `ut_id` collisions and the
   narrow `child_die` status-pipe race (E7).
 - Per-start self-signed certificate churn (E9).

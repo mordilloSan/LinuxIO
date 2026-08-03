@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -84,4 +86,66 @@ func TestOldYamuxCloseDoesNotRemoveReplacement(t *testing.T) {
 	}
 
 	CloseYamuxSession(newSession.SessionID)
+}
+
+func TestFetchSessionCapabilitiesHonorsParentDeadlineAfterOpen(t *testing.T) {
+	client, server := newYamuxPair(t)
+	const sessionID = "capabilities-timeout"
+	done := make(chan struct{})
+	yamuxSessions.Lock()
+	yamuxSessions.sessions[sessionID] = client
+	yamuxSessions.Unlock()
+	t.Cleanup(func() {
+		close(done)
+		yamuxSessions.Lock()
+		if current := yamuxSessions.sessions[sessionID]; current == client {
+			delete(yamuxSessions.sessions, sessionID)
+		}
+		yamuxSessions.Unlock()
+	})
+
+	accepted := make(chan struct{})
+	go func() {
+		stream, err := server.Accept()
+		if err == nil {
+			defer stream.Close()
+			close(accepted)
+			// Keep the stream open without responding.
+			<-done
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	result := make(chan error, 1)
+	go func() {
+		_, err := fetchSessionCapabilities(ctx, sessionID)
+		result <- err
+	}()
+
+	select {
+	case <-accepted:
+	case err := <-result:
+		t.Fatalf("fetchSessionCapabilities returned before peer accepted stream: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("peer did not accept capabilities stream")
+	}
+
+	var err error
+	select {
+	case err = <-result:
+	case <-time.After(time.Second):
+		t.Fatal("fetchSessionCapabilities did not honor stream deadline")
+	}
+	if err == nil {
+		t.Fatal("fetchSessionCapabilities unexpectedly succeeded")
+	}
+	var timeoutErr net.Error
+	if !errors.As(err, &timeoutErr) || !timeoutErr.Timeout() {
+		t.Fatalf("fetchSessionCapabilities error = %v, want timeout", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("fetchSessionCapabilities took too long: %v", elapsed)
+	}
 }
