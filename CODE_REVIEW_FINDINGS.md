@@ -2,30 +2,30 @@
 
 - **Date:** 2026-08-03
 - **Original baseline:** `dev/v0.17.0`, HEAD `a6c67227`
-- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `c80db2ec`, plus
+- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `1bda68f4`, plus
   the current working tree
 - **Scope:** full read of `backend/bridge/cmd/` and `backend/webserver/cmd/` (11 files, ~1,100 lines), plus independent verification of an external report covering `backend/webserver/web/tls_redirect.go`, `backend/webserver/bridge/bridge.go`, `backend/common/ipc/relay/protocol.go`, and `backend/auth/linuxio-auth.c`.
 - **Focus:** idiomatic Go, performance, stability. Not a security audit.
 - **Method:** every claim was cross-checked against the packages the code calls (router, relay, logging, session) before being flagged. Original line numbers refer to the original review snapshot; resolution notes cite the current code.
-- **Current code validation:** `make check-backend` passed after the working-tree
-  fixes listed below.
+- **Current code validation:** `make check-backend` passed after the E3
+  working-tree fix listed below.
 
 At the original review snapshot the working tree contained uncommitted fixes
 (with new tests) in
 `backend/bridge/cmd/yamux.go`, `backend/common/ipc/relay/protocol.go`,
 `backend/webserver/bridge/bridge.go`, and `backend/webserver/web/tls_redirect.go`.
 Those fixes, together with the bridge lifecycle/state cleanup, are now committed
-in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`. The current
-working tree additionally fixes findings 4, 7, 8, and most of 9. Statuses below
-reflect the current tree; the unrelated `Makefile` change is outside this review.
+in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`; findings 4,
+7, 8, and most of 9 are committed in `e595eada`. The current working tree fixes
+E3. Statuses below reflect the current tree; the intervening Makefile-only
+commits are outside this review.
 
 ## Current status summary
 
-- **Fixed in committed code:** findings 1, 2, 3, 5, and 6; E1, E2, E5, and E8.
-- **Fixed in the current working tree:** findings 4, 7, and 8, plus the duplicate
-  boot log and CLI wording portions of finding 9.
-- **Still open:** the channel-direction nit in finding 9; E3, E4, E6, E7, E9,
-  and E10.
+- **Fixed in committed code:** findings 1-8 and most of 9; E1, E2, E5, and E8.
+- **Fixed in the current working tree:** E3.
+- **Still open:** the channel-direction nit in finding 9; E4, E6, E7, E9, and
+  E10.
 
 ## Overall verdict (cmd folders)
 
@@ -106,7 +106,7 @@ return usage exit 2. Unknown webserver commands also return 2. Focused CLI tests
 cover these paths (`backend/bridge/cmd/cli_test.go` and
 `backend/webserver/cmd/cli_test.go`).
 
-### 4. Listener leak with hanging clients on partial activation failure — FIXED in working tree
+### 4. Listener leak with hanging clients on partial activation failure — FIXED (`e595eada`)
 
 In `backend/webserver/cmd/activation.go:44-58`, if wrapping fd N fails, the
 listeners already created for fds 3..N-1 are neither closed nor returned. The caller
@@ -160,7 +160,7 @@ removed the package-level `bootCfg`, `sess`, and `wg`, and threads
 code. `handleYamuxSession` consistently uses `rt.Session`, and its stream counter
 is a local `uint64`, which is correct because only the accept loop mutates it.
 
-### 7. Counter-plumbing in the webserver — FIXED in working tree
+### 7. Counter-plumbing in the webserver — FIXED (`e595eada`)
 
 `newHTTPServer` returns `(*http.Server, *atomic.Int64, *atomic.Int64, error)` and
 those two pointers thread through `startHTTPServer` → `serveWithSocketActivation` →
@@ -172,7 +172,7 @@ Resolution: `serverActivity` now owns both atomics and the `idleFor` predicate,
 and one pointer is threaded through server construction, activation, and the
 idle watcher (`backend/webserver/cmd/root.go:64-103,105-166,248-271`).
 
-### 8. slog anti-pattern in limits.go — FIXED in working tree
+### 8. slog anti-pattern in limits.go — FIXED (`e595eada`)
 
 `backend/bridge/cmd/limits.go:33` and `:59` build the message with `fmt.Sprintf`
 from the same values passed as attrs — every field appears twice per record.
@@ -190,12 +190,12 @@ only. The infinity check uses the explicit `math.MaxUint64` constant
   fixed in `a08258bd` (the closure now captures the per-iteration locals
   directly).
 - ~~"bridge boot" and "bridge starting" (`backend/bridge/cmd/root.go:43-54`) both
-  log the uid two lines apart — one can go~~ — fixed in the working tree by
+  log the uid two lines apart — one can go~~ — fixed in `e595eada` by
   retaining the richer `bridge boot` record.
 - **OPEN:** `startHTTPServer`'s return type would read better as
   `(<-chan os.Signal, <-chan error)`.
 - ~~Usage text mixes `linuxio` and `linuxio-webserver` as the binary name
-  (`backend/webserver/cmd/cli.go:84-97`)~~ — fixed in the working tree; all usage
+  (`backend/webserver/cmd/cli.go:84-97`)~~ — fixed in `e595eada`; all usage
   and examples now say `linuxio-webserver`.
 - ~~The `wg` comment at `backend/bridge/cmd/lifecycle.go:24` says "in-flight
   requests" but it actually tracks the single session goroutine (per-stream
@@ -241,13 +241,20 @@ Resolution (`a08258bd`, `backend/webserver/bridge/bridge.go` + new
 publish replacement before closing the old session, register the callback outside
 the lock, delete only when the stored instance matches.
 
-### E3. Missing HTTP server timeouts — REAL, OPEN
+### E3. Missing HTTP server timeouts — REAL, FIXED in working tree
 
 The `http.Server` at `backend/webserver/cmd/root.go:98-102` has no
 `ReadHeaderTimeout` or `IdleTimeout`. The redirect path now has 5s bounds
 (post-E1 fix), but TLS conns handed to the HTTP server are unbounded pre-header.
 Add header/idle timeouts; avoid a blanket `WriteTimeout`, which would break
 WebSocket/streaming endpoints.
+
+Resolution: the server now sets a 10-second `ReadHeaderTimeout`, which net/http
+also uses to bound the TLS handshake, and a two-minute `IdleTimeout` for inactive
+keep-alive connections. `WriteTimeout` intentionally remains zero for WebSocket
+and streaming handlers. `TestNewHTTPServerConnectionTimeouts` locks in all three
+policy choices (`backend/webserver/cmd/root.go`,
+`backend/webserver/cmd/root_test.go`).
 
 ### E4. Capability handshake deadline covers only `Open` — REAL, OPEN
 
@@ -304,7 +311,7 @@ wait ordering.
 
 ### E9. Per-start self-signed certificate churn — REAL, OPEN
 
-`configureServerTLS` (`backend/webserver/cmd/root.go:188-196`) calls
+`configureServerTLS` (`backend/webserver/cmd/root.go:198-206`) calls
 `web.GenerateSelfSignedCert()` (`backend/webserver/web/certificate.go:16`) on every
 server start: a fresh in-memory RSA-2048 key and certificate, never persisted.
 Consequences compound with socket activation — the idle-exit watcher shuts the
@@ -334,19 +341,20 @@ streams (terminals), which may matter more than bulk throughput.
    `protocol_test.go`).
 2. **DONE (`c80db2ec`):** finding 3's bridge/webserver usage exit codes and
    `Stdin.Stat` error handling are committed with focused tests.
-3. **DONE in the working tree:** finding 4 closes original and partially wrapped
+3. **DONE (`e595eada`):** finding 4 closes original and partially wrapped
    activation listeners and returns activation discovery failures instead of
    silently self-binding.
 4. **DONE (`a08258bd`):** findings 1-2 removed the dead shutdown channel and
    sleeps while preserving the required close-before-wait ordering.
 5. **MOSTLY DONE:** finding 6 is committed; findings 7-8 and the duplicate boot
-   log/CLI wording parts of finding 9 are fixed in the working tree. The only
+   log/CLI wording parts of finding 9 are committed in `e595eada`. The only
    remaining cleanup item from this group is the directional channel return type
    in `startHTTPServer`.
 
-Separate confirmed audit findings still untouched:
+Separate confirmed audit findings:
 
-- Missing `http.Server` handshake/header/idle timeouts (E3).
+- **DONE in the working tree:** missing `http.Server` handshake/header/idle
+  timeouts (E3).
 - Capabilities handshake lacks a stream deadline while holding a login slot (E4).
 - C auth daemon: blocking lastlog lock (E6), four-byte `ut_id` collisions and the
   narrow `child_die` status-pipe race (E7).

@@ -66,6 +66,14 @@ type serverActivity struct {
 	lastHit  atomic.Int64
 }
 
+// HTTP connection limits protect the public listener from slow handshakes and
+// abandoned keep-alive connections. WriteTimeout intentionally remains zero:
+// websocket and streaming handlers may write for an unbounded duration.
+const (
+	httpReadHeaderTimeout = 10 * time.Second
+	httpIdleTimeout       = 2 * time.Minute
+)
+
 func (a *serverActivity) idleFor(duration time.Duration) bool {
 	return a.inFlight.Load() == 0 && time.Since(time.Unix(0, a.lastHit.Load())) >= duration
 }
@@ -96,9 +104,11 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *server
 	})
 
 	return &http.Server{
-		Addr:     fmt.Sprintf(":%d", cfg.Port),
-		Handler:  handler,
-		ErrorLog: log.New(web.HTTPErrorLogAdapter{}, "", 0),
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           handler,
+		ErrorLog:          log.New(web.HTTPErrorLogAdapter{}, "", 0),
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}, activity, nil
 }
 
