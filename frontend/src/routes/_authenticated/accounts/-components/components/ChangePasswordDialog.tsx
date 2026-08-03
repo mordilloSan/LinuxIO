@@ -32,7 +32,7 @@ const ChangePasswordDialog = ({
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const { mutate: changePassword, isPending } =
-    linuxio.accounts.change_password.useJobAction({
+    linuxio.accounts.change_password.useAction({
       success: () => {
         toast.success(`Password changed for "${username}"`);
         handleClose();

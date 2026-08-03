@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   linuxio,
@@ -25,13 +25,12 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -90,6 +89,15 @@ const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
   { key: "insecure", label: "Insecure" },
   { key: "crossmnt", label: "Crossmnt" },
 ];
+
+const protocolSectionStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.03)",
+};
 
 const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
   {
@@ -364,12 +372,15 @@ const NFSOptionsDropdown = ({
       >
         <div style={{ padding: "6px 0" }}>
           {nfsOptionLabels.map(({ key, label }) => (
-            <button
+            <AppButton
+              color="inherit"
               key={key}
               onClick={() => toggle(key)}
+              fullWidth
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "flex-start",
                 gap: 10,
                 width: "100%",
                 padding: "7px 14px",
@@ -380,9 +391,9 @@ const NFSOptionsDropdown = ({
                 color: "inherit",
                 textAlign: "left",
               }}
-              type="button"
             >
               <span
+                aria-hidden="true"
                 style={{
                   width: 10,
                   height: 10,
@@ -393,7 +404,7 @@ const NFSOptionsDropdown = ({
                 }}
               />
               <span>{label}</span>
-            </button>
+            </AppButton>
           ))}
         </div>
       </AppPopover>
@@ -426,8 +437,8 @@ const CreateFolderShareDialog = ({
   });
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useJobAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useJobAction();
+  const sambaCreate = linuxio.shares.create_samba_share.useAction();
+  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
 
   const isPending = sambaCreate.isPending || nfsCreate.isPending;
   const resolvedName = sambaName.trim() || inferShareName(path);
@@ -542,16 +553,7 @@ const CreateFolderShareDialog = ({
             value={path}
           />
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -598,16 +600,7 @@ const CreateFolderShareDialog = ({
             ) : null}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -704,12 +697,12 @@ const EditFolderShareDialog = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useJobAction();
-  const sambaUpdate = linuxio.shares.update_samba_share.useJobAction();
-  const sambaDelete = linuxio.shares.delete_samba_share.useJobAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useJobAction();
-  const nfsUpdate = linuxio.shares.update_nfs_share.useJobAction();
-  const nfsDelete = linuxio.shares.delete_nfs_share.useJobAction();
+  const sambaCreate = linuxio.shares.create_samba_share.useAction();
+  const sambaUpdate = linuxio.shares.update_samba_share.useAction();
+  const sambaDelete = linuxio.shares.delete_samba_share.useAction();
+  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
+  const nfsUpdate = linuxio.shares.update_nfs_share.useAction();
+  const nfsDelete = linuxio.shares.delete_nfs_share.useAction();
 
   const isPending =
     sambaCreate.isPending ||
@@ -842,16 +835,7 @@ const EditFolderShareDialog = ({
             value={group.path}
           />
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -898,16 +882,7 @@ const EditFolderShareDialog = ({
             ) : null}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div style={protocolSectionStyle}>
             <AppFormControlLabel
               control={
                 <AppCheckbox
@@ -1170,22 +1145,11 @@ const SharesPage = () => {
         flexWrap: "wrap",
       }}
     >
-      <AppTooltip
-        title={
-          viewMode === "table" ? "Switch to card view" : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
-          size="small"
-        >
-          {viewMode === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setViewMode}
+        viewMode={viewMode}
+      />
       <AppButton
         onClick={() => setCreateDialogOpen(true)}
         size="small"

@@ -3,7 +3,7 @@ import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
 import { useAppTheme } from "@/theme";
 
-import { statusDot, UnitTableView } from "./UnitViews";
+import { MobileExpandedDetails, statusDot, UnitTableView } from "./UnitViews";
 
 interface SocketTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -104,39 +104,13 @@ const SocketTableView = ({
         </>
       )}
       renderMobileExpandedContent={(socket) => (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            padding: "2px 0",
-          }}
-        >
-          {[
+        <MobileExpandedDetails
+          rows={[
             { label: "Listen", value: socket.listen.join(", ") || "—" },
             { label: "Connections", value: String(socket.n_connections) },
             { label: "Accepted", value: String(socket.n_accepted) },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display: "flex", gap: 12 }}>
-              <span
-                style={{
-                  fontSize: "0.6rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  color: "var(--app-palette-text-secondary)",
-                  width: 80,
-                  flexShrink: 0,
-                  paddingTop: 2,
-                }}
-              >
-                {label}
-              </span>
-              <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
+          ]}
+        />
       )}
       selected={selected}
     />

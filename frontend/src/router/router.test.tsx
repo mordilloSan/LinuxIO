@@ -23,10 +23,10 @@ function routeOrAncestorHasLoader(route: AnyRoute): boolean {
 describe("generated application router", () => {
   it("uses one global intent-preload policy", () => {
     expect(router.options.defaultPreload).toBe("intent");
-    expect(router.options.defaultPreloadDelay).toBeTypeOf("number");
-    expect(router.options.defaultPendingMs).toBeTypeOf("number");
-    expect(router.options.defaultPendingMinMs).toBeTypeOf("number");
-    expect(router.options.defaultPreloadStaleTime).toBeTypeOf("number");
+    expect(router.options.defaultPreloadDelay).toBe(50);
+    expect(router.options.defaultPendingMs).toBe(150);
+    expect(router.options.defaultPendingMinMs).toBe(0);
+    expect(router.options.defaultPreloadStaleTime).toBe(0);
     expect(router.options.defaultErrorComponent).toBe(RouteError);
     expect(router.options.defaultNotFoundComponent).toBe(NotFoundPage);
     expect(router.options.defaultPendingComponent).toBe(PageLoader);
@@ -79,6 +79,8 @@ describe("generated application router", () => {
         "/vm/",
         "/vm/images",
         "/vm/machines",
+        "/vm/machines/",
+        "/vm/machines/$name",
         "/vm/networks",
         "/wireguard",
       ].sort((a, b) => a.localeCompare(b)),
@@ -107,6 +109,7 @@ describe("generated application router", () => {
       "/_authenticated/shares",
       "/_authenticated/storage",
       "/_authenticated/updates",
+      "/_authenticated/vm/machines",
     ] as const) {
       expect(router.routesById[routeId].options.loader).toBeUndefined();
     }

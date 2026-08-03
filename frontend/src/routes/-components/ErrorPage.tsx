@@ -1,6 +1,5 @@
-import { Link } from "@tanstack/react-router";
-
 import AppButton from "@/components/ui/AppButton";
+import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 interface ErrorPageProps {
@@ -37,18 +36,18 @@ function ErrorPage({ error, onRetry }: ErrorPageProps) {
           Try again
         </AppButton>
       ) : (
-        <Link
+        <AppRouterLinkButton
+          color="secondary"
           style={{
             textDecoration: "none",
             marginTop: 16,
             display: "inline-block",
           }}
           to="/"
+          variant="contained"
         >
-          <AppButton color="secondary" variant="contained">
-            Return to website
-          </AppButton>
-        </Link>
+          Return to website
+        </AppRouterLinkButton>
       )}
     </div>
   );

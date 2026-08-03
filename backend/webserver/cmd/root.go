@@ -30,11 +30,11 @@ func RunServer(cfg ServerConfig) error {
 	slog.Info("LinuxIO starting", "verbose", cfg.Verbose)
 
 	sm := newSessionManager()
-	srv, inFlight, lastHit, err := newHTTPServer(cfg, sm)
+	srv, activity, err := newHTTPServer(cfg, sm)
 	if err != nil {
 		return err
 	}
-	quit, done := startHTTPServer(cfg, srv, sm, inFlight, lastHit)
+	quit, done := startHTTPServer(cfg, srv, sm, activity)
 
 	serverErr := waitForServerShutdown(quit, done)
 	if serverErr == nil {
@@ -61,11 +61,28 @@ func newSessionManager() *session.Manager {
 	return sm
 }
 
-func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic.Int64, *atomic.Int64, error) {
+type serverActivity struct {
+	inFlight atomic.Int64
+	lastHit  atomic.Int64
+}
+
+// HTTP connection limits protect the public listener from slow handshakes and
+// abandoned keep-alive connections. WriteTimeout intentionally remains zero:
+// websocket and streaming handlers may write for an unbounded duration.
+const (
+	httpReadHeaderTimeout = 10 * time.Second
+	httpIdleTimeout       = 2 * time.Minute
+)
+
+func (a *serverActivity) idleFor(duration time.Duration) bool {
+	return a.inFlight.Load() == 0 && time.Since(time.Unix(0, a.lastHit.Load())) >= duration
+}
+
+func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *serverActivity, error) {
 	ui, err := web.UI()
 	if err != nil {
 		slog.Error("failed to mount embedded frontend", "error", err)
-		return nil, nil, nil, fmt.Errorf("mount embedded frontend: %w", err)
+		return nil, nil, fmt.Errorf("mount embedded frontend: %w", err)
 	}
 
 	router := web.BuildRouter(web.Config{
@@ -76,37 +93,37 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic
 		},
 	}, sm)
 
-	var inFlight atomic.Int64
-	var lastHit atomic.Int64
-	lastHit.Store(time.Now().UnixNano())
+	activity := &serverActivity{}
+	activity.lastHit.Store(time.Now().UnixNano())
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		lastHit.Store(time.Now().UnixNano())
-		inFlight.Add(1)
-		defer inFlight.Add(-1)
+		activity.lastHit.Store(time.Now().UnixNano())
+		activity.inFlight.Add(1)
+		defer activity.inFlight.Add(-1)
 		router.ServeHTTP(w, r)
 	})
 
 	return &http.Server{
-		Addr:     fmt.Sprintf(":%d", cfg.Port),
-		Handler:  handler,
-		ErrorLog: log.New(web.HTTPErrorLogAdapter{}, "", 0),
-	}, &inFlight, &lastHit, nil
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           handler,
+		ErrorLog:          log.New(web.HTTPErrorLogAdapter{}, "", 0),
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		IdleTimeout:       httpIdleTimeout,
+	}, activity, nil
 }
 
 func startHTTPServer(
 	cfg ServerConfig,
 	srv *http.Server,
 	sm *session.Manager,
-	inFlight *atomic.Int64,
-	lastHit *atomic.Int64,
+	activity *serverActivity,
 ) (chan os.Signal, chan error) {
 	quit := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		handled, err := serveWithSocketActivation(cfg, srv, sm, inFlight, lastHit)
+		handled, err := serveWithSocketActivation(cfg, srv, sm, activity)
 		if handled {
 			done <- err
 			return
@@ -121,18 +138,18 @@ func serveWithSocketActivation(
 	cfg ServerConfig,
 	srv *http.Server,
 	sm *session.Manager,
-	inFlight *atomic.Int64,
-	lastHit *atomic.Int64,
+	activity *serverActivity,
 ) (bool, error) {
 	listeners, err := systemdListeners()
 	if err != nil {
-		slog.Warn("socket activation listener lookup failed", "error", err)
+		return true, fmt.Errorf("load socket activation listeners: %w", err)
 	}
 	if len(listeners) == 0 {
 		return false, nil
 	}
 
 	if err := configureServerTLS(srv); err != nil {
+		closeListeners(listeners)
 		return true, err
 	}
 
@@ -151,7 +168,7 @@ func serveWithSocketActivation(
 	}
 	slog.Info("socket-activated HTTPS server listening")
 	startSocketIdleExitWatcher(
-		srv, sm, inFlight, lastHit,
+		srv, sm, activity,
 		90*time.Second, 15*time.Second,
 	)
 
@@ -241,8 +258,7 @@ func closeBridgeSessions(sm *session.Manager) {
 func startSocketIdleExitWatcher(
 	srv *http.Server,
 	sm *session.Manager,
-	inFlight *atomic.Int64,
-	lastHit *atomic.Int64,
+	activity *serverActivity,
 	idleGrace time.Duration,
 	checkEvery time.Duration,
 ) {
@@ -253,12 +269,7 @@ func startSocketIdleExitWatcher(
 		t := time.NewTicker(checkEvery)
 		defer t.Stop()
 		for range t.C {
-			// no requests running?
-			if inFlight.Load() > 0 {
-				continue
-			}
-			// no recent hits?
-			if time.Since(time.Unix(0, lastHit.Load())) < idleGrace {
+			if !activity.idleFor(idleGrace) {
 				continue
 			}
 			// no active sessions?

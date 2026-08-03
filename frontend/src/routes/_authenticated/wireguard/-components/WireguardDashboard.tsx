@@ -37,7 +37,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
 
   // Mutations
   const { mutate: removeInterface } =
-    linuxio.wireguard.remove_interface.useJobAction({
+    linuxio.wireguard.remove_interface.useAction({
       success: (_result, variables) => {
         toast.success(`WireGuard interface '${variables.name}' deleted`);
         setSelectedInterface(null);
@@ -46,24 +46,23 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
       toast: WIREGUARD_TOAST_META,
     });
 
-  const { mutate: addPeer } = linuxio.wireguard.add_peer.useJobAction({
+  const { mutate: addPeer } = linuxio.wireguard.add_peer.useAction({
     success: (_result, variables) =>
       toast.success(`Peer added to '${variables.interfaceName}'`),
     error: "Failed to add peer",
     toast: WIREGUARD_TOAST_META,
   });
 
-  const { mutate: upInterface } = linuxio.wireguard.up_interface.useJobAction(
+  const { mutate: upInterface } = linuxio.wireguard.up_interface.useAction(
     interfaceActionConfig("turned on.", "Failed to bring interface up"),
   );
 
-  const { mutate: downInterface } =
-    linuxio.wireguard.down_interface.useJobAction(
-      interfaceActionConfig("turned off.", "Failed to bring interface down"),
-    );
+  const { mutate: downInterface } = linuxio.wireguard.down_interface.useAction(
+    interfaceActionConfig("turned off.", "Failed to bring interface down"),
+  );
 
   const { mutate: enableInterface } =
-    linuxio.wireguard.enable_interface.useJobAction(
+    linuxio.wireguard.enable_interface.useAction(
       interfaceActionConfig(
         "enabled for boot persistence.",
         "Failed to enable boot persistence",
@@ -71,7 +70,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     );
 
   const { mutate: disableInterface } =
-    linuxio.wireguard.disable_interface.useJobAction(
+    linuxio.wireguard.disable_interface.useAction(
       interfaceActionConfig(
         "disabled for boot persistence.",
         "Failed to disable boot persistence",

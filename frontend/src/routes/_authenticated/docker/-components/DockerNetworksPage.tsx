@@ -3,8 +3,7 @@ import { useCallback, useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import DockerNetworksTable from "./NetworkList";
@@ -23,26 +22,11 @@ const DockerNetworksPage = () => {
 
   const actions = (
     <>
-      <AppTooltip
-        title={
-          networksView === "table"
-            ? "Switch to card view"
-            : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          onClick={() =>
-            setNetworksView(networksView === "table" ? "card" : "table")
-          }
-          size="small"
-        >
-          {networksView === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setNetworksView}
+        viewMode={networksView}
+      />
       {createNetworkHandler && (
         <AppButton
           onClick={createNetworkHandler}

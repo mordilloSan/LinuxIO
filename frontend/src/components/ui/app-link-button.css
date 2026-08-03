@@ -1,0 +1,20 @@
+.app-link-btn {
+  text-decoration: none;
+}
+
+.app-link-btn--disabled {
+  cursor: default;
+  pointer-events: none;
+  color: var(--app-palette-action-disabled);
+}
+
+.app-link-btn--disabled.app-btn--contained {
+  color: var(--app-palette-action-disabled);
+  background-color: var(--app-palette-action-disabled-background);
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.app-link-btn--disabled.app-btn--outlined {
+  border-color: var(--app-palette-action-disabled);
+}

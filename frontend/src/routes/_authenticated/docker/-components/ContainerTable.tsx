@@ -284,7 +284,7 @@ const UpdateCell = memo(function UpdateCell({
     updateError,
   });
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
-    linuxio.docker.check_container_update.useJobAction({
+    linuxio.docker.check_container_update.useAction({
       success: (result) => {
         const updates = result?.updates ?? 0;
         toast.success(
@@ -297,7 +297,7 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useJobAction({
+    linuxio.docker.update_container.useAction({
       success: (result) => {
         toast.success(
           result.updated
@@ -774,29 +774,29 @@ const ActionsCell = memo(function ActionsCell({
   url,
 }: ActionsCellProps) {
   const expanded = useContext(ExpandedContainersContext).has(containerId);
-  const { mutate: startContainer } =
-    linuxio.docker.start_container.useJobAction({
-      success: `Container ${name} started`,
-      error: `Failed to start ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useJobAction({
+  const { mutate: startContainer } = linuxio.docker.start_container.useAction({
+    success: `Container ${name} started`,
+    error: `Failed to start ${name}`,
+    toast: DOCKER_TOAST_META,
+  });
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction({
     success: `Container ${name} stopped`,
     error: `Failed to stop ${name}`,
     toast: DOCKER_TOAST_META,
   });
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useJobAction({
+    linuxio.docker.restart_container.useAction({
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useJobAction({
+  const { mutate: removeContainer } = linuxio.docker.remove_container.useAction(
+    {
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   return (
     <>
@@ -899,6 +899,10 @@ const ActionsCell = memo(function ActionsCell({
           </AppTooltip>
         )}
         <AppIconButton
+          aria-label={
+            expanded ? "Collapse container details" : "Expand container details"
+          }
+          aria-expanded={expanded}
           className="container-expand-toggle"
           onClick={() => onToggleExpanded(containerId)}
           size="small"

@@ -14,7 +14,8 @@ export const Route = createFileRoute("/_authenticated/accounts/")({
     ...optionalString(search, "user"),
   }),
   loaderDeps: ({ search }) => ({ user: search.user }),
-  loader: ({ context, deps, preload }) => {
+  loader: (loaderArgs) => {
+    const { deps } = loaderArgs;
     const queries: LoaderQueryOptions[] = [
       linuxio.accounts.list_users.queryOptions(),
     ];
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/_authenticated/accounts/")({
       );
     }
 
-    return loadRouteQueries({ context, preload }, queries);
+    return loadRouteQueries(loaderArgs, queries);
   },
   component: AccountsUsersPage,
 });

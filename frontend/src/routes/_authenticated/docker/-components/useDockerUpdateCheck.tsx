@@ -14,7 +14,7 @@ export function useDockerUpdateCheck() {
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
     useCapability("watchtowerAvailable");
   const { mutate: checkUpdates, isPending: isCheckingUpdates } =
-    linuxio.docker.check_updates.useJobAction({
+    linuxio.docker.check_updates.useAction({
       success: (result) => {
         const checked = result?.checked ?? 0;
         const updates = result?.updates ?? 0;

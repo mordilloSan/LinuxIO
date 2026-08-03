@@ -25,6 +25,11 @@ import { formatThroughput } from "@/utils/formaters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 import "./hardware-history.css";
 
+import {
+  hardwareGpuQueryOptions,
+  hardwareStableQueryOptions,
+} from "./hardwareQueryOptions";
+
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
 const getPrimaryGpu = (gpus: GpuDevice[] | undefined): GpuDevice | undefined =>
@@ -59,12 +64,10 @@ export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions({
-        staleTime: 300_000,
-      }),
-      linuxio.system.get_system_info.queryOptions({
-        staleTime: 300_000,
-      }),
+      linuxio.system.get_motherboard_info.queryOptions(
+        hardwareStableQueryOptions,
+      ),
+      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
     ],
   });
 
@@ -107,12 +110,8 @@ export const CPUDetailsCard = () => {
   const theme = useAppTheme();
   const [{ data: cpuInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_cpu_info.queryOptions({
-        staleTime: 300_000,
-      }),
-      linuxio.system.get_system_info.queryOptions({
-        staleTime: 300_000,
-      }),
+      linuxio.system.get_cpu_info.queryOptions(hardwareStableQueryOptions),
+      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
     ],
   });
 
@@ -152,12 +151,10 @@ export const BIOSInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions({
-        staleTime: 300_000,
-      }),
-      linuxio.system.get_system_info.queryOptions({
-        staleTime: 300_000,
-      }),
+      linuxio.system.get_motherboard_info.queryOptions(
+        hardwareStableQueryOptions,
+      ),
+      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
     ],
   });
 
@@ -199,7 +196,7 @@ export const GPUInfoCard = () => {
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
   const { data: gpus } = useSuspenseQuery(
     linuxio.system.get_gpu_info.queryOptions({
-      staleTime: 60_000,
+      ...hardwareGpuQueryOptions,
       refetchInterval: 15_000,
     }),
   );

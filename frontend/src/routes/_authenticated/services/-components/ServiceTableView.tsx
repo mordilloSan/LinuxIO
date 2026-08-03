@@ -1,7 +1,7 @@
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
 
-import { statusDot, UnitTableView } from "./UnitViews";
+import { MobileExpandedDetails, statusDot, UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -80,37 +80,13 @@ const ServiceTableView = ({
       </>
     )}
     renderMobileExpandedContent={(service) => (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          padding: "2px 0",
-        }}
-      >
-        {[
+      <MobileExpandedDetails
+        rows={[
           { label: "Load", value: service.load_state },
           { label: "Sub", value: service.sub_state },
           { label: "Description", value: service.description || "—" },
-        ].map(({ label, value }) => (
-          <div key={label} style={{ display: "flex", gap: 12 }}>
-            <span
-              style={{
-                fontSize: "0.6rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--app-palette-text-secondary)",
-                width: 80,
-                flexShrink: 0,
-                paddingTop: 2,
-              }}
-            >
-              {label}
-            </span>
-            <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{value}</span>
-          </div>
-        ))}
-      </div>
+        ]}
+      />
     )}
     selected={selected}
   />

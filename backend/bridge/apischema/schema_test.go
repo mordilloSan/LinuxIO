@@ -9,6 +9,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	dockerhandler "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -53,6 +54,50 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	}
 }
 
+func mustRoute(t *testing.T, name string) apischema.RouteSpec {
+	t.Helper()
+	for _, spec := range handlers.Routes {
+		if spec.Route == name {
+			return spec
+		}
+	}
+	t.Fatalf("unknown route %q", name)
+	return apischema.RouteSpec{}
+}
+
+func TestOnlyProgressHandlersRemainJobs(t *testing.T) {
+	remainingProgressJobs := map[string]bool{
+		"filebrowser.resource_patch": true,
+		"virt.create":                true,
+	}
+	modes := map[bridgeipc.Mode]int{}
+
+	for _, route := range handlers.Routes {
+		modes[route.Mode]++
+		if route.Kind != apischema.KindHandler || route.Mode != bridgeipc.ModeJob {
+			continue
+		}
+		if !remainingProgressJobs[route.Route] {
+			t.Errorf("%s is a progressless handler route but remains a job", route.Route)
+			continue
+		}
+		delete(remainingProgressJobs, route.Route)
+	}
+
+	if len(remainingProgressJobs) != 0 {
+		t.Errorf("expected progress handler jobs are missing: %v", remainingProgressJobs)
+	}
+	if got, want := modes[bridgeipc.ModeQuery], 203; got != want {
+		t.Errorf("query route count = %d, want %d", got, want)
+	}
+	if got, want := modes[bridgeipc.ModeJob], 21; got != want {
+		t.Errorf("job route count = %d, want %d", got, want)
+	}
+	if got, want := modes[bridgeipc.ModeDuplex], 6; got != want {
+		t.Errorf("duplex route count = %d, want %d", got, want)
+	}
+}
+
 func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -93,8 +138,11 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			spec := handlers.MustRoute(tc.route)
-			decoded, err := apischema.RequestDecoder(spec)(json.RawMessage(tc.raw))
+			spec := mustRoute(t, tc.route)
+			if spec.Decode == nil {
+				t.Fatalf("%s has no request decoder", tc.route)
+			}
+			decoded, err := spec.Decode(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}
@@ -107,20 +155,20 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 
 func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
 	for _, route := range []string{"jobs.attach", "jobs.data", "terminal.open", "container.open"} {
-		spec := handlers.MustRoute(route)
+		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should not generate a React Query endpoint", route)
 		}
 	}
 
 	for _, route := range []string{"docker.logs.follow", "logs.general.follow", "logs.service.follow"} {
-		spec := handlers.MustRoute(route)
+		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should remain stream-opener only in this phase", route)
 		}
 	}
 
-	if !handlers.MustRoute("system.get_cpu_info").Endpoint() {
+	if !mustRoute(t, "system.get_cpu_info").Endpoint() {
 		t.Fatal("query route should generate an endpoint")
 	}
 }
@@ -133,6 +181,53 @@ func TestRoutesDeclareContractFields(t *testing.T) {
 		if route.Result.GoType == nil {
 			t.Fatalf("%s should declare a result contract", route.Route)
 		}
+	}
+}
+
+func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
+	compose := mustRoute(t, "docker.compose")
+	if got, want := compose.Result.GoType, reflect.TypeFor[dockerhandler.ComposeJobResult](); got != want {
+		t.Fatalf("docker.compose result type = %v, want %v", got, want)
+	}
+	if got, want := compose.Progress.GoType, reflect.TypeFor[dockerhandler.ComposeJobMessage](); got != want {
+		t.Fatalf("docker.compose progress type = %v, want %v", got, want)
+	}
+}
+
+func TestWithJobProgressRejectsQueryRoutes(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Query() accepted a job progress contract")
+		}
+	}()
+	_ = apischema.Query[apischema.NoRequest, apischema.NoResponse](
+		"test.progress_query",
+		apischema.WithJobProgress[apischema.MessageResponse](),
+	)
+}
+
+func TestJobMetadataBuildersAreAllowlistedRunnerRoutes(t *testing.T) {
+	want := map[string]bool{
+		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
+		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
+		"filebrowser.upload": true, "filebrowser.upload_batch": true, "filebrowser.download": true,
+		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
+		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
+	}
+	for _, route := range handlers.Routes {
+		if route.Metadata == nil {
+			continue
+		}
+		if !want[route.Route] {
+			t.Fatalf("%s unexpectedly declares public job metadata", route.Route)
+		}
+		if route.Kind != apischema.KindRunner || route.Mode != bridgeipc.ModeJob {
+			t.Fatalf("%s metadata is not a job runner", route.Route)
+		}
+		delete(want, route.Route)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing metadata builders: %v", want)
 	}
 }
 

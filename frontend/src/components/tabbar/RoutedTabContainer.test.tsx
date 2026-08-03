@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 
-import RoutedTabContainer, {
+import {
   makeTabLayout,
   RoutedTabActions,
   RoutedTabLayout,
@@ -139,9 +139,9 @@ describe("RoutedTabContainer", () => {
     const rootRoute = createRootRoute({ component: Outlet });
     const accountsRoute = createRoute({
       component: () => (
-        <RoutedTabContainer tabs={tabs}>
+        <RoutedTabLayout tabs={tabs}>
           <div>Route content</div>
-        </RoutedTabContainer>
+        </RoutedTabLayout>
       ),
       getParentRoute: () => rootRoute,
       path: "accounts",
@@ -173,6 +173,57 @@ describe("RoutedTabContainer", () => {
     );
     expect(groups).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Route content")).toBeInTheDocument();
+  });
+
+  it("keeps a matchChildren tab selected while a nested detail route is open", async () => {
+    const nestingTabs = [
+      { label: "Users", to: "/accounts" },
+      { label: "Groups", matchChildren: true, to: "/accounts/groups" },
+    ] as const satisfies readonly RoutedTab[];
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={nestingTabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const groupsRoute = createRoute({
+      component: Outlet,
+      getParentRoute: () => accountsRoute,
+      path: "groups",
+    });
+    const groupDetailRoute = createRoute({
+      component: () => <div>Group detail</div>,
+      getParentRoute: () => groupsRoute,
+      path: "detail",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({
+        initialEntries: ["/accounts/groups/detail"],
+      }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([
+          groupsRoute.addChildren([groupDetailRoute]),
+        ]),
+      ]),
+    });
+    await router.load();
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("Group detail")).toBeInTheDocument();
+    // The parent tab owns the detail route, so its pill stays selected...
+    expect(screen.getByRole("tab", { name: "Groups" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // ...while a sibling leaf tab stays exact-matched and unselected.
+    expect(screen.getByRole("tab", { name: "Users" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
   });
 
   it("creates a route layout with the supplied container style", async () => {
@@ -240,7 +291,10 @@ describe("RoutedTabContainer", () => {
     await waitFor(() =>
       expect(container.querySelector(".app-icon-btn")).toBeInTheDocument(),
     );
-    await user.click(container.querySelector(".app-icon-btn")!);
+    const actionsTrigger = screen.getByRole("button", { name: "Actions" });
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "false");
+    await user.click(actionsTrigger);
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "true");
     await user.click(
       await screen.findByRole("button", { name: "Remove nullable action" }),
     );

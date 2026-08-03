@@ -343,22 +343,28 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	}
 }
 
-func buildCapabilitiesResponse(ctx context.Context) apischema.CapabilitiesResponse {
+func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesResponse, error) {
 	slog.Info("Checking system capabilities.")
 
 	var out apischema.CapabilitiesResponse
 	summary := make([]string, 0, len(capabilityRegistry))
 
 	for _, spec := range capabilityRegistry {
+		if err := ctx.Err(); err != nil {
+			return apischema.CapabilitiesResponse{}, err
+		}
 		ok, errMsg := spec.Detect(ctx)
 		setCapabilityField(&out, spec.Name, ok, errMsg)
 		summary = append(summary, fmt.Sprintf("%s=%s", strings.ReplaceAll(spec.Name, "_", "-"), capabilityStatus(ok)))
 		logUnavailableCapability(spec.LogName, errMsg)
 	}
+	if err := ctx.Err(); err != nil {
+		return apischema.CapabilitiesResponse{}, err
+	}
 
 	slog.Info("Capabilities: " + strings.Join(summary, " ") + ".")
 
-	return out
+	return out, nil
 }
 
 var errAvahiUnavailable = fmt.Errorf("avahi-daemon is not running")

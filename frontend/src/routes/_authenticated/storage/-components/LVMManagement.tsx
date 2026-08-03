@@ -95,7 +95,7 @@ const CreateLVDialog = ({
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const { mutate: createLV, isPending: isCreating } =
-    linuxio.storage.create_lv.useJobAction({
+    linuxio.storage.create_lv.useAction({
       success: () => {
         toast.success(`Logical volume ${lvName} created successfully`);
         onSuccess();
@@ -214,7 +214,7 @@ const ResizeLVDialog = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
   const { mutate: resizeLV, isPending: isResizing } =
-    linuxio.storage.resize_lv.useJobAction({
+    linuxio.storage.resize_lv.useAction({
       success: () => {
         toast.success(`Logical volume ${lv?.name} resized successfully`);
         onSuccess();
@@ -310,7 +310,7 @@ const DeleteLVDialog = ({
 }: DeleteLVDialogProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { mutate: deleteLV, isPending: isDeleting } =
-    linuxio.storage.delete_lv.useJobAction({
+    linuxio.storage.delete_lv.useAction({
       success: () => {
         toast.success(`Logical volume ${lv?.name} deleted successfully`);
         onSuccess();

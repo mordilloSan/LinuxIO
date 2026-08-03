@@ -11,13 +11,16 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").HandleEvents(handleGetNetworkInfo),
-	apischema.Job[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(handleSetIPv4Manual),
-	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(handleSetIPv4),
-	apischema.Job[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(handleSetIPv6),
-	apischema.Job[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(handleSetMTU),
-	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(handleEnableConnection),
-	apischema.Job[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(handleDisableConnection),
+	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	// NetworkManager owns an accepted configuration change. Applying it can
+	// sever this bridge, so transport loss is an expected ambiguous outcome and
+	// callers must not retry the mutation automatically.
+	apischema.Query[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(handleSetIPv4Manual),
+	apischema.Query[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(handleSetIPv4),
+	apischema.Query[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(handleSetIPv6),
+	apischema.Query[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(handleSetMTU),
+	apischema.Query[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(handleEnableConnection),
+	apischema.Query[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(handleDisableConnection),
 )
 
 var Routes = api.Routes()
@@ -26,9 +29,9 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
 	result, err := GetNetworkInfo(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+	return networkInterfacesToAPI(result), err
 }
 
 func handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {

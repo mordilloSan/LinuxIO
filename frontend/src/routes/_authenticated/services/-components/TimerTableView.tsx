@@ -1,7 +1,12 @@
 import type { Timer } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
 
-import { formatUsec, statusDot, UnitTableView } from "./UnitViews";
+import {
+  formatUsec,
+  MobileExpandedDetails,
+  statusDot,
+  UnitTableView,
+} from "./UnitViews";
 
 interface TimerTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -75,37 +80,13 @@ const TimerTableView = ({
       </>
     )}
     renderMobileExpandedContent={(timer) => (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          padding: "2px 0",
-        }}
-      >
-        {[
+      <MobileExpandedDetails
+        rows={[
           { label: "Unit", value: timer.unit || "—" },
           { label: "Next", value: formatUsec(timer.next_elapse_usec) },
           { label: "Last", value: formatUsec(timer.last_trigger_usec) },
-        ].map(({ label, value }) => (
-          <div key={label} style={{ display: "flex", gap: 12 }}>
-            <span
-              style={{
-                fontSize: "0.6rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--app-palette-text-secondary)",
-                width: 80,
-                flexShrink: 0,
-                paddingTop: 2,
-              }}
-            >
-              {label}
-            </span>
-            <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{value}</span>
-          </div>
-        ))}
-      </div>
+        ]}
+      />
     )}
     selected={selected}
   />

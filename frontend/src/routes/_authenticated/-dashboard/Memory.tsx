@@ -3,9 +3,10 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
-import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
+
+import DashboardStatRows from "./DashboardStatRows";
 
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
@@ -44,15 +45,8 @@ const MemoryUsage = () => {
       />
     ),
     stats: (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignSelf: "flex-start",
-          width: "fit-content",
-        }}
-      >
-        {[
+      <DashboardStatRows
+        rows={[
           {
             label: "Usage",
             value: `${formatFileSize(memoryData?.system?.active ?? 0, 2)} / ${formatFileSize(memoryData?.system?.total ?? 0, 2)}`,
@@ -69,40 +63,8 @@ const MemoryUsage = () => {
             label: "ZFS ARC",
             value: formatFileSize(memoryData?.zfs?.arc ?? 0, 2),
           },
-        ].map(({ label, value }, index, rows) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "flex-start",
-              paddingTop: theme.spacing(0.5),
-              paddingBottom: theme.spacing(0.5),
-              borderBottom:
-                index === rows.length - 1
-                  ? "none"
-                  : "1px solid var(--app-palette-divider)",
-              gap: theme.spacing(1),
-            }}
-          >
-            <AppTypography
-              color="text.secondary"
-              style={{
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                fontSize: "0.62rem",
-                flexShrink: 0,
-              }}
-              variant="caption"
-            >
-              {label}
-            </AppTypography>
-            <AppTypography fontWeight={500} noWrap variant="body2">
-              {value}
-            </AppTypography>
-          </div>
-        ))}
-      </div>
+        ]}
+      />
     ),
     avatarIcon: "la:memory",
   };

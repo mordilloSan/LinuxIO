@@ -16,18 +16,18 @@ import (
 // unreachable by design and, for job routes, sat in the job snapshot for
 // DefaultTerminalJobTTL where jobs.get/jobs.list could read them back.
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").HandleEvents(handleListInterfaces),
-	apischema.Job[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
-	apischema.Query[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").HandleEvents(handleListPeers),
-	apischema.Job[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
-	apischema.Job[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
+	apischema.Query[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").Handle(handleListInterfaces),
+	apischema.Query[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
+	apischema.Query[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").Handle(handleListPeers),
+	apischema.Query[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
+	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
 	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode").Handle(handlePeerQRCode),
 	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download").Handle(handlePeerConfigDownload),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
-	apischema.Job[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
+	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
 )
 
 var Routes = api.Routes()
@@ -37,9 +37,9 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleListInterfaces(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleListInterfaces(ctx context.Context, _ apischema.NoRequest) ([]apischema.WireGuardInterface, error) {
 	result, err := ListInterfaces(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+	return wireGuardInterfacesToAPI(result), err
 }
 
 // AddInterface's result carries the generated private key; discarding it is the
@@ -54,9 +54,9 @@ func handleRemoveInterface(ctx context.Context, req apischema.NameRequest) error
 	return err
 }
 
-func handleListPeers(ctx context.Context, req apischema.InterfaceNameRequest, emit bridgeipc.Events) error {
+func handleListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]apischema.Peer, error) {
 	result, err := ListPeers(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+	return peersToAPI(result), err
 }
 
 func handleAddPeer(ctx context.Context, req apischema.InterfaceNameRequest) error {

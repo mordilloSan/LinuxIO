@@ -63,11 +63,13 @@ function NavbarColorCustomizer() {
           }}
         >
           {tokenSwatches.map(({ name, hex }) => (
-            <button
+            <AppButton
               aria-label={`Set color ${name}`}
+              color="inherit"
               key={name}
               onClick={() => setPrimaryColor(name)}
               style={{
+                minWidth: 28,
                 width: 28,
                 height: 28,
                 borderRadius: theme.shape.borderRadius,
@@ -77,9 +79,9 @@ function NavbarColorCustomizer() {
                     ? `1px solid ${alpha(theme.palette.common.white, 0.3)}`
                     : `1px solid ${alpha(theme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
-                outline:
+                boxShadow:
                   primaryColor?.toLowerCase() === name.toLowerCase()
-                    ? "2px solid currentColor"
+                    ? "0 0 0 2px currentColor"
                     : "none",
                 padding: 0,
               }}

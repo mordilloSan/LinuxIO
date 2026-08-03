@@ -15,13 +15,22 @@ import (
 // hands the inherited client connection to the bridge runtime. It returns the
 // process exit code; only main should call os.Exit.
 func Run(args []string) int {
-	if handledArgs := handleBridgeArgs(args); handledArgs {
-		return 0
+	return run(args, os.Stdin)
+}
+
+func run(args []string, stdin *os.File) int {
+	if handled, exitCode := handleBridgeArgs(args); handled {
+		return exitCode
 	}
 
-	if isDirectBridgeInvocation() {
-		fmt.Println("(to be spawned by auth daemon, not for direct use)")
-		return 0
+	direct, err := isDirectBridgeInvocation(stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+	if direct {
+		fmt.Fprintln(os.Stderr, "linuxio-bridge must be spawned by the auth daemon")
+		return 2
 	}
 
 	if err := runBridgeProcess(); err != nil {
@@ -36,7 +45,8 @@ func runBridgeProcess() error {
 		return fmt.Errorf("failed to initialize logger: %w", configureErr)
 	}
 
-	if err := initializeBridgeSession(); err != nil {
+	sess, err := initializeBridgeSession()
+	if err != nil {
 		logBridgeStartupError("failed to initialize bridge session", err)
 		return err
 	}
@@ -51,7 +61,6 @@ func runBridgeProcess() error {
 	logBridgeResourceLimits()
 
 	syscall.Umask(0o077)
-	slog.Info("bridge starting", "uid", os.Geteuid())
 
 	clientConn, err := openClientConnection()
 	if err != nil {
@@ -74,15 +83,5 @@ func runBridgeProcess() error {
 }
 
 func logBridgeStartupError(message string, err error) {
-	attrs := []any{"error", err}
-	if bootCfg != nil {
-		attrs = append(attrs,
-			"user", bootCfg.Username,
-			"session_id", bootCfg.SessionID,
-			"privileged", bootCfg.Privileged,
-			"uid", bootCfg.UID,
-			"gid", bootCfg.GID,
-		)
-	}
-	slog.Error(message, attrs...)
+	slog.Error(message, "error", err)
 }

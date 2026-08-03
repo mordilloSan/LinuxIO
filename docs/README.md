@@ -17,9 +17,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 
 | Doc | Use |
 |-----|-----|
-| [UI-Architecture Follow-ups](./frontend-ui-architecture-followups.md) | Remaining cleanups after the API migration: controller prop-drilling, dialog job streams → `attach()`, auto-update dual writer, allowlisted stream consumers, `chmod_batch`. ToDo #13/#14. |
-| [Rerender Plan](./frontend-rerender-plan.md) | Profiler-confirmed rerender hotspots and the fix order. ToDo #12. |
-| [TanStack Router Architecture](./tanstack-router.md) | File-based routes, generated type tree, automatic code splitting, route-local loaders/static data, and global preload policy. |
+| [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 
 ## Product Areas
@@ -28,5 +26,4 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 |-----|-----|
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |
 | [Notifications](./notifications.md) | Planned notification system design. |
-| [Session Activity Timeout Plan](./session-activity-timeout-plan.md) | Planned session idle and job-safe cleanup design. |
 | [Transient Units Plan](./transient-units-plan.md) | Planned bridge-survivable jobs via systemd transient units. |

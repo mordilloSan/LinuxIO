@@ -135,6 +135,7 @@ const TerminalXTerm = () => {
           Font
         </AppTypography>
         <AppIconButton
+          aria-label="Decrease terminal font size"
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
           size="small"
           style={{ color: "var(--app-palette-text-secondary)" }}
@@ -150,6 +151,7 @@ const TerminalXTerm = () => {
           {fontSize}
         </AppTypography>
         <AppIconButton
+          aria-label="Increase terminal font size"
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
           size="small"
           style={{ color: "var(--app-palette-text-secondary)" }}
@@ -161,6 +163,7 @@ const TerminalXTerm = () => {
 
         {/* Reset Button */}
         <AppIconButton
+          aria-label="Reset terminal"
           onClick={handleReset}
           size="small"
           style={{ color: "var(--app-palette-text-secondary)", marginLeft: 8 }}

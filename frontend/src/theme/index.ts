@@ -199,6 +199,7 @@ interface AppThemeProviderProps {
 const APP_THEME_CONTEXT = createContext<AppTheme | undefined>(undefined);
 const BASE_SPACING_UNIT = 4;
 const FONT_FAMILY = [
+  '"Inter Variable"',
   "Inter",
   "-apple-system",
   "BlinkMacSystemFont",

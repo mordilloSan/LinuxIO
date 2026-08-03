@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
+import DashboardStatRows from "./DashboardStatRows";
 import DriveGraph from "./DriveGraph";
 
 interface DriveInfo {
@@ -47,7 +47,6 @@ function parseSizeToBytes(input: string | undefined | null): number {
 }
 
 const Drive = () => {
-  const theme = useAppTheme();
   const [{ data: rawDrives }, { data: diskThroughput }] = useSuspenseQueries({
     queries: [
       linuxio.storage.get_drive_info.queryOptions(),
@@ -101,10 +100,9 @@ const Drive = () => {
     (device) => device.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <div
-      style={{ display: "flex", flexDirection: "column", width: "fit-content" }}
-    >
-      {[
+    <DashboardStatRows
+      containerStyle={{ alignSelf: "auto" }}
+      rows={[
         { label: "Model", value: selectedDrive.model || "Unknown" },
         { label: "Type", value: selectedDrive.transport || "Unknown" },
         {
@@ -114,45 +112,8 @@ const Drive = () => {
         ...(selectedDrive.vendor
           ? [{ label: "Vendor", value: selectedDrive.vendor }]
           : []),
-      ].map(({ label, value }, index, rows) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <AppTypography
-            fontWeight={500}
-            noWrap
-            style={{ minWidth: 0 }}
-            variant="body2"
-          >
-            {value}
-          </AppTypography>
-        </div>
-      ))}
-    </div>
+      ].map((row) => ({ ...row, valueStyle: { minWidth: 0 } }))}
+    />
   ) : (
     <AppTypography variant="body2">No drive selected.</AppTypography>
   );

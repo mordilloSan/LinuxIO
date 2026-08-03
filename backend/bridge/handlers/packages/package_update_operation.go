@@ -19,7 +19,9 @@ func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgejobs.SingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot]("packages.update").Run(runPackageUpdateJob, policy),
+		apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot]("packages.update", apischema.WithJobMetadata(func(req apischema.PackageUpdateRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
+		})).Run(runPackageUpdateJob, policy),
 	)
 }
 

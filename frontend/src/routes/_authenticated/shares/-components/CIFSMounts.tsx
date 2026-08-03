@@ -82,7 +82,7 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
   );
 
   const { mutate: mountCIFS, isPending: isMounting } =
-    linuxio.storage.mount_cifs.useJobAction({
+    linuxio.storage.mount_cifs.useAction({
       success: `SMB share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount SMB share",
@@ -263,7 +263,7 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
 
 const RemoveCIFSDialog = ({ open, onClose, mount }: RemoveCIFSDialogProps) => {
   const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_cifs.useJobAction({
+    linuxio.storage.unmount_cifs.useAction({
       success: `Removed ${mount?.mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
@@ -331,7 +331,7 @@ const EditCIFSForm = ({
   );
 
   const { mutate: remountCIFS, isPending: isSaving } =
-    linuxio.storage.remount_cifs.useJobAction({
+    linuxio.storage.remount_cifs.useAction({
       success: "SMB mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
@@ -434,14 +434,14 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
     }),
   );
 
-  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useJobAction({
+  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useAction({
     success: "SMB entry mounted",
     warning: (result) => result.warning,
     error: "Failed to mount SMB entry",
     toast: STORAGE_TOAST_META,
   });
 
-  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useJobAction({
+  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useAction({
     // The message needs `variables`, so the toast stays in a callback; the
     // warning affordance still owns the warning case.
     success: (result, variables) => {

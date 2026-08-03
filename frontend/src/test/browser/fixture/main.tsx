@@ -9,13 +9,14 @@ import {
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
-import { RoutedTabContainer, type RoutedTab } from "@/components/tabbar";
+import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 
 import "@/theme/variables.css";
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
+const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -37,11 +38,11 @@ function RootLayout() {
 
 function AccountsLayout() {
   return (
-    <RoutedTabContainer tabs={tabs}>
+    <RoutedTabLayout tabs={tabs}>
       <Suspense fallback={<div role="status">Loading route chunk…</div>}>
         <Outlet />
       </Suspense>
-    </RoutedTabContainer>
+    </RoutedTabLayout>
   );
 }
 
@@ -62,6 +63,11 @@ const accountsRoute = createRoute({
   component: AccountsLayout,
   getParentRoute: () => rootRoute,
   path: "accounts",
+});
+const accessibilityRoute = createRoute({
+  component: AccessibilityPage,
+  getParentRoute: () => rootRoute,
+  path: "accessibility",
 });
 const accountsIndexRoute = createRoute({
   component: UsersPage,
@@ -88,13 +94,14 @@ const failedRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
+  accessibilityRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,
   defaultPendingMinMs: 0,
   defaultPendingMs: 0,
   defaultPreload: "intent",
-  defaultPreloadDelay: 150,
+  defaultPreloadDelay: 50,
   history: createBrowserHistory(),
   routeTree,
 });

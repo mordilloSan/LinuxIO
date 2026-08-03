@@ -29,8 +29,8 @@ const {
 
 const deps = { refreshCapabilities: vi.fn(async () => undefined) };
 
-function job(id: string, type: string, request: Record<string, unknown> = {}) {
-  return { id, type, request };
+function job(id: string, type: string, metadata: Record<string, unknown> = {}) {
+  return { id, type, metadata };
 }
 
 function failed(message: string, code?: number) {

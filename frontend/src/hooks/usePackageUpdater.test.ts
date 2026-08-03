@@ -125,11 +125,9 @@ describe("usePackageUpdater", () => {
     expect(result.current.progress).toBe(100);
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
-    // The page keeps manifest invalidation and job ownership: opting out would
-    // leave the updates list waiting on the global events stream alone.
+    // The page keeps its manifest invalidation as the direct completion path.
     const config = streamMocks.streamActionConfigs.at(-1);
     expect(config).not.toHaveProperty("invalidates", []);
-    expect(config).not.toHaveProperty("markHandled", false);
   });
 
   it("reports single-package update failures with the package name", async () => {
@@ -461,7 +459,7 @@ describe("usePackageUpdater", () => {
         id: "recovered-claim",
         type: "packages.update",
         state: "running",
-        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+        metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
@@ -486,7 +484,7 @@ describe("usePackageUpdater", () => {
         id: "recovered-1",
         type: "packages.update",
         state: "running",
-        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+        metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(stream);
@@ -509,7 +507,7 @@ describe("usePackageUpdater", () => {
         id: "recovered-cancel",
         type: "packages.update",
         state: "running",
-        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+        metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(stream);
@@ -548,7 +546,7 @@ describe("usePackageUpdater", () => {
         id: "recovered-2",
         type: "packages.update",
         state: "running",
-        request: { packageIds: ["curl;1.0;amd64;ubuntu"] },
+        metadata: { packageIds: ["curl;1.0;amd64;ubuntu"] },
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(createStream());
@@ -591,7 +589,7 @@ describe("usePackageUpdater", () => {
         id: "recovered-once",
         type: "packages.update",
         state: "running",
-        request: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
+        metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
     apiMocks.openJobAttachStream.mockReturnValue(createStream());

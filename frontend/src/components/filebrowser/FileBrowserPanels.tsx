@@ -4,7 +4,6 @@ import {
   Suspense,
   useState,
   type ChangeEvent,
-  type ReactNode,
   type RefObject,
 } from "react";
 
@@ -124,7 +123,6 @@ interface FileBrowserEditorDialogProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   showQuickSave: boolean;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
@@ -145,7 +143,6 @@ export const FileBrowserEditorDialog = ({
   searchQuery,
   showHiddenFiles,
   showQuickSave,
-  viewIcon,
   viewMode,
 }: FileBrowserEditorDialogProps) => {
   const theme = useAppTheme();
@@ -169,7 +166,6 @@ export const FileBrowserEditorDialog = ({
         searchQuery={searchQuery}
         showHiddenFiles={showHiddenFiles}
         showQuickSave={showQuickSave}
-        viewIcon={viewIcon}
         viewMode={viewMode}
       />
       <div
@@ -273,7 +269,7 @@ export const FileBrowserDetailsDialog = ({
         {detailTarget && detailTarget.length > 1
           ? "Multiple Items Details"
           : "File Details"}
-        <AppIconButton onClick={onClose} size="small">
+        <AppIconButton aria-label="Close dialog" onClick={onClose} size="small">
           <Icon height={18} icon="mdi:close" width={18} />
         </AppIconButton>
       </AppDialogTitle>

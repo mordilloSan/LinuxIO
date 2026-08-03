@@ -19,7 +19,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	}
 	defer func() { runServerFunc = old }()
 
-	code := Run([]string{"linuxio", "run", "-port", "18090", "-verbose"})
+	code := Run([]string{"linuxio-webserver", "run", "-port", "18090", "-verbose"})
 	if code != 0 {
 		t.Fatalf("Run exit code = %d, want 0", code)
 	}
@@ -32,7 +32,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	}
 }
 
-func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
+func TestRun_UnknownCommand_ReturnsUsageError(t *testing.T) {
 	var errb bytes.Buffer
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
@@ -44,9 +44,9 @@ func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
 		}
 	}()
 
-	code := Run([]string{"linuxio", "wat"})
-	if code != 0 {
-		t.Fatalf("Run exit code = %d, want 0", code)
+	code := Run([]string{"linuxio-webserver", "wat"})
+	if code != 2 {
+		t.Fatalf("Run exit code = %d, want 2", code)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close write pipe: %v", err)
@@ -57,5 +57,39 @@ func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
 
 	if !strings.Contains(errb.String(), "unknown command") {
 		t.Fatalf("expected 'unknown command' in stderr, got: %q", errb.String())
+	}
+}
+
+func TestRun_HelpUsesWebserverBinaryName(t *testing.T) {
+	var errb bytes.Buffer
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = oldStderr
+		_ = r.Close()
+	}()
+
+	code := Run([]string{"linuxio-webserver", "help"})
+	if code != 0 {
+		t.Fatalf("Run exit code = %d, want 0", code)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close write pipe: %v", err)
+	}
+	os.Stderr = oldStderr
+	if _, err := errb.ReadFrom(r); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+
+	output := errb.String()
+	if !strings.Contains(output, "linuxio-webserver run") {
+		t.Fatalf("expected webserver binary name in help, got: %q", output)
+	}
+	if strings.Contains(output, "  linuxio run") {
+		t.Fatalf("help still contains old binary name: %q", output)
 	}
 }

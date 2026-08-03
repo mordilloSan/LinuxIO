@@ -78,7 +78,9 @@ const CompressFormatDialog = ({
           {FORMAT_OPTIONS.map((opt) => {
             const isSelected = selected === opt.value;
             return (
-              <button
+              <AppButton
+                aria-pressed={isSelected}
+                color="inherit"
                 key={opt.value}
                 onClick={() => setSelected(opt.value)}
                 style={{
@@ -151,7 +153,7 @@ const CompressFormatDialog = ({
                     width={20}
                   />
                 )}
-              </button>
+              </AppButton>
             );
           })}
         </div>

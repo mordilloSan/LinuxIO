@@ -1,12 +1,19 @@
-export function jobIdentityKey(type: string, request: unknown = {}) {
-  return JSON.stringify([type, request ?? {}]);
+export function jobIdentityKey(type: string, identity: readonly string[] = []) {
+  return JSON.stringify([type, identity]);
 }
 
-/** A job snapshot's untyped request payload as an indexable object. */
-export function requestObject(request: unknown): Record<string, unknown> {
-  return request && typeof request === "object"
-    ? (request as Record<string, unknown>)
+/** Safe, route-declared public job metadata; raw requests are never available. */
+export function jobMetadataObject(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === "object"
+    ? (metadata as Record<string, unknown>)
     : {};
+}
+
+export function jobMetadataIdentity(metadata: unknown): string[] {
+  const identity = jobMetadataObject(metadata).identity;
+  return Array.isArray(identity)
+    ? identity.filter((part): part is string => typeof part === "string")
+    : [];
 }
 
 export function requestString(

@@ -437,6 +437,7 @@ func getHomeHealth(user apischema.AccountUser) UserHomeHealth {
 		_, gidToGroup := parseGroupFile()
 		health.OwnerUID = int(stat.Uid)
 		health.GroupGID = int(stat.Gid)
+		health.ownershipKnown = true
 		health.GroupName = gidToGroup[health.GroupGID]
 		health.OwnerMatches = health.OwnerUID == user.UID
 	}

@@ -39,7 +39,7 @@ vi.mock("@/api", async () => {
           useFetcher: () => apiMocks.configGetFetch,
         },
         set: {
-          useJobAction: apiMocks.configSetUseJobAction,
+          useAction: apiMocks.configSetUseJobAction,
         },
       },
       docker: {
@@ -161,7 +161,7 @@ function renderProvider({
     return { mutate: apiMocks.setConfigRemote };
   });
 
-  // Emulates useJobAction's success path: invalidates -> success, with the
+  // Emulates useAction's success path: invalidates -> success, with the
   // unwrapped job result (not a JobSnapshot).
   const fireJobActionSuccess = (result: unknown, variables: unknown) => {
     const config = jobActionConfigs.at(-1);

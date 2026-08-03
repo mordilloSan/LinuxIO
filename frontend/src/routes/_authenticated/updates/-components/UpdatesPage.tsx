@@ -71,7 +71,7 @@ const AvailableUpdatesPage = () => {
     recoveryPending,
   } = usePackageUpdateController();
   const { mutate: refreshCache, isPending: isRefreshingCache } =
-    linuxio.updates.refresh_cache.useJobAction({
+    linuxio.updates.refresh_cache.useAction({
       success: async () => {
         await refetch();
         toast.success("Update sources refreshed");

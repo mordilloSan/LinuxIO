@@ -6,6 +6,7 @@ import type {
   ConfigThemeColorsPayload as ThemeColors,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -222,9 +223,11 @@ function ThemeColorsSection() {
 
         <div style={{ display: "flex", gap: 2 }}>
           {(["light", "dark"] as const).map((m) => (
-            <button
+            <AppButton
+              color={editMode === m ? "primary" : "inherit"}
               key={m}
               onClick={() => setEditMode(m)}
+              size="small"
               style={{
                 padding: "2px 10px",
                 borderRadius: 999,
@@ -239,12 +242,13 @@ function ThemeColorsSection() {
                 fontSize: "0.75rem",
                 fontWeight: 500,
                 fontFamily: "inherit",
+                lineHeight: "normal",
+                minWidth: 0,
                 transition: "background 120ms ease, color 120ms ease",
               }}
-              type="button"
             >
               {m === "light" ? "Light" : "Dark"}
-            </button>
+            </AppButton>
           ))}
         </div>
 
@@ -281,15 +285,7 @@ function ThemeColorsSection() {
             <FrostedCard
               hoverLift
               key={key}
-              onClick={(e) => {
-                const target = e.target as HTMLElement;
-                if (target.closest("button, input")) return;
-                (e.currentTarget as HTMLElement)
-                  .querySelector<HTMLInputElement>('input[type="color"]')
-                  ?.click();
-              }}
               style={{
-                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -433,29 +429,24 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         value={displayValue}
       />
       <div style={{ position: "relative" }}>
-        <div
+        <AppButton
           aria-label={`Pick color for ${label}`}
+          color="inherit"
           onClick={(e) => {
             e.stopPropagation();
             colorInputRef.current?.click();
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              colorInputRef.current?.click();
-            }
-          }}
-          role="button"
           style={{
             width: 28,
             height: 28,
+            minWidth: 28,
+            padding: 0,
             borderRadius: theme.shape.borderRadius,
             backgroundColor: normalized,
             border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
             boxSizing: "border-box",
             cursor: "pointer",
           }}
-          tabIndex={0}
         />
         <input
           aria-hidden="true"

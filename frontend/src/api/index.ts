@@ -3,7 +3,7 @@
  *
  * JSON API (generated, Go-owned request/response contracts):
  *   useQuery(linuxio.system.get_cpu_info.queryOptions())
- *   linuxio.docker.start_container.useJobAction({ invalidates, success, error })
+ *   linuxio.docker.start_container.useAction({ invalidates, success, error })
  *   linuxio.docker.compose.useJobStreamAction({ onProgress })
  *
  * Streaming API (persistent/long-lived streams):
@@ -29,7 +29,6 @@ export type { RouteMode } from "./generated/route-metadata";
 export {
   isJobCancellationError,
   isJobSnapshot,
-  isJobLocallyHandled,
   isTerminalJobState,
   jobSnapshotResult,
   JOB_CANCELED_CODE,

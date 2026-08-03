@@ -6,8 +6,8 @@ import { loadRouteQueries } from "@/routes/-loader";
 import DockerDashboardPage from "./-components/DockerDashboardPage";
 
 export const Route = createFileRoute("/_authenticated/docker/")({
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.docker.list_containers.queryOptions(),
       linuxio.docker.list_images.queryOptions(),
       linuxio.docker.list_networks.queryOptions(),

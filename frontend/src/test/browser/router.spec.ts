@@ -1,7 +1,32 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+
+const ROUTES_DIR = path.resolve(process.cwd(), "src/routes");
+
+/**
+ * Every route file that the TanStack plugin code-splits, discovered from disk
+ * rather than hand-listed, so a new route is covered the moment it is added.
+ *
+ * Mirrors the generator's own filters: `-` prefixed files and directories are
+ * ignored, and `__root.tsx` is never split because it is in the initial bundle.
+ */
+function collectRouteFiles(directory: string, prefix = ""): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith("-"))
+    .flatMap((entry) => {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        return collectRouteFiles(path.join(directory, entry.name), relative);
+      }
+      if (!entry.name.endsWith(".tsx") || entry.name === "__root.tsx") {
+        return [];
+      }
+      return [relative];
+    })
+    .sort((a, b) => a.localeCompare(b));
+}
 
 test.describe("TanStack child-route browser lifecycle", () => {
   test("supports direct links and refresh", async ({ page }) => {
@@ -99,7 +124,7 @@ test.describe("TanStack child-route browser lifecycle", () => {
   });
 });
 
-test("keeps every page-level child route in its own production chunk", () => {
+test("keeps every route component in its own production chunk", () => {
   const manifestPath = path.resolve(
     process.cwd(),
     "../backend/webserver/web/frontend/.vite/manifest.json",
@@ -108,40 +133,24 @@ test("keeps every page-level child route in its own production chunk", () => {
     string,
     { file: string; isDynamicEntry?: boolean }
   >;
-  const childRouteFiles = [
-    "accounts/index.tsx",
-    "accounts/groups.tsx",
-    "services/index.tsx",
-    "services/timers.tsx",
-    "services/sockets.tsx",
-    "storage/index.tsx",
-    "storage/lvm.tsx",
-    "shares/index.tsx",
-    "shares/mounts.tsx",
-    "updates/index.tsx",
-    "updates/history.tsx",
-    "docker/index.tsx",
-    "docker/containers.tsx",
-    "docker/compose.tsx",
-    "docker/networks.tsx",
-    "docker/volumes.tsx",
-    "docker/images.tsx",
-    "vm/index.tsx",
-    "vm/networks.tsx",
-    "vm/images.tsx",
-    "vm/machines.tsx",
-  ];
+  const routeFiles = collectRouteFiles(ROUTES_DIR);
 
-  const chunks = childRouteFiles.map((routeFile) => {
-    const key =
-      `src/routes/_authenticated/${routeFile}?tsr-split=component` as const;
+  // A route tree small enough to hand-list would mean the discovery above is
+  // broken (wrong cwd, wrong directory) rather than that routes were deleted.
+  expect(routeFiles.length).toBeGreaterThan(20);
+
+  const chunks = routeFiles.map((routeFile) => {
+    const key = `src/routes/${routeFile}?tsr-split=component`;
     const entry = manifest[key];
-    expect(entry, `Missing component chunk for ${routeFile}`).toBeDefined();
+    expect(
+      entry,
+      `No split component chunk for ${routeFile}. Every route file must export a component so autoCodeSplitting can lazy-load it.`,
+    ).toBeDefined();
     expect(entry.isDynamicEntry, `${routeFile} is not a dynamic entry`).toBe(
       true,
     );
     return entry.file;
   });
 
-  expect(new Set(chunks).size).toBe(childRouteFiles.length);
+  expect(new Set(chunks).size).toBe(routeFiles.length);
 });

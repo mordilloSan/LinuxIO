@@ -27,7 +27,7 @@ const CreateGroupDialog = ({ open, onClose }: CreateGroupDialogProps) => {
   const [gid, setGid] = useState("");
 
   const { mutate: createGroup, isPending } =
-    linuxio.accounts.create_group.useJobAction({
+    linuxio.accounts.create_group.useAction({
       success: () => {
         toast.success(`Group "${name}" created successfully`);
         handleClose();

@@ -26,7 +26,7 @@ import (
 )
 
 // --- Handler Implementations ---
-func ListInterfaces(ctx context.Context) (any, error) {
+func ListInterfaces(ctx context.Context) ([]WireGuardInterfaceUI, error) {
 	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
@@ -507,6 +507,7 @@ func applyPeerRuntimeStats(peers []PeerInfo, statsByPub map[string]peerRuntimeSt
 		peers[i].TxBytes = stats.TxBytes
 		peers[i].RxBps = stats.RxBps
 		peers[i].TxBps = stats.TxBps
+		peers[i].runtimeStatsKnown = true
 	}
 }
 
@@ -724,7 +725,7 @@ func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRe
 	return "removed", nil
 }
 
-func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) (any, error) {
+func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerInfo, error) {
 	if req.InterfaceName == "" {
 		slog.Error("invalid list peers request")
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")

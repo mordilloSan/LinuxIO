@@ -10,8 +10,8 @@ import { loadRouteQueries } from "@/routes/-loader";
 import LVMManagement from "./-components/LVMManagement";
 
 export const Route = createFileRoute("/_authenticated/storage/lvm")({
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.storage.list_pvs.queryOptions(),
       linuxio.storage.list_vgs.queryOptions(),
       linuxio.storage.list_lvs.queryOptions(),

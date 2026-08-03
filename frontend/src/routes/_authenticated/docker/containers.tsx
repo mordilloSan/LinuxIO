@@ -10,8 +10,8 @@ export const Route = createFileRoute("/_authenticated/docker/containers")({
   validateSearch: (search) => ({
     ...optionalString(search, "container"),
   }),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.docker.list_containers.queryOptions(),
       linuxio.docker.get_container_auto_update.queryOptions(),
     ]),

@@ -156,24 +156,23 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     setManualTime(toDatetimeLocal(serverTime));
   }
 
-  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useJobAction({
+  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useAction({
     error: "Failed to set timezone",
     toast: DASHBOARD_TOAST_META,
   });
-  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useJobAction({
+  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useAction({
     error: "Failed to update NTP",
     toast: DASHBOARD_TOAST_META,
   });
   const { mutateAsync: setServers } =
-    linuxio.datetime.set_ntp_servers.useJobAction({
+    linuxio.datetime.set_ntp_servers.useAction({
       error: "Failed to set NTP servers",
       toast: DASHBOARD_TOAST_META,
     });
-  const { mutateAsync: setTime } =
-    linuxio.datetime.set_server_time.useJobAction({
-      error: "Failed to set server time",
-      toast: DASHBOARD_TOAST_META,
-    });
+  const { mutateAsync: setTime } = linuxio.datetime.set_server_time.useAction({
+    error: "Failed to set server time",
+    toast: DASHBOARD_TOAST_META,
+  });
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -309,6 +308,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                     variant="outlined"
                   />
                   <AppIconButton
+                    aria-label="Add NTP server"
                     onClick={addServer}
                     style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
                     title="Add server"
@@ -316,6 +316,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                     <Icon icon="mdi:plus" width={18} />
                   </AppIconButton>
                   <AppIconButton
+                    aria-label="Remove NTP server"
                     onClick={() => removeServer(i)}
                     style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
                     title="Remove server"

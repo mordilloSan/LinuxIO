@@ -122,7 +122,21 @@ export function useUploadJobs(
 
       const pendingUploadKey = jobIdentityKey(
         JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH,
-        request,
+        [
+          request.destination,
+          ...request.files.flatMap((file) => [
+            "file",
+            file.path,
+            "size",
+            file.size,
+          ]),
+          ...(request.directories ?? []).flatMap((directory) => [
+            "directory",
+            directory,
+          ]),
+          "overwrite",
+          request.overwrite ? "true" : "false",
+        ],
       );
       pendingLocalJobKeysRef.current.add(pendingUploadKey);
 

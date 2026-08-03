@@ -327,10 +327,10 @@ const IndexerSettingsSection = () => {
     }),
   );
 
-  const setConfigMutation = linuxio.indexer.set_config.useJobAction({
+  const setConfigMutation = linuxio.indexer.set_config.useAction({
     error: "Failed to save indexer settings",
   });
-  const setTimerMutation = linuxio.indexer.set_timer_interval.useJobAction({
+  const setTimerMutation = linuxio.indexer.set_timer_interval.useAction({
     error: "Failed to save indexer timer",
     invalidates: [linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT)],
   });

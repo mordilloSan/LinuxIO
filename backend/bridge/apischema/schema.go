@@ -18,10 +18,12 @@ type RouteSpec struct {
 	Privileged bool
 	NoEndpoint bool
 
-	Request TypeSpec
-	Result  TypeSpec
+	Request  TypeSpec
+	Result   TypeSpec
+	Progress TypeSpec
 
-	Decode bridgeipc.RequestDecoder
+	Decode   bridgeipc.RequestDecoder
+	Metadata bridgeipc.JobMetadataBuilder
 }
 
 type RouteSpecOption func(*RouteSpec)
@@ -35,6 +37,14 @@ func Privileged() RouteSpecOption {
 func NoEndpoint() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.NoEndpoint = true
+	}
+}
+
+// WithJobProgress declares the payload emitted by a job's progress frames.
+// The result contract remains the job's terminal payload.
+func WithJobProgress[Progress any]() RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.Progress = TypeOf[Progress]()
 	}
 }
 
@@ -56,6 +66,22 @@ type HandlerFunc[Request any] func(ctx context.Context, req Request, emit bridge
 type RunnerFunc[Request any] func(ctx context.Context, job *bridgeipc.Job, req Request) (any, error)
 type DuplexFunc[Request any] func(ctx context.Context, stream net.Conn, req Request) error
 
+// WithJobMetadata declares a typed, safe request projection for a Runner job.
+// Its generic request parameter prevents a route from accidentally reading an
+// unrelated request model, while bridge snapshots remain free of raw requests.
+func WithJobMetadata[Request any](build func(Request) bridgeipc.JobMetadata) RouteSpecOption {
+	return func(spec *RouteSpec) {
+		spec.Metadata = func(value any) bridgeipc.JobMetadata {
+			req, ok := value.(Request)
+			if !ok {
+				var zero Request
+				panic(fmt.Sprintf("apischema: metadata for %s got %T, want %T", spec.Route, value, zero))
+			}
+			return build(req)
+		}
+	}
+}
+
 func Query[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
 	return newRoute[Request, Result](KindHandler, bridgeipc.ModeQuery, name, opts...)
 }
@@ -73,9 +99,14 @@ func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Rout
 }
 
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return Route[Request, Result]{
-		spec: routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), requestDecoder[Request](), opts...),
+	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), requestDecoder[Request](), opts...)
+	if spec.Metadata != nil && (spec.Kind != KindRunner || spec.Mode != bridgeipc.ModeJob) {
+		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on job runners", spec.Route))
 	}
+	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeJob {
+		panic(fmt.Sprintf("apischema: route %s progress is allowed only on job routes", spec.Route))
+	}
+	return Route[Request, Result]{spec: spec}
 }
 
 func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, result TypeSpec, decode bridgeipc.RequestDecoder, opts ...RouteSpecOption) RouteSpec {
@@ -121,6 +152,10 @@ func (r RouteSpec) RequestSpec() TypeSpec {
 
 func (r RouteSpec) ResultSpec() TypeSpec {
 	return r.Result
+}
+
+func (r RouteSpec) ProgressSpec() (TypeSpec, bool) {
+	return r.Progress, r.Progress.GoType != nil
 }
 
 // Handle binds the ordinary request-in/result-out handler for this route.
@@ -314,10 +349,6 @@ func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
 	router.Duplex(spec.Route, binding.Handle, opts...)
 }
 
-func RequestDecoder(spec RouteSpec) bridgeipc.RequestDecoder {
-	return requireDecoder(spec, spec.Decode)
-}
-
 func requireRouteSpec(spec RouteSpec) RouteSpec {
 	if spec.Route == "" {
 		panic("apischema: route spec cannot be empty")
@@ -425,6 +456,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	opts := append([]bridgeipc.RouteOption(nil), explicit...)
 	if spec.Privileged {
 		opts = append(opts, bridgeipc.Privileged)
+	}
+	if spec.Metadata != nil {
+		opts = append(opts, bridgeipc.WithJobMetadata(spec.Metadata))
 	}
 	return opts
 }

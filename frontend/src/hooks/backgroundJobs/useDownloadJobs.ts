@@ -177,11 +177,8 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
       }
 
       const pendingKey = isSingleFile
-        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, { path: paths[0] })
-        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, {
-            format: "zip",
-            paths,
-          });
+        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, [paths[0]])
+        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, ["zip", ...paths]);
       pendingLocalJobKeysRef.current.add(pendingKey);
       let pendingKeyHeld = true;
 

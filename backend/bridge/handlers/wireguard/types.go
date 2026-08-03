@@ -54,6 +54,7 @@ type PeerInfo struct {
 	TxBytes           int64   `json:"tx_bytes"`
 	RxBps             float64 `json:"rx_bps"` // bytes per second
 	TxBps             float64 `json:"tx_bps"` // bytes per second
+	runtimeStatsKnown bool
 }
 
 type ipManager struct {

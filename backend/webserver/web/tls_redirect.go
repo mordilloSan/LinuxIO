@@ -4,9 +4,17 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
+	"time"
+)
+
+const (
+	tlsRedirectIOTimeout   = 5 * time.Second
+	maxRedirectRequestSize = 8 * 1024
 )
 
 // tlsRedirectListener wraps a net.Listener and peeks at each connection's
@@ -14,48 +22,122 @@ import (
 // assumed to be plain HTTP and gets an automatic redirect to HTTPS.
 type tlsRedirectListener struct {
 	net.Listener
-	tlsCfg *tls.Config
-	port   int
+	tlsCfg   *tls.Config
+	port     int
+	done     chan struct{}
+	close    sync.Once
+	wg       sync.WaitGroup
+	results  chan tlsRedirectResult
+	activeMu sync.Mutex
+	active   map[net.Conn]struct{}
+}
+
+type tlsRedirectResult struct {
+	conn net.Conn
+	err  error
 }
 
 // NewTLSRedirectListener returns a net.Listener that serves TLS for real TLS
 // connections and returns an HTTP 301 redirect for plain-HTTP connections,
 // all on the same port.
 func NewTLSRedirectListener(inner net.Listener, tlsCfg *tls.Config, port int) net.Listener {
-	return &tlsRedirectListener{Listener: inner, tlsCfg: tlsCfg, port: port}
+	l := &tlsRedirectListener{
+		Listener: inner,
+		tlsCfg:   tlsCfg,
+		port:     port,
+		done:     make(chan struct{}),
+		results:  make(chan tlsRedirectResult),
+		active:   make(map[net.Conn]struct{}),
+	}
+	l.wg.Add(1)
+	go l.acceptLoop()
+	return l
 }
 
 func (l *tlsRedirectListener) Accept() (net.Conn, error) {
+	select {
+	case result := <-l.results:
+		select {
+		case <-l.done:
+			if result.conn != nil {
+				_ = result.conn.Close()
+			}
+			return nil, net.ErrClosed
+		default:
+		}
+		return result.conn, result.err
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *tlsRedirectListener) acceptLoop() {
+	defer l.wg.Done()
 	for {
 		conn, err := l.Listener.Accept()
 		if err != nil {
-			return nil, err
+			select {
+			case l.results <- tlsRedirectResult{err: err}:
+				continue
+			case <-l.done:
+				return
+			}
 		}
-
-		br := bufio.NewReader(conn)
-		// Peek at the first byte without consuming it.
-		first, err := br.Peek(1)
-		if err != nil {
-			conn.Close()
-			continue
+		if !l.trackActive(conn) {
+			_ = conn.Close()
+			return
 		}
-
-		peeked := newPeekedConn(conn, br)
-
-		if first[0] == 0x16 {
-			// TLS ClientHello — hand off to crypto/tls.
-			return tls.Server(peeked, l.tlsCfg), nil
-		}
-
-		// Plain HTTP — send a redirect and close.
-		go l.redirectHTTP(peeked)
+		l.wg.Go(func() {
+			defer l.removeActive(conn)
+			l.classify(conn)
+		})
 	}
+}
+
+func (l *tlsRedirectListener) trackActive(conn net.Conn) bool {
+	l.activeMu.Lock()
+	defer l.activeMu.Unlock()
+	select {
+	case <-l.done:
+		return false
+	default:
+		l.active[conn] = struct{}{}
+		return true
+	}
+}
+
+func (l *tlsRedirectListener) removeActive(conn net.Conn) {
+	l.activeMu.Lock()
+	delete(l.active, conn)
+	l.activeMu.Unlock()
+}
+
+func (l *tlsRedirectListener) classify(conn net.Conn) {
+	br := bufio.NewReader(conn)
+	_ = conn.SetReadDeadline(time.Now().Add(tlsRedirectIOTimeout))
+	first, err := br.Peek(1)
+	if err != nil {
+		conn.Close()
+		return
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	peeked := newPeekedConn(conn, br)
+	if first[0] == 0x16 {
+		select {
+		case l.results <- tlsRedirectResult{conn: tls.Server(peeked, l.tlsCfg)}:
+		case <-l.done:
+			conn.Close()
+		}
+		return
+	}
+	l.redirectHTTP(peeked)
 }
 
 func (l *tlsRedirectListener) redirectHTTP(conn net.Conn) {
 	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(tlsRedirectIOTimeout))
 
-	req, err := http.ReadRequest(bufio.NewReader(conn))
+	req, err := http.ReadRequest(bufio.NewReader(io.LimitReader(conn, maxRedirectRequestSize)))
 	if err != nil {
 		return
 	}
@@ -78,6 +160,21 @@ func (l *tlsRedirectListener) redirectHTTP(conn net.Conn) {
 			"error", err)
 		return
 	}
+}
+
+func (l *tlsRedirectListener) Close() error {
+	var err error
+	l.close.Do(func() {
+		close(l.done)
+		err = l.Listener.Close()
+		l.activeMu.Lock()
+		for conn := range l.active {
+			_ = conn.Close()
+		}
+		l.activeMu.Unlock()
+		l.wg.Wait()
+	})
+	return err
 }
 
 // peekedConn wraps a net.Conn so that already-buffered bytes from the

@@ -26,10 +26,6 @@ type createdVMStorage struct {
 
 type vmCreateReporter func(apischema.VMCreateProgress)
 
-func CreateVM(ctx context.Context, req apischema.VMCreateRequest) (apischema.VirtualMachine, error) {
-	return CreateVMWithProgress(ctx, req, nil)
-}
-
 func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, report vmCreateReporter) (apischema.VirtualMachine, error) {
 	reportVMCreateProgress(report, "validating", "Validating VM request", "", nil)
 	if validateErr := validateCreateRequest(req); validateErr != nil {

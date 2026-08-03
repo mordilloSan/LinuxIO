@@ -43,9 +43,9 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   );
 
   // Job action for adding an interface; invalidation comes from the
-  // JOB_QUERY_INVALIDATIONS manifest.
+  // OPERATION_QUERY_INVALIDATIONS manifest.
   const { mutate: addInterface, isPending: isAddingInterface } =
-    linuxio.wireguard.add_interface.useJobAction({
+    linuxio.wireguard.add_interface.useAction({
       error: (error) => {
         setError(
           getMutationErrorMessage(

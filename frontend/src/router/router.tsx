@@ -26,7 +26,7 @@ export const router = createRouter({
   defaultNotFoundComponent: NotFoundPage,
   defaultPendingComponent: PageLoader,
   defaultPreload: "intent",
-  defaultPreloadDelay: 0,
+  defaultPreloadDelay: 50,
   defaultPendingMs: 150,
   defaultPendingMinMs: 0,
   defaultPreloadStaleTime: 0,

@@ -15,8 +15,8 @@ const access = {
 
 export const Route = createFileRoute("/_authenticated/vm")({
   beforeLoad: ({ context }) => requireAccess(access, context),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.virt.list.queryOptions(),
       linuxio.virt.preflight.queryOptions({}),
     ]),

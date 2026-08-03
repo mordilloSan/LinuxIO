@@ -10,7 +10,6 @@ import {
 import {
   bindStreamHandlers,
   isJobCancellationError,
-  isJobLocallyHandled,
   isTerminalJobState,
   type JobEvent,
   type JobSnapshot,
@@ -20,7 +19,7 @@ import {
   type Stream,
   useStreamMux,
 } from "@/api";
-import { JOB_QUERY_INVALIDATIONS } from "@/api/job-query-invalidations";
+import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
@@ -31,7 +30,8 @@ import type {
 } from "@/types/backgroundJobs";
 import {
   jobIdentityKey,
-  requestObject,
+  jobMetadataIdentity,
+  jobMetadataObject,
   requestString,
 } from "@/utils/backgroundJobs";
 
@@ -113,13 +113,13 @@ export function useRecoveredJobs(
       }
       if (
         pendingLocalJobKeysRef.current.has(
-          jobIdentityKey(job.type, job.request),
+          jobIdentityKey(job.type, jobMetadataIdentity(job.metadata)),
         )
       ) {
         return;
       }
 
-      const request = requestObject(job.request);
+      const metadata = jobMetadataObject(job.metadata);
       const getName = (path: string | undefined, fallback: string) => {
         const trimmed = (path ?? "").replace(/\/+$/, "");
         if (!trimmed) return fallback;
@@ -170,7 +170,11 @@ export function useRecoveredJobs(
           | undefined;
         switch (job.type) {
           case JobTypes.JOB_TYPE_FILE_UPLOAD: {
-            const name = getName(requestString(request, "targetPath"), "file");
+            const name = getName(
+              requestString(metadata, "path") ??
+                requestString(metadata, "label"),
+              "file",
+            );
             return data?.phase === "waiting_for_client"
               ? `Upload waiting: ${name}`
               : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
@@ -182,7 +186,11 @@ export function useRecoveredJobs(
               : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
           case JobTypes.JOB_TYPE_FILE_DOWNLOAD: {
-            const name = getName(requestString(request, "path"), "file");
+            const name = getName(
+              requestString(metadata, "path") ??
+                requestString(metadata, "label"),
+              "file",
+            );
             return data?.phase === "waiting_for_client"
               ? `Download waiting: ${name}`
               : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
@@ -202,7 +210,7 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
             return (
               data?.message ??
-              `Docker compose ${requestString(request, "action") ?? "operation"}`
+              `Docker compose ${requestString(metadata, "action") ?? "operation"}`
             );
           case JobTypes.JOB_TYPE_PACKAGE_UPDATE:
             return data?.package_id
@@ -213,7 +221,7 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
             return data?.message ?? "Running SMART self-test";
           case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY: {
-            const cap = requestString(request, "capability") ?? "capability";
+            const cap = requestString(metadata, "capability") ?? "capability";
             return data?.message ?? `Installing ${cap}`;
           }
           default:
@@ -273,7 +281,7 @@ export function useRecoveredJobs(
               id: job.id,
               jobId: job.id,
               type: "indexer",
-              path: requestString(request, "path") ?? "/",
+              path: requestString(metadata, "path") ?? "/",
               bytesIndexed: 0,
               filesIndexed: 0,
               dirsIndexed: 0,
@@ -303,7 +311,7 @@ export function useRecoveredJobs(
             onSuccess: (result) => {
               setLastIndexerResult(
                 indexerResultFromFrame(
-                  requestString(request, "path") ?? "/",
+                  requestString(metadata, "path") ?? "/",
                   result as IndexerResultFrame | undefined,
                 ),
               );
@@ -334,7 +342,7 @@ export function useRecoveredJobs(
             return;
           }
           if (activeBackgroundJobIdsRef.current.has(job.id)) return;
-          const feedbackJob = { id: job.id, type: job.type, request };
+          const feedbackJob = { id: job.id, type: job.type, metadata };
           const feedbackEntry =
             TERMINAL_JOB_FEEDBACK[job.type] ?? GENERIC_JOB_FEEDBACK;
           const initialProgress = genericProgressPct(job.progress);
@@ -449,10 +457,10 @@ export function useRecoveredJobs(
           // 1) Attach progress trackers to jobs that don't have a local handler.
           attachRecoveredJob(job);
 
-          // 2) On terminal events, invalidate query caches for jobs whose type
-          //    has a mapping above and that aren't being tracked by a local
-          //    handler (those handlers are responsible for their own
-          //    invalidations).
+          // 2) On terminal events, always invalidate mapped query caches. A
+          //    local handler may already have done the same, but a duplicate
+          //    invalidation is safe; suppressing this fallback can leave stale
+          //    data when that handler detaches before completion.
           if (!isTerminalJobState(job.state)) return;
 
           // Airtight feedback fallback: attachRecoveredJob() bails on
@@ -466,15 +474,14 @@ export function useRecoveredJobs(
               {
                 id: job.id,
                 type: job.type,
-                request: requestObject(job.request),
+                metadata: jobMetadataObject(job.metadata),
               },
               outcome,
               feedbackDeps,
             );
           }
 
-          if (isJobLocallyHandled(job.id)) return;
-          const keys = JOB_QUERY_INVALIDATIONS[job.type];
+          const keys = OPERATION_QUERY_INVALIDATIONS[job.type];
           if (!keys) return;
           for (const queryKey of keys) {
             void queryClient.invalidateQueries({ queryKey });

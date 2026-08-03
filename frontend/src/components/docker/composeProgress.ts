@@ -1,22 +1,11 @@
 // Types and helpers for structured `docker compose --progress=json` events.
 // The backend (compose_sdk.go / background_operations.go) parses Docker's JSON
-// progress stream and forwards each event as a "progress" ComposeMessage; this
+// progress stream and forwards each generated ComposeProgress event; this
 // module turns that stream into per-layer task state for DockerComposeProgress.
 
-export interface ComposeProgress {
-  id: string; // layer id ("fbcfea79c1c4") or group ("Image alpine:3.17", "Container immich")
-  parent_id?: string; // set on layers, pointing at their "Image …" group
-  text: string; // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
-  status: string; // "Working" | "Done" | "Error"
-  details?: string; // Docker's humanized current (e.g. "2.097MB")
-  current?: number;
-  total?: number;
-  percent?: number;
-}
+import type { ComposeProgress } from "@/api";
 
-export type ComposeMessage =
-  | { type: "stdout" | "stderr" | "error" | "complete"; message: string }
-  | { type: "progress"; message: string; progress: ComposeProgress };
+export type { ComposeProgress } from "@/api";
 
 // ComposeTask is a ComposeProgress enriched with a monotonic best-known percent
 // (`pct`). Docker resets current/total between the download and extract phases,

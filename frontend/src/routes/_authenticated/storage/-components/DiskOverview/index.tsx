@@ -1,7 +1,7 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
@@ -174,15 +174,15 @@ const DriveDetails = ({
     type: JOB_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
     match: (job) => {
-      const request = job.request as { device?: string } | undefined;
-      return request?.device === rawDrive?.name;
+      const metadata = job.metadata as { device?: string } | undefined;
+      return metadata?.device === rawDrive?.name;
     },
     onRecover: (job) => {
       const deviceName = rawDrive?.name;
       if (!deviceName) return;
-      const request = job.request as { testType?: string } | undefined;
+      const metadata = job.metadata as { testType?: string } | undefined;
       const testType: "short" | "long" =
-        request?.testType === "long" ? "long" : "short";
+        metadata?.testType === "long" ? "long" : "short";
       setStartPending(testType);
       setTestProgress({
         type: "status",
@@ -233,7 +233,7 @@ const DriveDetails = ({
   const nvmeSelfTestLog = smartData?.nvme_self_test_log;
   return (
     <AppCollapse in={expanded} unmountOnExit>
-      <div onClick={(e: MouseEvent) => e.stopPropagation()}>
+      <div>
         <AppDivider style={{ margin: "16px 0" }} />
 
         <div
@@ -350,7 +350,7 @@ const DiskOverview = () => {
     [nfsMountsData],
   );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    linuxio.storage.unmount_filesystem.useJobAction({
+    linuxio.storage.unmount_filesystem.useAction({
       success: () => {
         toast.success("Filesystem unmounted");
         navigate({
@@ -365,7 +365,7 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    linuxio.storage.create_btrfs_subvolume.useJobAction({
+    linuxio.storage.create_btrfs_subvolume.useAction({
       success: (result) => {
         if (result.path) {
           toast.success(`Created subvolume at ${result.path}`);

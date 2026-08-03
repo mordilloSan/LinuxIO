@@ -77,7 +77,7 @@ const DockerFolderSettingsSection = () => {
   const { config, updateConfig } = useConfig();
   // Errors and toasts are handled by handleSave's try/catch.
   const { mutateAsync: createDockerFolder } =
-    linuxio.filebrowser.resource_post.useJobAction();
+    linuxio.filebrowser.resource_post.useAction();
   const { mutateAsync: validateDockerFolder } =
     linuxio.docker.validate_stack_directory.useAction();
   const dockerFolders = config.docker.folders;
@@ -322,19 +322,7 @@ const DockerFolderSettingsSection = () => {
 
         <FrostedCard
           hoverLift
-          onClick={(event) => {
-            if (!privileged) {
-              toast.error(
-                "Privileged mode is required to change Docker startup ordering.",
-              );
-              return;
-            }
-            const target = event.target as HTMLElement;
-            if (target.closest(".app-switch")) return;
-            setRequireMountsForFolders(!requireMountsForFolders);
-          }}
           style={{
-            cursor: privileged ? "pointer" : "not-allowed",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -373,29 +361,22 @@ const DockerFolderSettingsSection = () => {
           />
         </FrostedCard>
 
-        <FrostedCard
-          hoverLift
-          onClick={isSaving ? undefined : handleAddFolder}
-          onKeyDown={(event) => {
-            if (isSaving) return;
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              handleAddFolder();
-            }
-          }}
-          role="button"
-          style={{
-            padding: 12,
-            cursor: isSaving ? "default" : "pointer",
-            opacity: isSaving ? 0.65 : 1,
-          }}
-          tabIndex={isSaving ? -1 : 0}
-        >
-          <div
+        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
+          <AppButton
+            color="inherit"
+            disabled={isSaving}
+            fullWidth
+            onClick={handleAddFolder}
             style={{
-              display: "flex",
               alignItems: "center",
+              borderRadius: "inherit",
+              display: "flex",
               gap: theme.spacing(1.5),
+              justifyContent: "flex-start",
+              minWidth: 0,
+              opacity: isSaving ? 0.65 : 1,
+              padding: 12,
+              textAlign: "left",
             }}
           >
             <div style={folderIconStyle}>
@@ -409,7 +390,7 @@ const DockerFolderSettingsSection = () => {
                 Add another directory for compose stacks.
               </AppTypography>
             </div>
-          </div>
+          </AppButton>
         </FrostedCard>
 
         <div

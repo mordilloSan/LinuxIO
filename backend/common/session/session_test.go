@@ -20,17 +20,27 @@ func newTestManager(t *testing.T) *Manager {
 	return NewManager(st, cfg)
 }
 
-func TestManager_CreateGetSetDelete(t *testing.T) {
+func createTestSession(t *testing.T, m *Manager, user User, privileged bool) *Session {
+	t.Helper()
+	id, err := m.NewSessionID()
+	if err != nil {
+		t.Fatalf("NewSessionID: %v", err)
+	}
+	sess, err := m.CreateSession(id, user, privileged)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	return sess
+}
+
+func TestManager_CreateGetUpdateDelete(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
 	u := User{Username: "alice", UID: 1000, GID: 1000}
-	s, err := m.CreateSession(u, false)
-	if err != nil {
-		t.Fatalf("CreateSession error: %v", err)
-	}
+	s := createTestSession(t, m, u, true)
 	if s.SessionID == "" {
-		t.Fatalf("CreateSession returned empty SessionID")
+		t.Fatal("session has empty SessionID")
 	}
 	if s.Timing.IdleUntil.After(s.Timing.AbsoluteUntil) {
 		t.Fatalf("IdleUntil should not be after AbsoluteUntil")
@@ -41,14 +51,8 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 	if err != nil || got.SessionID != s.SessionID {
 		t.Fatalf("GetSession mismatch got=%v err=%v", got, err)
 	}
-
-	// Set privileged
-	if err := m.SetPrivileged(s.SessionID, true); err != nil {
-		t.Fatalf("SetPrivileged error: %v", err)
-	}
-	got2, _ := m.GetSession(s.SessionID)
-	if !got2.Privileged {
-		t.Fatalf("SetPrivileged did not persist")
+	if !got.Privileged {
+		t.Fatal("privileged flag did not persist")
 	}
 
 	caps := CapabilitiesAvailable{
@@ -64,9 +68,9 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 	if err := m.SetCapabilities(s.SessionID, caps); err != nil {
 		t.Fatalf("SetCapabilities error: %v", err)
 	}
-	got3, _ := m.GetSession(s.SessionID)
-	if got3.Capabilities != caps {
-		t.Fatalf("SetCapabilities did not persist: got=%+v want=%+v", got3.Capabilities, caps)
+	updated, _ := m.GetSession(s.SessionID)
+	if updated.Capabilities != caps {
+		t.Fatalf("SetCapabilities did not persist: got=%+v want=%+v", updated.Capabilities, caps)
 	}
 
 	// Delete
@@ -83,10 +87,7 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	defer m.Close()
 
 	u := User{Username: "bob", UID: 1001, GID: 1001}
-	s, err := m.CreateSession(u, false)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
+	s := createTestSession(t, m, u, false)
 
 	// Force time to move forward for a measurable refresh
 	time.Sleep(5 * time.Millisecond)
@@ -100,7 +101,7 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	}
 }
 
-func TestManager_NewSessionIDAndCreateSessionWithID(t *testing.T) {
+func TestManager_NewSessionIDAndCreateSession(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
@@ -112,9 +113,9 @@ func TestManager_NewSessionIDAndCreateSessionWithID(t *testing.T) {
 		t.Fatal("NewSessionID returned empty id")
 	}
 
-	s, err := m.CreateSessionWithID(id, User{Username: "erin", UID: 1004, GID: 1004}, true)
+	s, err := m.CreateSession(id, User{Username: "erin", UID: 1004, GID: 1004}, true)
 	if err != nil {
-		t.Fatalf("CreateSessionWithID: %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
 	if s.SessionID != id {
 		t.Fatalf("session id = %q, want %q", s.SessionID, id)
@@ -129,10 +130,7 @@ func TestManager_WriteAndValidateCookie(t *testing.T) {
 	defer m.Close()
 
 	u := User{Username: "carl", UID: 1002, GID: 1002}
-	s, err := m.CreateSession(u, false)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
+	s := createTestSession(t, m, u, false)
 
 	// Write cookie
 	rr := httptest.NewRecorder()
@@ -218,10 +216,7 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 		}
 	})
 
-	s, err := m.CreateSession(User{Username: "dana", UID: 1003, GID: 1003}, false)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
+	s := createTestSession(t, m, User{Username: "dana", UID: 1003, GID: 1003}, false)
 
 	select {
 	case reason := <-done:

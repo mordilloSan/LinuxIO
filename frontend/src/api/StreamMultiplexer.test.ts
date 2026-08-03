@@ -287,4 +287,18 @@ describe("StreamMultiplexer", () => {
     vi.advanceTimersByTime(25);
     await expect(timedOut).resolves.toBe(false);
   });
+
+  it("abandons a pending readiness wait when its caller aborts", async () => {
+    initStreamMux();
+    const controller = new AbortController();
+
+    const ready = waitForStreamMux(10_000, controller.signal);
+    controller.abort();
+
+    await expect(ready).rejects.toMatchObject({ name: "AbortError" });
+
+    // The aborted waiter has unsubscribed and cannot be resolved later.
+    FakeWebSocket.latest().open();
+    await expect(ready).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

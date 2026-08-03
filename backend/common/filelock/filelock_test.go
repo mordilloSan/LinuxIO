@@ -73,18 +73,18 @@ func TestAcquireExclusiveTimeout(t *testing.T) {
 	}
 }
 
-func TestWithExclusiveRunsAndReleases(t *testing.T) {
+func TestRunExclusiveRunsAndReleases(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.lock")
 	called := false
 
-	if err := WithExclusive(context.Background(), path, func() error {
+	if err := RunExclusive(context.Background(), path, func() error {
 		called = true
 		return nil
 	}); err != nil {
-		t.Fatalf("WithExclusive: %v", err)
+		t.Fatalf("RunExclusive: %v", err)
 	}
 	if !called {
-		t.Fatal("WithExclusive did not call function")
+		t.Fatal("RunExclusive did not call function")
 	}
 	if release, err := AcquireExclusive(context.Background(), path, WithTimeout(50*time.Millisecond)); err != nil {
 		t.Fatalf("lock was not released: %v", err)

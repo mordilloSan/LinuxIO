@@ -13,8 +13,8 @@ export const Route = createFileRoute("/_authenticated/network")({
     ...optionalString(search, "sort"),
     ...optionalString(search, "tab"),
   }),
-  loader: ({ context, preload }) =>
-    loadRouteQueries({ context, preload }, [
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
       linuxio.network.get_network_info.queryOptions(),
     ]),
   component: NetworkInterfaceList,

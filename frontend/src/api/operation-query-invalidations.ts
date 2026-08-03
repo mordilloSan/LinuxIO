@@ -13,6 +13,15 @@ const CONTAINER_IMAGE_KEYS = [
 const COMPOSE_KEYS = [
   endpointQueryPrefix("docker.list_compose_projects"),
   endpointQueryPrefix("docker.list_containers"),
+  endpointQueryPrefix("docker.list_images"),
+  endpointQueryPrefix("docker.list_networks"),
+  endpointQueryPrefix("docker.list_volumes"),
+  endpointQueryPrefix("docker.get_docker_info"),
+];
+
+const ACCOUNT_USER_KEYS = [
+  endpointQueryPrefix("accounts.list_users"),
+  endpointQueryPrefix("accounts.get_user_details"),
 ];
 
 // Filebrowser listing caches. Fresh transfers refresh the listing via their
@@ -32,6 +41,8 @@ const INDEXER_KEYS = [
 
 const UNIT_KEYS = [
   endpointQueryPrefix("systemd.list_services"),
+  endpointQueryPrefix("systemd.list_sockets"),
+  endpointQueryPrefix("systemd.list_timers"),
   endpointQueryPrefix("systemd.get_unit_info"),
 ];
 
@@ -47,20 +58,20 @@ const VM_KEYS = [
 ];
 
 /**
- * Single source of truth for which query caches a completed job makes stale,
- * keyed by route (== job type).
+ * Single source of truth for which query caches a completed operation makes
+ * stale, keyed by route.
  *
- * Consumed from both job lifecycles:
- * - `useJobAction`/`useJobStreamAction` use the entry as the default
- *   `invalidates` for jobs started and awaited locally.
+ * Consumed from direct and job lifecycles:
+ * - `useAction`/`useJobAction`/`useJobStreamAction` use the entry as the
+ *   default `invalidates` for operations started and awaited locally.
  * - `useRecoveredJobs` applies the entry when a job reaches a terminal state
- *   on the events stream with no local handler (page reload, other session),
- *   skipping jobs registered via `markJobLocallyHandled`.
+ *   on the events stream. Repeating a local invalidation is intentionally
+ *   harmless and preserves freshness when the local handler detached.
  *
  * Routes without an entry invalidate nothing by default — their call sites
  * own invalidation explicitly (conditional logic, cache writes, refetches).
  */
-export const JOB_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
+export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   // Package-update streams may detach when the Updates layout unmounts; the
   // global jobs event owner performs this invalidation on terminal state.
   "packages.update": [endpointQueryPrefix("updates.get_updates_basic")],
@@ -91,28 +102,30 @@ export const JOB_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.compose_down": COMPOSE_KEYS,
   "docker.compose_stop": COMPOSE_KEYS,
   "docker.compose_restart": COMPOSE_KEYS,
+  "docker.compose": COMPOSE_KEYS,
   "docker.delete_stack": COMPOSE_KEYS,
   "docker.system_prune": [
     endpointQueryPrefix("docker.list_containers"),
     endpointQueryPrefix("docker.list_images"),
     endpointQueryPrefix("docker.list_volumes"),
     endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.get_docker_info"),
   ],
   "docker.set_container_auto_update": [
     endpointQueryPrefix("docker.get_container_auto_update"),
   ],
 
-  "accounts.create_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.delete_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.modify_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.lock_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.unlock_user": [endpointQueryPrefix("accounts.list_users")],
-  "accounts.change_password": [endpointQueryPrefix("accounts.list_users")],
+  "accounts.create_user": ACCOUNT_USER_KEYS,
+  "accounts.delete_user": ACCOUNT_USER_KEYS,
+  "accounts.modify_user": ACCOUNT_USER_KEYS,
+  "accounts.lock_user": ACCOUNT_USER_KEYS,
+  "accounts.unlock_user": ACCOUNT_USER_KEYS,
+  "accounts.change_password": ACCOUNT_USER_KEYS,
   "accounts.create_group": [endpointQueryPrefix("accounts.list_groups")],
   "accounts.delete_group": [endpointQueryPrefix("accounts.list_groups")],
   "accounts.modify_group_members": [
     endpointQueryPrefix("accounts.list_groups"),
-    endpointQueryPrefix("accounts.list_users"),
+    ...ACCOUNT_USER_KEYS,
   ],
   "accounts.terminate_session": [
     endpointQueryPrefix("accounts.get_user_details"),

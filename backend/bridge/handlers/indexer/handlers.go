@@ -11,9 +11,9 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
-	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).HandleEvents(handleGetStatus),
-	apischema.Job[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Job[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
+	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Query[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Query[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
 
 var Routes = api.Routes()
@@ -27,9 +27,9 @@ func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.Inde
 	return FetchConfig(ctx)
 }
 
-func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerDaemonStatus, error) {
 	status, err := FetchStatus(ctx)
-	return bridgeipc.EmitResult(emit, status, err)
+	return indexerStatusToAPI(status), err
 }
 
 func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch) (apischema.IndexerConfigSetResult, error) {

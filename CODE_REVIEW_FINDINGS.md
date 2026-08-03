@@ -1,182 +1,386 @@
-# Code review — uncommitted working tree on `dev/v0.17.0` (2026-07-29, completed 2026-07-30)
+# Code Review Findings
 
-**Scope:** the ~2870-line working diff — bridge jobs/router admission rework, routed-tab child-route migration (`RoutedTabContainer`/`RoutedTabLayout`/`RoutedTabActions`), package-updater controller + job recovery, docker/updates pages, and the new/updated tests.
+- **Date:** 2026-08-03
+- **Original baseline:** `dev/v0.17.0`, HEAD `a6c67227`
+- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `ad25f323`, plus
+  the current working tree
+- **Scope:** full read of `backend/bridge/cmd/` and `backend/webserver/cmd/` (11 files, ~1,100 lines), plus independent verification of an external report covering `backend/webserver/web/tls_redirect.go`, `backend/webserver/bridge/bridge.go`, `backend/common/ipc/relay/protocol.go`, and `backend/auth/linuxio-auth.c`.
+- **Focus:** idiomatic Go, performance, stability. Not a security audit.
+- **Method:** every claim was cross-checked against the packages the code calls (router, relay, logging, session) before being flagged. Original line numbers refer to the original review snapshot; resolution notes cite the current code.
+- **Current code validation:** `make check-backend` passed after the E4
+  working-tree fix listed below.
 
-**Process note:** 10 finder angles, all now complete — reuse, simplification, efficiency, conventions, altitude, wrapper-correctness, removed-behavior audit (2026-07-29), plus concurrency, security, and a frontend sweep (2026-07-30). A dedicated verification pass re-verified the contested findings against the current tree, re-anchored line numbers after the fixes, and validated the applied resolutions. Findings are deduped across finders (several were found independently 2–3 times, noted inline). The conventions/memory-rules check and the security angle both came back clean.
+At the original review snapshot the working tree contained uncommitted fixes
+(with new tests) in
+`backend/bridge/cmd/yamux.go`, `backend/common/ipc/relay/protocol.go`,
+`backend/webserver/bridge/bridge.go`, and `backend/webserver/web/tls_redirect.go`.
+Those fixes, together with the bridge lifecycle/state cleanup, are now committed
+in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`; findings 4,
+7, 8, and most of 9 are committed in `e595eada`; E3 is committed in `a5802171`,
+and E4 is committed in `ad25f323`. The current working tree fixes E6 and E7.
+Statuses below reflect the current tree;
+intervening unrelated commits are outside this review.
+
+## Current status summary
+
+- **Fixed in committed code:** findings 1-8 and most of 9; E1-E5 and E8.
+- **Fixed in the current working tree:** E6 and E7.
+- **Still open:** the channel-direction nit in finding 9; E9 and E10.
+
+## Overall verdict (cmd folders)
+
+Solid, modern Go. Exit-code discipline (`Run` returns an int, only `main` exits), the
+`sync.Once` connection closer, non-blocking sends to buffered shutdown channels, the
+hand-rolled `systemdListeners` (correct PID check, env unsetting, `CloseOnExec` —
+matches go-systemd semantics without the dependency), and current idioms
+(`WaitGroup.Go`, `strings.SplitSeq`, range-over-int) are all used correctly.
+
+Performance: nothing urgent to fix. The only hot paths are the per-request HTTP
+wrapper (one `time.Now` + two atomics — negligible, and the right design for idle
+tracking) and per-stream setup in yamux (a counter increment + a `strconv` —
+negligible). Everything else is startup/shutdown code. The original bridge
+shutdown weakness described below has since been replaced by explicit
+cancel/close/bounded-drain sequencing in `a08258bd`.
+
+Verified non-findings (checked and cleared):
+
+- The ignored `Dispatch` error in `handleYamuxStream` is fine — `Router.Dispatch`
+  writes the error frame to the peer and logs the outcome itself
+  (`backend/common/ipc/bridge/router.go`).
+- Logging before `syscall.Umask` in `bridge/cmd/root.go` is harmless — logging goes
+  to journald, not files (`backend/common/logging/logging.go`).
 
 ---
 
-> **Resolution update (2026-07-29):** A5, B5, and B6 are closed. The fixes were validated with `make check-frontend` (TypeScript, lint/format, and 496 frontend tests).
+## Findings — stability
 
-> **Resolution update (2026-07-30, second pass):** the reviewed diff has since been committed (`163564c2`, `d41b95d6`), so "before commit" below means "before the next commit". The `usePackageUpdater` cluster is now fixed and validated with `make check-frontend` (TypeScript, lint/format, 514 frontend tests): **A1, A2, A3, A6, B1, C1, C2, D7 are closed**, B2 is half-closed (details inline). Two symptoms the earlier passes missed were found while verifying and are fixed with them: a **navbar-initiated cancel painted a red failure alert on the Updates page** (B1's mirror image), and A1 made a **false "Update cancelled" after a successful update** reachable on every run (see A1). Still open: **B7** (backend), the second half of **B2** with **D5/D6**, **D1**, **D2**, **D8**, and section E.
+### 1. `bridgeClosing` is dead code — FIXED (`a08258bd`)
 
-> **Completion update (2026-07-30):** the remaining three angles and the verification pass ran. Results: the `RoutedTabContainer` rework turned out to close **six** findings, not one — A4, B3, B4, D3, D4 are now verified resolved alongside B5 (details inline). B1 (cancel toasted as failure) was **confirmed end-to-end**. Two new findings were added: **B7** (canceled handler keeps running while its slot is promoted — empirically reproduced, pre-existing mechanism) and **B8** (delete dialog can vanish mid-delete — follow-on to the B6 fix). Security review: clean, and the diff actually *hardens* several paths (see section G).
+Declared at `backend/bridge/cmd/lifecycle.go:22` as "Global shutdown signal for all
+handlers", closed at `lifecycle.go:106` — and never read anywhere in the codebase
+(grepped all of `backend/`). Either handlers were supposed to select on it and
+don't, or it's a leftover. The comment actively misleads: shutdown propagation
+actually happens via `sessionCancel()` + `CancelForSession` + closing the conn.
 
-> **Resolution update (2026-08-03):** **B7 is closed** — the last open finding. The slot release (and queue promotion) is now gated on actual handler exit, not job-terminal publication (details inline at B7). Validated with `go build`, golangci-lint (0 issues), and the bridge package under `-race -count=5`; the new regression test was verified to fail against the old code. **Every finding in this document is now resolved.** (The `TestValidateComposeFileAllowsPiHoleDNSProtocols` failure in `bridge/handlers/docker` reproduces at clean HEAD — pre-existing, unrelated.)
+Resolution: `a08258bd` removed `bridgeClosing` entirely. `runBridge` now owns the
+session context and loop-completion channel, and `shutdownBridge` performs the
+real cancellation and transport teardown directly
+(`backend/bridge/cmd/lifecycle.go:35-69`).
 
-> **Resolution update (2026-07-30, third pass):** the terminal-feedback cluster is closed — **B2 (second half), D5, D6, C3, the B1 "not covered" note (generic fallback toasting other sessions' cancels), and the `useRecoveredJobs.ts` item in section E** — all via one refactor: a new `frontend/src/hooks/backgroundJobs/terminalJobFeedback.ts` owns the per-type feedback registry, a bounded cross-path dedupe, and a synchronous mounted-owner claim; `useRecoveredJobs` and `usePackageUpdater` route through it (details inline at each finding). Validated with the full frontend suite (537 tests; the two suppression/mark mechanisms were mutation-tested — removing either fails the new tests). Still open: **B7** (backend), **D1**, **D2**, **D8**, and the `router.go` item in section E. Note: `UpdatesPage.test.tsx` has 2 failures that reproduce at clean HEAD (`af89cd98`) — pre-existing, unrelated to this pass.
+### 2. Sleep-ordered shutdown — FIXED (`a08258bd`)
 
-## TL;DR — open items worth addressing before commit
+`backend/bridge/cmd/lifecycle.go:105-111` has two bare `time.Sleep` calls (50ms,
+100ms) sequencing cancel → close-conn. Sleep-based ordering is the classic source of
+"works on my machine" shutdown races — if those delays exist to let a final response
+flush, that's an event that can be synchronized on; if they're load-bearing, they
+deserve named constants and a comment saying what breaks without them. Every
+shutdown also eats the 150ms unconditionally.
 
-1. ~~**`router.go:363`** — canceling a running job on a `Timeout>0` policy promotes the next queued job while the canceled handler goroutine is still executing → real concurrent handler executions exceed `MaxActivePerRoute`~~ — **resolved** (2026-08-03): slot release/promotion now waits for handler exit (see B7).
-2. ~~**`useRecoveredJobs.ts:452/556`** — duplicate failure feedback while the page is open~~ — **resolved** via the terminal-feedback registry (see B2/D5/D6).
-3. ~~**Backend cleanups:** D1, D2, D8, and the `router.go` unbounded-growth item in section E~~ — **all resolved** (2026-07-30, fourth pass; details inline). Validated with `go build`, golangci-lint (0 issues, two now-unneeded `//nolint:gocognit` directives dropped), and the bridge package under `-race -count=5`.
+Caution for the fix: do **not** replace the 100ms sleep with "wait for handlers,
+then close the conn" — the `wg`-tracked goroutine is blocked in
+`ymuxSession.Accept()` and only unblocks *when* the conn closes, so that reordering
+deadlocks until the 5s grace timeout fires.
 
-**Resolved and verified (2026-07-30, B7 on 2026-08-03):** A1, A2, A3, A4, A5, A6, B1, B2, B3, B4, B5, B6, B7, B8, C1, C2, C3, D3, D4, D5, D6, D7, D9 — plus the A4 residual (`TabSelector.tsx` anchorEl), the B3 residual (boolean children), the B1 residual (generic fallback toasting other sessions' cancels), the `useRecoveredJobs.ts` item in section E, and the two symptoms found while fixing B1/A1 (navbar cancel painting a page failure alert; false "Update cancelled" after success).
+Resolution: `a08258bd` removed both sleeps and retained the load-bearing ordering:
+cancel the session and registry work, close the client connection to release
+yamux `Accept`, then wait up to five seconds on the explicit loop-completion
+channel (`backend/bridge/cmd/lifecycle.go:55-69,92-100`).
+
+### 3. Misuse paths exit 0, but the auth daemon reads exit codes — FIXED (`c80db2ec`)
+
+`backend/bridge/cmd/bootstrap.go:20-21` says startup failure is detected via exit
+code 1. Yet `isDirectBridgeInvocation` (`backend/bridge/cmd/cli.go:28-31`) treats a
+`Stdin.Stat()` error as "direct invocation", which makes `Run` print the
+not-for-direct-use notice and return 0. If stat ever fails in a legitimate daemon
+spawn, the daemon sees success while no bridge is running.
+
+Separately, unknown args (`backend/bridge/cmd/cli.go:17-19`) and the webserver's
+unknown subcommand (`backend/webserver/cmd/cli.go:69-74`) both print an error yet
+return 0 — scripts and unit files can't distinguish a typo from success (and
+`backend/webserver/cmd/cli_test.go:48` enshrines it). Convention is exit 2 for
+usage errors.
+
+Resolution: `c80db2ec` made `isDirectBridgeInvocation` return the `Stat` error,
+which `run` reports as exit 1; direct invocation and unknown bridge arguments now
+return usage exit 2. Unknown webserver commands also return 2. Focused CLI tests
+cover these paths (`backend/bridge/cmd/cli_test.go` and
+`backend/webserver/cmd/cli_test.go`).
+
+### 4. Listener leak with hanging clients on partial activation failure — FIXED (`e595eada`)
+
+In `backend/webserver/cmd/activation.go:44-58`, if wrapping fd N fails, the
+listeners already created for fds 3..N-1 are neither closed nor returned. The caller
+logs a warning and falls back to self-bind, so those systemd-provided sockets stay
+open but unserved — connections to them hang forever instead of being refused.
+Close the partial slice on the error path, and reconsider the fallback itself: when
+systemd handed the process sockets but wrapping them failed, silently self-binding a
+different socket masks the misconfiguration instead of surfacing it — failing the
+start is the more honest behavior in that case.
+
+Resolution: `systemdListeners` now creates wrappers for every inherited fd and
+always closes those originals. `listenersFromFiles` closes any listeners already
+converted when a later conversion fails. `serveWithSocketActivation` returns the
+discovery error as handled, so self-bind occurs only when no activation listeners
+were supplied; it also closes listeners if TLS setup fails
+(`backend/webserver/cmd/activation.go:44-78`,
+`backend/webserver/cmd/root.go:127-144`). Regression tests cover partial cleanup
+and the no-fallback error result (`backend/webserver/cmd/activation_test.go`).
+
+### 5. Unbounded first-frame read per stream — FIXED (`a08258bd`)
+
+At the original baseline, `handleYamuxStream` read the `OpStreamOpen` frame with
+no deadline; a stream opened but never written parked a goroutine until the whole
+session died.
+Session-level keepalive (confirmed on in `relay.YamuxConfig`) catches a dead peer
+but not a live idle one. The peer is the trusted webserver, so this was hardening,
+not a bug. A related inconsistency: the opcode-mismatch path closed silently while
+the parse-failure path wrote a structured 400 back.
+
+The fix, committed in `a08258bd`, resolves all of it:
+`streamOpenReadTimeout = 5s` around the
+first read (`backend/bridge/cmd/yamux.go:17,67-71`), a progressive frame reader
+(see external finding E5), and a structured 400 on opcode mismatch
+(`yamux.go:79`).
 
 ---
 
-## A. Behavior regressions vs pre-diff code
+## Findings — idiom and cleanliness
 
-### A1. [Resolved] Fixed 1.5 s post-success hold — `frontend/src/hooks/usePackageUpdater.ts:91`
-`finishSuccess` calls `ensureMinimumVisible(Date.now())`. The old code passed `startedAtMs` captured at `runUpdate` start, so the 1.5 s minimum only padded sub-1.5 s updates; now `elapsed` is always 0, so **every** success (direct or recovered/attached) holds `updatingPackage` non-null 1500 ms longer, keeping `packageOperationPending` true and Update All / Refresh Sources / per-row buttons disabled.
-**Fix:** record the start timestamp in a ref at `runUpdate`/`attach` and pass it, restoring top-up-only semantics. *(efficiency + removed-behavior finders)*
-**Resolution:** `startedAtRef` is set in `runUpdate` (:251) and in `onRecover` (:222, so a resumed transaction is also visible for the minimum), read by `finishSuccess` (:98), and cleared in `onSettled` (:199). Test: "does not hold the panel past an update that already took the minimum".
-**Also fixed (found while verifying):** React Query awaits `onSuccess` before `onSettled`, so the whole hold ran with `streamRef`/`jobIdRef` still populated while the panel showed "Finished 100%" **with a live cancel button** — clicking it fired `jobs.cancel` against a completed job and replaced the success with a red "Update cancelled". Pre-diff that window only existed for sub-1.5 s updates; A1 made it every update. `finishSuccess` now drops both handles before the hold (cancel becomes a true no-op) and re-checks `cancelledRef` after it. Test: "leaves cancel inert once the transaction has finished".
+### 6. Global mutable session state, used inconsistently — FIXED (`a08258bd`)
 
-### A2. [Resolved] List invalidation single-pointed on the global events stream — `frontend/src/hooks/usePackageUpdater.ts:115`
-The hook opts out of local invalidation and ownership (`invalidates: [], markHandled: false`), replacing the removed direct `onComplete → refetch` with the global `JOB_QUERY_INVALIDATIONS["packages.update"]` path in `useRecoveredJobs`. That stream is torn down whenever `streamMuxStatus != 'open'`, a failed `openJobEventsStream()` is only logged with no retry until mux status changes, and backend `eventSubscriber.send` drops events for slow subscribers.
-**Failure:** update finishes while the events stream is reconnecting → page shows "Finished" but the list keeps showing the just-updated packages until the 50 s `refetchInterval`; "Update All" would resubmit already-updated IDs.
-**Fix:** keep the manifest default (`markHandled: true` + manifest entry) so the attached page invalidates locally with the global path as fallback — worst case is one duplicate invalidation. *(altitude + removed-behavior finders)*
-**Resolution:** both opt-outs are gone; the config falls back to `JOB_QUERY_INVALIDATIONS["packages.update"]` and to `markHandled: true`, so the page invalidates the moment its own stream reports terminal and the global path covers the detached case (its `isJobLocallyHandled` check now suppresses the duplicate). The hook test asserts the config does not carry either opt-out.
+The bridge keeps `bootCfg`, `sess`, and `wg` as package globals, yet
+`runtime.Runtime` already carries the session. At the original baseline,
+`handleYamuxSession` logged
+via the global `sess` while `handleYamuxStream` shadowed that same global with
+`sess := rt.Session` — shadowing a package-level var by design is a footgun.
 
-### A3. [Resolved] Recovery scan on every `/updates` mount + dead-controls flash — `frontend/src/hooks/usePackageUpdater.ts:81` and `:201`
-`PackageUpdateControllerProvider` (updates/route.tsx:22) mounts `usePackageUpdater` on every entry into the Updates section. `useActiveJobRecovery`'s constant `scanKey` only dedupes within a mount, so each visit fires an uncached `linuxio.jobs.list({status:"active"})` IPC round trip; meanwhile `recoveryPending` initializes `true` and `UpdateStatus` computes `isUpdating = recoveryPending || !!updatingPackage`, so the page renders an in-progress panel ("Preparing… 0%") with Refresh Sources / Update All / row buttons disabled until the scan resolves — on every visit, even with nothing running.
-**Fix:** gate `scanKey` the way ComposeOperationDialog does (`open && muxIsOpen ? key : null`) or serve the scan from cached `jobs.list` queryOptions; don't initialize the UI as pending without a hit. *(efficiency + altitude + removed-behavior finders)*
-**Worse than first reported:** `linuxio.jobs.list` waits on `ensureRequestMuxReady(timeoutMs)`, default **30 s** (`StreamMultiplexer.ts:96`), so on a stalled mux the fake panel and dead controls persist for the whole timeout, not one round trip.
-**Resolution (the UI half, which is what users see):** `UpdateStatus` now derives the progress panel from the adopted transaction only (`isUpdating={!!updatingPackage}`), so nothing is painted until a job is actually known; `UpdateList` keeps `recoveryPending` in its disabled condition. That distinction is **load-bearing** — `recoveryPending` stays inside `packageOperationPending`, and the disabled start affordances are what stop a user-initiated update from racing `onRecover` (whose `match: () => true` would then adopt the job the page just started). Simply dropping the initial `true` would have opened that race. Tests: `UpdateStatus.test.tsx`.
-**Still open (deliberately):** the scan itself still runs once per entry into the section. One uncached `jobs.list` IPC per section entry is cheap, and gating it on mux status does not remove the re-scan; not worth the added state.
+Resolution: `a08258bd` made bootstrap/session construction return local values,
+removed the package-level `bootCfg`, `sess`, and `wg`, and threads
+`runtime.Runtime` plus an explicit loop-completion channel through lifecycle
+code. `handleYamuxSession` consistently uses `rt.Session`, and its stream counter
+is a local `uint64`, which is correct because only the accept loop mutates it.
 
-### A4. [Resolved] Mobile tab menu reopens mis-anchored (stale `anchorEl`) — `frontend/src/components/tabbar/RoutedTabContainer.tsx`
-`TabLayout` never cleared `anchorEl` when the mobile slot-actions branch unmounted, so on remount `open={Boolean(anchorEl)}` was already true: the menu popped open unprompted, anchored to a detached 0×0 element. *(wrapper-correctness finder)*
-**Resolution (verified):** `handleMenuTriggerRef` (:139-146), attached to the tune `AppIconButton` (:188, forwardRef to the real button), fires null and clears `anchorEl` whenever the mobile branch unmounts (`hasSlotActions` → false or `isMobile` flip); regression-tested in `RoutedTabContainer.test.tsx:361-371`. **Residual (now also fixed):** the sibling `TabSelector.tsx` carried the same pattern in its `rightContent` mobile-menu branch — no consumer passes `rightContent`, so the prop, the anchorEl state, and the whole branch were deleted as dead code.
+### 7. Counter-plumbing in the webserver — FIXED (`e595eada`)
 
-### A5. [Resolved] Docker "Stop All" clickable mid-refetch — `frontend/src/routes/_authenticated/docker/-components/DockerDashboardPage.tsx`
-`containersFetching` was removed from the Start All/Stop All disabled conditions. Stop All is client-driven (captures `runningContainers` at click, stops each by Id), so it could run against a list being replaced by the 5 s poll: a container that just exited yields a thrown `stop_container` and a misleading "Failed to stop 1 of N containers" toast. *(removed-behavior finder)*
-**Resolution (verified):** restored `containersFetching` to both bulk-action disabled conditions (Start All :100, Stop All :118). `DockerDashboardPage.test.tsx:82-98` meaningfully asserts both disabled while `isFetching` and Stop All working once fetching clears. **Trade-off noted:** with `refetchInterval: 5000`, `isFetching` goes true on every poll, so the buttons briefly flicker-disabled every 5 s for the duration of each request — this is the pre-diff behavior, restored deliberately.
+`newHTTPServer` returns `(*http.Server, *atomic.Int64, *atomic.Int64, error)` and
+those two pointers thread through `startHTTPServer` → `serveWithSocketActivation` →
+`startSocketIdleExitWatcher` (`backend/webserver/cmd/root.go:64-103`). A tiny
+`activity` struct (`inFlight`, `lastHit`, maybe an `idle() bool` method) collapses
+four signatures and gives the idle predicate a home.
 
-### A6. [Resolved] No cancel affordance during the resume window — `frontend/src/routes/_authenticated/updates/-components/UpdateStatus.tsx:38`
-`onCancel` is forced `undefined` while `recoveryPending`. During the recovered-job window (scan found a running update, attach stream not yet open) the panel shows "Resuming update transaction" with no page-level cancel, even though `jobIdRef` is already populated by `onJobStart` and `cancelJob` would work. If attach-open stalls, the only cancel is the navbar background-job chip. *(removed-behavior finder)*
-**Slightly overstated:** during the *scan* half of the window `jobIdRef` is still null, so cancel genuinely has nothing to act on; only the attach→open sub-window has a working job id.
-**Resolution:** `onCancel` is passed unconditionally — `cancelUpdate` already no-ops until the hook holds a stream or job id, so the guard bought nothing and cost the resume window its cancel. Collapsed into the A3 fix (with the panel now keyed on `updatingPackage`, no cancel button exists before a job is adopted). Test: "keeps cancel available while a recovered update is resuming".
+Resolution: `serverActivity` now owns both atomics and the `idleFor` predicate,
+and one pointer is threaded through server construction, activation, and the
+idle watcher (`backend/webserver/cmd/root.go:64-103,105-166,248-271`).
 
-## B. Correctness / UX issues in new code
+### 8. slog anti-pattern in limits.go — FIXED (`e595eada`)
 
-### B1. [Resolved] User cancellation toasted as a failure — `frontend/src/hooks/backgroundJobs/useRecoveredJobs.ts:452` — **CONFIRMED end-to-end**
-The global handler attaches to running `packages.update` jobs (events stream → `attachRecoveredJob` :524, generic branch :385; `markHandled: false` means nothing registers a `pendingLocalJobKey` for updates, so the :175 guard never blocks). Cancel from the Updates page (`cancelUpdate`, usePackageUpdater.ts:250, wired UpdatesPage.tsx:129) only aborts the *page's* stream and sends `jobs.cancel`; the backend's `markCanceledLocked` emits `NewError("operation aborted", 499)` (jobs.go:672), delivered to the *global* attach stream as a result-error frame (job_primitives.go:342). `waitForStreamResult` rejects, `onError` fires with its signal **not** aborted (only the navbar cancel in useGenericBackgroundJobs.ts:30 aborts that controller) → `emitPackageUpdateFailure` → `toast.error("operation aborted")`. `cancelledRef` is local to `usePackageUpdater`; the dedupe Set only prevents repeats; the `state === "failed"` check exists only on the events fallback (:557), not the attach path. Cancels from another tab/session toast the same way.
-**Fix:** on the attach-error path, check the job's terminal state (or recognize the 499/aborted error) before toasting. *(altitude finder; settled by verification pass)*
-**Missed symptom — the mirror image:** a **navbar**-initiated cancel aborts only the global controller, so the *page's* stream still receives the 499 frame with `cancelledRef` false → `finishError` painted "Failed to update nginx: operation aborted" as a red alert on the Updates page. Same root cause, opposite surface; a fix on the global path alone would have left it.
-**Resolution:** no snapshot re-fetch needed — `writeAttachEvent` sends `EventCanceled` as a result-error frame carrying the code (`job_primitives.go:342`), and `waitForStreamResult` preserves it (`stream-helpers.ts:115-120`), so cancellation is identifiable from the error alone. New shared predicate `isJobCancellationError` (`api/jobs.ts`, exported from `@/api`, with `JOB_CANCELED_CODE`) is checked at both surfaces: the global attach-error branch skips the toast (:452-458), and `finishError` reports "Update cancelled" — the same string a local cancel uses — instead of a backend failure (`usePackageUpdater.ts:106-114`). Test: "reports a cancellation from another surface as a cancel, not a failure".
-**Not covered (now resolved with D5):** the generic `toast.error(...)` fallback used to report another session's cancel as a failure for other job types. `GENERIC_JOB_FEEDBACK` (terminalJobFeedback.ts) now defines `onFailed` only — a classified cancel is silent — while the capability-install registry entry keeps `onCanceled` routing to the error toast, preserving its deliberate semantics on both paths (pinned by "reports capability installs on every terminal state, cancel included" and the events-path cancel test).
+`backend/bridge/cmd/limits.go:33` and `:59` build the message with `fmt.Sprintf`
+from the same values passed as attrs — every field appears twice per record.
+Structured-logging idiom is a constant message plus attrs; journald consumers get
+the fields anyway. Also `^uint64(0)` at `limits.go:42` works, but
+`syscall.RLIM_INFINITY` states the intent.
 
-### B2. [Resolved] Duplicate failure feedback while the page is open — `frontend/src/hooks/backgroundJobs/useRecoveredJobs.ts:92`
-`packageUpdateFailureToastedRef` dedupes only across the two **global** paths (attach onError :452, terminal event :556). Nothing suppresses the global toast while the Updates page owns a live stream (`pendingLocalJobKeysRef` never populated for `packages.update`; `markHandled: false` is deliberate), so a failure with the page mounted produces both the inline `finishError` alert and the global toast for the same event. If the toast is meant for detached/unmounted pages only (per the global-transfer pattern), the global paths need a mounted-page suppression signal. *(wrapper-correctness finder)*
-**Half resolved:** the *wrong* half is gone — a cancel no longer toasts at all (B1). The duplicate on a genuine failure remains.
-**Rejected fix (important):** with A2 restoring `markHandled: true`, `isJobLocallyHandled(job.id)` looks like the missing signal, but it is **not** a mounted-page signal: `unmarkJobLocallyHandled` deletes on a 5 s delay (`api/jobs.ts:33-35`). Navigate away mid-update and the local stream closes → unmark is scheduled → the real failure arrives on the global stream inside that window → the toast would be suppressed and the inline alert is gone with the page, so the failure would surface **nowhere**. Silently swallowing a failure is worse than showing it twice, so this was left alone. A correct fix needs a synchronous mounted-owner signal, which belongs to D5's registry.
-**Resolution (with D5):** two synchronous signals in `terminalJobFeedback.ts`, both mutation-tested. (1) *Leading side:* `usePackageUpdater` claims `packages.update` feedback via `claimTerminalFeedback` for exactly the window it can paint — from `runUpdate` (before submit, so a failure that beats the submit round trip is still owned) or `onRecover` (before attach, covering the terminal-snapshot short-circuit) until `onSettled`/unmount, where release is immediate — so a failure after navigation toasts (the trap above), while a failure with the page mounted is suppressed globally and painted inline once. (2) *Trailing side:* `finishSuccess`/`finishError` call `markTerminalFeedbackEmitted(jobId)` the moment they paint, so the global copy of the same terminal event arriving *after* the claim is released (frame ordering between the two streams is not guaranteed) hits the shared dedupe instead of toasting a duplicate. Tests: "suppresses the failure toast while a mounted page claims package updates", "stays silent for a failure the owning page already painted" (`useRecoveredJobs.test.tsx`), plus the claim-lifecycle trio in `usePackageUpdater.test.ts`. **Accepted gap:** a `packages.update` job started by *another session* failing while this session sits idle on the Updates page no longer toasts here only if this page is mid-run at that moment (claims are per-type, not per-job); with the page idle there is no claim and the toast fires as before.
+Resolution: both records now use constant slog messages with structured attrs
+only. The infinity check uses the explicit `math.MaxUint64` constant
+(`backend/bridge/cmd/limits.go:23-62`).
 
-### B3. [Resolved] `RoutedTabActions` null-children contract was unmarked and load-bearing
-`RoutedTabActions` registered in its effect without consulting children, so null children still set `hasSlotActions` and rendered a ghost mobile tune-button opening an empty menu; only some call sites guarded with a ternary. *(simplification finder)*
-**Resolution (verified):** the register effect (now `RoutedTabContainer.tsx:57-60`) short-circuits both registration and render behind a `hasActions = children != null` guard (:55), with a dedicated test (`RoutedTabContainer.test.tsx:194`). **Residual (now also fixed):** the guard excludes boolean children too (`children != null && typeof children !== "boolean"`), covering the `cond && <Action />` pattern, with its own test.
+### 9. Small nits — PARTIALLY ADDRESSED (one open)
 
-### B4. [Resolved] `keepMounted` on the legacy `rightContent` mobile branch
-The legacy branch kept a hidden portal permanently mounted for VMPage with no state-preservation benefit, and silently changed remount-per-open semantics. *(efficiency + altitude finders)*
-**Resolution (verified):** the legacy `rightContent` branch was **deleted outright** (prop removed; VMPage.tsx:169 now uses `RoutedTabActions`). The one remaining `keepMounted` (:197) is on the slot branch and is now load-bearing — it keeps the `.tab-selector__mobile-actions` host attached so the persistent action portal survives while the menu is closed.
+- ~~`s := stream; sid := streamID` redundant copies in the yamux accept loop~~ —
+  fixed in `a08258bd` (the closure now captures the per-iteration locals
+  directly).
+- ~~"bridge boot" and "bridge starting" (`backend/bridge/cmd/root.go:43-54`) both
+  log the uid two lines apart — one can go~~ — fixed in `e595eada` by
+  retaining the richer `bridge boot` record.
+- **OPEN:** `startHTTPServer`'s return type would read better as
+  `(<-chan os.Signal, <-chan error)`.
+- ~~Usage text mixes `linuxio` and `linuxio-webserver` as the binary name
+  (`backend/webserver/cmd/cli.go:84-97`)~~ — fixed in `e595eada`; all usage
+  and examples now say `linuxio-webserver`.
+- ~~The `wg` comment at `backend/bridge/cmd/lifecycle.go:24` says "in-flight
+  requests" but it actually tracks the single session goroutine (per-stream
+  tracking is `streamWg`, waited transitively) — the mechanism is correct, the
+  comment isn't~~ — fixed in `a08258bd` by replacing the global wait group with
+  an explicit loop-completion channel.
 
-### B5. [Resolved] Actions appear two commits late; breakpoint flip resets action state — `frontend/src/components/tabbar/RoutedTabContainer.tsx:78`
-`RoutedTabActions` rendered null until the register-effect → `hasSlotActions` → host-div → ref handshake completed (visible pop-in), and `createPortal` children remounted when the container element changed on breakpoint flips. *(wrapper-correctness finder)*
-**Resolution (verified):** registration moved to a `useLayoutEffect` through a counted `TabActionSlotContext.registerActions` (:57-60, :85-89) so `hasSlotActions` updates synchronously pre-paint, and a single persistent `actionHost` element (:80-84) is re-appended by `mountActionHost` (:90-97) into whichever breakpoint branch is mounted — the DOM node moves instead of the subtree remounting (state preservation pinned by the breakpoint test). Verified it does not reintroduce A4 and that the design requires the remaining `keepMounted`.
+---
 
-### B6. [Resolved] `deleteTarget` snapshots the whole VM object — `frontend/src/routes/_authenticated/vm/-components/VMMachinesPage.tsx`
-Only `.name` was load-bearing; the snapshot could show stale state/details and offer to delete a ghost VM. *(altitude finder)*
-**Resolution (verified):** `VMMachinesPage` stores only `deleteTargetName` and derives the dialog's VM live from `vms` (:73); the dialog renders only while that row exists (:212-222) and the mutation uses the row captured at `onDelete` (:188, :217). The old stale path (`deleteOpen` + URL-driven `selectedVM`) is fully removed. **But see B8 — the live derivation opens a new mid-delete window.**
+## Verified external report
 
-### B7. [Resolved] Canceled handler keeps running while its slot is promoted — `backend/common/ipc/bridge/router.go:363` *(added 2026-07-30, empirically reproduced)*
-Canceling a **running** job on a `Timeout > 0` policy frees its `MaxActivePerRoute` slot and promotes the next queued job while the canceled handler is still executing: `routeRunner`'s `case <-runCtx.Done()` returns without joining the detached `runRoute` goroutine (:355), so `run()` marks the job terminal, `Done` closes, and `finishJob` unmarks the slot and dequeues the next job before the abandoned handler exits. Reproduced under cancel stress: **3 concurrent handler executions at cap 2**; with `Timeout=0`'s synchronous path the cap was never exceeded in 30 stress runs, isolating the mechanism.
-**Failure:** route with ActionDefault policy (Timeout=120m, MaxActivePerRoute=4): jobs A–D running, E queued; cancel A while its handler is mid-write and slow to observe ctx → `jobs.cancel` returns a "canceled" snapshot, E is promoted, and 5 handlers execute concurrently against a cap of 4. Repeated cancel+resubmit stacks an unbounded number of abandoned still-running handlers behind a bounded slot count.
-**Note:** the mechanism **pre-dates this diff** (`routeRunner`'s body is untouched; only the Start call-site changed), but the diff's cancel/promotion hardening formalizes this handoff as the fast path. Fix direction: have the runner join (or reference-count) the detached handler before the job publishes terminal, or gate promotion on handler exit rather than job-terminal. *(concurrency finder)*
-**Resolution (2026-08-03):** the second direction — promotion is gated on handler exit; terminal publication stays prompt. `routeRunner` takes a per-start `handlerExited` channel and closes it only when the handler actually returns (deferred in both the synchronous `Timeout<=0` path and the detached goroutine), and `startTrackedJob`'s watcher waits `<-job.Done()` **then** `<-handlerExited` before `finishJob`. So `jobs.cancel` still returns a canceled snapshot immediately and a timeout still fails at 504 promptly, but the active slot is released — and the next queued job promoted — only after the abandoned handler exits; repeated cancel+resubmit can no longer stack executions past the cap. Two deliberate side effects: a handler that never observes ctx now holds its slot for as long as it really runs (correct accounting — the alternative was unbounded real concurrency), and `DuplicateActiveReject` routes keep rejecting while a canceled handler drains (desirable: e.g. the package-manager lock is still held). Regression test `TestRouterHoldsSlotUntilCanceledHandlerExits` pins all three properties — prompt terminal publish, no promotion while the canceled handler runs, max observed concurrency = cap — and was **verified to fail against the old code** ("next job was promoted while the canceled handler was still running").
+An externally produced report was independently verified against the original
+baseline `a6c67227` and its working tree. All items below are real; their current
+resolution status is recorded without removing the original findings.
 
-### B8. [Resolved] Delete dialog vanishes mid-delete — `frontend/src/routes/_authenticated/vm/-components/VMMachinesPage.tsx:73` *(added 2026-07-30; follow-on to the B6 fix)*
-The dialog's existence is derived from the live polled `vms` list, but the backend delete **undefines the domain before managed-disk removal completes** (backend/bridge/handlers/virt/lifecycle.go `deleteVMWithConn`: undefine, then `deleteManagedDisks`), and VMPage polls `virt.list` with `refetchInterval: 5000` — so the dialog can unmount while `deleteMutation.isPending`. The success handler's `setDeleteTargetName(null)` (:92) shows the dialog is expected to stay open until the mutation settles, and the new "keeps the delete dialog synced" test only covers the pre-confirm window.
-**Failure:** confirm delete of a VM whose disk removal outlasts the next 5 s poll: after libvirt undefine, the poll returns a list without the VM → `deleteTarget` becomes null → the dialog (spinner showing, Cancel disabled) vanishes mid-operation; if disk deletion then fails, the error arrives as a detached toast after the dialog already disappeared as-if-successful.
-**Fix:** keep the dialog mounted while the mutation is pending — e.g. render it when `deleteTarget != null || deleteMutation.isPending`, falling back to the captured name for display. *(frontend-sweep finder)*
-**Resolution:** a `pendingDeleteVM` snapshot is captured at confirm time and the dialog target falls back to it while `deleteMutation.isPending`; explicit close and both settle paths clear it, so the pre-confirm live-sync behavior (the point of the B6 fix) is unchanged. New test: "keeps the delete dialog open while the delete job outlives the list row" in `VMPage.test.tsx`.
+### E1. TLS redirect accept-loop DoS — REAL, FIXED (`a08258bd`)
 
-## C. Test-coverage gaps
+At the original baseline, `tlsRedirectListener.Accept()` called `br.Peek(1)`
+inline in the accept loop with no deadline. One client connecting and sending
+nothing stalled the loop — no further connections could be accepted at all,
+unauthenticated, with a single idle TCP connection. Graceful shutdown was also
+affected: `Accept` blocked in `Peek` on a conn rather than in `Listener.Accept`,
+so closing the listener did not unblock it. Highest-severity item in the report.
 
-> **Resolution for C1, C2 and D7 (2026-07-30):** the hand-rolled mock is replaced by a shared `createJobStreamActionMock` in `frontend/src/test/jobStreamAction.ts`, which mirrors `waitForJobStreamAction` + `useActionMutation` in order — `onMutate → submit → onJobStart → terminal-snapshot short-circuit → openStream → onOpen → progress → success/error → onSettled` — including awaiting a promise returned by `success` (which is what makes the A1 hold observable). `attach` routes through the same runner with the adopted snapshot, so it fires `onJobStart` like the real one. Both gaps are now pinned by tests that were **verified to fail** when the mock stops firing `onSettled` ("drops the job handle once a failed run settles") or stops firing `onJobStart` on attach ("cancels a recovered update against the adopted job id"). `VMPage.test.tsx`'s own mirror is left in place — it drives its lifecycle through a `waitForStreamResult` mock and adopting the shared helper means reworking that file's mock plumbing; it is now the only remaining copy.
+Resolution (`a08258bd`, `backend/webserver/web/tls_redirect.go` + new
+`tls_redirect_test.go`): async per-connection classification, a five-second peek
+deadline, bounded redirect reads, active-connection cleanup in `Close`, and a
+results channel with a `done` signal.
 
-### C1. [Resolved] Mock never fires `options.onSettled` — `frontend/src/hooks/usePackageUpdater.test.ts:48`
-The real `useActionMutation` spreads options into `useMutation` (react-query.ts:424-426), so React Query fires `onSettled` after every run; the hand-rolled mock never does. `usePackageUpdater`'s entire settle-cleanup (`streamRef`/`jobIdRef`/`cancelledRef` reset, usePackageUpdater.ts:179-185) is dead code in every test — a regression there passes the suite, and in prod a stuck `cancelledRef` would make the next recovered job's `finishSuccess`/`finishError` early-return (page stuck on "Resuming update transaction"). *(wrapper-correctness + reuse finders)*
+### E2. Bridge global self-deadlock — REAL, FIXED (`a08258bd`)
 
-### C2. [Resolved] Mock `attach` diverges from the real lifecycle — `frontend/src/hooks/usePackageUpdater.test.ts:79`
-Real attach routes through the same mutationFn and fires `onJobStart` (react-query.ts:467 — what sets `jobIdRef` for recovered jobs) and short-circuits terminal snapshots (:469-480: completed resolves without a stream, failed throws). The mock does neither and resolves `undefined`. A regression breaking `onJobStart` on attach is invisible: cancel on a recovered update would abort only the local stream, never send `jobs.cancel`, leaving the backend transaction running while the UI says "Update cancelled". *(wrapper-correctness finder)*
+At the original baseline, `attachBridgeSession` called `SetOnClose` while holding
+`yamuxSessions.Lock()`. `SetOnClose` invokes the callback synchronously if the
+session already closed (`backend/common/ipc/relay/yamux.go:63-76`), and the
+callback re-takes the same non-reentrant lock — self-deadlock if the bridge dies
+between `NewYamuxClient` and registration. The mutex is process-global, so every
+future login and bridge operation hangs forever. The original callback also
+deleted the map entry unconditionally, so an old session closing late could
+remove a new session's mapping.
 
-### C3. [Resolved] Duplicated hand-cast runtime harness hides type drift — `frontend/src/hooks/backgroundJobs/useRecoveredJobs.test.tsx:65`
-Two byte-identical ~30-line runtime/controls/wrapper setups (65-95 and 125-155) ending in `as unknown as BackgroundJobRuntime`. The cast already hides real drift: the literal types `pendingLocalJobKeysRef` as `Map<string, number>` while the real runtime uses a `CountedSet` (`makeCountedSet`). New required fields stay compiler-silent in both copies.
-**Fix:** an in-file `makeHarness()` (or compose the real side-effect-free `useBackgroundJobRuntime()` like its own test does). *(reuse + simplification finders)*
-**Resolution (done with the D5 pass, which needed four more tests in this file):** a single `makeRuntime(): BackgroundJobRuntime` — properly typed, no cast, using the real `makeCountedSet()` — plus a `renderRecoveredJobs()` harness and a `packageUpdateJob()` event builder; all six tests go through them.
+Resolution (`a08258bd`, `backend/webserver/bridge/bridge.go` + new
+`bridge_test.go`):
+publish replacement before closing the old session, register the callback outside
+the lock, delete only when the stored instance matches.
 
-## D. Simplification / reuse / API shape
+### E3. Missing HTTP server timeouts — REAL, FIXED (`a5802171`)
 
-### D1. [Resolved] `startOrQueueJob` error path inlines a `finishJob` clone — `backend/common/ipc/bridge/router.go:407`
-The CreateForOwner error path uses two sequential opposite ifs (`if canStart` … `if !canStart`) with two separate `mu.Lock` windows and a hoisted `next`; the `canStart` branch (unmarkActiveLocked + dequeueStartLocked + startTrackedJob) is byte-for-byte `finishJob` (:511). `if canStart { r.finishJob(...) } else { lock; pendingQueued--; unlock }` is one lock window, no clone, and likely drops the `//nolint:gocognit`. Future promotion-logic changes in `finishJob` would otherwise miss this unlabeled clone. *(simplification finder; over-admission here separately disproven — twice, see F)*
-**Resolution:** exactly the suggested shape — the error path calls `r.finishJob(req.Route, ownerRouteKey)` in the `canStart` branch and only decrements `pendingQueuedByRoute` otherwise; the `//nolint:gocognit` was dropped and the linter confirms it's no longer needed. Behavior-identical (finishJob's body is the removed clone verbatim). Race-detector clean across repeated runs.
+The `http.Server` at `backend/webserver/cmd/root.go:98-102` has no
+`ReadHeaderTimeout` or `IdleTimeout`. The redirect path now has 5s bounds
+(post-E1 fix), but TLS conns handed to the HTTP server are unbounded pre-header.
+Add header/idle timeouts; avoid a blanket `WriteTimeout`, which would break
+WebSocket/streaming endpoints.
 
-### D2. [Resolved] Fourth copy of the terminal-publish tail — `backend/common/ipc/bridge/jobs.go:383`
-`Cancel`'s queued branch inlines signalDone/broadcast/closeSubscribers — alongside markCompleted (:575-577), markFailed (:593-595), markCanceled (:606-608). The lock split is required for the Start/Cancel race; the tail isn't. Extract `publishTerminal(event Event)` called from all four sites, or cancel-while-queued diverges silently when publication grows a step. *(simplification finder)*
-**Resolution:** `Job.publishTerminal(event)` extracted with a doc comment pinning the contract (call once, after `j.mu` is released — the lock split stays, the tail is shared); all four sites call it.
+Resolution: the server now sets a 10-second `ReadHeaderTimeout`, which net/http
+also uses to bound the TLS handshake, and a two-minute `IdleTimeout` for inactive
+keep-alive connections. `WriteTimeout` intentionally remains zero for WebSocket
+and streaming handlers. `TestNewHTTPServerConnectionTimeouts` locks in all three
+policy choices (`backend/webserver/cmd/root.go`,
+`backend/webserver/cmd/root_test.go`).
 
-### D3. [Resolved] Mobile menu JSX duplicated across slot and legacy branches
-The ~28-line mobile menu block was copy-pasted between the slot and `rightContent` branches. *(reuse + simplification + altitude finders)*
-**Resolution (verified):** only a single mobile-menu JSX block remains (`RoutedTabContainer.tsx:183-212`) — the duplicated branch was removed along with the `rightContent` prop. The near-identical block in `TabSelector.tsx` was unused (no consumer passed `rightContent`) and has been deleted too — the mobile actions menu now exists in exactly one place.
+### E4. Capability handshake deadline covers only `Open` — REAL, FIXED (`ad25f323`)
 
-### D4. [Resolved] Internal slot props leaked into public wrapper types; wrapper was a pass-through
-`actionHostRef`/`hasSlotActions` lived on the shared public props type, so wrappers type-accepted and silently dropped/overrode them. *(reuse + simplification + wrapper-correctness finders)*
-**Resolution (verified):** public `RoutedTabContainerProps` (:33-37) now carries only `children`/`containerStyle`/`tabs`; the slot internals moved to the unexported `TabLayoutProps` (:39-42), and the default export is re-typed as `ComponentType<RoutedTabContainerProps>` (:230), hiding the internals from consumers.
+At `backend/webserver/bridge/bridge.go:124-136` the 5s context wraps only
+`yamuxSession.Open`; the request write and response read ignore the context
+entirely. This runs during `Login` while holding a slot from
+`maxConcurrentLogins = 8` (`backend/webserver/auth/auth.go:15`). A
+live-but-unresponsive bridge parks a slot indefinitely — yamux keepalive only
+catches dead transports — so eight stuck logins lock everyone out.
 
-### D5. [Resolved] Per-type feedback blocks accreting in the global jobs handler — `frontend/src/hooks/backgroundJobs/useRecoveredJobs.ts:556`
-Package-update failure feedback is the third per-type special case (after capability-install and the smart-test skip): its own dedupe Set ref (:90), emit callback (:92-105), and insertions in both the attach-error branch (:452) and terminal-event branch (:556-561) — and the once-guard preamble is a mechanical clone of the `installToastedRef` guard. The file already shows the right altitude (manifest-driven `JOB_QUERY_INVALIDATIONS`, colocated `genericLabel` switch): terminal feedback should be one registry (type → onFailed/onCompleted, dedupe owned by the plumbing) with a single insertion point. The three existing blocks already disagree on their terminal-state matrices (see B1). *(altitude + reuse finders)*
-**Resolution:** `frontend/src/hooks/backgroundJobs/terminalJobFeedback.ts`. `TERMINAL_JOB_FEEDBACK` maps type → `onCompleted`/`onFailed`/`onCanceled` (capability-install: all three, cancel deliberately erroring; package-update: `onFailed` only; smart-test: empty entry = page-owned); `emitTerminalJobFeedback` owns the job-id dedupe, the B2 owner suppression, and outcome dispatch. `useRecoveredJobs` calls it from its three delivery points (attach success, attach error with 499 classification, events terminal via `terminalSnapshotOutcome`, which normalizes snapshot errors to the attach path's `LinuxIOError` shape so both paths format identically). The events path emits registry-only; the attach path passes `GENERIC_JOB_FEEDBACK` as the fallback for unregistered types — a skipped registry-only emit does **not** consume the dedupe slot, so frame ordering can't drop the generic toast (pinned by "emits nothing for unregistered types without an explicit entry"). Both per-type Set refs and both emit callbacks are deleted from `useRecoveredJobs`; the request helpers moved to `utils/backgroundJobs.ts`.
+Resolution: the existing five-second context now supplies one absolute deadline
+for stream open, request write, and response read, while still honoring an earlier
+caller deadline. A real-yamux regression test holds an accepted stream open
+without responding and verifies that `fetchSessionCapabilities` returns a timeout
+promptly (`backend/webserver/bridge/bridge.go`,
+`backend/webserver/bridge/bridge_test.go`).
 
-### D6. [Resolved] Hand-rolled error extraction instead of `getMutationErrorMessage` — `frontend/src/hooks/backgroundJobs/useRecoveredJobs.ts:96` *(done with D5)*
-`emitPackageUpdateFailure` re-implements `error instanceof Error ? … : typeof error === 'string' ? …` with fallback `'Package update failed'`, while `usePackageUpdater.finishError` formats the identical terminal error with fallback `'Update failed'` — three different strings for the same failure depending on surface, and `LinuxIOError`'s empty-message case (handled by the canonical helper in `frontend/src/utils/mutations.ts`, used by ~15 call sites) is missed. *(reuse finder)*
-**Resolution:** every registry handler (package-update, capability-install, generic fallback) and `finishError` now extract through `getMutationErrorMessage`; only the contextual fallback string differs per surface. The events path benefits too since `terminalSnapshotOutcome` wraps snapshot errors in `LinuxIOError` (a raw string would have hit the helper's fallback). The empty-message case is pinned by "falls back to a generic message when the backend error is empty" (`usePackageUpdater.test.ts`) and the empty-error cases in `terminalJobFeedback.test.ts`.
+### E5. Frame reader allocates declared payload before receiving — REAL, FIXED (`a08258bd`)
 
-### D7. [Resolved] Duplicated stream-options literal in the job-stream mock — `frontend/src/hooks/usePackageUpdater.test.ts:59`
-The mock builds the same `{ open, onOpen, onProgress }` literal in `run` (59-66) and `attach` (80-87); and the whole mock re-implements the lifecycle mirror VMPage.test.tsx already built (its copy *does* fire `onSettled`/`onMutate` — the two mirrors have diverged from each other and from the real contract). Hoist one shared builder into `frontend/src/test/`. *(simplification + reuse finders; pairs with C1/C2)*
-**Resolution:** done — `frontend/src/test/jobStreamAction.ts` (see the note at the top of section C). It imports `isTerminalJobState`/`LinuxIOError` from the leaf modules rather than the `@/api` barrel, because test files pull it in from inside their own `vi.mock("@/api")` factory.
+`ReadRelayFrame` does `make([]byte, length)` up to the 16 MiB cap
+(`maxRelayPayloadSize`, `backend/common/ipc/relay/protocol.go:40`) before any
+payload bytes arrive, and the original bridge path used it for the untrusted
+first frame.
+Severity qualifier: the bridge's peer is the webserver, so exploiting this requires
+an authenticated user to influence a declared frame length through a proxied path —
+hardening rather than a direct exploit, but the mechanical claim is true.
 
-### D8. [Resolved] Duplicated settle-poll loop in router tests — `backend/common/ipc/bridge/router_test.go:143`
-Both new tests end with a verbatim ~15-line deadline/poll loop over activeByRoute/queuedByRoute/pendingQueuedByRoute (143-158, 254-268, identical `t.Fatalf` text). jobs_test.go already models this (`waitForState`/`waitForJobEvent` t.Helper()s at :496/:514) — add `waitForRouterSettle(t, router, route)`. *(reuse finder)*
-**Resolution:** `waitForRouterSettle(t, router, routeName)` t.Helper() added; both tests use it. The extraction also dropped the promotion-race test below the gocognit threshold, so its `//nolint:gocognit` was removed (nolintlint flagged it as unused).
+Resolution (`a08258bd`): `ReadRelayFrameProgressive` grows the buffer only as
+bytes arrive (`protocol.go` + tests) and is used for the first frame at
+`backend/bridge/cmd/yamux.go:68`.
 
-### D9. [Resolved] Five identical tab-layout route wrappers — `frontend/src/routes/_authenticated/accounts/route.tsx`
-Accounts/Docker/Services/Shares/Storage each added `function XLayout() { return <RoutedTabLayout tabs={X_TABS}><Outlet/></RoutedTabLayout> }`. *(simplification finder)*
-**Resolution:** a `makeTabLayout(tabs, containerStyle?)` factory now lives next to `RoutedTabLayout` (`RoutedTabContainer.tsx:116`) and all five route files use it (`component: makeTabLayout(X_TABS)`; services passes its `paddingInline`); updates keeps its provider wrapper. Covered by the "creates a route layout with the supplied container style" test.
+### E6. Blocking lastlog lock — REAL, FIXED in working tree
 
-## E. Minor / pre-existing
+`flock(fd, LOCK_EX)` in `update_lastlog` (`backend/auth/linuxio-auth.c:424`)
+blocks login indefinitely if anything holds the lock on `/var/log/lastlog`. The
+call site already ignores the return value (`(void)update_lastlog(...)`), so
+`LOCK_NB` with best-effort skip is the right fix.
 
-- **[Resolved] `useRecoveredJobs.ts:90`** — `packageUpdateFailureToastedRef` (like the pre-existing `installToastedRef`) grows one id per failure for the session, never pruned. Bytes-level; fix alongside D5. *(efficiency finder)*
-  **Resolution:** both refs are gone; the registry's single dedupe set caps at 200 ids, evicting oldest-first (pinned by "bounds the dedupe set instead of growing one id per job forever").
-- **[Resolved] `router.go:393` — pre-existing, not introduced by this diff** — `startsByOwnerRoute` appends a timestamp per admitted job but prunes only inside `checkRateLocked`, which early-returns when `StartRatePerMinuteOwner <= 0` (ActionDefault, transfers) → unbounded per-owner growth for the bridge lifetime, worst on high-frequency filebrowser routes. Skip the append (or prune) when the owner rate limit is disabled. *(efficiency finder)*
-  **Resolution:** the append is skipped when `StartRatePerMinuteOwner <= 0`. The rate limiter previously had **no test coverage at all**, so both directions are now pinned: `TestRouterOwnerStartRateLimitStillEnforced` (third start within a minute → `ErrRateLimited`) and `TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled` (zero timestamps recorded on a disabled-limit policy — verified to fail against the old unconditional append).
+Resolution: `update_lastlog` now requests `LOCK_EX | LOCK_NB`. Expected
+`EWOULDBLOCK` contention skips the optional accounting update without delaying
+authentication; other lock failures are still logged with the original error,
+and descriptor cleanup is unchanged (`backend/auth/linuxio-auth.c`).
 
-## F. Verified non-issues (checked and cleared)
+### E7. `ut_id` truncation and exec-status race — BOTH REAL, FIXED in working tree
 
-- **Go router over-admission disproven — twice:** every promoted job is `markActiveLocked` inside `dequeueStartLocked` (router.go:540); refusal path decrements exactly once; `finishJob` keys match reservation keys. The concurrency angle then stress-tested the full admission/queue/promotion/cancel accounting: counters settle to zero, no stranded non-terminal jobs, **race detector clean across ~140 runs**, lock nesting one-directional (`router.mu` → `job.mu.RLock` only), terminal transitions mutually exclusive under `j.mu`, refusal path releases exactly one reservation. (B7 is the one exception that survived, and its mechanism is pre-existing — since fixed, see B7.)
-- **`AppPopover`/`AppMenu` `keepMounted` mechanism:** all document/window listeners, autofocus, and repositioning are gated on `open`; nothing leaks or steals events while closed-but-mounted. The remaining `keepMounted` (slot branch) is load-bearing by design.
-- **StrictMode register/unregister/register** batches 1→0→1 with a `Math.max(0, …)` floor; action swaps between routes never unmount the host mid-navigation (now via layout effects).
-- **`PackageUpdateController` plumbing:** all 10 hook values flow through context; no other `usePackageUpdater` callers; real attach sets `jobIdRef` via `onJobStart`, so cancel works for recovered jobs (in prod — see C2 for the test gap).
-- **Conventions/memory rules:** no dead code left by the refactor, global-transfer pattern followed, no new `common/` placement, no capability-mirror entries touched, new tests restore real timers.
-- **Efficiency non-issues:** provider `children` identity keeps `RoutedTabLayout` re-renders bailed out on progress ticks; `setActionHost` churn batches; test sleep-polls bounded.
+- **`ut_id` truncation:** the PID is printed as decimal and truncated into the
+  4-byte `ut_id` field (`backend/auth/linuxio-auth.c:506-511`, same pattern in
+  `record_login_end`). Any PID ≥ 10000 collides on its first four digits across
+  sessions; start/end records still pair up since both use the same PID.
+  Minor correctness (wrong `who`/`last` output under collision).
+- **Exec-status race:** on pipe EOF, the parent does a one-shot
+  `waitpid(WNOHANG)` (`linuxio-auth.c:~1961-1965`) to distinguish "exec'd fine"
+  from "child `_exit()`'d pre-exec". In the kernel, `do_exit()` runs
+  `exit_files()` (producing the EOF) before `exit_notify()` makes the child
+  waitable, so a dead child can probe as "still running" and the daemon sends OK
+  for a dead bridge. Narrow window, real per kernel `exit.c` ordering. Cleanest
+  fix: have `child_die` (`linuxio-auth.c:966-972`, currently stderr-only) write a
+  status byte to the exec-status pipe before `_exit(127)`, removing the ambiguity
+  entirely rather than re-probing.
 
-## G. Security review (2026-07-30) — clean
+Resolution: login start and end now derive the same fixed-width, four-byte
+base-62 `ut_id` from the helper PID. Its 14,776,336-value space exceeds Linux's
+maximum PID range, so concurrent helpers no longer collide through decimal
+prefix truncation. Pre-exec failures now write the existing status marker before
+`child_die` exits, with the live status descriptor tracked while the fixed child
+FD layout is assembled. Status and bridge temporaries are explicitly allocated
+above FD 5, so later `dup2` calls cannot overwrite them. The parent retains its
+nonblocking reap only as defense in depth for unexpected child termination
+(`backend/auth/linuxio-auth.c`).
 
-No security findings. Positively verified:
+### E8. Dead shutdown channel / sleeps — REAL, FIXED (`a08258bd`)
 
-- **Auth/routing:** `_authenticated.tsx` still applies `requireAuthentication` via `beforeLoad` to every migrated child route (services/sockets/timers, storage/lvm, shares, docker/*, updates/history, accounts); docker's `requireAccess` beforeLoad preserved. The `-auth.ts` change is a **hardening fix**: it rejects sanitized redirects whose normalization yields a `//`-prefixed path (e.g. `/..//evil.com` → pathname `//evil.com`), closing a protocol-relative open redirect through `requireGuest`'s `redirect({ href })` sink.
-- **Bridge job ownership:** `jobs.get/list/cancel/attach/data` all resolve through `GetForOwner`/`ListForOwner` (`Owner.Matches` by username/UID); `jobs.events` filters per-event by owner — untouched by the diff. The admission changes are race **fixes**: reservation now happens under the router lock before `CreateForOwner`, closing a TOCTOU that previously allowed exceeding `MaxActivePerRoute`/`DuplicateActiveReject`; `Job.Start` now refuses non-queued jobs so a canceled-queued job can no longer run after promotion.
-- **Injection/rendering:** recovered-job error strings render via `toast.error(string)` (text-only); no `dangerouslySetInnerHTML`/`innerHTML` sinks anywhere in the diff; `attach(job, vars)` adopts the existing snapshot and never starts a new privileged job.
-- **Info exposure:** no new cross-owner payload paths; subscriber-drop logging emits only job id/type at debug level.
+Same as findings 1 and 2 above (the external report double-counted them). See the
+caution under finding 2; the committed fix preserves the required close-before-
+wait ordering.
+
+### E9. Per-start self-signed certificate churn — REAL, OPEN
+
+`configureServerTLS` (`backend/webserver/cmd/root.go:198-206`) calls
+`web.GenerateSelfSignedCert()` (`backend/webserver/web/certificate.go:16`) on every
+server start: a fresh in-memory RSA-2048 key and certificate, never persisted.
+Consequences compound with socket activation — the idle-exit watcher shuts the
+process down when unused and systemd re-spawns it on the next connection, so a new
+certificate is minted per idle cycle, not per reboot. Browser trust exceptions
+break repeatedly, and RSA-2048 keygen adds cold-start latency to every
+socket-activated wake. Fix direction: persist the key/cert on disk and regenerate
+only when missing or expired; switching to ECDSA P-256 would also cut generation
+cost.
+
+### E10. 4 KiB WebSocket relay buffer — performance-only candidate, OPEN
+
+`relayFromBridge` (`backend/webserver/web/websocket.go:442-443`) copies from the
+yamux stream to the WebSocket through a per-stream 4 KiB buffer; each read becomes
+one DATA frame, so the buffer size also caps frame size. For bulk transfers this
+means ~16x more reads/frames than a 64 KiB buffer would produce. This is a
+performance candidate only, not a bug — benchmark before changing it: larger
+buffers cost memory per concurrent stream and change frame pacing for interactive
+streams (terminals), which may matter more than bulk throughput.
+
+---
+
+## Remaining work
+
+1. **DONE (`a08258bd`):** E1, E2, E5, and finding 5 are committed with their
+   regression tests (`tls_redirect_test.go`, `bridge_test.go`,
+   `protocol_test.go`).
+2. **DONE (`c80db2ec`):** finding 3's bridge/webserver usage exit codes and
+   `Stdin.Stat` error handling are committed with focused tests.
+3. **DONE (`e595eada`):** finding 4 closes original and partially wrapped
+   activation listeners and returns activation discovery failures instead of
+   silently self-binding.
+4. **DONE (`a08258bd`):** findings 1-2 removed the dead shutdown channel and
+   sleeps while preserving the required close-before-wait ordering.
+5. **MOSTLY DONE:** finding 6 is committed; findings 7-8 and the duplicate boot
+   log/CLI wording parts of finding 9 are committed in `e595eada`. The only
+   remaining cleanup item from this group is the directional channel return type
+   in `startHTTPServer`.
+
+Separate confirmed audit findings:
+
+- **DONE (`a5802171`):** missing `http.Server` handshake/header/idle timeouts
+  (E3).
+- **DONE (`ad25f323`):** capabilities handshake stream deadline (E4).
+- **DONE in the working tree:** nonblocking best-effort lastlog accounting (E6).
+- **DONE in the working tree:** collision-free four-byte `ut_id` encoding and
+  deterministic `child_die` status-pipe failures (E7).
+- Per-start self-signed certificate churn (E9).
+- The 4 KiB WebSocket relay buffer (E10) — performance-only; benchmark before
+  changing it.

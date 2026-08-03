@@ -307,6 +307,29 @@ export interface ComposeFilePathResponse {
   directory: string;
 }
 
+export interface ComposeJobMessage {
+  type: string;
+  message: string;
+  code?: number;
+  progress?: ComposeProgress;
+}
+
+export interface ComposeJobResult {
+  type: string;
+  message: string;
+}
+
+export interface ComposeProgress {
+  id: string;
+  parent_id?: string;
+  text: string;
+  status: string;
+  details?: string;
+  current?: number;
+  total?: number;
+  percent?: number;
+}
+
 export interface ComposeProject {
   config_files: string[];
   containers: ContainerInfo[];
@@ -672,13 +695,17 @@ export interface DockerLogsFollowRequest {
 }
 
 export interface DockerNetwork {
+  Attachable: boolean;
+  ConfigOnly: boolean;
   Containers?: Record<string, DockerNetworkContainer>;
+  Created?: string;
   Driver: string;
   EnableIPv4?: boolean;
   EnableIPv6?: boolean;
   Id: string;
   Internal?: boolean;
   IPAM?: DockerNetworkIPAM;
+  Ingress: boolean;
   Labels?: Record<string, string>;
   Name: string;
   Options?: Record<string, string>;
@@ -686,6 +713,7 @@ export interface DockerNetwork {
 }
 
 export interface DockerNetworkContainer {
+  EndpointID?: string;
   Name: string;
   IPv4Address?: string;
   IPv6Address?: string;
@@ -694,11 +722,15 @@ export interface DockerNetworkContainer {
 
 export interface DockerNetworkIPAM {
   Config?: DockerNetworkIPAMConfig[];
+  Driver?: string;
+  Options?: Record<string, string>;
 }
 
 export interface DockerNetworkIPAMConfig {
-  Subnet: string;
+  AuxiliaryAddresses?: Record<string, string>;
   Gateway: string;
+  IPRange?: string;
+  Subnet: string;
 }
 
 export interface DockerProxySettings {
@@ -782,6 +814,7 @@ export interface DockerUpdateCheckResult {
 }
 
 export interface DockerVolume {
+  ClusterVolume?: Record<string, unknown>;
   CreatedAt?: string;
   Driver: string;
   Labels?: Record<string, string>;
@@ -789,6 +822,13 @@ export interface DockerVolume {
   Name: string;
   Options?: Record<string, string>;
   Scope?: string;
+  Status?: Record<string, unknown>;
+  UsageData?: DockerVolumeUsageData;
+}
+
+export interface DockerVolumeUsageData {
+  RefCount: number;
+  Size: number;
 }
 
 export interface EnabledRequest {
@@ -1180,6 +1220,18 @@ export interface JobListRequest {
   status?: string;
 }
 
+export interface JobMetadata {
+  action?: string;
+  capability?: string;
+  device?: string;
+  identity?: string[];
+  label?: string;
+  packageIds?: string[];
+  path?: string;
+  projectName?: string;
+  testType?: string;
+}
+
 export interface JobOwner {
   session_id?: string;
   username?: string;
@@ -1201,8 +1253,8 @@ export interface JobSnapshot {
   finished_at?: string;
   id: string;
   owner?: JobOwner;
+  metadata?: JobMetadata;
   progress?: unknown;
-  request?: unknown;
   result?: unknown;
   started_at?: string;
   state: JobState;
@@ -1598,14 +1650,16 @@ export interface SearchResponse {
 }
 
 export interface SearchResult {
-  path: string;
+  inode: number;
+  isDir: boolean;
+  mod_time: string;
   name: string;
-  type?: string;
-  isDir?: boolean;
+  path: string;
   size: number;
-  mod_time?: string;
-  modTime?: string;
-  modified?: string;
+  total_dirs?: number;
+  total_files?: number;
+  total_size?: number;
+  type: string;
 }
 
 export interface SensorGroup {
@@ -2194,7 +2248,8 @@ export interface LinuxIOSchema {
     compose: {
       input: [request: DockerComposeRequest];
       request: DockerComposeRequest;
-      result: JobSnapshot;
+      result: ComposeJobResult;
+      progress: ComposeJobMessage;
     };
     compose_down: {
       input: [projectName: string];
@@ -2956,6 +3011,12 @@ export type CommandResult<
   H extends HandlerName,
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;
+
+/** Extract a declared job progress type, or never when the route has none */
+export type CommandProgress<
+  H extends HandlerName,
+  C extends CommandName<H>,
+> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;
 
 /**
  * Wire request contracts for stream-consumed routes: duplex opens and job

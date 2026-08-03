@@ -3,8 +3,7 @@ import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import GroupsTab from "./GroupsTab";
@@ -17,26 +16,11 @@ const AccountsGroupsPage = () => {
 
   const actions = (
     <>
-      <AppTooltip
-        title={
-          groupsView === "table"
-            ? "Switch to card view"
-            : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          onClick={() =>
-            setGroupsView(groupsView === "table" ? "card" : "table")
-          }
-          size="small"
-        >
-          {groupsView === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setGroupsView}
+        viewMode={groupsView}
+      />
       {createGroupHandler && (
         <AppButton
           onClick={createGroupHandler}

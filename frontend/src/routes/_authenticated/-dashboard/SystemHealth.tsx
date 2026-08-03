@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
 
 import { type AccountUserLogin, linuxio } from "@/api";
@@ -21,7 +21,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
 
-type HealthRoute = "/logs" | "/services" | "/updates";
+type HealthRoute = "/accounts" | "/logs" | "/services" | "/updates";
 
 interface HealthItem {
   color: string;
@@ -30,6 +30,8 @@ interface HealthItem {
   icon: string;
   iconStyle?: CSSProperties;
   onClick?: () => void;
+  serviceSearch?: { service?: string };
+  accountSearch?: ReturnType<typeof accountDetailSearch>;
   secondaryAction?: {
     label: string;
     icon?: string;
@@ -113,10 +115,10 @@ const SystemHealth = () => {
   );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    linuxio.system.dismiss_unclean_shutdown.useJobAction();
+    linuxio.system.dismiss_unclean_shutdown.useAction();
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useJobAction({
+    linuxio.system.dismiss_failed_login_alert.useAction({
       success: () => {
         setFailedLoginsOpen(false);
       },
@@ -143,11 +145,8 @@ const SystemHealth = () => {
       icon: "mdi:alert-circle",
       color: theme.palette.error.main,
       text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
-      onClick: () =>
-        navigate({
-          to: "/services",
-          search: failed ? { service: failed } : undefined,
-        }),
+      to: "/services",
+      serviceSearch: failed ? { service: failed } : undefined,
       detail: health.failedServices?.slice(0, 2).join(", "),
     });
   }
@@ -246,11 +245,10 @@ const SystemHealth = () => {
       icon: "mdi:account-clock-outline",
       color: theme.palette.text.primary,
       text: `Last login: ${displayTime}`,
-      onClick: () =>
-        navigate({
-          to: "/accounts",
-          search: accountDetailSearch(lastLoginUsername || currentUser?.name),
-        }),
+      to: "/accounts",
+      accountSearch: accountDetailSearch(
+        lastLoginUsername || currentUser?.name,
+      ),
       detail: detailLines.length > 0 ? detailLines.join("\n") : undefined,
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
@@ -283,13 +281,22 @@ const SystemHealth = () => {
   };
 
   const stats2 = (
-    <div onClick={handleStatusIconClick} style={{ cursor: "pointer" }}>
+    <AppIconButton
+      aria-label={
+        failedLoginAlert ? "Review failed login alerts" : "View system status"
+      }
+      onClick={handleStatusIconClick}
+      style={{
+        backgroundColor: "transparent",
+        cursor: "pointer",
+      }}
+    >
       <Icon color={statusColor} height={100} icon={iconName} width={100} />
-    </div>
+    </AppIconButton>
   );
 
   const renderItem = (item: HealthItem) => {
-    const content = (
+    const mainContent = (
       <div
         style={{
           display: "flex",
@@ -334,6 +341,50 @@ const SystemHealth = () => {
             </AppTypography>
           ) : null}
         </div>
+      </div>
+    );
+
+    const actionStyle: CSSProperties = {
+      display: "flex",
+      alignItems: "center",
+      minWidth: 0,
+      flex: 1,
+      color: "inherit",
+      textAlign: "left",
+      textDecoration: "none",
+      cursor: "pointer",
+    };
+    const navigationContent =
+      item.to === "/services" ? (
+        <Link search={item.serviceSearch} style={actionStyle} to="/services">
+          {mainContent}
+        </Link>
+      ) : item.to === "/accounts" ? (
+        <Link search={item.accountSearch} style={actionStyle} to="/accounts">
+          {mainContent}
+        </Link>
+      ) : item.to ? (
+        <Link style={actionStyle} to={item.to}>
+          {mainContent}
+        </Link>
+      ) : null;
+    const content =
+      navigationContent ??
+      (item.onClick ? (
+        <AppButton
+          color="inherit"
+          onClick={item.onClick}
+          style={{ ...actionStyle, border: 0, padding: 0 }}
+        >
+          {mainContent}
+        </AppButton>
+      ) : (
+        mainContent
+      ));
+
+    const row = (
+      <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+        {content}
         {item.secondaryAction?.icon ? (
           <AppIconButton
             aria-label={
@@ -353,26 +404,24 @@ const SystemHealth = () => {
             <Icon height={18} icon={item.secondaryAction.icon} width={18} />
           </AppIconButton>
         ) : item.secondaryAction ? (
-          <span
-            aria-disabled={item.secondaryAction.disabled || undefined}
-            onClick={
-              item.secondaryAction.disabled
-                ? undefined
-                : item.secondaryAction.onClick
-            }
-            role="button"
+          <AppButton
+            color="inherit"
+            disabled={item.secondaryAction.disabled}
+            onClick={item.secondaryAction.onClick}
+            size="small"
             style={{
               marginLeft: theme.spacing(1),
-              cursor: item.secondaryAction.disabled ? "default" : "pointer",
-              opacity: item.secondaryAction.disabled ? 0.5 : 1,
               color: theme.palette.text.secondary,
               fontSize: "0.75rem",
+              minWidth: 0,
+              opacity: item.secondaryAction.disabled ? 0.5 : 1,
+              padding: 0,
               textDecoration: "underline",
               userSelect: "none",
             }}
           >
             {item.secondaryAction.label}
-          </span>
+          </AppButton>
         ) : null}
       </div>
     );
@@ -380,20 +429,10 @@ const SystemHealth = () => {
     const spacing = item.spaceBefore
       ? { marginTop: theme.spacing(1) }
       : undefined;
-    const clickHandler =
-      item.onClick ?? (item.to ? () => navigate({ to: item.to! }) : undefined);
 
-    return clickHandler ? (
-      <div
-        key={item.text}
-        onClick={clickHandler}
-        style={{ cursor: "pointer", ...spacing }}
-      >
-        {content}
-      </div>
-    ) : (
+    return (
       <div key={item.text} style={spacing}>
-        {content}
+        {row}
       </div>
     );
   };

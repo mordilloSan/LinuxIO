@@ -3,8 +3,6 @@ import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import "@/theme/section.css";
-
 import { linuxio } from "@/api";
 import DockerResourceListCard from "@/components/cards/DockerResourceListCard";
 import DockerSectionCard from "@/components/cards/DockerSectionCard";
@@ -17,13 +15,12 @@ import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
+import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -409,208 +406,98 @@ const DockerDashboard = ({
   return (
     <div>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
-      <div
-        className="dd-section-header"
-        onClick={() => setSection("overview")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
-          cursor: "pointer",
-          userSelect: "none",
-        }}
-      >
-        <AppTypography fontWeight={700} variant="subtitle1">
-          Overview
-        </AppTypography>
-        <AppIconButton
-          className="section-toggle"
-          size="small"
-          style={{
-            opacity: 0,
-            transition: "opacity 0.15s",
-            pointerEvents: "none",
-          }}
-        >
-          <Icon
-            height={24}
-            icon="mdi:chevron-down"
-            style={{
-              transition: `transform ${TRANSITION_SLOW_CSS}`,
-              transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
-            }}
-            width={24}
-          />
-        </AppIconButton>
-      </div>
-      <AppCollapse in={sections.overview}>
-        <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
-          {(
-            [
-              {
-                label: "Containers",
-                to: "/docker/containers",
-                value: `${containers.length}`,
-                detail: [
-                  `${runningContainers.length} running`,
-                  stoppedContainers.length > 0
-                    ? `${stoppedContainers.length} stopped`
-                    : null,
-                  unhealthyContainers.length > 0
-                    ? `${unhealthyContainers.length} unhealthy`
-                    : healthyContainers.length > 0
-                      ? `${healthyContainers.length} healthy`
+      <SectionHeader
+        controlsId="docker-overview-panel"
+        expanded={sections.overview}
+        onToggle={() => setSection("overview")}
+        title="Overview"
+      />
+      <div id="docker-overview-panel">
+        <AppCollapse in={sections.overview}>
+          <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
+            {(
+              [
+                {
+                  label: "Containers",
+                  to: "/docker/containers",
+                  value: `${containers.length}`,
+                  detail: [
+                    `${runningContainers.length} running`,
+                    stoppedContainers.length > 0
+                      ? `${stoppedContainers.length} stopped`
                       : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-              },
-              {
-                label: "Images",
-                to: "/docker/images",
-                value: `${images.length}`,
-                detail: `${formatFileSize(totalImageSize)} on disk`,
-              },
-              {
-                label: "Networks",
-                to: "/docker/networks",
-                value: `${networks.length}`,
-                detail: `${networks.filter((n) => !n.Internal).length} external`,
-              },
-              {
-                label: "Volumes",
-                to: "/docker/volumes",
-                value: `${volumes.length}`,
-                detail: `${volumes.filter((v) => v.Driver === "local").length} local`,
-              },
-            ] as {
-              label: string;
-              to:
-                | "/docker/containers"
-                | "/docker/images"
-                | "/docker/networks"
-                | "/docker/volumes";
-              value: string;
-              detail: string;
-            }[]
-          ).map(({ label, to, value, detail }) => (
-            <AppGrid
-              key={label}
-              size={{
-                xs: 6,
-                md: 3,
-              }}
-            >
-              <DockerStatCard
-                detail={detail}
-                label={label}
-                onClick={() => navigateToTab(to)}
-                value={value}
-              />
-            </AppGrid>
-          ))}
-        </AppGrid>
-      </AppCollapse>
-
-      <div
-        className="dd-section-header"
-        onClick={() => setSection("daemon")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
-          cursor: "pointer",
-          userSelect: "none",
-        }}
-      >
-        <AppTypography fontWeight={700} variant="subtitle1">
-          Docker Daemon
-        </AppTypography>
-        <AppIconButton
-          className="section-toggle"
-          size="small"
-          style={{
-            opacity: 0,
-            transition: "opacity 0.15s",
-            pointerEvents: "none",
-          }}
-        >
-          <Icon
-            height={24}
-            icon="mdi:chevron-down"
-            style={{
-              transition: `transform ${TRANSITION_SLOW_CSS}`,
-              transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
-            }}
-            width={24}
-          />
-        </AppIconButton>
+                    unhealthyContainers.length > 0
+                      ? `${unhealthyContainers.length} unhealthy`
+                      : healthyContainers.length > 0
+                        ? `${healthyContainers.length} healthy`
+                        : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                },
+                {
+                  label: "Images",
+                  to: "/docker/images",
+                  value: `${images.length}`,
+                  detail: `${formatFileSize(totalImageSize)} on disk`,
+                },
+                {
+                  label: "Networks",
+                  to: "/docker/networks",
+                  value: `${networks.length}`,
+                  detail: `${networks.filter((n) => !n.Internal).length} external`,
+                },
+                {
+                  label: "Volumes",
+                  to: "/docker/volumes",
+                  value: `${volumes.length}`,
+                  detail: `${volumes.filter((v) => v.Driver === "local").length} local`,
+                },
+              ] as {
+                label: string;
+                to:
+                  | "/docker/containers"
+                  | "/docker/images"
+                  | "/docker/networks"
+                  | "/docker/volumes";
+                value: string;
+                detail: string;
+              }[]
+            ).map(({ label, to, value, detail }) => (
+              <AppGrid
+                key={label}
+                size={{
+                  xs: 6,
+                  md: 3,
+                }}
+              >
+                <DockerStatCard
+                  detail={detail}
+                  label={label}
+                  onClick={() => navigateToTab(to)}
+                  value={value}
+                />
+              </AppGrid>
+            ))}
+          </AppGrid>
+        </AppCollapse>
       </div>
+
+      <SectionHeader
+        controlsId="docker-daemon-panel"
+        expanded={sections.daemon}
+        onToggle={() => setSection("daemon")}
+        title="Docker Daemon"
+      />
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
-      <AppCollapse in={sections.daemon}>
-        <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
-          {dockerInfo && (
-            <>
-              {/* ── Resource Usage ────────────────────────────────────────────── */}
-              {runningContainers.length > 0 && (
-                <>
-                  <AppGrid
-                    size={{
-                      xs: 12,
-                      sm: 4,
-                    }}
-                  >
-                    <DockerSectionCard
-                      icon={
-                        <Icon
-                          color={theme.palette.primary.main}
-                          height={28}
-                          icon="ph:cpu"
-                          width={28}
-                        />
-                      }
-                      subtitle="Processor utilization"
-                      title="CPU"
-                    >
-                      <MetricBar
-                        color={theme.palette.primary.main}
-                        label="CPU"
-                        percent={Math.min(totalCpu, 100)}
-                        rightLabel={`${totalCpu.toFixed(1)}%`}
-                        tooltip={`Total CPU across ${runningContainers.length} running containers`}
-                      />
-                    </DockerSectionCard>
-                  </AppGrid>
-                  <AppGrid
-                    size={{
-                      xs: 12,
-                      sm: 4,
-                    }}
-                  >
-                    <DockerSectionCard
-                      icon={
-                        <Icon
-                          color={theme.palette.primary.main}
-                          height={28}
-                          icon="la:memory"
-                          width={28}
-                        />
-                      }
-                      subtitle="RAM utilization"
-                      title="Memory"
-                    >
-                      <MetricBar
-                        color={theme.palette.primary.main}
-                        label="Memory"
-                        percent={totalMemPercent}
-                        rightLabel={formatFileSize(totalMemUsage)}
-                        tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
-                      />
-                    </DockerSectionCard>
-                  </AppGrid>
-                  {dockerInfo.disk_total > 0 && (
+      <div id="docker-daemon-panel">
+        <AppCollapse in={sections.daemon}>
+          <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
+            {dockerInfo && (
+              <>
+                {/* ── Resource Usage ────────────────────────────────────────────── */}
+                {runningContainers.length > 0 && (
+                  <>
                     <AppGrid
                       size={{
                         xs: 12,
@@ -622,271 +509,302 @@ const DockerDashboard = ({
                           <Icon
                             color={theme.palette.primary.main}
                             height={28}
-                            icon="mdi:harddisk"
+                            icon="ph:cpu"
                             width={28}
                           />
                         }
-                        subtitle="Storage utilization"
-                        title="Disk Usage"
+                        subtitle="Processor utilization"
+                        title="CPU"
                       >
                         <MetricBar
                           color={theme.palette.primary.main}
-                          label="Disk (Docker)"
-                          percent={Math.min(
-                            (dockerInfo.disk_used / dockerInfo.disk_total) *
-                              100,
-                            100,
-                          )}
-                          rightLabel={formatFileSize(dockerInfo.disk_used)}
-                          tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
+                          label="CPU"
+                          percent={Math.min(totalCpu, 100)}
+                          rightLabel={`${totalCpu.toFixed(1)}%`}
+                          tooltip={`Total CPU across ${runningContainers.length} running containers`}
                         />
                       </DockerSectionCard>
                     </AppGrid>
-                  )}
-                </>
-              )}
-              <AppGrid
-                size={{
-                  xs: 12,
-                  sm: 4,
-                }}
-              >
-                <DockerSectionCard
-                  fullHeight
-                  icon={
-                    <Icon
-                      color={theme.palette.primary.main}
-                      height={28}
-                      icon="mdi:tag"
-                      width={28}
-                    />
-                  }
-                  subtitle="Engine & runtime versions"
-                  title="Version"
+                    <AppGrid
+                      size={{
+                        xs: 12,
+                        sm: 4,
+                      }}
+                    >
+                      <DockerSectionCard
+                        icon={
+                          <Icon
+                            color={theme.palette.primary.main}
+                            height={28}
+                            icon="la:memory"
+                            width={28}
+                          />
+                        }
+                        subtitle="RAM utilization"
+                        title="Memory"
+                      >
+                        <MetricBar
+                          color={theme.palette.primary.main}
+                          label="Memory"
+                          percent={totalMemPercent}
+                          rightLabel={formatFileSize(totalMemUsage)}
+                          tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
+                        />
+                      </DockerSectionCard>
+                    </AppGrid>
+                    {dockerInfo.disk_total > 0 && (
+                      <AppGrid
+                        size={{
+                          xs: 12,
+                          sm: 4,
+                        }}
+                      >
+                        <DockerSectionCard
+                          icon={
+                            <Icon
+                              color={theme.palette.primary.main}
+                              height={28}
+                              icon="mdi:harddisk"
+                              width={28}
+                            />
+                          }
+                          subtitle="Storage utilization"
+                          title="Disk Usage"
+                        >
+                          <MetricBar
+                            color={theme.palette.primary.main}
+                            label="Disk (Docker)"
+                            percent={Math.min(
+                              (dockerInfo.disk_used / dockerInfo.disk_total) *
+                                100,
+                              100,
+                            )}
+                            rightLabel={formatFileSize(dockerInfo.disk_used)}
+                            tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
+                          />
+                        </DockerSectionCard>
+                      </AppGrid>
+                    )}
+                  </>
+                )}
+                <AppGrid
+                  size={{
+                    xs: 12,
+                    sm: 4,
+                  }}
                 >
-                  <InfoRow label="Server">
-                    {dockerInfo.server_version || "—"}
-                  </InfoRow>
-                  <InfoRow label="API">{dockerInfo.api_version || "—"}</InfoRow>
-                  <InfoRow label="Go">{dockerInfo.go_version || "—"}</InfoRow>
-                  <InfoRow label="Git Commit">
-                    {dockerInfo.git_commit || "—"}
-                  </InfoRow>
-                </DockerSectionCard>
-              </AppGrid>
-              <AppGrid
-                size={{
-                  xs: 12,
-                  sm: 4,
-                }}
-              >
-                <DockerSectionCard
-                  fullHeight
-                  icon={
-                    <Icon
-                      color={theme.palette.primary.main}
-                      height={28}
-                      icon="mdi:monitor"
-                      width={28}
-                    />
-                  }
-                  subtitle="Host machine information"
-                  title="System"
+                  <DockerSectionCard
+                    fullHeight
+                    icon={
+                      <Icon
+                        color={theme.palette.primary.main}
+                        height={28}
+                        icon="mdi:tag"
+                        width={28}
+                      />
+                    }
+                    subtitle="Engine & runtime versions"
+                    title="Version"
+                  >
+                    <InfoRow label="Server">
+                      {dockerInfo.server_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="API">
+                      {dockerInfo.api_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="Go">{dockerInfo.go_version || "—"}</InfoRow>
+                    <InfoRow label="Git Commit">
+                      {dockerInfo.git_commit || "—"}
+                    </InfoRow>
+                  </DockerSectionCard>
+                </AppGrid>
+                <AppGrid
+                  size={{
+                    xs: 12,
+                    sm: 4,
+                  }}
                 >
-                  <InfoRow label="Hostname">{dockerInfo.name || "—"}</InfoRow>
-                  <InfoRow label="OS">
-                    {dockerInfo.operating_system || "—"}
-                  </InfoRow>
-                  <InfoRow label="Architecture">
-                    {dockerInfo.architecture || "—"}
-                  </InfoRow>
-                  <InfoRow label="Root Dir">
-                    {dockerInfo.docker_root_dir || "—"}
-                  </InfoRow>
-                </DockerSectionCard>
-              </AppGrid>
-              <AppGrid
-                size={{
-                  xs: 12,
-                  sm: 4,
-                }}
-              >
-                <DockerSectionCard
-                  fullHeight
-                  icon={
-                    <Icon
-                      color={theme.palette.primary.main}
-                      height={28}
-                      icon="mdi:wrench"
-                      width={28}
-                    />
-                  }
-                  subtitle="Storage & runtime settings"
-                  title="Configuration"
+                  <DockerSectionCard
+                    fullHeight
+                    icon={
+                      <Icon
+                        color={theme.palette.primary.main}
+                        height={28}
+                        icon="mdi:monitor"
+                        width={28}
+                      />
+                    }
+                    subtitle="Host machine information"
+                    title="System"
+                  >
+                    <InfoRow label="Hostname">{dockerInfo.name || "—"}</InfoRow>
+                    <InfoRow label="OS">
+                      {dockerInfo.operating_system || "—"}
+                    </InfoRow>
+                    <InfoRow label="Architecture">
+                      {dockerInfo.architecture || "—"}
+                    </InfoRow>
+                    <InfoRow label="Root Dir">
+                      {dockerInfo.docker_root_dir || "—"}
+                    </InfoRow>
+                  </DockerSectionCard>
+                </AppGrid>
+                <AppGrid
+                  size={{
+                    xs: 12,
+                    sm: 4,
+                  }}
                 >
-                  <InfoRow label="Storage Driver">
-                    {dockerInfo.storage_driver || "—"}
-                  </InfoRow>
-                  <InfoRow label="Cgroup Driver">
-                    {dockerInfo.cgroup_driver || "—"}
-                  </InfoRow>
-                  <InfoRow label="Cgroup Version">
-                    {dockerInfo.cgroup_version || "—"}
-                  </InfoRow>
-                  <InfoRow label="Default Runtime">
-                    {dockerInfo.default_runtime || "—"}
-                  </InfoRow>
-                </DockerSectionCard>
-              </AppGrid>
-            </>
-          )}
-        </AppGrid>
-      </AppCollapse>
+                  <DockerSectionCard
+                    fullHeight
+                    icon={
+                      <Icon
+                        color={theme.palette.primary.main}
+                        height={28}
+                        icon="mdi:wrench"
+                        width={28}
+                      />
+                    }
+                    subtitle="Storage & runtime settings"
+                    title="Configuration"
+                  >
+                    <InfoRow label="Storage Driver">
+                      {dockerInfo.storage_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Driver">
+                      {dockerInfo.cgroup_driver || "—"}
+                    </InfoRow>
+                    <InfoRow label="Cgroup Version">
+                      {dockerInfo.cgroup_version || "—"}
+                    </InfoRow>
+                    <InfoRow label="Default Runtime">
+                      {dockerInfo.default_runtime || "—"}
+                    </InfoRow>
+                  </DockerSectionCard>
+                </AppGrid>
+              </>
+            )}
+          </AppGrid>
+        </AppCollapse>
+      </div>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
-      <div
-        className="dd-section-header"
-        onClick={() => setSection("resources")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
-          cursor: "pointer",
-          userSelect: "none",
-        }}
-      >
-        <AppTypography fontWeight={700} variant="subtitle1">
-          Resources
-        </AppTypography>
-        <AppIconButton
-          className="section-toggle"
-          size="small"
-          style={{
-            opacity: 0,
-            transition: "opacity 0.15s",
-            pointerEvents: "none",
-          }}
-        >
-          <Icon
-            height={24}
-            icon="mdi:chevron-down"
-            style={{
-              transition: `transform ${TRANSITION_SLOW_CSS}`,
-              transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
-            }}
-            width={24}
-          />
-        </AppIconButton>
-      </div>
-      <AppCollapse in={sections.resources}>
-        <AppGrid container spacing={2}>
-          {/* Containers table */}
-          <AppGrid
-            size={{
-              xs: 12,
-              lg: 6,
-            }}
-          >
-            <DockerResourceListCard
-              footerText={`${containers.length} containers`}
-              icon={
-                <Icon
-                  color={theme.palette.primary.main}
-                  height={28}
-                  icon="mdi:cube-outline"
-                  width={28}
-                />
-              }
-              onViewAll={() => navigateToTab("/docker/containers")}
-              subtitle={
-                <AppSelect
-                  disableUnderline
-                  onChange={(e) =>
-                    setContainerSort(e.target.value as typeof containerSort)
-                  }
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--app-palette-text-secondary)",
-                    lineHeight: 1.4,
-                  }}
-                  value={containerSort}
-                  variant="standard"
-                >
-                  <option value="recent">Recent containers</option>
-                  <option value="name">Sort by name</option>
-                  <option value="state">Sort by state</option>
-                </AppSelect>
-              }
-              title="Containers"
+      <SectionHeader
+        controlsId="docker-resources-panel"
+        expanded={sections.resources}
+        onToggle={() => setSection("resources")}
+        title="Resources"
+      />
+      <div id="docker-resources-panel">
+        <AppCollapse in={sections.resources}>
+          <AppGrid container spacing={2}>
+            {/* Containers table */}
+            <AppGrid
+              size={{
+                xs: 12,
+                lg: 6,
+              }}
             >
-              <AppDataTable
-                ariaLabel="Docker dashboard containers"
-                columns={containerColumns}
-                data={previewContainers}
-                emptyMessage="No containers found"
-                fillAvailable={false}
-                getRowId={(container) => container.Id}
-                maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
-                style={{ boxShadow: "none" }}
-              />
-            </DockerResourceListCard>
-          </AppGrid>
+              <DockerResourceListCard
+                footerText={`${containers.length} containers`}
+                icon={
+                  <Icon
+                    color={theme.palette.primary.main}
+                    height={28}
+                    icon="mdi:cube-outline"
+                    width={28}
+                  />
+                }
+                onViewAll={() => navigateToTab("/docker/containers")}
+                subtitle={
+                  <AppSelect
+                    disableUnderline
+                    onChange={(e) =>
+                      setContainerSort(e.target.value as typeof containerSort)
+                    }
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--app-palette-text-secondary)",
+                      lineHeight: 1.4,
+                    }}
+                    value={containerSort}
+                    variant="standard"
+                  >
+                    <option value="recent">Recent containers</option>
+                    <option value="name">Sort by name</option>
+                    <option value="state">Sort by state</option>
+                  </AppSelect>
+                }
+                title="Containers"
+              >
+                <AppDataTable
+                  ariaLabel="Docker dashboard containers"
+                  columns={containerColumns}
+                  data={previewContainers}
+                  emptyMessage="No containers found"
+                  fillAvailable={false}
+                  getRowId={(container) => container.Id}
+                  maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
+                  style={{ boxShadow: "none" }}
+                />
+              </DockerResourceListCard>
+            </AppGrid>
 
-          {/* Images table */}
-          <AppGrid
-            size={{
-              xs: 12,
-              lg: 6,
-            }}
-          >
-            <DockerResourceListCard
-              footerText={`${images.length} images`}
-              icon={
-                <Icon
-                  color={theme.palette.primary.main}
-                  height={28}
-                  icon="mdi:layers"
-                  width={28}
-                />
-              }
-              onViewAll={() => navigateToTab("/docker/images")}
-              subtitle={
-                <AppSelect
-                  disableUnderline
-                  onChange={(e) =>
-                    setImageSort(e.target.value as typeof imageSort)
-                  }
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--app-palette-text-secondary)",
-                    lineHeight: 1.4,
-                  }}
-                  value={imageSort}
-                  variant="standard"
-                >
-                  <option value="largest">Largest images</option>
-                  <option value="recent">Most recent</option>
-                  <option value="name">Sort by name</option>
-                  <option value="usage">Most used</option>
-                </AppSelect>
-              }
-              title="Images"
+            {/* Images table */}
+            <AppGrid
+              size={{
+                xs: 12,
+                lg: 6,
+              }}
             >
-              <AppDataTable
-                ariaLabel="Docker dashboard images"
-                columns={imageColumns}
-                data={previewImages}
-                emptyMessage="No images found"
-                fillAvailable={false}
-                getRowId={(image) => image.Id}
-                maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
-                style={{ boxShadow: "none" }}
-              />
-            </DockerResourceListCard>
+              <DockerResourceListCard
+                footerText={`${images.length} images`}
+                icon={
+                  <Icon
+                    color={theme.palette.primary.main}
+                    height={28}
+                    icon="mdi:layers"
+                    width={28}
+                  />
+                }
+                onViewAll={() => navigateToTab("/docker/images")}
+                subtitle={
+                  <AppSelect
+                    disableUnderline
+                    onChange={(e) =>
+                      setImageSort(e.target.value as typeof imageSort)
+                    }
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--app-palette-text-secondary)",
+                      lineHeight: 1.4,
+                    }}
+                    value={imageSort}
+                    variant="standard"
+                  >
+                    <option value="largest">Largest images</option>
+                    <option value="recent">Most recent</option>
+                    <option value="name">Sort by name</option>
+                    <option value="usage">Most used</option>
+                  </AppSelect>
+                }
+                title="Images"
+              >
+                <AppDataTable
+                  ariaLabel="Docker dashboard images"
+                  columns={imageColumns}
+                  data={previewImages}
+                  emptyMessage="No images found"
+                  fillAvailable={false}
+                  getRowId={(image) => image.Id}
+                  maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
+                  style={{ boxShadow: "none" }}
+                />
+              </DockerResourceListCard>
+            </AppGrid>
           </AppGrid>
-        </AppGrid>
-      </AppCollapse>
+        </AppCollapse>
+      </div>
     </div>
   );
 };

@@ -6,11 +6,11 @@ import { relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
 // Feature code talks to the backend through centralized endpoint options:
 // render-driven reads via `useQuery(endpoint.queryOptions(...))`, event-driven
-// commands via `endpoint.useAction`, writes via `endpoint.useJobAction`/
-// `useJobStreamAction` or the background-jobs layer, imperative loader/effect
-// reads via `endpoint.useFetcher()`, and cache surgery via
-// `endpoint.useCache()`. Bare `linuxio.<handler>.<command>()` promise calls,
-// raw mutations, and direct query-client access stay in the API layer.
+// commands and writes via `endpoint.useAction`, progress work via
+// `useJobAction`/`useJobStreamAction` or the background-jobs layer;
+// imperative loader/effect reads via `endpoint.useFetcher()`, and cache surgery
+// via `endpoint.useCache()`. Bare `linuxio.<handler>.<command>()` promise
+// calls, raw mutations, and direct query-client access stay in the API layer.
 // See docs/api-contract.md ("Every generated endpoint exposes").
 
 // Directories that ARE the primitive layer.
@@ -136,7 +136,7 @@ describe("API layering guard", () => {
       "Feature code must not call linuxio endpoints as bare promises. " +
         "Reads go through useQuery(endpoint.queryOptions(...)) or " +
         "queryClient.fetchQuery(endpoint.queryOptions(...)); writes go " +
-        "through endpoint.useJobAction / useJobStreamAction or the " +
+        "through endpoint.useAction / useJobAction / useJobStreamAction or the " +
         "background-jobs layer.",
     ).toEqual([]);
   });
@@ -177,7 +177,7 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Mutations belong on the typed endpoint surface " +
-        "(useJobAction / useJobStreamAction), not raw useMutation.",
+        "(useAction / useJobAction / useJobStreamAction), not raw useMutation.",
     ).toEqual([]);
   });
 

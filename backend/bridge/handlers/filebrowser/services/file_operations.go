@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
@@ -387,17 +385,6 @@ func reportOperationProgress(opts *ipc.OperationCallbacks, bytes int64) {
 	}
 }
 
-// DeleteFiles removes a file or directory
-func DeleteFiles(absPath string) error {
-	root, err := fsroot.Open()
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	return root.Root.RemoveAll(relPath(absPath))
-}
-
 type DeleteOptions struct {
 	Total         int64
 	Indeterminate bool
@@ -583,84 +570,6 @@ func reportDeleteProgress(opts DeleteOptions, processed, total int64, indetermin
 	}
 }
 
-// CreateDirectory creates a directory with proper permissions
-func CreateDirectory(opts iteminfo.FileOptions) error {
-	realPath := utils.CleanAbsPath(opts.Path)
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	// Check if the destination exists and is a file
-	if stat, err := root.Root.Stat(relPath(realPath)); err == nil && !stat.IsDir() {
-		// If it's a file and we're trying to create a directory, remove the file first
-		if err := root.Root.Remove(relPath(realPath)); err != nil {
-			return fmt.Errorf("could not remove existing file to create directory: %v", err)
-		}
-	}
-
-	// Ensure the parent directories exist
-	if err := root.Root.MkdirAll(relPath(realPath), PermDir); err != nil {
-		return err
-	}
-
-	// Explicitly set directory permissions to bypass umask
-	if err := root.Root.Chmod(relPath(realPath), PermDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// WriteContentInFile writes content to a file with proper permissions
-func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
-	realPath := utils.CleanAbsPath(opts.Path)
-	// Strip trailing slash from realPath if it's meant to be a file
-	realPath = strings.TrimRight(realPath, "/")
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	// Ensure the parent directories exist
-	parentDir := filepath.Dir(realPath)
-	if mkdirErr := root.Root.MkdirAll(relPath(parentDir), PermDir); mkdirErr != nil {
-		return mkdirErr
-	}
-
-	// Check if the destination exists and is a directory
-	if stat, statErr := root.Root.Stat(relPath(realPath)); statErr == nil && stat.IsDir() {
-		// If it's a directory and we're trying to create a file, remove the directory first
-		if removeErr := root.Root.RemoveAll(relPath(realPath)); removeErr != nil {
-			return fmt.Errorf("could not remove existing directory to create file: %v", removeErr)
-		}
-	}
-
-	// Open the file for writing (create if it doesn't exist, truncate if it does)
-	file, err := root.Root.OpenFile(relPath(realPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Copy the contents from the reader to the file
-	_, err = io.Copy(file, in)
-	if err != nil {
-		return err
-	}
-
-	// Explicitly set file permissions to bypass umask
-	if err := root.Root.Chmod(relPath(realPath), PermFile); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // GetContent reads and returns the file content if it's considered an editable text file.
 func GetContent(realPath string) (string, error) {
 	const headerSize = 4096
@@ -767,51 +676,6 @@ func nonPrintableRuneRatio(content string) float64 {
 		return 0
 	}
 	return float64(nonPrintableRuneCount) / float64(totalRuneCount)
-}
-
-// CommonPrefix returns the common directory path of provided files.
-func CommonPrefix(sep byte, paths ...string) string {
-	// Handle special cases.
-	switch len(paths) {
-	case 0:
-		return ""
-	case 1:
-		return path.Clean(paths[0])
-	}
-
-	// Treat string as []byte, not []rune as is often done in Go.
-	c := []byte(path.Clean(paths[0]))
-
-	// Add a trailing sep to handle the case where the common prefix directory
-	// is included in the path list.
-	c = append(c, sep)
-
-	// Ignore the first path since it's already in c.
-	for _, v := range paths[1:] {
-		// Clean up each path before testing it.
-		v = path.Clean(v) + string(sep)
-
-		// Find the first non-common byte and truncate c.
-		if len(v) < len(c) {
-			c = c[:len(v)]
-		}
-		for i := 0; i < len(c); i++ {
-			if v[i] != c[i] {
-				c = c[:i]
-				break
-			}
-		}
-	}
-
-	// Remove trailing non-separator characters and the final separator.
-	for i, v := range slices.Backward(c) {
-		if v == sep {
-			c = c[:i]
-			break
-		}
-	}
-
-	return string(c)
 }
 
 // ChangePermissionsCtx changes permissions and reports processed entries when requested.

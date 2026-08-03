@@ -3,14 +3,14 @@ import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import CIFSMounts from "../../storage/-components/CIFSMounts";
-import NFSMounts from "../../storage/-components/NFSMounts";
+import CIFSMounts from "./CIFSMounts";
+import NFSMounts from "./NFSMounts";
 
 const MountsPage = () => {
   const { reason: nfsReason, status: nfsStatus } =
@@ -29,22 +29,11 @@ const MountsPage = () => {
 
   const actions = (
     <>
-      <AppTooltip
-        title={
-          nfsView === "table" ? "Switch to card view" : "Switch to table view"
-        }
-      >
-        <AppIconButton
-          onClick={() => setNfsView(nfsView === "table" ? "card" : "table")}
-          size="small"
-        >
-          {nfsView === "table" ? (
-            <Icon height={20} icon="mdi:card-multiple" width={20} />
-          ) : (
-            <Icon height={20} icon="mdi:table" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={setNfsView}
+        viewMode={nfsView}
+      />
       {mountNFSHandler && (
         <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
           <span>
@@ -84,12 +73,15 @@ const MountsPage = () => {
     <>
       <RoutedTabActions>{actions}</RoutedTabActions>
       <div
+        className="custom-scrollbar"
         style={{
           display: "flex",
           flexDirection: "column",
           gap: 24,
           height: "100%",
           minHeight: 0,
+          minWidth: 0,
+          overflow: "auto",
         }}
       >
         <div>

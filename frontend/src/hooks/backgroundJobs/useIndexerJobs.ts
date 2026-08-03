@@ -78,10 +78,9 @@ export function useIndexerJobs(runtime: BackgroundJobRuntime) {
       setLastIndexerResult(null);
       setLastIndexerError(null);
 
-      const pendingKey = jobIdentityKey(
-        JobTypes.JOB_TYPE_FILE_INDEXER,
-        path && path !== "/" ? { path } : {},
-      );
+      const pendingKey = jobIdentityKey(JobTypes.JOB_TYPE_FILE_INDEXER, [
+        path && path !== "/" ? path : "",
+      ]);
       pendingLocalJobKeysRef.current.add(pendingKey);
 
       let job: JobSnapshot;

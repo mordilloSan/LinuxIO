@@ -966,10 +966,19 @@ export function closeStreamMux(): void {
  * Wait for the stream multiplexer to be ready (status === "open").
  * Returns immediately if already open, or waits up to timeoutMs.
  * @param timeoutMs Maximum time to wait (default 10 seconds)
+ * @param signal Optional caller cancellation signal
  * @returns Promise that resolves to true if ready, false if timeout/error
  */
-export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
-  return new Promise((resolve) => {
+export function waitForStreamMux(
+  timeoutMs = 10000,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortSignalError(signal));
+      return;
+    }
+
     const mux = instance;
     if (!mux) {
       resolve(false);
@@ -986,22 +995,56 @@ export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
       return;
     }
 
-    // Wait for status change
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", handleAbort);
+      unsubscribe();
+      resolve(ready);
+    };
+    const handleAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", handleAbort);
+      unsubscribe();
+      reject(abortSignalError(signal));
+    };
     const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
+      finish(false);
     }, timeoutMs);
 
-    const cleanup = mux.addStatusListener((status) => {
+    unsubscribe = mux.addStatusListener((status) => {
       if (status === "open") {
-        clearTimeout(timeout);
-        cleanup();
-        resolve(true);
+        finish(true);
       } else if (status === "closed" || status === "error") {
-        clearTimeout(timeout);
-        cleanup();
-        resolve(false);
+        finish(false);
       }
     });
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    const readCurrentStatus = (): MuxStatus => mux.status;
+    const statusAfterSubscribe = readCurrentStatus();
+    if (signal?.aborted) {
+      handleAbort();
+    } else if (statusAfterSubscribe === "open") {
+      finish(true);
+    } else if (
+      statusAfterSubscribe === "closed" ||
+      statusAfterSubscribe === "error"
+    ) {
+      finish(false);
+    }
   });
+}
+
+function abortSignalError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
+  const error = new Error("Operation cancelled");
+  error.name = "AbortError";
+  return error;
 }

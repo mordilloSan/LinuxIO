@@ -485,6 +485,7 @@ setup-frontend-browser: ensure-node setup
 	@echo "✅ Playwright Chromium installed!"
 
 test-frontend-browser: ensure-node setup
+	@set -e
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
 	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
 	@echo "🌐 Running frontend browser tests..."
@@ -558,17 +559,29 @@ test-backend: $(GO_BUILD_PREREQ)
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
 
+# Scan with tests for wholly unreachable code, then without tests to surface
+# production APIs kept alive only by tests. testdbus is deliberately test-only
+# cross-package infrastructure and is the sole production-scan exclusion.
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
-		status=$$?; \
-		if [ $$status -ne 0 ]; then \
+		test_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
+		test_status=$$?; \
+		production_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" ./... 2>&1 )"; \
+		production_status=$$?; \
+		if [ $$production_status -eq 0 ]; then \
+			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
+		fi; \
+		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
-		elif [ -n "$$out" ]; then \
+			if [ $$test_status -ne 0 ]; then printf '%s\n' "$$test_out"; fi; \
+			if [ $$production_status -ne 0 ]; then printf '%s\n' "$$production_out"; fi; \
+		elif [ -n "$$test_out" ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found unreachable functions (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
+			printf '%s\n' "$$test_out"; \
+		elif [ -n "$$production_out" ]; then \
+			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found functions reachable only from tests (informational, not failing):$(COLOR_RESET)"; \
+			printf '%s\n' "$$production_out"; \
 		else \
 			$(PRINTC) "$(COLOR_GREEN)✅ No dead code found!$(COLOR_RESET)"; \
 		fi
@@ -886,7 +899,7 @@ clean:
 	@rm -f $(VITE_DEV_PID) $(VITE_DEV_LOG) $(SCRIPT_SERVER_PID) || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find "$(BACKEND_DIR)/webserver/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/webserver/web/frontend" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ========== Installation Targets ==========
@@ -905,11 +918,6 @@ reinstall: uninstall fastbuild localinstall
 	@echo ""
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "  WARNING: Quick & dirty build - no tests executed!"
-
-fullinstall: uninstall
-	@echo ""
-	@echo "📦 Installing LinuxIO from GitHub repo..."
-	@sudo ./packaging/scripts/install-linuxio-binaries.sh
 
 help:
 	@$(PRINTC) ""
@@ -960,7 +968,6 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
 	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
-	@$(PRINTC) "$(COLOR_RED)    make fullinstall      $(COLOR_RESET) Uninstall + install latest release from GitHub"
 	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -969,37 +976,13 @@ help:
 	@$(PRINTC) ""
 
 cloc:
-	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
-
-cloc-clean:
 	@echo "==> Handwritten LOC (also excluding generated/minified files)"
 	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
-
-cloc-breakdown:
-	@echo "============================================================"
-	@echo " LinuxIO LOC breakdown (excluding node_modules + embedded build)"
-	@echo "============================================================"
-	@echo
-	@echo "==> Frontend (Vite/React source)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count frontend/src "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Embedded frontend build inside backend (for visibility)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend/webserver/web/frontend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Packaging / helper C code (if present)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count packaging "c,h" 0'
-	@echo
-	@echo "==> TOTAL (same as make cloc)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
-  generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  cloc cloc-clean cloc-breakdown
+  generate localinstall reinstall uninstall print-toolchain-versions \
+  cloc

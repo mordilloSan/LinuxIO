@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
-import { memo, useRef, useState } from "react";
+import { memo, useState, type MouseEvent } from "react";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -13,43 +13,40 @@ import {
 } from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
-import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import usePowerAction from "@/hooks/usePowerAction";
 import { iconSize } from "@/theme/constants";
 
 function NavbarUserDropdown() {
-  const ref = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
-  const layerRef = useDismissibleLayer<HTMLDivElement>(menuOpen, () =>
-    setMenuOpen(false),
-  );
+  const menuOpen = anchorEl !== null;
 
   // Power actions: the server may die before responding, so errors are
   // expected and only logged.
-  const { mutate: reboot } = linuxio.control.reboot.useJobAction({
+  const { mutate: reboot } = linuxio.control.reboot.useAction({
     error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },
   });
 
-  const { mutate: powerOff } = linuxio.control.power_off.useJobAction({
+  const { mutate: powerOff } = linuxio.control.power_off.useAction({
     error: (error) => {
       console.warn("Power off error (may be expected):", error);
     },
   });
 
-  const toggleMenu = () => {
-    setMenuOpen((open) => !open);
+  const toggleMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    setAnchorEl((current) => (current ? null : event.currentTarget));
   };
 
-  const closeMenu = () => setMenuOpen(false);
+  const closeMenu = () => setAnchorEl(null);
   const closeConfirm = () => setConfirm(null);
   const openConfirm = (action: "reboot" | "poweroff") => {
     closeMenu();
@@ -57,6 +54,7 @@ function NavbarUserDropdown() {
   };
 
   const handleSignOut = async () => {
+    closeMenu();
     await signOut();
     navigate({ to: "/sign-in", search: {} });
   };
@@ -78,69 +76,50 @@ function NavbarUserDropdown() {
 
   return (
     <>
-      <div className="app-navbar-dropdown" ref={layerRef}>
+      <div className="app-navbar-dropdown">
         <AppTooltip title="Account">
           <AppIconButton
+            aria-label="Account"
             aria-controls={menuOpen ? "navbar-account-menu" : undefined}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             color="inherit"
             onClick={toggleMenu}
-            ref={ref}
           >
             <Icon height={iconSize.md} icon="mdi:power" width={iconSize.md} />
           </AppIconButton>
         </AppTooltip>
 
-        {menuOpen ? (
-          <div
-            aria-label="Account actions"
-            className="app-navbar-panel app-navbar-panel--compact"
-            id="navbar-account-menu"
-            role="menu"
-          >
-            {user?.name ? (
-              <div className="app-navbar-panel__header">
-                <p className="app-navbar-panel__eyebrow">Signed in as</p>
-                <p className="app-navbar-panel__title">{user.name}</p>
-              </div>
-            ) : null}
-
-            {user?.name ? <AppDivider /> : null}
-
-            <div className="app-navbar-menu">
-              <button
-                className="app-navbar-menu__item"
-                onClick={() => openConfirm("reboot")}
-                role="menuitem"
-                type="button"
-              >
-                Reboot
-              </button>
-              <button
-                className="app-navbar-menu__item"
-                onClick={() => openConfirm("poweroff")}
-                role="menuitem"
-                type="button"
-              >
-                Power Down
-              </button>
+        <AppMenu
+          anchorEl={anchorEl}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          ariaLabel="Account actions"
+          className="app-navbar-account-menu"
+          id="navbar-account-menu"
+          onClose={closeMenu}
+          open={menuOpen}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          {user?.name ? (
+            <div className="app-navbar-panel__header">
+              <p className="app-navbar-panel__eyebrow">Signed in as</p>
+              <p className="app-navbar-panel__title">{user.name}</p>
             </div>
+          ) : null}
 
-            <AppDivider />
+          {user?.name ? <AppDivider /> : null}
 
-            <div className="app-navbar-menu">
-              <button
-                className="app-navbar-menu__item"
-                onClick={handleSignOut}
-                role="menuitem"
-                type="button"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
-        ) : null}
+          <AppMenuItem onClick={() => openConfirm("reboot")}>
+            Reboot
+          </AppMenuItem>
+          <AppMenuItem onClick={() => openConfirm("poweroff")}>
+            Power Down
+          </AppMenuItem>
+
+          <AppDivider />
+
+          <AppMenuItem onClick={handleSignOut}>Sign out</AppMenuItem>
+        </AppMenu>
       </div>
 
       <GeneralDialog onClose={closeConfirm} open={confirm !== null}>

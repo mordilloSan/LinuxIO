@@ -38,21 +38,6 @@ export function isJobCancellationError(error: unknown): boolean {
   );
 }
 
-const LOCAL_HANDLER_RETENTION_MS = 5_000;
-const locallyHandledJobIds = new Set<string>();
-
-export function markJobLocallyHandled(id: string): void {
-  locallyHandledJobIds.add(id);
-}
-
-export function unmarkJobLocallyHandled(id: string): void {
-  setTimeout(() => locallyHandledJobIds.delete(id), LOCAL_HANDLER_RETENTION_MS);
-}
-
-export function isJobLocallyHandled(id: string): boolean {
-  return locallyHandledJobIds.has(id);
-}
-
 const JOB_POLL_INTERVAL_MS = 1_000;
 
 /**
@@ -97,40 +82,30 @@ export async function waitForJobCompletion(
     // when it cannot attach), a plain job action promises completion — so a
     // missed attach falls back to polling rather than resolving mid-job with
     // an undefined result.
-    markJobLocallyHandled(snapshot.id);
-    try {
-      return terminalSnapshotOrThrow(await pollJobUntilTerminal(snapshot.id));
-    } finally {
-      unmarkJobLocallyHandled(snapshot.id);
-    }
+    return terminalSnapshotOrThrow(await pollJobUntilTerminal(snapshot.id));
   }
 
-  markJobLocallyHandled(snapshot.id);
-  try {
-    const result = await waitForStreamResult(attach, {
-      closeMessage: "Job stream closed before completion",
-    });
+  const result = await waitForStreamResult(attach, {
+    closeMessage: "Job stream closed before completion",
+  });
 
-    try {
-      return await request<JobSnapshot>(
-        "jobs",
-        "get",
-        { jobId: snapshot.id },
-        {
-          retryPolicy: "connection_closed",
-        },
-      );
-    } catch {
-      const now = new Date().toISOString();
-      return {
-        ...snapshot,
-        state: "completed",
-        result,
-        updated_at: now,
-        finished_at: now,
-      };
-    }
-  } finally {
-    unmarkJobLocallyHandled(snapshot.id);
+  try {
+    return await request<JobSnapshot>(
+      "jobs",
+      "get",
+      { jobId: snapshot.id },
+      {
+        retryPolicy: "connection_closed",
+      },
+    );
+  } catch {
+    const now = new Date().toISOString();
+    return {
+      ...snapshot,
+      state: "completed",
+      result,
+      updated_at: now,
+      finished_at: now,
+    };
   }
 }

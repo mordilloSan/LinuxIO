@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { useCallback, useState, type CSSProperties } from "react";
 
 import LogoDisplay from "@/components/logo/LogoDisplay";
+import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
@@ -59,11 +60,10 @@ const Sidebar = ({ items }: SidebarProps) => {
   return (
     <>
       {!isDesktop && mobileOpen && (
-        <button
+        <AppButton
           aria-label="Close navigation"
           className="app-sidebar-backdrop"
           onClick={() => setMobileOpen(false)}
-          type="button"
         />
       )}
       <aside

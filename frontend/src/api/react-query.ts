@@ -6,8 +6,8 @@
  *                            useQueries({ queries: paths.map((path) =>
  *                              linuxio.filebrowser.dir_size.queryOptions(path)) })
  *    Event-driven commands:  linuxio.docker.validate_compose.useAction({ error })
- *    Job routes:             linuxio.docker.start_container.useJobAction({ invalidates, success, error })
- *                            linuxio.docker.compose.useJobStreamAction({ onProgress })
+ *    Direct action routes:   linuxio.docker.start_container.useAction({ invalidates, success, error })
+ *    Progress job routes:    linuxio.docker.compose.useJobStreamAction({ onProgress })
  *    Loader/effect reads:    linuxio.jobs.list.useFetcher()
  *    Cache surgery:          linuxio.virt.list.useCache().set(updater)
  *
@@ -34,24 +34,23 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 import type {
   CommandInput,
   CommandName,
+  CommandProgress,
   CommandRequest,
   CommandResult,
-  JobSnapshot,
   HandlerName,
+  JobSnapshot,
 } from "./generated/linuxio-types";
 import { getRouteMode, routeName } from "./generated/route-metadata";
-import { JOB_QUERY_INVALIDATIONS } from "./job-query-invalidations";
 import {
   isJobSnapshot,
   isTerminalJobState,
   jobSnapshotResult,
-  markJobLocallyHandled,
-  unmarkJobLocallyHandled,
   waitForJobCompletion,
 } from "./jobs";
 import { openJobAttachStream } from "./linuxio";
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
+import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
 import {
   endpointQueryKey,
   endpointQueryPrefix,
@@ -138,7 +137,7 @@ type MutationOptions<TRequest, TResult> = Omit<
 export interface ActionConfig<TRequest, TResult> {
   /**
    * Query keys to invalidate after success (static, or derived from
-   * result/variables). Defaults to the route's `JOB_QUERY_INVALIDATIONS`
+   * result/variables). Defaults to the route's `OPERATION_QUERY_INVALIDATIONS`
    * manifest
    * entry; pass `[]` to opt out, or a value to override the manifest.
    */
@@ -181,13 +180,6 @@ export interface JobStreamActionConfig<
   TResult,
   TProgress = ProgressFrame,
 > extends ActionConfig<TRequest, TResult> {
-  /**
-   * By default a locally awaited job is marked handled so the recovered-jobs
-   * stream skips its completion toasts/invalidations. Pass `false` when the
-   * global handler should keep ownership of completion — e.g. progress is
-   * rendered locally but the toast must still fire if the caller unmounts.
-   */
-  markHandled?: boolean;
   /** Abort signal for this run, or a callback that derives one from variables. */
   signal?: StreamSignal<TRequest>;
   /** Action to perform on abort signal. Defaults to aborting the stream. */
@@ -272,6 +264,7 @@ export interface CommandEndpoint<
   TInput extends readonly unknown[],
   TRequest,
   TResult,
+  TProgress = ProgressFrame,
 > {
   /**
    * Framework-agnostic call (Promise-based) using the same generated request
@@ -338,13 +331,11 @@ export interface CommandEndpoint<
    * unwraps the job result, and handles invalidation + toasts declaratively.
    *
    * @example
-   * const { mutate } = linuxio.docker.start_container.useJobAction({
-   *   invalidates: [linuxio.docker.list_containers.queryKey()],
-   *   success: "Container started",
-   *   error: "Failed to start container",
-   *   toast: { label: "Open Docker", to: "/docker" },
+   * const { mutate } = linuxio.filebrowser.resource_patch.useJobAction({
+   *   success: "Resource updated",
+   *   error: "Failed to update resource",
    * });
-   * mutate({ containerId });
+   * mutate({ action: "rename", src: "/old-name", dst: "/new-name" });
    */
   useJobAction: (
     config?: ActionConfig<TRequest, TResult>,
@@ -359,12 +350,11 @@ export interface CommandEndpoint<
    * @example
    * const compose = linuxio.docker.compose.useJobStreamAction({
    *   onProgress: (frame) => setProgress(frame),
-   *   invalidates: [linuxio.docker.list_compose_projects.queryKey()],
    * });
    * compose.mutate({ action: "up", projectName });
    */
-  useJobStreamAction: <TStreamResult = TResult, TProgress = ProgressFrame>(
-    config?: JobStreamActionConfig<TRequest, TStreamResult, TProgress>,
+  useJobStreamAction: <TStreamResult = TResult, TStreamProgress = TProgress>(
+    config?: JobStreamActionConfig<TRequest, TStreamResult, TStreamProgress>,
   ) => JobStreamActionResult<TRequest, TStreamResult>;
 }
 
@@ -424,14 +414,14 @@ function useActionMutation<TResult>(
   return useMutation<TResult, LinuxIOError, unknown>({
     mutationFn,
     ...options,
-    onSuccess: (result, variables, onMutateResult, context) => {
+    onSuccess: async (result, variables, onMutateResult, context) => {
       const keys =
         typeof invalidates === "function"
           ? invalidates(result, variables)
-          : (invalidates ?? JOB_QUERY_INVALIDATIONS[route] ?? []);
-      for (const queryKey of keys) {
-        void queryClient.invalidateQueries({ queryKey });
-      }
+          : (invalidates ?? OPERATION_QUERY_INVALIDATIONS[route] ?? []);
+      await Promise.all(
+        keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      );
       const warningMessage = warning?.(result, variables);
       if (warningMessage) {
         toast.warning(warningMessage, toastOpts);
@@ -487,30 +477,20 @@ async function waitForJobStreamAction<
     );
   }
 
-  const markHandled = config?.markHandled !== false;
-  if (markHandled) {
-    markJobLocallyHandled(snapshot.id);
-  }
   config?.onOpen?.(attach, snapshot, variables);
 
   const mapResult = config?.mapResult;
-  try {
-    return await waitForStreamResult<TResult, TProgress>(attach, {
-      closeMessage: config?.closeMessage,
-      closeOnAbort: config?.closeOnAbort,
-      mapResult: mapResult
-        ? (data, frame) => mapResult(data, frame, snapshot, variables)
-        : undefined,
-      onClose: () => config?.onClose?.(snapshot, variables),
-      onProgress: (progress) =>
-        config?.onProgress?.(progress, snapshot, variables),
-      signal,
-    });
-  } finally {
-    if (markHandled) {
-      unmarkJobLocallyHandled(snapshot.id);
-    }
-  }
+  return waitForStreamResult<TResult, TProgress>(attach, {
+    closeMessage: config?.closeMessage,
+    closeOnAbort: config?.closeOnAbort,
+    mapResult: mapResult
+      ? (data, frame) => mapResult(data, frame, snapshot, variables)
+      : undefined,
+    onClose: () => config?.onClose?.(snapshot, variables),
+    onProgress: (progress) =>
+      config?.onProgress?.(progress, snapshot, variables),
+    signal,
+  });
 }
 
 /**
@@ -545,7 +525,13 @@ export function createEndpoint<TResult>(
     const input = (requestShape.kind === "none" ? [] : [request]) as
       | []
       | [unknown];
-    const queryFn: QueryFunction<TResult, QueryKey> = () => execute(...input);
+    const queryFn: QueryFunction<TResult, QueryKey> = ({ signal }) =>
+      core.request<TResult>(
+        handler,
+        command,
+        requestForWire(requestShape, request),
+        { retryPolicy, signal },
+      );
     const optionsWithTaggedKey = createQueryOptions<
       TResult,
       LinuxIOError,
@@ -689,11 +675,19 @@ export function createEndpoint<TResult>(
 /**
  * Maps a handler's commands to their endpoints
  */
+type DeclaredCommandProgress<
+  H extends HandlerName,
+  C extends CommandName<H>,
+> = [CommandProgress<H, C>] extends [never]
+  ? ProgressFrame
+  : CommandProgress<H, C>;
+
 export type HandlerEndpoints<H extends HandlerName> = {
   [C in CommandName<H>]: CommandEndpoint<
     CommandInput<H, C>,
     CommandRequest<H, C>,
-    CommandResult<H, C>
+    CommandResult<H, C>,
+    DeclaredCommandProgress<H, C>
   >;
 };
 
@@ -710,6 +704,7 @@ export type {
   HandlerName,
   CommandName,
   CommandInput,
+  CommandProgress,
   CommandRequest,
   CommandResult,
 } from "./generated/linuxio-types";

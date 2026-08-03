@@ -3,25 +3,27 @@ import { useCallback } from "react";
 
 import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import { useViewMode } from "@/hooks/useViewMode";
 import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
 import SocketsTab from "./-components/SocketsTab";
-import UnitViewToggle from "./-components/UnitViewToggle";
 
 export const Route = createFileRoute("/_authenticated/services/sockets")({
   validateSearch: (search) => ({
     ...optionalString(search, "socket"),
   }),
   loaderDeps: ({ search }) => ({ socket: search.socket }),
-  loader: ({ context, deps, preload }) => {
+  loader: (loaderArgs) => {
+    const { deps } = loaderArgs;
     const queries: LoaderQueryOptions[] = [
       linuxio.systemd.list_sockets.queryOptions(),
     ];
     if (deps.socket) {
       queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.socket));
     }
-    return loadRouteQueries({ context, preload }, queries);
+    return loadRouteQueries(loaderArgs, queries);
   },
   component: SocketsRoute,
 });
@@ -29,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
 function SocketsRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
   const setSelected = useCallback(
     (socket: string | null) =>
       navigate({
@@ -44,9 +47,18 @@ function SocketsRoute() {
   return (
     <>
       <RoutedTabActions>
-        <UnitViewToggle viewModeKey="sockets.list" />
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setViewMode}
+          viewMode={viewMode}
+        />
       </RoutedTabActions>
-      <SocketsTab onSelectedChange={setSelected} selected={search.socket} />
+      <SocketsTab
+        onSelectedChange={setSelected}
+        onViewModeChange={setViewMode}
+        selected={search.socket}
+        viewMode={viewMode}
+      />
     </>
   );
 }

@@ -60,19 +60,39 @@ const DirectoryListing = ({
   onConfirmRename,
   onCancelRename,
 }: DirectoryListingProps) => {
+  // `source` gates auto-scrolling: keyboard navigation has to reveal the item it
+  // moved to, but a mouse click must never move the viewport under the cursor.
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;
+    source: "keyboard" | "pointer";
   }>({
     path: resource.path,
     index: 0,
+    source: "pointer",
   });
-  const focusedIndex = focusState.path === resource.path ? focusState.index : 0;
-  const setFocusedIndex = useCallback(
+  const isFocusForCurrentPath = focusState.path === resource.path;
+  const focusedIndex = isFocusForCurrentPath ? focusState.index : 0;
+  const revealIndex =
+    isFocusForCurrentPath && focusState.source === "keyboard"
+      ? focusState.index
+      : -1;
+  const focusIndexFromKeyboard = useCallback(
     (nextIndex: number) => {
       setFocusState({
         path: resource.path,
         index: nextIndex,
+        source: "keyboard",
+      });
+    },
+    [resource.path],
+  );
+  const focusIndexFromPointer = useCallback(
+    (nextIndex: number) => {
+      setFocusState({
+        path: resource.path,
+        index: nextIndex,
+        source: "pointer",
       });
     },
     [resource.path],
@@ -87,8 +107,8 @@ const DirectoryListing = ({
 
   const clearSelection = useCallback(() => {
     onSelectedPathsChange(new Set());
-    setFocusedIndex(-1);
-  }, [onSelectedPathsChange, setFocusedIndex]);
+    focusIndexFromPointer(-1);
+  }, [onSelectedPathsChange, focusIndexFromPointer]);
 
   const { folders, files } = useMemo(() => {
     const filtered = (resource.items ?? []).filter((item) =>
@@ -146,7 +166,7 @@ const DirectoryListing = ({
     allItems,
     focusedIndex,
     selectedPaths,
-    onFocusChange: setFocusedIndex,
+    onFocusChange: focusIndexFromKeyboard,
     onSelectionChange: onSelectedPathsChange,
     onDelete: onDelete,
     onRename: onStartRename,
@@ -182,9 +202,9 @@ const DirectoryListing = ({
     (path: string) => {
       const index = allItems.findIndex((item) => item.path === path);
       if (index === -1) return;
-      setFocusedIndex(index);
+      focusIndexFromPointer(index);
     },
-    [allItems, setFocusedIndex],
+    [allItems, focusIndexFromPointer],
   );
 
   const handleItemSelection = useCallback(
@@ -283,7 +303,6 @@ const DirectoryListing = ({
       containerRef={containerRef}
       cutPaths={cutPaths}
       files={files}
-      focusedIndex={focusedIndex}
       folders={folders}
       isLoadingSubfolders={isLoadingSubfolders}
       isMarqueeSelecting={isSelecting}
@@ -298,6 +317,7 @@ const DirectoryListing = ({
       onMarqueeMouseDown={handleMouseDown}
       onOpenDirectory={onOpenDirectory}
       renamingPath={renamingPath}
+      revealIndex={revealIndex}
       selectedPaths={selectedPaths}
       selectionBox={selectionBox}
       subfoldersMap={subfoldersMap}

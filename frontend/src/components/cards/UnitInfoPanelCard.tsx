@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface UnitInfoRow {
@@ -116,7 +117,8 @@ export function UnitInfoPanel({
           </AppTypography>
         </div>
 
-        <button
+        <AppIconButton
+          aria-label="Close unit information"
           onClick={onClose}
           style={{
             background: "none",
@@ -131,7 +133,7 @@ export function UnitInfoPanel({
           }}
         >
           <Icon height={20} icon="mdi:close" width={20} />
-        </button>
+        </AppIconButton>
       </div>
 
       <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>

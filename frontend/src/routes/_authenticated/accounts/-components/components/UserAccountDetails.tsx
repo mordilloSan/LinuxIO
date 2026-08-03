@@ -535,12 +535,12 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const autoDismissFailedLoginAlert =
     search.autoDismissFailedLoginAlert === true;
   const { mutate: dismissFailedLoginAlert } =
-    linuxio.system.dismiss_failed_login_alert.useJobAction();
+    linuxio.system.dismiss_failed_login_alert.useAction();
   const [pendingKillSession, setPendingKillSession] =
     useState<AccountActiveSession | null>(null);
   const [killError, setKillError] = useState<string>("");
   const { mutate: terminateSession, isPending: terminateIsPending } =
-    linuxio.accounts.terminate_session.useJobAction({
+    linuxio.accounts.terminate_session.useAction({
       success: () => {
         setPendingKillSession(null);
         setKillError("");

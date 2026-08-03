@@ -25,6 +25,7 @@
       "@/components/*": ["./src/components/*"],
       "@/contexts/*": ["./src/contexts/*"],
       "@/hooks/*": ["./src/hooks/*"],
+      "@/performance/*": ["./src/performance/*"],
       "@/routes/*": ["./src/routes/*"],
       "@/theme/*": ["./src/theme/*"],
       "@/test/*": ["./src/test/*"],

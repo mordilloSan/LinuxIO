@@ -2,13 +2,12 @@ package relay
 
 import (
 	"bytes"
-	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
 type countingWriter struct {
@@ -28,6 +27,36 @@ func (shortWriter) Write(p []byte) (int, error) {
 		return 0, nil
 	}
 	return len(p) - 1, nil
+}
+
+type boundedReader struct {
+	data []byte
+	max  int
+}
+
+func (r *boundedReader) Read(p []byte) (int, error) {
+	if len(p) > r.max {
+		r.max = len(p)
+	}
+	if len(r.data) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
+
+func TestReadRelayFrameProgressiveDoesNotAllocateDeclaredPayload(t *testing.T) {
+	header := make([]byte, relayFrameHeaderSize)
+	header[0] = OpStreamOpen
+	binary.BigEndian.PutUint32(header[5:9], maxRelayPayloadSize)
+	r := &boundedReader{data: header}
+	if _, err := ReadRelayFrameProgressive(r); err == nil {
+		t.Fatal("ReadRelayFrameProgressive() error = nil, want truncated payload error")
+	}
+	if r.max > firstFrameReadChunkSize {
+		t.Fatalf("read request = %d bytes, want at most %d", r.max, firstFrameReadChunkSize)
+	}
 }
 
 func TestWriteRelayFrameUsesSingleWrite(t *testing.T) {
@@ -106,26 +135,6 @@ func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "result payload invalid") {
 		t.Fatalf("WriteResultFrame() error = %v, want result payload invalid", err)
-	}
-}
-
-func TestAbortContextCleanupCancelsContext(t *testing.T) {
-	reader, writer := io.Pipe()
-	ctx, cancelFn, cleanup := AbortContext(context.Background(), reader)
-
-	if cancelFn() {
-		t.Fatalf("cancelFn() = true before abort, want false")
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("writer.Close() error = %v", err)
-	}
-
-	cleanup()
-
-	select {
-	case <-ctx.Done():
-	case <-time.After(time.Second):
-		t.Fatalf("cleanup did not cancel context")
 	}
 }
 

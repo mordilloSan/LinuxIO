@@ -98,13 +98,13 @@ const UsersTab = ({
     setPasswordDialogOpen(true);
   };
   const { mutate: lockUser, isPending: isLocking } =
-    linuxio.accounts.lock_user.useJobAction({
+    linuxio.accounts.lock_user.useAction({
       success: "User locked successfully",
       error: "Failed to lock user",
       toast: ACCOUNTS_TOAST_META,
     });
   const { mutate: unlockUser, isPending: isUnlocking } =
-    linuxio.accounts.unlock_user.useJobAction({
+    linuxio.accounts.unlock_user.useAction({
       success: "User unlocked successfully",
       error: "Failed to unlock user",
       toast: ACCOUNTS_TOAST_META,

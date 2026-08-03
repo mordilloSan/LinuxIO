@@ -16,6 +16,7 @@ import Chip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import {
   getComposeStatusColor,
   getContainerStatusColor,
@@ -124,15 +125,15 @@ const ComposeList = ({
     );
   }, [projects]);
   const { mutateAsync: startContainer } =
-    linuxio.docker.start_container.useJobAction();
+    linuxio.docker.start_container.useAction();
   const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useJobAction();
+    linuxio.docker.stop_container.useAction();
   const { mutateAsync: restartContainer } =
-    linuxio.docker.restart_container.useJobAction();
+    linuxio.docker.restart_container.useAction();
   const { mutateAsync: removeContainer } =
-    linuxio.docker.remove_container.useJobAction();
+    linuxio.docker.remove_container.useAction();
   const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
-    linuxio.docker.update_container.useJobAction();
+    linuxio.docker.update_container.useAction();
 
   const handleStartContainer = useCallback(
     async (container: ContainerInfo) => {
@@ -235,15 +236,7 @@ const ComposeList = ({
                   variant="soft"
                 />
               ) : (
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    backgroundColor: statusColor,
-                  }}
-                />
+                <StatusDot color={statusColor} size={10} />
               )}
             </div>
           );

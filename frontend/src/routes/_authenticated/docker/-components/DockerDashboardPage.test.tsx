@@ -37,18 +37,18 @@ vi.mock("@/api", async (importOriginal) => {
           queryOptions: () => ({}),
         },
         start_all_stopped: {
-          useJobAction: () => ({
+          useAction: () => ({
             isPending: false,
             mutate: mocks.startAllStopped,
           }),
         },
         stop_container: {
-          useJobAction: () => ({
+          useAction: () => ({
             mutateAsync: mocks.stopContainer,
           }),
         },
         system_prune: {
-          useJobAction: () => ({
+          useAction: () => ({
             isPending: false,
             mutate: mocks.systemPrune,
           }),

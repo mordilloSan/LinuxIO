@@ -1,12 +1,10 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
-import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
+import DashboardStatRows from "./DashboardStatRows";
 import SetDateTimeDialog from "./SetDateTimeDialog";
 import SetHostnameDialog from "./SetHostnameDialog";
 
@@ -37,8 +35,6 @@ interface OverviewRow {
 }
 
 const SystemOverview = () => {
-  const theme = useAppTheme();
-
   const [{ data: hostInfo }, { data: uptime }, { data: serverTime }] =
     useSuspenseQueries({
       queries: [
@@ -76,65 +72,7 @@ const SystemOverview = () => {
     },
   ];
 
-  const stats = (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignSelf: "flex-start",
-        width: "fit-content",
-      }}
-    >
-      {rows.map(({ label, value, onEdit }, index, items) => (
-        <div
-          key={label}
-          onClick={onEdit}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === items.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-            cursor: onEdit ? "pointer" : undefined,
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <AppTypography fontWeight={500} noWrap variant="body2">
-            {value}
-          </AppTypography>
-          {onEdit && (
-            <Icon
-              height={13}
-              icon="mdi:pencil-outline"
-              style={{
-                color: theme.palette.text.secondary,
-                flexShrink: 0,
-                alignSelf: "center",
-                opacity: 0.7,
-              }}
-              width={13}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
+  const stats = <DashboardStatRows rows={rows} />;
 
   return (
     <>

@@ -16,9 +16,13 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+import DashboardStatRows from "./DashboardStatRows";
+
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 const cleanName = (name: string) => name.replace(/^\//, "");
@@ -66,14 +70,12 @@ const DockerInfo = () => {
     },
     [theme],
   );
-  const { mutate: startContainer } =
-    linuxio.docker.start_container.useJobAction();
-  const { mutate: stopContainer } =
-    linuxio.docker.stop_container.useJobAction();
+  const { mutate: startContainer } = linuxio.docker.start_container.useAction();
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction();
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useJobAction();
+    linuxio.docker.restart_container.useAction();
   const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useJobAction();
+    linuxio.docker.remove_container.useAction();
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();
@@ -162,15 +164,8 @@ const DockerInfo = () => {
     [containers],
   );
   const statsContent = (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignSelf: "flex-start",
-        width: "fit-content",
-      }}
-    >
-      {[
+    <DashboardStatRows
+      rows={[
         {
           label: "Containers",
           value: `${runningCount}/${containers.length}`,
@@ -187,40 +182,8 @@ const DockerInfo = () => {
           label: "Volumes",
           value: volumesCount,
         },
-      ].map(({ label, value }, index, rows) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              fontSize: "0.62rem",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <AppTypography fontWeight={500} noWrap variant="body2">
-            {value}
-          </AppTypography>
-        </div>
-      ))}
-    </div>
+      ]}
+    />
   );
   const stats2 = (
     <div
@@ -283,15 +246,13 @@ const DockerInfo = () => {
               }}
             >
               <DockerIcon alt={name} identifier={c.icon} size={36} />
-              <div
+              <StatusDot
+                color={resolveStateColor(c.State)}
+                size={8}
                 style={{
                   position: "absolute",
                   bottom: 0,
                   right: 0,
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: resolveStateColor(c.State),
                   border: `1.5px solid ${theme.palette.background.paper}`,
                 }}
               />

@@ -141,23 +141,7 @@ export const useFileListKeyboardNavigation = ({
     }
   }, [global, containerRef]);
 
-  // Smooth scrolling is intentionally visible, so it does not need to block paint.
-  useEffect(() => {
-    if (focusedIndex >= 0 && focusedIndex < allItems.length) {
-      const container = containerRef.current;
-      if (!container) return;
-
-      // Get all file cards in order
-      const fileCards = container.querySelectorAll('[data-file-card="true"]');
-      const focusedCard = fileCards[focusedIndex] as HTMLElement;
-
-      if (focusedCard) {
-        focusedCard.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "nearest",
-        });
-      }
-    }
-  }, [focusedIndex, allItems.length, containerRef]);
+  // Revealing the focused item is the virtualizer's job (VirtualDirectoryItems
+  // scrolls by row index). Doing it here by indexing the rendered cards would
+  // resolve to the wrong element, since only the virtual window is in the DOM.
 };

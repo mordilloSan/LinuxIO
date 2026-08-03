@@ -298,101 +298,230 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	waitForRouterSettle(t, router, route.Name)
 }
 
-func TestRouterHoldsSlotUntilCanceledHandlerExits(t *testing.T) {
+func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 	registry := NewRegistry()
 	router := NewRouter(registry)
 	policy := ActionDefault
-	policy.Name = "cancel-running-slot"
+	policy.Name = "cancel-detached-runner"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 3
-	policy.Timeout = time.Minute // async runner path — the one that detaches the handler
+	policy.QueueLimit = 1
+	policy.Timeout = time.Second
 
-	handlerRelease := make(chan struct{})
-	activeEntered := make(chan struct{})
-	nextRan := make(chan struct{})
+	started := make(chan struct{})
+	release := make(chan struct{})
+	successorStarted := make(chan struct{})
 	var running atomic.Int32
 	var maxRunning atomic.Int32
+	updateMax := func(current int32) {
+		for {
+			observed := maxRunning.Load()
+			if current <= observed || maxRunning.CompareAndSwap(observed, current) {
+				return
+			}
+		}
+	}
 	route := Route{
-		Name:   "test.cancel.running.slot",
+		Name:   "test.cancel.detached-runner",
 		Mode:   ModeJob,
 		Policy: policy,
 		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
 			current := running.Add(1)
+			updateMax(current)
 			defer running.Add(-1)
-			for {
-				observed := maxRunning.Load()
-				if current <= observed || maxRunning.CompareAndSwap(observed, current) {
-					break
-				}
+			if request == "active" {
+				close(started)
+				<-release // Deliberately ignore the canceled context.
+				return nil, nil
 			}
-			requestName, _ := request.(string)
-			switch requestName {
-			case "active":
-				close(activeEntered)
-				// Deliberately ignores ctx: models a handler mid-write that is
-				// slow to observe cancellation.
-				<-handlerRelease
-			case "next":
-				close(nextRan)
-			}
+			close(successorStarted)
 			return nil, nil
 		},
 	}
 
-	active, started, err := router.startOrQueueJob(route, Request{
-		Route:        route.Name,
-		DecodedValue: "active",
-	})
-	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, started, err)
+	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	if err != nil || !startedNow {
+		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
 	}
 	select {
-	case <-activeEntered:
+	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("active handler did not start")
 	}
-	next, started, err := router.startOrQueueJob(route, Request{
-		Route:        route.Name,
-		DecodedValue: "next",
-	})
-	if err != nil || started {
-		t.Fatalf("queue next = (%v, %t, %v), want queued job", next, started, err)
+	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	if err != nil || startedNow {
+		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
 	}
 
-	// Cancel the running job. The job must publish terminal promptly even
-	// though its handler is still executing...
 	active.Cancel()
 	select {
 	case <-active.Done():
 	case <-time.After(time.Second):
-		t.Fatal("canceled job did not publish terminal promptly")
+		t.Fatal("canceled job did not publish terminal state")
 	}
 	if state := active.Snapshot().State; state != StateCanceled {
-		t.Fatalf("active job state = %q, want canceled", state)
+		t.Fatalf("active state = %q, want canceled", state)
+	}
+	assertChannelOpen(t, successorStarted, "successor started while canceled handler still ran")
+	if got := running.Load(); got != 1 {
+		t.Fatalf("running handlers = %d, want 1 before release", got)
 	}
 
-	// ...but the queued job must not be promoted while the canceled handler
-	// still runs — that would exceed MaxActivePerRoute with real executions.
+	close(release)
 	select {
-	case <-nextRan:
-		t.Fatal("next job was promoted while the canceled handler was still running")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	close(handlerRelease)
-	select {
-	case <-nextRan:
+	case <-successorStarted:
 	case <-time.After(time.Second):
-		t.Fatal("next queued job was not promoted after the canceled handler exited")
+		t.Fatal("successor was not promoted after handler exit")
 	}
-	<-next.Done()
-
+	<-successor.Done()
 	if got := maxRunning.Load(); got != 1 {
-		t.Fatalf("observed %d concurrent handler executions, want 1 (cap)", got)
+		t.Fatalf("maximum concurrent handlers = %d, want 1", got)
+	}
+	waitForRouterSettle(t, router, route.Name)
+}
+
+func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	policy := ActionDefault
+	policy.Name = "timeout-detached-runner"
+	policy.MaxActivePerRoute = 1
+	policy.MaxActivePerOwnerRoute = 1
+	policy.QueueLimit = 1
+	policy.Timeout = 10 * time.Millisecond
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	successorStarted := make(chan struct{})
+	var running atomic.Int32
+	var maxRunning atomic.Int32
+	updateMax := func(current int32) {
+		for {
+			observed := maxRunning.Load()
+			if current <= observed || maxRunning.CompareAndSwap(observed, current) {
+				return
+			}
+		}
+	}
+	route := Route{
+		Name:   "test.timeout.detached-runner",
+		Mode:   ModeJob,
+		Policy: policy,
+		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+			current := running.Add(1)
+			updateMax(current)
+			defer running.Add(-1)
+			if request == "active" {
+				close(started)
+				<-release // Deliberately ignore the timeout context.
+				return nil, nil
+			}
+			close(successorStarted)
+			return nil, nil
+		},
 	}
 
+	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	if err != nil || !startedNow {
+		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("active handler did not start")
+	}
+	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	if err != nil || startedNow {
+		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
+	}
+
+	select {
+	case <-active.Done():
+	case <-time.After(time.Second):
+		t.Fatal("timed-out job did not publish terminal state")
+	}
+	if snapshot := active.Snapshot(); snapshot.State != StateFailed || snapshot.Error == nil || snapshot.Error.Code != 504 {
+		t.Fatalf("timeout snapshot = %+v, want failed 504", snapshot)
+	}
+	assertChannelOpen(t, successorStarted, "successor started while timed-out handler still ran")
+	if got := running.Load(); got != 1 {
+		t.Fatalf("running handlers = %d, want 1 before release", got)
+	}
+
+	close(release)
+	select {
+	case <-successorStarted:
+	case <-time.After(time.Second):
+		t.Fatal("successor was not promoted after handler exit")
+	}
+	<-successor.Done()
+	if got := maxRunning.Load(); got != 1 {
+		t.Fatalf("maximum concurrent handlers = %d, want 1", got)
+	}
 	waitForRouterSettle(t, router, route.Name)
+}
+
+func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	policy := ActionDefault
+	policy.Name = "direct-runner"
+	policy.MaxActivePerRoute = 1
+	policy.MaxActivePerOwnerRoute = 1
+	policy.QueueLimit = 1
+	policy.Timeout = 0
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	successorStarted := make(chan struct{})
+	route := Route{
+		Name:   "test.direct-runner",
+		Mode:   ModeJob,
+		Policy: policy,
+		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+			if request == "active" {
+				close(started)
+				<-release
+				return nil, nil
+			}
+			close(successorStarted)
+			return nil, nil
+		},
+	}
+
+	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	if err != nil || !startedNow {
+		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("active handler did not start")
+	}
+	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	if err != nil || startedNow {
+		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
+	}
+
+	assertChannelOpen(t, successorStarted, "successor started before direct handler returned")
+	close(release)
+	<-active.Done()
+	select {
+	case <-successorStarted:
+	case <-time.After(time.Second):
+		t.Fatal("successor was not promoted after direct handler exit")
+	}
+	<-successor.Done()
+	waitForRouterSettle(t, router, route.Name)
+}
+
+func assertChannelOpen(t *testing.T, ch <-chan struct{}, message string) {
+	t.Helper()
+	select {
+	case <-ch:
+		t.Fatal(message)
+	case <-time.After(25 * time.Millisecond):
+	}
 }
 
 // waitForRouterSettle polls until the router's accounting for a route drains

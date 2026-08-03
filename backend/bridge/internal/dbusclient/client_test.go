@@ -334,7 +334,7 @@ func TestSystemSessionRequireAvailableUsesSessionConnection(t *testing.T) {
 	}
 }
 
-func TestGetInterfaceProperty(t *testing.T) {
+func TestGetPropertyViaInterface(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 
@@ -354,9 +354,14 @@ func TestGetInterfaceProperty(t *testing.T) {
 		Path:      godbus.ObjectPath("/org/example/Test"),
 	}.Interface("org.example.Test")
 
-	got, err := GetInterfaceProperty[string](context.Background(), iface, "Title")
+	var got string
+	err := iface.Use(context.Background(), func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
+		var getErr error
+		got, getErr = GetProperty[string](ctx, obj, iface.Name, "Title")
+		return getErr
+	})
 	if err != nil {
-		t.Fatalf("GetInterfaceProperty: %v", err)
+		t.Fatalf("GetProperty: %v", err)
 	}
 	if got != "hello" {
 		t.Fatalf("got %q, want hello", got)
@@ -367,7 +372,7 @@ func TestWatchSignalsReceivesAndClosesMatch(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	t.Cleanup(func() {
-		if err := CloseSignals(context.Background()); err != nil {
+		if err := closeSignalsForTest(context.Background()); err != nil {
 			t.Fatalf("close signals: %v", err)
 		}
 	})
@@ -413,7 +418,7 @@ func TestSignalSubscriptionsFilterLocally(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	t.Cleanup(func() {
-		if err := CloseSignals(context.Background()); err != nil {
+		if err := closeSignalsForTest(context.Background()); err != nil {
 			t.Fatalf("close signals: %v", err)
 		}
 	})
@@ -463,7 +468,7 @@ func TestIdenticalSignalSubscriptionsRefCountMatch(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	t.Cleanup(func() {
-		if err := CloseSignals(context.Background()); err != nil {
+		if err := closeSignalsForTest(context.Background()); err != nil {
 			t.Fatalf("close signals: %v", err)
 		}
 	})
@@ -503,11 +508,11 @@ func TestIdenticalSignalSubscriptionsRefCountMatch(t *testing.T) {
 	assertSignalBody(t, second.Chan(), "org.example.Signals.Changed", "two")
 }
 
-func TestCloseSignalsClosesSubscriptionsAndAllowsReopen(t *testing.T) {
+func TestSignalManagerCloseClosesSubscriptionsAndAllowsReopen(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 	t.Cleanup(func() {
-		if err := CloseSignals(context.Background()); err != nil {
+		if err := closeSignalsForTest(context.Background()); err != nil {
 			t.Fatalf("close signals: %v", err)
 		}
 	})
@@ -522,16 +527,16 @@ func TestCloseSignalsClosesSubscriptionsAndAllowsReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WatchSignals: %v", err)
 	}
-	if signalErr := CloseSignals(context.Background()); signalErr != nil {
-		t.Fatalf("CloseSignals: %v", signalErr)
+	if signalErr := closeSignalsForTest(context.Background()); signalErr != nil {
+		t.Fatalf("closeSignalsForTest: %v", signalErr)
 	}
 	if _, ok := <-sub.Chan(); ok {
-		t.Fatalf("subscription channel stayed open after CloseSignals")
+		t.Fatalf("subscription channel stayed open after signal manager close")
 	}
 
 	reopened, err := WatchSignals(context.Background(), 1, match)
 	if err != nil {
-		t.Fatalf("WatchSignals after CloseSignals: %v", err)
+		t.Fatalf("WatchSignals after signal manager close: %v", err)
 	}
 	defer reopened.Close(context.Background())
 

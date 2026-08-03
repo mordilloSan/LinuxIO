@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   CACHE_TTL_MS,
   isRequestAvailable,
+  LinuxIOError,
   subscribeRequestAvailability,
 } from "@/api";
 
@@ -36,6 +37,15 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function retryQuery(failureCount: number, error: unknown): boolean {
+  // Read endpoints already retry a closed connection once inside the transport.
+  // Starting a second Query attempt would multiply the same recovery policy.
+  if (error instanceof LinuxIOError && error.code === "connection_closed") {
+    return false;
+  }
+  return failureCount < 1;
+}
+
 /**
  * Build an isolated QueryClient.
  *
@@ -53,7 +63,7 @@ export function createQueryClient(): QueryClient {
     }),
     defaultOptions: {
       queries: {
-        retry: (failureCount) => failureCount < 1,
+        retry: retryQuery,
         refetchOnWindowFocus: false,
         staleTime: CACHE_TTL_MS.TWO_SECONDS,
       },

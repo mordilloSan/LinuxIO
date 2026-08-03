@@ -18,11 +18,11 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Query[apischema.NoRequest, []apischema.SensorGroup]("system.get_sensor_info").Handle(handleGetSensorInfo),
 		apischema.Query[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info").Handle(handleGetMotherboardInfo),
 		apischema.Query[apischema.NoRequest, *apischema.MemoryInfoResponse]("system.get_memory_info").Handle(handleGetMemoryInfo),
-		apischema.Query[apischema.NoRequest, apischema.HostInfo]("system.get_host_info").HandleEvents(handleGetHostInfo),
-		apischema.Query[apischema.NoRequest, float64]("system.get_uptime").HandleEvents(handleGetUptime),
+		apischema.Query[apischema.NoRequest, apischema.HostInfo]("system.get_host_info").Handle(handleGetHostInfo),
+		apischema.Query[apischema.NoRequest, float64]("system.get_uptime").Handle(handleGetUptime),
 		apischema.Query[apischema.NoRequest, []apischema.FilesystemInfo]("system.get_fs_info").Handle(handleGetFilesystemInfo),
 		apischema.Query[apischema.NoRequest, []apischema.ProcessInfo]("system.get_processes").Handle(handleGetProcesses),
-		apischema.Query[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleEvents(handleGetServices),
+		apischema.Query[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleVoid(handleGetServices),
 		apischema.Query[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info").Handle(handleGetGPUInfo),
 		apischema.Query[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
 		apischema.Query[apischema.NoRequest, []apischema.InterfaceStats]("system.get_network_info").Handle(handleGetNetworkInfo),
@@ -32,8 +32,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Query[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules").Handle(handleGetMemoryModules),
 		apischema.Query[apischema.NoRequest, *apischema.SystemHealthSummary]("system.get_health_summary").Handle(handlers.handleGetHealthSummary),
 		apischema.Query[apischema.FailedLoginEventsRequest, []apischema.AccountUserLogin]("system.list_failed_login_events", apischema.Privileged()).Handle(handlers.handleListFailedLoginEvents),
-		apischema.Job[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
-		apischema.Job[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
+		apischema.Query[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
+		apischema.Query[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
 		apischema.Query[apischema.NoRequest, string]("system.get_server_time").Handle(handleGetServerTime),
 		apischema.Query[apischema.NoRequest, []string]("system.get_timezones").Handle(handleGetTimezones),
 	)
@@ -45,7 +45,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleGetCapabilities(ctx context.Context, _ apischema.NoRequest) (apischema.CapabilitiesResponse, error) {
-	return buildCapabilitiesResponse(ctx), nil
+	return buildCapabilitiesResponse(ctx)
 }
 
 func handleGetCPUInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.CPUInfoResponse, error) {
@@ -65,14 +65,17 @@ func handleGetMemoryInfo(ctx context.Context, _ apischema.NoRequest) (*apischema
 	return FetchMemoryInfo(ctx)
 }
 
-func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest) (apischema.HostInfo, error) {
 	result, err := FetchHostInfo(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+	if err != nil {
+		return apischema.HostInfo{}, err
+	}
+	return hostInfoToAPI(result), nil
 }
 
-func handleGetUptime(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetUptime(ctx context.Context, _ apischema.NoRequest) (float64, error) {
 	uptimeSeconds, err := FetchUptimeSeconds(ctx)
-	return bridgeipc.EmitResult(emit, uptimeSeconds, err)
+	return float64(uptimeSeconds), err
 }
 
 func handleGetFilesystemInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.FilesystemInfo, error) {
@@ -85,9 +88,9 @@ func handleGetProcesses(ctx context.Context, _ apischema.NoRequest) ([]apischema
 	return result, err
 }
 
-func handleGetServices(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := FetchServices(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGetServices(ctx context.Context, _ apischema.NoRequest) error {
+	_, err := FetchServices(ctx)
+	return err
 }
 
 func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.GpuDevice, error) {
@@ -124,7 +127,7 @@ func handleGetMemoryModules(ctx context.Context, _ apischema.NoRequest) ([]apisc
 }
 
 func handleGetServerTime(ctx context.Context, _ apischema.NoRequest) (string, error) {
-	return GetCurrentServerTime(ctx), nil
+	return GetCurrentServerTime(ctx)
 }
 
 func handleGetTimezones(ctx context.Context, _ apischema.NoRequest) ([]string, error) {

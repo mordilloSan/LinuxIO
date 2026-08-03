@@ -4,6 +4,7 @@ import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { longTextStyles } from "@/theme/tableStyles";
+import { formatFileSize } from "@/utils/formaters";
 
 export interface VolumeCardProps {
   onSelect: (checked: boolean) => void;
@@ -12,6 +13,16 @@ export interface VolumeCardProps {
 }
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
+
+const formatVolumeSize = (size?: number) => {
+  if (size === undefined || size < 0) return "Size unavailable";
+  return `Size: ${formatFileSize(size)}`;
+};
+
+const formatReferenceCount = (count?: number) => {
+  if (count === undefined || count < 0) return "References unavailable";
+  return `References: ${count}`;
+};
 
 const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
@@ -77,6 +88,20 @@ const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
           size="small"
           variant="soft"
         />
+      )}
+      {volume.UsageData && (
+        <>
+          <Chip
+            label={formatVolumeSize(volume.UsageData.Size)}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={formatReferenceCount(volume.UsageData.RefCount)}
+            size="small"
+            variant="soft"
+          />
+        </>
       )}
     </div>
   </FrostedCard>

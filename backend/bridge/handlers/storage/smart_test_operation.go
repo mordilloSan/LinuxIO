@@ -23,7 +23,9 @@ var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.DeviceTestTypeRequest, apischema.JobSnapshot]("storage.run_smart_test").Run(runSmartTestJob, bridgejobs.ActionDefault),
+		apischema.Runner[apischema.DeviceTestTypeRequest, apischema.JobSnapshot]("storage.run_smart_test", apischema.WithJobMetadata(func(req apischema.DeviceTestTypeRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
+		})).Run(runSmartTestJob, bridgejobs.ActionDefault),
 	)
 }
 

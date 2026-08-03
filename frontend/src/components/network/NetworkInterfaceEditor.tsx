@@ -167,7 +167,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.network.set_ipv4.useJobAction({
+    linuxio.network.set_ipv4.useAction({
       success: () => {
         toast.success("Switched to DHCP mode");
         onClose();
@@ -176,7 +176,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       toast: NETWORK_TOAST_META,
     });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.network.set_ipv4_manual.useJobAction({
+    linuxio.network.set_ipv4_manual.useAction({
       success: () => {
         toast.success("Manual configuration saved");
         onClose();
@@ -185,13 +185,13 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       toast: NETWORK_TOAST_META,
     });
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.network.enable_connection.useJobAction({
+    linuxio.network.enable_connection.useAction({
       success: "Connection enabled",
       error: "Failed to enable connection",
       toast: NETWORK_TOAST_META,
     });
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.network.disable_connection.useJobAction({
+    linuxio.network.disable_connection.useAction({
       success: "Connection disabled",
       error: "Failed to disable connection",
       toast: NETWORK_TOAST_META,

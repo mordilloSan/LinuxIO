@@ -23,15 +23,14 @@ import { getMutationErrorMessage } from "@/utils/mutations";
  * - De-duplication across paths is owned by the plumbing (bounded, so a long
  *   session doesn't accrete one id per job forever).
  * - A mounted page that is actively tracking a job claims its type via
- *   `claimTerminalFeedback`; claims register and release synchronously, unlike
- *   `isJobLocallyHandled` whose 5 s trailing unmark would swallow a failure
- *   that arrives just after navigating away.
+ *   `claimTerminalFeedback`; claims register and release synchronously so an
+ *   outcome arriving after navigation falls back to the global handler.
  */
 
 export interface TerminalFeedbackJob {
   id: string;
   type: string;
-  request: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }
 
 export type TerminalJobOutcome =
@@ -110,7 +109,7 @@ export function hasTerminalFeedbackOwner(type: string): boolean {
 }
 
 function capabilityPresentation(job: TerminalFeedbackJob) {
-  const wire = requestString(job.request, "capability") ?? "capability";
+  const wire = requestString(job.metadata, "capability") ?? "capability";
   const def = CAPABILITIES.find((c) => c.wire === wire) as
     | CapabilityDef
     | undefined;

@@ -439,31 +439,31 @@ func TestFetchRecentEventsMergesSuccessesAndFailures(t *testing.T) {
 	require.Equal(t, LoginStatusSuccess, logins[1].Status)
 }
 
-func TestCountBtmpFailuresSince(t *testing.T) {
+func TestParseBtmpFailuresBetweenFiltersByStartTime(t *testing.T) {
 	data := appendBtmpRecord(nil, "miguel", 100)
 	data = appendBtmpRecord(data, "other", 110)
 	data = appendBtmpRecord(data, "miguel", 120)
 	data = append(data, []byte("partial")...)
 
-	require.Equal(t, 1, countBtmpFailuresSince("miguel", data, 110))
+	require.Len(t, parseBtmpFailuresBetween("miguel", data, 110, 0, 0), 1)
 }
 
-func TestCountBtmpFailuresAcceptsUserProcess(t *testing.T) {
+func TestParseBtmpFailuresAcceptsUserProcess(t *testing.T) {
 	record := make([]byte, btmpRecordSize)
 	putUtmpType(record, utmpUserProcess)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
 	putUtmpTime(record, 120)
 
-	require.Equal(t, 1, countBtmpFailuresSince("miguel", record, 0))
+	require.Len(t, parseBtmpFailures("miguel", record, 0), 1)
 }
 
-func TestCountBtmpFailuresSkipsDeadProcess(t *testing.T) {
+func TestParseBtmpFailuresSkipsDeadProcess(t *testing.T) {
 	record := make([]byte, btmpRecordSize)
 	putUtmpType(record, 8)
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
 	putUtmpTime(record, 120)
 
-	require.Zero(t, countBtmpFailuresSince("miguel", record, 0))
+	require.Empty(t, parseBtmpFailures("miguel", record, 0))
 }
 
 func TestPreviousSuccessfulLoginUnix(t *testing.T) {

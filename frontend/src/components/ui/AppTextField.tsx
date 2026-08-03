@@ -15,6 +15,7 @@ import {
 import "./app-text-field.css";
 
 export interface AppTextFieldProps {
+  "aria-label"?: string;
   "aria-autocomplete"?: "none" | "inline" | "list" | "both";
   "aria-controls"?: string;
   "aria-expanded"?: boolean;
@@ -85,6 +86,7 @@ const AppTextField = forwardRef<
     onKeyDown,
     onClick,
     role,
+    "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
     "aria-autocomplete": ariaAutocomplete,
@@ -156,6 +158,7 @@ const AppTextField = forwardRef<
     onKeyDown,
     list,
     role,
+    "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
     "aria-autocomplete": ariaAutocomplete,

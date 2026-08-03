@@ -48,7 +48,7 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   );
 
   // Mutations
-  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useJobAction({
+  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useAction({
     success: (_result, variables) =>
       toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
     error: "Failed to delete peer",

@@ -136,7 +136,7 @@ func systemLoginEventFromLogin(login loginhistory.Login) apischema.AccountUserLo
 		Terminal:  login.Terminal,
 		Source:    login.Source,
 		Time:      login.Time,
-		StartedAt: utils.OptionalString(startedAt),
+		StartedAt: startedAt,
 		Status:    login.Status,
 	}
 }

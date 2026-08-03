@@ -1,0 +1,101 @@
+/* The dialog body is two independently scrolling sections that share one fixed
+   height: the task tree and the raw log. Opening the log transfers the free
+   space from one to the other, and it is that transfer — not a height — that
+   is animated, which is why the toggle bar glides instead of jumping.
+   Both sides ease with the same curve, so their grow factors always sum to 1
+   and the log's share moves smoothly from none of the space to all of it.
+   The curve is the slow duration on the decelerate easing. Every transition
+   here has to share BOTH — the two grow factors only sum to 1 while they
+   interpolate identically, and a mismatch makes the toggle bar drift or
+   stutter mid-travel. The chevron rides along for the same reason. */
+
+/* Progress section: holds the free space while the log is closed, and hands it
+   over as the log opens. Shrinks and scrolls when the tree outgrows what's
+   left. */
+.compose-progress-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  transition: flex-grow var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
+}
+
+.compose-progress-section--yielded {
+  flex-grow: 0;
+}
+
+/* Raw-log section. Its flex basis is the toggle bar alone — the panel is taken
+   out of flow so the section never sizes to the log's content, which would
+   snap it open the moment the class lands. Everything past the bar is free
+   space it grew into.
+   min-height covers the case the transfer can't: a task tree already taller
+   than the body leaves no free space to grow into, so the log claims a floor
+   and the tree scrolls. It eases on the same curve, so whichever term is
+   driving, the panel opens at the same rate. */
+.compose-log {
+  --compose-log-toggle-height: 30px;
+  --compose-log-min: 45%;
+
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  transition:
+    flex-grow var(--app-transition-duration-slow)
+      var(--app-easing-decelerate),
+    min-height var(--app-transition-duration-slow)
+      var(--app-easing-decelerate);
+}
+
+.compose-log--expanded {
+  flex-grow: 1;
+  min-height: var(--compose-log-min);
+}
+
+.compose-log--headless {
+  --compose-log-toggle-height: 0px;
+}
+
+/* Fixed height so the panel below can be positioned off it. */
+.compose-log__toggle {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: var(--compose-log-toggle-height);
+}
+
+.compose-log__chevron {
+  flex-shrink: 0;
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
+}
+
+.compose-log__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+/* Out of flow: fills the section below the bar, contributes nothing to it. */
+.compose-log__animator {
+  position: absolute;
+  inset: var(--compose-log-toggle-height) 0 0 0;
+  overflow: hidden;
+}
+
+.compose-log__scroller {
+  height: 100%;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.compose-log__lines {
+  padding: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compose-progress-section,
+  .compose-log,
+  .compose-log__chevron {
+    transition: none;
+  }
+}

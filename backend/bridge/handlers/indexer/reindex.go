@@ -42,7 +42,7 @@ type IndexerCallbacks struct {
 
 // StreamIndexer triggers a full index for / or a path reindex for a subpath,
 // then attaches to GET /status?stream=true for live SSE updates. The caller
-// controls cancellation through ctx (e.g. via ipc.AbortContext).
+// controls cancellation through ctx.
 //
 // HTTP status-to-error mapping is centralized here so handler wrappers stay thin.
 func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error {

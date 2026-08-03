@@ -65,6 +65,7 @@ type Route struct {
 	Privileged bool
 	Policy     JobPolicy
 	Decode     RequestDecoder
+	Metadata   JobMetadataBuilder
 }
 
 type RouteOption func(*Route)
@@ -76,6 +77,14 @@ func Privileged(r *Route) {
 func WithRequestDecoder(decode RequestDecoder) RouteOption {
 	return func(r *Route) {
 		r.Decode = decode
+	}
+}
+
+// WithJobMetadata declares the only request-derived data that may be exposed
+// through public job snapshots. Routes without this option expose no metadata.
+func WithJobMetadata(build JobMetadataBuilder) RouteOption {
+	return func(r *Route) {
+		r.Metadata = build
 	}
 }
 
@@ -316,6 +325,9 @@ func (r *Router) lookup(route string) (Route, bool) {
 }
 
 func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, request any) error {
+	ctx, cleanup := queryAbortContext(ctx, stream)
+	defer cleanup()
+
 	emit := newStreamEmitter(stream)
 	err := route.Handler(ctx, request, emit)
 	if err != nil {
@@ -341,16 +353,15 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-// routeRunner wraps the route handler for Job.Start. handlerExited is closed
-// only when the handler itself returns: on cancel or timeout the wrapper
-// returns early so the job publishes terminal promptly, but the detached
-// handler may still be executing — the router must not release its active
-// slot until this channel closes.
-func (r *Router) routeRunner(route Route, handlerExited chan<- struct{}) Runner {
+// routeRunner reports physical completion through executionDone. A job can
+// become terminal before its handler returns when a timed or canceled handler
+// ignores its context, so admission accounting must wait for this signal rather
+// than relying on Job.Done alone.
+func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner {
 	return func(ctx context.Context, job *Job, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
-			defer close(handlerExited)
+			defer close(executionDone)
 			return r.runRoute(ctx, job, request, route)
 		}
 
@@ -359,7 +370,7 @@ func (r *Router) routeRunner(route Route, handlerExited chan<- struct{}) Runner 
 
 		done := make(chan runnerResult, 1)
 		go func() {
-			defer close(handlerExited)
+			defer close(executionDone)
 			result, err := r.runRoute(runCtx, job, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
@@ -428,7 +439,12 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	}
 	r.mu.Unlock()
 
-	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
+	var metadata *JobMetadata
+	if route.Metadata != nil {
+		value := route.Metadata(req.DecodedValue)
+		metadata = &value
+	}
+	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
 	if err != nil {
 		if canStart {
 			// Releasing the reserved slot and promoting the next queued job is
@@ -520,18 +536,14 @@ func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
 	if r.beforeStartHook != nil {
 		r.beforeStartHook(job)
 	}
-	handlerExited := make(chan struct{})
-	if !job.Start(r.routeRunner(route, handlerExited)) {
+	executionDone := make(chan struct{})
+	if !job.Start(r.routeRunner(route, executionDone)) {
 		r.finishJob(route.Name, ownerRouteKey)
 		return
 	}
 	go func() {
-		// A canceled or timed-out job publishes terminal while its handler may
-		// still be executing. Releasing the slot then would let a promoted job
-		// run concurrently with the abandoned handler, exceeding the policy
-		// cap, so promotion also waits for the handler to actually exit.
 		<-job.Done()
-		<-handlerExited
+		<-executionDone
 		r.finishJob(route.Name, ownerRouteKey)
 	}()
 }

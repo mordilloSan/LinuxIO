@@ -78,7 +78,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	var gotRemoteHost string
 	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
 		gotRemoteHost = remoteHost
-		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
+		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
 			return nil, err
 		}
@@ -230,7 +230,7 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	defer func() { startBridge = oldStart }()
 
 	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
-		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
+		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
 		}
@@ -395,7 +395,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	defer func() { startBridge = oldStart }()
 
 	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
-		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
+		return sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})

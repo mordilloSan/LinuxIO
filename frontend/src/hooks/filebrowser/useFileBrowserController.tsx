@@ -1,5 +1,4 @@
-import { Icon } from "@iconify/react";
-import { useCallback, useMemo, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useMemo, type MouseEvent } from "react";
 
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
@@ -25,12 +24,6 @@ import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
 import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
 import { useCapability } from "@/hooks/useCapabilities";
-import { ViewMode } from "@/types/filebrowser";
-
-const viewIconMap: Record<ViewMode, ReactNode> = {
-  card: <Icon height={20} icon="mdi:card-multiple" width={20} />,
-  list: <Icon height={20} icon="mdi:view-list" width={20} />,
-};
 
 export interface FileBrowserController {
   contentProps: FileBrowserContentProps;
@@ -49,8 +42,6 @@ export function useFileBrowserController(): FileBrowserController {
     sortOrder,
     viewMode,
   } = view;
-  const viewIcon = useMemo(() => viewIconMap[viewMode], [viewMode]);
-
   // Dialogs slice: state plus a stable semantic-action API
   const dialogs = useFileDialogs();
   const {
@@ -310,7 +301,6 @@ export function useFileBrowserController(): FileBrowserController {
       searchQuery,
       showHiddenFiles,
       showQuickSave,
-      viewIcon,
       viewMode,
     }),
     [
@@ -332,7 +322,6 @@ export function useFileBrowserController(): FileBrowserController {
       showHiddenFiles,
       showQuickSave,
       viewActions,
-      viewIcon,
       viewMode,
     ],
   );
@@ -558,7 +547,6 @@ export function useFileBrowserController(): FileBrowserController {
       searchQuery,
       showHiddenFiles,
       sortOrder,
-      viewIcon,
       viewMode,
     }),
     [
@@ -572,7 +560,6 @@ export function useFileBrowserController(): FileBrowserController {
       showHiddenFiles,
       sortOrder,
       viewActions,
-      viewIcon,
       viewMode,
     ],
   );

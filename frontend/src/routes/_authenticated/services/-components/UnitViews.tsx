@@ -87,6 +87,47 @@ export function statusDot(activeState: string) {
   );
 }
 
+interface MobileExpandedDetail {
+  label: string;
+  value: ReactNode;
+}
+
+export function MobileExpandedDetails({
+  rows,
+}: {
+  rows: readonly MobileExpandedDetail[];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        padding: "2px 0",
+      }}
+    >
+      {rows.map(({ label, value }) => (
+        <div key={label} style={{ display: "flex", gap: 12 }}>
+          <span
+            style={{
+              fontSize: "0.6rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--app-palette-text-secondary)",
+              width: 80,
+              flexShrink: 0,
+              paddingTop: 2,
+            }}
+          >
+            {label}
+          </span>
+          <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function formatBytes(val: unknown): string {
   const b = Number(val ?? 0);
   if (!b || b > 1e18) return "—";
@@ -253,23 +294,23 @@ export const UnitCardActions = ({
   });
 
   const { mutate: startService, isPending: isStarting } =
-    linuxio.systemd.start_service.useJobAction(actionConfig("started"));
+    linuxio.systemd.start_service.useAction(actionConfig("started"));
   const { mutate: stopService, isPending: isStopping } =
-    linuxio.systemd.stop_service.useJobAction(actionConfig("stopped"));
+    linuxio.systemd.stop_service.useAction(actionConfig("stopped"));
   const { mutate: restartService, isPending: isRestarting } =
-    linuxio.systemd.restart_service.useJobAction(actionConfig("restarted"));
+    linuxio.systemd.restart_service.useAction(actionConfig("restarted"));
   const { mutate: reloadService, isPending: isReloading } =
-    linuxio.systemd.reload_service.useJobAction(actionConfig("reloaded"));
+    linuxio.systemd.reload_service.useAction(actionConfig("reloaded"));
   const { mutate: enableService, isPending: isEnabling } =
-    linuxio.systemd.enable_service.useJobAction(actionConfig("enabled"));
+    linuxio.systemd.enable_service.useAction(actionConfig("enabled"));
   const { mutate: disableService, isPending: isDisabling } =
-    linuxio.systemd.disable_service.useJobAction(actionConfig("disabled"));
+    linuxio.systemd.disable_service.useAction(actionConfig("disabled"));
   const { mutate: maskService, isPending: isMasking } =
-    linuxio.systemd.mask_service.useJobAction(actionConfig("masked"));
+    linuxio.systemd.mask_service.useAction(actionConfig("masked"));
   const { mutate: unmaskService, isPending: isUnmasking } =
-    linuxio.systemd.unmask_service.useJobAction(actionConfig("unmasked"));
+    linuxio.systemd.unmask_service.useAction(actionConfig("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    linuxio.systemd.reset_failed_service.useJobAction(actionConfig("reset"));
+    linuxio.systemd.reset_failed_service.useAction(actionConfig("reset"));
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";

@@ -2,6 +2,8 @@ import { Icon } from "@iconify/react";
 import { memo, useState, type CSSProperties } from "react";
 
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
+import { WebVitalsFooterStats } from "@/components/dev-tools/WebVitalsFooterStats";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
@@ -9,6 +11,7 @@ import { shadowSm } from "@/theme/constants";
 const DevToolsButton = () => {
   const theme = useAppTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const [isWebVitalsVisible, setIsWebVitalsVisible] = useState(false);
 
   // Only show in development mode
   if (!import.meta.env.DEV) {
@@ -17,22 +20,24 @@ const DevToolsButton = () => {
 
   return (
     <>
+      {isWebVitalsVisible && <WebVitalsFooterStats />}
       <div style={{ position: "relative", display: "inline-flex" }}>
-        <div
+        <AppButton
+          aria-expanded={isOpen}
+          aria-label="Toggle developer tools"
           className="devtools-btn"
+          keepTextOnMobile
           onClick={() => setIsOpen((prev) => !prev)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              setIsOpen((prev) => !prev);
-            }
-          }}
-          role="button"
+          startIcon={
+            <Icon
+              height={16}
+              icon="mdi:wrench"
+              style={{ color: theme.palette.primary.main }}
+              width={16}
+            />
+          }
           style={
             {
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
               gap: 3,
               border: "1px solid",
               borderColor: isOpen ? theme.palette.primary.main : "transparent",
@@ -46,20 +51,19 @@ const DevToolsButton = () => {
               "--devtools-hover-shadow": shadowSm,
             } as CSSProperties
           }
-          tabIndex={0}
+          variant="text"
         >
-          <Icon
-            height={16}
-            icon="mdi:wrench"
-            style={{ color: theme.palette.primary.main }}
-            width={16}
-          />
           <AppTypography color="text.secondary" variant="caption">
             Dev Tools
           </AppTypography>
-        </div>
+        </AppButton>
       </div>
-      <DevToolsPanel isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <DevToolsPanel
+        isOpen={isOpen}
+        isWebVitalsVisible={isWebVitalsVisible}
+        onClose={() => setIsOpen(false)}
+        onToggleWebVitals={() => setIsWebVitalsVisible((visible) => !visible)}
+      />
     </>
   );
 };

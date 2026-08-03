@@ -28,6 +28,30 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
+import { formatFileSize } from "@/utils/formaters";
+
+const formatVolumeSize = (size?: number) => {
+  if (size === undefined || size < 0) return "Unavailable";
+  return formatFileSize(size);
+};
+
+const formatReferenceCount = (count?: number) => {
+  if (count === undefined || count < 0) return "Unavailable";
+  return count.toLocaleString();
+};
+
+const formatDockerValue = (value: unknown) => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value === null) return "null";
+  try {
+    return JSON.stringify(value) ?? "Unavailable";
+  } catch {
+    return "Unavailable";
+  }
+};
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -48,7 +72,7 @@ const DeleteVolumeDialog = ({
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useJobAction();
+    linuxio.docker.delete_volume.useAction();
   const handleDelete = async () => {
     // Delete volumes sequentially
     const failures: string[] = [];
@@ -297,6 +321,34 @@ const VolumeList = ({
         width: "100px",
       },
     },
+    {
+      id: "size",
+      header: "Size",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {formatVolumeSize(row.original.UsageData?.Size)}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "120px",
+      },
+    },
+    {
+      id: "references",
+      header: "References",
+      cell: ({ row }) => (
+        <AppTypography style={responsiveTextStyles} variant="body2">
+          {formatReferenceCount(row.original.UsageData?.RefCount)}
+        </AppTypography>
+      ),
+      meta: {
+        align: "left",
+        hideBelow: "lg",
+        width: "120px",
+      },
+    },
   ];
   return (
     <div
@@ -406,6 +458,24 @@ const VolumeList = ({
 
               <div>
                 <AppTypography gutterBottom variant="subtitle2">
+                  <b>Usage:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  <Chip
+                    label={`Size: ${formatVolumeSize(volume.UsageData?.Size)}`}
+                    size="small"
+                    variant="soft"
+                  />
+                  <Chip
+                    label={`References: ${formatReferenceCount(volume.UsageData?.RefCount)}`}
+                    size="small"
+                    variant="soft"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
                   <b>Labels:</b>
                 </AppTypography>
                 <div className="expand-panel__chips">
@@ -451,6 +521,52 @@ const VolumeList = ({
                   )}
                 </div>
               </div>
+
+              <div>
+                <AppTypography gutterBottom variant="subtitle2">
+                  <b>Driver Status:</b>
+                </AppTypography>
+                <div className="expand-panel__chips">
+                  {volume.Status && Object.keys(volume.Status).length > 0 ? (
+                    Object.entries(volume.Status).map(([key, value]) => (
+                      <Chip
+                        key={key}
+                        label={`${key}: ${formatDockerValue(value)}`}
+                        size="small"
+                        style={wrappableChipStyle}
+                        labelStyle={wrappableChipLabelStyle}
+                        variant="soft"
+                      />
+                    ))
+                  ) : (
+                    <AppTypography color="text.secondary" variant="body2">
+                      (no driver status)
+                    </AppTypography>
+                  )}
+                </div>
+              </div>
+
+              {volume.ClusterVolume && (
+                <div>
+                  <AppTypography gutterBottom variant="subtitle2">
+                    <b>Cluster Volume:</b>
+                  </AppTypography>
+                  <div className="expand-panel__chips">
+                    {Object.entries(volume.ClusterVolume).map(
+                      ([key, value]) => (
+                        <Chip
+                          key={key}
+                          label={`${key}: ${formatDockerValue(value)}`}
+                          size="small"
+                          style={wrappableChipStyle}
+                          labelStyle={wrappableChipLabelStyle}
+                          variant="soft"
+                        />
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         />

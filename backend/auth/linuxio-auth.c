@@ -367,6 +367,18 @@ static void copy_fixed_field(char *dst, size_t dstsz, const char *src)
     memcpy(dst, src, len);
 }
 
+static void encode_ut_id(char id[4], pid_t pid)
+{
+  static const char alphabet[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  uint32_t value = (uint32_t)pid;
+
+  for (int i = 3; i >= 0; i--)
+  {
+    id[i] = alphabet[value % 62];
+    value /= 62;
+  }
+}
+
 static int valid_remote_host(const char *remote_host)
 {
   if (!remote_host || !remote_host[0])
@@ -421,8 +433,14 @@ static int update_lastlog(uid_t uid, const struct timeval *tv, const char *remot
     return -1;
   }
 
-  if (flock(fd, LOCK_EX) != 0)
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0)
   {
+    int lock_errno = errno;
+
+    if (lock_errno == EWOULDBLOCK)
+      goto out;
+
+    errno = lock_errno;
     journal_errorf("failed to lock %s for uid=%u: %m", _PATH_LASTLOG, (unsigned)uid);
     goto out;
   }
@@ -500,15 +518,13 @@ static void record_login_start(const struct auth_user *auth_user, const char *re
 {
   struct timeval tv;
   struct utmp ut;
-  char id[32];
 
   gettimeofday(&tv, NULL);
-  (void)safe_snprintf(id, sizeof(id), "%ld", (long)getpid());
 
   utmpname(_PATH_UTMP);
 
   memset(&ut, 0, sizeof(ut));
-  copy_fixed_field(ut.ut_id, sizeof(ut.ut_id), id);
+  encode_ut_id(ut.ut_id, getpid());
   copy_fixed_field(ut.ut_line, sizeof(ut.ut_line), LINUXIO_WEB_TTY);
   copy_fixed_field(ut.ut_user, sizeof(ut.ut_user), auth_user->name);
   copy_fixed_field(ut.ut_host, sizeof(ut.ut_host), remote_host);
@@ -533,15 +549,13 @@ static void record_login_end(void)
 {
   struct timeval tv;
   struct utmp ut;
-  char id[32];
 
   gettimeofday(&tv, NULL);
-  (void)safe_snprintf(id, sizeof(id), "%ld", (long)getpid());
 
   utmpname(_PATH_UTMP);
 
   memset(&ut, 0, sizeof(ut));
-  copy_fixed_field(ut.ut_id, sizeof(ut.ut_id), id);
+  encode_ut_id(ut.ut_id, getpid());
   copy_fixed_field(ut.ut_line, sizeof(ut.ut_line), LINUXIO_WEB_TTY);
   ut.ut_pid = getpid();
   ut.ut_tv.tv_sec = clamp_time_to_u32(tv.tv_sec);
@@ -964,28 +978,33 @@ static int user_can_run_bridge_as_root(const struct passwd *pw, const char *pass
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
 // stderr (wired to the journal) before _exit, so a bridge that dies during
 // setup is attributable instead of a silent status-127 exit.
-__attribute__((__noreturn__)) static void child_die(const char *what)
+__attribute__((__noreturn__)) static void child_die(int status_fd, const char *what)
 {
+  int saved_errno = errno;
+  uint8_t err_byte = 1;
+  if (status_fd >= 0)
+    (void)write_all(status_fd, &err_byte, sizeof(err_byte));
+  errno = saved_errno;
   char buf[256];
   (void)safe_snprintf(buf, sizeof(buf), "linuxio-auth: bridge setup failed: %s: %m\n", what);
   (void)write_all(STDERR_FILENO, buf, strlen(buf));
   _exit(127);
 }
 
-static void drop_to_user(const struct auth_user *auth_user)
+static void drop_to_user(const struct auth_user *auth_user, int status_fd)
 {
   if (!auth_user)
-    child_die("no user to drop to");
+    child_die(status_fd, "no user to drop to");
   if (setgroups(0, NULL) != 0)
-    child_die("setgroups");
+    child_die(status_fd, "setgroups");
   if (initgroups(auth_user->name, auth_user->gid) != 0)
-    child_die("initgroups");
+    child_die(status_fd, "initgroups");
   if (setgid(auth_user->gid) != 0)
-    child_die("setgid");
+    child_die(status_fd, "setgid");
   if (setuid(auth_user->uid) != 0)
-    child_die("setuid");
+    child_die(status_fd, "setuid");
   if (setuid(0) == 0)
-    child_die("privilege drop verification (setuid(0) unexpectedly succeeded)");
+    child_die(status_fd, "privilege drop verification (setuid(0) unexpectedly succeeded)");
 }
 // Locale validation - only allow safe locale strings
 static int valid_locale(const char *s)
@@ -1305,6 +1324,7 @@ static pid_t spawn_bridge_process(
   int orig_bootstrap = bootstrap_pipe_read;
   int orig_exec_status = exec_status_fd;
   int orig_bridge = bridge_fd;
+  int child_status_fd = exec_status_fd;
 
   // First, move exec_status_fd and bridge_fd to high positions to avoid conflicts
   // (in case any of them is already at 0-5)
@@ -1312,14 +1332,9 @@ static pid_t spawn_bridge_process(
 
   if (orig_exec_status >= 0 && orig_exec_status <= BRIDGE_FD)
   {
-    tmp_exec_status = dup(orig_exec_status);
-    if (tmp_exec_status < 0) child_die("dup exec-status fd");
-    // Preserve CLOEXEC on the new FD
-    {
-      int fdflags = fcntl(tmp_exec_status, F_GETFD);
-      if (fdflags >= 0)
-        (void)fcntl(tmp_exec_status, F_SETFD, fdflags | FD_CLOEXEC);
-    }
+    tmp_exec_status = fcntl(orig_exec_status, F_DUPFD_CLOEXEC, BRIDGE_FD + 1);
+    if (tmp_exec_status < 0) child_die(child_status_fd, "dup exec-status fd");
+    child_status_fd = tmp_exec_status;
     // Close original to avoid leaking extra copy of pipe write-end
     close(orig_exec_status);
   }
@@ -1330,8 +1345,8 @@ static pid_t spawn_bridge_process(
 
   if (orig_bridge >= 0 && orig_bridge <= BRIDGE_FD)
   {
-    tmp_bridge = dup(orig_bridge);
-    if (tmp_bridge < 0) child_die("dup bridge fd");
+    tmp_bridge = fcntl(orig_bridge, F_DUPFD_CLOEXEC, BRIDGE_FD + 1);
+    if (tmp_bridge < 0) child_die(child_status_fd, "dup bridge fd");
     // Close original to avoid leaking extra FD
     close(orig_bridge);
   }
@@ -1346,30 +1361,31 @@ static pid_t spawn_bridge_process(
   {
     // client_fd is stdin - need to save it first
     int saved_client = dup(orig_client);
-    if (saved_client < 0) child_die("dup client fd");
+    if (saved_client < 0) child_die(child_status_fd, "dup client fd");
     orig_client = saved_client;
   }
 
   if (orig_bootstrap >= 0)
   {
-    if (dup2(orig_bootstrap, STDIN_FILENO) < 0) child_die("dup2 bootstrap to stdin");
+    if (dup2(orig_bootstrap, STDIN_FILENO) < 0) child_die(child_status_fd, "dup2 bootstrap to stdin");
     if (orig_bootstrap != STDIN_FILENO) close(orig_bootstrap);
   }
 
   // Step 3: Set up stdout (FD 1) as dup of stderr
-  if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) child_die("dup2 stderr to stdout");
+  if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) child_die(child_status_fd, "dup2 stderr to stdout");
 
   // Step 4: Set up client connection at FD 3
   if (orig_client >= 0 && orig_client != CLIENT_CONN_FD)
   {
-    if (dup2(orig_client, CLIENT_CONN_FD) < 0) child_die("dup2 client connection");
+    if (dup2(orig_client, CLIENT_CONN_FD) < 0) child_die(child_status_fd, "dup2 client connection");
     close(orig_client);
   }
 
   // Step 5: Set up exec_status_fd at FD 4 (keep CLOEXEC)
   if (tmp_exec_status >= 0 && tmp_exec_status != EXEC_STATUS_FD)
   {
-    if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) child_die("dup2 exec-status fd");
+    if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) child_die(child_status_fd, "dup2 exec-status fd");
+    child_status_fd = EXEC_STATUS_FD;
     close(tmp_exec_status);
     // Restore CLOEXEC on the new FD
     {
@@ -1378,20 +1394,10 @@ static pid_t spawn_bridge_process(
         (void)fcntl(EXEC_STATUS_FD, F_SETFD, fdflags | FD_CLOEXEC);
     }
   }
-  else if (tmp_exec_status == EXEC_STATUS_FD)
-  {
-    // Already at right position, just ensure CLOEXEC
-    {
-      int fdflags = fcntl(EXEC_STATUS_FD, F_GETFD);
-      if (fdflags >= 0)
-        (void)fcntl(EXEC_STATUS_FD, F_SETFD, fdflags | FD_CLOEXEC);
-    }
-  }
-
   // Step 6: Set up bridge_fd at FD 5
   if (tmp_bridge >= 0 && tmp_bridge != BRIDGE_FD)
   {
-    if (dup2(tmp_bridge, BRIDGE_FD) < 0) child_die("dup2 bridge fd");
+    if (dup2(tmp_bridge, BRIDGE_FD) < 0) child_die(child_status_fd, "dup2 bridge fd");
     close(tmp_bridge);
   }
 
@@ -1473,15 +1479,15 @@ static pid_t spawn_bridge_process(
     setenv("USER", "root", 1);
     setenv("LOGNAME", "root", 1);
     if (setgroups(0, NULL) != 0)
-      child_die("setgroups (privileged)");
+      child_die(child_status_fd, "setgroups (privileged)");
     if (setresgid(0, 0, 0) != 0)
-      child_die("setresgid (privileged)");
+      child_die(child_status_fd, "setresgid (privileged)");
     if (setresuid(0, 0, 0) != 0)
-      child_die("setresuid (privileged)");
+      child_die(child_status_fd, "setresuid (privileged)");
   }
   else
   {
-    drop_to_user(auth_user);
+    drop_to_user(auth_user, child_status_fd);
     if (auth_user)
     {
       setenv("HOME", auth_user->dir, 1);
@@ -1491,7 +1497,7 @@ static pid_t spawn_bridge_process(
       safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)auth_user->uid);
       setenv("XDG_RUNTIME_DIR", xdg, 1);
       if (chdir(auth_user->dir) != 0)
-        child_die("chdir to home directory");
+        child_die(child_status_fd, "chdir to home directory");
     }
   }
 
@@ -1553,15 +1559,8 @@ static pid_t spawn_bridge_process(
     }
   }
 
-  // Exec failed - write error byte to status pipe before exiting
-  // (if exec succeeded, CLOEXEC on FD 4 would have closed it)
-  {
-    uint8_t err_byte = 1;
-    ssize_t wr = write(EXEC_STATUS_FD, &err_byte, 1);
-    (void)wr; // Best-effort, we're exiting anyway
-  }
-
-  _exit(127);
+  // Exec failure writes a status byte; successful exec closes the pipe via CLOEXEC.
+  child_die(child_status_fd, "exec bridge");
 }
 
 // Handle a single client request
@@ -1951,11 +1950,9 @@ static int handle_client(int input_fd, int output_fd)
     pam_end(pamh, 0);
     return 1;
   }
-  // exec_status_n == 0 means EOF. Usually exec succeeded (CLOEXEC closed the
-  // pipe), but a child that _exit()s during pre-exec setup (privilege drop,
-  // chdir to a missing home dir, FD shuffle) also closes the write end
-  // without writing a byte. Distinguish with a non-blocking reap: a
-  // successfully exec'd bridge is still running at this point.
+  // exec_status_n == 0 means EOF: controlled failures write a byte first, so
+  // EOF is unambiguous here. Keep a non-blocking reap as defense-in-depth for
+  // unexpected child deaths; a successfully exec'd bridge is still running.
   // exec_status_n < 0 is a read error; fall through to the same probe.
   {
     int wstatus = 0;

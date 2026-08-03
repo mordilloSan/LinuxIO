@@ -63,19 +63,37 @@ func (o Owner) Matches(other Owner) bool {
 }
 
 type Snapshot struct {
-	ID         string     `json:"id"`
-	Type       string     `json:"type"`
-	Request    any        `json:"request,omitempty"`
-	Owner      Owner      `json:"owner"`
-	State      State      `json:"state"`
-	Progress   any        `json:"progress,omitempty"`
-	Result     any        `json:"result,omitempty"`
-	Error      *Error     `json:"error,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID         string       `json:"id"`
+	Type       string       `json:"type"`
+	Metadata   *JobMetadata `json:"metadata,omitempty"`
+	Owner      Owner        `json:"owner"`
+	State      State        `json:"state"`
+	Progress   any          `json:"progress,omitempty"`
+	Result     any          `json:"result,omitempty"`
+	Error      *Error       `json:"error,omitempty"`
+	CreatedAt  time.Time    `json:"created_at"`
+	StartedAt  *time.Time   `json:"started_at,omitempty"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	FinishedAt *time.Time   `json:"finished_at,omitempty"`
 }
+
+// JobMetadata is the deliberately small public projection of a job request.
+// It is populated only by route-declared builders; the decoded request remains
+// private execution state and must never be copied into a Snapshot.
+type JobMetadata struct {
+	Identity    []string `json:"identity,omitempty"`
+	Label       string   `json:"label,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	Action      string   `json:"action,omitempty"`
+	ProjectName string   `json:"projectName,omitempty"`
+	PackageIDs  []string `json:"packageIds,omitempty"`
+	Device      string   `json:"device,omitempty"`
+	TestType    string   `json:"testType,omitempty"`
+	Capability  string   `json:"capability,omitempty"`
+}
+
+// JobMetadataBuilder returns the safe public projection for one decoded request.
+type JobMetadataBuilder func(request any) JobMetadata
 
 type EventType string
 
@@ -122,6 +140,7 @@ type Job struct {
 	id          string
 	typ         string
 	request     any
+	metadata    *JobMetadata
 	owner       Owner
 	state       State
 	progress    any
@@ -222,7 +241,7 @@ func (r *Registry) Create(jobType string, request any) (*Job, error) {
 }
 
 // CreateForOwner creates a new job owned by the specified owner.
-func (r *Registry) CreateForOwner(jobType string, request any, owner Owner) (*Job, error) {
+func (r *Registry) CreateForOwner(jobType string, request any, owner Owner, metadata ...*JobMetadata) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
 	}
@@ -234,12 +253,17 @@ func (r *Registry) CreateForOwner(jobType string, request any, owner Owner) (*Jo
 	// Jobs are intentionally detached from the stream that created them; cancel
 	// through jobs.cancel, attached stream abort, or policy timeout instead.
 	ctx, cancel := context.WithCancel(context.Background())
+	var publicMetadata *JobMetadata
+	if len(metadata) > 0 && metadata[0] != nil {
+		publicMetadata = cloneJobMetadata(metadata[0])
+	}
 	job := &Job{
 		registry:    r,
 		ctx:         ctx,
 		id:          id,
 		typ:         jobType,
 		request:     request,
+		metadata:    publicMetadata,
 		owner:       owner,
 		state:       StateQueued,
 		createdAt:   now,
@@ -372,7 +396,7 @@ func (j *Job) Snapshot() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Request:    j.request,
+		Metadata:   cloneJobMetadata(j.metadata),
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
@@ -448,10 +472,11 @@ func (j *Job) Start(runner Runner) bool {
 	j.state = StateRunning
 	j.startedAt = &now
 	j.updatedAt = now
+	request := j.request
 	event := Event{Type: EventStarted, Job: j.snapshotLocked()}
 	j.mu.Unlock()
 	j.broadcast(event)
-	go j.run(j.ctx, runner)
+	go j.run(j.ctx, runner, request)
 	return true
 }
 
@@ -594,8 +619,8 @@ func (j *Job) subscribeWithReplayStatus(buffer int) (<-chan Event, []Event, <-ch
 	return ch, replay, subscriber.lagged, unsubscribe
 }
 
-func (j *Job) run(ctx context.Context, runner Runner) {
-	result, err := runner(ctx, j, j.request)
+func (j *Job) run(ctx context.Context, runner Runner, request any) {
+	result, err := runner(ctx, j, request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			j.markFailed(NewError("operation timed out", 504))
@@ -633,6 +658,7 @@ func (j *Job) markCompleted(result any) {
 		return
 	}
 	j.state = StateCompleted
+	j.request = nil
 	j.result = result
 	j.updatedAt = now
 	j.finishedAt = &now
@@ -649,6 +675,7 @@ func (j *Job) markFailed(err *Error) {
 		return
 	}
 	j.state = StateFailed
+	j.request = nil
 	j.err = err
 	j.updatedAt = now
 	j.finishedAt = &now
@@ -673,10 +700,21 @@ func (j *Job) markCanceled() {
 func (j *Job) markCanceledLocked(now time.Time) Event {
 	jobErr := NewError("operation aborted", 499)
 	j.state = StateCanceled
+	j.request = nil
 	j.err = jobErr
 	j.updatedAt = now
 	j.finishedAt = &now
 	return Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
+}
+
+func cloneJobMetadata(metadata *JobMetadata) *JobMetadata {
+	if metadata == nil {
+		return nil
+	}
+	clone := *metadata
+	clone.Identity = append([]string(nil), metadata.Identity...)
+	clone.PackageIDs = append([]string(nil), metadata.PackageIDs...)
+	return &clone
 }
 
 func (j *Job) signalDone() {
@@ -797,7 +835,7 @@ func (j *Job) snapshotLocked() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Request:    j.request,
+		Metadata:   cloneJobMetadata(j.metadata),
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
