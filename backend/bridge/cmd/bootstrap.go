@@ -11,10 +11,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// Bootstrap config and session - initialized in main() after CLI checks.
-var bootCfg *authipc.Bootstrap
-var sess *session.Session
-
 // readBootstrap reads binary bootstrap from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
 // Bootstrap errors are returned to main as exit code 1 so the auth daemon's
@@ -26,11 +22,11 @@ func readBootstrap() (*authipc.Bootstrap, error) {
 	}
 
 	if b.SessionID == "" {
-		return b, errors.New("bridge bootstrap missing session_id")
+		return nil, errors.New("bridge bootstrap missing session_id")
 	}
 
 	if b.Username == "" {
-		return b, errors.New("bridge bootstrap missing username")
+		return nil, errors.New("bridge bootstrap missing username")
 	}
 
 	return b, nil
@@ -38,28 +34,27 @@ func readBootstrap() (*authipc.Bootstrap, error) {
 
 // initializeBridgeSession reads bootstrap data and constructs the session
 // object shared by handlers, routing, and audit metadata.
-func initializeBridgeSession() error {
-	var err error
-	bootCfg, err = readBootstrap()
+func initializeBridgeSession() (*session.Session, error) {
+	bootstrap, err := readBootstrap()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if bootCfg.Verbose {
+	if bootstrap.Verbose {
 		if configureErr := logging.Configure("linuxio-bridge", true); configureErr != nil {
-			return fmt.Errorf("failed to reconfigure logger: %w", configureErr)
+			return nil, fmt.Errorf("failed to reconfigure logger: %w", configureErr)
 		}
 	}
-	sess = &session.Session{
-		SessionID:  bootCfg.SessionID,
-		Privileged: bootCfg.Privileged,
+	sess := &session.Session{
+		SessionID:  bootstrap.SessionID,
+		Privileged: bootstrap.Privileged,
 		Timing: session.Timing{
 			CreatedAt: time.Now(),
 		},
 		User: session.User{
-			Username: bootCfg.Username,
-			UID:      bootCfg.UID,
-			GID:      bootCfg.GID,
+			Username: bootstrap.Username,
+			UID:      bootstrap.UID,
+			GID:      bootstrap.GID,
 		},
 	}
-	return nil
+	return sess, nil
 }

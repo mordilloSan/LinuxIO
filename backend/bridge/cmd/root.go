@@ -36,7 +36,8 @@ func runBridgeProcess() error {
 		return fmt.Errorf("failed to initialize logger: %w", configureErr)
 	}
 
-	if err := initializeBridgeSession(); err != nil {
+	sess, err := initializeBridgeSession()
+	if err != nil {
 		logBridgeStartupError("failed to initialize bridge session", err)
 		return err
 	}
@@ -74,15 +75,5 @@ func runBridgeProcess() error {
 }
 
 func logBridgeStartupError(message string, err error) {
-	attrs := []any{"error", err}
-	if bootCfg != nil {
-		attrs = append(attrs,
-			"user", bootCfg.Username,
-			"session_id", bootCfg.SessionID,
-			"privileged", bootCfg.Privileged,
-			"uid", bootCfg.UID,
-			"gid", bootCfg.GID,
-		)
-	}
-	slog.Error(message, attrs...)
+	slog.Error(message, "error", err)
 }

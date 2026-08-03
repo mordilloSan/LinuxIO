@@ -196,38 +196,50 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 		conn.Close()
 		return fmt.Errorf("failed to create yamux session: %w", err)
 	}
+	registerYamuxSession(sess, yamuxSession)
+	return nil
+}
 
+func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSession) {
 	var old *relay.YamuxSession
 	yamuxSessions.Lock()
 	if existing, exists := yamuxSessions.sessions[sess.SessionID]; exists {
-		delete(yamuxSessions.sessions, sess.SessionID)
 		old = existing
 	}
+	// Publish the replacement before closing the old session so its callback
+	// cannot remove or terminate the new mapping.
+	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()
 
-	if old != nil {
-		old.Close()
-	}
-
-	yamuxSessions.Lock()
+	// SetOnClose may invoke the callback synchronously when the session has
+	// already closed, so register it without holding yamuxSessions.Lock.
 	yamuxSession.SetOnClose(func() {
 		yamuxSessions.Lock()
-		delete(yamuxSessions.sessions, sess.SessionID)
+		// Only this session may remove the mapping. In particular, an old
+		// session closing after replacement must not remove the new session.
+		current, present := yamuxSessions.sessions[sess.SessionID]
+		if present && current == yamuxSession {
+			delete(yamuxSessions.sessions, sess.SessionID)
+		}
 		yamuxSessions.Unlock()
+
+		if !present || current != yamuxSession {
+			return
+		}
 		slog.Debug("yamux session closed and removed", "session_id", sess.SessionID)
 
-		// Terminate the session when bridge dies
-		// This triggers session deletion which closes the WebSocket
+		// Terminate the session when bridge dies. This triggers session
+		// deletion which closes the WebSocket.
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
 			slog.Warn("failed to terminate session after bridge closure",
 				"session_id", sess.SessionID,
 				"error", err)
 		}
 	})
-	yamuxSessions.sessions[sess.SessionID] = yamuxSession
-	yamuxSessions.Unlock()
 
-	return nil
+	if old != nil {
+		_ = old.Close()
+	}
 }
 
 // ============================================================================
@@ -238,22 +250,24 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 // The session must have been created by StartBridge.
 func GetYamuxSession(sessionID string) (*relay.YamuxSession, error) {
 	yamuxSessions.RLock()
-	session, exists := yamuxSessions.sessions[sessionID]
+	yamuxSession, exists := yamuxSessions.sessions[sessionID]
 	yamuxSessions.RUnlock()
 
 	if !exists {
 		return nil, fmt.Errorf("no yamux session for session %s", sessionID)
 	}
 
-	if session.IsClosed() {
+	if yamuxSession.IsClosed() {
 		// Clean up stale entry
 		yamuxSessions.Lock()
-		delete(yamuxSessions.sessions, sessionID)
+		if current := yamuxSessions.sessions[sessionID]; current == yamuxSession {
+			delete(yamuxSessions.sessions, sessionID)
+		}
 		yamuxSessions.Unlock()
 		return nil, fmt.Errorf("yamux session for %s is closed", sessionID)
 	}
 
-	return session, nil
+	return yamuxSession, nil
 }
 
 // CloseYamuxSession closes the yamux session for a session ID
