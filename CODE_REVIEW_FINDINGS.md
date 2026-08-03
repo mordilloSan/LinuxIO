@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-03
 - **Original baseline:** `dev/v0.17.0`, HEAD `a6c67227`
-- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `bfc3405d`, plus
+- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `ad25f323`, plus
   the current working tree
 - **Scope:** full read of `backend/bridge/cmd/` and `backend/webserver/cmd/` (11 files, ~1,100 lines), plus independent verification of an external report covering `backend/webserver/web/tls_redirect.go`, `backend/webserver/bridge/bridge.go`, `backend/common/ipc/relay/protocol.go`, and `backend/auth/linuxio-auth.c`.
 - **Focus:** idiomatic Go, performance, stability. Not a security audit.
@@ -16,16 +16,16 @@ At the original review snapshot the working tree contained uncommitted fixes
 `backend/webserver/bridge/bridge.go`, and `backend/webserver/web/tls_redirect.go`.
 Those fixes, together with the bridge lifecycle/state cleanup, are now committed
 in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`; findings 4,
-7, 8, and most of 9 are committed in `e595eada`; E3 is committed in `a5802171`.
-The current working tree fixes E4. Statuses below reflect the current tree;
+7, 8, and most of 9 are committed in `e595eada`; E3 is committed in `a5802171`,
+and E4 is committed in `ad25f323`. The current working tree fixes E6 and E7.
+Statuses below reflect the current tree;
 intervening unrelated commits are outside this review.
 
 ## Current status summary
 
-- **Fixed in committed code:** findings 1-8 and most of 9; E1, E2, E3, E5, and
-  E8.
-- **Fixed in the current working tree:** E4.
-- **Still open:** the channel-direction nit in finding 9; E6, E7, E9, and E10.
+- **Fixed in committed code:** findings 1-8 and most of 9; E1-E5 and E8.
+- **Fixed in the current working tree:** E6 and E7.
+- **Still open:** the channel-direction nit in finding 9; E9 and E10.
 
 ## Overall verdict (cmd folders)
 
@@ -256,7 +256,7 @@ and streaming handlers. `TestNewHTTPServerConnectionTimeouts` locks in all three
 policy choices (`backend/webserver/cmd/root.go`,
 `backend/webserver/cmd/root_test.go`).
 
-### E4. Capability handshake deadline covers only `Open` — REAL, FIXED in working tree
+### E4. Capability handshake deadline covers only `Open` — REAL, FIXED (`ad25f323`)
 
 At `backend/webserver/bridge/bridge.go:124-136` the 5s context wraps only
 `yamuxSession.Open`; the request write and response read ignore the context
@@ -286,14 +286,19 @@ Resolution (`a08258bd`): `ReadRelayFrameProgressive` grows the buffer only as
 bytes arrive (`protocol.go` + tests) and is used for the first frame at
 `backend/bridge/cmd/yamux.go:68`.
 
-### E6. Blocking lastlog lock — REAL, OPEN
+### E6. Blocking lastlog lock — REAL, FIXED in working tree
 
 `flock(fd, LOCK_EX)` in `update_lastlog` (`backend/auth/linuxio-auth.c:424`)
 blocks login indefinitely if anything holds the lock on `/var/log/lastlog`. The
 call site already ignores the return value (`(void)update_lastlog(...)`), so
 `LOCK_NB` with best-effort skip is the right fix.
 
-### E7. `ut_id` truncation and exec-status race — BOTH REAL, OPEN (narrow)
+Resolution: `update_lastlog` now requests `LOCK_EX | LOCK_NB`. Expected
+`EWOULDBLOCK` contention skips the optional accounting update without delaying
+authentication; other lock failures are still logged with the original error,
+and descriptor cleanup is unchanged (`backend/auth/linuxio-auth.c`).
+
+### E7. `ut_id` truncation and exec-status race — BOTH REAL, FIXED in working tree
 
 - **`ut_id` truncation:** the PID is printed as decimal and truncated into the
   4-byte `ut_id` field (`backend/auth/linuxio-auth.c:506-511`, same pattern in
@@ -309,6 +314,16 @@ call site already ignores the return value (`(void)update_lastlog(...)`), so
   fix: have `child_die` (`linuxio-auth.c:966-972`, currently stderr-only) write a
   status byte to the exec-status pipe before `_exit(127)`, removing the ambiguity
   entirely rather than re-probing.
+
+Resolution: login start and end now derive the same fixed-width, four-byte
+base-62 `ut_id` from the helper PID. Its 14,776,336-value space exceeds Linux's
+maximum PID range, so concurrent helpers no longer collide through decimal
+prefix truncation. Pre-exec failures now write the existing status marker before
+`child_die` exits, with the live status descriptor tracked while the fixed child
+FD layout is assembled. Status and bridge temporaries are explicitly allocated
+above FD 5, so later `dup2` calls cannot overwrite them. The parent retains its
+nonblocking reap only as defense in depth for unexpected child termination
+(`backend/auth/linuxio-auth.c`).
 
 ### E8. Dead shutdown channel / sleeps — REAL, FIXED (`a08258bd`)
 
@@ -362,9 +377,10 @@ Separate confirmed audit findings:
 
 - **DONE (`a5802171`):** missing `http.Server` handshake/header/idle timeouts
   (E3).
-- **DONE in the working tree:** capabilities handshake stream deadline (E4).
-- C auth daemon: blocking lastlog lock (E6), four-byte `ut_id` collisions and the
-  narrow `child_die` status-pipe race (E7).
+- **DONE (`ad25f323`):** capabilities handshake stream deadline (E4).
+- **DONE in the working tree:** nonblocking best-effort lastlog accounting (E6).
+- **DONE in the working tree:** collision-free four-byte `ut_id` encoding and
+  deterministic `child_die` status-pipe failures (E7).
 - Per-start self-signed certificate churn (E9).
 - The 4 KiB WebSocket relay buffer (E10) — performance-only; benchmark before
   changing it.
