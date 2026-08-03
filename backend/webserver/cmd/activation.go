@@ -41,7 +41,12 @@ func systemdListeners() ([]net.Listener, error) {
 		return nil, nil
 	}
 
-	listeners := make([]net.Listener, 0, nfds)
+	files := make([]*os.File, 0, nfds)
+	defer func() {
+		for _, file := range files {
+			_ = file.Close()
+		}
+	}()
 	for i := range nfds {
 		fd := listenFDsStart + i
 		syscall.CloseOnExec(fd)
@@ -49,12 +54,26 @@ func systemdListeners() ([]net.Listener, error) {
 		if file == nil {
 			return nil, fmt.Errorf("invalid fd %d from systemd", fd)
 		}
+		files = append(files, file)
+	}
+	return listenersFromFiles(files)
+}
+
+func listenersFromFiles(files []*os.File) ([]net.Listener, error) {
+	listeners := make([]net.Listener, 0, len(files))
+	for _, file := range files {
 		listener, err := net.FileListener(file)
-		_ = file.Close()
 		if err != nil {
-			return nil, fmt.Errorf("wrap fd %d: %w", fd, err)
+			closeListeners(listeners)
+			return nil, fmt.Errorf("wrap fd %d: %w", file.Fd(), err)
 		}
 		listeners = append(listeners, listener)
 	}
 	return listeners, nil
+}
+
+func closeListeners(listeners []net.Listener) {
+	for _, listener := range listeners {
+		_ = listener.Close()
+	}
 }

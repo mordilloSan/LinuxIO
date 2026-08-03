@@ -61,7 +61,6 @@ func runBridgeProcess() error {
 	logBridgeResourceLimits()
 
 	syscall.Umask(0o077)
-	slog.Info("bridge starting", "uid", os.Geteuid())
 
 	clientConn, err := openClientConnection()
 	if err != nil {
