@@ -1,15 +1,31 @@
 # Code Review Findings
 
 - **Date:** 2026-08-03
-- **Branch:** `dev/v0.17.0`, HEAD `a6c67227`
+- **Original baseline:** `dev/v0.17.0`, HEAD `a6c67227`
+- **Status updated:** 2026-08-03 against `dev/v0.17.0`, HEAD `c80db2ec`, plus
+  the current working tree
 - **Scope:** full read of `backend/bridge/cmd/` and `backend/webserver/cmd/` (11 files, ~1,100 lines), plus independent verification of an external report covering `backend/webserver/web/tls_redirect.go`, `backend/webserver/bridge/bridge.go`, `backend/common/ipc/relay/protocol.go`, and `backend/auth/linuxio-auth.c`.
 - **Focus:** idiomatic Go, performance, stability. Not a security audit.
-- **Method:** every claim was cross-checked against the packages the code calls (router, relay, logging, session) before being flagged. Findings against files that carry uncommitted fixes in the working tree are marked accordingly; line numbers refer to the working tree at review time unless labeled HEAD.
+- **Method:** every claim was cross-checked against the packages the code calls (router, relay, logging, session) before being flagged. Original line numbers refer to the original review snapshot; resolution notes cite the current code.
+- **Current code validation:** `make check-backend` passed after the working-tree
+  fixes listed below.
 
-At review time the working tree contained uncommitted fixes (with new tests) in
+At the original review snapshot the working tree contained uncommitted fixes
+(with new tests) in
 `backend/bridge/cmd/yamux.go`, `backend/common/ipc/relay/protocol.go`,
 `backend/webserver/bridge/bridge.go`, and `backend/webserver/web/tls_redirect.go`.
-Statuses below reflect that tree.
+Those fixes, together with the bridge lifecycle/state cleanup, are now committed
+in `a08258bd`. The CLI exit-code fixes are committed in `c80db2ec`. The current
+working tree additionally fixes findings 4, 7, 8, and most of 9. Statuses below
+reflect the current tree; the unrelated `Makefile` change is outside this review.
+
+## Current status summary
+
+- **Fixed in committed code:** findings 1, 2, 3, 5, and 6; E1, E2, E5, and E8.
+- **Fixed in the current working tree:** findings 4, 7, and 8, plus the duplicate
+  boot log and CLI wording portions of finding 9.
+- **Still open:** the channel-direction nit in finding 9; E3, E4, E6, E7, E9,
+  and E10.
 
 ## Overall verdict (cmd folders)
 
@@ -19,11 +35,12 @@ hand-rolled `systemdListeners` (correct PID check, env unsetting, `CloseOnExec` 
 matches go-systemd semantics without the dependency), and current idioms
 (`WaitGroup.Go`, `strings.SplitSeq`, range-over-int) are all used correctly.
 
-Performance: nothing to fix. The only hot paths are the per-request HTTP wrapper
-(one `time.Now` + two atomics — negligible, and the right design for idle tracking)
-and per-stream setup in yamux (a counter increment + a `strconv` — negligible).
-Everything else is startup/shutdown code. The weak spot is shutdown-path stability
-in the bridge, held together by sleeps and a dead signal channel.
+Performance: nothing urgent to fix. The only hot paths are the per-request HTTP
+wrapper (one `time.Now` + two atomics — negligible, and the right design for idle
+tracking) and per-stream setup in yamux (a counter increment + a `strconv` —
+negligible). Everything else is startup/shutdown code. The original bridge
+shutdown weakness described below has since been replaced by explicit
+cancel/close/bounded-drain sequencing in `a08258bd`.
 
 Verified non-findings (checked and cleared):
 
@@ -37,7 +54,7 @@ Verified non-findings (checked and cleared):
 
 ## Findings — stability
 
-### 1. `bridgeClosing` is dead code — OPEN
+### 1. `bridgeClosing` is dead code — FIXED (`a08258bd`)
 
 Declared at `backend/bridge/cmd/lifecycle.go:22` as "Global shutdown signal for all
 handlers", closed at `lifecycle.go:106` — and never read anywhere in the codebase
@@ -45,7 +62,12 @@ handlers", closed at `lifecycle.go:106` — and never read anywhere in the codeb
 don't, or it's a leftover. The comment actively misleads: shutdown propagation
 actually happens via `sessionCancel()` + `CancelForSession` + closing the conn.
 
-### 2. Sleep-ordered shutdown — OPEN
+Resolution: `a08258bd` removed `bridgeClosing` entirely. `runBridge` now owns the
+session context and loop-completion channel, and `shutdownBridge` performs the
+real cancellation and transport teardown directly
+(`backend/bridge/cmd/lifecycle.go:35-69`).
+
+### 2. Sleep-ordered shutdown — FIXED (`a08258bd`)
 
 `backend/bridge/cmd/lifecycle.go:105-111` has two bare `time.Sleep` calls (50ms,
 100ms) sequencing cancel → close-conn. Sleep-based ordering is the classic source of
@@ -59,7 +81,12 @@ then close the conn" — the `wg`-tracked goroutine is blocked in
 `ymuxSession.Accept()` and only unblocks *when* the conn closes, so that reordering
 deadlocks until the 5s grace timeout fires.
 
-### 3. Misuse paths exit 0, but the auth daemon reads exit codes — OPEN
+Resolution: `a08258bd` removed both sleeps and retained the load-bearing ordering:
+cancel the session and registry work, close the client connection to release
+yamux `Accept`, then wait up to five seconds on the explicit loop-completion
+channel (`backend/bridge/cmd/lifecycle.go:55-69,92-100`).
+
+### 3. Misuse paths exit 0, but the auth daemon reads exit codes — FIXED (`c80db2ec`)
 
 `backend/bridge/cmd/bootstrap.go:20-21` says startup failure is detected via exit
 code 1. Yet `isDirectBridgeInvocation` (`backend/bridge/cmd/cli.go:28-31`) treats a
@@ -73,7 +100,13 @@ return 0 — scripts and unit files can't distinguish a typo from success (and
 `backend/webserver/cmd/cli_test.go:48` enshrines it). Convention is exit 2 for
 usage errors.
 
-### 4. Listener leak with hanging clients on partial activation failure — OPEN
+Resolution: `c80db2ec` made `isDirectBridgeInvocation` return the `Stat` error,
+which `run` reports as exit 1; direct invocation and unknown bridge arguments now
+return usage exit 2. Unknown webserver commands also return 2. Focused CLI tests
+cover these paths (`backend/bridge/cmd/cli_test.go` and
+`backend/webserver/cmd/cli_test.go`).
+
+### 4. Listener leak with hanging clients on partial activation failure — FIXED in working tree
 
 In `backend/webserver/cmd/activation.go:44-58`, if wrapping fd N fails, the
 listeners already created for fds 3..N-1 are neither closed nor returned. The caller
@@ -84,16 +117,27 @@ systemd handed the process sockets but wrapping them failed, silently self-bindi
 different socket masks the misconfiguration instead of surfacing it — failing the
 start is the more honest behavior in that case.
 
-### 5. Unbounded first-frame read per stream — FIXED in working tree
+Resolution: `systemdListeners` now creates wrappers for every inherited fd and
+always closes those originals. `listenersFromFiles` closes any listeners already
+converted when a later conversion fails. `serveWithSocketActivation` returns the
+discovery error as handled, so self-bind occurs only when no activation listeners
+were supplied; it also closes listeners if TLS setup fails
+(`backend/webserver/cmd/activation.go:44-78`,
+`backend/webserver/cmd/root.go:127-144`). Regression tests cover partial cleanup
+and the no-fallback error result (`backend/webserver/cmd/activation_test.go`).
 
-At HEAD, `handleYamuxStream` read the `OpStreamOpen` frame with no deadline; a
-stream opened but never written parked a goroutine until the whole session died.
+### 5. Unbounded first-frame read per stream — FIXED (`a08258bd`)
+
+At the original baseline, `handleYamuxStream` read the `OpStreamOpen` frame with
+no deadline; a stream opened but never written parked a goroutine until the whole
+session died.
 Session-level keepalive (confirmed on in `relay.YamuxConfig`) catches a dead peer
 but not a live idle one. The peer is the trusted webserver, so this was hardening,
 not a bug. A related inconsistency: the opcode-mismatch path closed silently while
 the parse-failure path wrote a structured 400 back.
 
-The uncommitted fix resolves all of it: `streamOpenReadTimeout = 5s` around the
+The fix, committed in `a08258bd`, resolves all of it:
+`streamOpenReadTimeout = 5s` around the
 first read (`backend/bridge/cmd/yamux.go:17,67-71`), a progressive frame reader
 (see external finding E5), and a structured 400 on opcode mismatch
 (`yamux.go:79`).
@@ -102,22 +146,21 @@ first read (`backend/bridge/cmd/yamux.go:17,67-71`), a progressive frame reader
 
 ## Findings — idiom and cleanliness
 
-### 6. Global mutable session state, used inconsistently — PARTIALLY ADDRESSED
+### 6. Global mutable session state, used inconsistently — FIXED (`a08258bd`)
 
 The bridge keeps `bootCfg`, `sess`, and `wg` as package globals, yet
-`runtime.Runtime` already carries the session. At HEAD, `handleYamuxSession` logged
+`runtime.Runtime` already carries the session. At the original baseline,
+`handleYamuxSession` logged
 via the global `sess` while `handleYamuxStream` shadowed that same global with
 `sess := rt.Session` — shadowing a package-level var by design is a footgun.
 
-The working tree fixes the yamux side (`handleYamuxSession` now uses `rt.Session`
-throughout, and the package-level `streamCounter` atomic became a local plain
-`uint64` — correct, since only the accept loop touches it). Still open: `bootCfg`,
-`sess`, and `wg` remain package globals (`bootstrap.go:15-16`,
-`lifecycle.go:25`), and `lifecycle.go:114` still logs via the global `sess`. Pick
-one source of truth (the `Runtime`) and thread it; this is the biggest cleanliness
-item and would also make the package testable.
+Resolution: `a08258bd` made bootstrap/session construction return local values,
+removed the package-level `bootCfg`, `sess`, and `wg`, and threads
+`runtime.Runtime` plus an explicit loop-completion channel through lifecycle
+code. `handleYamuxSession` consistently uses `rt.Session`, and its stream counter
+is a local `uint64`, which is correct because only the accept loop mutates it.
 
-### 7. Counter-plumbing in the webserver — OPEN
+### 7. Counter-plumbing in the webserver — FIXED in working tree
 
 `newHTTPServer` returns `(*http.Server, *atomic.Int64, *atomic.Int64, error)` and
 those two pointers thread through `startHTTPServer` → `serveWithSocketActivation` →
@@ -125,7 +168,11 @@ those two pointers thread through `startHTTPServer` → `serveWithSocketActivati
 `activity` struct (`inFlight`, `lastHit`, maybe an `idle() bool` method) collapses
 four signatures and gives the idle predicate a home.
 
-### 8. slog anti-pattern in limits.go — OPEN
+Resolution: `serverActivity` now owns both atomics and the `idleFor` predicate,
+and one pointer is threaded through server construction, activation, and the
+idle watcher (`backend/webserver/cmd/root.go:64-103,105-166,248-271`).
+
+### 8. slog anti-pattern in limits.go — FIXED in working tree
 
 `backend/bridge/cmd/limits.go:33` and `:59` build the message with `fmt.Sprintf`
 from the same values passed as attrs — every field appears twice per record.
@@ -133,60 +180,70 @@ Structured-logging idiom is a constant message plus attrs; journald consumers ge
 the fields anyway. Also `^uint64(0)` at `limits.go:42` works, but
 `syscall.RLIM_INFINITY` states the intent.
 
-### 9. Small nits — MOSTLY OPEN
+Resolution: both records now use constant slog messages with structured attrs
+only. The infinity check uses the explicit `math.MaxUint64` constant
+(`backend/bridge/cmd/limits.go:23-62`).
+
+### 9. Small nits — PARTIALLY ADDRESSED (one open)
 
 - ~~`s := stream; sid := streamID` redundant copies in the yamux accept loop~~ —
-  fixed in the working tree (closure now captures the per-iteration locals
+  fixed in `a08258bd` (the closure now captures the per-iteration locals
   directly).
-- "bridge boot" and "bridge starting" (`backend/bridge/cmd/root.go:43-54`) both log
-  the uid two lines apart — one can go.
-- `startHTTPServer`'s return type would read better as
+- ~~"bridge boot" and "bridge starting" (`backend/bridge/cmd/root.go:43-54`) both
+  log the uid two lines apart — one can go~~ — fixed in the working tree by
+  retaining the richer `bridge boot` record.
+- **OPEN:** `startHTTPServer`'s return type would read better as
   `(<-chan os.Signal, <-chan error)`.
-- Usage text mixes `linuxio` and `linuxio-webserver` as the binary name
-  (`backend/webserver/cmd/cli.go:84-97`).
-- The `wg` comment at `backend/bridge/cmd/lifecycle.go:24` says "in-flight
+- ~~Usage text mixes `linuxio` and `linuxio-webserver` as the binary name
+  (`backend/webserver/cmd/cli.go:84-97`)~~ — fixed in the working tree; all usage
+  and examples now say `linuxio-webserver`.
+- ~~The `wg` comment at `backend/bridge/cmd/lifecycle.go:24` says "in-flight
   requests" but it actually tracks the single session goroutine (per-stream
   tracking is `streamWg`, waited transitively) — the mechanism is correct, the
-  comment isn't.
+  comment isn't~~ — fixed in `a08258bd` by replacing the global wait group with
+  an explicit loop-completion channel.
 
 ---
 
 ## Verified external report
 
-An externally produced report was independently verified against HEAD `a6c67227`
-and the working tree. All eight items are real.
+An externally produced report was independently verified against the original
+baseline `a6c67227` and its working tree. All items below are real; their current
+resolution status is recorded without removing the original findings.
 
-### E1. TLS redirect accept-loop DoS — REAL, FIXED in working tree
+### E1. TLS redirect accept-loop DoS — REAL, FIXED (`a08258bd`)
 
-At HEAD, `tlsRedirectListener.Accept()` called `br.Peek(1)` inline in the accept
-loop with no deadline. One client connecting and sending nothing stalled the loop —
-no further connections could be accepted at all, unauthenticated, with a single
-idle TCP connection. Graceful shutdown was also affected: `Accept` blocked in
-`Peek` on a conn rather than in `Listener.Accept`, so closing the listener did not
-unblock it. Highest-severity item in the report.
+At the original baseline, `tlsRedirectListener.Accept()` called `br.Peek(1)`
+inline in the accept loop with no deadline. One client connecting and sending
+nothing stalled the loop — no further connections could be accepted at all,
+unauthenticated, with a single idle TCP connection. Graceful shutdown was also
+affected: `Accept` blocked in `Peek` on a conn rather than in `Listener.Accept`,
+so closing the listener did not unblock it. Highest-severity item in the report.
 
-Fix (uncommitted, `backend/webserver/web/tls_redirect.go` + new
-`tls_redirect_test.go`): async per-conn classify goroutines, 5s peek deadline,
-active-conn map closed in `Close()`, results channel with `done` signal.
+Resolution (`a08258bd`, `backend/webserver/web/tls_redirect.go` + new
+`tls_redirect_test.go`): async per-connection classification, a five-second peek
+deadline, bounded redirect reads, active-connection cleanup in `Close`, and a
+results channel with a `done` signal.
 
-### E2. Bridge global self-deadlock — REAL, FIXED in working tree
+### E2. Bridge global self-deadlock — REAL, FIXED (`a08258bd`)
 
-At HEAD, `attachBridgeSession` called `SetOnClose` while holding
+At the original baseline, `attachBridgeSession` called `SetOnClose` while holding
 `yamuxSessions.Lock()`. `SetOnClose` invokes the callback synchronously if the
 session already closed (`backend/common/ipc/relay/yamux.go:63-76`), and the
 callback re-takes the same non-reentrant lock — self-deadlock if the bridge dies
 between `NewYamuxClient` and registration. The mutex is process-global, so every
-future login and bridge operation hangs forever. HEAD's callback also deleted the
-map entry unconditionally, so an old session closing late could remove a new
-session's mapping.
+future login and bridge operation hangs forever. The original callback also
+deleted the map entry unconditionally, so an old session closing late could
+remove a new session's mapping.
 
-Fix (uncommitted, `backend/webserver/bridge/bridge.go` + new `bridge_test.go`):
+Resolution (`a08258bd`, `backend/webserver/bridge/bridge.go` + new
+`bridge_test.go`):
 publish replacement before closing the old session, register the callback outside
 the lock, delete only when the stored instance matches.
 
 ### E3. Missing HTTP server timeouts — REAL, OPEN
 
-The `http.Server` at `backend/webserver/cmd/root.go:90-94` has no
+The `http.Server` at `backend/webserver/cmd/root.go:98-102` has no
 `ReadHeaderTimeout` or `IdleTimeout`. The redirect path now has 5s bounds
 (post-E1 fix), but TLS conns handed to the HTTP server are unbounded pre-header.
 Add header/idle timeouts; avoid a blanket `WriteTimeout`, which would break
@@ -201,17 +258,18 @@ entirely. This runs during `Login` while holding a slot from
 live-but-unresponsive bridge parks a slot indefinitely — yamux keepalive only
 catches dead transports — so eight stuck logins lock everyone out.
 
-### E5. Frame reader allocates declared payload before receiving — REAL at HEAD, FIXED in working tree
+### E5. Frame reader allocates declared payload before receiving — REAL, FIXED (`a08258bd`)
 
 `ReadRelayFrame` does `make([]byte, length)` up to the 16 MiB cap
 (`maxRelayPayloadSize`, `backend/common/ipc/relay/protocol.go:40`) before any
-payload bytes arrive, and HEAD's bridge used it for the untrusted first frame.
+payload bytes arrive, and the original bridge path used it for the untrusted
+first frame.
 Severity qualifier: the bridge's peer is the webserver, so exploiting this requires
 an authenticated user to influence a declared frame length through a proxied path —
 hardening rather than a direct exploit, but the mechanical claim is true.
 
-Fix (uncommitted): `ReadRelayFrameProgressive` grows the buffer only as bytes
-arrive (`protocol.go` + tests) and is used for the first frame at
+Resolution (`a08258bd`): `ReadRelayFrameProgressive` grows the buffer only as
+bytes arrive (`protocol.go` + tests) and is used for the first frame at
 `backend/bridge/cmd/yamux.go:68`.
 
 ### E6. Blocking lastlog lock — REAL, OPEN
@@ -238,14 +296,15 @@ call site already ignores the return value (`(void)update_lastlog(...)`), so
   status byte to the exec-status pipe before `_exit(127)`, removing the ambiguity
   entirely rather than re-probing.
 
-### E8. Dead shutdown channel / sleeps — REAL, OPEN
+### E8. Dead shutdown channel / sleeps — REAL, FIXED (`a08258bd`)
 
 Same as findings 1 and 2 above (the external report double-counted them). See the
-caution under finding 2 before changing the close ordering.
+caution under finding 2; the committed fix preserves the required close-before-
+wait ordering.
 
 ### E9. Per-start self-signed certificate churn — REAL, OPEN
 
-`configureServerTLS` (`backend/webserver/cmd/root.go:181-189`) calls
+`configureServerTLS` (`backend/webserver/cmd/root.go:188-196`) calls
 `web.GenerateSelfSignedCert()` (`backend/webserver/web/certificate.go:16`) on every
 server start: a fresh in-memory RSA-2048 key and certificate, never persisted.
 Consequences compound with socket activation — the idle-exit watcher shuts the
@@ -270,20 +329,20 @@ streams (terminals), which may matter more than bulk throughput.
 
 ## Remaining work
 
-1. **Commit the working-tree fixes** for E1, E2, E5 (+ finding 5) — the two
-   "fix first" items are genuine high-severity bugs and their fixes carry tests
-   (`tls_redirect_test.go`, `bridge_test.go`, `protocol_test.go`).
-2. **Finding 3** — correct bridge/webserver misuse exit codes (exit 2 for usage
-   errors) and treat `Stdin.Stat` failure as an error rather than as direct
-   invocation.
-3. **Finding 4** — close partially wrapped systemd listeners on the error path and
-   avoid the inappropriate self-bind fallback when activation sockets were handed
-   over but could not be wrapped.
-4. **Findings 1-2** — remove the dead `bridgeClosing` channel and the 50ms delay;
-   do not blindly reorder the 100ms close (see the caution under finding 2).
-5. **Optional cleanup** — activity-counter struct (finding 7), structured limit
-   logging (finding 8), duplicate boot log and CLI usage wording (finding 9),
-   remaining session globals (finding 6).
+1. **DONE (`a08258bd`):** E1, E2, E5, and finding 5 are committed with their
+   regression tests (`tls_redirect_test.go`, `bridge_test.go`,
+   `protocol_test.go`).
+2. **DONE (`c80db2ec`):** finding 3's bridge/webserver usage exit codes and
+   `Stdin.Stat` error handling are committed with focused tests.
+3. **DONE in the working tree:** finding 4 closes original and partially wrapped
+   activation listeners and returns activation discovery failures instead of
+   silently self-binding.
+4. **DONE (`a08258bd`):** findings 1-2 removed the dead shutdown channel and
+   sleeps while preserving the required close-before-wait ordering.
+5. **MOSTLY DONE:** finding 6 is committed; findings 7-8 and the duplicate boot
+   log/CLI wording parts of finding 9 are fixed in the working tree. The only
+   remaining cleanup item from this group is the directional channel return type
+   in `startHTTPServer`.
 
 Separate confirmed audit findings still untouched:
 
