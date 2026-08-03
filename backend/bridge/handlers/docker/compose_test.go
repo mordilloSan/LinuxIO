@@ -3,12 +3,21 @@ package docker
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 )
+
+// requireDockerCompose skips tests that shell out to `docker compose`.
+func requireDockerCompose(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker CLI not available on this system")
+	}
+}
 
 func TestExtractHostPortsTreatsTCPAndUDPAsDistinct(t *testing.T) {
 	svc := map[string]any{
@@ -41,6 +50,7 @@ func TestExtractHostPortsTreatsTCPAndUDPAsDistinct(t *testing.T) {
 }
 
 func TestValidateComposeFileAllowsPiHoleDNSProtocols(t *testing.T) {
+	requireDockerCompose(t)
 	content := `
 services:
   pihole:
@@ -60,6 +70,7 @@ services:
 }
 
 func TestValidateComposeFileRejectsDuplicateHostPortProtocol(t *testing.T) {
+	requireDockerCompose(t)
 	content := `
 services:
   web:

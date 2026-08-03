@@ -150,7 +150,8 @@ type Manager struct {
 	onDeleteMu sync.RWMutex
 	onDelete   []func(*Session, DeleteReason)
 
-	gcStop chan struct{}
+	gcStop    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewManager constructs a manager from a fully resolved SessionConfig.
@@ -177,16 +178,17 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 }
 
 func (m *Manager) Close() {
-	if m.gcStop != nil {
-		close(m.gcStop)
-		m.gcStop = nil
-	}
-	if closer, ok := m.st.(interface{ Close() error }); ok {
-		if err := closer.Close(); err != nil {
-			slog.Warn("failed to close session store", "error", err)
+	m.closeOnce.Do(func() {
+		if m.gcStop != nil {
+			close(m.gcStop)
 		}
-	}
-	slog.Info("Session manager stopped")
+		if closer, ok := m.st.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				slog.Warn("failed to close session store", "error", err)
+			}
+		}
+		slog.Info("Session manager stopped")
+	})
 }
 
 // -----------------------------------------------------------------------------
