@@ -18,7 +18,10 @@ const streamOpenReadTimeout = 5 * time.Second
 
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
-func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn) {
+// notifyDisconnect must be called before waiting on active streams: shutdown
+// is what cancels the session context, and stream handlers may need that
+// cancellation to unblock (e.g. a terminal PTY read that outlives the client).
+func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn, notifyDisconnect func()) {
 	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
 		slog.Error("failed to create yamux session", "session_id", rt.Session.SessionID, "error", err)
@@ -53,6 +56,8 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 			handleYamuxStream(ctx, rt, router, stream, streamID)
 		})
 	}
+
+	notifyDisconnect()
 
 	// Wait for all streams to complete.
 	streamWg.Wait()

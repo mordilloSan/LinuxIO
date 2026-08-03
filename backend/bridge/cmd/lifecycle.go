@@ -76,13 +76,15 @@ func startBridgeSignalHandler(shutdownCh chan<- string) {
 // disconnects as bridge shutdown reasons.
 func startMainRequestLoop(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, shutdownCh chan<- string) <-chan struct{} {
 	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		handleYamuxSession(ctx, rt, router, clientConn)
+	notifyDisconnect := func() {
 		select {
 		case shutdownCh <- "client disconnected":
 		default:
 		}
+	}
+	go func() {
+		defer close(done)
+		handleYamuxSession(ctx, rt, router, clientConn, notifyDisconnect)
 	}()
 	return done
 }
