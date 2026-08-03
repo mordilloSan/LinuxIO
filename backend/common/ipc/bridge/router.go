@@ -341,10 +341,16 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-func (r *Router) routeRunner(route Route) Runner {
+// routeRunner wraps the route handler for Job.Start. handlerExited is closed
+// only when the handler itself returns: on cancel or timeout the wrapper
+// returns early so the job publishes terminal promptly, but the detached
+// handler may still be executing — the router must not release its active
+// slot until this channel closes.
+func (r *Router) routeRunner(route Route, handlerExited chan<- struct{}) Runner {
 	return func(ctx context.Context, job *Job, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
+			defer close(handlerExited)
 			return r.runRoute(ctx, job, request, route)
 		}
 
@@ -353,6 +359,7 @@ func (r *Router) routeRunner(route Route) Runner {
 
 		done := make(chan runnerResult, 1)
 		go func() {
+			defer close(handlerExited)
 			result, err := r.runRoute(runCtx, job, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
@@ -513,12 +520,18 @@ func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
 	if r.beforeStartHook != nil {
 		r.beforeStartHook(job)
 	}
-	if !job.Start(r.routeRunner(route)) {
+	handlerExited := make(chan struct{})
+	if !job.Start(r.routeRunner(route, handlerExited)) {
 		r.finishJob(route.Name, ownerRouteKey)
 		return
 	}
 	go func() {
+		// A canceled or timed-out job publishes terminal while its handler may
+		// still be executing. Releasing the slot then would let a promoted job
+		// run concurrently with the abandoned handler, exceeding the policy
+		// cap, so promotion also waits for the handler to actually exit.
 		<-job.Done()
+		<-handlerExited
 		r.finishJob(route.Name, ownerRouteKey)
 	}()
 }

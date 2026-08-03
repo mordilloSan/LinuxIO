@@ -298,6 +298,103 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	waitForRouterSettle(t, router, route.Name)
 }
 
+func TestRouterHoldsSlotUntilCanceledHandlerExits(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	policy := ActionDefault
+	policy.Name = "cancel-running-slot"
+	policy.MaxActivePerRoute = 1
+	policy.MaxActivePerOwnerRoute = 1
+	policy.QueueLimit = 3
+	policy.Timeout = time.Minute // async runner path — the one that detaches the handler
+
+	handlerRelease := make(chan struct{})
+	activeEntered := make(chan struct{})
+	nextRan := make(chan struct{})
+	var running atomic.Int32
+	var maxRunning atomic.Int32
+	route := Route{
+		Name:   "test.cancel.running.slot",
+		Mode:   ModeJob,
+		Policy: policy,
+		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+			current := running.Add(1)
+			defer running.Add(-1)
+			for {
+				observed := maxRunning.Load()
+				if current <= observed || maxRunning.CompareAndSwap(observed, current) {
+					break
+				}
+			}
+			requestName, _ := request.(string)
+			switch requestName {
+			case "active":
+				close(activeEntered)
+				// Deliberately ignores ctx: models a handler mid-write that is
+				// slow to observe cancellation.
+				<-handlerRelease
+			case "next":
+				close(nextRan)
+			}
+			return nil, nil
+		},
+	}
+
+	active, started, err := router.startOrQueueJob(route, Request{
+		Route:        route.Name,
+		DecodedValue: "active",
+	})
+	if err != nil || !started {
+		t.Fatalf("start active = (%v, %t, %v), want started job", active, started, err)
+	}
+	select {
+	case <-activeEntered:
+	case <-time.After(time.Second):
+		t.Fatal("active handler did not start")
+	}
+	next, started, err := router.startOrQueueJob(route, Request{
+		Route:        route.Name,
+		DecodedValue: "next",
+	})
+	if err != nil || started {
+		t.Fatalf("queue next = (%v, %t, %v), want queued job", next, started, err)
+	}
+
+	// Cancel the running job. The job must publish terminal promptly even
+	// though its handler is still executing...
+	active.Cancel()
+	select {
+	case <-active.Done():
+	case <-time.After(time.Second):
+		t.Fatal("canceled job did not publish terminal promptly")
+	}
+	if state := active.Snapshot().State; state != StateCanceled {
+		t.Fatalf("active job state = %q, want canceled", state)
+	}
+
+	// ...but the queued job must not be promoted while the canceled handler
+	// still runs — that would exceed MaxActivePerRoute with real executions.
+	select {
+	case <-nextRan:
+		t.Fatal("next job was promoted while the canceled handler was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(handlerRelease)
+	select {
+	case <-nextRan:
+	case <-time.After(time.Second):
+		t.Fatal("next queued job was not promoted after the canceled handler exited")
+	}
+	<-next.Done()
+
+	if got := maxRunning.Load(); got != 1 {
+		t.Fatalf("observed %d concurrent handler executions, want 1 (cap)", got)
+	}
+
+	waitForRouterSettle(t, router, route.Name)
+}
+
 // waitForRouterSettle polls until the router's accounting for a route drains
 // to zero (no active, queued, or pending-queued entries) or fails the test.
 func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
