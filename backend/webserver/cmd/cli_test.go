@@ -32,7 +32,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	}
 }
 
-func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
+func TestRun_UnknownCommand_ReturnsUsageError(t *testing.T) {
 	var errb bytes.Buffer
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
@@ -45,8 +45,8 @@ func TestRun_UnknownCommand_ShowsHelp(t *testing.T) {
 	}()
 
 	code := Run([]string{"linuxio", "wat"})
-	if code != 0 {
-		t.Fatalf("Run exit code = %d, want 0", code)
+	if code != 2 {
+		t.Fatalf("Run exit code = %d, want 2", code)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close write pipe: %v", err)

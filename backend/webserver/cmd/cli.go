@@ -67,11 +67,10 @@ func Run(args []string) int {
 		return 0
 
 	default:
-		// Unknown subcommand → help
 		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
 		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", args[1])
 		printUsage()
-		return 0
+		return 2
 	}
 }
 
