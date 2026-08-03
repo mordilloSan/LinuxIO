@@ -28,13 +28,33 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
+const UNTAGGED_REF = "<none>:<none>";
+
+// Split a reference into repo/tag. The last colon only separates a tag when it
+// comes after the last slash — otherwise it belongs to a registry port
+// (localhost:5000/foo).
+const splitImageRef = (ref: string) => {
+  const colonIdx = ref.lastIndexOf(":");
+  if (colonIdx > ref.lastIndexOf("/")) {
+    return {
+      repo: ref.slice(0, colonIdx) || "<none>",
+      tag: ref.slice(colonIdx + 1) || "<none>",
+    };
+  }
+  return { repo: ref || "<none>", tag: "<none>" };
+};
+
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
+interface DeleteImageTarget {
+  id: string;
+  label: string;
+  refs: string[];
+}
 interface DeleteImageDialogProps {
-  imageIds: string[];
-  imageTags: string[];
+  images: DeleteImageTarget[];
   onClose: () => void;
   onSuccess: () => void;
   open: boolean;
@@ -42,8 +62,7 @@ interface DeleteImageDialogProps {
 const DeleteImageDialog = ({
   open,
   onClose,
-  imageIds,
-  imageTags,
+  images,
   onSuccess,
 }: DeleteImageDialogProps) => {
   const theme = useAppTheme();
@@ -54,22 +73,28 @@ const DeleteImageDialog = ({
   const handleDelete = async () => {
     // Delete images sequentially
     const failures: string[] = [];
-    for (const [index, id] of imageIds.entries()) {
+    for (const image of images) {
+      // A multi-tag image can't be removed by ID (Docker refuses without
+      // --force); removing each reference untags it, and the last one drops
+      // the image itself.
+      const targets = image.refs.length > 0 ? image.refs : [image.id];
       try {
-        await deleteImage({ imageId: id });
+        for (const target of targets) {
+          await deleteImage({ imageId: target });
+        }
       } catch {
-        failures.push(imageTags[index] ?? id);
+        failures.push(image.label);
       }
     }
     if (failures.length > 0) {
       toast.error(
-        `Failed to delete ${failures.length} of ${imageIds.length} image${imageIds.length === 1 ? "" : "s"} (likely in use)`,
+        `Failed to delete ${failures.length} of ${images.length} image${images.length === 1 ? "" : "s"} (likely in use)`,
       );
     } else {
       const successMessage =
-        imageIds.length === 1
-          ? `Image "${imageTags[0]}" deleted successfully`
-          : `${imageIds.length} images deleted successfully`;
+        images.length === 1
+          ? `Image "${images[0].label}" deleted successfully`
+          : `${images.length} images deleted successfully`;
       toast.success(successMessage);
     }
     onSuccess();
@@ -81,12 +106,12 @@ const DeleteImageDialog = ({
   return (
     <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>
-        Delete Image{imageIds.length > 1 ? "s" : ""}
+        Delete Image{images.length > 1 ? "s" : ""}
       </AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
           Are you sure you want to delete the following image
-          {imageIds.length > 1 ? "s" : ""}?
+          {images.length > 1 ? "s" : ""}?
         </AppDialogContentText>
         <div
           style={{
@@ -96,10 +121,10 @@ const DeleteImageDialog = ({
             marginBottom: theme.spacing(1),
           }}
         >
-          {imageTags.map((tag, idx) => (
+          {images.map((image) => (
             <Chip
-              key={`${tag}-${idx}`}
-              label={tag}
+              key={image.id}
+              label={image.label}
               size="small"
               style={{
                 marginRight: 4,
@@ -158,30 +183,49 @@ const ImageList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateImage);
 
-  // Flatten images with multiple tags
-  const imageRows = images.flatMap((img) => {
-    const tags = img.RepoTags?.length ? img.RepoTags : ["<none>:<none>"];
-    return tags.map((tag) => {
-      const [repo, tagName] = tag.split(":");
-      return {
-        id: img.Id,
-        repo: repo || "<none>",
-        tag: tagName || "<none>",
-        shortId: img.Id?.slice(7, 19) || "",
-        size: (img.Size / (1024 * 1024)).toFixed(2),
-        created: new Date(img.Created * 1000).toLocaleString(),
-        containers: img.Containers || 0,
-        updateAvailable: img.updateAvailable,
-        raw: img,
-      };
-    });
-  });
-  const filtered = imageRows.filter(
-    (img) =>
-      img.repo.toLowerCase().includes(search.toLowerCase()) ||
-      img.tag.toLowerCase().includes(search.toLowerCase()) ||
-      img.shortId.toLowerCase().includes(search.toLowerCase()),
+  // One row per image — an image with several tags stays a single row and
+  // lists all of them, instead of appearing once per tag.
+  const imageRows = useMemo(
+    () =>
+      images.map((img) => {
+        const refs = img.RepoTags?.filter((ref) => ref !== UNTAGGED_REF) ?? [];
+        const parts = (refs.length ? refs : [UNTAGGED_REF]).map(splitImageRef);
+        const repos = [...new Set(parts.map((part) => part.repo))];
+        // Tags alone are ambiguous once the same ID is tagged under more than
+        // one repository, so show the full reference in that case.
+        const tags = [
+          ...new Set(
+            parts.map((part) =>
+              repos.length > 1 ? `${part.repo}:${part.tag}` : part.tag,
+            ),
+          ),
+        ];
+        return {
+          id: img.Id,
+          refs,
+          repo: repos[0] ?? "<none>",
+          repos,
+          tags,
+          shortId: img.Id?.slice(7, 19) || "",
+          size: (img.Size / (1024 * 1024)).toFixed(2),
+          created: new Date(img.Created * 1000).toLocaleString(),
+          containers: img.Containers || 0,
+          updateAvailable: img.updateAvailable,
+          raw: img,
+        };
+      }),
+    [images],
   );
+  const filtered = useMemo(() => {
+    const needle = search.toLowerCase();
+    if (!needle) return imageRows;
+    return imageRows.filter(
+      (img) =>
+        img.repos.some((repo) => repo.toLowerCase().includes(needle)) ||
+        img.tags.some((tag) => tag.toLowerCase().includes(needle)) ||
+        img.shortId.toLowerCase().includes(needle),
+    );
+  }, [imageRows, search]);
 
   // Compute effective selection - only include items that are in the filtered list
   const effectiveSelected = useMemo(() => {
@@ -265,6 +309,15 @@ const ImageList = ({
           >
             {row.original.repo}
           </AppTypography>
+          {row.original.repos.length > 1 && (
+            <Chip
+              label={`+${row.original.repos.length - 1}`}
+              size="small"
+              style={{ fontSize: "0.68rem" }}
+              title={row.original.repos.slice(1).join(", ")}
+              variant="soft"
+            />
+          )}
           {row.original.updateAvailable && (
             <Chip
               color="warning"
@@ -279,19 +332,25 @@ const ImageList = ({
       meta: { align: "left" },
     },
     {
-      accessorKey: "tag",
-      header: "Tag",
+      id: "tags",
+      accessorFn: (image) => image.tags.join(", "),
+      header: "Tags",
       cell: ({ row }) => (
-        <Chip
-          label={row.original.tag}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {row.original.tags.map((tag) => (
+            <Chip
+              key={tag}
+              label={tag}
+              size="small"
+              style={{ fontSize: "0.75rem" }}
+              variant="soft"
+            />
+          ))}
+        </div>
       ),
       meta: {
         align: "left",
-        width: "120px",
+        width: "180px",
       },
     },
     {
@@ -408,7 +467,7 @@ const ImageList = ({
           <AppGrid container spacing={2}>
             {filtered.map((image) => (
               <AppGrid
-                key={`${image.id}-${image.tag}`}
+                key={image.id}
                 size={{
                   xs: 12,
                   sm: 6,
@@ -444,7 +503,7 @@ const ImageList = ({
           data={filtered}
           emptyMessage="No images found."
           fillAvailable
-          getRowId={(image) => `${image.id}-${image.tag}`}
+          getRowId={(image) => image.id}
           renderExpandedContent={({ original: image }) => (
             <div className="expand-panel">
               <div>
@@ -514,8 +573,11 @@ const ImageList = ({
       )}
 
       <DeleteImageDialog
-        imageIds={selectedImages.map((img) => img.id)}
-        imageTags={selectedImages.map((img) => `${img.repo}:${img.tag}`)}
+        images={selectedImages.map((img) => ({
+          id: img.id,
+          label: img.refs[0] ?? img.shortId,
+          refs: img.refs,
+        }))}
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
