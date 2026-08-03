@@ -185,7 +185,7 @@ make tsc               # TypeScript type checking
 make test-frontend     # Run frontend unit tests
 make golint            # Run Go formatters + golangci-lint on backend
 make test              # Run all linters (lint + tsc + golint)
-make test-backend      # Run Go unit tests in backend
+make test-backend      # Run Go unit tests in backend (with race detector)
 ```
 
 **Building:**

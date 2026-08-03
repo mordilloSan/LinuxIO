@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
@@ -28,6 +29,7 @@ func RunServer(cfg ServerConfig) error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	slog.Info("LinuxIO starting", "verbose", cfg.Verbose)
+	debugserver.Start("127.0.0.1:6060")
 
 	sm := newSessionManager()
 	srv, activity, err := newHTTPServer(cfg, sm)

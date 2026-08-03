@@ -8,6 +8,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
@@ -44,6 +45,7 @@ func runBridgeProcess() error {
 	if configureErr := logging.Configure("linuxio-bridge", false); configureErr != nil {
 		return fmt.Errorf("failed to initialize logger: %w", configureErr)
 	}
+	debugserver.Start("127.0.0.1:6061")
 
 	sess, err := initializeBridgeSession()
 	if err != nil {

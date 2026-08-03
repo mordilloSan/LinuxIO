@@ -60,7 +60,12 @@ PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 # Go's test cache re-runs only packages whose inputs changed. Pass
 # GO_TEST_FLAGS=-count=1 to force a full fresh run (or: go clean -testcache).
-GO_TEST_FLAGS ?=
+GO_TEST_FLAGS ?= 
+# Extra env vars / build tags injected into build-backend and build-bridge.
+# Normally empty; build-leak-profile sets them for pprof debug binaries.
+GO_BUILD_EXTRA_ENV ?=
+GO_BUILD_TAGS      ?=
+GO_BUILD_TAGS_FLAG  = $(if $(GO_BUILD_TAGS),-tags $(GO_BUILD_TAGS))
 # Captured at Makefile parse so the `make test` timer includes prerequisites.
 TEST_TIMER_START := $(shell date +%s%N)
 
@@ -411,7 +416,7 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup
 	$(PRINTC) ""; \
 	touch "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
 	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1   > "$$TMPDIR_JOBS/be"   2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
 	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
@@ -465,7 +470,7 @@ check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 	trap 'rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
 	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/be"   2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
 	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
@@ -549,10 +554,14 @@ endif
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
+# Backend test entry point; this is what `make test` and CI run. Race results
+# are cached like normal test results, so incremental runs stay fast. Pass
+# GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
+# interleavings (races only surface on interleavings that actually happen).
 test-backend: $(GO_BUILD_PREREQ)
-	@echo "🧪 Running Go unit tests (backend)..."
+	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... $(GO_TEST_FLAGS) -timeout 5m 2>&1 \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
 		| grep --line-buffered -v '\[no test files\]'; \
 		exit "$${PIPESTATUS[0]}"
 
@@ -658,6 +667,28 @@ analyze: ensure-node setup
 	@echo "🔬 Building frontend bundle analysis..."
 	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
+# Debug-only binaries for goroutine leak hunting. Compiled with
+# GOEXPERIMENT=goroutineleakprofile and the pprofdebug build tag, which serves
+# net/http/pprof on localhost only (webserver :6060, bridge :6061). The leak
+# report lives at /debug/pprof/goroutineleak. The endpoint has no auth (it is
+# loopback-bound) and the GOEXPERIMENT is not production-stable — never ship
+# these binaries; rebuild with `make build` afterwards.
+build-leak-profile:
+	@echo ""
+	@echo "🕵️  Building DEBUG binaries with pprof + goroutine leak profile..."
+	@$(MAKE) --no-print-directory build-bridge \
+		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
+		GO_BUILD_TAGS="pprofdebug"
+	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	echo "   Bridge hash: $$BRIDGE_HASH"; \
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1 \
+		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
+		GO_BUILD_TAGS="pprofdebug"
+	@echo ""
+	@echo "   Webserver pprof: http://127.0.0.1:6060/debug/pprof/  (leaks: /debug/pprof/goroutineleak)"
+	@echo "   Bridge pprof:    http://127.0.0.1:6061/debug/pprof/"
+	@echo "   ⚠️  Debug binaries only — rebuild with 'make build' before packaging."
+
 build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🏗️  Building backend..."
@@ -669,7 +700,7 @@ build-backend: $(GO_BUILD_PREREQ)
 		echo "   Bridge SHA256: (not embedded - development mode)"; \
 	fi
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
@@ -677,6 +708,7 @@ build-backend: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/version.BridgeSHA256=$(BRIDGE_SHA256)'" \
+	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-webserver" && \
@@ -690,7 +722,7 @@ build-bridge: $(GO_BUILD_PREREQ)
 	@echo "   Module: $(MODULE_PATH)"
 	@echo "   Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
@@ -698,6 +730,7 @@ build-bridge: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/version.WatchtowerVersion=$(WATCHTOWER_VERSION)'" \
+	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-bridge" && \
@@ -943,7 +976,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup-frontend-browser$(COLOR_RESET) Install Playwright Chromium"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go unit tests with the race detector (used by 'make test' + CI)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
@@ -962,6 +995,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
 	@$(PRINTC) ""
@@ -981,7 +1015,7 @@ cloc:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
