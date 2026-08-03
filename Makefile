@@ -919,11 +919,6 @@ reinstall: uninstall fastbuild localinstall
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "  WARNING: Quick & dirty build - no tests executed!"
 
-fullinstall: uninstall
-	@echo ""
-	@echo "📦 Installing LinuxIO from GitHub repo..."
-	@sudo ./packaging/scripts/install-linuxio-binaries.sh
-
 help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_BLUE)  Available commands:$(COLOR_RESET)"
@@ -973,7 +968,6 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
 	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
-	@$(PRINTC) "$(COLOR_RED)    make fullinstall      $(COLOR_RESET) Uninstall + install latest release from GitHub"
 	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -982,37 +976,13 @@ help:
 	@$(PRINTC) ""
 
 cloc:
-	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
-
-cloc-clean:
 	@echo "==> Handwritten LOC (also excluding generated/minified files)"
 	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
-
-cloc-breakdown:
-	@echo "============================================================"
-	@echo " LinuxIO LOC breakdown (excluding node_modules + embedded build)"
-	@echo "============================================================"
-	@echo
-	@echo "==> Frontend (Vite/React source)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count frontend/src "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Embedded frontend build inside backend (for visibility)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend/webserver/web/frontend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Packaging / helper C code (if present)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count packaging "c,h" 0'
-	@echo
-	@echo "==> TOTAL (same as make cloc)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
 
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
-  generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  cloc cloc-clean cloc-breakdown
+  generate localinstall reinstall uninstall print-toolchain-versions \
+  cloc
