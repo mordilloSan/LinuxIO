@@ -1,6 +1,5 @@
 // /usr/local/bin/linuxio-auth  (install 0755 root:root, runs via systemd)
-// Single-shot mode: read one JSON auth request from stdin (socket-activated)
-#define __STDC_WANT_LIB_EXT1__ 1
+// Single-shot mode: read one binary auth request from stdin (socket-activated)
 #define _GNU_SOURCE
 #include <security/pam_appl.h>
 #include <paths.h>
@@ -20,21 +19,16 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
-#include <sys/mman.h>
 #include <poll.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
 #include <syslog.h>
 #include <stdarg.h>
 #include <limits.h>
 #include <sys/prctl.h>
-#include <sys/mount.h>
-#include <sched.h>
-#include <ctype.h>
 // Safe argv shim for exec* (drops const only at the API boundary)
 #define ARGV_UNCONST(a) \
   ((union { const char *const *in; char *const *out; }){.in = (a)}.out)
@@ -52,7 +46,9 @@
 #define SOCKET_WRITE_TIMEOUT 10
 #define BRIDGE_START_TIMEOUT_MS 5000
 #define LINUXIO_WEB_TTY "web console"
-#define BRIDGE_PATH "/usr/local/bin/linuxio-bridge"
+#define BRIDGE_DIR "/usr/local/bin"
+#define BRIDGE_NAME "linuxio-bridge"
+#define BRIDGE_PATH BRIDGE_DIR "/" BRIDGE_NAME
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -71,41 +67,18 @@
 #endif
 extern char **environ;
 
-// ---- forward decls ----
-static int write_all(int fd, const void *buf, size_t len);
-static int env_get_int(const char *name, int defval, int minv, int maxv);
-
-// Max lengths (use PROTO_MAX_* from linuxio_protocol.h, these are local convenience)
-#define MAX_PATH_LEN 4096
-
 // -------- safe formatting helpers --------
 static int safe_vsnprintf(char *dst, size_t dstsz, const char *fmt, va_list ap)
 {
   if (!dst || dstsz == 0)
     return -1;
-#if defined(__STDC_LIB_EXT1__)
-  int n = vsnprintf_s(dst, dstsz, _TRUNCATE, fmt, ap);
-  if (n < 0)
-  {
-    dst[0] = '\0';
-    return -1;
-  }
-  return n;
-#else
-#if defined(__GNUC__) && !defined(__clang_analyzer__)
-  int n = __builtin___vsnprintf_chk(dst, dstsz, 0, dstsz, fmt, ap);
-#else
   int n = vsnprintf(dst, dstsz, fmt, ap);
-#endif
   if (n < 0)
   {
     dst[0] = '\0';
     return -1;
   }
-  if ((size_t)n >= dstsz)
-    dst[dstsz - 1] = '\0';
   return n;
-#endif
 }
 
 static int safe_snprintf(char *dst, size_t dstsz, const char *fmt, ...)
@@ -185,35 +158,7 @@ static void journal_error_fieldsf(const struct journal_field *fields, size_t fie
   va_end(ap);
 }
 
-static void log_stderrf(const char *fmt, ...)
-{
-  char buf[1024];
-  va_list ap;
-  va_start(ap, fmt);
-  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-  (void)write_all(STDERR_FILENO, buf, strlen(buf));
-  (void)write_all(STDERR_FILENO, "\n", 1);
-}
-
-// -------- secure zero ----------
-#ifndef _WIN32
-static void secure_bzero(void *p, size_t n)
-{
-#if defined(__GLIBC__) || defined(__APPLE__)
-  if (p && n)
-    explicit_bzero(p, n);
-#else
-  if (!p)
-    return;
-  volatile unsigned char *vp = (volatile unsigned char *)p;
-  while (n--)
-    *vp++ = 0;
-#endif
-}
-#endif
-
-// -------- Binary protocol read helpers --------
+// -------- exact I/O helpers --------
 static int read_all(int fd, void *buf, size_t len)
 {
   unsigned char *p = (unsigned char *)buf;
@@ -234,15 +179,58 @@ static int read_all(int fd, void *buf, size_t len)
   return 0;
 }
 
+static int write_all(int fd, const void *buf, size_t len)
+{
+  const unsigned char *p = (const unsigned char *)buf;
+  while (len > 0)
+  {
+    ssize_t n = write(fd, p, len);
+    if (n < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return -1;
+    }
+    p += (size_t)n;
+    len -= (size_t)n;
+  }
+  return 0;
+}
+
+static void log_stderrf(const char *fmt, ...)
+{
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  (void)write_all(STDERR_FILENO, buf, strlen(buf));
+  (void)write_all(STDERR_FILENO, "\n", 1);
+}
+
+// -------- secure zero ----------
+static void secure_bzero(void *p, size_t n)
+{
+#if defined(__GLIBC__)
+  if (p && n)
+    explicit_bzero(p, n);
+#else
+  if (!p)
+    return;
+  volatile unsigned char *vp = (volatile unsigned char *)p;
+  while (n--)
+    *vp++ = 0;
+#endif
+}
+
+// -------- Binary protocol read helpers --------
 static uint16_t read_u16_be(const uint8_t *buf)
 {
   return ((uint16_t)buf[0] << 8) | ((uint16_t)buf[1]);
 }
 
 // Read a length-prefixed string from fd into buf (max bufsz-1 chars + null).
-// Returns 0 on success, -1 on error (oversized fields are rejected).
-// Uses a temporary buffer for the read to minimize sensitive data exposure -
-// the temp buffer is securely cleared immediately after copying to the caller's buffer.
+// Returns 0 on success, -1 on error (oversized fields and embedded NULs are rejected).
 static int read_lenstr(int fd, char *buf, size_t bufsz)
 {
   if (!buf || bufsz == 0)
@@ -261,26 +249,13 @@ static int read_lenstr(int fd, char *buf, size_t bufsz)
   if (len >= bufsz)
     return -1;
 
-  // Read into a temporary buffer first so we can securely wipe it afterwards.
-  unsigned char *tmp = (unsigned char *)malloc(len);
-  if (!tmp)
-    return -1;
-
-  if (read_all(fd, tmp, len) != 0)
+  if (read_all(fd, buf, len) != 0 || memchr(buf, '\0', len) != NULL)
   {
-    secure_bzero(tmp, len);
-    free(tmp);
+    secure_bzero(buf, bufsz);
     return -1;
   }
 
-  // Copy to caller's buffer and null-terminate.
-  memcpy(buf, tmp, len);
   buf[len] = '\0';
-
-  // Wipe and free the temporary buffer to avoid leaving sensitive data in memory.
-  secure_bzero(tmp, len);
-  free(tmp);
-
   return 0;
 }
 
@@ -294,22 +269,8 @@ struct auth_user {
   uid_t uid;
   gid_t gid;
   char name[PROTO_MAX_USERNAME];
-  char dir[MAX_PATH_LEN];
+  char dir[PATH_MAX];
 };
-
-static char *dup_pam_string(const char *s)
-{
-  if (!s)
-    return NULL;
-
-  size_t len = strlen(s) + 1;
-  char *copy = malloc(len);
-  if (!copy)
-    return NULL;
-
-  memcpy(copy, s, len);
-  return copy;
-}
 
 static void free_pam_responses(struct pam_response *r, int n)
 {
@@ -379,23 +340,100 @@ static void encode_ut_id(char id[4], pid_t pid)
   }
 }
 
-static int valid_remote_host(const char *remote_host)
+static int decode_utf8_codepoint(const unsigned char *s, size_t len,
+                                 uint32_t *codepoint, size_t *width)
 {
-  if (!remote_host || !remote_host[0])
+  uint32_t value;
+
+  if (!s || len == 0 || !codepoint || !width)
     return 0;
 
-  size_t len = strlen(remote_host);
-  if (len >= PROTO_MAX_REMOTE_HOST)
-    return 0;
-
-  for (size_t i = 0; i < len; i++)
+  if (s[0] <= 0x7f)
   {
-    unsigned char ch = (unsigned char)remote_host[i];
-    if (ch <= ' ' || ch == 0x7f)
+    *codepoint = s[0];
+    *width = 1;
+    return 1;
+  }
+
+  if (s[0] >= 0xc2 && s[0] <= 0xdf)
+  {
+    if (len < 2 || (s[1] & 0xc0) != 0x80)
       return 0;
+    value = ((uint32_t)(s[0] & 0x1f) << 6) |
+            (uint32_t)(s[1] & 0x3f);
+    *width = 2;
+  }
+  else if (s[0] >= 0xe0 && s[0] <= 0xef)
+  {
+    if (len < 3 || (s[1] & 0xc0) != 0x80 || (s[2] & 0xc0) != 0x80)
+      return 0;
+    if ((s[0] == 0xe0 && s[1] < 0xa0) ||
+        (s[0] == 0xed && s[1] >= 0xa0))
+      return 0;
+    value = ((uint32_t)(s[0] & 0x0f) << 12) |
+            ((uint32_t)(s[1] & 0x3f) << 6) |
+            (uint32_t)(s[2] & 0x3f);
+    *width = 3;
+  }
+  else if (s[0] >= 0xf0 && s[0] <= 0xf4)
+  {
+    if (len < 4 || (s[1] & 0xc0) != 0x80 ||
+        (s[2] & 0xc0) != 0x80 || (s[3] & 0xc0) != 0x80)
+      return 0;
+    if ((s[0] == 0xf0 && s[1] < 0x90) ||
+        (s[0] == 0xf4 && s[1] >= 0x90))
+      return 0;
+    value = ((uint32_t)(s[0] & 0x07) << 18) |
+            ((uint32_t)(s[1] & 0x3f) << 12) |
+            ((uint32_t)(s[2] & 0x3f) << 6) |
+            (uint32_t)(s[3] & 0x3f);
+    *width = 4;
+  }
+  else
+  {
+    return 0;
+  }
+
+  *codepoint = value;
+  return 1;
+}
+
+static int valid_utf8_identity_field(const char *value, size_t max_len)
+{
+  const unsigned char *bytes = (const unsigned char *)value;
+  size_t len;
+  size_t offset = 0;
+
+  if (!value || !value[0])
+    return 0;
+
+  len = strlen(value);
+  if (len >= max_len)
+    return 0;
+
+  while (offset < len)
+  {
+    uint32_t codepoint;
+    size_t width;
+
+    if (!decode_utf8_codepoint(bytes + offset, len - offset, &codepoint, &width))
+      return 0;
+    if (codepoint <= 0x20 || (codepoint >= 0x7f && codepoint <= 0x9f))
+      return 0;
+    offset += width;
   }
 
   return 1;
+}
+
+static int valid_username(const char *user)
+{
+  return valid_utf8_identity_field(user, PROTO_MAX_USERNAME);
+}
+
+static int valid_remote_host(const char *remote_host)
+{
+  return valid_utf8_identity_field(remote_host, PROTO_MAX_REMOTE_HOST);
 }
 
 static uint32_t clamp_time_to_u32(time_t value)
@@ -572,7 +610,7 @@ static void record_login_end(void)
   updwtmp(_PATH_WTMP, &ut);
 }
 
-static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, const void *appdata_ptr)
+static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
 {
   const struct pam_appdata *appdata = (const struct pam_appdata *)appdata_ptr;
   if (n <= 0 || n > 32)
@@ -588,7 +626,7 @@ static int pam_conv_func(int n, const struct pam_message **msg, struct pam_respo
     case PAM_PROMPT_ECHO_OFF:
       if (appdata && appdata->password)
       {
-        r[i].resp = dup_pam_string(appdata->password);
+        r[i].resp = strdup(appdata->password);
         if (!r[i].resp)
         {
           free_pam_responses(r, i);
@@ -600,7 +638,7 @@ static int pam_conv_func(int n, const struct pam_message **msg, struct pam_respo
     case PAM_PROMPT_ECHO_ON:
       if (appdata && appdata->username)
       {
-        r[i].resp = dup_pam_string(appdata->username);
+        r[i].resp = strdup(appdata->username);
         if (!r[i].resp)
         {
           free_pam_responses(r, i);
@@ -643,111 +681,82 @@ static int env_get_int(const char *name, int defval, int minv, int maxv)
 }
 
 // ---- bridge binary validation ----
-static int validate_bridge_via_fd(int fd, uid_t required_owner)
+static int validate_bridge_policy(const struct stat *st, uid_t required_owner)
 {
-  struct stat st;
-  if (fstat(fd, &st) != 0)
-  {
-    perror("fstat bridge");
+  if (!st || !S_ISREG(st->st_mode))
     return -1;
-  }
-  if (!S_ISREG(st.st_mode))
+  if ((st->st_mode & (S_IWGRP | S_IWOTH)) != 0)
     return -1;
-  if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0)
+  if (st->st_uid != required_owner)
     return -1;
-  if (st.st_uid != required_owner)
+  if ((st->st_mode & 0111) == 0)
     return -1;
-  if ((st.st_mode & 0111) == 0)
-    return -1;
-  if (st.st_mode & (S_ISUID | S_ISGID))
+  if (st->st_mode & (S_ISUID | S_ISGID))
     return -1;
   return 0;
 }
 
-static int validate_parent_dir_policy(const struct stat *ds, uid_t file_owner, uid_t user_uid)
+static int validate_parent_dir_policy(const struct stat *ds, uid_t required_owner)
 {
-  if (!S_ISDIR(ds->st_mode))
+  if (!ds || !S_ISDIR(ds->st_mode))
     return -1;
-  if (file_owner == 0)
-  {
-    if (ds->st_uid != 0)
-      return -1;
-    if (ds->st_mode & (S_IWGRP | S_IWOTH))
-      return -1;
-    return 0;
-  }
-  if (file_owner == user_uid)
-  {
-    if (ds->st_uid != user_uid)
-      return -1;
-    if (ds->st_mode & (S_IWGRP | S_IWOTH))
-      return -1;
-    return 0;
-  }
-  return -1;
+  if (ds->st_uid != required_owner)
+    return -1;
+  if (ds->st_mode & (S_IWGRP | S_IWOTH))
+    return -1;
+  return 0;
 }
 
-static int validate_parent_dir_via_fd(int dfd, uid_t file_owner, uid_t user_uid)
+static int open_and_validate_bridge(uid_t required_owner, int *out_fd)
 {
+  int result = -1;
+  int dfd = -1;
+  int fd = -1;
   struct stat ds;
-  if (fstat(dfd, &ds) != 0)
-    return -1;
-  return validate_parent_dir_policy(&ds, file_owner, user_uid);
-}
+  struct stat st;
 
-static int open_and_validate_bridge(const char *bridge_path, uid_t required_owner, int *out_fd)
-{
-  int fd = open(bridge_path, O_PATH | O_CLOEXEC | O_NOFOLLOW);
+  if (!out_fd)
+    return -1;
+  *out_fd = -1;
+
+  dfd = open(BRIDGE_DIR, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (dfd < 0)
+  {
+    perror("open bridge directory");
+    goto out;
+  }
+  if (fstat(dfd, &ds) != 0)
+  {
+    perror("fstat bridge directory");
+    goto out;
+  }
+  if (validate_parent_dir_policy(&ds, required_owner) != 0)
+    goto out;
+
+  fd = openat(dfd, BRIDGE_NAME, O_PATH | O_NOFOLLOW | O_CLOEXEC);
   if (fd < 0)
   {
     perror("open bridge");
-    return -1;
+    goto out;
   }
-  struct stat st;
   if (fstat(fd, &st) != 0)
   {
     perror("fstat bridge");
-    close(fd);
-    return -1;
+    goto out;
   }
-  if (validate_bridge_via_fd(fd, required_owner) != 0)
-  {
-    close(fd);
-    return -1;
-  }
-
-  char linkbuf[PATH_MAX], fdlink[64];
-  safe_snprintf(fdlink, sizeof(fdlink), "/proc/self/fd/%d", fd);
-  ssize_t n = readlink(fdlink, linkbuf, sizeof(linkbuf) - 1);
-  if (n < 0)
-  {
-    close(fd);
-    return -1;
-  }
-  linkbuf[n] = '\0';
-  char *slash = strrchr(linkbuf, '/');
-  if (!slash || slash == linkbuf)
-  {
-    close(fd);
-    return -1;
-  }
-  *slash = '\0';
-  int dfd = open(linkbuf, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-  if (dfd < 0)
-  {
-    close(fd);
-    return -1;
-  }
-  int dir_ok = validate_parent_dir_via_fd(dfd, st.st_uid, required_owner);
-  close(dfd);
-  if (dir_ok != 0)
-  {
-    close(fd);
-    return -1;
-  }
+  if (validate_bridge_policy(&st, required_owner) != 0)
+    goto out;
 
   *out_fd = fd;
-  return 0;
+  fd = -1;
+  result = 0;
+
+out:
+  if (fd >= 0)
+    close(fd);
+  if (dfd >= 0)
+    close(dfd);
+  return result;
 }
 
 // -------- Binary bootstrap helpers --------
@@ -835,26 +844,178 @@ static int write_bootstrap_binary(
   return 0;
 }
 
+static pid_t waitpid_nointr(pid_t pid, int *status, int options)
+{
+  pid_t result;
+
+  do
+  {
+    result = waitpid(pid, status, options);
+  } while (result < 0 && errno == EINTR);
+
+  return result;
+}
+
+static void terminate_and_reap_child(pid_t pid, int signal_number)
+{
+  if (pid <= 0)
+    return;
+
+  if (signal_number > 0)
+    (void)kill(pid, signal_number);
+  (void)waitpid_nointr(pid, NULL, 0);
+}
+
+static int child_status_code(int status)
+{
+  if (WIFEXITED(status))
+    return WEXITSTATUS(status);
+  if (WIFSIGNALED(status))
+    return 128 + WTERMSIG(status);
+  return -1;
+}
+
+static int monotonic_now_ns(int64_t *now_ns)
+{
+  const int64_t ns_per_second = INT64_C(1000000000);
+  struct timespec now;
+
+  if (!now_ns || clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+    return -1;
+  if (now.tv_sec < 0 || now.tv_nsec < 0 || now.tv_nsec >= ns_per_second)
+    return -1;
+  if ((uintmax_t)now.tv_sec > (uintmax_t)(INT64_MAX / ns_per_second))
+    return -1;
+
+  *now_ns = (int64_t)now.tv_sec * ns_per_second + (int64_t)now.tv_nsec;
+  return 0;
+}
+
+static int deadline_remaining_ns(int64_t deadline_ns, int64_t *remaining_ns)
+{
+  int64_t now_ns;
+
+  if (!remaining_ns || monotonic_now_ns(&now_ns) != 0)
+    return -1;
+  if (now_ns >= deadline_ns)
+  {
+    *remaining_ns = 0;
+    return 0;
+  }
+
+  *remaining_ns = deadline_ns - now_ns;
+  return 1;
+}
+
+static int wait_for_child_with_timeout(pid_t pid, int timeout_sec)
+{
+  const int64_t ns_per_second = INT64_C(1000000000);
+  int64_t now_ns;
+  int64_t timeout_ns;
+  int64_t deadline_ns;
+  int pidfd = -1;
+  int status = 0;
+
+  if (pid <= 0 || timeout_sec <= 0 || monotonic_now_ns(&now_ns) != 0)
+    goto fail;
+
+  timeout_ns = (int64_t)timeout_sec * ns_per_second;
+  if (now_ns > INT64_MAX - timeout_ns)
+    goto fail;
+  deadline_ns = now_ns + timeout_ns;
+
+#ifdef SYS_pidfd_open
+  pidfd = (int)syscall(SYS_pidfd_open, pid, 0);
+  if (pidfd < 0 && errno != ENOSYS)
+    goto fail;
+#endif
+
+  for (;;)
+  {
+    int64_t remaining_ns;
+    int deadline_state = deadline_remaining_ns(deadline_ns, &remaining_ns);
+    if (deadline_state < 0)
+      goto fail;
+    if (deadline_state == 0)
+      break;
+
+    if (pidfd >= 0)
+    {
+      struct timespec poll_timeout = {
+          .tv_sec = (time_t)(remaining_ns / ns_per_second),
+          .tv_nsec = (long)(remaining_ns % ns_per_second)};
+      struct pollfd pfd = {
+          .fd = pidfd,
+          .events = POLLIN,
+          .revents = 0};
+      int poll_result = ppoll(&pfd, 1, &poll_timeout, NULL);
+
+      if (poll_result < 0)
+      {
+        if (errno == EINTR)
+          continue;
+        goto fail;
+      }
+      if (poll_result == 0)
+        break;
+      if ((pfd.revents & POLLIN) == 0)
+        goto fail;
+
+      // Once ppoll reports readiness within its exact remaining timeout,
+      // prefer the child's real status even if this parent resumes later.
+      if (waitpid_nointr(pid, &status, 0) != pid)
+        goto fail;
+      close(pidfd);
+      return child_status_code(status);
+    }
+
+    {
+      pid_t waited = waitpid_nointr(pid, &status, WNOHANG);
+      if (waited == pid)
+        return child_status_code(status);
+      if (waited < 0)
+        goto fail;
+    }
+
+    {
+      const int64_t fallback_sleep_ns = INT64_C(5000000);
+      int64_t sleep_ns = remaining_ns < fallback_sleep_ns ? remaining_ns : fallback_sleep_ns;
+      struct timespec sleep_time = {
+          .tv_sec = (time_t)(sleep_ns / ns_per_second),
+          .tv_nsec = (long)(sleep_ns % ns_per_second)};
+      if (nanosleep(&sleep_time, NULL) != 0 && errno != EINTR)
+        goto fail;
+    }
+  }
+
+  {
+    // A final nonblocking reap closes the deadline boundary without reviving
+    // the old false-timeout race. Prefer an observed exit over killing it.
+    pid_t waited = waitpid_nointr(pid, &status, WNOHANG);
+    if (waited == pid)
+    {
+      if (pidfd >= 0)
+        close(pidfd);
+      return child_status_code(status);
+    }
+    if (waited < 0)
+      goto fail;
+  }
+
+fail:
+  if (pidfd >= 0)
+    close(pidfd);
+  terminate_and_reap_child(pid, SIGKILL);
+  return -1;
+}
+
 // sudo probing
 static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const argv[],
                                       const char *stdin_data, int timeout_sec)
 {
   int inpipe[2] = {-1, -1};
-#if defined(HAVE_PIPE2) || (defined(__linux__) && defined(O_CLOEXEC))
   if (pipe2(inpipe, O_CLOEXEC) != 0)
     return -1;
-#else
-  if (pipe(inpipe) != 0)
-    return -1;
-  {
-    int fdflags = fcntl(inpipe[0], F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(inpipe[0], F_SETFD, fdflags | FD_CLOEXEC);
-    fdflags = fcntl(inpipe[1], F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(inpipe[1], F_SETFD, fdflags | FD_CLOEXEC);
-  }
-#endif
 
   pid_t pid = fork();
   if (pid < 0)
@@ -903,36 +1064,7 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
     (void)write_all(inpipe[1], stdin_data, strlen(stdin_data));
   close(inpipe[1]);
 
-  int status = 0;
-  int elapsed_ms = 0;
-  int reaped = 0;
-  while (elapsed_ms < timeout_sec * 1000)
-  {
-    pid_t r = waitpid(pid, &status, WNOHANG);
-    if (r == pid)
-    {
-      reaped = 1;
-      break;
-    }
-    if (r < 0 && errno != EINTR)
-      break;
-    usleep(100 * 1000);
-    elapsed_ms += 100;
-  }
-  // Timeout or waitpid error: fail closed - callers treat 0 as "allowed",
-  // so never fall through to WEXITSTATUS of an unreaped/zeroed status.
-  if (!reaped)
-  {
-    kill(pid, SIGKILL);
-    (void)waitpid(pid, &status, 0);
-    return -1;
-  }
-
-  if (WIFEXITED(status))
-    return WEXITSTATUS(status);
-  if (WIFSIGNALED(status))
-    return 128 + WTERMSIG(status);
-  return -1;
+  return wait_for_child_with_timeout(pid, timeout_sec);
 }
 
 // Privileged-mode policy: the user must be allowed by sudoers to run the
@@ -940,7 +1072,9 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
 // policy permits the invoking user to run that exact command (sudo(8)), so
 // sudoers stays the single source of truth: full admins (ALL) qualify,
 // users with unrelated narrow rules do not, and an admin can grant web
-// admin access explicitly by whitelisting BRIDGE_PATH in sudoers.
+// admin access explicitly by whitelisting BRIDGE_PATH in sudoers. This probe
+// is authorization only: the already-root launcher executes the bridge
+// directly, so sudo runtime tags and environment rules do not wrap it.
 static int user_can_run_bridge_as_root(const struct passwd *pw, const char *password)
 {
   // How long we wait for the sudo policy check to complete
@@ -951,7 +1085,7 @@ static int user_can_run_bridge_as_root(const struct passwd *pw, const char *pass
     return 0;
 
   // Authenticate with the same password we used for PAM
-  const char *argv_list[] = {"/usr/bin/sudo", "-S", "-p", "", "-u", "root",
+  const char *argv_list[] = {"/usr/bin/sudo", "-k", "-S", "-p", "", "-u", "root",
                              "-l", "--", BRIDGE_PATH, NULL};
 
   // Buffer must accommodate password + newline + null terminator
@@ -963,16 +1097,7 @@ static int user_can_run_bridge_as_root(const struct passwd *pw, const char *pass
   // Wipe the temporary buffer
   secure_bzero(buf, sizeof(buf));
 
-  if (rc == 0)
-  {
-    // Drop any cached sudo credentials immediately; we just wanted the
-    // policy answer, not to keep a ticket open.
-    const char *argv_k[] = {"/usr/bin/sudo", "-k", NULL};
-    (void)run_cmd_as_user_with_input(pw, argv_k, NULL, 2);
-    return 1;
-  }
-
-  return 0;
+  return rc == 0;
 }
 
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
@@ -991,10 +1116,21 @@ __attribute__((__noreturn__)) static void child_die(int status_fd, const char *w
   _exit(127);
 }
 
+static void set_cloexec_or_die(int fd, int status_fd, const char *what)
+{
+  int fdflags = fcntl(fd, F_GETFD);
+  if (fdflags < 0)
+    child_die(status_fd, what);
+  if (fcntl(fd, F_SETFD, fdflags | FD_CLOEXEC) != 0)
+    child_die(status_fd, what);
+}
+
 static void drop_to_user(const struct auth_user *auth_user, int status_fd)
 {
   if (!auth_user)
     child_die(status_fd, "no user to drop to");
+  if (auth_user->uid == 0)
+    child_die(status_fd, "refusing unprivileged root session");
   if (setgroups(0, NULL) != 0)
     child_die(status_fd, "setgroups");
   if (initgroups(auth_user->name, auth_user->gid) != 0)
@@ -1326,6 +1462,33 @@ static pid_t spawn_bridge_process(
   int orig_bridge = bridge_fd;
   int child_status_fd = exec_status_fd;
 
+  // Preserve a client socket occupying stdin/stdout/stderr before those fixed
+  // descriptors are rewritten. The parked copy must survive exec until dup2
+  // installs it at CLIENT_CONN_FD.
+  if (orig_client >= 0 && orig_client < CLIENT_CONN_FD)
+  {
+    int saved_client = fcntl(orig_client, F_DUPFD, BRIDGE_FD + 1);
+    if (saved_client < 0)
+      child_die(child_status_fd, "park client fd");
+
+    if (orig_client == STDERR_FILENO)
+    {
+      int devnull;
+      close(STDERR_FILENO);
+      devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
+      if (devnull < 0)
+        child_die(child_status_fd, "replace client stderr");
+      if (devnull != STDERR_FILENO)
+      {
+        if (dup2(devnull, STDERR_FILENO) < 0)
+          child_die(child_status_fd, "dup2 replacement stderr");
+        close(devnull);
+      }
+    }
+
+    orig_client = saved_client;
+  }
+
   // First, move exec_status_fd and bridge_fd to high positions to avoid conflicts
   // (in case any of them is already at 0-5)
   int tmp_exec_status = -1, tmp_bridge = -1;
@@ -1356,15 +1519,6 @@ static pid_t spawn_bridge_process(
   }
 
   // Step 2: Set up stdin (FD 0) from bootstrap pipe
-  // IMPORTANT: Do this before dup2'ing to FD 3, in case client_fd == 0
-  if (orig_client == STDIN_FILENO)
-  {
-    // client_fd is stdin - need to save it first
-    int saved_client = dup(orig_client);
-    if (saved_client < 0) child_die(child_status_fd, "dup client fd");
-    orig_client = saved_client;
-  }
-
   if (orig_bootstrap >= 0)
   {
     if (dup2(orig_bootstrap, STDIN_FILENO) < 0) child_die(child_status_fd, "dup2 bootstrap to stdin");
@@ -1387,13 +1541,9 @@ static pid_t spawn_bridge_process(
     if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) child_die(child_status_fd, "dup2 exec-status fd");
     child_status_fd = EXEC_STATUS_FD;
     close(tmp_exec_status);
-    // Restore CLOEXEC on the new FD
-    {
-      int fdflags = fcntl(EXEC_STATUS_FD, F_GETFD);
-      if (fdflags >= 0)
-        (void)fcntl(EXEC_STATUS_FD, F_SETFD, fdflags | FD_CLOEXEC);
-    }
   }
+  set_cloexec_or_die(EXEC_STATUS_FD, child_status_fd, "set exec-status CLOEXEC");
+
   // Step 6: Set up bridge_fd at FD 5
   if (tmp_bridge >= 0 && tmp_bridge != BRIDGE_FD)
   {
@@ -1503,23 +1653,33 @@ static pid_t spawn_bridge_process(
 
   // Application config is passed via binary bootstrap on stdin.
 
-  // Close all file descriptors >= 6 (keeping 0-5 as set up above)
-  // Uses close_range() syscall (Linux 5.9+) with fallback for older kernels
-#ifndef __NR_close_range
-  #define __NR_close_range 436
+  // Close all file descriptors >= 6 (keeping 0-5 as set up above). Any
+  // close_range failure falls back to an explicit close loop; proceeding with
+  // unknown inherited descriptors is not safe for the privileged child.
+#ifdef SYS_close_range
+  if (syscall(SYS_close_range, BRIDGE_FD + 1, ~0U, 0) != 0)
 #endif
-
-  if (syscall(__NR_close_range, BRIDGE_FD + 1, ~0U, 0) == -1 && errno == ENOSYS)
   {
-    // Fallback: manual loop for older kernels without close_range
     struct rlimit rl;
-    if (getrlimit(RLIMIT_NOFILE, &rl) == 0)
+    rlim_t max_fd;
+
+    if (getrlimit(RLIMIT_NOFILE, &rl) != 0)
+      child_die(child_status_fd, "getrlimit for fd cleanup");
+    max_fd = rl.rlim_cur;
+    if (max_fd == RLIM_INFINITY)
     {
-      int max_fd = (rl.rlim_cur < 4096) ? (int)rl.rlim_cur : 4096;
-      for (int fd = BRIDGE_FD + 1; fd < max_fd; fd++)
-      {
-        (void)close(fd);
-      }
+      long open_max = sysconf(_SC_OPEN_MAX);
+      if (open_max < 0)
+        child_die(child_status_fd, "sysconf for fd cleanup");
+      max_fd = (rlim_t)open_max;
+    }
+    if (max_fd > (rlim_t)INT_MAX)
+      child_die(child_status_fd, "fd cleanup limit exceeds int range");
+
+    for (int fd = BRIDGE_FD + 1; fd < (int)max_fd; fd++)
+    {
+      if (close(fd) != 0 && errno != EBADF)
+        child_die(child_status_fd, "close inherited fd");
     }
   }
 
@@ -1529,35 +1689,16 @@ static pid_t spawn_bridge_process(
   // Mark BRIDGE_FD as close-on-exec so it doesn't leak into the bridge process
   // (prevents "text file busy" on binary updates and avoids unnecessary FD leak)
   // CLOEXEC only closes after successful exec, so execveat() still works.
-  {
-    int fdflags = fcntl(BRIDGE_FD, F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(BRIDGE_FD, F_SETFD, fdflags | FD_CLOEXEC);
-  }
+  set_cloexec_or_die(BRIDGE_FD, child_status_fd, "set bridge CLOEXEC");
 
-  // Execute the validated bridge binary via fd (prevents TOCTOU)
-  // Try execveat first (Linux 3.19+); fallback to execv on ENOSYS
-#ifndef __NR_execveat
-  #define __NR_execveat 322
+  // Execute only the validated bridge fd. LinuxIO requires a kernel newer
+  // than execveat; an unavailable or blocked syscall must fail closed rather
+  // than downgrade to pathname execution.
+#ifdef SYS_execveat
+  (void)syscall(SYS_execveat, BRIDGE_FD, "", ARGV_UNCONST(argv_child), environ, AT_EMPTY_PATH);
+#else
+  errno = ENOSYS;
 #endif
-  long ret = syscall(__NR_execveat, BRIDGE_FD, "", ARGV_UNCONST(argv_child), environ, AT_EMPTY_PATH);
-
-  // Fallback for kernels without execveat (< 3.19)
-  if (ret == -1 && errno == ENOSYS)
-  {
-    // Read the real path from /proc/self/fd/BRIDGE_FD
-    char fdpath[64], realpath_buf[PATH_MAX];
-    safe_snprintf(fdpath, sizeof(fdpath), "/proc/self/fd/%d", BRIDGE_FD);
-    ssize_t len = readlink(fdpath, realpath_buf, sizeof(realpath_buf) - 1);
-    if (len > 0)
-    {
-      realpath_buf[len] = '\0';
-      // Close bridge_fd before exec (no longer needed)
-      close(BRIDGE_FD);
-      // Use the real path we validated earlier
-      execv(realpath_buf, ARGV_UNCONST(argv_child));
-    }
-  }
 
   // Exec failure writes a status byte; successful exec closes the pipe via CLOEXEC.
   child_die(child_status_fd, "exec bridge");
@@ -1592,37 +1733,56 @@ static int handle_client(int input_fd, int output_fd)
   char session_id[PROTO_MAX_SESSION_ID] = "";
   char remote_host[PROTO_MAX_REMOTE_HOST] = "";
 
+  int result = 1;
+  int pam_end_status = PAM_SUCCESS;
+  int credentials_established = 0;
+  int session_open = 0;
+  int login_started = 0;
+  int child_reaped = 0;
+  int child_signal = 0;
+  int bridge_fd = -1;
+  int bootstrap_pipe[2] = {-1, -1};
+  int exec_status_pipe[2] = {-1, -1};
+  pid_t child = -1;
+  pam_handle_t *pamh = NULL;
+
   if (read_lenstr(input_fd, user, sizeof(user)) != 0 ||
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
       read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
       read_lenstr(input_fd, remote_host, sizeof(remote_host)) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request fields");
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
   }
 
-  // Validate required fields
+  // Validate required fields and the web-login credential policy.
   if (!user[0] || !session_id[0])
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "missing required fields");
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
+  }
+  if (!password[0])
+  {
+    send_error_response(output_fd, PROTO_RESULT_AUTH_FAILED, "authentication failed");
+    goto out;
+  }
+  if (!valid_username(user))
+  {
+    send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid username format");
+    goto out;
   }
 
   // Validate session_id (defense against path injection)
   if (!valid_session_id(session_id))
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid session_id format");
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
   }
 
   if (!valid_remote_host(remote_host))
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "invalid remote_host format");
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
   }
 
   // PAM authentication
@@ -1630,16 +1790,15 @@ static int handle_client(int input_fd, int output_fd)
       .username = user,
       .password = password};
   struct pam_conv conv = {
-      (int (*)(int, const struct pam_message **, struct pam_response **, void *))pam_conv_func,
-      &appdata};
-  pam_handle_t *pamh = NULL;
+      .conv = pam_conv_func,
+      .appdata_ptr = &appdata};
   int rc = pam_start("linuxio", user, &conv, &pamh);
   int auth_rc;
   if (rc != PAM_SUCCESS)
   {
     send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, pam_strerror(NULL, rc));
-    secure_bzero(password, sizeof(password));
-    return 1;
+    pamh = NULL;
+    goto out;
   }
 
   rc = pam_set_item(pamh, PAM_RHOST, remote_host);
@@ -1648,14 +1807,15 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, pam_strerror(pamh, rc));
-    pam_end(pamh, rc);
-    secure_bzero(password, sizeof(password));
-    return 1;
+    pam_end_status = rc;
+    goto out;
   }
-  auth_rc = pam_authenticate(pamh, 0);
+
+  const int pam_flags = PAM_DISALLOW_NULL_AUTHTOK;
+  auth_rc = pam_authenticate(pamh, pam_flags);
   rc = auth_rc;
   if (rc == PAM_SUCCESS)
-    rc = pam_acct_mgmt(pamh, 0);
+    rc = pam_acct_mgmt(pamh, pam_flags);
 
   // Handle password expiration
   if (rc == PAM_NEW_AUTHTOK_REQD)
@@ -1666,13 +1826,9 @@ static int handle_client(int input_fd, int output_fd)
     journal_info_fieldsf(fields, 1, "password expired");
     send_error_response(output_fd, PROTO_RESULT_PASSWORD_EXPIRED,
                         "Password has expired. Please change it via SSH or console.");
-    pam_end(pamh, rc);
-    secure_bzero(password, sizeof(password));
-    return 1;
+    pam_end_status = rc;
+    goto out;
   }
-
-  if (rc == PAM_SUCCESS)
-    rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
 
   if (rc != PAM_SUCCESS)
   {
@@ -1680,20 +1836,45 @@ static int handle_client(int input_fd, int output_fd)
     if (auth_rc != PAM_SUCCESS)
       btmp_log(user, remote_host);
     send_error_response(output_fd, classify_pam_result(rc), err);
-    pam_end(pamh, rc);
-    secure_bzero(password, sizeof(password));
-    return 1;
+    pam_end_status = rc;
+    goto out;
   }
 
-  // Get user info
+  const void *pam_user_item = NULL;
+  rc = pam_get_item(pamh, PAM_USER, &pam_user_item);
+  if (rc != PAM_SUCCESS || !pam_user_item || !((const char *)pam_user_item)[0])
+  {
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                        "failed to resolve authenticated user");
+    pam_end_status = rc == PAM_SUCCESS ? PAM_USER_UNKNOWN : rc;
+    goto out;
+  }
+
+  const char *pam_user = (const char *)pam_user_item;
+  if (!valid_username(pam_user))
+  {
+    send_error_response(output_fd, PROTO_RESULT_ACCESS_DENIED,
+                        "invalid authenticated user");
+    pam_end_status = PAM_USER_UNKNOWN;
+    goto out;
+  }
+  memmove(user, pam_user, strlen(pam_user) + 1);
+
+  rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
+  if (rc != PAM_SUCCESS)
+  {
+    send_error_response(output_fd, classify_pam_result(rc), pam_strerror(pamh, rc));
+    pam_end_status = rc;
+    goto out;
+  }
+  credentials_established = 1;
+
+  // Resolve the identity selected by PAM, not the raw wire username.
   const struct passwd *pw = getpwnam(user);
   if (!pw)
   {
     send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, "user lookup failed");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
   }
 
   // Copy libc-owned passwd data before PAM session hooks can overwrite NSS static storage.
@@ -1701,17 +1882,27 @@ static int handle_client(int input_fd, int output_fd)
   if (copy_auth_user(pw, &auth_user) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR, "invalid passwd entry");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    secure_bzero(password, sizeof(password));
-    return 1;
+    goto out;
+  }
+  if (!valid_username(auth_user.name))
+  {
+    send_error_response(output_fd, PROTO_RESULT_ACCESS_DENIED,
+                        "invalid resolved user");
+    goto out;
+  }
+
+  if (auth_user.uid == 0)
+  {
+    send_error_response(output_fd, PROTO_RESULT_ACCESS_DENIED,
+                        "root login is not allowed");
+    goto out;
   }
 
   {
     char uid_buf[32];
     (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
     const struct journal_field fields[] = {
-        {"LINUXIO_USER", user},
+        {"LINUXIO_USER", auth_user.name},
         {"LINUXIO_UID", uid_buf},
     };
     journal_info_fieldsf(fields, 2, "pam auth success");
@@ -1720,19 +1911,16 @@ static int handle_client(int input_fd, int output_fd)
   // Privileged mode iff sudoers lets this user run the bridge as root
   int want_privileged = user_can_run_bridge_as_root(pw, password) ? 1 : 0;
 
-  // Clear password from memory
+  // Do not retain the plaintext password while the parent supervises the bridge.
   secure_bzero(password, sizeof(password));
 
   uint8_t mode = want_privileged ? PROTO_MODE_PRIVILEGED : PROTO_MODE_UNPRIVILEGED;
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
-  int bridge_fd = -1;
-  if (open_and_validate_bridge(BRIDGE_PATH, 0, &bridge_fd) != 0)
+  if (open_and_validate_bridge(0, &bridge_fd) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge validation failed");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    goto out;
   }
   // Keep bridge_fd open - we'll exec it directly to prevent TOCTOU
 
@@ -1740,83 +1928,33 @@ static int handle_client(int input_fd, int output_fd)
   // O_CLOEXEC on both ends: the child's dup2 to stdin clears it on FD 0,
   // while the child's inherited copy of the write end closes at exec -
   // otherwise the bridge would hold its own stdin open and never see EOF.
-  int bootstrap_pipe[2] = {-1, -1};
-  int bootstrap_rc;
-#if defined(HAVE_PIPE2) || (defined(__linux__) && defined(O_CLOEXEC))
-  bootstrap_rc = pipe2(bootstrap_pipe, O_CLOEXEC);
-#else
-  bootstrap_rc = pipe(bootstrap_pipe);
-  if (bootstrap_rc == 0)
-  {
-    int fdflags = fcntl(bootstrap_pipe[0], F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(bootstrap_pipe[0], F_SETFD, fdflags | FD_CLOEXEC);
-    fdflags = fcntl(bootstrap_pipe[1], F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(bootstrap_pipe[1], F_SETFD, fdflags | FD_CLOEXEC);
-  }
-#endif
-  if (bootstrap_rc != 0)
+  if (pipe2(bootstrap_pipe, O_CLOEXEC) != 0)
   {
     journal_errorf("failed to create bootstrap pipe: %m");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare bootstrap");
-    close(bridge_fd);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    goto out;
   }
 
   rc = pam_open_session(pamh, 0);
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    close(bootstrap_pipe[0]);
-    close(bootstrap_pipe[1]);
-    close(bridge_fd);
     send_error_response(output_fd, classify_pam_result(rc), err);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    goto out;
   }
+  session_open = 1;
+
   // Create exec-status pipe with CLOEXEC on write end
   // - On successful exec, CLOEXEC closes the write end -> parent sees EOF
   // - On exec failure, child writes error byte -> parent sees data
-  int exec_status_pipe[2] = {-1, -1};
-#if defined(HAVE_PIPE2) || (defined(__linux__) && defined(O_CLOEXEC))
   if (pipe2(exec_status_pipe, O_CLOEXEC) != 0)
   {
     journal_errorf("failed to create exec-status pipe: %m");
-    close(bootstrap_pipe[0]);
-    close(bootstrap_pipe[1]);
-    close(bridge_fd);
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare exec check");
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    goto out;
   }
-#else
-  if (pipe(exec_status_pipe) != 0)
-  {
-    journal_errorf("failed to create exec-status pipe: %m");
-    close(bootstrap_pipe[0]);
-    close(bootstrap_pipe[1]);
-    close(bridge_fd);
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare exec check");
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
-  }
-  // Set CLOEXEC on write end only (child writes on failure, exec closes it on success)
-  {
-    int fdflags = fcntl(exec_status_pipe[1], F_GETFD);
-    if (fdflags >= 0)
-      (void)fcntl(exec_status_pipe[1], F_SETFD, fdflags | FD_CLOEXEC);
-  }
-#endif
 
-  pid_t child = spawn_bridge_process(
+  child = spawn_bridge_process(
       &auth_user,
       want_privileged,
       bridge_fd,
@@ -1826,18 +1964,14 @@ static int handle_client(int input_fd, int output_fd)
 
   // Parent: close pipe read end and exec-status write end (child has them)
   close(bootstrap_pipe[0]);
+  bootstrap_pipe[0] = -1;
   close(exec_status_pipe[1]);
+  exec_status_pipe[1] = -1;
 
   if (child < 0)
   {
-    close(bootstrap_pipe[1]);
-    close(exec_status_pipe[0]);
-    close(bridge_fd);
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to spawn bridge");
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    goto out;
   }
 
   // Parent: write binary bootstrap to pipe, then close to signal EOF
@@ -1850,6 +1984,7 @@ static int handle_client(int input_fd, int output_fd)
       verbose_flag,
       want_privileged);
   close(bootstrap_pipe[1]);
+  bootstrap_pipe[1] = -1;
 
   if (rc_bootstrap != 0)
   {
@@ -1857,28 +1992,22 @@ static int handle_client(int input_fd, int output_fd)
         {"LINUXIO_USER", auth_user.name},
     };
     journal_error_fieldsf(fields, 1, "failed to write bootstrap to pipe");
-    close(exec_status_pipe[0]);
-    close(bridge_fd);
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
-    kill(child, SIGTERM);
-    (void)waitpid(child, NULL, 0);
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    child_signal = SIGTERM;
+    goto out;
   }
 
   // Close bridge_fd - child has it via fork
   close(bridge_fd);
+  bridge_fd = -1;
 
   // Wait for exec-status: EOF means exec succeeded, data means exec failed.
   // This ensures we don't send OK until the bridge binary has actually started.
-  int exec_status_fd = exec_status_pipe[0];
   int exec_status_sel = -1;
   for (;;)
   {
     struct pollfd pfd = {
-        .fd = exec_status_fd,
+        .fd = exec_status_pipe[0],
         .events = POLLIN,
         .revents = 0};
 
@@ -1894,16 +2023,9 @@ static int handle_client(int input_fd, int output_fd)
         {"LINUXIO_USER", auth_user.name},
     };
     journal_error_fieldsf(fields, 1, "bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
-    close(exec_status_fd);
-    kill(child, SIGKILL);
-    while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
-    {
-    }
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge start timeout");
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    child_signal = SIGKILL;
+    goto out;
   }
 
   if (exec_status_sel < 0)
@@ -1912,25 +2034,35 @@ static int handle_client(int input_fd, int output_fd)
         {"LINUXIO_USER", auth_user.name},
     };
     journal_error_fieldsf(fields, 1, "exec-status wait failed: %m");
-    close(exec_status_fd);
-    kill(child, SIGKILL);
-    while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
-    {
-    }
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec status failed");
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    child_signal = SIGKILL;
+    goto out;
   }
 
   uint8_t exec_status_byte = 0;
   ssize_t exec_status_n = -1;
+  int exec_status_errno = 0;
   do
   {
-    exec_status_n = read(exec_status_fd, &exec_status_byte, 1);
+    exec_status_n = read(exec_status_pipe[0], &exec_status_byte, 1);
   } while (exec_status_n < 0 && errno == EINTR);
-  close(exec_status_fd);
+  if (exec_status_n < 0)
+    exec_status_errno = errno;
+  close(exec_status_pipe[0]);
+  exec_status_pipe[0] = -1;
+
+  if (exec_status_n < 0)
+  {
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    errno = exec_status_errno;
+    journal_error_fieldsf(fields, 1, "exec-status read failed: %m");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
+                        "bridge exec status read failed");
+    child_signal = SIGKILL;
+    goto out;
+  }
 
   if (exec_status_n > 0)
   {
@@ -1943,46 +2075,53 @@ static int handle_client(int input_fd, int output_fd)
     };
     journal_error_fieldsf(fields, 2, "bridge exec failed");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec failed");
-    // Child already exited, but wait to reap
-    (void)waitpid(child, NULL, 0);
-    pam_close_session(pamh, 0);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
+    // Child already exited, but the shared epilogue still reaps it.
+    goto out;
   }
+
   // exec_status_n == 0 means EOF: controlled failures write a byte first, so
   // EOF is unambiguous here. Keep a non-blocking reap as defense-in-depth for
   // unexpected child deaths; a successfully exec'd bridge is still running.
-  // exec_status_n < 0 is a read error; fall through to the same probe.
   {
     int wstatus = 0;
-    pid_t reaped;
-    do
+    pid_t reaped = waitpid_nointr(child, &wstatus, WNOHANG);
+
+    if (reaped < 0)
     {
-      reaped = waitpid(child, &wstatus, WNOHANG);
-    } while (reaped < 0 && errno == EINTR);
+      int wait_errno = errno;
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+      };
+      errno = wait_errno;
+      journal_error_fieldsf(fields, 1, "bridge startup wait failed: %m");
+      send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
+                          "bridge startup wait failed");
+      if (wait_errno == ECHILD)
+        child_reaped = 1;
+      else
+        child_signal = SIGKILL;
+      goto out;
+    }
 
     if (reaped == child)
     {
       char status_buf[16];
-      (void)safe_snprintf(status_buf, sizeof(status_buf), "%d",
-                          WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
+      child_reaped = 1;
+      (void)safe_snprintf(status_buf, sizeof(status_buf), "%d", child_status_code(wstatus));
       const struct journal_field fields[] = {
           {"LINUXIO_USER", auth_user.name},
           {"LINUXIO_STATUS", status_buf},
       };
       journal_error_fieldsf(fields, 2, "bridge died during startup (status %s)", status_buf);
       send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge failed to start");
-      pam_close_session(pamh, 0);
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      return 1;
+      goto out;
     }
   }
 
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
   record_login_start(&auth_user, remote_host);
+  login_started = 1;
   send_ok_response(output_fd, mode, auth_user.name, auth_user.uid, auth_user.gid);
 
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
@@ -2005,9 +2144,22 @@ static int handle_client(int input_fd, int output_fd)
   }
 
   int status = 0;
-  while (waitpid(child, &status, 0) < 0 && errno == EINTR)
+  pid_t waited = waitpid_nointr(child, &status, 0);
+  if (waited < 0)
   {
+    int wait_errno = errno;
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    errno = wait_errno;
+    journal_error_fieldsf(fields, 1, "bridge final wait failed: %m");
+    if (wait_errno == ECHILD)
+      child_reaped = 1;
+    else
+      child_signal = SIGKILL;
+    goto out;
   }
+  child_reaped = 1;
 
   int exitcode = 1;
   if (WIFEXITED(status))
@@ -2045,21 +2197,41 @@ static int handle_client(int input_fd, int output_fd)
     };
     journal_error_fieldsf(fields, 4, "bridge pid %ld killed by signal %d", (long)child, sig);
   }
+  result = exitcode;
 
-  record_login_end();
-  pam_close_session(pamh, 0);
-  pam_setcred(pamh, PAM_DELETE_CRED);
-  pam_end(pamh, 0);
+out:
+  if (bootstrap_pipe[0] >= 0)
+    close(bootstrap_pipe[0]);
+  if (bootstrap_pipe[1] >= 0)
+    close(bootstrap_pipe[1]);
+  if (exec_status_pipe[0] >= 0)
+    close(exec_status_pipe[0]);
+  if (exec_status_pipe[1] >= 0)
+    close(exec_status_pipe[1]);
+  if (bridge_fd >= 0)
+    close(bridge_fd);
 
-  return exitcode;
+  if (child > 0 && !child_reaped)
+    terminate_and_reap_child(child, child_signal);
+
+  if (login_started)
+    record_login_end();
+  if (session_open)
+    (void)pam_close_session(pamh, 0);
+  if (credentials_established)
+    (void)pam_setcred(pamh, PAM_DELETE_CRED);
+  if (pamh)
+    (void)pam_end(pamh, pam_end_status);
+
+  secure_bzero(password, sizeof(password));
+  return result;
 }
 
 // -------- main ----------
 int main(int argc, char *argv[])
 {
   // Handle --version before any other checks
-  if (argc == 2 && (strcmp(argv[0], "--version") == 0 || strcmp(argv[1], "--version") == 0 ||
-                    strcmp(argv[1], "version") == 0))
+  if (argc == 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "version") == 0))
   {
 #ifdef LINUXIO_VERSION
     printf("LinuxIO Auth %s\n", LINUXIO_VERSION);
@@ -2101,23 +2273,4 @@ int main(int argc, char *argv[])
   }
 
   return handle_client(STDIN_FILENO, STDOUT_FILENO);
-}
-
-// write_all - needed by log_stderrf and send_response
-static int write_all(int fd, const void *buf, size_t len)
-{
-  const unsigned char *p = (const unsigned char *)buf;
-  while (len > 0)
-  {
-    ssize_t n = write(fd, p, len);
-    if (n < 0)
-    {
-      if (errno == EINTR)
-        continue;
-      return -1;
-    }
-    p += (size_t)n;
-    len -= (size_t)n;
-  }
-  return 0;
 }

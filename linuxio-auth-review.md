@@ -119,7 +119,7 @@ then fstat once and pass the `struct stat *` into the existing policy checks. De
 
 | What | Where | Note |
 |---|---|---|
-| Unused includes | lines 23, 30, 35, 36, 37 | `sys/mman.h`, `strings.h`, `sys/mount.h`, `sched.h`, `ctype.h` — zero uses of any symbol. `time.h` (line 8) is redundant too (`time_t` comes from `sys/types.h`). Keep `utmp.h` and `paths.h` — they are used. A root binary including mount/namespace headers it never uses is audit noise. |
+| Unused includes | lines 23, 30, 35, 36, 37 | `sys/mman.h`, `strings.h`, `sys/mount.h`, `sched.h`, `ctype.h` — zero uses of any symbol. `time.h` was redundant in the reviewed baseline but is now required by the item 1.1 monotonic-deadline implementation. Keep `utmp.h` and `paths.h` — they are used. A root binary including mount/namespace headers it never uses is audit noise. |
 | `#ifndef _WIN32` guard | lines 200, 214 | 15 unguarded `secure_bzero` call sites mean the guard can only ever break a build, never save one. Optionally drop `|| defined(__APPLE__)` at 203; keep the volatile fallback only if musl is intended. |
 | `dup_pam_string` | lines 300–312 | Byte-for-byte `strdup`; both call sites (591, 603) already guard against NULL sources, and the existing NULL-result checks handle allocation failure. |
 | Triplicated `pipe2` `#if/#else` | 843–857, 1745–1758, 1785–1817 | The `#else` arms are dead on the only compilable target (file unconditionally uses sd-journal, `SO_PEERCRED`, `syscall(__NR_execveat)`). The exec-status site duplicates the entire 8-line PAM error ladder in *both* preprocessor arms. Call `pipe2(p, O_CLOEXEC)` directly. |
@@ -182,11 +182,12 @@ pam_get_item(pamh, PAM_USER, &pam_user);
 # Final adjudication — independent recheck of Account 1
 
 - **Date:** 2026-08-03
-- **Scope:** Read-only reconciliation of Account 1 against the current C
-  launcher, its Go caller, PAM and systemd packaging, relevant documentation
-  and history, and primary upstream behavior.
-- **Source baseline:** branch `dev/v0.17.0`; `backend/auth/linuxio-auth.c` is
-  unchanged from `688285c3`, remains 2,123 lines, and has SHA-256
+- **Original review scope:** Read-only reconciliation of Account 1 against the
+  C launcher, its Go caller, PAM and systemd packaging, relevant documentation
+  and history, and primary upstream behavior. The dispositions below are
+  updated as fixes land.
+- **Historical source baseline:** branch `dev/v0.17.0` at `688285c3`;
+  `backend/auth/linuxio-auth.c` was 2,123 lines with SHA-256
   `2e7f48f3da16d7ce6894a3113a5c06092a7dedd968d2aa2f08f0ae7381ad8228`.
 
 This adjudication records source-verified behavior and separates it from
@@ -200,44 +201,45 @@ Account 1 is a useful source-review draft, but its statement that all 24
 findings were confirmed is too strong. Most mechanical cleanup findings are
 valid. The important corrections are:
 
-- the sudo wait loop has a real final-boundary correctness bug, but its average
-  and per-login latency cost have not been measured;
+- the sudo wait loop had a real final-boundary correctness bug; it now uses an
+  event-driven, deadline-based wait, while its user-visible latency improvement
+  remains unmeasured;
 - the glibc accounting timeout is current, not obsolete, but is an
   implementation detail and applies per lock;
-- root behavior is an unresolved policy boundary, not safely fixed by a UID
-  guard;
-- PAM identity remapping, embedded-NUL handling, descriptor closure, child
-  supervision, and the `execveat` fallback contain real correctness or
-  hardening gaps;
-- CLOEXEC-pipe EOF proves successful exec progression, not application
-  readiness; and
-- sudoers is used as an authorization oracle rather than as the bridge
-  executor. That behavior is source-verified, but no repository decision record
-  establishes that alternative designs were explicitly considered and rejected.
+- root web logins and blank-password authentication are now explicitly rejected;
+- PAM identity remapping, embedded-NUL and control handling, descriptor closure,
+  child supervision, and the `execveat` fallback are corrected;
+- CLOEXEC-pipe EOF still proves successful exec progression, not application
+  readiness; a readiness guarantee remains a deliberate cross-language protocol
+  change; and
+- sudoers is explicitly documented as the privileged-mode authorization source,
+  not as the bridge executor or a wrapper for its runtime policy.
 
 The launcher's happy-path FD choreography and fd-based bridge validation remain
-strong. The next work should prioritize defined policy and fail-closed behavior,
-then cleanup and measured performance work.
+strong. All source-local correctness and hardening items in this adjudication are
+implemented. The remaining items are measurement-gated performance work,
+application-readiness protocol design, accounting-order policy, and dedicated
+host integration coverage.
 
 ## Final disposition of Account 1
 
 | Item | Final disposition |
 |---|---|
-| **1.1 — 100 ms sudo polling** | **Behavior and final-boundary bug confirmed; latency framing qualified.** The parent checks `waitpid(WNOHANG)`, sleeps 100 ms, and does not recheck after the final sleep. A child completing in that interval is reaped but reported as a timeout. Fixed sleeps quantize waits when they occur, but process scheduling does not guarantee that every real probe sleeps, and no average or end-to-end login saving has been measured. |
-| **1.2 — merge `sudo -k` into the probe** | **Confirmed simplification.** Sudo documents that `-k` combined with `-l` ignores cached credentials and does not update the cache. Combining them removes the second child and avoids relying on later invalidation. The exact latency saving remains unmeasured. |
-| **1.3 — overlap sudo with PAM/bridge setup** | **Serialization confirmed; optimization unproven.** It adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity. Do not add it without measurement showing material benefit. |
-| **1.4 — move accounting after OK** | **Placement and possible glibc tail confirmed; reordering is policy.** Current glibc retains an alarm-bounded blocking lock of about 10 seconds per lock. Login start may perform utmp and wtmp locks sequentially, so contention can approach 20 seconds. Moving accounting after OK improves response isolation but gives up the guarantee that accounting is attempted first. |
-| **2.1 — shared cleanup epilogue** | **Confirmed with implementation caveats.** The epilogue must model PAM status, early password wiping, child kill/reap state, accounting state, fd ownership, and intentional fd handoff. |
-| **2.2 — simplify `safe_vsnprintf`** | **Confirmed.** Plain fortified `vsnprintf` preserves compiler-derived object-size checking better than the manual checked-builtin call. |
-| **2.3 — simplify constant bridge-path lookup** | **Confirmed for the sole constant-path caller.** Keep the validated-directory and validated-inode ownership explicit and avoid claiming that every possible race disappears. |
-| **2.4a–h — mechanical deletions and organization** | **Confirmed.** The unused includes, Linux-inconsistent guard, `dup_pam_string`, dead `pipe2` fallback arms, temporary `read_lenstr` allocation, duplicate path constant, function placement, and JSON header wording can be cleaned up. Direct field reads must wipe partial sensitive input and reject embedded NUL. |
-| **3.1 — root unprivileged path** | **Conditional source bug; proposed guard rejected.** The shipped PAM deny file blocks root during account management, but `onerr=succeed` and a preserved existing deny file make that policy non-absolute. Allowing UID 0 through the unprivileged path would run a root bridge while reporting unprivileged mode. Define reject-root, privileged-only-root, or another explicit root policy first. |
-| **3.2 — canonical PAM identity** | **Core boundary confirmed; original data-flow wording corrected.** The launcher never retrieves `PAM_USER`; `getpwnam` therefore uses the pre-auth typed name and bypasses PAM remapping. After NSS lookup, however, environment, bootstrap, accounting, response, and bridge setup use the canonical `pw_name` copy. |
-| **3.3a–c — minor defects** | **Confirmed with scope.** The PAM callback cast is a formal type defect; the `argv[0]` version check is a harmless oddity; fd 1/2 client collisions are latent because the sole caller supplies fd 0. |
-| **4a — empty passwords** | **Mechanism confirmed; product policy required.** `PAM_DISALLOW_NULL_AUTHTOK` and explicit empty-password rejection would also exclude intentionally passwordless PAM flows. |
-| **4b — username bytes** | **Validation and embedded-NUL gap confirmed; terminal-escape claim refuted.** util-linux `last` routes rows through careful output that escapes controls. Reject embedded NUL, ASCII controls, and DEL without imposing printable-ASCII-only identity policy on LDAP, SSSD, AD, or Unicode identities. |
-| **4c — `execveat` fallback** | **TOCTOU fallback confirmed; normal-path severity low.** LinuxIO requires kernel 5.9+ and `execveat` dates from 3.19. ENOSYS therefore indicates an unsupported kernel or syscall-policy interference; fail closed instead of closing the validated fd and executing a path. |
-| **4d — remote-host C1 bytes** | **Low-severity defense in depth.** Forwarded IP values are canonicalized, while `remoteHostFromAddr` has raw fallbacks. Shipped TCP listeners normally produce parseable `ip:port` values. Any byte-level C1 filtering must remain UTF-8-aware. |
+| **1.1 — 100 ms sudo polling** | **Implemented.** The fixed-sleep loop is replaced by `pidfd_open` plus `ppoll` against an absolute monotonic deadline. Unsupported pidfd kernels use a short-sleep fallback; other pidfd errors fail closed. Both paths make a final nonblocking reap before timeout handling, close the pidfd on every path, and retry interrupted waits. The end-to-end latency improvement remains unmeasured. |
+| **1.2 — merge `sudo -k` into the probe** | **Implemented.** The existing `sudo -l` probe now includes `-k`, so it ignores and does not update cached credentials. The redundant post-success invalidation child is removed. The exact latency saving remains unmeasured. |
+| **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; measurement-gated.** Serialization is confirmed, but concurrency adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity without evidence of a material end-to-end saving. |
+| **1.4 — move accounting after OK** | **Not implemented; policy-gated.** Current glibc retains an alarm-bounded blocking lock of about 10 seconds per lock. Moving accounting after OK improves response isolation but gives up the current guarantee that accounting is attempted before success is reported. |
+| **2.1 — shared cleanup epilogue** | **Implemented.** `handle_client` now has one state-aware epilogue for owned fds, child reaping, accounting, PAM session/credential teardown, `pam_end`, and password wiping. The immediate post-sudo password wipe remains in place so plaintext is not retained during bridge supervision, and intentional child fd handoffs are marked before cleanup. |
+| **2.2 — simplify `safe_vsnprintf`** | **Implemented.** The dead Annex K and manual checked-builtin branches are removed. The helper now calls fortified `vsnprintf` directly, preserving compiler-derived object-size checking and C99 termination semantics. |
+| **2.3 — simplify constant bridge-path lookup** | **Implemented.** The constant parent directory is opened and validated before `openat` resolves the bridge basename relative to that pinned fd. The bridge inode is then `fstat`ed once, its ownership and mode are validated, and its fd remains open for execution. This removes the validation-time `/proc/self/fd` path reconstruction without claiming metadata immutability after validation. |
+| **2.4a–h — mechanical deletions and organization** | **Implemented.** Unused Linux-audit-noise includes, the ineffective platform guard, the `strdup` clone, dead `pipe2` fallbacks, the temporary field allocation, the duplicate path-size constant, and unnecessary forward declarations are removed; exact I/O helpers are colocated and the header now describes the binary request. Direct field reads wipe partial data and reject embedded NULs. `<time.h>` is retained because item 1.1 now requires it. |
+| **3.1 — root unprivileged path** | **Implemented with an explicit reject-root policy.** After PAM canonicalization and NSS lookup, UID 0 receives access denied before sudo probing or bridge launch. `drop_to_user` independently rejects UID 0 so a future caller cannot create a root bridge labelled unprivileged. |
+| **3.2 — canonical PAM identity** | **Implemented.** After authentication and account management, the launcher retrieves and validates `PAM_USER`, copies it out of PAM-owned storage, and uses it for NSS lookup. The resulting canonical `pw_name` continues to own sudo policy, environment, bootstrap, accounting, response, and bridge setup. |
+| **3.3a–c — minor defects** | **Implemented.** The PAM callback now has the exact libpam function type without a cast; version handling examines only `argv[1]`; and client sockets occupying fd 0, 1, or 2 are parked above the fixed layout before those descriptors are rewritten, with fd 2 replaced by a non-protocol sink when necessary. |
+| **4a — empty passwords** | **Implemented with an explicit reject-empty policy.** Empty wire passwords are rejected before PAM, and both authentication and account management receive `PAM_DISALLOW_NULL_AUTHTOK`. Intentionally passwordless PAM web flows are therefore out of scope. |
+| **4b — username bytes** | **Implemented.** Direct field reads reject embedded NUL. Typed and PAM-canonical usernames must be valid UTF-8 and reject space, C0 controls, DEL, and C1 controls while continuing to allow non-ASCII identities. |
+| **4c — `execveat` fallback** | **Implemented fail closed.** The launcher uses the architecture-provided `SYS_execveat` number and never closes the validated fd to execute a reconstructed path. An unavailable, blocked, or failed fd execution reports controlled bridge setup failure. |
+| **4d — remote-host C1 bytes** | **Implemented.** Remote-host validation shares the UTF-8-aware control-codepoint filter, preserving Unicode while rejecting C0, DEL, and C1 controls. Normal canonical IP inputs are unchanged. |
 
 References:
 
@@ -262,6 +264,12 @@ interposition, or future/undocumented syscall behavior prevents proving the path
 unreachable. Fall back on any `close_range` failure and handle fallback setup
 failure explicitly.
 
+**Disposition: Implemented.** Any `close_range` failure now enters the fallback.
+The fallback derives its bound from `RLIMIT_NOFILE` (or `_SC_OPEN_MAX` for an
+infinite limit), rejects an unrepresentable bound, and treats setup or unexpected
+close failures as controlled child-startup failure rather than continuing with
+unknown descriptors.
+
 Reference: [`close_range(2)`](https://man7.org/linux/man-pages/man2/close_range.2.html).
 
 ### B. Exec-status errors must fail closed
@@ -275,6 +283,11 @@ The adjacent `waitpid(child, ..., WNOHANG)` probe also proceeds toward OK after
 a non-EINTR wait error. Handle both errors through the same child-kill/reap and
 PAM/fd cleanup path.
 
+**Disposition: Implemented.** Negative exec-status reads and nonblocking wait
+errors now return bridge-start errors and use the shared child/PAM/fd cleanup
+path. In that startup wait-error branch, `ECHILD` is treated as already
+non-waitable so cleanup cannot signal a reused PID.
+
 ### C. Exec-status EOF is not bridge readiness
 
 CLOEXEC EOF establishes that the child crossed a successful exec boundary or
@@ -283,6 +296,12 @@ bootstrap, initialized Yamux, or remained alive after the point-in-time
 nonblocking reap. A readiness guarantee requires a bridge acknowledgement and
 is a deliberate protocol change, not a local pipe patch.
 
+**Disposition: Deferred by design.** A correct acknowledgement requires a
+dedicated inherited status channel (or framed replacement), synchronous Go-side
+Yamux creation before ACK, timeout/EOF handling in C, and cross-language
+integration tests. The current response continues to mean successful exec
+progression, not application readiness.
+
 ### D. Final child-wait errors can report false success
 
 The final blocking wait retries only `EINTR`. After another error, the zeroed
@@ -290,6 +309,11 @@ status is interpreted as normal exit status 0. The trigger is unlikely in the
 current program, but systemd's startup-time signal reset alone does not exclude
 later signal-state changes by loaded PAM or NSS code. Capture the wait result
 and fail closed before interpreting the status.
+
+**Disposition: Implemented.** The final wait result must equal the owned child
+before its status is decoded. Errors are logged and return failure; `ECHILD`
+avoids signalling a potentially reused PID, while other errors retain the child
+for shared kill/reap cleanup.
 
 ### E. Sudoers authorizes but does not execute the bridge
 
@@ -306,31 +330,29 @@ evaluated and rejected. Describe sudoers as the source of authorization for
 privileged login mode, not as the executor or as a broader source of runtime
 policy.
 
+**Disposition: Documented architecture.** The launcher source now states that
+the sudo probe is authorization only and that the already-root launcher executes
+the bridge directly. No claim is made that sudo runtime tags wrap the bridge.
+
 Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
 
 ## Recommended order
 
-1. Define root, blank-password, PAM-remapped-identity, and username policies.
-2. Make existing supervision fail closed: fix the sudo final-boundary result,
-   all exec-status and wait errors, `close_range` fallback behavior, and the
-   `execveat` downgrade. Merge `-k` into the existing sudo probe as the
-   adjacent simplification.
-3. Add focused C or host-integration coverage for PAM identity, sudo outcomes,
+1. Add focused C or host-integration coverage for PAM identity, sudo outcomes,
    child timeout/reaping, fd closure, controlled exec failure, and startup
    reporting.
-4. Consolidate cleanup ownership, preserving the early password wipe and every
-   child/fd handoff state.
-5. Apply the verified mechanical deletions and formatting-helper cleanup.
-6. Measure stage-by-stage login latency before adding pidfd-based waiting solely
-   for latency, concurrent setup, or accounting reordering. A pidfd design may
-   still be chosen for clearer supervision, but must specify a monotonic
-   deadline, EINTR behavior, non-ENOSYS errors, fd closure, and a final reap.
-7. Treat application readiness acknowledgement and accounting-before-OK as
-   explicit protocol or product decisions.
+2. Define an application-readiness acknowledgement only with a coordinated C/Go
+   protocol and integration tests; keep exec progression distinct meanwhile.
+3. Measure stage-by-stage login latency before adding concurrent setup or
+   accounting reordering; the new pidfd wait removes fixed polling but does not
+   by itself establish the end-to-end saving.
+4. Treat accounting-before-OK as an explicit product-policy decision.
 
 ## Verification boundary
 
-This was a source and upstream-behavior reconciliation. It did not exercise a
-real PAM stack, sudoers policy, descriptor-failure injection, or bridge-readiness
-race. Those runtime claims remain unverified until dedicated host integration
-coverage exists.
+The implementation was compiled with the repository's warning-as-error auth
+build and passed `make analyze-auth` (cppcheck, GCC analyzer, scan-build, and
+clang-tidy) plus `make check-backend`. It did not exercise a real PAM stack,
+sudoers policy, descriptor-failure injection, or bridge-readiness race. Those
+runtime claims remain unverified until dedicated host integration coverage
+exists.
