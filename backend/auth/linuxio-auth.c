@@ -907,6 +907,147 @@ static int deadline_remaining_ns(int64_t deadline_ns, int64_t *remaining_ns)
   return 1;
 }
 
+static int socket_write_all_until(int fd, const void *buf, size_t len,
+                                  int64_t deadline_ns)
+{
+  const int64_t ns_per_second = INT64_C(1000000000);
+  const unsigned char *p = (const unsigned char *)buf;
+
+  while (len > 0)
+  {
+    ssize_t n = write(fd, p, len);
+    if (n > 0)
+    {
+      p += (size_t)n;
+      len -= (size_t)n;
+      continue;
+    }
+    if (n == 0)
+    {
+      errno = EPIPE;
+      return -1;
+    }
+    if (errno == EINTR)
+      continue;
+    if (errno != EAGAIN)
+      return -1;
+
+    int64_t remaining_ns;
+    int deadline_state = deadline_remaining_ns(deadline_ns, &remaining_ns);
+    if (deadline_state <= 0)
+    {
+      errno = deadline_state == 0 ? ETIMEDOUT : EIO;
+      return -1;
+    }
+
+    struct pollfd pfd = {
+        .fd = fd,
+        .events = POLLOUT,
+        .revents = 0,
+    };
+    struct timespec poll_timeout = {
+        .tv_sec = (time_t)(remaining_ns / ns_per_second),
+        .tv_nsec = (long)(remaining_ns % ns_per_second),
+    };
+    int ready = ppoll(&pfd, 1, &poll_timeout, NULL);
+    if (ready < 0 && errno == EINTR)
+      continue;
+    if (ready <= 0)
+    {
+      if (ready == 0)
+        errno = ETIMEDOUT;
+      return -1;
+    }
+    if (pfd.revents & POLLNVAL)
+    {
+      errno = EBADF;
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+static int socket_write_lenstr_until(int fd, const char *s, int64_t deadline_ns)
+{
+  size_t len = s ? strlen(s) : 0;
+  if (len > UINT16_MAX)
+    len = UINT16_MAX;
+
+  uint8_t lenbuf[2];
+  write_u16_be(lenbuf, (uint16_t)len);
+  if (socket_write_all_until(fd, lenbuf, sizeof(lenbuf), deadline_ns) != 0)
+    return -1;
+  if (len > 0 && socket_write_all_until(fd, s, len, deadline_ns) != 0)
+    return -1;
+  return 0;
+}
+
+struct auth_timing
+{
+  int64_t request_started_ns;
+  int64_t pam_started_ns;
+  int64_t pam_completed_ns;
+  int64_t sudo_started_ns;
+  int64_t sudo_completed_ns;
+  int64_t session_setup_started_ns;
+  int64_t session_opened_ns;
+  int64_t bridge_start_started_ns;
+  int64_t bridge_ready_ns;
+  int64_t accounting_started_ns;
+  int64_t accounting_completed_ns;
+  int64_t request_completed_ns;
+};
+
+static int64_t elapsed_us(int64_t started_ns, int64_t completed_ns)
+{
+  if (started_ns <= 0 || completed_ns < started_ns)
+    return -1;
+  return (completed_ns - started_ns) / INT64_C(1000);
+}
+
+static void log_auth_timing(const struct auth_timing *timing, uid_t uid,
+                            const char *mode_name)
+{
+  char uid_buf[32];
+  char pam_buf[32], sudo_buf[32], session_buf[32];
+  char bridge_buf[32], accounting_buf[32], total_buf[32];
+  int64_t pam_us, sudo_us, session_us, bridge_us, accounting_us, total_us;
+
+  if (!timing || !mode_name)
+    return;
+
+  pam_us = elapsed_us(timing->pam_started_ns, timing->pam_completed_ns);
+  sudo_us = elapsed_us(timing->sudo_started_ns, timing->sudo_completed_ns);
+  session_us = elapsed_us(timing->session_setup_started_ns, timing->session_opened_ns);
+  bridge_us = elapsed_us(timing->bridge_start_started_ns, timing->bridge_ready_ns);
+  accounting_us = elapsed_us(timing->accounting_started_ns, timing->accounting_completed_ns);
+  total_us = elapsed_us(timing->request_started_ns, timing->request_completed_ns);
+  if (pam_us < 0 || sudo_us < 0 || session_us < 0 ||
+      bridge_us < 0 || accounting_us < 0 || total_us < 0)
+    return;
+
+  (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)uid);
+  (void)safe_snprintf(pam_buf, sizeof(pam_buf), "%lld", (long long)pam_us);
+  (void)safe_snprintf(sudo_buf, sizeof(sudo_buf), "%lld", (long long)sudo_us);
+  (void)safe_snprintf(session_buf, sizeof(session_buf), "%lld", (long long)session_us);
+  (void)safe_snprintf(bridge_buf, sizeof(bridge_buf), "%lld", (long long)bridge_us);
+  (void)safe_snprintf(accounting_buf, sizeof(accounting_buf), "%lld", (long long)accounting_us);
+  (void)safe_snprintf(total_buf, sizeof(total_buf), "%lld", (long long)total_us);
+
+  const struct journal_field fields[] = {
+      {"LINUXIO_UID", uid_buf},
+      {"LINUXIO_MODE", mode_name},
+      {"LINUXIO_AUTH_PAM_US", pam_buf},
+      {"LINUXIO_AUTH_SUDO_US", sudo_buf},
+      {"LINUXIO_AUTH_SESSION_SETUP_US", session_buf},
+      {"LINUXIO_AUTH_BRIDGE_START_US", bridge_buf},
+      {"LINUXIO_AUTH_ACCOUNTING_US", accounting_buf},
+      {"LINUXIO_AUTH_TOTAL_US", total_buf},
+  };
+  journal_info_fieldsf(fields, sizeof(fields) / sizeof(fields[0]), "auth timing");
+}
+
 static int wait_for_child_with_timeout(pid_t pid, int timeout_sec)
 {
   const int64_t ns_per_second = INT64_C(1000000000);
@@ -1342,15 +1483,31 @@ static int check_peer_creds(int fd)
 // Single-shot mode - socket-activated worker
 // ============================================================================
 
-// Send binary response to client.
+// Send one binary response without depending on socket-level blocking mode.
 // Success format:
 //   [magic:4][status:1][mode:1][result:1][reserved:1][uid:4][gid:4][len:2][username]
 // Error format:
 //   [magic:4][status:1][mode:1][result:1][reserved:1][len:2][error]
-static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_code,
-                          const char *error, const char *username, uid_t uid, gid_t gid)
+static int send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_code,
+                         const char *error, const char *username, uid_t uid, gid_t gid)
 {
+  const int64_t ns_per_second = INT64_C(1000000000);
+  int64_t now_ns;
+  int64_t deadline_ns;
   uint8_t header[PROTO_AUTH_RESP_HEADER_SIZE];
+
+  int fd_flags = fcntl(fd, F_GETFL);
+  if (fd_flags < 0 ||
+      (!(fd_flags & O_NONBLOCK) && fcntl(fd, F_SETFL, fd_flags | O_NONBLOCK) != 0))
+    return -1;
+
+  if (monotonic_now_ns(&now_ns) != 0 ||
+      now_ns > INT64_MAX - (int64_t)SOCKET_WRITE_TIMEOUT * ns_per_second)
+  {
+    errno = EIO;
+    return -1;
+  }
+  deadline_ns = now_ns + (int64_t)SOCKET_WRITE_TIMEOUT * ns_per_second;
 
   // Magic + version
   header[0] = PROTO_MAGIC_0;
@@ -1366,36 +1523,34 @@ static void send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_c
   header[6] = result_code;
   header[7] = 0;
 
-  if (write_all(fd, header, PROTO_AUTH_RESP_HEADER_SIZE) != 0)
-    return;
+  if (socket_write_all_until(fd, header, PROTO_AUTH_RESP_HEADER_SIZE, deadline_ns) != 0)
+    return -1;
 
   if (status == PROTO_STATUS_OK)
   {
     uint8_t ids[8];
     write_u32_be(ids, (uint32_t)uid);
     write_u32_be(ids + 4, (uint32_t)gid);
-    if (write_all(fd, ids, sizeof(ids)) != 0)
-      return;
-    if (write_lenstr(fd, username) != 0)
-      return;
-    return;
+    if (socket_write_all_until(fd, ids, sizeof(ids), deadline_ns) != 0)
+      return -1;
+    return socket_write_lenstr_until(fd, username, deadline_ns);
   }
 
   // Write error string if present
   if (status == PROTO_STATUS_ERROR && error)
-  {
-    (void)write_lenstr(fd, error);
-  }
+    return socket_write_lenstr_until(fd, error, deadline_ns);
+
+  return 0;
 }
 
 static void send_error_response(int fd, uint8_t result_code, const char *error)
 {
-  send_response(fd, PROTO_STATUS_ERROR, 0, result_code, error, NULL, 0, 0);
+  (void)send_response(fd, PROTO_STATUS_ERROR, 0, result_code, error, NULL, 0, 0);
 }
 
-static void send_ok_response(int fd, uint8_t mode, const char *username, uid_t uid, gid_t gid)
+static int send_ok_response(int fd, uint8_t mode, const char *username, uid_t uid, gid_t gid)
 {
-  send_response(fd, PROTO_STATUS_OK, mode, PROTO_RESULT_OK, NULL, username, uid, gid);
+  return send_response(fd, PROTO_STATUS_OK, mode, PROTO_RESULT_OK, NULL, username, uid, gid);
 }
 
 static uint8_t classify_pam_result(int rc)
@@ -1559,15 +1714,6 @@ static pid_t spawn_bridge_process(
   // 4 = exec_status_fd (CLOEXEC)
   // 5 = bridge_fd
 
-  // Clear socket timeouts on the client connection (FD 3)
-  // These were set for the auth request phase but would cause problems
-  // for the long-lived Yamux connection (idle timeouts, EAGAIN, etc.)
-  {
-    struct timeval tv_zero = {.tv_sec = 0, .tv_usec = 0};
-    (void)setsockopt(CLIENT_CONN_FD, SOL_SOCKET, SO_RCVTIMEO, &tv_zero, sizeof(tv_zero));
-    (void)setsockopt(CLIENT_CONN_FD, SOL_SOCKET, SO_SNDTIMEO, &tv_zero, sizeof(tv_zero));
-  }
-
   umask(077);
 
   // Preserve and validate environment variables before clearenv()
@@ -1707,6 +1853,9 @@ static pid_t spawn_bridge_process(
 // Handle a single client request
 static int handle_client(int input_fd, int output_fd)
 {
+  struct auth_timing timing = {0};
+  (void)monotonic_now_ns(&timing.request_started_ns);
+
   // Read binary request header
   uint8_t header[PROTO_AUTH_REQ_HEADER_SIZE];
   if (read_all(input_fd, header, PROTO_AUTH_REQ_HEADER_SIZE) != 0)
@@ -1786,6 +1935,7 @@ static int handle_client(int input_fd, int output_fd)
   }
 
   // PAM authentication
+  (void)monotonic_now_ns(&timing.pam_started_ns);
   struct pam_appdata appdata = {
       .username = user,
       .password = password};
@@ -1898,6 +2048,8 @@ static int handle_client(int input_fd, int output_fd)
     goto out;
   }
 
+  (void)monotonic_now_ns(&timing.pam_completed_ns);
+
   {
     char uid_buf[32];
     (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
@@ -1909,14 +2061,18 @@ static int handle_client(int input_fd, int output_fd)
   }
 
   // Privileged mode iff sudoers lets this user run the bridge as root
+  (void)monotonic_now_ns(&timing.sudo_started_ns);
   int want_privileged = user_can_run_bridge_as_root(pw, password) ? 1 : 0;
+  (void)monotonic_now_ns(&timing.sudo_completed_ns);
 
   // Do not retain the plaintext password while the parent supervises the bridge.
   secure_bzero(password, sizeof(password));
 
   uint8_t mode = want_privileged ? PROTO_MODE_PRIVILEGED : PROTO_MODE_UNPRIVILEGED;
+  const char *mode_name = mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged";
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
+  (void)monotonic_now_ns(&timing.session_setup_started_ns);
   if (open_and_validate_bridge(0, &bridge_fd) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge validation failed");
@@ -1940,9 +2096,12 @@ static int handle_client(int input_fd, int output_fd)
   {
     const char *err = pam_strerror(pamh, rc);
     send_error_response(output_fd, classify_pam_result(rc), err);
+    pam_end_status = rc;
     goto out;
   }
   session_open = 1;
+  (void)monotonic_now_ns(&timing.session_opened_ns);
+  timing.bridge_start_started_ns = timing.session_opened_ns;
 
   // Create exec-status pipe with CLOEXEC on write end
   // - On successful exec, CLOEXEC closes the write end -> parent sees EOF
@@ -2118,11 +2277,27 @@ static int handle_client(int input_fd, int output_fd)
     }
   }
 
+  (void)monotonic_now_ns(&timing.bridge_ready_ns);
+  timing.accounting_started_ns = timing.bridge_ready_ns;
+
   // Now we know bridge exec'd successfully - send OK response
   // Bridge inherits the connection via FD 3, server continues Yamux on same connection
   record_login_start(&auth_user, remote_host);
+  (void)monotonic_now_ns(&timing.accounting_completed_ns);
   login_started = 1;
-  send_ok_response(output_fd, mode, auth_user.name, auth_user.uid, auth_user.gid);
+  if (send_ok_response(output_fd, mode, auth_user.name, auth_user.uid, auth_user.gid) != 0)
+  {
+    int response_errno = errno;
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    errno = response_errno;
+    journal_error_fieldsf(fields, 1, "failed to send authentication response: %m");
+    child_signal = SIGTERM;
+    goto out;
+  }
+  (void)monotonic_now_ns(&timing.request_completed_ns);
+  log_auth_timing(&timing, auth_user.uid, mode_name);
 
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
   // The parent's copy will be closed when we exit, which is fine
@@ -2130,7 +2305,6 @@ static int handle_client(int input_fd, int output_fd)
   {
     char uid_buf[32];
     char gid_buf[32];
-    const char *mode_name = mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged";
     (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
     (void)safe_snprintf(gid_buf, sizeof(gid_buf), "%u", (unsigned)auth_user.gid);
     const struct journal_field fields[] = {

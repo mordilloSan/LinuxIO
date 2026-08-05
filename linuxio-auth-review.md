@@ -209,6 +209,10 @@ valid. The important corrections are:
 - root web logins and blank-password authentication are now explicitly rejected;
 - PAM identity remapping, embedded-NUL and control handling, descriptor closure,
   child supervision, and the `execveat` fallback are corrected;
+- post-fork responses retain an absolute write deadline even after the bridge
+  makes the shared socket nonblocking, and the child no longer clears
+  parent-owned socket timeouts;
+- a failed `pam_open_session` is propagated as the final status to `pam_end`;
 - CLOEXEC-pipe EOF still proves successful exec progression, not application
   readiness; a readiness guarantee remains a deliberate cross-language protocol
   change; and
@@ -227,7 +231,7 @@ host integration coverage.
 |---|---|
 | **1.1 — 100 ms sudo polling** | **Implemented.** The fixed-sleep loop is replaced by `pidfd_open` plus `ppoll` against an absolute monotonic deadline. Unsupported pidfd kernels use a short-sleep fallback; other pidfd errors fail closed. Both paths make a final nonblocking reap before timeout handling, close the pidfd on every path, and retry interrupted waits. The end-to-end latency improvement remains unmeasured. |
 | **1.2 — merge `sudo -k` into the probe** | **Implemented.** The existing `sudo -l` probe now includes `-k`, so it ignores and does not update cached credentials. The redundant post-success invalidation child is removed. The exact latency saving remains unmeasured. |
-| **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; measurement-gated.** Serialization is confirmed, but concurrency adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity without evidence of a material end-to-end saving. |
+| **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; measurement-gated.** Serialization is confirmed, but concurrency adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity without evidence of a material end-to-end saving. Successful launches with complete monotonic clock reads now emit PAM, sudo, session-setup, bridge-startup, accounting, and request-to-OK timings so this decision can use the deployed path rather than historical estimates. |
 | **1.4 — move accounting after OK** | **Not implemented; policy-gated.** Current glibc retains an alarm-bounded blocking lock of about 10 seconds per lock. Moving accounting after OK improves response isolation but gives up the current guarantee that accounting is attempted before success is reported. |
 | **2.1 — shared cleanup epilogue** | **Implemented.** `handle_client` now has one state-aware epilogue for owned fds, child reaping, accounting, PAM session/credential teardown, `pam_end`, and password wiping. The immediate post-sudo password wipe remains in place so plaintext is not retained during bridge supervision, and intentional child fd handoffs are marked before cleanup. |
 | **2.2 — simplify `safe_vsnprintf`** | **Implemented.** The dead Annex K and manual checked-builtin branches are removed. The helper now calls fortified `vsnprintf` directly, preserving compiler-derived object-size checking and C99 termination semantics. |
@@ -336,6 +340,95 @@ the bridge directly. No claim is made that sudo runtime tags wrap the bridge.
 
 Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
 
+### F. The bridge child must not clear parent response timeouts
+
+With `Accept=yes`, `StandardInput=socket`, and `StandardOutput=inherit`, the
+worker's fd 0 and fd 1 refer to the accepted socket. Forking and duplicating it
+to bridge fd 3 does not create an independent socket: the child and parent still
+share socket options. Clearing `SO_RCVTIMEO` and `SO_SNDTIMEO` on fd 3 therefore
+also removed the parent's 10-second response timeout before the parent sent its
+post-spawn error or OK response.
+
+The adjacent Go conversion through `net.FileConn` duplicates fd 3 and sets the
+shared open file description nonblocking. That makes the inherited socket
+timeouts unnecessary for Go's netpoller, but it also means the parent's final
+write can race with `O_NONBLOCK` and receive `EAGAIN`.
+
+**Disposition: Implemented.** The child no longer changes the shared socket
+timeouts. At the terminal response phase, the parent explicitly makes the
+socket nonblocking and writes the complete framed response against one absolute
+monotonic 10-second deadline, using `ppoll(POLLOUT)` for backpressure. A failed
+OK write terminates and reaps the bridge through the shared cleanup path instead
+of leaving an unusable session alive.
+
+### G. `pam_open_session` failure must reach `pam_end`
+
+The shared cleanup epilogue initializes `pam_end_status` to `PAM_SUCCESS` and
+updates it on authentication, account, identity, and credential failures. The
+`pam_open_session` failure branch was the exception: it returned an error to the
+client but reached `pam_end` with success, so PAM data cleanup callbacks could
+observe the wrong final transaction result.
+
+**Disposition: Implemented.** The session-open failure branch now stores its PAM
+return code in `pam_end_status` before entering shared cleanup. A hermetic test
+cannot validate module cleanup semantics without a controllable PAM stack; that
+case remains part of the root host-integration requirement below.
+
+## Future end-to-end login performance work
+
+A 2026-08-05 host-journal comparison found no evidence that the C hardening
+slowed login. Across 20 successful pre-install sessions, systemd worker start to
+`bridge spawned` had a 351 ms median. The first two sessions after installing
+the hardened helper were 216 ms and 180 ms. The sample is too small for a final
+benchmark, but it points away from further C micro-optimization as the first
+priority.
+
+The same journal sequence showed that client-visible work continues after the
+C helper responds:
+
+| Observed boundary | Earlier median (20 sessions) | Two post-install sessions |
+|---|---:|---:|
+| auth worker start to bridge spawned | 351 ms | 216 ms, 180 ms |
+| bridge spawned to backend auth success | 211 ms | 266 ms, 180 ms |
+| backend auth success to WebSocket connected | 450 ms | 645 ms, 347 ms |
+| auth worker start to WebSocket connected | 1,087 ms | 1,126 ms, 707 ms |
+
+This observational comparison mixes cold and warm conditions and is a
+prioritization signal, not a controlled benchmark. `WebSocket connected` is
+still not equivalent to the first authenticated UI
+paint: the frontend may subsequently wait for configuration loading and route
+readiness. Future work should measure that final boundary explicitly.
+
+Priorities, in order:
+
+1. **Measure complete login phases.** Correlate `LINUXIO_AUTH_*_US` with the
+   HTTP `/auth/login` duration, capability discovery, WebSocket readiness,
+   configuration readiness, and first authenticated render. Separate cold
+   socket-activated starts from warm logins and use enough samples for median
+   and tail comparisons.
+2. **Remove release-network latency from the privileged login path.** The
+   current handler synchronously queries GitHub with a five-second client
+   timeout before writing the HTTP response. Moving this to a cache, background
+   refresh, or explicit authenticated endpoint requires deciding when update
+   banner data may be stale or initially absent.
+3. **Evaluate capability discovery separately.** The backend currently waits
+   for a bridge capability RPC before completing login; the two measured scans
+   took roughly 170–256 ms. Deferring or caching it changes the initial
+   capability contract and needs coordinated fallback/refresh behavior.
+4. **Eliminate the blank configuration gate without accepting stale writes.**
+   Sign-in clears the configuration cache, while `ConfigProvider` renders
+   nothing until the new mux-backed request completes or its 2.5-second
+   fallback fires. A stale-while-revalidate design must distinguish displayable
+   cached values from permission to persist changes.
+5. **Only then reconsider C concurrency or accounting order.** Sudo/setup
+   overlap is justified only if deployed stage data shows a material saving.
+   Moving accounting after OK remains a product-policy choice because it gives
+   up accounting-before-success.
+
+These are recorded work items, not implemented behavior. Items 2–4 cross API,
+session, or UI semantics and require explicit decisions plus their respective
+backend/frontend tests; they are not safe source-local deletions.
+
 ## Recommended order
 
 1. Add dedicated root host-integration coverage for PAM identity, sudo outcomes,
@@ -345,9 +438,17 @@ Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
    startup reporting.
 2. Define an application-readiness acknowledgement only with a coordinated C/Go
    protocol and integration tests; keep exec progression distinct meanwhile.
-3. Measure stage-by-stage login latency before adding concurrent setup or
-   accounting reordering; the new pidfd wait removes fixed polling but does not
-   by itself establish the end-to-end saving.
+3. Follow the end-to-end performance work above before adding concurrent setup
+   or accounting reordering. Successful launches with complete monotonic clock
+   reads emit an `auth timing` journal event with microsecond-valued
+   `LINUXIO_AUTH_*_US` fields. `LINUXIO_AUTH_BRIDGE_START_US` covers successful
+   PAM session-open return through exec-ready; the aggregate
+   `LINUXIO_AUTH_TOTAL_US` field runs from request handling start through the
+   completed OK write; query events with
+   `journalctl SYSLOG_IDENTIFIER=linuxio-auth MESSAGE='auth timing' -o json`.
+   Instrumentation performs monotonic reads before the response and emits the
+   journal event afterward. The pidfd wait removes fixed polling but does not
+   itself establish the end-to-end saving.
 4. Treat accounting-before-OK as an explicit product-policy decision.
 
 ## Verification boundary
@@ -356,8 +457,10 @@ The implementation is compiled with the repository's warning-as-error auth
 build and is covered by `make test-auth`, `make analyze-auth` (cppcheck, GCC
 analyzer, scan-build, and clang-tidy), and `make check-backend`. The hermetic C
 suite exercises input validation, PAM conversation responses, bridge metadata
-policy, binary bootstrap bytes, controlled child-failure status, exit-status
-mapping, timeout termination, and reaping. It does not exercise a real PAM
-stack, sudoers policy, privileged descriptor setup, `execveat`, accounting,
-descriptor-failure injection, or the bridge-readiness race. Those runtime
-claims remain unverified until dedicated host integration coverage exists.
+policy, binary bootstrap bytes, timing conversion, bounded response writes on a
+shared nonblocking socket, controlled child-failure status, exit-status mapping,
+timeout termination, and reaping. It does not exercise a real PAM stack
+(including session-open cleanup status), sudoers policy, privileged descriptor
+setup, `execveat`, accounting, descriptor-failure injection, or the
+bridge-readiness race. Those runtime claims remain unverified until dedicated
+host integration coverage exists.

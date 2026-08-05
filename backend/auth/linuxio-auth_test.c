@@ -244,6 +244,75 @@ static int test_child_status_reporting(void)
   return 0;
 }
 
+static int test_elapsed_microseconds(void)
+{
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1000000999)) == 0);
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1000001000)) == 1);
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1001234567)) == 1234);
+  CHECK(elapsed_us(0, INT64_C(1000000000)) == -1);
+  CHECK(elapsed_us(INT64_C(2000000000), INT64_C(1000000000)) == -1);
+  return 0;
+}
+
+static int test_socket_response_writes(void)
+{
+  const uint8_t expected[] = {
+      PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
+      PROTO_STATUS_OK, PROTO_MODE_PRIVILEGED, PROTO_RESULT_OK, 0,
+      0x01, 0x02, 0x03, 0x04,
+      0xa0, 0xb0, 0xc0, 0xd0,
+      0, 4, 'u', 's', 'e', 'r',
+  };
+  uint8_t actual[sizeof(expected) + 1];
+  size_t actual_len = 0;
+  char fill[4096] = {0};
+  int sockets[2];
+  int duplicate;
+  int flags;
+  int64_t now_ns;
+  ssize_t fill_result;
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) == 0);
+  duplicate = dup(sockets[0]);
+  CHECK(duplicate >= 0);
+  flags = fcntl(duplicate, F_GETFL);
+  CHECK(flags >= 0);
+  CHECK(fcntl(duplicate, F_SETFL, flags | O_NONBLOCK) == 0);
+  CHECK(close(duplicate) == 0);
+
+  int response_rc = send_ok_response(sockets[0], PROTO_MODE_PRIVILEGED, "user",
+                                     (uid_t)0x01020304U, (gid_t)0xa0b0c0d0U);
+  if (response_rc != 0)
+    fprintf(stderr, "send_ok_response failed: %s\n", strerror(errno));
+  CHECK(response_rc == 0);
+  CHECK(close(sockets[0]) == 0);
+  CHECK(read_pipe_to_end(sockets[1], actual, sizeof(actual), &actual_len) == 0);
+  CHECK(close(sockets[1]) == 0);
+  CHECK(actual_len == sizeof(expected));
+  CHECK(memcmp(actual, expected, sizeof(expected)) == 0);
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, sockets) == 0);
+  for (;;)
+  {
+    fill_result = write(sockets[0], fill, sizeof(fill));
+    if (fill_result > 0)
+      continue;
+    if (fill_result < 0 && errno == EINTR)
+      continue;
+    break;
+  }
+  CHECK(fill_result == -1);
+  CHECK(errno == EAGAIN);
+  CHECK(monotonic_now_ns(&now_ns) == 0);
+  errno = 0;
+  CHECK(socket_write_all_until(sockets[0], "x", 1,
+                               now_ns + INT64_C(20000000)) == -1);
+  CHECK(errno == ETIMEDOUT);
+  CHECK(close(sockets[0]) == 0);
+  CHECK(close(sockets[1]) == 0);
+  return 0;
+}
+
 static int test_child_wait_and_timeout(void)
 {
   struct timespec started;
@@ -298,6 +367,8 @@ int main(void)
       {"bridge policy", test_bridge_policy},
       {"bootstrap encoding", test_bootstrap_encoding},
       {"child status reporting", test_child_status_reporting},
+      {"elapsed microseconds", test_elapsed_microseconds},
+      {"socket response writes", test_socket_response_writes},
       {"child wait and timeout", test_child_wait_and_timeout},
   };
   int failures = 0;
