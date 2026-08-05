@@ -639,11 +639,17 @@ analyze-auth:
 	echo "   $(CC) -fanalyzer"; \
 	"$(CC)" -fanalyzer -Wall -Wextra -Wshadow -Wformat=2 -Wconversion -Wnull-dereference -Wvla -O2 -c "$$FILE"; \
 	rm -f linuxio-auth.o; \
+	CLANG_BIN=""; \
+	for c in clang clang-{30..14}; do \
+	  if command -v "$$c" >/dev/null 2>&1; then CLANG_BIN="$$c"; break; fi; \
+	done; \
 	if ! command -v scan-build >/dev/null 2>&1; then \
 	  echo "  scan-build not found - skipping clang static analyzer"; \
+	elif [ -z "$$CLANG_BIN" ]; then \
+	  echo "  clang not found - skipping clang static analyzer (install: sudo apt-get install clang)"; \
 	else \
-	  echo "   scan-build (clang static analyzer)"; \
-	  scan-build --use-cc=clang $(MAKE) --no-print-directory build-auth CC=clang WARNFLAGS="$$SB_WARNFLAGS"; \
+	  echo "   scan-build (clang static analyzer, $$CLANG_BIN)"; \
+	  scan-build --use-cc="$$CLANG_BIN" $(MAKE) --no-print-directory build-auth CC="$$CLANG_BIN" WARNFLAGS="$$SB_WARNFLAGS"; \
 	fi; \
 	if ! command -v bear >/dev/null 2>&1; then \
 	  echo "❌ bear not found (install: sudo apt-get install bear)"; \
