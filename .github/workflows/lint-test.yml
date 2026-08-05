@@ -62,6 +62,17 @@ jobs:
           fi
           echo " All Go files are properly formatted"
 
+  auth-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install authentication analysis dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bear clang-tidy clang-tools cppcheck libpam0g-dev libsystemd-dev
+      - run: make analyze-auth
+
   lint-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -119,11 +130,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "stable"
-      # Needed for github.com/msteinert/pam (CGO)
-      - name: Install PAM headers
+      # Needed for github.com/msteinert/pam (CGO) and the C auth tests
+      - name: Install authentication helper dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpam0g-dev
+          sudo apt-get install -y --no-install-recommends libpam0g-dev libsystemd-dev
       # For embedded files in go
       - name: Create Frontend Files
         run: |

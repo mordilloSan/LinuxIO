@@ -338,9 +338,11 @@ Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
 
 ## Recommended order
 
-1. Add focused C or host-integration coverage for PAM identity, sudo outcomes,
-   child timeout/reaping, fd closure, controlled exec failure, and startup
-   reporting.
+1. Add dedicated root host-integration coverage for PAM identity, sudo outcomes,
+   privilege-drop fd closure, and controlled `execveat` failure. The hermetic C
+   suite now covers identity validation, the PAM conversation adapter, bridge
+   policy, bootstrap encoding, child timeout/reaping, and controlled child
+   startup reporting.
 2. Define an application-readiness acknowledgement only with a coordinated C/Go
    protocol and integration tests; keep exec progression distinct meanwhile.
 3. Measure stage-by-stage login latency before adding concurrent setup or
@@ -350,9 +352,12 @@ Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
 
 ## Verification boundary
 
-The implementation was compiled with the repository's warning-as-error auth
-build and passed `make analyze-auth` (cppcheck, GCC analyzer, scan-build, and
-clang-tidy) plus `make check-backend`. It did not exercise a real PAM stack,
-sudoers policy, descriptor-failure injection, or bridge-readiness race. Those
-runtime claims remain unverified until dedicated host integration coverage
-exists.
+The implementation is compiled with the repository's warning-as-error auth
+build and is covered by `make test-auth`, `make analyze-auth` (cppcheck, GCC
+analyzer, scan-build, and clang-tidy), and `make check-backend`. The hermetic C
+suite exercises input validation, PAM conversation responses, bridge metadata
+policy, binary bootstrap bytes, controlled child-failure status, exit-status
+mapping, timeout termination, and reaping. It does not exercise a real PAM
+stack, sudoers policy, privileged descriptor setup, `execveat`, accounting,
+descriptor-failure injection, or the bridge-readiness race. Those runtime
+claims remain unverified until dedicated host integration coverage exists.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -68,27 +69,30 @@ type AuthResponse struct {
 	Error      string
 }
 
-// checkFieldLen rejects fields the C daemon would refuse: its buffers are
-// max bytes including the NUL terminator, so len must be at most max-1.
-func checkFieldLen(name, s string, max int) error {
+// checkField rejects fields the C daemon cannot represent: its buffers are max
+// bytes including the NUL terminator, and embedded NULs are protocol-ambiguous.
+func checkField(name, s string, max int) error {
 	if len(s) >= max {
 		return fmt.Errorf("%s too long: %d bytes (limit %d)", name, len(s), max-1)
+	}
+	if strings.IndexByte(s, 0) >= 0 {
+		return fmt.Errorf("%s contains a NUL byte", name)
 	}
 	return nil
 }
 
 // WriteAuthRequest writes a binary auth request to the writer.
 func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
-	if err := checkFieldLen("user", req.User, MaxUsername); err != nil {
+	if err := checkField("user", req.User, MaxUsername); err != nil {
 		return err
 	}
-	if err := checkFieldLen("password", req.Password, MaxPassword); err != nil {
+	if err := checkField("password", req.Password, MaxPassword); err != nil {
 		return err
 	}
-	if err := checkFieldLen("session_id", req.SessionID, MaxSessionID); err != nil {
+	if err := checkField("session_id", req.SessionID, MaxSessionID); err != nil {
 		return err
 	}
-	if err := checkFieldLen("remote_host", req.RemoteHost, MaxRemoteHost); err != nil {
+	if err := checkField("remote_host", req.RemoteHost, MaxRemoteHost); err != nil {
 		return err
 	}
 

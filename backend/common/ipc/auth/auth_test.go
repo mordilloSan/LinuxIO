@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -79,6 +80,143 @@ func TestWriteAuthRequest_EncodesRemoteHost(t *testing.T) {
 		if got != want {
 			t.Fatalf("field = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestWriteAuthRequest_RejectsFieldsTheCReceiverCannotRepresent(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+		value     string
+		apply     func(*AuthRequest, string)
+	}{
+		{
+			name:      "username length",
+			fieldName: "user",
+			value:     strings.Repeat("u", MaxUsername),
+			apply:     func(req *AuthRequest, value string) { req.User = value },
+		},
+		{
+			name:      "password length",
+			fieldName: "password",
+			value:     strings.Repeat("p", MaxPassword),
+			apply:     func(req *AuthRequest, value string) { req.Password = value },
+		},
+		{
+			name:      "session ID length",
+			fieldName: "session_id",
+			value:     strings.Repeat("s", MaxSessionID),
+			apply:     func(req *AuthRequest, value string) { req.SessionID = value },
+		},
+		{
+			name:      "remote host length",
+			fieldName: "remote_host",
+			value:     strings.Repeat("h", MaxRemoteHost),
+			apply:     func(req *AuthRequest, value string) { req.RemoteHost = value },
+		},
+		{
+			name:      "username NUL",
+			fieldName: "user",
+			value:     "mi\x00guel",
+			apply:     func(req *AuthRequest, value string) { req.User = value },
+		},
+		{
+			name:      "password NUL",
+			fieldName: "password",
+			value:     "sec\x00ret",
+			apply:     func(req *AuthRequest, value string) { req.Password = value },
+		},
+		{
+			name:      "session ID NUL",
+			fieldName: "session_id",
+			value:     "session\x001",
+			apply:     func(req *AuthRequest, value string) { req.SessionID = value },
+		},
+		{
+			name:      "remote host NUL",
+			fieldName: "remote_host",
+			value:     "192.0.2.\x001",
+			apply:     func(req *AuthRequest, value string) { req.RemoteHost = value },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &AuthRequest{
+				User:       "miguel",
+				Password:   "secret",
+				SessionID:  "session-1",
+				RemoteHost: "192.0.2.1",
+			}
+			tt.apply(req, tt.value)
+
+			err := WriteAuthRequest(&bytes.Buffer{}, req)
+			if err == nil {
+				t.Fatal("WriteAuthRequest succeeded, want rejection")
+			}
+			if !strings.Contains(err.Error(), tt.fieldName) {
+				t.Fatalf("error = %q, want field %q", err, tt.fieldName)
+			}
+		})
+	}
+}
+
+func TestWriteAuthRequest_AcceptsMaximumRepresentableFieldLengths(t *testing.T) {
+	req := &AuthRequest{
+		User:       strings.Repeat("u", MaxUsername-1),
+		Password:   strings.Repeat("p", MaxPassword-1),
+		SessionID:  strings.Repeat("s", MaxSessionID-1),
+		RemoteHost: strings.Repeat("h", MaxRemoteHost-1),
+	}
+
+	if err := WriteAuthRequest(&bytes.Buffer{}, req); err != nil {
+		t.Fatalf("WriteAuthRequest: %v", err)
+	}
+}
+
+func TestReadAuthResponse_RejectsMalformedFrames(t *testing.T) {
+	validHeader := []byte{
+		ProtoMagic0,
+		ProtoMagic1,
+		ProtoMagic2,
+		ProtoVersion,
+		StatusOK,
+		ModeUnprivileged,
+		byte(ResultOK),
+		0,
+	}
+	tests := []struct {
+		name    string
+		frame   []byte
+		wantErr string
+	}{
+		{name: "short header", frame: validHeader[:7], wantErr: "read header"},
+		{name: "bad magic", frame: append([]byte{'X'}, validHeader[1:]...), wantErr: "invalid response magic"},
+		{name: "bad version", frame: append(append([]byte{}, validHeader[:3]...), append([]byte{ProtoVersion + 1}, validHeader[4:]...)...), wantErr: "unsupported auth protocol version"},
+		{name: "missing uid", frame: validHeader, wantErr: "read uid"},
+		{name: "truncated uid", frame: append(append([]byte{}, validHeader...), 0, 0), wantErr: "read uid"},
+		{name: "missing gid", frame: append(append([]byte{}, validHeader...), 0, 0, 3, 232), wantErr: "read gid"},
+		{name: "missing username", frame: append(append([]byte{}, validHeader...), 0, 0, 3, 232, 0, 0, 3, 233), wantErr: "read username"},
+		{
+			name: "missing error",
+			frame: []byte{
+				ProtoMagic0, ProtoMagic1, ProtoMagic2, ProtoVersion,
+				StatusError, ModeUnprivileged, byte(ResultAuthFailed), 0,
+			},
+			wantErr: "read error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ReadAuthResponse(bytes.NewReader(tt.frame))
+			if err == nil {
+				t.Fatal("ReadAuthResponse succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want substring %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 

@@ -501,6 +501,23 @@ test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
 	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --config config/vitest.config.ts --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
 
+test-auth: check-c-build-deps
+	@echo "🧪 Running C authentication helper tests..."
+	@set -euo pipefail; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	TEST_BIN="$$TEST_DIR/linuxio-auth-test"; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_BIN" backend/auth/linuxio-auth_test.c $(LDFLAGS) $$LIBS; \
+	"$$TEST_BIN"; \
+	echo "✅ C authentication helper tests passed!"
+
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
 	@cd "$(BACKEND_DIR)" && \
@@ -558,7 +575,7 @@ endif
 # are cached like normal test results, so incremental runs stay fast. Pass
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
-test-backend: $(GO_BUILD_PREREQ)
+test-backend: $(GO_BUILD_PREREQ) test-auth
 	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
@@ -595,15 +612,17 @@ deadcode-only: $(GO_BUILD_PREREQ)
 			$(PRINTC) "$(COLOR_GREEN)✅ No dead code found!$(COLOR_RESET)"; \
 		fi
 
+# libpam's conversation callback ABI requires void *appdata_ptr. Cppcheck's
+# callback-specific const suggestion would require an incompatible function type.
 analyze-auth:
 	@echo ""
 	@echo "🔬 Running C static analysis (linuxio-auth)..."
 	@set -euo pipefail; \
 	FILE="backend/auth/linuxio-auth.c"; \
 	CPPCHK_DEFS='-D__has_include(x)=0 -DLINUXIO_VERSION="dev"'; \
-	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c --suppress=normalCheckLevelMaxBranches'; \
+	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c --suppress=constParameterCallback:backend/auth/linuxio-auth.c --suppress=normalCheckLevelMaxBranches'; \
 	SB_WARNFLAGS="$(filter-out -Wduplicated-cond -Wlogical-op,$(WARNFLAGS)) -Wno-format-nonliteral"; \
-	CLANG_TIDY_OPTS='--quiet -checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral'; \
+	CLANG_TIDY_OPTS='--quiet -checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral --extra-arg=-Wno-unknown-warning-option'; \
 	CC_DB_DIR=".cache/clang"; \
 	CC_DB="$$CC_DB_DIR/compile_commands.json"; \
 	if ! command -v cppcheck >/dev/null 2>&1; then \
@@ -976,7 +995,8 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup-frontend-browser$(COLOR_RESET) Install Playwright Chromium"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go unit tests with the race detector (used by 'make test' + CI)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go + C backend tests (used by 'make test' + CI)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
@@ -1016,7 +1036,7 @@ cloc:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc
