@@ -37,6 +37,39 @@ func TestReadBootstrap_DecodesHeaderAndStrings(t *testing.T) {
 	if bootstrap.SessionID != "session-1" || bootstrap.Username != "miguel" {
 		t.Fatalf("session/user = %q/%q", bootstrap.SessionID, bootstrap.Username)
 	}
+	if bootstrap.ReadyAck {
+		t.Fatal("ReadyAck = true without ProtoFlagReadyAck")
+	}
+}
+
+func TestReadBootstrap_ReadyAckFlag(t *testing.T) {
+	var buf bytes.Buffer
+	buf.Write([]byte{
+		ProtoMagic0,
+		ProtoMagic1,
+		ProtoMagic2,
+		ProtoVersion,
+		0, 0, 3, 232,
+		0, 0, 3, 233,
+		ProtoFlagReadyAck,
+	})
+	if err := writeLenStr(&buf, "session-1"); err != nil {
+		t.Fatalf("writeLenStr session: %v", err)
+	}
+	if err := writeLenStr(&buf, "miguel"); err != nil {
+		t.Fatalf("writeLenStr username: %v", err)
+	}
+
+	bootstrap, err := ReadBootstrap(&buf)
+	if err != nil {
+		t.Fatalf("ReadBootstrap: %v", err)
+	}
+	if !bootstrap.ReadyAck {
+		t.Fatal("ReadyAck = false, want true")
+	}
+	if bootstrap.Verbose || bootstrap.Privileged {
+		t.Fatalf("flags = verbose:%v privileged:%v, want both false", bootstrap.Verbose, bootstrap.Privileged)
+	}
 }
 
 func TestReadBootstrap_RejectsMalformedFrames(t *testing.T) {

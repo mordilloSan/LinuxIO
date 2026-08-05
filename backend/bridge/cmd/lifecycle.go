@@ -33,14 +33,15 @@ func openClientConnection() (net.Conn, error) {
 }
 
 // runBridge wires route registration, signal handling, request serving, and
-// shutdown cleanup for one authenticated bridge process.
-func runBridge(clientConn net.Conn, rt runtime.Runtime) {
+// shutdown cleanup for one authenticated bridge process. onReady completes
+// the startup handoff before yamux is allowed to use the client connection.
+func runBridge(clientConn net.Conn, rt runtime.Runtime, onReady func() bool) {
 	shutdownCh := make(chan string, 1)
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	router := handlers.RegisterAllHandlers(rt)
 	startBridgeSignalHandler(shutdownCh)
 
-	done := startMainRequestLoop(sessionCtx, rt, router, clientConn, shutdownCh)
+	done := startMainRequestLoop(sessionCtx, rt, router, clientConn, shutdownCh, onReady)
 	reason := <-shutdownCh
 	shutdownBridge(clientConn, router.Registry(), rt.Session.SessionID, sessionCancel, done)
 	slog.Debug("shutdown initiated", "reason", reason, "user", rt.Session.User.Username, "session_id", rt.Session.SessionID)
@@ -74,7 +75,7 @@ func startBridgeSignalHandler(shutdownCh chan<- string) {
 
 // startMainRequestLoop runs the yamux serving loop and reports client
 // disconnects as bridge shutdown reasons.
-func startMainRequestLoop(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, shutdownCh chan<- string) <-chan struct{} {
+func startMainRequestLoop(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, clientConn net.Conn, shutdownCh chan<- string, onReady func() bool) <-chan struct{} {
 	done := make(chan struct{})
 	notifyDisconnect := func() {
 		select {
@@ -84,7 +85,7 @@ func startMainRequestLoop(ctx context.Context, rt runtime.Runtime, router *bridg
 	}
 	go func() {
 		defer close(done)
-		handleYamuxSession(ctx, rt, router, clientConn, notifyDisconnect)
+		handleYamuxSession(ctx, rt, router, clientConn, notifyDisconnect, onReady)
 	}()
 	return done
 }

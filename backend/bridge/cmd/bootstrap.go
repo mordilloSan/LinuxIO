@@ -13,8 +13,8 @@ import (
 
 // readBootstrap reads binary bootstrap from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
-// Bootstrap errors are returned to main as exit code 1 so the auth daemon's
-// exec-status pipe detects startup failure.
+// Bootstrap errors are returned to main as exit code 1; process exit closes
+// the inherited startup-status fd so the auth launcher observes EOF.
 func readBootstrap() (*authipc.Bootstrap, error) {
 	b, err := authipc.ReadBootstrap(os.Stdin)
 	if err != nil {
@@ -33,15 +33,17 @@ func readBootstrap() (*authipc.Bootstrap, error) {
 }
 
 // initializeBridgeSession reads bootstrap data and constructs the session
-// object shared by handlers, routing, and audit metadata.
-func initializeBridgeSession() (*session.Session, error) {
+// object shared by handlers, routing, and audit metadata. The second return
+// reports whether the launcher expects a ready/error ack on the inherited
+// startup-status fd.
+func initializeBridgeSession() (*session.Session, bool, error) {
 	bootstrap, err := readBootstrap()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if bootstrap.Verbose {
 		if configureErr := logging.Configure("linuxio-bridge", true); configureErr != nil {
-			return nil, fmt.Errorf("failed to reconfigure logger: %w", configureErr)
+			return nil, false, fmt.Errorf("failed to reconfigure logger: %w", configureErr)
 		}
 	}
 	sess := &session.Session{
@@ -56,5 +58,5 @@ func initializeBridgeSession() (*session.Session, error) {
 			GID:      bootstrap.GID,
 		},
 	}
-	return sess, nil
+	return sess, bootstrap.ReadyAck, nil
 }

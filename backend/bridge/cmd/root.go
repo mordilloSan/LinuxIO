@@ -47,11 +47,19 @@ func runBridgeProcess() error {
 	}
 	debugserver.Start("127.0.0.1:6061")
 
-	sess, err := initializeBridgeSession()
+	sess, readyAck, err := initializeBridgeSession()
 	if err != nil {
+		// No ack possible: a bootstrap that fails to parse cannot be trusted
+		// to have set the ReadyAck flag, so the launcher learns of this exit
+		// via EOF on the status fd.
 		logBridgeStartupError("failed to initialize bridge session", err)
 		return err
 	}
+	status := newStartupStatus(readyAck)
+	// Catch-all: any exit before the startup handoff reports a typed failure
+	// instead of leaving the launcher to infer death from EOF. After ready()
+	// claims the handoff this is a no-op.
+	defer status.fail("bridge exited before becoming ready")
 	slog.Info("bridge boot",
 		"effective_uid", os.Geteuid(),
 		"user", sess.User.Username,
@@ -67,6 +75,7 @@ func runBridgeProcess() error {
 	clientConn, err := openClientConnection()
 	if err != nil {
 		logBridgeStartupError("failed to open inherited client connection", err)
+		status.fail("bridge cannot open inherited client connection: " + err.Error())
 		return err
 	}
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
@@ -74,12 +83,13 @@ func runBridgeProcess() error {
 	userConfig, err := config.OpenUserStore(sess.User.Username)
 	if err != nil {
 		logBridgeStartupError("failed to open config store", err)
+		status.fail("bridge config store failed: " + err.Error())
 		return err
 	}
 	slog.Info("config store ready", "user", sess.User.Username, "path", userConfig.Path())
 
 	rt := runtime.New(sess, userConfig)
-	runBridge(clientConn, rt)
+	runBridge(clientConn, rt, status.ready)
 	slog.Info("bridge stopped")
 	return nil
 }

@@ -40,7 +40,16 @@
 // Socket timeouts (seconds)
 #define SOCKET_READ_TIMEOUT 30
 #define SOCKET_WRITE_TIMEOUT 10
-#define BRIDGE_START_TIMEOUT_MS 5000
+// Authentication and bridge startup share this absolute work budget, measured
+// from request receipt. The webserver allows 30 seconds for the exchange, so
+// the remaining 10 seconds are reserved for sending a typed response and
+// cleanup. Synchronous PAM modules cannot be interrupted safely; after they
+// return, an expired budget fails before sudo or bridge launch.
+#define AUTH_REQUEST_TIMEOUT_SEC 20
+// Per-phase bridge READY limit. The environment override is also capped at the
+// absolute request budget and then clipped to the time actually remaining.
+#define BRIDGE_READY_TIMEOUT_SEC 10
+#define JOURNAL_FIELD_BUFFER_SIZE 512
 #define LINUXIO_WEB_TTY "web console"
 #define BRIDGE_DIR "/usr/local/bin"
 #define BRIDGE_NAME "linuxio-bridge"
@@ -98,7 +107,7 @@ static void journal_send_formatted(int priority, const struct journal_field *fie
   char buf[512];
   char priority_buf[32];
   char message_buf[sizeof(buf) + 16];
-  char field_bufs[8][256];
+  char field_bufs[8][JOURNAL_FIELD_BUFFER_SIZE];
   struct iovec iov[3 + 8];
   size_t iov_count = 0;
 
@@ -127,6 +136,10 @@ static void journal_send_formatted(int priority, const struct journal_field *fie
 
   (void)sd_journal_sendv(iov, (int)iov_count);
 }
+
+_Static_assert(JOURNAL_FIELD_BUFFER_SIZE >=
+                   sizeof("LINUXIO_BRIDGE_ERROR=") + PROTO_MAX_ERROR - 1,
+               "journal field buffer must preserve a full bridge error");
 
 static void journal_errorf(const char *fmt, ...)
 {
@@ -819,8 +832,10 @@ static int write_bootstrap_binary(
   write_u32_be(header + pos, (uint32_t)gid);
   pos += 4;
 
-  // Flags (1 byte)
-  uint8_t flags = 0;
+  // Flags (1 byte). READY_ACK is always set: it tells the bridge the
+  // startup-status fd stays open across exec and a ready/error byte is
+  // required before the launcher reports login success.
+  uint8_t flags = PROTO_FLAG_READY_ACK;
   if (verbose)
     flags |= PROTO_FLAG_VERBOSE;
   if (privileged)
@@ -901,6 +916,158 @@ static int deadline_remaining_ns(int64_t deadline_ns, int64_t *remaining_ns)
 
   *remaining_ns = deadline_ns - now_ns;
   return 1;
+}
+
+// Builds a relative phase deadline, clipped to an optional absolute request
+// deadline. A non-positive request deadline means no outer clipping.
+static int bounded_deadline_ms(int timeout_ms, int64_t request_deadline_ns,
+                               int64_t *deadline_ns)
+{
+  int64_t now_ns;
+  int64_t timeout_ns;
+
+  if (!deadline_ns || timeout_ms <= 0 || monotonic_now_ns(&now_ns) != 0)
+  {
+    errno = EIO;
+    return -1;
+  }
+
+  timeout_ns = (int64_t)timeout_ms * INT64_C(1000000);
+  if (now_ns > INT64_MAX - timeout_ns)
+  {
+    errno = EOVERFLOW;
+    return -1;
+  }
+
+  *deadline_ns = now_ns + timeout_ns;
+  if (request_deadline_ns > 0 && request_deadline_ns < *deadline_ns)
+    *deadline_ns = request_deadline_ns;
+  return 0;
+}
+
+// Outcomes of waiting for the bridge's startup-status byte.
+enum bridge_startup_result
+{
+  BRIDGE_STARTUP_READY = 0,
+  BRIDGE_STARTUP_EXEC_FAILED,    // PROTO_STARTUP_EXEC_FAILED from the pre-exec child
+  BRIDGE_STARTUP_REPORTED_ERROR, // PROTO_STARTUP_ERROR (+ optional message)
+  BRIDGE_STARTUP_EOF,            // fd closed before any status byte
+  BRIDGE_STARTUP_TIMEOUT,
+  BRIDGE_STARTUP_WAIT_ERROR,    // poll/read failure, errno preserved
+  BRIDGE_STARTUP_PROTOCOL_ERROR // unknown status byte
+};
+
+// Reads one byte from the status fd within the deadline. Returns 1 with the
+// byte, 0 on EOF, -1 on timeout (errno ETIMEDOUT) or failure (errno set).
+static int read_status_byte_until(int fd, int64_t deadline_ns, uint8_t *out)
+{
+  for (;;)
+  {
+    int64_t remaining_ns = 0;
+    int deadline_state = deadline_remaining_ns(deadline_ns, &remaining_ns);
+    if (deadline_state < 0)
+    {
+      errno = EIO;
+      return -1;
+    }
+    if (deadline_state == 0)
+    {
+      errno = ETIMEDOUT;
+      return -1;
+    }
+
+    struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
+    struct timespec poll_timeout = {
+        .tv_sec = (time_t)(remaining_ns / INT64_C(1000000000)),
+        .tv_nsec = (long)(remaining_ns % INT64_C(1000000000))};
+    int ready = ppoll(&pfd, 1, &poll_timeout, NULL);
+    if (ready < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return -1;
+    }
+    if (ready == 0)
+    {
+      errno = ETIMEDOUT;
+      return -1;
+    }
+
+    ssize_t n = read(fd, out, 1);
+    if (n < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return -1;
+    }
+    return n > 0 ? 1 : 0;
+  }
+}
+
+// Waits for the bridge's startup-status byte (see linuxio_protocol.h). On
+// BRIDGE_STARTUP_REPORTED_ERROR, msg receives the bridge's message (possibly
+// empty) with non-printable bytes blanked so nothing hostile reaches the
+// journal or the client error string. On BRIDGE_STARTUP_PROTOCOL_ERROR,
+// *bad_byte holds the unknown byte. errno describes BRIDGE_STARTUP_WAIT_ERROR.
+static enum bridge_startup_result wait_for_bridge_startup(
+    int status_fd, int timeout_ms, int64_t request_deadline_ns,
+    char *msg, size_t msg_sz, uint8_t *bad_byte)
+{
+  if (msg && msg_sz > 0)
+    msg[0] = '\0';
+
+  int64_t deadline_ns = 0;
+  if (status_fd < 0 ||
+      bounded_deadline_ms(timeout_ms, request_deadline_ns, &deadline_ns) != 0)
+  {
+    return BRIDGE_STARTUP_WAIT_ERROR;
+  }
+
+  uint8_t status = 0;
+  int rc = read_status_byte_until(status_fd, deadline_ns, &status);
+  if (rc < 0)
+    return errno == ETIMEDOUT ? BRIDGE_STARTUP_TIMEOUT : BRIDGE_STARTUP_WAIT_ERROR;
+  if (rc == 0)
+    return BRIDGE_STARTUP_EOF;
+
+  switch (status)
+  {
+  case PROTO_STARTUP_READY:
+    return BRIDGE_STARTUP_READY;
+  case PROTO_STARTUP_EXEC_FAILED:
+    return BRIDGE_STARTUP_EXEC_FAILED;
+  case PROTO_STARTUP_ERROR:
+    break;
+  default:
+    if (bad_byte)
+      *bad_byte = status;
+    return BRIDGE_STARTUP_PROTOCOL_ERROR;
+  }
+
+  // Collect the optional error message until EOF, buffer full, or deadline.
+  // The outcome is already "failed"; message trouble must not change it.
+  size_t used = 0;
+  while (msg && used + 1 < msg_sz)
+  {
+    uint8_t ch = 0;
+    rc = read_status_byte_until(status_fd, deadline_ns, &ch);
+    if (rc <= 0)
+      break;
+    msg[used++] = (ch >= 0x20 && ch < 0x7f) ? (char)ch : ' ';
+  }
+  if (msg && msg_sz > 0)
+    msg[used] = '\0';
+  return BRIDGE_STARTUP_REPORTED_ERROR;
+}
+
+// Releases a READY bridge only after the authentication response has been
+// written in full. Keeping this as a distinct operation makes the transport
+// ownership handoff explicit: before GO only the launcher may write the client
+// connection; after GO the bridge owns Yamux on that connection.
+static int release_bridge_startup(int status_fd)
+{
+  const uint8_t go = PROTO_STARTUP_GO;
+  return write_all(status_fd, &go, sizeof(go));
 }
 
 static int socket_write_all_until(int fd, const void *buf, size_t len,
@@ -1044,22 +1211,17 @@ static void log_auth_timing(const struct auth_timing *timing, uid_t uid,
   journal_info_fieldsf(fields, sizeof(fields) / sizeof(fields[0]), "auth timing");
 }
 
-static int wait_for_child_with_timeout(pid_t pid, int timeout_sec)
+static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
+                                       int64_t request_deadline_ns)
 {
   const int64_t ns_per_second = INT64_C(1000000000);
-  int64_t now_ns;
-  int64_t timeout_ns;
   int64_t deadline_ns;
   int pidfd = -1;
   int status = 0;
 
-  if (pid <= 0 || timeout_sec <= 0 || monotonic_now_ns(&now_ns) != 0)
+  if (pid <= 0 || timeout_sec <= 0 ||
+      bounded_deadline_ms(timeout_sec * 1000, request_deadline_ns, &deadline_ns) != 0)
     goto fail;
-
-  timeout_ns = (int64_t)timeout_sec * ns_per_second;
-  if (now_ns > INT64_MAX - timeout_ns)
-    goto fail;
-  deadline_ns = now_ns + timeout_ns;
 
 #ifdef SYS_pidfd_open
   pidfd = (int)syscall(SYS_pidfd_open, pid, 0);
@@ -1148,7 +1310,8 @@ fail:
 
 // sudo probing
 static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const argv[],
-                                      const char *stdin_data, int timeout_sec)
+                                      const char *stdin_data, int timeout_sec,
+                                      int64_t request_deadline_ns)
 {
   int inpipe[2] = {-1, -1};
   if (pipe2(inpipe, O_CLOEXEC) != 0)
@@ -1201,7 +1364,7 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
     (void)write_all(inpipe[1], stdin_data, strlen(stdin_data));
   close(inpipe[1]);
 
-  return wait_for_child_with_timeout(pid, timeout_sec);
+  return wait_for_child_with_timeout(pid, timeout_sec, request_deadline_ns);
 }
 
 // Privileged-mode policy: the user must be allowed by sudoers to run the
@@ -1212,7 +1375,8 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
 // admin access explicitly by whitelisting BRIDGE_PATH in sudoers. This probe
 // is authorization only: the already-root launcher executes the bridge
 // directly, so sudo runtime tags and environment rules do not wrap it.
-static int user_can_run_bridge_as_root(const struct passwd *pw, const char *password)
+static int user_can_run_bridge_as_root(const struct passwd *pw, const char *password,
+                                       int64_t request_deadline_ns)
 {
   // How long we wait for the sudo policy check to complete
   int to_pw = env_get_int("LINUXIO_SUDO_TIMEOUT_PASSWORD", 4, 1, 30);
@@ -1229,7 +1393,8 @@ static int user_can_run_bridge_as_root(const struct passwd *pw, const char *pass
   char buf[PROTO_MAX_PASSWORD + 2];
   (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
 
-  int rc = run_cmd_as_user_with_input(pw, argv_list, buf, to_pw);
+  int rc = run_cmd_as_user_with_input(pw, argv_list, buf, to_pw,
+                                      request_deadline_ns);
 
   // Wipe the temporary buffer
   secure_bzero(buf, sizeof(buf));
@@ -1243,7 +1408,7 @@ static int user_can_run_bridge_as_root(const struct passwd *pw, const char *pass
 __attribute__((__noreturn__)) static void child_die(int status_fd, const char *what)
 {
   int saved_errno = errno;
-  uint8_t err_byte = 1;
+  uint8_t err_byte = PROTO_STARTUP_EXEC_FAILED;
   if (status_fd >= 0)
     (void)write_all(status_fd, &err_byte, sizeof(err_byte));
   errno = saved_errno;
@@ -1259,6 +1424,15 @@ static void set_cloexec_or_die(int fd, int status_fd, const char *what)
   if (fdflags < 0)
     child_die(status_fd, what);
   if (fcntl(fd, F_SETFD, fdflags | FD_CLOEXEC) != 0)
+    child_die(status_fd, what);
+}
+
+static void clear_cloexec_or_die(int fd, int status_fd, const char *what)
+{
+  int fdflags = fcntl(fd, F_GETFD);
+  if (fdflags < 0)
+    child_die(status_fd, what);
+  if (fcntl(fd, F_SETFD, fdflags & ~FD_CLOEXEC) != 0)
     child_die(status_fd, what);
 }
 
@@ -1577,11 +1751,11 @@ static uint8_t classify_pam_result(int rc)
 // 1 = stdout (dup from stderr)
 // 2 = stderr
 // 3 = client connection (CLIENT_CONN_FD)
-// 4 = exec_status_fd (CLOEXEC - closed by exec on success)
+// 4 = startup-status fd (survives exec; bridge writes READY/ERROR and reads GO)
 // 5 = bridge_fd (for execveat)
 // Everything >= 6 is closed
 #define CLIENT_CONN_FD 3
-#define EXEC_STATUS_FD 4
+#define STARTUP_STATUS_FD 4
 #define BRIDGE_FD      5
 
 static pid_t spawn_bridge_process(
@@ -1590,7 +1764,7 @@ static pid_t spawn_bridge_process(
     int bridge_fd,
     int bootstrap_pipe_read,  // Pipe read end for bootstrap binary (will be stdin)
     int client_fd,            // Client connection FD (will be dup'd to FD 3 for Yamux)
-    int exec_status_fd)       // Write end of exec-status pipe (CLOEXEC) - write on exec failure
+    int startup_status_fd)    // Child end of startup-status socketpair
 {
   pid_t pid = fork();
   if (pid < 0)
@@ -1609,9 +1783,9 @@ static pid_t spawn_bridge_process(
   // Save the original FDs we need (they might be at any position)
   int orig_client = client_fd;
   int orig_bootstrap = bootstrap_pipe_read;
-  int orig_exec_status = exec_status_fd;
+  int orig_startup_status = startup_status_fd;
   int orig_bridge = bridge_fd;
-  int child_status_fd = exec_status_fd;
+  int child_status_fd = startup_status_fd;
 
   // Preserve a client socket occupying stdin/stdout/stderr before those fixed
   // descriptors are rewritten. The parked copy must survive exec until dup2
@@ -1640,21 +1814,21 @@ static pid_t spawn_bridge_process(
     orig_client = saved_client;
   }
 
-  // First, move exec_status_fd and bridge_fd to high positions to avoid conflicts
+  // First, move startup_status_fd and bridge_fd to high positions to avoid conflicts
   // (in case any of them is already at 0-5)
-  int tmp_exec_status = -1, tmp_bridge = -1;
+  int tmp_startup_status = -1, tmp_bridge = -1;
 
-  if (orig_exec_status >= 0 && orig_exec_status <= BRIDGE_FD)
+  if (orig_startup_status >= 0 && orig_startup_status <= BRIDGE_FD)
   {
-    tmp_exec_status = fcntl(orig_exec_status, F_DUPFD_CLOEXEC, BRIDGE_FD + 1);
-    if (tmp_exec_status < 0) child_die(child_status_fd, "dup exec-status fd");
-    child_status_fd = tmp_exec_status;
-    // Close original to avoid leaking extra copy of pipe write-end
-    close(orig_exec_status);
+    tmp_startup_status = fcntl(orig_startup_status, F_DUPFD_CLOEXEC, BRIDGE_FD + 1);
+    if (tmp_startup_status < 0) child_die(child_status_fd, "dup startup-status fd");
+    child_status_fd = tmp_startup_status;
+    // Close original to avoid leaking an extra copy of the status channel
+    close(orig_startup_status);
   }
   else
   {
-    tmp_exec_status = orig_exec_status;
+    tmp_startup_status = orig_startup_status;
   }
 
   if (orig_bridge >= 0 && orig_bridge <= BRIDGE_FD)
@@ -1686,14 +1860,17 @@ static pid_t spawn_bridge_process(
     close(orig_client);
   }
 
-  // Step 5: Set up exec_status_fd at FD 4 (keep CLOEXEC)
-  if (tmp_exec_status >= 0 && tmp_exec_status != EXEC_STATUS_FD)
+  // Step 5: Set up the startup-status fd at FD 4. It must survive exec so the
+  // Go bridge can report READY/ERROR and wait for GO before starting Yamux.
+  if (tmp_startup_status >= 0 && tmp_startup_status != STARTUP_STATUS_FD)
   {
-    if (dup2(tmp_exec_status, EXEC_STATUS_FD) < 0) child_die(child_status_fd, "dup2 exec-status fd");
-    child_status_fd = EXEC_STATUS_FD;
-    close(tmp_exec_status);
+    if (dup2(tmp_startup_status, STARTUP_STATUS_FD) < 0)
+      child_die(child_status_fd, "dup2 startup-status fd");
+    child_status_fd = STARTUP_STATUS_FD;
+    close(tmp_startup_status);
   }
-  set_cloexec_or_die(EXEC_STATUS_FD, child_status_fd, "set exec-status CLOEXEC");
+  clear_cloexec_or_die(STARTUP_STATUS_FD, child_status_fd,
+                       "clear startup-status CLOEXEC");
 
   // Step 6: Set up bridge_fd at FD 5
   if (tmp_bridge >= 0 && tmp_bridge != BRIDGE_FD)
@@ -1707,7 +1884,7 @@ static pid_t spawn_bridge_process(
   // 1 = stdout (-> stderr)
   // 2 = stderr
   // 3 = client connection
-  // 4 = exec_status_fd (CLOEXEC)
+  // 4 = startup-status fd (no CLOEXEC - inherited by the bridge)
   // 5 = bridge_fd
 
   umask(077);
@@ -1846,7 +2023,9 @@ static pid_t spawn_bridge_process(
   errno = ENOSYS;
 #endif
 
-  // Exec failure writes a status byte; successful exec closes the pipe via CLOEXEC.
+  // Exec failure writes the pre-exec status byte. On success, the inherited
+  // startup-status fd remains open for the Go bridge's READY/ERROR and the
+  // launcher's GO response.
   child_die(child_status_fd, "exec bridge");
 }
 
@@ -1854,7 +2033,25 @@ static pid_t spawn_bridge_process(
 static int handle_client(int input_fd, int output_fd)
 {
   struct auth_timing timing = {0};
-  (void)monotonic_now_ns(&timing.request_started_ns);
+  int64_t request_deadline_ns = 0;
+  const int64_t request_budget_ns =
+      (int64_t)AUTH_REQUEST_TIMEOUT_SEC * INT64_C(1000000000);
+  if (monotonic_now_ns(&timing.request_started_ns) != 0)
+  {
+    journal_errorf("failed to establish authentication deadline: %m");
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                        "failed to establish authentication deadline");
+    return 1;
+  }
+  if (timing.request_started_ns > INT64_MAX - request_budget_ns)
+  {
+    errno = EOVERFLOW;
+    journal_errorf("failed to establish authentication deadline: %m");
+    send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                        "failed to establish authentication deadline");
+    return 1;
+  }
+  request_deadline_ns = timing.request_started_ns + request_budget_ns;
 
   // Read binary request header
   uint8_t header[PROTO_AUTH_REQ_HEADER_SIZE];
@@ -1891,7 +2088,7 @@ static int handle_client(int input_fd, int output_fd)
   int child_signal = 0;
   int bridge_fd = -1;
   int bootstrap_pipe[2] = {-1, -1};
-  int exec_status_pipe[2] = {-1, -1};
+  int startup_status_channel[2] = {-1, -1};
   pid_t child = -1;
   pam_handle_t *pamh = NULL;
 
@@ -2051,6 +2248,17 @@ static int handle_client(int input_fd, int output_fd)
   (void)monotonic_now_ns(&timing.pam_completed_ns);
 
   {
+    int64_t remaining_ns;
+    if (deadline_remaining_ns(request_deadline_ns, &remaining_ns) <= 0)
+    {
+      journal_errorf("authentication deadline expired during PAM");
+      send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                          "authentication request timed out");
+      goto out;
+    }
+  }
+
+  {
     char uid_buf[32];
     (void)safe_snprintf(uid_buf, sizeof(uid_buf), "%u", (unsigned)auth_user.uid);
     const struct journal_field fields[] = {
@@ -2062,7 +2270,8 @@ static int handle_client(int input_fd, int output_fd)
 
   // Privileged mode iff sudoers lets this user run the bridge as root
   (void)monotonic_now_ns(&timing.sudo_started_ns);
-  int want_privileged = user_can_run_bridge_as_root(pw, password) ? 1 : 0;
+  int want_privileged =
+      user_can_run_bridge_as_root(pw, password, request_deadline_ns) ? 1 : 0;
   (void)monotonic_now_ns(&timing.sudo_completed_ns);
 
   // Do not retain the plaintext password while the parent supervises the bridge.
@@ -2070,6 +2279,17 @@ static int handle_client(int input_fd, int output_fd)
 
   uint8_t mode = want_privileged ? PROTO_MODE_PRIVILEGED : PROTO_MODE_UNPRIVILEGED;
   const char *mode_name = mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged";
+
+  {
+    int64_t remaining_ns;
+    if (deadline_remaining_ns(request_deadline_ns, &remaining_ns) <= 0)
+    {
+      journal_errorf("authentication deadline expired during sudo policy check");
+      send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                          "authentication request timed out");
+      goto out;
+    }
+  }
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
   (void)monotonic_now_ns(&timing.session_setup_started_ns);
@@ -2114,13 +2334,26 @@ static int handle_client(int input_fd, int output_fd)
   (void)monotonic_now_ns(&timing.session_opened_ns);
   timing.bridge_start_started_ns = timing.session_opened_ns;
 
-  // Create exec-status pipe with CLOEXEC on write end
-  // - On successful exec, CLOEXEC closes the write end -> parent sees EOF
-  // - On exec failure, child writes error byte -> parent sees data
-  if (pipe2(exec_status_pipe, O_CLOEXEC) != 0)
   {
-    journal_errorf("failed to create exec-status pipe: %m");
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "failed to prepare exec check");
+    int64_t remaining_ns;
+    if (deadline_remaining_ns(request_deadline_ns, &remaining_ns) <= 0)
+    {
+      journal_errorf("authentication deadline expired during session setup");
+      send_error_response(output_fd, PROTO_RESULT_INTERNAL_ERROR,
+                          "authentication request timed out");
+      goto out;
+    }
+  }
+
+  // Create a bidirectional startup-status channel with CLOEXEC initially. The
+  // child clears CLOEXEC only on its fixed FD 4 copy so it can report
+  // READY/ERROR and wait for the launcher's GO without leaking aliases.
+  if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0,
+                 startup_status_channel) != 0)
+  {
+    journal_errorf("failed to create startup-status channel: %m");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
+                        "failed to prepare startup status");
     goto out;
   }
 
@@ -2130,13 +2363,13 @@ static int handle_client(int input_fd, int output_fd)
       bridge_fd,
       bootstrap_pipe[0],    // Pass pipe read end to child (will be stdin)
       input_fd,             // Pass client connection FD (will be dup'd to FD 3 for Yamux)
-      exec_status_pipe[1]); // Write end of exec-status pipe (CLOEXEC)
+      startup_status_channel[1]); // Child end of startup-status channel
 
-  // Parent: close pipe read end and exec-status write end (child has them)
+  // Parent: close bootstrap read end and the child's status-channel endpoint.
   close(bootstrap_pipe[0]);
   bootstrap_pipe[0] = -1;
-  close(exec_status_pipe[1]);
-  exec_status_pipe[1] = -1;
+  close(startup_status_channel[1]);
+  startup_status_channel[1] = -1;
 
   if (child < 0)
   {
@@ -2171,108 +2404,55 @@ static int handle_client(int input_fd, int output_fd)
   close(bridge_fd);
   bridge_fd = -1;
 
-  // Wait for exec-status: EOF means exec succeeded, data means exec failed.
-  // This ensures we don't send OK until the bridge binary has actually started.
-  int exec_status_sel = -1;
-  for (;;)
-  {
-    struct pollfd pfd = {
-        .fd = exec_status_pipe[0],
-        .events = POLLIN,
-        .revents = 0};
+  // Wait for the bridge's startup-status byte. READY means initialization is
+  // complete and the bridge is blocked waiting for GO; it cannot write Yamux
+  // bytes to the client connection before the OK response below.
+  int ready_timeout_ms =
+      env_get_int("LINUXIO_BRIDGE_READY_TIMEOUT", BRIDGE_READY_TIMEOUT_SEC,
+                  1, AUTH_REQUEST_TIMEOUT_SEC) * 1000;
+  char bridge_err[PROTO_MAX_ERROR];
+  uint8_t bad_status = 0;
+  enum bridge_startup_result startup = wait_for_bridge_startup(
+      startup_status_channel[0], ready_timeout_ms, request_deadline_ns,
+      bridge_err, sizeof(bridge_err), &bad_status);
+  int startup_errno = errno;
 
-    exec_status_sel = poll(&pfd, 1, BRIDGE_START_TIMEOUT_MS);
-    if (exec_status_sel < 0 && errno == EINTR)
-      continue;
+  switch (startup)
+  {
+  case BRIDGE_STARTUP_READY:
     break;
-  }
 
-  if (exec_status_sel == 0)
+  case BRIDGE_STARTUP_EXEC_FAILED:
   {
     const struct journal_field fields[] = {
         {"LINUXIO_USER", auth_user.name},
     };
-    journal_error_fieldsf(fields, 1, "bridge exec timed out after %d ms", BRIDGE_START_TIMEOUT_MS);
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge start timeout");
-    child_signal = SIGKILL;
-    goto out;
-  }
-
-  if (exec_status_sel < 0)
-  {
-    const struct journal_field fields[] = {
-        {"LINUXIO_USER", auth_user.name},
-    };
-    journal_error_fieldsf(fields, 1, "exec-status wait failed: %m");
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec status failed");
-    child_signal = SIGKILL;
-    goto out;
-  }
-
-  uint8_t exec_status_byte = 0;
-  ssize_t exec_status_n = -1;
-  int exec_status_errno = 0;
-  do
-  {
-    exec_status_n = read(exec_status_pipe[0], &exec_status_byte, 1);
-  } while (exec_status_n < 0 && errno == EINTR);
-  if (exec_status_n < 0)
-    exec_status_errno = errno;
-  close(exec_status_pipe[0]);
-  exec_status_pipe[0] = -1;
-
-  if (exec_status_n < 0)
-  {
-    const struct journal_field fields[] = {
-        {"LINUXIO_USER", auth_user.name},
-    };
-    errno = exec_status_errno;
-    journal_error_fieldsf(fields, 1, "exec-status read failed: %m");
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
-                        "bridge exec status read failed");
-    child_signal = SIGKILL;
-    goto out;
-  }
-
-  if (exec_status_n > 0)
-  {
-    // Child wrote error byte - exec failed
-    char status_buf[16];
-    (void)safe_snprintf(status_buf, sizeof(status_buf), "%u", (unsigned)exec_status_byte);
-    const struct journal_field fields[] = {
-        {"LINUXIO_USER", auth_user.name},
-        {"LINUXIO_STATUS", status_buf},
-    };
-    journal_error_fieldsf(fields, 2, "bridge exec failed");
+    journal_error_fieldsf(fields, 1, "bridge exec failed");
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge exec failed");
-    // Child already exited, but the shared epilogue still reaps it.
+    // The pre-exec child exits on its own; the shared epilogue still reaps it.
     goto out;
   }
 
-  // exec_status_n == 0 means EOF: controlled failures write a byte first, so
-  // EOF is unambiguous here. Keep a non-blocking reap as defense-in-depth for
-  // unexpected child deaths; a successfully exec'd bridge is still running.
+  case BRIDGE_STARTUP_REPORTED_ERROR:
   {
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+        {"LINUXIO_BRIDGE_ERROR", bridge_err},
+    };
+    journal_error_fieldsf(fields, 2, "bridge reported startup failure");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
+                        bridge_err[0] != '\0' ? bridge_err : "bridge startup failed");
+    child_signal = SIGTERM;
+    goto out;
+  }
+
+  case BRIDGE_STARTUP_EOF:
+  {
+    // The status fd closed with no byte: the bridge died before becoming
+    // ready, or closed the fd without acking. Distinguish for the journal;
+    // fail closed either way.
     int wstatus = 0;
     pid_t reaped = waitpid_nointr(child, &wstatus, WNOHANG);
-
-    if (reaped < 0)
-    {
-      int wait_errno = errno;
-      const struct journal_field fields[] = {
-          {"LINUXIO_USER", auth_user.name},
-      };
-      errno = wait_errno;
-      journal_error_fieldsf(fields, 1, "bridge startup wait failed: %m");
-      send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR,
-                          "bridge startup wait failed");
-      if (wait_errno == ECHILD)
-        child_reaped = 1;
-      else
-        child_signal = SIGKILL;
-      goto out;
-    }
-
     if (reaped == child)
     {
       char status_buf[16];
@@ -2283,16 +2463,66 @@ static int handle_client(int input_fd, int output_fd)
           {"LINUXIO_STATUS", status_buf},
       };
       journal_error_fieldsf(fields, 2, "bridge died during startup (status %s)", status_buf);
-      send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge failed to start");
-      goto out;
     }
+    else
+    {
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+      };
+      journal_error_fieldsf(fields, 1, "bridge closed startup status without ready ack");
+      if (reaped < 0 && errno == ECHILD)
+        child_reaped = 1;
+      else
+        child_signal = SIGKILL;
+    }
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge failed to start");
+    goto out;
+  }
+
+  case BRIDGE_STARTUP_TIMEOUT:
+  {
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_error_fieldsf(fields, 1, "bridge not ready after %d ms", ready_timeout_ms);
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge start timeout");
+    child_signal = SIGKILL;
+    goto out;
+  }
+
+  case BRIDGE_STARTUP_PROTOCOL_ERROR:
+  {
+    char status_buf[16];
+    (void)safe_snprintf(status_buf, sizeof(status_buf), "%u", (unsigned)bad_status);
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+        {"LINUXIO_STATUS", status_buf},
+    };
+    journal_error_fieldsf(fields, 2, "unknown bridge startup status byte");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge startup protocol error");
+    child_signal = SIGKILL;
+    goto out;
+  }
+
+  case BRIDGE_STARTUP_WAIT_ERROR:
+  default:
+  {
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    errno = startup_errno;
+    journal_error_fieldsf(fields, 1, "bridge startup wait failed: %m");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge startup wait failed");
+    child_signal = SIGKILL;
+    goto out;
+  }
   }
 
   (void)monotonic_now_ns(&timing.bridge_ready_ns);
   timing.accounting_started_ns = timing.bridge_ready_ns;
 
-  // Now we know bridge exec'd successfully - send OK response
-  // Bridge inherits the connection via FD 3, server continues Yamux on same connection
+  // The bridge is initialized but cannot start Yamux until this process sends
+  // the complete OK response and then releases it over the status channel.
   record_login_start(&auth_user, remote_host);
   (void)monotonic_now_ns(&timing.accounting_completed_ns);
   login_started = 1;
@@ -2306,6 +2536,22 @@ static int handle_client(int input_fd, int output_fd)
     journal_error_fieldsf(fields, 1, "failed to send authentication response: %m");
     child_signal = SIGTERM;
     goto out;
+  }
+
+  {
+    if (release_bridge_startup(startup_status_channel[0]) != 0)
+    {
+      int release_errno = errno;
+      const struct journal_field fields[] = {
+          {"LINUXIO_USER", auth_user.name},
+      };
+      errno = release_errno;
+      journal_error_fieldsf(fields, 1, "failed to release bridge startup: %m");
+      child_signal = SIGTERM;
+      goto out;
+    }
+    close(startup_status_channel[0]);
+    startup_status_channel[0] = -1;
   }
   (void)monotonic_now_ns(&timing.request_completed_ns);
   log_auth_timing(&timing, auth_user.uid, mode_name);
@@ -2389,10 +2635,10 @@ out:
     close(bootstrap_pipe[0]);
   if (bootstrap_pipe[1] >= 0)
     close(bootstrap_pipe[1]);
-  if (exec_status_pipe[0] >= 0)
-    close(exec_status_pipe[0]);
-  if (exec_status_pipe[1] >= 0)
-    close(exec_status_pipe[1]);
+  if (startup_status_channel[0] >= 0)
+    close(startup_status_channel[0]);
+  if (startup_status_channel[1] >= 0)
+    close(startup_status_channel[1]);
   if (bridge_fd >= 0)
     close(bridge_fd);
 

@@ -203,7 +203,7 @@ valid. The important corrections are:
 
 - the sudo wait loop had a real final-boundary correctness bug; it now uses an
   event-driven, deadline-based wait, while its user-visible latency improvement
-  remains unmeasured;
+  is not established by controlled measurement;
 - the glibc accounting timeout is current, not obsolete, but is an
   implementation detail and applies per lock;
 - root web logins and blank-password authentication are now explicitly rejected;
@@ -213,24 +213,28 @@ valid. The important corrections are:
   makes the shared socket nonblocking, and the child no longer clears
   parent-owned socket timeouts;
 - a failed `pam_open_session` is propagated as the final status to `pam_end`;
-- CLOEXEC-pipe EOF still proves successful exec progression, not application
-  readiness; a readiness guarantee remains a deliberate cross-language protocol
-  change; and
+- the launcher and bridge now use a two-phase READY/GO handoff: READY reports
+  completion of pre-Yamux initialization, then the launcher records accounting,
+  writes the complete OK response, and sends GO before Yamux may start;
+- authentication and startup work share a 20-second deadline from request
+  receipt, targeting a 10-second response margin inside the webserver's
+  30-second deadline; synchronous PAM calls are checked afterward rather than
+  forcibly interrupted; and
 - sudoers is explicitly documented as the privileged-mode authorization source,
   not as the bridge executor or a wrapper for its runtime policy.
 
 The launcher's happy-path FD choreography and fd-based bridge validation remain
 strong. All source-local correctness and hardening items in this adjudication are
 implemented. The remaining items are measurement-gated performance work,
-application-readiness protocol design, accounting-order policy, and dedicated
-host integration coverage.
+accounting-order policy, and dedicated cross-language and host-integration
+coverage of the implemented startup-handoff protocol.
 
 ## Final disposition of Account 1
 
 | Item | Final disposition |
 |---|---|
-| **1.1 — 100 ms sudo polling** | **Implemented.** The fixed-sleep loop is replaced by `pidfd_open` plus `ppoll` against an absolute monotonic deadline. Unsupported pidfd kernels use a short-sleep fallback; other pidfd errors fail closed. Both paths make a final nonblocking reap before timeout handling, close the pidfd on every path, and retry interrupted waits. The end-to-end latency improvement remains unmeasured. |
-| **1.2 — merge `sudo -k` into the probe** | **Implemented.** The existing `sudo -l` probe now includes `-k`, so it ignores and does not update cached credentials. The redundant post-success invalidation child is removed. The exact latency saving remains unmeasured. |
+| **1.1 — 100 ms sudo polling** | **Implemented.** The fixed-sleep loop is replaced by `pidfd_open` plus `ppoll` against an absolute monotonic deadline. Unsupported pidfd kernels use a short-sleep fallback; other pidfd errors fail closed. Both paths make a final nonblocking reap before timeout handling, close the pidfd on every path, and retry interrupted waits. One deployed observation shows no fixed polling delay, but does not establish the end-to-end improvement. |
+| **1.2 — merge `sudo -k` into the probe** | **Implemented.** The existing `sudo -l` probe now includes `-k`, so it ignores and does not update cached credentials. The redundant post-success invalidation child is removed. The exact latency saving is not established by one deployed observation. |
 | **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; measurement-gated.** Serialization is confirmed, but concurrency adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity without evidence of a material end-to-end saving. Successful launches with complete monotonic clock reads now emit PAM, sudo, session-setup, bridge-startup, accounting, and request-to-OK timings so this decision can use the deployed path rather than historical estimates. |
 | **1.4 — move accounting after OK** | **Not implemented; policy-gated.** Current glibc retains an alarm-bounded blocking lock of about 10 seconds per lock. Moving accounting after OK improves response isolation but gives up the current guarantee that accounting is attempted before success is reported. |
 | **2.1 — shared cleanup epilogue** | **Implemented.** `handle_client` now has one state-aware epilogue for owned fds, child reaping, accounting, PAM session/credential teardown, `pam_end`, and password wiping. The immediate post-sudo password wipe remains in place so plaintext is not retained during bridge supervision, and intentional child fd handoffs are marked before cleanup. |
@@ -276,35 +280,52 @@ unknown descriptors.
 
 Reference: [`close_range(2)`](https://man7.org/linux/man-pages/man2/close_range.2.html).
 
-### B. Exec-status errors must fail closed
+### B. Startup-status errors must fail closed
 
-A positive pipe read reports controlled child failure and EOF reports that all
-write ends closed. A negative non-EINTR read currently falls through to the
-startup probe. A blocking anonymous-pipe read after readiness has few realistic
-non-EINTR failures, but the branch should still fail closed.
+In the original exec-status protocol, a positive pipe read reported controlled
+child failure and EOF reported that all write ends closed. A negative non-EINTR
+read fell through to the startup probe. A blocking anonymous-pipe read had few
+realistic non-EINTR failures, but the branch still needed to fail closed.
 
 The adjacent `waitpid(child, ..., WNOHANG)` probe also proceeds toward OK after
 a non-EINTR wait error. Handle both errors through the same child-kill/reap and
 PAM/fd cleanup path.
 
-**Disposition: Implemented.** Negative exec-status reads and nonblocking wait
-errors now return bridge-start errors and use the shared child/PAM/fd cleanup
-path. In that startup wait-error branch, `ECHILD` is treated as already
-non-waitable so cleanup cannot signal a reused PID.
+**Disposition: Implemented.** Negative startup-status reads and nonblocking
+wait errors return bridge-start errors and use the shared child/PAM/fd cleanup
+path. The current fd 4 transport is a bidirectional socketpair for READY/GO,
+not the original one-way exec-status pipe. In the startup wait-error branch,
+`ECHILD` is treated as already non-waitable so cleanup cannot signal a reused
+PID.
 
 ### C. Exec-status EOF is not bridge readiness
 
-CLOEXEC EOF establishes that the child crossed a successful exec boundary or
-otherwise closed the status fd. It does not prove that the Go bridge read its
-bootstrap, initialized Yamux, or remained alive after the point-in-time
-nonblocking reap. A readiness guarantee requires a bridge acknowledgement and
-is a deliberate protocol change, not a local pipe patch.
+In the original protocol, CLOEXEC EOF established that the child crossed a
+successful exec boundary or otherwise closed the status fd. It did not prove
+that the Go bridge read its bootstrap, initialized Yamux, or remained alive
+after the point-in-time nonblocking reap. A stronger startup guarantee required
+a bridge acknowledgement and a deliberate protocol change, not a local pipe
+patch.
 
-**Disposition: Deferred by design.** A correct acknowledgement requires a
-dedicated inherited status channel (or framed replacement), synchronous Go-side
-Yamux creation before ACK, timeout/EOF handling in C, and cross-language
-integration tests. The current response continues to mean successful exec
-progression, not application readiness.
+**Disposition: Implemented as a two-phase startup handoff; end-to-end
+verification remains open.** The launcher advertises the handshake in the
+bootstrap and preserves one endpoint of a bidirectional socketpair at fd 4
+across exec. The Go bridge completes initialization up to, but not including,
+Yamux creation; it then writes READY and blocks waiting for GO. A fatal error
+before READY produces a negative status plus a bounded diagnostic. After READY,
+the launcher records accounting and writes the complete authentication OK
+response before sending GO. Only after receiving valid GO may the bridge close
+fd 4 and create Yamux on fd 3.
+
+This ordering is a transport-ownership invariant: before GO, only the launcher
+may write fd 3, so eagerly emitted Yamux control bytes cannot precede, overlap,
+or corrupt the authentication response. A failed OK write never releases the
+bridge. READY therefore proves progress beyond exec and completion of pre-Yamux
+initialization, not that Yamux is already serving; a post-GO Yamux creation
+failure appears as a transport/session failure. The C and Go sides have isolated
+tests, but no test yet launches the real pair and verifies fd inheritance,
+READY/GO ordering, response integrity, and failure outcomes across the language
+boundary.
 
 ### D. Final child-wait errors can report false success
 
@@ -436,15 +457,19 @@ backend/frontend tests; they are not safe source-local deletions.
    suite now covers identity validation, the PAM conversation adapter, bridge
    policy, bootstrap encoding, child timeout/reaping, and controlled child
    startup reporting.
-2. Define an application-readiness acknowledgement only with a coordinated C/Go
-   protocol and integration tests; keep exec progression distinct meanwhile.
+2. Add cross-language coverage for the implemented READY/GO startup handoff:
+   launch the real C/Go pair and exercise READY, GO, negative status, EOF,
+   timeout, inherited-fd behavior, and authentication-response byte ordering.
+   Keep this distinct from the isolated C and Go tests that already cover their
+   respective protocol logic.
 3. Follow the end-to-end performance work above before adding concurrent setup
    or accounting reordering. Successful launches with complete monotonic clock
    reads emit an `auth timing` journal event with microsecond-valued
    `LINUXIO_AUTH_*_US` fields. `LINUXIO_AUTH_BRIDGE_START_US` covers successful
-   PAM session-open return through exec-ready; the aggregate
+   PAM session-open return through the bridge's pre-Yamux READY acknowledgement;
+   it does not include post-GO Yamux creation. The aggregate
    `LINUXIO_AUTH_TOTAL_US` field runs from request handling start through the
-   completed OK write; query events with
+   successful GO release after the completed OK write; query events with
    `journalctl SYSLOG_IDENTIFIER=linuxio-auth MESSAGE='auth timing' -o json`.
    Instrumentation performs monotonic reads before the response and emits the
    journal event afterward. The pidfd wait removes fixed polling but does not
@@ -461,9 +486,10 @@ policy, binary bootstrap bytes, timing conversion, bounded response writes on a
 shared nonblocking socket, controlled child-failure status, exit-status mapping,
 timeout termination, and reaping. It does not exercise a real PAM stack
 (including session-open cleanup status), sudoers policy, privileged descriptor
-setup, `execveat`, accounting, descriptor-failure injection, or the
-bridge-readiness race. Those runtime claims remain unverified until dedicated
-host integration coverage exists.
+setup, `execveat`, accounting, descriptor-failure injection, or a real
+cross-language READY/GO exchange with authentication-response ordering. Those
+runtime claims remain unverified until dedicated host integration coverage
+exists.
 
 ---
 
@@ -487,7 +513,7 @@ connection that hands a socket to a bridge process.
 | Process hardening | LinuxIO already ahead — `cockpit-session` has no prctl, no rlimits, no seccomp, and its unit carries zero sandboxing directives |
 | Credential refresh after session open | Gap (fixed, see below) — Cockpit does `ESTABLISH → open_session → REINITIALIZE_CRED` (session.c:339–353) |
 | Child environment | Partial gap — Cockpit's child env is `pam_getenvlist()` wholesale; LinuxIO synthesizes an allowlist and never consults PAM env (open item below) |
-| Readiness signal | Real gap — Cockpit gates "session usable" on the bridge's first in-band `init` frame, never on exec (spec proposed below) |
+| Readiness signal | Partial parity through an implemented startup handoff — LinuxIO's bridge reports pre-Yamux READY, waits for the launcher's GO, and only then creates Yamux. Unlike Cockpit's first in-band `init` frame, READY does not prove the transport is already serving. Real cross-language integration coverage remains open. |
 
 Cockpit behaviors deliberately **not** adopted: exit-without-`pam_end` failure
 handling; wholesale `env = pam_getenvlist()` (too wide for a root bridge);
@@ -499,38 +525,100 @@ different product model, not a hardening fix).
 
 ## Disposition updates
 
-- **§1.3 sudo/setup overlap — closed: not worth it, reopen only with data.**
-  The deployed journal holds **zero** `auth timing` events because
-  `/usr/local/bin/linuxio-auth` (installed Aug 3) predates commit `7f10bb26`
-  that added the instrumentation (`strings` on the binary shows no
-  `LINUXIO_AUTH` markers; journal retention reaches Jun 23, so absence is not
-  rotation). Login volume is ~1.2/day and the parallelizable segment is
-  `min(sudo, session-setup)` where session-setup is likely single-digit ms.
-  Reopen only if, after deploying the instrumented binary and ≥30 logins,
-  `LINUXIO_AUTH_SUDO_US` p50 exceeds ~200 ms with session-setup comparably large.
+- **§1.3 sudo/setup overlap — measurement-gated; do not reopen without data.**
+  The instrumented helper is deployed, but only the single cold-boot sample
+  below has been recorded. Accumulate at least 30 comparable successful logins
+  before changing the disposition; reopen only if `LINUXIO_AUTH_SUDO_US` p50
+  exceeds ~200 ms with session setup comparably large.
 - **§1.4 accounting order — recommendation: keep accounting before OK**
   *(decision requires maintainer ratification)*. Cockpit enforces the same
   invariant (records exist before ws learns of success) and places accounting
-  *earlier* than LinuxIO (before bridge spawn); LinuxIO's placement after
-  exec-confirmation is strictly better — no `USER_PROCESS` record for a login
-  whose bridge failed. Tradeoff of keeping: an unmeasured, structurally
-  sub-millisecond write cost per login buys the guarantee that every
-  reported-successful login is visible to `who`/`last`. Delegating to
-  pam_lastlog stays rejected (module being removed from modern distros).
-- **Readiness ACK — proposed spec** *(decision required; crosses C/Go)*.
-  Collapse readiness onto the existing exec-status pipe — one fd, three
-  outcomes: (1) stop re-asserting CLOEXEC on the child's status fd so it
-  survives exec into the Go bridge, advertised via bootstrap; (2) pre-exec
-  failure unchanged — `0x01` + diagnostic, `_exit(127)`; (3) the bridge writes
-  one byte `0x02` after bootstrap parse succeeds **and** Yamux is accepting on
-  fd 3, then closes the fd — or `0x03` + short UTF-8 message on pre-serve fatal
-  error (Cockpit's negative-ACK `init`+`problem` analog); (4) the launcher
-  polls with a single absolute deadline (10 s, env-overridable, clamped):
-  `0x02` → accounting → OK; `0x03` → typed error with the bridge's message; EOF
-  with no byte → died-during-startup error; timeout → SIGKILL + reap. Wire
-  protocol to the webserver is unchanged. This matches Cockpit's load-bearing
-  principle — readiness is bytes the child writes after it is actually serving,
-  and "dead before ready" is EOF on the watched object.
+  *earlier* than LinuxIO (before bridge spawn). LinuxIO records after pre-Yamux
+  READY, avoiding `USER_PROCESS` records for exec and pre-READY failures, but a
+  post-GO Yamux creation failure can still leave a short-lived record. Tradeoff
+  of keeping: a structurally potentially blocking write buys the guarantee that
+  every reported-successful login is visible to `who`/`last`. The single 0.2 ms
+  observation below is preliminary and does not characterize lock contention or
+  tail latency. Delegating to pam_lastlog stays rejected (module being removed
+  from modern distros).
+- **READY/GO startup handoff — implemented; cross-language verification remains
+  open.** The child inherits one endpoint of a bidirectional startup socketpair
+  at fd 4, as advertised by the bootstrap. Pre-exec failure is `0x01` plus a
+  diagnostic followed by `_exit(127)`. After bootstrap parsing and non-Yamux
+  initialization, the bridge writes READY (`0x02`) and blocks reading fd 4. A
+  fatal pre-READY error is `0x03` plus a short message (Cockpit's negative-ACK
+  `init`+`problem` analog). Authentication and startup
+  work share a 20-second absolute deadline measured from request receipt,
+  targeting a 10-second response margin inside the webserver's 30-second read
+  deadline. The configured bridge-ready phase defaults to 10 seconds, is
+  clamped to 1–20 seconds, and is clipped to the remaining request budget; the
+  sudo child wait is clipped to the same budget. The launcher does not interrupt
+  synchronous PAM calls, so expiry during PAM is detected after the call
+  returns and prevents bridge launch. Startup outcomes are: READY → accounting
+  → complete OK → GO (`0x04`) → Yamux creation; `0x03` → typed error with the
+  bridge's message; EOF with no byte → died-during-startup error; timeout →
+  SIGKILL + reap. EOF or a byte other than GO while the bridge waits also fails
+  closed.
+
+  The ordering prevents protocol corruption on shared fd 3: the bridge cannot
+  create Yamux, and therefore cannot emit Yamux control bytes, until the launcher
+  has completed the authentication response and transferred ownership with GO.
+  If the OK write fails, no GO is sent and the bridge is terminated. READY is
+  consequently a pre-Yamux rendezvous, not proof that the bridge is already
+  serving. The webserver auth wire protocol remains unchanged.
+
+### Preliminary deployed measurement (2026-08-05 15:25, instrumented helper, cold boot)
+
+One sample, first login after fresh install + reboot: total request-to-OK
+**30.4 ms** — sudo probe 16.9 ms, PAM 11.4 ms, bridge start 1.2 ms, session
+setup 0.8 ms, accounting **0.2 ms** (phases sum to total within 0.1 ms).
+Within this observation, the §1.3 overlap ceiling was
+`min(sudo, session-setup)` = **0.8 ms**, sudo was ~12× under the 200 ms reopen
+threshold, and accounting was 0.2 ms (0.6% of helper time). One uncontended
+sample neither closes the ≥30-login measurement gate nor characterizes
+accounting tail latency. It confirms that fixed 100–200 ms polling was absent
+from this run, but it is not a matched validation of the §1.1/§1.2 latency
+improvement.
+
+The same trace places request start to WebSocket connection at about **616 ms**,
+making the helper about **5%** of that observed path. The remainder occurred
+after the helper in this trace; attributing it among the release check,
+capability RPC, configuration gate, and other work still requires stage-level
+measurements across enough comparable logins.
+
+### Post-fix login-path breakdown (2026-08-05 16:58–17:05)
+
+Two successful logins using the corrected READY/GO binaries provide the first
+post-fix smoke baseline. The earlier 16:50 invalid-response-magic failure is
+excluded. The center below is the midpoint of exactly two observations, not a
+stable median or percentile; the ≥30 comparable-login measurement gate remains
+open.
+
+| Order | Step | Observed duration | Two-sample center | Share of centered 605 ms path |
+|---:|---|---:|---:|---:|
+| 1 | PAM authentication | 8.5–9.7 ms | **9.1 ms** | 1.5% |
+| 2 | sudo policy check | 11.7–15.6 ms | **13.6 ms** | 2.2% |
+| 3 | PAM session setup | 0.73–0.75 ms | **0.74 ms** | 0.1% |
+| 4 | Bridge initialization → READY | 12.3–12.5 ms | **12.4 ms** | 2.0% |
+| 5 | Native login accounting | 0.067–0.071 ms | **0.069 ms** | <0.1% |
+| 6 | Auth response, GO, and minor launcher gaps | 0.066–0.067 ms | **0.067 ms** | <0.1% |
+|  | **C authentication helper total** | **34.7–37.2 ms** | **36.0 ms** | **5.9%** |
+| 7 | GO → Yamux started | 0.058–0.062 ms | **0.060 ms** | <0.1% |
+| 8 | Yamux started → session created | 0.014–0.266 ms | **0.140 ms** | <0.1% |
+| 9 | Session created → capability scan begins | 0.238–0.471 ms | **0.355 ms** | <0.1% |
+| 10 | Capability scan | 190.1–197.4 ms | **193.8 ms** | **32.0%** |
+| 11 | Capabilities complete → authentication succeeds | 0.341–0.534 ms | **0.438 ms** | <0.1% |
+|  | **Request → authentication succeeded** | **225.7–235.7 ms** | **230.7 ms** | **38.1% cumulative** |
+| 12 | Authentication succeeded → WebSocket connected | 371.6–377.2 ms | **374.4 ms** | **61.9%** |
+|  | **Request → WebSocket connected** | **597.3–612.9 ms** | **605.1 ms** | **100%** |
+
+The two visible bottlenecks are the authentication-success-to-WebSocket window
+(center **374.4 ms**) and the capability scan (center **193.8 ms**); together
+they account for about **94%** of the centered login path. The current journal
+can derive the aggregate capability duration from its start/end messages, but
+does not split either bottleneck into internal operations. Long-term analysis
+should add a structured `LINUXIO_CAPABILITIES_US` field and accumulate at least
+30 comparable warm-login samples, with cold starts reported separately.
 
 ## Implemented from the comparison (2026-08-05)
 
@@ -560,10 +648,9 @@ and a clean `make analyze-auth` (cppcheck, GCC analyzer, scan-build, clang-tidy)
    `MaxStartups` analog belongs in the Go login handler.
 3. **Failed-login feedback** ("N failed attempts since last success" from btmp,
    Cockpit-style) — deferred; crosses protocol + frontend, UX value only.
-4. **Operational:** reinstall the instrumented helper so `LINUXIO_AUTH_*_US`
-   data can accumulate (the §1.3/§1.4 gates depend on it). The journal also
-   shows 47 session-opens vs 24 session-closes since Jun 23 — baseline this
-   during host-integration work (item 5 below).
+4. **Measurement:** accumulate at least 30 comparable successful-login
+   `LINUXIO_AUTH_*_US` samples before revisiting the §1.3 overlap gate or using
+   accounting observations to characterize tail behavior.
 5. **Host-integration plan (refines the earlier recommendation):** tier 1,
    hermetic per-PR via `pam_wrapper` + `pam_matrix` with a checked-in test
    service file — PAM sequencing incl. session-close-exactly-once on every
@@ -573,7 +660,9 @@ and a clean `make analyze-auth` (cppcheck, GCC analyzer, scan-build, clang-tidy)
    non-executable, setuid-rejected, exits-post-exec, garbage-on-fd-3), and
    accounting record contents against tmpfile paths. Tier 2, disposable root
    host — sudoers outcome matrix (NOPASSWD / password / absent, with faillock),
-   real `who`/`last`/`lastb` assertions, the bridge-readiness race regression
-   (only meaningful once the ACK ships), and kill/cleanup ordering against the
-   journal as oracle. Cockpit itself has zero unit tests for its session C code
-   (VM tier only) — pam_wrapper is borrowed from samba/sssd practice instead.
+   real `who`/`last`/`lastb` assertions, the implemented READY/GO handoff across
+   the real C/Go process boundary, authentication-response ordering, its startup
+   race regressions, and kill/cleanup ordering against the journal as oracle.
+   Cockpit itself has zero unit tests
+   for its session C code (VM tier only) — pam_wrapper is borrowed from
+   samba/sssd practice instead.

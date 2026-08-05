@@ -187,7 +187,7 @@ static int test_bootstrap_encoding(void)
       PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
       0x01, 0x02, 0x03, 0x04,
       0xa0, 0xb0, 0xc0, 0xd0,
-      PROTO_FLAG_VERBOSE | PROTO_FLAG_PRIVILEGED,
+      PROTO_FLAG_VERBOSE | PROTO_FLAG_PRIVILEGED | PROTO_FLAG_READY_ACK,
       0, 3, 's', 'i', 'd',
       0, 4, 'u', 's', 'e', 'r',
   };
@@ -325,7 +325,7 @@ static int test_child_wait_and_timeout(void)
   CHECK(pid >= 0);
   if (pid == 0)
     _exit(23);
-  CHECK(wait_for_child_with_timeout(pid, 2) == 23);
+  CHECK(wait_for_child_with_timeout(pid, 2, 0) == 23);
 
   pid = fork();
   CHECK(pid >= 0);
@@ -334,7 +334,7 @@ static int test_child_wait_and_timeout(void)
     (void)raise(SIGTERM);
     _exit(127);
   }
-  CHECK(wait_for_child_with_timeout(pid, 2) == 128 + SIGTERM);
+  CHECK(wait_for_child_with_timeout(pid, 2, 0) == 128 + SIGTERM);
 
   pid = fork();
   CHECK(pid >= 0);
@@ -344,17 +344,136 @@ static int test_child_wait_and_timeout(void)
       pause();
   }
 
+  int64_t outer_deadline_ns;
+  CHECK(monotonic_now_ns(&outer_deadline_ns) == 0);
+  outer_deadline_ns += INT64_C(50000000);
   CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
-  CHECK(wait_for_child_with_timeout(pid, 1) == -1);
+  CHECK(wait_for_child_with_timeout(pid, 1, outer_deadline_ns) == -1);
   CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
   elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
                (int64_t)(finished.tv_nsec - started.tv_nsec);
-  CHECK(elapsed_ns >= INT64_C(750000000));
+  CHECK(elapsed_ns >= INT64_C(40000000));
   CHECK(elapsed_ns < INT64_C(10000000000));
 
   errno = 0;
   CHECK(waitpid(pid, &status, WNOHANG) == -1);
   CHECK(errno == ECHILD);
+  return 0;
+}
+
+static int test_bridge_startup_wait(void)
+{
+  char msg[PROTO_MAX_ERROR];
+  uint8_t bad = 0;
+  int rfd;
+
+  // READY byte -> success
+  const uint8_t ready_byte = PROTO_STARTUP_READY;
+  CHECK(write_pipe_bytes(&ready_byte, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_READY);
+  CHECK(close(rfd) == 0);
+
+  // Pre-exec failure byte
+  const uint8_t exec_failed = PROTO_STARTUP_EXEC_FAILED;
+  CHECK(write_pipe_bytes(&exec_failed, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_EXEC_FAILED);
+  CHECK(close(rfd) == 0);
+
+  // ERROR byte with message; control bytes must be blanked
+  const uint8_t err_frame[] = {PROTO_STARTUP_ERROR, 'b', 'o', 'o', 'm',
+                               0x1b, '!', 0x07};
+  CHECK(write_pipe_bytes(err_frame, sizeof(err_frame), &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_REPORTED_ERROR);
+  CHECK(strcmp(msg, "boom ! ") == 0);
+  CHECK(close(rfd) == 0);
+
+  // ERROR byte without message -> empty string, still an error outcome
+  const uint8_t err_only = PROTO_STARTUP_ERROR;
+  CHECK(write_pipe_bytes(&err_only, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_REPORTED_ERROR);
+  CHECK(msg[0] == '\0');
+  CHECK(close(rfd) == 0);
+
+  // ERROR message longer than the buffer is truncated, not an error
+  {
+    uint8_t big[1 + PROTO_MAX_ERROR + 64];
+    big[0] = PROTO_STARTUP_ERROR;
+    memset(big + 1, 'A', sizeof(big) - 1);
+    CHECK(write_pipe_bytes(big, sizeof(big), &rfd) == 0);
+    CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_REPORTED_ERROR);
+    CHECK(strlen(msg) == PROTO_MAX_ERROR - 1);
+    CHECK(msg[0] == 'A' && msg[PROTO_MAX_ERROR - 2] == 'A');
+    CHECK(close(rfd) == 0);
+  }
+
+  // EOF before any byte -> died/closed without ack
+  const uint8_t none[1] = {0};
+  CHECK(write_pipe_bytes(none, 0, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_EOF);
+  CHECK(close(rfd) == 0);
+
+  // Unknown status byte -> protocol error, byte reported
+  const uint8_t weird = 0x7f;
+  CHECK(write_pipe_bytes(&weird, 1, &rfd) == 0);
+  bad = 0;
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_PROTOCOL_ERROR);
+  CHECK(bad == 0x7f);
+  CHECK(close(rfd) == 0);
+
+  // No byte within the deadline -> timeout, and the wait actually blocks
+  {
+    int pipefd[2];
+    struct timespec started, finished;
+    int64_t elapsed_ns;
+
+    CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+    int64_t outer_deadline_ns;
+    CHECK(monotonic_now_ns(&outer_deadline_ns) == 0);
+    outer_deadline_ns += INT64_C(50000000);
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+    CHECK(wait_for_bridge_startup(pipefd[0], 1000, outer_deadline_ns,
+                                  msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_TIMEOUT);
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+    elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
+                 (int64_t)(finished.tv_nsec - started.tv_nsec);
+    CHECK(elapsed_ns >= INT64_C(40000000));
+    CHECK(elapsed_ns < INT64_C(10000000000));
+    CHECK(close(pipefd[0]) == 0);
+    CHECK(close(pipefd[1]) == 0);
+  }
+
+  // Invalid inputs fail closed
+  CHECK(wait_for_bridge_startup(-1, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_WAIT_ERROR);
+
+  // READY keeps the bidirectional channel open until the launcher sends GO.
+  // This barrier prevents the bridge from writing Yamux bytes before the
+  // launcher has completed the authentication response.
+  {
+    int status_channel[2];
+    uint8_t got = 0;
+
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0,
+                     status_channel) == 0);
+    CHECK(write_all(status_channel[1], &ready_byte, sizeof(ready_byte)) == 0);
+    CHECK(wait_for_bridge_startup(status_channel[0], 1000, 0,
+                                  msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_READY);
+    CHECK(release_bridge_startup(status_channel[0]) == 0);
+    CHECK(read(status_channel[1], &got, sizeof(got)) == (ssize_t)sizeof(got));
+    CHECK(got == PROTO_STARTUP_GO);
+    CHECK(close(status_channel[0]) == 0);
+    CHECK(close(status_channel[1]) == 0);
+  }
+
   return 0;
 }
 
@@ -370,6 +489,7 @@ int main(void)
       {"elapsed microseconds", test_elapsed_microseconds},
       {"socket response writes", test_socket_response_writes},
       {"child wait and timeout", test_child_wait_and_timeout},
+      {"bridge startup wait", test_bridge_startup_wait},
   };
   int failures = 0;
 

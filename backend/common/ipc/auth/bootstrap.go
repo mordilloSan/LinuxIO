@@ -23,6 +23,17 @@ const (
 	// Flags byte
 	ProtoFlagVerbose    = 0x01
 	ProtoFlagPrivileged = 0x02
+	ProtoFlagReadyAck   = 0x04
+
+	// Startup-status protocol bytes over the inherited status fd. Ready and
+	// Error travel bridge -> auth; Go travels auth -> bridge. They are used
+	// only when ProtoFlagReadyAck is set in the bootstrap.
+	ProtoStartupReady = 0x02
+	ProtoStartupError = 0x03
+	ProtoStartupGo    = 0x04
+
+	// The launcher truncates startup error messages to PROTO_MAX_ERROR-1.
+	MaxStartupErrorLen = 255
 )
 
 // Bootstrap is the configuration passed from auth daemon to bridge via stdin.
@@ -32,8 +43,11 @@ type Bootstrap struct {
 	GID        uint32
 	Verbose    bool
 	Privileged bool
-	SessionID  string
-	Username   string
+	// ReadyAck means the launcher left the startup-status fd open across
+	// exec and requires a ready/error byte before reporting login success.
+	ReadyAck  bool
+	SessionID string
+	Username  string
 }
 
 // ReadBootstrap reads a binary bootstrap from the given reader.
@@ -58,6 +72,7 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 		GID:        binary.BigEndian.Uint32(hdr[8:12]),
 		Verbose:    hdr[12]&ProtoFlagVerbose != 0,
 		Privileged: hdr[12]&ProtoFlagPrivileged != 0,
+		ReadyAck:   hdr[12]&ProtoFlagReadyAck != 0,
 	}
 
 	// Read variable-length fields
