@@ -464,3 +464,116 @@ timeout termination, and reaping. It does not exercise a real PAM stack
 setup, `execveat`, accounting, descriptor-failure injection, or the
 bridge-readiness race. Those runtime claims remain unverified until dedicated
 host integration coverage exists.
+
+---
+
+# Cockpit comparison — 2026-08-05
+
+Eight-agent comparison of the launcher against Cockpit @ `6a8c19cf`
+(2026-08-05): `src/session/` (cockpit-session), `src/ws/cockpitauth.c`, and the
+Python bridge, plus a journal extraction on the deployed host. Cockpit's
+`cockpit-session` is the closest production analogue: a PAM broker spawned per
+connection that hands a socket to a bridge process.
+
+## Where the comparison landed
+
+| Dimension | Verdict |
+|---|---|
+| PAM flags / empty passwords | LinuxIO stricter (`PAM_DISALLOW_NULL_AUTHTOK`; Cockpit passes flags 0) — keep |
+| `PAM_USER` re-fetch | Parity |
+| PAM teardown / `pam_end` status | LinuxIO strictly better — Cockpit exits without `pam_end` on setup failures and hardcodes `pam_end(PAM_SUCCESS)` on success |
+| Accounting mechanism | Parity — Cockpit writes utmp/wtmp/btmp/lastlog natively and **never** delegated to pam_lastlog in its history; native writers are the proven design |
+| Identity-string sanitization | LinuxIO stronger — Cockpit puts raw control bytes into btmp with only `strncpy` truncation |
+| Process hardening | LinuxIO already ahead — `cockpit-session` has no prctl, no rlimits, no seccomp, and its unit carries zero sandboxing directives |
+| Credential refresh after session open | Gap (fixed, see below) — Cockpit does `ESTABLISH → open_session → REINITIALIZE_CRED` (session.c:339–353) |
+| Child environment | Partial gap — Cockpit's child env is `pam_getenvlist()` wholesale; LinuxIO synthesizes an allowlist and never consults PAM env (open item below) |
+| Readiness signal | Real gap — Cockpit gates "session usable" on the bridge's first in-band `init` frame, never on exec (spec proposed below) |
+
+Cockpit behaviors deliberately **not** adopted: exit-without-`pam_end` failure
+handling; wholesale `env = pam_getenvlist()` (too wide for a root bridge);
+unvalidated strings into btmp; the `alarm(60)` self-destruct (LinuxIO already
+bounds the exchange with socket deadlines); MaxStartups logic inside the C
+helper (belongs in the webserver; the socket unit already carries
+`MaxConnections=16`); the on-demand superuser-bridge/polkit architecture (a
+different product model, not a hardening fix).
+
+## Disposition updates
+
+- **§1.3 sudo/setup overlap — closed: not worth it, reopen only with data.**
+  The deployed journal holds **zero** `auth timing` events because
+  `/usr/local/bin/linuxio-auth` (installed Aug 3) predates commit `7f10bb26`
+  that added the instrumentation (`strings` on the binary shows no
+  `LINUXIO_AUTH` markers; journal retention reaches Jun 23, so absence is not
+  rotation). Login volume is ~1.2/day and the parallelizable segment is
+  `min(sudo, session-setup)` where session-setup is likely single-digit ms.
+  Reopen only if, after deploying the instrumented binary and ≥30 logins,
+  `LINUXIO_AUTH_SUDO_US` p50 exceeds ~200 ms with session-setup comparably large.
+- **§1.4 accounting order — recommendation: keep accounting before OK**
+  *(decision requires maintainer ratification)*. Cockpit enforces the same
+  invariant (records exist before ws learns of success) and places accounting
+  *earlier* than LinuxIO (before bridge spawn); LinuxIO's placement after
+  exec-confirmation is strictly better — no `USER_PROCESS` record for a login
+  whose bridge failed. Tradeoff of keeping: an unmeasured, structurally
+  sub-millisecond write cost per login buys the guarantee that every
+  reported-successful login is visible to `who`/`last`. Delegating to
+  pam_lastlog stays rejected (module being removed from modern distros).
+- **Readiness ACK — proposed spec** *(decision required; crosses C/Go)*.
+  Collapse readiness onto the existing exec-status pipe — one fd, three
+  outcomes: (1) stop re-asserting CLOEXEC on the child's status fd so it
+  survives exec into the Go bridge, advertised via bootstrap; (2) pre-exec
+  failure unchanged — `0x01` + diagnostic, `_exit(127)`; (3) the bridge writes
+  one byte `0x02` after bootstrap parse succeeds **and** Yamux is accepting on
+  fd 3, then closes the fd — or `0x03` + short UTF-8 message on pre-serve fatal
+  error (Cockpit's negative-ACK `init`+`problem` analog); (4) the launcher
+  polls with a single absolute deadline (10 s, env-overridable, clamped):
+  `0x02` → accounting → OK; `0x03` → typed error with the bridge's message; EOF
+  with no byte → died-during-startup error; timeout → SIGKILL + reap. Wire
+  protocol to the webserver is unchanged. This matches Cockpit's load-bearing
+  principle — readiness is bytes the child writes after it is actually serving,
+  and "dead before ready" is EOF on the watched object.
+
+## Implemented from the comparison (2026-08-05)
+
+- `pam_setcred(PAM_REINITIALIZE_CRED)` after `pam_open_session`, failure fatal
+  with the real rc propagated to `pam_end` — sshd/cockpit parity for
+  Kerberos/AFS-style modules.
+- `XDG_RUNTIME_DIR` is now advertised only if `/run/user/<uid>` exists and is a
+  directory (pam_systemd creates it during session open; previously the path
+  was synthesized blind).
+- Removed the dead `PR_SET_NO_NEW_PRIVS` fallback define (never wired; the only
+  prctl call is `PR_SET_DUMPABLE`). Wiring NNP on the bridge child remains a
+  product question — it must never precede the sudo probe, and could break
+  future setuid-helper use by the unprivileged bridge.
+
+Verified with `make build-auth` (also `WERROR=1`), `make test-auth` (all pass),
+and a clean `make analyze-auth` (cppcheck, GCC analyzer, scan-build, clang-tidy).
+
+## New open items from the comparison
+
+1. **Allowlisted PAM environment merge** (S–M, source-local): consult
+   `pam_getenvlist()` after session open and merge an allowlist
+   (`XDG_RUNTIME_DIR`, `KRB5CCNAME`, locale vars) instead of today's fully
+   synthetic env — but not Cockpit's wholesale adoption.
+2. **Per-source throttling of unauthenticated auth attempts** (webserver
+   layer): the socket unit's `MaxConnections=16` caps concurrent instances, but
+   nothing rate-limits repeated failed logins per client; Cockpit's
+   `MaxStartups` analog belongs in the Go login handler.
+3. **Failed-login feedback** ("N failed attempts since last success" from btmp,
+   Cockpit-style) — deferred; crosses protocol + frontend, UX value only.
+4. **Operational:** reinstall the instrumented helper so `LINUXIO_AUTH_*_US`
+   data can accumulate (the §1.3/§1.4 gates depend on it). The journal also
+   shows 47 session-opens vs 24 session-closes since Jun 23 — baseline this
+   during host-integration work (item 5 below).
+5. **Host-integration plan (refines the earlier recommendation):** tier 1,
+   hermetic per-PR via `pam_wrapper` + `pam_matrix` with a checked-in test
+   service file — PAM sequencing incl. session-close-exactly-once on every
+   post-open failure path, `PAM_USER` canonicalization via an aliasing module,
+   fd-layout/privilege-drop assertions from a stub bridge that dumps
+   `/proc/self/fd` + `getresuid`, an execveat failure matrix (missing,
+   non-executable, setuid-rejected, exits-post-exec, garbage-on-fd-3), and
+   accounting record contents against tmpfile paths. Tier 2, disposable root
+   host — sudoers outcome matrix (NOPASSWD / password / absent, with faillock),
+   real `who`/`last`/`lastb` assertions, the bridge-readiness race regression
+   (only meaningful once the ACK ships), and kill/cleanup ordering against the
+   journal as oracle. Cockpit itself has zero unit tests for its session C code
+   (VM tier only) — pam_wrapper is borrowed from samba/sssd practice instead.

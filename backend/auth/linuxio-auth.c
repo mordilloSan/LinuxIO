@@ -32,10 +32,6 @@
 // Safe argv shim for exec* (drops const only at the API boundary)
 #define ARGV_UNCONST(a) \
   ((union { const char *const *in; char *const *out; }){.in = (a)}.out)
-#ifndef PR_SET_NO_NEW_PRIVS
-#define PR_SET_NO_NEW_PRIVS 38
-#endif
-
 #include <systemd/sd-journal.h>
 
 // Protocol constants
@@ -1791,7 +1787,11 @@ static pid_t spawn_bridge_process(
       setenv("LOGNAME", auth_user->name, 1);
       char xdg[64];
       safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)auth_user->uid);
-      setenv("XDG_RUNTIME_DIR", xdg, 1);
+      // pam_systemd creates this directory during pam_open_session; if it did
+      // not run (or logind is absent), don't advertise a path that doesn't exist.
+      struct stat xdg_st;
+      if (stat(xdg, &xdg_st) == 0 && S_ISDIR(xdg_st.st_mode))
+        setenv("XDG_RUNTIME_DIR", xdg, 1);
       if (chdir(auth_user->dir) != 0)
         child_die(child_status_fd, "chdir to home directory");
     }
@@ -2100,6 +2100,17 @@ static int handle_client(int input_fd, int output_fd)
     goto out;
   }
   session_open = 1;
+
+  // Kerberos/AFS-style modules expect a credential refresh after the session
+  // hooks run; sshd and cockpit-session both do this, and both treat failure
+  // as fatal to the login.
+  rc = pam_setcred(pamh, PAM_REINITIALIZE_CRED);
+  if (rc != PAM_SUCCESS)
+  {
+    send_error_response(output_fd, classify_pam_result(rc), pam_strerror(pamh, rc));
+    pam_end_status = rc;
+    goto out;
+  }
   (void)monotonic_now_ns(&timing.session_opened_ns);
   timing.bridge_start_started_ns = timing.session_opened_ns;
 
