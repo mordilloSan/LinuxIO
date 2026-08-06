@@ -1146,6 +1146,54 @@ static int test_ok_write_failure_after_ready(void)
 
 // -------- harness --------
 
+// The negative-path scenarios legitimately make the launcher, the stub
+// bridge, sudo, and pam_wrapper write errors to stderr. That noise is
+// expected, so each scenario runs with stderr captured to a file that is
+// echoed back only when the scenario fails.
+#define STDERR_CAPTURE_FILE "stderr-capture"
+
+static int g_terminal_stderr = -1;
+
+static int begin_stderr_capture(void)
+{
+  int fd;
+
+  if (g_terminal_stderr < 0)
+  {
+    g_terminal_stderr = dup(STDERR_FILENO);
+    if (g_terminal_stderr < 0)
+      return -1;
+  }
+  fd = open(STDERR_CAPTURE_FILE, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  if (fd < 0)
+    return -1;
+  // dup2 clears CLOEXEC on fd 2, so spawned children inherit the capture.
+  if (dup2(fd, STDERR_FILENO) < 0)
+  {
+    close(fd);
+    return -1;
+  }
+  close(fd);
+  return 0;
+}
+
+static void end_stderr_capture(void)
+{
+  (void)fflush(stderr);
+  if (g_terminal_stderr >= 0)
+    (void)dup2(g_terminal_stderr, STDERR_FILENO);
+}
+
+static void dump_captured_stderr(void)
+{
+  static char buf[65536];
+  size_t len = 0;
+
+  if (t_read_file(STDERR_CAPTURE_FILE, buf, sizeof(buf), &len) != 0 || len == 0)
+    return;
+  fprintf(stderr, "--- captured stderr ---\n%s---\n", buf);
+}
+
 static int setup_workspace(void)
 {
   char content[4096];
@@ -1247,8 +1295,14 @@ int main(void)
 
   for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++)
   {
+    int captured = begin_stderr_capture() == 0;
     int result = tests[i].run();
+    if (captured)
+      end_stderr_capture();
     printf("   %s %s\n", result == 0 ? "✓" : "✗", tests[i].name);
+    (void)fflush(stdout);
+    if (result != 0 && captured)
+      dump_captured_stderr();
     failures += result != 0;
   }
 
