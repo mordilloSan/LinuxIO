@@ -143,7 +143,11 @@ describe("useFileBrowserEditorActions", () => {
       const [path, bytes, options] = apiMocks.uploadContent.mock.calls[0];
       expect(path).toBe("/srv/note.md");
       expect(bytes).toHaveLength(5);
-      expect(options).toEqual({ chunkSize: 1024 * 1024, overwrite: true });
+      expect(options).toEqual({
+        chunkSize: 1024 * 1024,
+        onJobStart: expect.any(Function),
+        overwrite: true,
+      });
       expect(toastMocks.success).toHaveBeenCalledWith(
         "File saved successfully!",
         expect.anything(),

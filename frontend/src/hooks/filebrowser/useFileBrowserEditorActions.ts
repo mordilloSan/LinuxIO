@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import { linuxio, uploadContent } from "@/api";
+import { markTerminalFeedbackEmitted } from "@/hooks/backgroundJobs/terminalJobFeedback";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 
@@ -29,7 +30,13 @@ export const useFileBrowserEditorActions = ({
     async (path: string, contentBytes: Uint8Array) => {
       // Saving replaces the file being edited by design; uploads otherwise
       // never overwrite unless told to.
-      await uploadContent(path, contentBytes, { chunkSize, overwrite: true });
+      await uploadContent(path, contentBytes, {
+        chunkSize,
+        // handleSaveContent owns the save outcome (toasts), so the global
+        // background-jobs watcher must not also report this job's failure.
+        onJobStart: (job) => markTerminalFeedbackEmitted(job.id),
+        overwrite: true,
+      });
     },
     [chunkSize],
   );

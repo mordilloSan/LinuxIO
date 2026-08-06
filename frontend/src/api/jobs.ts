@@ -61,7 +61,11 @@ async function pollJobUntilTerminal(jobId: string): Promise<JobSnapshot> {
   }
 }
 
-function terminalSnapshotOrThrow(snapshot: JobSnapshot): JobSnapshot {
+/**
+ * Return a completed snapshot, or throw the job's structured error
+ * (message + code) for a failed/canceled one.
+ */
+export function terminalSnapshotOrThrow(snapshot: JobSnapshot): JobSnapshot {
   if (snapshot.state === "completed") return snapshot;
   throw new LinuxIOError(
     snapshot.error?.message ?? "Job failed",

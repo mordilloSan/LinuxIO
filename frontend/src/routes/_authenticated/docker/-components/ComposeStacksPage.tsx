@@ -25,6 +25,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import { markTerminalFeedbackEmitted } from "@/hooks/backgroundJobs/terminalJobFeedback";
 import { useConfig } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -288,6 +289,10 @@ const ComposeStacksPage = ({
       const contentBytes = encoder.encode(content);
       await uploadContent(filePath, contentBytes, {
         chunkSize,
+        // handleSave owns the outcome (overwrite dialog on 409, toasts
+        // otherwise), so the global background-jobs watcher must not also
+        // report this job's failure.
+        onJobStart: (job) => markTerminalFeedbackEmitted(job.id),
         overwrite: override || undefined,
       });
 
