@@ -168,23 +168,62 @@ static void journal_error_fieldsf(const struct journal_field *fields, size_t fie
 }
 
 // -------- exact I/O helpers --------
-static int read_all(int fd, void *buf, size_t len)
+static int deadline_remaining_ns(int64_t deadline_ns, int64_t *remaining_ns);
+
+// Read exactly len bytes without allowing an individual read to extend past
+// the request's absolute deadline. The caller supplies a positive monotonic
+// deadline; ETIMEDOUT is returned when it expires.
+static int read_all_until(int fd, void *buf, size_t len, int64_t deadline_ns)
 {
+  const int64_t ns_per_second = INT64_C(1000000000);
   unsigned char *p = (unsigned char *)buf;
+
   while (len > 0)
   {
-    ssize_t n = read(fd, p, len);
-    if (n < 0)
+    int64_t remaining_ns;
+    int deadline_state = deadline_remaining_ns(deadline_ns, &remaining_ns);
+    if (deadline_state <= 0)
+    {
+      errno = deadline_state == 0 ? ETIMEDOUT : EIO;
+      return -1;
+    }
+
+    struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
+    struct timespec poll_timeout = {
+        .tv_sec = (time_t)(remaining_ns / ns_per_second),
+        .tv_nsec = (long)(remaining_ns % ns_per_second)};
+    int ready = ppoll(&pfd, 1, &poll_timeout, NULL);
+    if (ready < 0)
     {
       if (errno == EINTR)
         continue;
       return -1;
     }
+    if (ready == 0)
+    {
+      errno = ETIMEDOUT;
+      return -1;
+    }
+    if (pfd.revents & POLLNVAL)
+    {
+      errno = EBADF;
+      return -1;
+    }
+
+    ssize_t n = read(fd, p, len);
+    if (n > 0)
+    {
+      p += (size_t)n;
+      len -= (size_t)n;
+      continue;
+    }
     if (n == 0)
       return -1; // EOF
-    p += (size_t)n;
-    len -= (size_t)n;
+    if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+      continue;
+    return -1;
   }
+
   return 0;
 }
 
@@ -240,25 +279,24 @@ static uint16_t read_u16_be(const uint8_t *buf)
 
 // Read a length-prefixed string from fd into buf (max bufsz-1 chars + null).
 // Returns 0 on success, -1 on error (oversized fields and embedded NULs are rejected).
-static int read_lenstr(int fd, char *buf, size_t bufsz)
+static int read_lenstr_until(int fd, char *buf, size_t bufsz, int64_t deadline_ns)
 {
   if (!buf || bufsz == 0)
     return -1;
   buf[0] = '\0';
 
   uint8_t lenbuf[2];
-  if (read_all(fd, lenbuf, 2) != 0)
+  if (read_all_until(fd, lenbuf, sizeof(lenbuf), deadline_ns) != 0)
     return -1;
 
   uint16_t len = read_u16_be(lenbuf);
   if (len == 0)
     return 0;
 
-  // Reject oversized input to avoid truncation and protocol ambiguity.
   if (len >= bufsz)
     return -1;
 
-  if (read_all(fd, buf, len) != 0 || memchr(buf, '\0', len) != NULL)
+  if (read_all_until(fd, buf, len, deadline_ns) != 0 || memchr(buf, '\0', len) != NULL)
   {
     secure_bzero(buf, bufsz);
     return -1;
@@ -1218,15 +1256,26 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
   int64_t deadline_ns;
   int pidfd = -1;
   int status = 0;
+  int failure_errno = EIO;
 
-  if (pid <= 0 || timeout_sec <= 0 ||
-      bounded_deadline_ms(timeout_sec * 1000, request_deadline_ns, &deadline_ns) != 0)
+  if (pid <= 0 || timeout_sec <= 0)
+  {
+    failure_errno = EINVAL;
     goto fail;
+  }
+  if (bounded_deadline_ms(timeout_sec * 1000, request_deadline_ns, &deadline_ns) != 0)
+  {
+    failure_errno = errno != 0 ? errno : EIO;
+    goto fail;
+  }
 
 #ifdef SYS_pidfd_open
   pidfd = (int)syscall(SYS_pidfd_open, pid, 0);
   if (pidfd < 0 && errno != ENOSYS)
+  {
+    failure_errno = errno;
     goto fail;
+  }
 #endif
 
   for (;;)
@@ -1234,9 +1283,15 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
     int64_t remaining_ns;
     int deadline_state = deadline_remaining_ns(deadline_ns, &remaining_ns);
     if (deadline_state < 0)
+    {
+      failure_errno = EIO;
       goto fail;
+    }
     if (deadline_state == 0)
+    {
+      failure_errno = ETIMEDOUT;
       break;
+    }
 
     if (pidfd >= 0)
     {
@@ -1253,17 +1308,27 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
       {
         if (errno == EINTR)
           continue;
+        failure_errno = errno;
         goto fail;
       }
       if (poll_result == 0)
+      {
+        failure_errno = ETIMEDOUT;
         break;
+      }
       if ((pfd.revents & POLLIN) == 0)
+      {
+        failure_errno = EIO;
         goto fail;
+      }
 
       // Once ppoll reports readiness within its exact remaining timeout,
       // prefer the child's real status even if this parent resumes later.
       if (waitpid_nointr(pid, &status, 0) != pid)
+      {
+        failure_errno = errno;
         goto fail;
+      }
       close(pidfd);
       return child_status_code(status);
     }
@@ -1273,7 +1338,10 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
       if (waited == pid)
         return child_status_code(status);
       if (waited < 0)
+      {
+        failure_errno = errno;
         goto fail;
+      }
     }
 
     {
@@ -1283,7 +1351,10 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
           .tv_sec = (time_t)(sleep_ns / ns_per_second),
           .tv_nsec = (long)(sleep_ns % ns_per_second)};
       if (nanosleep(&sleep_time, NULL) != 0 && errno != EINTR)
+      {
+        failure_errno = errno;
         goto fail;
+      }
     }
   }
 
@@ -1298,13 +1369,17 @@ static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
       return child_status_code(status);
     }
     if (waited < 0)
+    {
+      failure_errno = errno;
       goto fail;
+    }
   }
 
 fail:
   if (pidfd >= 0)
     close(pidfd);
   terminate_and_reap_child(pid, SIGKILL);
+  errno = failure_errno;
   return -1;
 }
 
@@ -1373,7 +1448,18 @@ static int user_can_run_bridge_as_root(const char *canonical_username,
   if (build_sudo_policy_argv(canonical_username, argv_list,
                              sizeof(argv_list) / sizeof(argv_list[0])) != 0)
     return 0;
-  return run_sudo_policy_query(argv_list, timeout_sec, request_deadline_ns) == 0;
+  int rc = run_sudo_policy_query(argv_list, timeout_sec, request_deadline_ns);
+  if (rc < 0)
+  {
+    journal_errorf("sudo policy probe infrastructure failure: %m");
+    return 0;
+  }
+  if (rc == 127)
+  {
+    journal_errorf("sudo policy probe failed to execute sudo");
+    return 0;
+  }
+  return rc == 0;
 }
 
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
@@ -1627,6 +1713,26 @@ static int check_peer_creds(int fd)
 // Single-shot mode - socket-activated worker
 // ============================================================================
 
+static int replace_stderr_with_devnull(void)
+{
+  close(STDERR_FILENO);
+  int devnull = open("/dev/null", O_WRONLY);
+  if (devnull < 0)
+    return -1;
+  if (devnull != STDERR_FILENO)
+  {
+    if (dup2(devnull, STDERR_FILENO) < 0)
+    {
+      int saved_errno = errno;
+      close(devnull);
+      errno = saved_errno;
+      return -1;
+    }
+    close(devnull);
+  }
+  return 0;
+}
+
 // Send one binary response without depending on socket-level blocking mode.
 // Success format:
 //   [magic:4][status:1][mode:1][result:1][reserved:1][uid:4][gid:4][len:2][username]
@@ -1680,8 +1786,9 @@ static int send_response(int fd, uint8_t status, uint8_t mode, uint8_t result_co
     return socket_write_lenstr_until(fd, username, deadline_ns);
   }
 
-  // Write error string if present
-  if (status == PROTO_STATUS_ERROR && error)
+  // Error responses always carry a length prefix; a NULL error is encoded as
+  // an empty string so the peer can consume the complete frame.
+  if (status == PROTO_STATUS_ERROR)
     return socket_write_lenstr_until(fd, error, deadline_ns);
 
   return 0;
@@ -1762,8 +1869,8 @@ static pid_t spawn_bridge_process(
   int child_status_fd = startup_status_fd;
 
   // Preserve a client socket occupying stdin/stdout/stderr before those fixed
-  // descriptors are rewritten. The parked copy must survive exec until dup2
-  // installs it at CLIENT_CONN_FD.
+  // descriptors are rewritten. The parked copy only needs to survive the
+  // descriptor rearrangement until dup2 installs it at CLIENT_CONN_FD.
   if (orig_client >= 0 && orig_client < CLIENT_CONN_FD)
   {
     int saved_client = fcntl(orig_client, F_DUPFD, BRIDGE_FD + 1);
@@ -1772,17 +1879,9 @@ static pid_t spawn_bridge_process(
 
     if (orig_client == STDERR_FILENO)
     {
-      int devnull;
-      close(STDERR_FILENO);
-      devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
-      if (devnull < 0)
+      // This descriptor becomes stderr and must remain open across exec.
+      if (replace_stderr_with_devnull() != 0)
         child_die(child_status_fd, "replace client stderr");
-      if (devnull != STDERR_FILENO)
-      {
-        if (dup2(devnull, STDERR_FILENO) < 0)
-          child_die(child_status_fd, "dup2 replacement stderr");
-        close(devnull);
-      }
     }
 
     orig_client = saved_client;
@@ -2029,7 +2128,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Read binary request header
   uint8_t header[PROTO_AUTH_REQ_HEADER_SIZE];
-  if (read_all(input_fd, header, PROTO_AUTH_REQ_HEADER_SIZE) != 0)
+  if (read_all_until(input_fd, header, PROTO_AUTH_REQ_HEADER_SIZE, request_deadline_ns) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request header");
     return 1;
@@ -2066,10 +2165,10 @@ static int handle_client(int input_fd, int output_fd)
   pid_t child = -1;
   pam_handle_t *pamh = NULL;
 
-  if (read_lenstr(input_fd, user, sizeof(user)) != 0 ||
-      read_lenstr(input_fd, password, sizeof(password)) != 0 ||
-      read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
-      read_lenstr(input_fd, remote_host, sizeof(remote_host)) != 0)
+  if (read_lenstr_until(input_fd, user, sizeof(user), request_deadline_ns) != 0 ||
+      read_lenstr_until(input_fd, password, sizeof(password), request_deadline_ns) != 0 ||
+      read_lenstr_until(input_fd, session_id, sizeof(session_id), request_deadline_ns) != 0 ||
+      read_lenstr_until(input_fd, remote_host, sizeof(remote_host), request_deadline_ns) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BAD_REQUEST, "failed to read request fields");
     goto out;

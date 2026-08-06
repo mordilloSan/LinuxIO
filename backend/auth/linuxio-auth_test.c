@@ -91,25 +91,90 @@ static int test_identity_validation(void)
 
 static int test_lenstr_rejects_ambiguous_input(void)
 {
+  const uint8_t valid[] = {0, 3, 'a', 'b', 'c'};
   const uint8_t embedded_nul[] = {0, 3, 'a', 0, 'b'};
   const uint8_t truncated[] = {0, 4, 'a', 'b'};
   char buf[8];
   int fd = -1;
+  int64_t deadline_ns;
+
+  CHECK(write_pipe_bytes(valid, sizeof(valid), &fd) == 0);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == 0);
+  CHECK(strcmp(buf, "abc") == 0);
+  CHECK(close(fd) == 0);
 
   memset(buf, 'x', sizeof(buf));
   CHECK(write_pipe_bytes(embedded_nul, sizeof(embedded_nul), &fd) == 0);
-  CHECK(read_lenstr(fd, buf, sizeof(buf)) == -1);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == -1);
   CHECK(close(fd) == 0);
   for (size_t i = 0; i < sizeof(buf); i++)
     CHECK(buf[i] == '\0');
 
   memset(buf, 'x', sizeof(buf));
   CHECK(write_pipe_bytes(truncated, sizeof(truncated), &fd) == 0);
-  CHECK(read_lenstr(fd, buf, sizeof(buf)) == -1);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == -1);
   CHECK(close(fd) == 0);
   for (size_t i = 0; i < sizeof(buf); i++)
     CHECK(buf[i] == '\0');
 
+  return 0;
+}
+
+static int test_lenstr_honors_absolute_deadline(void)
+{
+  const uint8_t len_only[] = {0, 4};
+  char buf[8];
+  int pipefd[2];
+  int64_t deadline_ns;
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  CHECK(write(pipefd[1], len_only, sizeof(len_only)) == (ssize_t)sizeof(len_only));
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(50000000);
+  errno = 0;
+  CHECK(read_lenstr_until(pipefd[0], buf, sizeof(buf), deadline_ns) == -1);
+  CHECK(errno == ETIMEDOUT);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(close(pipefd[1]) == 0);
+  return 0;
+}
+
+static int test_stderr_parking_clears_cloexec(void)
+{
+  int pipefd[2];
+  int status = 0;
+  int flags = -1;
+  uint8_t extra = 0;
+  pid_t pid;
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    close(pipefd[0]);
+    if (replace_stderr_with_devnull() != 0)
+      _exit(1);
+    flags = fcntl(STDERR_FILENO, F_GETFD);
+    (void)write_all(pipefd[1], &flags, sizeof(flags));
+    close(pipefd[1]);
+    _exit(0);
+  }
+
+  CHECK(close(pipefd[1]) == 0);
+  CHECK(read(pipefd[0], &flags, sizeof(flags)) == (ssize_t)sizeof(flags));
+  CHECK(read(pipefd[0], &extra, sizeof(extra)) == 0);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(waitpid_nointr(pid, &status, 0) == pid);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  CHECK(flags >= 0);
+  CHECK((flags & FD_CLOEXEC) == 0);
   return 0;
 }
 
@@ -316,6 +381,22 @@ static int test_socket_response_writes(void)
   CHECK(actual_len == sizeof(expected));
   CHECK(memcmp(actual, expected, sizeof(expected)) == 0);
 
+  // Error frames always include the length prefix, including a NULL message.
+  {
+    const uint8_t expected_error[] = {
+        PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
+        PROTO_STATUS_ERROR, 0, PROTO_RESULT_INTERNAL_ERROR, 0, 0, 0};
+
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) == 0);
+    CHECK(send_response(sockets[0], PROTO_STATUS_ERROR, 0,
+                        PROTO_RESULT_INTERNAL_ERROR, NULL, NULL, 0, 0) == 0);
+    CHECK(close(sockets[0]) == 0);
+    CHECK(read_pipe_to_end(sockets[1], actual, sizeof(actual), &actual_len) == 0);
+    CHECK(close(sockets[1]) == 0);
+    CHECK(actual_len == sizeof(expected_error));
+    CHECK(memcmp(actual, expected_error, sizeof(expected_error)) == 0);
+  }
+
   CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, sockets) == 0);
   for (;;)
   {
@@ -374,6 +455,7 @@ static int test_child_wait_and_timeout(void)
   outer_deadline_ns += INT64_C(50000000);
   CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
   CHECK(wait_for_child_with_timeout(pid, 1, outer_deadline_ns) == -1);
+  CHECK(errno == ETIMEDOUT);
   CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
   elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
                (int64_t)(finished.tv_nsec - started.tv_nsec);
@@ -507,6 +589,8 @@ int main(void)
   const struct test_case tests[] = {
       {"identity validation", test_identity_validation},
       {"length-prefixed input", test_lenstr_rejects_ambiguous_input},
+      {"length-prefixed deadline", test_lenstr_honors_absolute_deadline},
+      {"stderr parking CLOEXEC", test_stderr_parking_clears_cloexec},
       {"PAM conversation", test_pam_conversation},
       {"bridge policy", test_bridge_policy},
       {"sudo policy argv", test_sudo_policy_argv},
