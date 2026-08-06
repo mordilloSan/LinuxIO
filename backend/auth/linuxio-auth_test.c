@@ -781,7 +781,7 @@ int main(void)
   for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++)
   {
     int result = tests[i].run();
-    printf("%s %s\n", result == 0 ? "ok" : "not ok", tests[i].name);
+    printf("   %s %s\n", result == 0 ? "✓" : "✗", tests[i].name);
     failures += result != 0;
   }
 
@@ -791,6 +791,5 @@ int main(void)
     return 1;
   }
 
-  printf("all auth C tests passed\n");
   return 0;
 }
