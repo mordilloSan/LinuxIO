@@ -20,6 +20,9 @@ const (
 	authWriteTimeout = 5 * time.Second
 )
 
+// --- test seams (overridden in tests) ---
+var authSocketPath = DefaultAuthSocketPath
+
 // AuthResult contains the result of a successful authentication
 type AuthResult struct {
 	Conn       net.Conn // Connection to bridge (same socket, now connected to forked bridge)
@@ -50,7 +53,7 @@ func (e *AuthError) IsUnauthorized() bool {
 // The caller owns the connection and must close it.
 func Authenticate(req *authipc.AuthRequest) (*AuthResult, error) {
 	// Connect to daemon
-	conn, err := net.DialTimeout("unix", DefaultAuthSocketPath, authDialTimeout)
+	conn, err := net.DialTimeout("unix", authSocketPath, authDialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to auth daemon: %w", err)
 	}

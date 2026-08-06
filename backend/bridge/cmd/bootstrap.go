@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// readBootstrap reads binary bootstrap from stdin.
-// The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
+// readBootstrap reads binary bootstrap from r.
+// The auth daemon writes bootstrap data to the bridge's stdin via a pipe;
+// callers outside tests pass os.Stdin.
 // Bootstrap errors are returned to main as exit code 1; process exit closes
 // the inherited startup-status fd so the auth launcher observes EOF.
-func readBootstrap() (*authipc.Bootstrap, error) {
-	b, err := authipc.ReadBootstrap(os.Stdin)
+func readBootstrap(r io.Reader) (*authipc.Bootstrap, error) {
+	b, err := authipc.ReadBootstrap(r)
 	if err != nil {
 		return nil, fmt.Errorf("read bridge bootstrap: %w", err)
 	}
@@ -37,7 +39,7 @@ func readBootstrap() (*authipc.Bootstrap, error) {
 // reports whether the launcher expects a ready/error ack on the inherited
 // startup-status fd.
 func initializeBridgeSession() (*session.Session, bool, error) {
-	bootstrap, err := readBootstrap()
+	bootstrap, err := readBootstrap(os.Stdin)
 	if err != nil {
 		return nil, false, err
 	}

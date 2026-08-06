@@ -534,6 +534,24 @@ test-auth: check-c-build-deps
 	"$$TEST_BIN"; \
 	echo "✅ C authentication helper tests passed!"
 
+test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
+	@echo "🧪 Running cross-language auth protocol tests..."
+	@set -euo pipefail; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	TEST_BIN="$$TEST_DIR/linuxio-auth-frametool"; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_BIN" backend/auth/linuxio-auth-frametool.c $(LDFLAGS) $$LIBS; \
+	cd "$(BACKEND_DIR)" && LINUXIO_AUTH_FRAMETOOL="$$TEST_BIN" $(GO_CMD_ENV) \
+	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1; \
+	echo "✅ Cross-language auth protocol tests passed!"
+
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
 	@cd "$(BACKEND_DIR)" && \
@@ -591,7 +609,7 @@ endif
 # are cached like normal test results, so incremental runs stay fast. Pass
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
-test-backend: $(GO_BUILD_PREREQ) test-auth
+test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol
 	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
@@ -1019,6 +1037,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go + C backend tests (used by 'make test' + CI)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
@@ -1058,7 +1077,7 @@ cloc:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc

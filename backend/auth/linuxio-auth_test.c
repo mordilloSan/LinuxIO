@@ -584,6 +584,180 @@ static int test_bridge_startup_wait(void)
   return 0;
 }
 
+// -------- request parsing (handle_client, pre-PAM only) --------
+//
+// Only inputs that fail before pam_start() is reached are exercised here:
+// header -> magic/version -> four length-prefixed fields -> user/session_id
+// present -> password present -> valid_username -> valid_session_id ->
+// valid_remote_host -> (PAM, never reached by these cases).
+
+static size_t append_u16be(uint8_t *buf, size_t pos, uint16_t v)
+{
+  buf[pos] = (uint8_t)(v >> 8);
+  buf[pos + 1] = (uint8_t)v;
+  return pos + 2;
+}
+
+static size_t append_bytes(uint8_t *buf, size_t pos, const void *data, size_t n)
+{
+  memcpy(buf + pos, data, n);
+  return pos + n;
+}
+
+static size_t append_lenstr(uint8_t *buf, size_t pos, const char *s)
+{
+  size_t n = strlen(s);
+  pos = append_u16be(buf, pos, (uint16_t)n);
+  return append_bytes(buf, pos, s, n);
+}
+
+static size_t append_header(uint8_t *buf, size_t pos, uint8_t magic0, uint8_t magic1,
+                            uint8_t magic2, uint8_t version)
+{
+  buf[pos++] = magic0;
+  buf[pos++] = magic1;
+  buf[pos++] = magic2;
+  buf[pos++] = version;
+  buf[pos++] = 0; // flags
+  buf[pos++] = 0; // reserved
+  buf[pos++] = 0;
+  buf[pos++] = 0;
+  return pos;
+}
+
+// Sends req on a fresh socketpair, runs the real handle_client(), and checks
+// the response against the exact golden error frame:
+//   [magic:4][PROTO_STATUS_ERROR][mode=0][want_result][reserved=0][len:2][want_msg]
+static int run_request_case(const uint8_t *req, size_t len, int shut_wr,
+                            uint8_t want_result, const char *want_msg)
+{
+  uint8_t response[512];
+  size_t response_len = 0;
+  size_t msg_len = strlen(want_msg);
+  size_t expected_len = PROTO_AUTH_RESP_HEADER_SIZE + 2 + msg_len;
+  int sv[2];
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sv) == 0);
+  CHECK(write_all(sv[1], req, len) == 0);
+  if (shut_wr)
+    CHECK(shutdown(sv[1], SHUT_WR) == 0);
+  CHECK(handle_client(sv[0], sv[0]) == 1);
+  CHECK(close(sv[0]) == 0);
+  CHECK(read_pipe_to_end(sv[1], response, sizeof(response), &response_len) == 0);
+  CHECK(close(sv[1]) == 0);
+
+  CHECK(response_len == expected_len);
+  CHECK(response[0] == PROTO_MAGIC_0);
+  CHECK(response[1] == PROTO_MAGIC_1);
+  CHECK(response[2] == PROTO_MAGIC_2);
+  CHECK(response[3] == PROTO_VERSION);
+  CHECK(response[4] == PROTO_STATUS_ERROR);
+  CHECK(response[5] == 0);
+  CHECK(response[6] == want_result);
+  CHECK(response[7] == 0);
+  CHECK(read_u16_be(response + 8) == (uint16_t)msg_len);
+  CHECK(memcmp(response + 10, want_msg, msg_len) == 0);
+  return 0;
+}
+
+static int test_request_parsing(void)
+{
+  uint8_t req[600] = {0};
+  size_t pos;
+
+  // 1. Immediate EOF: no bytes at all, not even the header.
+  CHECK(run_request_case(req, 0, 1,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request header") == 0);
+
+  // 2. Bad magic byte.
+  pos = append_header(req, 0, 'X', 'I', 'O', PROTO_VERSION);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid request magic") == 0);
+
+  // 3. Wrong version byte (magic/version are checked together).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2,
+                      (uint8_t)(PROTO_VERSION + 1));
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid request magic") == 0);
+
+  // 4. Truncated field stream: user length announces 5 bytes, only 2 arrive,
+  //    then the peer closes its write side.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_u16be(req, pos, 5);
+  pos = append_bytes(req, pos, "ab", 2);
+  CHECK(run_request_case(req, pos, 1,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request fields") == 0);
+
+  // 5. Oversized session_id: length prefix equals PROTO_MAX_SESSION_ID, which
+  //    read_lenstr_until rejects before reading any body bytes.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_u16be(req, pos, PROTO_MAX_SESSION_ID);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request fields") == 0);
+
+  // 6. Empty user (all four fields well-formed and fully read).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "missing required fields") == 0);
+
+  // 7. Empty session_id.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "missing required fields") == 0);
+
+  // 8. Empty password with an otherwise-valid username: handle_client checks
+  //    password[0] before valid_username(), so this proves that ordering
+  //    (empty password -> AUTH_FAILED, never BAD_REQUEST "invalid username").
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_AUTH_FAILED, "authentication failed") == 0);
+
+  // 9. Username with a space.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "two words");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid username format") == 0);
+
+  // 10. session_id containing '/'.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "a/b");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid session_id format") == 0);
+
+  // 11. remote_host containing a C1 control character (0xc2 0x9b).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_u16be(req, pos, 6);
+  pos = append_bytes(req, pos, "host", 4);
+  pos = append_bytes(req, pos, "\xc2\x9b", 2);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid remote_host format") == 0);
+
+  return 0;
+}
+
 int main(void)
 {
   const struct test_case tests[] = {
@@ -600,6 +774,7 @@ int main(void)
       {"socket response writes", test_socket_response_writes},
       {"child wait and timeout", test_child_wait_and_timeout},
       {"bridge startup wait", test_bridge_startup_wait},
+      {"request parsing", test_request_parsing},
   };
   int failures = 0;
 
