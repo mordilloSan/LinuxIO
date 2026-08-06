@@ -23,6 +23,9 @@ static unsigned int g_real_gid;
 #define LINUXIO_PATH_WTMP "acct-wtmp"
 #define LINUXIO_PATH_BTMP "acct-btmp"
 #define LINUXIO_PATH_LASTLOG "acct-lastlog"
+// Shorten the TERM-to-KILL grace so the stubborn-bridge service-stop
+// scenario completes in about a second instead of the production five.
+#define CHILD_TERM_GRACE_SEC 1
 
 #define main linuxio_auth_entrypoint
 #include "linuxio-auth.c"
@@ -143,7 +146,8 @@ static int reset_case(const char *pam_control, const char *bridge_control)
     return -1;
 
   static const char *const dumps[] = {
-      "dump_fds", "dump_ids", "dump_env", "dump_cwd", "dump_bootstrap"};
+      "dump_fds", "dump_ids", "dump_env", "dump_cwd", "dump_bootstrap",
+      "linger-started"};
   for (size_t i = 0; i < sizeof(dumps) / sizeof(dumps[0]); i++)
   {
     if (home_path(path, sizeof(path), dumps[i]) != 0)
@@ -994,6 +998,128 @@ static int test_bridge_ready_timeout(void)
   return 0;
 }
 
+// -------- service-stop scenarios --------
+
+static int restore_shutdown_handling(void)
+{
+  struct sigaction dfl;
+  sigset_t term_set;
+
+  memset(&dfl, 0, sizeof(dfl));
+  dfl.sa_handler = SIG_DFL;
+  if (sigemptyset(&dfl.sa_mask) != 0 ||
+      sigaction(SIGTERM, &dfl, NULL) != 0 ||
+      sigemptyset(&term_set) != 0 ||
+      sigaddset(&term_set, SIGTERM) != 0 ||
+      sigprocmask(SIG_UNBLOCK, &term_set, NULL) != 0)
+    return -1;
+  g_shutdown_requested = 0;
+  return 0;
+}
+
+// Forked helper that waits for the stub bridge's linger marker and then
+// delivers the service-stop SIGTERM to the test process. Because the stub
+// writes the marker file only after its post-GO client bytes, the signal
+// always arrives with a fully-established live session.
+static pid_t spawn_service_stop_killer(void)
+{
+  char path[PATH_MAX];
+  pid_t pid;
+
+  if (home_path(path, sizeof(path), "linger-started") != 0)
+    return -1;
+  pid = fork();
+  if (pid != 0)
+    return pid;
+
+  for (int i = 0; i < 500; i++)
+  {
+    struct stat st;
+    struct timespec delay = {.tv_sec = 0, .tv_nsec = 10000000L};
+
+    if (stat(path, &st) == 0)
+      break;
+    (void)nanosleep(&delay, NULL);
+  }
+  (void)kill(getppid(), SIGTERM);
+  _exit(0);
+}
+
+// Service stop mid-session: SIGTERM arrives while the launcher supervises a
+// live bridge. The launcher must terminate the bridge (with bounded SIGKILL
+// escalation if it ignores SIGTERM) and still run the full epilogue: end
+// accounting, exactly one session close, and credential deletion.
+static int run_service_stop_case(const char *bridge_control,
+                                 int64_t min_elapsed_ns)
+{
+  struct login_result res;
+  struct utmp recs[4];
+  size_t count = 0;
+  struct timespec started, finished;
+  int64_t elapsed_ns;
+  char expected_trace[1024];
+  int status = 0;
+  pid_t killer;
+
+  CHECK(reset_case("", bridge_control) == 0);
+  CHECK(install_shutdown_handling() == 0);
+  killer = spawn_service_stop_killer();
+  CHECK(killer > 0);
+
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  CHECK(run_login(CANON_USER, TEST_PASSWORD, 0, &res) == 0);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  CHECK(waitpid_nointr(killer, &status, 0) == killer);
+  CHECK(restore_shutdown_handling() == 0);
+
+  // Orderly stop: success exit, and the complete OK response plus the stub's
+  // post-GO marker were already on the wire before the stop.
+  CHECK(res.rc == 0);
+  CHECK(check_ok_response(&res, CANON_USER, STUB_MARKER) == 0);
+
+  elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
+               (int64_t)(finished.tv_nsec - started.tv_nsec);
+  CHECK(elapsed_ns >= min_elapsed_ns);
+  CHECK(elapsed_ns < INT64_C(10000000000));
+
+  // The full PAM lifecycle ran despite the stop, closing the session once.
+  CHECK(safe_snprintf(expected_trace, sizeof(expected_trace),
+                      "authenticate user=%s rhost=%s tty=%s\n"
+                      "acct_mgmt user=%s\n"
+                      "setcred establish user=%s\n"
+                      "open_session user=%s\n"
+                      "setcred reinitialize user=%s\n"
+                      "close_session user=%s\n"
+                      "setcred delete user=%s\n",
+                      CANON_USER, TEST_REMOTE_HOST, LINUXIO_WEB_TTY, CANON_USER,
+                      CANON_USER, CANON_USER, CANON_USER, CANON_USER,
+                      CANON_USER) > 0);
+  CHECK(check_trace_equals(expected_trace) == 0);
+
+  // Accounting was started at READY and must be completed by the epilogue:
+  // start and end records, and the live utmp slot marked dead.
+  CHECK(read_utmp_records("acct-wtmp", recs, 4, &count) == 0);
+  CHECK(count == 2);
+  CHECK(recs[0].ut_type == USER_PROCESS);
+  CHECK(recs[1].ut_type == DEAD_PROCESS);
+  CHECK(read_utmp_records("acct-utmp", recs, 4, &count) == 0);
+  CHECK(count == 1);
+  CHECK(recs[0].ut_type == DEAD_PROCESS);
+  return 0;
+}
+
+static int test_service_stop_cleanup(void)
+{
+  return run_service_stop_case("linger", 0);
+}
+
+static int test_service_stop_stubborn_bridge(void)
+{
+  // The stubborn stub ignores SIGTERM, so cleanup must take at least the
+  // (test-shortened) grace period before SIGKILL escalation - and no longer.
+  return run_service_stop_case("stubborn", INT64_C(900000000));
+}
+
 static int test_ok_write_failure_after_ready(void)
 {
   struct login_result res;
@@ -1106,6 +1232,8 @@ int main(void)
       {"bridge reported startup error", test_bridge_reported_error},
       {"bridge READY timeout", test_bridge_ready_timeout},
       {"OK-write failure after READY", test_ok_write_failure_after_ready},
+      {"service-stop cleanup", test_service_stop_cleanup},
+      {"service-stop with stubborn bridge", test_service_stop_stubborn_bridge},
   };
   int failures = 0;
 

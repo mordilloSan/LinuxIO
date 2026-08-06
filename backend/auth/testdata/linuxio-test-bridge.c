@@ -11,6 +11,9 @@
 //   garbage  write an unknown status byte (0x7f) on fd 4, exit 7
 //   error    write PROTO_STARTUP_ERROR plus a message on fd 4, exit 3
 //   sleep    write nothing and sleep until killed
+//   linger   like ok, then write ./linger-started and block until terminated
+//            (a live supervised session for service-stop scenarios)
+//   stubborn like linger, but SIGTERM is ignored (forces SIGKILL escalation)
 //
 // In "ok" mode it dumps, into the cwd:
 //   dump_fds        one "fd=N target=..." line per open descriptor
@@ -23,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,7 +133,10 @@ int main(void)
     for (;;)
       pause();
   }
-  if (strcmp(control, "ok") != 0)
+  int linger = strcmp(control, "linger") == 0 || strcmp(control, "stubborn") == 0;
+  if (strcmp(control, "stubborn") == 0 && signal(SIGTERM, SIG_IGN) == SIG_ERR)
+    die("ignore SIGTERM");
+  if (!linger && strcmp(control, "ok") != 0)
     die("unknown bridge_control word");
 
   // Enumerate open descriptors before creating any new ones, excluding the
@@ -253,5 +260,14 @@ int main(void)
   // client's byte stream strictly after the launcher's complete OK response.
   if (write_all(CLIENT_FD, "YAMUX-OK", 8) != 0)
     _exit(10);
+
+  if (linger)
+  {
+    // Tell the test the session is live before blocking, so it can deliver
+    // the service-stop signal deterministically after the marker bytes.
+    write_text_file("linger-started", "1", 1);
+    for (;;)
+      pause();
+  }
   return 0;
 }

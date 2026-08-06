@@ -1,3 +1,7 @@
+// Shorten the TERM-to-KILL grace so the stubborn-child regression completes
+// in about a second instead of the production five.
+#define CHILD_TERM_GRACE_SEC 1
+
 #define main linuxio_auth_entrypoint
 #include "linuxio-auth.c"
 #undef main
@@ -468,6 +472,133 @@ static int test_child_wait_and_timeout(void)
   return 0;
 }
 
+static int64_t elapsed_between(const struct timespec *started,
+                               const struct timespec *finished)
+{
+  return (int64_t)(finished->tv_sec - started->tv_sec) * INT64_C(1000000000) +
+         (int64_t)(finished->tv_nsec - started->tv_nsec);
+}
+
+static int test_bounded_child_termination(void)
+{
+  struct timespec started, finished;
+  int sync_pipe[2];
+  uint8_t sync_byte = 0;
+  pid_t pid;
+
+  // A child that honors SIGTERM is reaped well before the grace deadline.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  terminate_and_reap_child(pid, SIGTERM);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  CHECK(elapsed_between(&started, &finished) < INT64_C(900000000));
+  errno = 0;
+  CHECK(waitpid(pid, NULL, WNOHANG) == -1);
+  CHECK(errno == ECHILD);
+
+  // A child that ignores SIGTERM must be escalated to SIGKILL once the grace
+  // period expires instead of pinning the worker in an unbounded wait. The
+  // sync byte guarantees SIG_IGN is installed before the signal is sent.
+  CHECK(pipe2(sync_pipe, O_CLOEXEC) == 0);
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    uint8_t ignoring = 1;
+    if (signal(SIGTERM, SIG_IGN) == SIG_ERR)
+      _exit(1);
+    (void)write_all(sync_pipe[1], &ignoring, sizeof(ignoring));
+    for (;;)
+      pause();
+  }
+  CHECK(close(sync_pipe[1]) == 0);
+  CHECK(read(sync_pipe[0], &sync_byte, sizeof(sync_byte)) == 1);
+  CHECK(close(sync_pipe[0]) == 0);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  terminate_and_reap_child(pid, SIGTERM);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  CHECK(elapsed_between(&started, &finished) >= INT64_C(900000000));
+  CHECK(elapsed_between(&started, &finished) < INT64_C(10000000000));
+  errno = 0;
+  CHECK(waitpid(pid, NULL, WNOHANG) == -1);
+  CHECK(errno == ECHILD);
+  return 0;
+}
+
+static int test_session_wait_shutdown(void)
+{
+  struct sigaction dfl;
+  sigset_t term_set;
+  int status = 0;
+  pid_t pid;
+  pid_t killer;
+
+  CHECK(install_shutdown_handling() == 0);
+
+  // Normal exit: the wait reports the child's status.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+    _exit(23);
+  CHECK(wait_for_session_child(pid, &status) == 1);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 23);
+
+  // SIGTERM already pending when the wait starts: the (blocked) signal is
+  // delivered inside the wait's ppoll, the shutdown request wins, and the
+  // child is left alive for the caller's termination path.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  CHECK(raise(SIGTERM) == 0);
+  CHECK(wait_for_session_child(pid, &status) == 0);
+  CHECK(kill(pid, 0) == 0);
+  g_shutdown_requested = 0;
+  terminate_and_reap_child(pid, SIGKILL);
+
+  // SIGTERM delivered mid-wait interrupts the blocking wait.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  killer = fork();
+  CHECK(killer >= 0);
+  if (killer == 0)
+  {
+    struct timespec delay = {.tv_sec = 0, .tv_nsec = 100000000L};
+    (void)nanosleep(&delay, NULL);
+    (void)kill(getppid(), SIGTERM);
+    _exit(0);
+  }
+  CHECK(wait_for_session_child(pid, &status) == 0);
+  g_shutdown_requested = 0;
+  terminate_and_reap_child(pid, SIGKILL);
+  CHECK(waitpid_nointr(killer, &status, 0) == killer);
+
+  // Restore stock SIGTERM behavior for any later scenario.
+  memset(&dfl, 0, sizeof(dfl));
+  dfl.sa_handler = SIG_DFL;
+  CHECK(sigemptyset(&dfl.sa_mask) == 0);
+  CHECK(sigaction(SIGTERM, &dfl, NULL) == 0);
+  CHECK(sigemptyset(&term_set) == 0);
+  CHECK(sigaddset(&term_set, SIGTERM) == 0);
+  CHECK(sigprocmask(SIG_UNBLOCK, &term_set, NULL) == 0);
+  g_shutdown_requested = 0;
+  return 0;
+}
+
 static int test_bridge_startup_wait(void)
 {
   char msg[PROTO_MAX_ERROR];
@@ -773,6 +904,8 @@ int main(void)
       {"elapsed microseconds", test_elapsed_microseconds},
       {"socket response writes", test_socket_response_writes},
       {"child wait and timeout", test_child_wait_and_timeout},
+      {"bounded child termination", test_bounded_child_termination},
+      {"session wait shutdown", test_session_wait_shutdown},
       {"bridge startup wait", test_bridge_startup_wait},
       {"request parsing", test_request_parsing},
   };

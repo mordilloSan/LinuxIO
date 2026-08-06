@@ -49,6 +49,12 @@
 // Per-phase bridge READY limit. The environment override is also capped at the
 // absolute request budget and then clipped to the time actually remaining.
 #define BRIDGE_READY_TIMEOUT_SEC 10
+// Grace period between a termination signal and SIGKILL escalation while
+// reaping the bridge: a child that ignores SIGTERM must not pin the worker in
+// an unbounded wait. Test seam: the hermetic suites shorten it.
+#ifndef CHILD_TERM_GRACE_SEC
+#define CHILD_TERM_GRACE_SEC 5
+#endif
 #define JOURNAL_FIELD_BUFFER_SIZE 512
 #define LINUXIO_WEB_TTY "web console"
 // Hermetic-test seams: the PAM integration suite overrides these at compile
@@ -927,6 +933,48 @@ static pid_t waitpid_nointr(pid_t pid, int *status, int options)
   return result;
 }
 
+// -------- service-stop handling --------
+// A service stop must run the launcher epilogue (end accounting, PAM session
+// close, credential deletion, pam_end) instead of dying inside the
+// session-long child wait. SIGTERM stays blocked for the whole request, so
+// PAM calls and the epilogue itself cannot be interrupted; it is delivered
+// only inside the session wait's ppoll with this mask, which re-checks the
+// flag race-free (a signal either sets the flag before the check or
+// interrupts the ppoll - it cannot be lost between them).
+static volatile sig_atomic_t g_shutdown_requested = 0;
+static sigset_t g_session_wait_sigmask;
+
+static void handle_shutdown_signal(int sig)
+{
+  (void)sig;
+  g_shutdown_requested = 1;
+}
+
+static int install_shutdown_handling(void)
+{
+  struct sigaction term_action;
+  sigset_t term_block;
+
+  memset(&term_action, 0, sizeof(term_action));
+  term_action.sa_handler = handle_shutdown_signal;
+  term_action.sa_flags = 0; // no SA_RESTART: the session wait needs EINTR
+  if (sigemptyset(&term_action.sa_mask) != 0 ||
+      sigemptyset(&term_block) != 0 ||
+      sigaddset(&term_block, SIGTERM) != 0 ||
+      sigaction(SIGTERM, &term_action, NULL) != 0 ||
+      sigprocmask(SIG_BLOCK, &term_block, &g_session_wait_sigmask) != 0 ||
+      sigdelset(&g_session_wait_sigmask, SIGTERM) != 0)
+    return -1;
+  return 0;
+}
+
+static int wait_for_child_with_timeout(pid_t pid, int timeout_sec,
+                                       int64_t request_deadline_ns);
+
+// Terminate and reap the owned child without an unbounded block: a child that
+// ignores the termination signal is escalated to SIGKILL once the grace
+// period expires (wait_for_child_with_timeout kills and reaps on timeout or
+// wait failure). SIGKILL cannot be ignored, so it waits directly.
 static void terminate_and_reap_child(pid_t pid, int signal_number)
 {
   if (pid <= 0)
@@ -934,7 +982,14 @@ static void terminate_and_reap_child(pid_t pid, int signal_number)
 
   if (signal_number > 0)
     (void)kill(pid, signal_number);
-  (void)waitpid_nointr(pid, NULL, 0);
+
+  if (signal_number == SIGKILL)
+  {
+    (void)waitpid_nointr(pid, NULL, 0);
+    return;
+  }
+
+  (void)wait_for_child_with_timeout(pid, CHILD_TERM_GRACE_SEC, 0);
 }
 
 static int child_status_code(int status)
@@ -1405,6 +1460,75 @@ fail:
   return -1;
 }
 
+// Session-long wait for the supervised bridge. Returns 1 with *status when
+// the child exited, 0 when a service stop was requested (the child is left
+// alive for the caller's termination path), or -1 with errno on wait failure.
+// SIGTERM is deliverable only inside the ppoll calls, so a stop request
+// cannot be lost between the flag check and the blocking wait.
+static int wait_for_session_child(pid_t pid, int *status)
+{
+  int pidfd = -1;
+
+  if (pid <= 0 || !status)
+  {
+    errno = EINVAL;
+    return -1;
+  }
+
+#ifdef SYS_pidfd_open
+  pidfd = (int)syscall(SYS_pidfd_open, pid, 0);
+  if (pidfd < 0 && errno != ENOSYS)
+    return -1;
+#endif
+
+  for (;;)
+  {
+    if (g_shutdown_requested)
+    {
+      if (pidfd >= 0)
+        close(pidfd);
+      return 0;
+    }
+
+    pid_t waited = waitpid(pid, status, WNOHANG);
+    if (waited == pid)
+    {
+      if (pidfd >= 0)
+        close(pidfd);
+      return 1;
+    }
+    if (waited < 0 && errno != EINTR)
+    {
+      int wait_errno = errno;
+      if (pidfd >= 0)
+        close(pidfd);
+      errno = wait_errno;
+      return -1;
+    }
+
+    if (pidfd >= 0)
+    {
+      struct pollfd pfd = {.fd = pidfd, .events = POLLIN, .revents = 0};
+      if (ppoll(&pfd, 1, NULL, &g_session_wait_sigmask) < 0 && errno != EINTR)
+      {
+        int poll_errno = errno;
+        close(pidfd);
+        errno = poll_errno;
+        return -1;
+      }
+    }
+    else
+    {
+      // No pidfd support: bounded sleep with SIGTERM deliverable, then
+      // re-check the child. Stop and reap latency are capped by the interval.
+      struct timespec poll_interval = {.tv_sec = 0, .tv_nsec = 500000000L};
+      if (ppoll(NULL, 0, &poll_interval, &g_session_wait_sigmask) < 0 &&
+          errno != EINTR)
+        return -1;
+    }
+  }
+}
+
 // sudo policy probing. This runs from the root launcher context: -U asks
 // sudoers about the authenticated identity without changing credentials.
 static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
@@ -1415,6 +1539,14 @@ static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
     return -1;
   if (pid == 0)
   {
+    // The launcher keeps SIGTERM blocked for its own shutdown handling and
+    // the mask survives exec; sudo must stay terminable.
+    sigset_t child_mask;
+    if (sigemptyset(&child_mask) != 0 ||
+        sigprocmask(SIG_SETMASK, &child_mask, NULL) != 0)
+      _exit(127);
+    (void)signal(SIGTERM, SIG_DFL);
+
     int devnull = open("/dev/null", O_RDWR);
     if (devnull < 0 || dup2(devnull, STDIN_FILENO) < 0 ||
         dup2(devnull, STDOUT_FILENO) < 0)
@@ -1889,6 +2021,15 @@ static pid_t spawn_bridge_process(
   int orig_startup_status = startup_status_fd;
   int orig_bridge = bridge_fd;
   int child_status_fd = startup_status_fd;
+
+  // The launcher keeps SIGTERM blocked for its own shutdown handling; the
+  // mask survives fork and exec, so restore default delivery here or the
+  // bridge would never see a service-stop signal.
+  sigset_t child_sigmask;
+  if (sigemptyset(&child_sigmask) != 0 ||
+      sigprocmask(SIG_SETMASK, &child_sigmask, NULL) != 0)
+    child_die(child_status_fd, "reset signal mask");
+  (void)signal(SIGTERM, SIG_DFL);
 
   // Preserve a client socket occupying stdin/stdout/stderr before those fixed
   // descriptors are rewritten. The parked copy only needs to survive the
@@ -2678,8 +2819,21 @@ static int handle_client(int input_fd, int output_fd)
   }
 
   int status = 0;
-  pid_t waited = waitpid_nointr(child, &status, 0);
-  if (waited < 0)
+  int session_wait = wait_for_session_child(child, &status);
+  if (session_wait == 0)
+  {
+    // Service stop: terminate the bridge through the shared epilogue so end
+    // accounting, PAM session close, credential deletion, and pam_end all
+    // still run before the worker exits.
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_info_fieldsf(fields, 1, "service stop requested; shutting down session");
+    child_signal = SIGTERM;
+    result = 0;
+    goto out;
+  }
+  if (session_wait < 0)
   {
     int wait_errno = errno;
     const struct journal_field fields[] = {
@@ -2786,6 +2940,14 @@ int main(int argc, char *argv[])
   // write_all() handles it. systemd's IgnoreSIGPIPE default covers the
   // socket-activated path, but don't depend on it for manual/sudo runs.
   (void)signal(SIGPIPE, SIG_IGN);
+
+  // Service stop must not kill the worker mid-request or inside the
+  // session-long bridge wait; see wait_for_session_child for delivery.
+  if (install_shutdown_handling() != 0)
+  {
+    log_stderrf("failed to install service-stop handling: %m");
+    return 1;
+  }
 
   if (isatty(STDIN_FILENO))
   {
