@@ -1,14 +1,10 @@
 # TODO
 
-## Open
-
-Historical item numbers are retained because existing plans refer to them.
-
-### 1. Notifications
+### Notifications
 
 Implement the notifications plan in [`docs/notifications.md`](docs/notifications.md).
 
-### 2. React Compiler dependency pin
+### React Compiler dependency pin
 
 Revisit the exact `"oxc-transform": "0.136.0"` pin in
 `frontend/package.json`. Versions 0.135.0–0.136.0 were the only npm releases
@@ -21,12 +17,12 @@ the option, so verify that `memo_cache_sentinel` remains in build output after
 any upgrade. The custom plugin in `frontend/vite.config.ts` relies on
 `enforce: "pre"` and the empty-code fallback. Pinned 2026-07-09.
 
-### 4. Router policy settings
+### Router policy settings
 
 Decide whether the fixed values in `router.go` belong in the global settings
 file.
 
-### 5. Session activity and bridge-survivable jobs
+### Session activity and bridge-survivable jobs
 
 - Classify every Job/Runner route as session-bound or bridge-survivable.
 - Keep session-bound work cancelable when its bridge/session ends.
@@ -39,17 +35,12 @@ file.
 - Follow [`docs/transient-units-plan.md`](docs/transient-units-plan.md), updating
   its assumptions against the current implementation before execution.
 
-### 8. Go API generator developer experience
-
-Consolidate the two generator entry-point files and simplify the generation
-workflow without weakening generated-contract checks.
-
-### 9. Frontend test coverage
+### Frontend test coverage
 
 Define and complete the intended division of coverage between Vitest and
 Playwright.
 
-### 10. Generated JSON request decoders
+### Generated JSON request decoders
 
 - Keep JSON envelopes and Go structs as the source of truth.
 - Extend `linuxio-api-gen` to emit backend request decoders alongside frontend
@@ -60,7 +51,7 @@ Playwright.
 - Keep response encoding on `encoding/json` unless profiling proves otherwise.
 - Follow the Generated Request Decoder Plan in `docs/api-contract.md`.
 
-### 11. Docker update-status persistence
+### Docker update-status persistence
 
 Complete the missing scheduled producer for the existing bridge-side
 reader/store:
@@ -75,7 +66,7 @@ reader/store:
 - Treat a Watchtower upgrade as separate work; it is not required to complete
   this producer.
 
-### 12. Connection-loss and recovery semantics
+### Connection-loss and recovery semantics
 
 Implement explicit semantics for self-severing actions such as reboot,
 power-off, logout, and selected network changes:
