@@ -366,7 +366,8 @@ setup:
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-update-deps: ensure-node
+# React Compiler requires oxc-transform 0.136.0; keep it out of dependency bumps.
+update-deps: ensure-node ensure-go
 	@echo ""
 	@echo "📦 Frontend dependency update (npm → latest)"
 	@bash -c '\
@@ -377,16 +378,28 @@ update-deps: ensure-node
 	  npm outdated || true; \
 	  echo ""; \
 	  echo "⬆️  Bumping package.json to latest with npm-check-updates..."; \
-	  npx --yes npm-check-updates -u; \
+	  npx --yes npm-check-updates -u --reject oxc-transform; \
 	  echo ""; \
 	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
 	  npm install; \
+	  echo ""; \
+	  echo "🛡️  Applying available npm audit fixes..."; \
+	  npm audit fix || true; \
+	  echo ""; \
+	  if ! npm audit; then \
+	    echo "⚠️  npm vulnerabilities remain after npm audit fix; review the audit report above." >&2; \
+	  fi; \
 	  echo ""; \
 	  echo "🔎 Remaining outdated after update:"; \
 	  npm outdated || true; \
 	  echo ""; \
 	  echo "✅ Frontend dependencies updated to latest!"; \
 	'
+	@echo ""
+	@echo "📦 Go dependency update (go get -u -t ./...)"
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" get -u -t ./...
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy
+	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
@@ -988,7 +1001,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-deadcode  $(COLOR_RESET) Install deadcode (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
-	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Bump frontend package.json to latest + npm install"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies (keeps oxc-transform at 0.136.0)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
