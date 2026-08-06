@@ -402,15 +402,6 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	return nil
 }
 
-func (m *Manager) SetCapabilities(id string, v CapabilitiesAvailable) error {
-	s, err := m.GetSession(id)
-	if err != nil {
-		return err
-	}
-	s.Capabilities = v
-	return m.commitSession(s)
-}
-
 func (m *Manager) Refresh(id string) error {
 	s, err := m.GetSession(id)
 	if err != nil {

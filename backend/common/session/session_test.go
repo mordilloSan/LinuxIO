@@ -33,7 +33,7 @@ func createTestSession(t *testing.T, m *Manager, user User, privileged bool) *Se
 	return sess
 }
 
-func TestManager_CreateGetUpdateDelete(t *testing.T) {
+func TestManager_CreateGetDelete(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
@@ -53,24 +53,6 @@ func TestManager_CreateGetUpdateDelete(t *testing.T) {
 	}
 	if !got.Privileged {
 		t.Fatal("privileged flag did not persist")
-	}
-
-	caps := CapabilitiesAvailable{
-		DockerAvailable:        true,
-		IndexerAvailable:       true,
-		LMSensorsAvailable:     false,
-		SmartmontoolsAvailable: true,
-		PackageKitAvailable:    true,
-		NFSClientAvailable:     true,
-		NFSServerAvailable:     true,
-		TunedAvailable:         true,
-	}
-	if err := m.SetCapabilities(s.SessionID, caps); err != nil {
-		t.Fatalf("SetCapabilities error: %v", err)
-	}
-	updated, _ := m.GetSession(s.SessionID)
-	if updated.Capabilities != caps {
-		t.Fatalf("SetCapabilities did not persist: got=%+v want=%+v", updated.Capabilities, caps)
 	}
 
 	// Delete

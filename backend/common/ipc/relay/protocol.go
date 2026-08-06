@@ -150,48 +150,6 @@ type StreamOpenEnvelope struct {
 	Request json.RawMessage `json:"request"`
 }
 
-// MarshalStreamOpenPayload builds the payload of an OpStreamOpen frame.
-func MarshalStreamOpenPayload(route string, request any) ([]byte, error) {
-	if request == nil {
-		request = map[string]any{}
-	}
-	rawRequest, err := rawMessage(request)
-	if err != nil {
-		return nil, fmt.Errorf("marshal stream open request: %w", err)
-	}
-	payload, err := json.Marshal(StreamOpenEnvelope{
-		Route:   route,
-		Request: rawRequest,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal stream open payload: %w", err)
-	}
-	if _, err := checkPayloadSize(payload); err != nil {
-		return nil, fmt.Errorf("stream open payload invalid: %w", err)
-	}
-	return payload, nil
-}
-
-func rawMessage(value any) (json.RawMessage, error) {
-	if raw, ok := value.(json.RawMessage); ok {
-		if len(raw) == 0 {
-			return json.RawMessage("{}"), nil
-		}
-		return raw, nil
-	}
-	if raw, ok := value.([]byte); ok {
-		if len(raw) == 0 {
-			return json.RawMessage("{}"), nil
-		}
-		return json.RawMessage(raw), nil
-	}
-	b, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
 // ParseStreamOpenPayload parses the payload of an OpStreamOpen frame.
 func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
 	if len(payload) == 0 {

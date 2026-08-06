@@ -138,15 +138,11 @@ func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
 	}
 }
 
-func TestStreamOpenPayloadEnvelopeRoundTrip(t *testing.T) {
-	payload, err := MarshalStreamOpenPayload("docker.start_container", map[string]string{
-		"containerId": "abc",
-	})
-	if err != nil {
-		t.Fatalf("MarshalStreamOpenPayload() error = %v", err)
-	}
-
-	envelope, err := ParseStreamOpenPayload(payload)
+func TestParseStreamOpenPayload(t *testing.T) {
+	envelope, err := ParseStreamOpenPayload([]byte(`{
+		"route":"docker.start_container",
+		"request":{"containerId":"abc"}
+	}`))
 	if err != nil {
 		t.Fatalf("ParseStreamOpenPayload() error = %v", err)
 	}
