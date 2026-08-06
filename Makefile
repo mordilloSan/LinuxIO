@@ -535,6 +535,7 @@ test-auth: check-c-build-deps
 	echo "✅ C authentication helper tests passed!"
 
 test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
+	@echo ""
 	@echo "🧪 Running cross-language auth protocol tests..."
 	@set -euo pipefail; \
 	TEST_DIR="$$(mktemp -d)"; \
@@ -587,7 +588,8 @@ tsc-only:
 
 golint-only:
 	@set -euo pipefail
-	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
+	@echo ""
+	@echo "🔎 test-backend: $(BACKEND_DIR)"
 	@echo "   Running Go formatters..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt --diff 2>&1)"; \
@@ -610,6 +612,7 @@ endif
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
 test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol
+	@echo ""
 	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
