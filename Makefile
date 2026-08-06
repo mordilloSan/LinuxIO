@@ -381,13 +381,16 @@ update-deps: ensure-node ensure-go
 	  npx --yes npm-check-updates -u --reject oxc-transform; \
 	  echo ""; \
 	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
-	  npm install; \
+	  npm install --no-audit --no-fund; \
 	  echo ""; \
 	  echo "🛡️  Applying available npm audit fixes..."; \
-	  npm audit fix || true; \
+	  if ! npm audit fix --no-fund; then \
+	    echo "⚠️  npm audit fix did not complete; checking for remaining vulnerabilities." >&2; \
+	  fi; \
 	  echo ""; \
-	  if ! npm audit; then \
+	  if ! npm audit --audit-level=low >/dev/null 2>&1; then \
 	    echo "⚠️  npm vulnerabilities remain after npm audit fix; review the audit report above." >&2; \
+	    npm audit || true; \
 	  fi; \
 	  echo ""; \
 	  echo "🔎 Remaining outdated after update:"; \
