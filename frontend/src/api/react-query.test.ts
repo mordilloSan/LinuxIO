@@ -30,6 +30,48 @@ vi.mock("@/api/linuxio", async (importOriginal) => {
 });
 
 describe("createEndpoint", () => {
+  it("exposes only the hooks allowed by each generated route mode", () => {
+    const queryHasAction: "useAction" extends keyof typeof linuxio.jobs.get
+      ? true
+      : false = true;
+    const queryHasJobAction: "useJobAction" extends keyof typeof linuxio.jobs.get
+      ? true
+      : false = false;
+    const queryHasJobStreamAction: "useJobStreamAction" extends keyof typeof linuxio.jobs.get
+      ? true
+      : false = false;
+    const jobHasAction: "useAction" extends keyof typeof linuxio.docker.compose
+      ? true
+      : false = false;
+    const jobHasQueryOptions: "queryOptions" extends keyof typeof linuxio.docker.compose
+      ? true
+      : false = false;
+    const jobHasJobAction: "useJobAction" extends keyof typeof linuxio.docker.compose
+      ? true
+      : false = true;
+    const jobHasJobStreamAction: "useJobStreamAction" extends keyof typeof linuxio.docker.compose
+      ? true
+      : false = true;
+
+    expect({
+      jobHasAction,
+      jobHasJobAction,
+      jobHasJobStreamAction,
+      jobHasQueryOptions,
+      queryHasAction,
+      queryHasJobAction,
+      queryHasJobStreamAction,
+    }).toEqual({
+      jobHasAction: false,
+      jobHasJobAction: true,
+      jobHasJobStreamAction: true,
+      jobHasQueryOptions: false,
+      queryHasAction: true,
+      queryHasJobAction: false,
+      queryHasJobStreamAction: false,
+    });
+  });
+
   it("builds deterministic query keys for no-request, field, and object shapes", () => {
     expect(
       createEndpoint("system", "get_cpu_info", { kind: "none" }).queryKey(),

@@ -945,7 +945,7 @@ build-nocheck: generate build-vite build-bridge _build-binaries
 
 fastbuild: generate build-bridge _build-binaries
 
-generate: ensure-go
+generate: ensure-go ensure-node setup
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 

@@ -989,18 +989,17 @@ func checkIndexerServiceAvailability(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func indexerUnitStates(info map[string]any) (string, string, bool) {
-	activeState, ok := info["ActiveState"].(string)
-	if !ok || activeState == "" {
+func indexerUnitStates(info apischema.UnitInfo) (string, string, bool) {
+	if info.ActiveState == nil || *info.ActiveState == "" {
 		return "", "", false
 	}
 
-	subState, subStateOK := info["SubState"].(string)
-	if !subStateOK {
-		subState = ""
+	var subState string
+	if info.SubState != nil {
+		subState = *info.SubState
 	}
 
-	return activeState, subState, true
+	return *info.ActiveState, subState, true
 }
 
 func indexerUnitStateError(label, activeState, subState string) error {

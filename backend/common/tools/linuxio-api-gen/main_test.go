@@ -58,6 +58,8 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	out := renderRouteMetadata()
 	for _, expected := range []string{
+		"export type RouteName = keyof typeof ROUTE_MODES;",
+		"export type RouteModeFor<R extends string> =",
 		`"terminal.open": "duplex"`,
 		`"jobs.attach": "duplex"`,
 		`"logs.general.follow": "job"`,

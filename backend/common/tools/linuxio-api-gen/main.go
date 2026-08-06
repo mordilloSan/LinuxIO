@@ -75,7 +75,8 @@ func formatGeneratedFiles(repoRoot string, paths []string) error {
 		return nil
 	}
 
-	args := append([]string{"--write"}, paths...)
+	config := filepath.Join(repoRoot, "frontend", "config", ".oxfmtrc.json")
+	args := append([]string{"-c", config, "--write"}, paths...)
 	cmd := exec.Command(oxfmt, args...)
 	cmd.Dir = filepath.Join(repoRoot, "frontend")
 	out, err := cmd.CombinedOutput()
@@ -102,6 +103,9 @@ func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(route.Mode))
 	}
 	b.WriteString("} as const satisfies Record<string, RouteMode>;\n\n")
+	b.WriteString("export type RouteName = keyof typeof ROUTE_MODES;\n\n")
+	b.WriteString("export type RouteModeFor<R extends string> =\n")
+	b.WriteString("  R extends RouteName ? (typeof ROUTE_MODES)[R] : never;\n\n")
 	b.WriteString("export function routeName(handler: string, command: string): string {\n")
 	b.WriteString("  return `${handler}.${command}`;\n")
 	b.WriteString("}\n\n")

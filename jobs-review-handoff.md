@@ -1,7 +1,6 @@
 # Jobs review — status and handoff
 
-**Started:** 2026-07-30. **Updated:** 2026-07-30. **Branch:** `dev/v0.17.0`.
-**Companion docs:** `docs/jobs-architecture-migration-plan.md` (the strategy), `CODE_REVIEW_FINDINGS.md` (the prior working-tree review).
+**Started:** 2026-07-30. **Updated:** 2026-08-06. **Branch:** `dev/v0.17.0`.
 
 ---
 
@@ -52,17 +51,18 @@ Only 2 handler files emit progress at all: `filebrowser/filebrowser.go` and `vir
 
 It returns the *target* job's snapshot, so `useJobAction` duck-typed that snapshot as a freshly started job and fed it to `waitForJobCompletion` — which threw 499 for an already-canceled job, or opened a *second* attach stream for a still-running one and marked it locally handled. Every page-level cancel silently rejected. Guarded by `TestHandleEventsInventoryIsCurrent`'s sibling in `frontend/src/api/react-query.test.ts` ("keeps jobs.cancel out of job mode…"), which is mutation-tested.
 
-Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile time. `CommandEndpoint` exposes every hook regardless of mode. Real compile-time separation needs mode-specific generated endpoint types (plan Stage 1).
+Generated endpoint types now prevent wrong-hook usage at compile time;
+`assertRouteMode` remains as a runtime backstop for the shared endpoint factory.
 
 **2. Typed handler binding forms.** (`backend/bridge/apischema/schema.go`)
 
 | Form | Shape | Count |
 | --- | --- | ---: |
-| `Handle` | `func(ctx, Req) (Result, error)` — **Result is compile-checked** | 138 |
+| `Handle` | `func(ctx, Req) (Result, error)` — **Result is compile-checked** | 139 |
 | `HandleVoid` | `func(ctx, Req) error` — panics at bind time if Result isn't `NoResponse` | 61 |
-| `HandleEvents` | `func(ctx, Req, emit) error` — raw emitter, the old shape | 3 |
+| `HandleEvents` | `func(ctx, Req, emit) error` — raw emitter, the old shape | 2 |
 
-`EmitResult` call sites went **205 → 3**. Before this, `Events.Result` was `any` and the declared `Result` type param was **never** checked against handler output.
+`EmitResult` call sites went **205 → 2**. Before this, `Events.Result` was `any` and the declared `Result` type param was **never** checked against handler output.
 
 `NoResponse` must stay off the wire as `nil` — it generates TypeScript `void`, so emitting the zero struct would send `{}` to a `void` consumer and stop job snapshots from omitting `result`. Both binding forms enforce this; `TestNoResponseRoutesEmitNilNotZeroStruct` is mutation-tested.
 
@@ -76,7 +76,9 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 
 **7. Public job snapshots no longer contain decoded requests.** `request` was removed from the bridge snapshot, apischema model, generated TypeScript, and frontend consumers. The request remains private execution state and is cleared from the registry-held job on queued cancellation or any terminal transition. Exactly 15 recoverable Runner routes opt into a fixed `JobMetadata` projection; credential-bearing handler jobs expose no metadata. Transport-level tests cover start, get/list/cancel, `jobs.events` initial/live frames, and attach replay/terminal frames with a sentinel secret.
 
-**8. Contract drift went from 32 routes to 3.** Apischema is authoritative for the duplicate models, progressless `any` domains now return their declared types, Docker preserves its extra SDK data in typed contracts and surfaces it in the UI, and filebrowser search/subfolder responses are canonicalized. The three intentional/deferred routes are listed below.
+**8. Contract drift went from 32 routes to 0.** Apischema is authoritative for the duplicate models, progressless `any` domains now return their declared types, Docker preserves its extra SDK data in typed contracts and surfaces it in the UI, and filebrowser search/subfolder responses are canonicalized. The two remaining raw-emitter bindings are legitimate progress emitters.
+
+**9. Generated endpoint types are mode-specific.** Query routes expose query/cache helpers and `useAction`; Job routes expose `useJobAction` and `useJobStreamAction`. Wrong-hook usage now fails TypeScript compilation on the public generated API, while the runtime route assertion remains as defense-in-depth.
 
 ### Bugs fixed en route
 
@@ -88,35 +90,31 @@ Note: `assertRouteMode` catches wrong-hook usage at **render time**, not compile
 
 ```
 make generate     # regenerate route metadata after schema changes
-make test         # cross-stack audit: backend clean; 99 frontend files / 552 tests
+make test         # cross-stack audit: backend clean; 124 frontend files / 643 tests
 git diff --check  # clean
 ```
 
-**`make generate` leaves the generated TS unformatted.** The committed files are post-`oxfmt`, so a bare `make generate` produces ~700 lines of formatting churn. Always follow it with:
-```
-make test
-```
-The frontend lint phase formats the generated files. Folding that formatting
-into the `generate` target would remove the trap.
+**`make generate` formats generated frontend TypeScript.** The target ensures
+the frontend formatter is installed, and the API generator formats its outputs,
+so a bare `make generate` does not leave formatting churn for the next check.
 
 ---
 
-## Remaining contract drift — 3 routes
+## Raw progress bindings — 2 routes
 
 The authority is **`handleEventsInventory`** in `backend/bridge/handlers/handler_pattern_test.go`. It is a checked table, not prose: `TestHandleEventsInventoryIsCurrent` fails if a route is bound with `HandleEvents` and missing from it, if an entry is no longer bound that way, or if the counts disagree. **Do not describe drift in per-file comments** — that is what this replaced, and two of those comments had already gone stale.
 
-| Category | Count | Meaning |
-| --- | ---: | --- |
-| `map-vs-struct` | 1 | `systemd.get_unit_info` — `map[string]any` against a declared struct |
-| `progress-emitter` | 2 | `filebrowser.resource_patch`, `virt.create` — **legitimate and permanent** |
+Both remaining bindings are legitimate and permanent progress emitters:
+`filebrowser.resource_patch` and `virt.create`.
 
 Verify the tally against the source of truth rather than trusting this table:
 ```bash
-sed -n '/handleEventsInventory = map/,/^}/p' backend/bridge/handlers/handler_pattern_test.go \
-  | grep -oE "mapVsStruct|progressEmitter" | sort | uniq -c
+sed -n '/handleEventsInventory = map/,/^}/p' backend/bridge/handlers/handler_pattern_test.go
 ```
 
-`systemd.get_unit_info` remains wire-correct and intentionally deferred: converting the dynamic D-Bus map still has the worst effort-to-value ratio, especially where D-Bus numeric types do not match the public struct exactly.
+`systemd.get_unit_info` now converts the dynamic D-Bus property map to the
+declared `UnitInfo` contract and uses the typed `Handle` binding. Numeric
+conversion covers the signed and unsigned D-Bus variants used by systemd.
 
 ### Decisions applied
 
@@ -126,7 +124,8 @@ sed -n '/handleEventsInventory = map/,/^}/p' backend/bridge/handlers/handler_pat
 
 **D3 — `docker.list_networks` also preserves the SDK extras.** The typed contract and UI include `Created`, `Attachable`, `Ingress`, `ConfigOnly`, container `EndpointID`, and the full previously exposed IPAM shape (`Driver`, `Options`, `IPRange`, and auxiliary addresses).
 
-**D4 — `systemd.get_unit_info` is deferred.** No behavior or contract change was made.
+**D4 — `systemd.get_unit_info` is typed.** The D-Bus property map is converted
+at the domain boundary to the declared `UnitInfo` contract.
 
 **D5 — `filebrowser.subfolders` drops `bytes`.** The private decoder and public typed response use only `path`, `name`, `size`, and `mod_time`; the old `bytes` fallback is gone.
 
@@ -153,21 +152,19 @@ The two prerequisite findings that could not wait for the flip are already close
 apply routes now use direct actions too. Their handlers complete native service
 acceptance before connection loss can occur; the UI must treat a lost response
 as an expected ambiguous outcome and must not retry it automatically. The route
-declarations carry this decision until the plan's explicit
-`native_handoff`/`expected_loss` manifest fields are introduced.
+declarations currently carry that decision without additional manifest fields.
 
 Two properties that make this safer than it looks:
 
-- **It is self-policing.** `assertRouteMode` throws at render if a route's mode and hook disagree, so a missed call site is an immediate visible error, never silent breakage — provided backend, frontend and `make generate` land together per batch.
+- **It is self-policing.** Generated endpoint types reject a route/hook mismatch at compile time, and `assertRouteMode` remains a runtime backstop — provided backend, frontend and `make generate` land together per batch.
 - **Query mode loses no detachment property.** The dispatch `ctx` is already bridge-scoped, not stream-scoped (`backend/bridge/cmd/yamux.go`), so a Query handler already survives browser stream reset exactly as a job does.
 
 ### Deliberately not doing
 
 - Touching the transport. WebSocket + yamux is measured and fine.
-- Starting the durable-jobs core (plan Stages 9–14). Durability beyond the bridge is *new* scope, not a restoration, and is not on the path to "React Query mutations stay clean."
+- Starting bridge-survivable durable jobs. Durability beyond the bridge is *new* scope, not a restoration, and is not on the path to "React Query mutations stay clean."
 - Adding `VoidQuery`/`VoidJob` constructors now. `HandleVoid` already enforces
-  the binding boundary; mode-specific generated endpoint types and any
-  additional constructor vocabulary remain Stage 1 contract work.
+  the binding boundary, so additional constructor vocabulary adds little value.
 
 ---
 
@@ -192,6 +189,5 @@ grep -rno "\.useJobAction(\|\.useJobStreamAction" frontend/src/ --include=*.ts -
 make test
 ```
 
-### Stale references to be aware of
-
-`docs/jobs-architecture-migration-plan.md` lines 20 and 61 still cite `HandleWithPolicy` (deleted) and list the old `Handle/HandleWithPolicy/Run/Duplex` vocabulary. The plan's diagnosis and its `Query/Action/Duplex/FileTransfer/DurableJob` contract set remain sound; only those two lines describe a tree that no longer exists.
+The separate durable-job design remains out of scope for this handoff; see
+[`docs/transient-units-plan.md`](docs/transient-units-plan.md) for that work.

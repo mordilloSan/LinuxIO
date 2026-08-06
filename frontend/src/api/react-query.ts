@@ -40,7 +40,11 @@ import type {
   HandlerName,
   JobSnapshot,
 } from "./generated/linuxio-types";
-import { getRouteMode, routeName } from "./generated/route-metadata";
+import {
+  getRouteMode,
+  routeName,
+  type RouteModeFor,
+} from "./generated/route-metadata";
 import {
   isJobSnapshot,
   isTerminalJobState,
@@ -257,15 +261,7 @@ export interface EndpointCache<TInput extends readonly unknown[], TResult> {
   cancel: (...input: TInput | []) => Promise<void>;
 }
 
-/**
- * Command endpoint interface
- */
-export interface CommandEndpoint<
-  TInput extends readonly unknown[],
-  TRequest,
-  TResult,
-  TProgress = ProgressFrame,
-> {
+interface BaseCommandEndpoint<TInput extends readonly unknown[], TResult> {
   /**
    * Framework-agnostic call (Promise-based) using the same generated request
    * shape and cache key scheme as the React Query hooks.
@@ -274,7 +270,13 @@ export interface CommandEndpoint<
 
   /** Deterministic React Query key for this command */
   queryKey: (...args: TInput) => QueryKey;
+}
 
+interface QueryEndpointCapabilities<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+> {
   /** Shared React Query key and query function for every consumer. */
   queryOptions: <TData = TResult>(
     ...params: QueryOptionsArgs<TInput, TResult, TData>
@@ -325,7 +327,13 @@ export interface CommandEndpoint<
   useAction: (
     config?: ActionConfig<TRequest, TResult>,
   ) => UseMutationResult<TResult, LinuxIOError, TRequest>;
+}
 
+interface JobEndpointCapabilities<
+  TRequest,
+  TResult,
+  TProgress = ProgressFrame,
+> {
   /**
    * Mutation hook for job routes: awaits job completion,
    * unwraps the job result, and handles invalidation + toasts declaratively.
@@ -357,6 +365,35 @@ export interface CommandEndpoint<
     config?: JobStreamActionConfig<TRequest, TStreamResult, TStreamProgress>,
   ) => JobStreamActionResult<TRequest, TStreamResult>;
 }
+
+/** Public endpoint surface for request-response Query routes. */
+export type QueryEndpoint<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+> = BaseCommandEndpoint<TInput, TResult> &
+  QueryEndpointCapabilities<TInput, TRequest, TResult>;
+
+/** Public endpoint surface for progress/recovery Job routes. */
+export type JobEndpoint<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+  TProgress = ProgressFrame,
+> = BaseCommandEndpoint<TInput, TResult> &
+  JobEndpointCapabilities<TRequest, TResult, TProgress>;
+
+/**
+ * Internal superset built by `createEndpoint`. Generated API types narrow this
+ * to `QueryEndpoint` or `JobEndpoint` from the route's declared mode.
+ */
+export type CommandEndpoint<
+  TInput extends readonly unknown[],
+  TRequest,
+  TResult,
+  TProgress = ProgressFrame,
+> = QueryEndpoint<TInput, TRequest, TResult> &
+  JobEndpointCapabilities<TRequest, TResult, TProgress>;
 
 function queryRequestAndOptions<TOptions>(
   requestShape: RequestShape,
@@ -682,13 +719,29 @@ type DeclaredCommandProgress<
   ? ProgressFrame
   : CommandProgress<H, C>;
 
+type DeclaredCommandMode<
+  H extends HandlerName,
+  C extends CommandName<H>,
+> = RouteModeFor<`${Extract<H, string>}.${Extract<C, string>}`>;
+
+type DeclaredCommandEndpoint<H extends HandlerName, C extends CommandName<H>> =
+  DeclaredCommandMode<H, C> extends "query"
+    ? QueryEndpoint<
+        CommandInput<H, C>,
+        CommandRequest<H, C>,
+        CommandResult<H, C>
+      >
+    : DeclaredCommandMode<H, C> extends "job"
+      ? JobEndpoint<
+          CommandInput<H, C>,
+          CommandRequest<H, C>,
+          CommandResult<H, C>,
+          DeclaredCommandProgress<H, C>
+        >
+      : never;
+
 export type HandlerEndpoints<H extends HandlerName> = {
-  [C in CommandName<H>]: CommandEndpoint<
-    CommandInput<H, C>,
-    CommandRequest<H, C>,
-    CommandResult<H, C>,
-    DeclaredCommandProgress<H, C>
-  >;
+  [C in CommandName<H>]: DeclaredCommandEndpoint<H, C>;
 };
 
 /**

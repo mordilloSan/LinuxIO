@@ -235,6 +235,12 @@ export const ROUTE_MODES = {
   "wireguard.up_interface": "query",
 } as const satisfies Record<string, RouteMode>;
 
+export type RouteName = keyof typeof ROUTE_MODES;
+
+export type RouteModeFor<R extends string> = R extends RouteName
+  ? (typeof ROUTE_MODES)[R]
+  : never;
+
 export function routeName(handler: string, command: string): string {
   return `${handler}.${command}`;
 }

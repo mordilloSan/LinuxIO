@@ -12,7 +12,7 @@ var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").Handle(handleListTimers),
 	apischema.Query[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").Handle(handleListSockets),
 	apischema.Query[apischema.NoRequest, []apischema.Service]("systemd.list_services").Handle(handleListServices),
-	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").HandleEvents(handleGetUnitInfo),
+	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").Handle(handleGetUnitInfo),
 	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").HandleVoid(handleStartService),
 	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").HandleVoid(handleStopService),
 	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").HandleVoid(handleRestartService),
@@ -45,9 +45,8 @@ func handleListServices(ctx context.Context, _ apischema.NoRequest) ([]apischema
 	return servicesToAPI(result), err
 }
 
-func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
-	result, err := GetUnitInfo(ctx, req.UnitName)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apischema.UnitInfo, error) {
+	return GetUnitInfo(ctx, req.UnitName)
 }
 
 func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {

@@ -4,24 +4,20 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestCheckIndexerAvailabilityUsesSocketActivation(t *testing.T) {
 	orig := getIndexerUnitInfo
-	getIndexerUnitInfo = func(_ context.Context, unitName string) (map[string]any, error) {
+	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
 		switch unitName {
 		case indexerSocketName:
-			return map[string]any{
-				"ActiveState": "active",
-				"SubState":    "listening",
-			}, nil
+			return testUnitInfoState("active", "listening"), nil
 		case indexerServiceName:
-			return map[string]any{
-				"ActiveState": "inactive",
-				"SubState":    "dead",
-			}, nil
+			return testUnitInfoState("inactive", "dead"), nil
 		default:
-			return nil, errors.New("unexpected unit")
+			return apischema.UnitInfo{}, errors.New("unexpected unit")
 		}
 	}
 	t.Cleanup(func() {
@@ -43,20 +39,14 @@ func TestCheckIndexerAvailabilityUsesSocketActivation(t *testing.T) {
 
 func TestCheckIndexerAvailabilityFallsBackToRunningService(t *testing.T) {
 	orig := getIndexerUnitInfo
-	getIndexerUnitInfo = func(_ context.Context, unitName string) (map[string]any, error) {
+	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
 		switch unitName {
 		case indexerSocketName:
-			return map[string]any{
-				"ActiveState": "inactive",
-				"SubState":    "dead",
-			}, nil
+			return testUnitInfoState("inactive", "dead"), nil
 		case indexerServiceName:
-			return map[string]any{
-				"ActiveState": "active",
-				"SubState":    "running",
-			}, nil
+			return testUnitInfoState("active", "running"), nil
 		default:
-			return nil, errors.New("unexpected unit")
+			return apischema.UnitInfo{}, errors.New("unexpected unit")
 		}
 	}
 	t.Cleanup(func() {
@@ -75,15 +65,12 @@ func TestCheckIndexerAvailabilityFallsBackToRunningService(t *testing.T) {
 
 func TestCheckIndexerAvailabilityReportsUnavailable(t *testing.T) {
 	orig := getIndexerUnitInfo
-	getIndexerUnitInfo = func(_ context.Context, unitName string) (map[string]any, error) {
+	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
 		switch unitName {
 		case indexerSocketName, indexerServiceName:
-			return map[string]any{
-				"ActiveState": "inactive",
-				"SubState":    "dead",
-			}, nil
+			return testUnitInfoState("inactive", "dead"), nil
 		default:
-			return nil, errors.New("unexpected unit")
+			return apischema.UnitInfo{}, errors.New("unexpected unit")
 		}
 	}
 	t.Cleanup(func() {
@@ -100,5 +87,12 @@ func TestCheckIndexerAvailabilityReportsUnavailable(t *testing.T) {
 	}
 	if isIndexerEnabled() {
 		t.Fatal("indexer availability cache was not set to false")
+	}
+}
+
+func testUnitInfoState(activeState, subState string) apischema.UnitInfo {
+	return apischema.UnitInfo{
+		ActiveState: &activeState,
+		SubState:    &subState,
 	}
 }

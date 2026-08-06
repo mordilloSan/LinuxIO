@@ -77,21 +77,14 @@ func checkHandlerEmitCalls(t *testing.T, path string, src []byte) {
 	}
 }
 
-// Why a route can still be on HandleEvents. Every value except progressEmitter
-// is a defect to pay down, not a design choice.
-const (
-	// The handler emits progress or data frames, so it needs the raw emitter.
-	// This is the only legitimate reason.
-	progressEmitter = "progress-emitter"
-	// The domain function returns map[string]any where the route declares a
-	// struct. Where the keys already match, this is a struct literal away.
-	mapVsStruct = "map-vs-struct"
-)
+// The handler emits progress or data frames, so it needs the raw emitter. This
+// is the only legitimate reason a route can remain on HandleEvents.
+const progressEmitter = "progress-emitter"
 
-// handleEventsInventory is the single record of remaining contract drift — it
-// replaces the per-file prose that used to describe the same four facts twenty
-// times over and could go stale silently. Every route bound with HandleEvents
-// must appear here with its reason, and every entry must still be bound that way:
+// handleEventsInventory is the single record of raw-emitter bindings. It
+// replaces per-file prose that could go stale silently. Every route bound with
+// HandleEvents must appear here with its reason, and every entry must still be
+// bound that way:
 // TestHandleEventsInventoryIsCurrent fails on either mismatch, so this table
 // cannot drift from the code the way comments did.
 //
@@ -99,7 +92,6 @@ const (
 // the binding to Handle/HandleVoid, and delete its line.
 var handleEventsInventory = map[string]string{
 	"filebrowser.resource_patch": progressEmitter,
-	"systemd.get_unit_info":      mapVsStruct,
 	"virt.create":                progressEmitter,
 }
 

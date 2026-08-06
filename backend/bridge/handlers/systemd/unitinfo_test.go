@@ -60,23 +60,57 @@ func TestGetUnitInfoFallsBackToUnitFileRecord(t *testing.T) {
 		t.Fatalf("GetUnitInfo: %v", err)
 	}
 
-	if got := info["Id"]; got != unitName {
-		t.Fatalf("Id = %#v, want %q", got, unitName)
+	if info.ID == nil || *info.ID != unitName {
+		t.Fatalf("Id = %#v, want %q", info.ID, unitName)
 	}
-	if got := info["LoadState"]; got != "not-loaded" {
-		t.Fatalf("LoadState = %#v, want %q", got, "not-loaded")
+	if info.LoadState == nil || *info.LoadState != "not-loaded" {
+		t.Fatalf("LoadState = %#v, want %q", info.LoadState, "not-loaded")
 	}
-	if got := info["ActiveState"]; got != "inactive" {
-		t.Fatalf("ActiveState = %#v, want %q", got, "inactive")
+	if info.ActiveState == nil || *info.ActiveState != "inactive" {
+		t.Fatalf("ActiveState = %#v, want %q", info.ActiveState, "inactive")
 	}
-	if got := info["SubState"]; got != "dead" {
-		t.Fatalf("SubState = %#v, want %q", got, "dead")
+	if info.SubState == nil || *info.SubState != "dead" {
+		t.Fatalf("SubState = %#v, want %q", info.SubState, "dead")
 	}
-	if got := info["UnitFileState"]; got != "static" {
-		t.Fatalf("UnitFileState = %#v, want %q", got, "static")
+	if info.UnitFileState == nil || *info.UnitFileState != "static" {
+		t.Fatalf("UnitFileState = %#v, want %q", info.UnitFileState, "static")
 	}
-	if got := info["FragmentPath"]; got != "/usr/lib/systemd/system/"+unitName {
-		t.Fatalf("FragmentPath = %#v, want %q", got, "/usr/lib/systemd/system/"+unitName)
+	if info.FragmentPath == nil || *info.FragmentPath != "/usr/lib/systemd/system/"+unitName {
+		t.Fatalf("FragmentPath = %#v, want %q", info.FragmentPath, "/usr/lib/systemd/system/"+unitName)
+	}
+}
+
+func TestUnitInfoFromMapConvertsDBusNumericValues(t *testing.T) {
+	info := unitInfoFromMap(map[string]any{
+		"ActiveEnterTimestamp": uint64(1_700_000_000_000_000),
+		"ExecMainStatus":       int32(-1),
+		"MainPID":              uint32(1234),
+		"MemoryCurrent":        uint64(8 * 1024 * 1024),
+		"NConnections":         uint32(2),
+		"NextElapseUSec":       uint64(1_700_000_001_000_000),
+		"Requires":             []string{"network.target"},
+	})
+
+	if info.ActiveEnterTimestamp == nil || *info.ActiveEnterTimestamp != 1_700_000_000_000_000 {
+		t.Fatalf("ActiveEnterTimestamp = %#v", info.ActiveEnterTimestamp)
+	}
+	if info.ExecMainStatus == nil || *info.ExecMainStatus != -1 {
+		t.Fatalf("ExecMainStatus = %#v, want -1", info.ExecMainStatus)
+	}
+	if info.MainPID == nil || *info.MainPID != 1234 {
+		t.Fatalf("MainPID = %#v, want 1234", info.MainPID)
+	}
+	if info.MemoryCurrent == nil || *info.MemoryCurrent != 8*1024*1024 {
+		t.Fatalf("MemoryCurrent = %#v", info.MemoryCurrent)
+	}
+	if info.NConnections == nil || *info.NConnections != 2 {
+		t.Fatalf("NConnections = %#v, want 2", info.NConnections)
+	}
+	if info.NextElapseUSec == nil || *info.NextElapseUSec != 1_700_000_001_000_000 {
+		t.Fatalf("NextElapseUSec = %#v", info.NextElapseUSec)
+	}
+	if len(info.Requires) != 1 || info.Requires[0] != "network.target" {
+		t.Fatalf("Requires = %#v", info.Requires)
 	}
 }
 
