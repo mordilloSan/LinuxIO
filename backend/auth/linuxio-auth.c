@@ -51,9 +51,19 @@
 #define BRIDGE_READY_TIMEOUT_SEC 10
 #define JOURNAL_FIELD_BUFFER_SIZE 512
 #define LINUXIO_WEB_TTY "web console"
+// Hermetic-test seams: the PAM integration suite overrides these at compile
+// time to point at a private bridge directory, a non-root bridge owner, and
+// tmpfile accounting databases. Production builds keep the defaults.
+#ifndef BRIDGE_DIR
 #define BRIDGE_DIR "/usr/local/bin"
+#endif
+#ifndef BRIDGE_NAME
 #define BRIDGE_NAME "linuxio-bridge"
+#endif
 #define BRIDGE_PATH BRIDGE_DIR "/" BRIDGE_NAME
+#ifndef LINUXIO_BRIDGE_OWNER
+#define LINUXIO_BRIDGE_OWNER ((uid_t)0)
+#endif
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -69,6 +79,18 @@
 #endif
 #ifndef _PATH_WTMP
 #define _PATH_WTMP "/var/log/wtmp"
+#endif
+#ifndef LINUXIO_PATH_BTMP
+#define LINUXIO_PATH_BTMP _PATH_BTMP
+#endif
+#ifndef LINUXIO_PATH_LASTLOG
+#define LINUXIO_PATH_LASTLOG _PATH_LASTLOG
+#endif
+#ifndef LINUXIO_PATH_UTMP
+#define LINUXIO_PATH_UTMP _PATH_UTMP
+#endif
+#ifndef LINUXIO_PATH_WTMP
+#define LINUXIO_PATH_WTMP _PATH_WTMP
 #endif
 extern char **environ;
 
@@ -510,11 +532,11 @@ static int update_lastlog(uid_t uid, const struct timeval *tv, const char *remot
   int locked = 0;
   int ret = -1;
 
-  fd = open(_PATH_LASTLOG, O_RDWR | O_CLOEXEC);
+  fd = open(LINUXIO_PATH_LASTLOG, O_RDWR | O_CLOEXEC);
   if (fd < 0)
   {
     if (errno != ENOENT)
-      journal_errorf("failed to open %s: %m", _PATH_LASTLOG);
+      journal_errorf("failed to open %s: %m", LINUXIO_PATH_LASTLOG);
     return -1;
   }
 
@@ -526,7 +548,7 @@ static int update_lastlog(uid_t uid, const struct timeval *tv, const char *remot
       goto out;
 
     errno = lock_errno;
-    journal_errorf("failed to lock %s for uid=%u: %m", _PATH_LASTLOG, (unsigned)uid);
+    journal_errorf("failed to lock %s for uid=%u: %m", LINUXIO_PATH_LASTLOG, (unsigned)uid);
     goto out;
   }
   locked = 1;
@@ -541,9 +563,9 @@ static int update_lastlog(uid_t uid, const struct timeval *tv, const char *remot
   if (nwritten != (ssize_t)sizeof(entry))
   {
     if (nwritten < 0)
-      journal_errorf("failed to write %s for uid=%u: %m", _PATH_LASTLOG, (unsigned)uid);
+      journal_errorf("failed to write %s for uid=%u: %m", LINUXIO_PATH_LASTLOG, (unsigned)uid);
     else
-      journal_errorf("partial write to %s for uid=%u", _PATH_LASTLOG, (unsigned)uid);
+      journal_errorf("partial write to %s for uid=%u", LINUXIO_PATH_LASTLOG, (unsigned)uid);
     goto out;
   }
 
@@ -559,7 +581,7 @@ out:
 static int utmp_file_exists(void)
 {
   struct stat st;
-  return stat(_PATH_UTMP, &st) == 0;
+  return stat(LINUXIO_PATH_UTMP, &st) == 0;
 }
 
 static void btmp_log(const char *username, const char *remote_host)
@@ -579,11 +601,11 @@ static void btmp_log(const char *username, const char *remote_host)
   entry.ut_tv.tv_usec = clamp_suseconds_to_i32(tv.tv_usec);
   entry.ut_type = LOGIN_PROCESS;
 
-  fd = open(_PATH_BTMP, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0660);
+  fd = open(LINUXIO_PATH_BTMP, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0660);
   if (fd < 0)
   {
     if (errno != ENOENT)
-      journal_errorf("failed to open %s: %m", _PATH_BTMP);
+      journal_errorf("failed to open %s: %m", LINUXIO_PATH_BTMP);
     return;
   }
 
@@ -591,9 +613,9 @@ static void btmp_log(const char *username, const char *remote_host)
   if (nwritten != (ssize_t)sizeof(entry))
   {
     if (nwritten < 0)
-      journal_errorf("failed to write %s: %m", _PATH_BTMP);
+      journal_errorf("failed to write %s: %m", LINUXIO_PATH_BTMP);
     else
-      journal_errorf("partial write to %s", _PATH_BTMP);
+      journal_errorf("partial write to %s", LINUXIO_PATH_BTMP);
   }
 
   close(fd);
@@ -606,7 +628,7 @@ static void record_login_start(const struct auth_user *auth_user, const char *re
 
   gettimeofday(&tv, NULL);
 
-  utmpname(_PATH_UTMP);
+  utmpname(LINUXIO_PATH_UTMP);
 
   memset(&ut, 0, sizeof(ut));
   encode_ut_id(ut.ut_id, getpid());
@@ -622,10 +644,10 @@ static void record_login_start(const struct auth_user *auth_user, const char *re
   {
     setutent();
     if (!pututline(&ut))
-      journal_errorf("failed to write %s: %m", _PATH_UTMP);
+      journal_errorf("failed to write %s: %m", LINUXIO_PATH_UTMP);
     endutent();
   }
-  updwtmp(_PATH_WTMP, &ut);
+  updwtmp(LINUXIO_PATH_WTMP, &ut);
 
   (void)update_lastlog(auth_user->uid, &tv, remote_host);
 }
@@ -637,7 +659,7 @@ static void record_login_end(void)
 
   gettimeofday(&tv, NULL);
 
-  utmpname(_PATH_UTMP);
+  utmpname(LINUXIO_PATH_UTMP);
 
   memset(&ut, 0, sizeof(ut));
   encode_ut_id(ut.ut_id, getpid());
@@ -651,10 +673,10 @@ static void record_login_end(void)
   {
     setutent();
     if (!pututline(&ut))
-      journal_errorf("failed to update %s: %m", _PATH_UTMP);
+      journal_errorf("failed to update %s: %m", LINUXIO_PATH_UTMP);
     endutent();
   }
-  updwtmp(_PATH_WTMP, &ut);
+  updwtmp(LINUXIO_PATH_WTMP, &ut);
 }
 
 static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
@@ -1916,22 +1938,29 @@ static pid_t spawn_bridge_process(
     tmp_bridge = orig_bridge;
   }
 
-  // Step 2: Set up stdin (FD 0) from bootstrap pipe
+  // Step 2: Set up stdin (FD 0) from bootstrap pipe. dup2 clears FD_CLOEXEC
+  // on the copy, but when the descriptor already occupies its fixed slot the
+  // original (created O_CLOEXEC) survives untouched, so clear it explicitly.
   if (orig_bootstrap >= 0)
   {
     if (dup2(orig_bootstrap, STDIN_FILENO) < 0) child_die(child_status_fd, "dup2 bootstrap to stdin");
     if (orig_bootstrap != STDIN_FILENO) close(orig_bootstrap);
+    clear_cloexec_or_die(STDIN_FILENO, child_status_fd, "clear bootstrap CLOEXEC");
   }
 
   // Step 3: Set up stdout (FD 1) as dup of stderr
   if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) child_die(child_status_fd, "dup2 stderr to stdout");
 
-  // Step 4: Set up client connection at FD 3
+  // Step 4: Set up client connection at FD 3. As with stdin, a client socket
+  // already sitting at FD 3 keeps its original CLOEXEC flag because no dup2
+  // runs; the bridge must inherit this descriptor, so clear it explicitly.
   if (orig_client >= 0 && orig_client != CLIENT_CONN_FD)
   {
     if (dup2(orig_client, CLIENT_CONN_FD) < 0) child_die(child_status_fd, "dup2 client connection");
     close(orig_client);
   }
+  if (orig_client >= 0)
+    clear_cloexec_or_die(CLIENT_CONN_FD, child_status_fd, "clear client CLOEXEC");
 
   // Step 5: Set up the startup-status fd at FD 4. It must survive exec so the
   // Go bridge can report READY/ERROR and wait for GO before starting Yamux.
@@ -2367,7 +2396,7 @@ static int handle_client(int input_fd, int output_fd)
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
   (void)monotonic_now_ns(&timing.session_setup_started_ns);
-  if (open_and_validate_bridge(0, &bridge_fd) != 0)
+  if (open_and_validate_bridge(LINUXIO_BRIDGE_OWNER, &bridge_fd) != 0)
   {
     send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bridge validation failed");
     goto out;

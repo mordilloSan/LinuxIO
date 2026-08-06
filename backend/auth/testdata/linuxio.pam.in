@@ -1,0 +1,14 @@
+# Hermetic pam_wrapper service stack for the Tier-1 launcher integration
+# suite (make test-auth-pam). Rendered at test time: @PROBE_MODULE@,
+# @PAM_MATRIX@, and @PASSDB@ are replaced with absolute paths inside the
+# throwaway test directory. Never installed on a host.
+#
+# The probe module runs first so it can remap PAM_USER (canonicalization
+# scenarios) and inject per-entry-point failures before pam_matrix performs
+# the real credential check against the scenario passdb.
+auth     required  @PROBE_MODULE@
+auth     required  @PAM_MATRIX@ passdb=@PASSDB@
+account  required  @PROBE_MODULE@
+account  required  @PAM_MATRIX@ passdb=@PASSDB@
+password required  @PAM_MATRIX@ passdb=@PASSDB@
+session  required  @PROBE_MODULE@

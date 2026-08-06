@@ -103,16 +103,16 @@ Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools clang-tidy bear
+sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools clang-tidy bear libpam-wrapper libnss-wrapper libuid-wrapper
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra clang-tidy bear
+sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra clang-tidy bear pam_wrapper nss_wrapper uid_wrapper
 ```
 
-> `cppcheck`, `clang-tools`/`clang-tools-extra`, `clang-tidy`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build.
+> `cppcheck`, `clang-tools`/`clang-tools-extra`, `clang-tidy`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build. `libpam-wrapper`/`pam_wrapper`, `libnss-wrapper`/`nss_wrapper`, and `libuid-wrapper`/`uid_wrapper` are needed for the hermetic PAM integration tests (`make test-auth-pam`, part of `make test-backend`); without them that suite skips with a warning.
 
 ### Initial Setup
 

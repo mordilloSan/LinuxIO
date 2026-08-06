@@ -50,8 +50,11 @@ The launcher's happy-path FD choreography and fd-based bridge validation remain
 strong. The implemented source-local correctness and hardening work is recorded
 below. Two lifecycle items remain open: graceful launcher handling of service
 SIGTERM and bounded TERM-to-KILL escalation when reaping a nonconforming bridge.
-Remaining work also includes accounting-order policy and dedicated cross-language
-and host-integration coverage of the startup-handoff protocol.
+Remaining work also includes accounting-order policy, dedicated cross-language
+coverage of the startup-handoff protocol, and the tier-2 disposable-root host
+matrix. The tier-1 hermetic host-integration suite is implemented
+(`make test-auth-pam`, see below); building it surfaced and fixed one real
+launcher defect (a fixed-slot descriptor could keep `FD_CLOEXEC` across exec).
 
 ## Current implemented dispositions
 
@@ -281,10 +284,12 @@ explicit accounting-policy decision.
    bootstrap with Go, and launch the real C/Go pair through READY, GO, negative
    status, EOF, timeout, inherited-fd behavior, and response ordering. Add
    `handle_client` malformed-request/error-result cases alongside it.
-3. Add dedicated root host-integration coverage for PAM identity and sequencing,
-   sudoers outcomes, privilege-drop fd closure, controlled `execveat` failure,
-   accounting, and shutdown cleanup. Keep this distinct from the isolated C and
-   Go protocol tests.
+3. Host-integration coverage: tier 1 (hermetic PAM identity/sequencing,
+   privilege-drop fd layout, controlled `execveat` failure, accounting) is
+   implemented as `make test-auth-pam`. What remains is the tier-2
+   disposable-root matrix — sudoers outcomes, real uid transitions,
+   privileged-mode spawn, and shutdown cleanup — kept distinct from the
+   isolated C and Go protocol tests.
 4. Add the smaller Go gaps: direct `Authenticate` coverage and the bridge command
    wrapper's rejection of empty bootstrap session/user fields.
 5. Treat accounting-before-OK as an explicit product-policy decision. Only
@@ -302,19 +307,31 @@ successful GO release after the completed OK write. Query events with
 ## Verification boundary
 
 The implementation is compiled with the repository's warning-as-error auth
-build and is covered by `make test-auth`, `make analyze-auth` (cppcheck, GCC
-analyzer, scan-build, and clang-tidy), and `make check-backend`. The hermetic C
-suite exercises deadline-aware and ambiguous input, PAM conversation responses,
-bridge metadata policy, exact sudo policy-query arguments, binary bootstrap
-bytes, empty-error frame bytes, fd-2 CLOEXEC state, timing conversion, bounded
-response writes on a shared nonblocking socket, controlled child-failure status,
-exit-status mapping, timeout termination, and reaping. It does not exercise a
-full trickled request through `handle_client`, journald assertions, a real PAM
-stack (including session-open cleanup status), sudoers policy, the complete
-privileged descriptor/exec layout, `execveat`, accounting, descriptor-failure
-injection, service-stop cleanup, a SIGTERM-ignoring bridge, or a real
-cross-language READY/GO exchange with authentication-response ordering. Those
-runtime claims remain unverified until dedicated integration coverage exists.
+build and is covered by `make test-auth`, `make test-auth-pam`,
+`make analyze-auth` (cppcheck, GCC analyzer, scan-build, and clang-tidy), and
+`make check-backend`. The hermetic C unit suite exercises deadline-aware and
+ambiguous input, PAM conversation responses, bridge metadata policy, exact sudo
+policy-query arguments, binary bootstrap bytes, empty-error frame bytes, fd-2
+CLOEXEC state, timing conversion, bounded response writes on a shared
+nonblocking socket, controlled child-failure status, exit-status mapping,
+timeout termination, and reaping.
+
+The tier-1 PAM integration suite (`make test-auth-pam`, requiring the cwrap
+wrapper libraries) additionally exercises, hermetically: a real PAM stack
+through `pam_wrapper`/`pam_matrix` with per-entry-point failure injection and
+call-sequence tracing, `PAM_USER` canonicalization, the full unprivileged
+fork/`execveat` spawn with post-exec fd-layout/environment/cwd/bootstrap
+assertions from a stub bridge, the exec-failure matrix, READY/GO outcomes with
+authentication-response-before-Yamux byte ordering on the client socket, the
+emulated-root privilege-drop sequence, and accounting record contents against
+tmpfile utmp/wtmp/btmp/lastlog databases.
+
+Still not exercised anywhere: a full trickled request through `handle_client`,
+journald assertions, real sudoers policy outcomes, privileged-mode spawn, real
+uid transitions, descriptor-failure injection, service-stop cleanup, a
+SIGTERM-ignoring bridge, and a real cross-language READY/GO exchange with the
+Go bridge. Those runtime claims remain unverified until tier-2 and
+cross-language coverage exists.
 
 ---
 
@@ -523,24 +540,54 @@ the warning-as-error C tests, Go race tests, lint, and dead-code scan) and a cle
    successful-login `LINUXIO_AUTH_*_US` samples before quoting a stable
   improvement, revisiting the closed concurrent-work decision, or using accounting
    observations to characterize tail behavior.
-5. **Host-integration plan (refines the earlier recommendation):** tier 1,
-   hermetic per-PR via `pam_wrapper` + `pam_matrix` with a checked-in test
-   service file — PAM sequencing incl. session-close-exactly-once on every
-   post-open failure path, `PAM_USER` canonicalization via an aliasing module,
-   fd-layout/privilege-drop assertions from a stub bridge that dumps
-   `/proc/self/fd` + `getresuid`, an execveat failure matrix (missing,
-   non-executable, setuid-rejected, exits-post-exec, garbage-on-fd-3), and
-   accounting record contents against tmpfile paths. Tier 2, disposable root
-   host — root-side sudoers outcome matrix (NOPASSWD / password / absent,
-   unrelated command, and `root_sudo` disabled), including confirmation that
-   the command-specific `-U` query never prompts and that incompatible policy
-   plugins fail closed,
-   real `who`/`last`/`lastb` assertions, the implemented READY/GO handoff across
-   the real C/Go process boundary, authentication-response ordering, its startup
-   race regressions, and kill/cleanup ordering against the journal as oracle.
-   Cockpit itself has zero unit tests
-   for its session C code (VM tier only) — pam_wrapper is borrowed from
-   samba/sssd practice instead.
+5. **Host-integration plan (refines the earlier recommendation):**
+
+   **Tier 1 — implemented (2026-08-06) as `make test-auth-pam`.** A hermetic
+   per-PR suite (`backend/auth/linuxio-auth-pam_test.c`) runs the real
+   `handle_client` under `pam_wrapper` + `pam_matrix` (checked-in service
+   template `backend/auth/testdata/linuxio.pam.in`), `nss_wrapper` synthetic
+   users, and `uid_wrapper` emulated-root privilege drops, against tmpfile
+   accounting databases and a private bridge directory selected through
+   `#ifndef`-guarded compile-time seams (production builds keep the
+   defaults). Twenty scenarios cover: PAM call sequencing with
+   session-close-exactly-once asserted from a probe-module trace on every
+   reachable post-open failure path (REINITIALIZE_CRED failure, exec failure,
+   pre-READY exit, garbage status byte, reported startup error, READY
+   timeout, failed OK write); `PAM_USER` canonicalization via the probe
+   module's aliasing (response, bootstrap, accounting, and bridge environment
+   all carry the canonical name and the wire alias appears nowhere
+   downstream); fd-layout assertions from a stub bridge that dumps
+   `/proc/self/fd`, `getresuid`/`getresgid`, environment, cwd, and the raw
+   bootstrap bytes (exactly fds 0–4 survive exec, no wrapper/preload
+   environment leaks into the bridge); the exec-failure matrix (missing,
+   non-executable, setuid-rejected, group-writable-rejected, ENOEXEC
+   post-validation); response-before-Yamux ordering (the stub's post-GO
+   marker must follow the complete OK frame in the client byte stream); and
+   accounting record contents (utmp USER→DEAD slot update, both wtmp
+   records, lastlog entry, btmp on failed authentication only, and completed
+   end-accounting after a failed OK write). The suite requires
+   `libpam-wrapper`, `libnss-wrapper`, and `libuid-wrapper` and skips with a
+   warning when they are absent; it is wired into `make test-backend`.
+   Building it caught one real defect, fixed in the same change: a bootstrap
+   or client descriptor already sitting at its fixed slot (fd 0 / fd 3)
+   skipped the `dup2` and therefore kept `FD_CLOEXEC` across exec, closing
+   the bridge's copy; both slots now get the same explicit
+   `clear_cloexec_or_die` the startup-status fd already had. Hermetic limits:
+   the privilege-drop sequence runs under uid_wrapper's emulated semantics
+   (including the fail-closed `setuid(0)` verification), not a real uid
+   transition, and the sudo policy probe fails closed to unprivileged mode,
+   so privileged-mode spawn and real uid transitions remain tier-2 items.
+
+   **Tier 2 — open.** Disposable root host — root-side sudoers outcome matrix
+   (NOPASSWD / password / absent, unrelated command, and `root_sudo`
+   disabled), including confirmation that the command-specific `-U` query
+   never prompts and that incompatible policy plugins fail closed, real
+   `who`/`last`/`lastb` assertions, real privilege-drop uid transitions and
+   privileged-mode spawn, the implemented READY/GO handoff across the real
+   C/Go process boundary, authentication-response ordering, its startup race
+   regressions, and kill/cleanup ordering against the journal as oracle.
+   Cockpit itself has zero unit tests for its session C code (VM tier only) —
+   pam_wrapper is borrowed from samba/sssd practice instead.
 6. **Graceful service-stop cleanup:** install signal-safe launcher SIGTERM
    handling that forwards shutdown to the owned bridge and allows native login
    accounting plus PAM session/credential teardown to run through the shared

@@ -553,6 +553,67 @@ test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1; \
 	echo "✅ Cross-language auth protocol tests passed!"
 
+# Tier-1 hermetic PAM/host-integration suite for the C launcher. Runs the
+# real handle_client() against a pam_wrapper/pam_matrix PAM stack, an
+# nss_wrapper user database, uid_wrapper emulated-root privilege drops, a
+# stub bridge exec'd through the fixed fd layout, and tmpfile accounting
+# databases. Requires the cwrap wrapper libraries
+# (apt install libpam-wrapper libnss-wrapper libuid-wrapper); skips with a
+# warning when they are missing. Non-standard library location:
+#   make test-auth-pam LINUXIO_CWRAP_LIBDIR=/path/containing/the/so/files
+test-auth-pam: check-c-build-deps
+	@echo ""
+	@echo "🧪 Running hermetic PAM integration tests (pam_wrapper)..."
+	@set -euo pipefail; \
+	CWRAP_DIR="$(LINUXIO_CWRAP_LIBDIR)"; \
+	find_lib() { \
+	  for f in $${CWRAP_DIR:+"$$CWRAP_DIR/$$1"} /usr/lib/*/"$$1" /usr/lib/"$$1" /usr/lib64/"$$1" /usr/local/lib/"$$1"; do \
+	    if [ -e "$$f" ]; then echo "$$f"; return 0; fi; \
+	  done; return 1; \
+	}; \
+	PAM_WRAPPER_LIB="$$(find_lib libpam_wrapper.so || true)"; \
+	NSS_WRAPPER_LIB="$$(find_lib libnss_wrapper.so || true)"; \
+	UID_WRAPPER_LIB="$$(find_lib libuid_wrapper.so || true)"; \
+	PAM_MATRIX_LIB="$$(find_lib pam_wrapper/pam_matrix.so || true)"; \
+	if [ -z "$$PAM_WRAPPER_LIB" ] || [ -z "$$NSS_WRAPPER_LIB" ] || \
+	   [ -z "$$UID_WRAPPER_LIB" ] || [ -z "$$PAM_MATRIX_LIB" ]; then \
+	  echo "⚠️  Skipping PAM integration tests: cwrap wrapper libraries not found."; \
+	  echo "   Install them with: apt install libpam-wrapper libnss-wrapper libuid-wrapper"; \
+	  echo "   (or pass LINUXIO_CWRAP_LIBDIR=<dir containing the .so files>)"; \
+	  exit 0; \
+	fi; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) -shared -fPIC -O2 -Wall -Wextra -Werror \
+	  -o "$$TEST_DIR/pam_linuxio_probe.so" backend/auth/testdata/pam_linuxio_probe.c -lpam; \
+	$(CC) -O2 -Wall -Wextra -Werror \
+	  -o "$$TEST_DIR/bridge-stub" backend/auth/testdata/linuxio-test-bridge.c; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_DIR/linuxio-auth-pam-test" backend/auth/linuxio-auth-pam_test.c $(LDFLAGS) $$LIBS; \
+	mkdir -p "$$TEST_DIR/pam.d"; \
+	sed -e "s|@PROBE_MODULE@|$$TEST_DIR/pam_linuxio_probe.so|g" \
+	    -e "s|@PAM_MATRIX@|$$PAM_MATRIX_LIB|g" \
+	    -e "s|@PASSDB@|$$TEST_DIR/passdb|g" \
+	    backend/auth/testdata/linuxio.pam.in > "$$TEST_DIR/pam.d/linuxio"; \
+	: > "$$TEST_DIR/passwd"; : > "$$TEST_DIR/group"; \
+	cd "$$TEST_DIR" && env -u JOURNAL_STREAM \
+	  LD_PRELOAD="$$PAM_WRAPPER_LIB:$$NSS_WRAPPER_LIB:$$UID_WRAPPER_LIB" \
+	  PAM_WRAPPER=1 \
+	  PAM_WRAPPER_SERVICE_DIR="$$TEST_DIR/pam.d" \
+	  NSS_WRAPPER_PASSWD="$$TEST_DIR/passwd" \
+	  NSS_WRAPPER_GROUP="$$TEST_DIR/group" \
+	  UID_WRAPPER=1 UID_WRAPPER_ROOT=1 \
+	  LINUXIO_TEST_REAL_UID="$$(id -u)" LINUXIO_TEST_REAL_GID="$$(id -g)" \
+	  LANG=C.UTF-8 TERM=xterm \
+	  ./linuxio-auth-pam-test; \
+	echo "✅ PAM integration tests passed!"
+
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
 	@cd "$(BACKEND_DIR)" && \
@@ -569,7 +630,7 @@ lint-only:
 	  cd frontend; \
 	  lint_output="$$(mktemp)"; \
 	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
+	  ./node_modules/.bin/oxlint --type-aware --fix -c config/oxlint.config.mts src config/browser.vite.config.ts config/oxlint.config.mts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
 	  if [ -n "$$warning_count" ]; then \
@@ -577,7 +638,7 @@ lint-only:
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
-	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/oxlint.config.mts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
@@ -611,7 +672,7 @@ endif
 # are cached like normal test results, so incremental runs stay fast. Pass
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
-test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol
+test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
 	@echo ""
 	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
@@ -1041,6 +1102,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go + C backend tests (used by 'make test' + CI)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
@@ -1080,7 +1142,7 @@ cloc:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc
