@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
 } from "react";
 import { toast } from "sonner";
 
@@ -119,7 +120,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
-        ...pickCapabilityState(action.payload),
+        ...emptyCapabilityState,
       };
     case AUTH_ACTIONS.REFRESH_CAPABILITIES:
       return {
@@ -147,6 +148,20 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const authGeneration = useRef(0);
+  const mounted = useRef(true);
+  const capabilityRefresh = useRef<{
+    identity: string;
+    promise: Promise<CapabilitiesResponse>;
+    applied: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const applyCapabilities = useCallback(
     (data: Partial<CapabilitiesResponse>) => {
@@ -167,10 +182,17 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshCapabilities =
     useCallback(async (): Promise<CapabilitiesResponse> => {
+      const generation = authGeneration.current;
       const data = await linuxio.system.get_capabilities();
-      applyCapabilities(data);
+      if (
+        mounted.current &&
+        state.isAuthenticated &&
+        authGeneration.current === generation
+      ) {
+        applyCapabilities(data);
+      }
       return data;
-    }, [applyCapabilities]);
+    }, [applyCapabilities, state.isAuthenticated]);
 
   const initialize = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
@@ -203,9 +225,12 @@ function AuthProvider({ children }: AuthProviderProps) {
   // the session is lost involuntarily (not for deliberate sign-out).
   const doLocalSignOut = useCallback(
     (broadcast: SignOutBroadcast, preservePath = false) => {
+      authGeneration.current += 1;
+      capabilityRefresh.current = null;
       // Clear update info and user data on logout
       try {
         sessionStorage.removeItem("update_info");
+        sessionStorage.removeItem("update_info_checked");
         clearConfigCache();
         localStorage.removeItem("auth_username");
         localStorage.removeItem("auth_privileged");
@@ -263,10 +288,47 @@ function AuthProvider({ children }: AuthProviderProps) {
   // WebSocket connection validates session - if invalid, triggers logout
   useEffect(() => {
     if (state.isAuthenticated) {
+      const identity = `${state.user?.id ?? ""}:${authGeneration.current}`;
+      let active = true;
       const mux = initStreamMux();
+
+      const refreshCapabilitiesAfterOpen = () => {
+        let refresh = capabilityRefresh.current;
+        if (refresh?.identity !== identity) {
+          refresh = {
+            identity,
+            promise: linuxio.system.get_capabilities(),
+            applied: false,
+          };
+          capabilityRefresh.current = refresh;
+        }
+
+        const currentRefresh = refresh;
+        void currentRefresh.promise
+          .then((data) => {
+            if (
+              !active ||
+              currentRefresh.applied ||
+              capabilityRefresh.current !== currentRefresh
+            ) {
+              return;
+            }
+            currentRefresh.applied = true;
+            applyCapabilities(data);
+          })
+          .catch(() => {
+            // A failed scan may be retried after a later reconnect/open event.
+            if (capabilityRefresh.current === currentRefresh) {
+              capabilityRefresh.current = null;
+            }
+          });
+      };
+
       // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
-        if (status === "error") {
+        if (status === "open") {
+          refreshCapabilitiesAfterOpen();
+        } else if (status === "error") {
           // "error" status means close code 1008 (session expired/invalid)
           // or WebSocket connection failed (session cookie invalid)
           console.log("[AuthContext] Session invalid or expired");
@@ -280,14 +342,23 @@ function AuthProvider({ children }: AuthProviderProps) {
           // Don't logout - StreamMultiplexer will auto-reconnect
         }
       });
-      return () => unsubscribe();
+      if (mux.status === "open") refreshCapabilitiesAfterOpen();
+      return () => {
+        active = false;
+        unsubscribe();
+      };
     } else {
+      capabilityRefresh.current = null;
       closeStreamMux();
     }
-  }, [state.isAuthenticated, sessionExpired]);
+  }, [
+    state.isAuthenticated,
+    state.user?.id,
+    applyCapabilities,
+    sessionExpired,
+  ]);
 
   const signIn = useCallback(async (username: string, password: string) => {
-    // Login response may include update info
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       credentials: "include",
@@ -300,35 +371,25 @@ function AuthProvider({ children }: AuthProviderProps) {
       throw new Error(loginErrorMessage(err.code, err.error));
     }
     const data: LoginResponse = await res.json();
-    const capabilities = capabilityStateFromWire(data);
 
     clearConfigCache();
-
-    // Store update info if present
-    if (data.update) {
-      try {
-        sessionStorage.setItem("update_info", JSON.stringify(data.update));
-      } catch (error) {
-        console.error("Failed to store update info:", error);
-      }
-    }
 
     // Store username and privileged status in localStorage (persists across tab close)
     try {
       localStorage.setItem("auth_username", username);
       localStorage.setItem("auth_privileged", String(data.privileged));
-      persistCapabilities(capabilities);
+      localStorage.removeItem(AUTH_CAPABILITIES_KEY);
     } catch (error) {
       console.error("Failed to store user info:", error);
     }
 
     const user: AuthUser = { id: username, name: username };
+    authGeneration.current += 1;
     dispatch({
       type: AUTH_ACTIONS.SIGN_IN,
       payload: {
         user,
         privileged: data.privileged,
-        ...capabilities,
       },
     });
 

@@ -87,7 +87,7 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
-  } & Partial<CapabilityState>;
+  };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
 
@@ -100,10 +100,9 @@ export interface UpdateInfo {
   release_url?: string;
 }
 
-export interface LoginResponse extends CapabilitiesResponse {
+export interface LoginResponse {
   privileged: boolean;
   success: boolean;
-  update?: UpdateInfo;
 }
 
 export type LoginErrorCode =

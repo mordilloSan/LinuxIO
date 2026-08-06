@@ -51,11 +51,11 @@ func CheckMemoryModuleInventoryAvailability(ctx context.Context) (bool, error) {
 }
 
 func hasUdevMemoryInventory(ctx context.Context) (bool, error) {
-	out, err := memoryModulesRunCommand(ctx, "udevadm", "info", "--export-db")
+	out, err := memoryModulesRunCommand(ctx, "udevadm", "info", "--query=property", "--path=/sys/class/dmi/id")
 	if err != nil {
 		return false, err
 	}
-	return hasUdevMemoryDeviceData(string(out)), nil
+	return hasUdevMemoryDeviceDataFromProps(udevDMIPropertiesFromQuery(string(out))), nil
 }
 
 func fetchUdevMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
@@ -104,8 +104,15 @@ func parseUdevMemoryModules(output string) []apischema.MemoryModule {
 	return modules
 }
 
-func hasUdevMemoryDeviceData(output string) bool {
-	return hasUdevMemoryDeviceDataFromProps(udevDMIProperties(output))
+func udevDMIPropertiesFromQuery(output string) map[string]string {
+	props := make(map[string]string)
+	for line := range strings.SplitSeq(output, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && key != "" {
+			props[key] = value
+		}
+	}
+	return props
 }
 
 func hasUdevMemoryDeviceDataFromProps(props map[string]string) bool {

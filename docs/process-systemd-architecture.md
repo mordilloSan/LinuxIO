@@ -19,7 +19,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 |--------|------|--------|---------|----------|------|
 | `linuxio` | Go | `backend/` (`main.go`) | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
-| `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM auth, sudo check, fork + supervise bridge |
+| `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged) | per login session | **yamux server**; executes operations |
 
 All four install to `/usr/local/bin/`. The CLI is a thin management front-end; the other three are the running **control plane**.
@@ -84,7 +84,8 @@ Webserver  ── connect ──►  /run/linuxio/auth.sock        (allowed via 
                                   │  Accept=yes
                                   ▼
                     linuxio-auth@<conn>.service  (root)   ← connected socket is its stdin
-                       1. PAM authenticate + sudo check
+                       1. PAM authenticates once; root queries sudoers with
+                          `sudo -n -l -U <user> -u root -- linuxio-bridge`
                        2. fork → drop to user uid/gid (or stay root if privileged)
                        3. dup2 the SAME client socket onto bridge FD 3
                        4. pass bootstrap (session id, uid/gid, flags) via a pipe → bridge stdin
@@ -111,7 +112,7 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 |----------|-----------|-----------|
 | Browser ↔ webserver | HTTP + session cookie, validated before WS upgrade | network-facing process is unprivileged + sandboxed |
 | Webserver ↔ auth socket | unix socket, `root:linuxio-bridge-socket 0660` | only the webserver's group may request a login |
-| Auth ↔ bridge | `fork` + privilege drop + `dup2` onto FD 3 | bridge starts with exactly the user's uid/gid |
+| Auth ↔ bridge | PAM authentication + root-side sudoers query + `fork`/privilege drop | bridge stays root only when sudoers permits the exact bridge command; otherwise it starts with the user's uid/gid |
 | Webserver ↔ bridge | inherited socket fd + yamux | webserver never gains the bridge's privileges; just relays bytes |
 | Webserver → bridge launch | embedded SHA-256 pin (`version.BridgeSHA256`), checked by `validateBridgeHash` | a tampered/substituted bridge binary won't be spawned |
 

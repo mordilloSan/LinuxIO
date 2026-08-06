@@ -181,6 +181,31 @@ static int test_bridge_policy(void)
   return 0;
 }
 
+static int test_sudo_policy_argv(void)
+{
+  const char *argv[10] = {0};
+  const char *canonical = "alice";
+
+  CHECK(build_sudo_policy_argv(canonical, argv, 10) == 0);
+  CHECK(strcmp(argv[0], "/usr/bin/sudo") == 0);
+  CHECK(strcmp(argv[1], "-n") == 0);
+  CHECK(strcmp(argv[2], "-l") == 0);
+  CHECK(strcmp(argv[3], "-U") == 0);
+  CHECK(argv[4] == canonical);
+  CHECK(strcmp(argv[5], "-u") == 0);
+  CHECK(strcmp(argv[6], "root") == 0);
+  CHECK(strcmp(argv[7], "--") == 0);
+  CHECK(strcmp(argv[8], BRIDGE_PATH) == 0);
+  CHECK(argv[9] == NULL);
+  CHECK(build_sudo_policy_argv(NULL, argv, 10) == -1);
+  CHECK(build_sudo_policy_argv("", argv, 10) == -1);
+  CHECK(build_sudo_policy_argv(canonical, NULL, 10) == -1);
+  CHECK(build_sudo_policy_argv(canonical, argv, 9) == -1);
+  CHECK(user_can_run_bridge_as_root(NULL, 0) == 0);
+  CHECK(user_can_run_bridge_as_root("", 0) == 0);
+  return 0;
+}
+
 static int test_bootstrap_encoding(void)
 {
   const uint8_t expected[] = {
@@ -484,6 +509,7 @@ int main(void)
       {"length-prefixed input", test_lenstr_rejects_ambiguous_input},
       {"PAM conversation", test_pam_conversation},
       {"bridge policy", test_bridge_policy},
+      {"sudo policy argv", test_sudo_policy_argv},
       {"bootstrap encoding", test_bootstrap_encoding},
       {"child status reporting", test_child_status_reporting},
       {"elapsed microseconds", test_elapsed_microseconds},

@@ -1,17 +1,14 @@
 package bridge
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -57,95 +54,11 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-const (
-	bridgeBinaryPath    = version.BinDir + "/linuxio-bridge"
-	capabilitiesTimeout = 5 * time.Second
-)
-
-func writeCapabilitiesRequest(stream io.Writer) error {
-	payload, err := relay.MarshalStreamOpenPayload("system.get_capabilities", nil)
-	if err != nil {
-		return err
-	}
-	return relay.WriteRelayFrame(stream, &relay.StreamFrame{
-		Opcode:  relay.OpStreamOpen,
-		Payload: payload,
-	})
-}
-
-func decodeCapabilitiesResult(frame *relay.StreamFrame) (session.CapabilitiesAvailable, error) {
-	var (
-		caps   session.CapabilitiesAvailable
-		result relay.ResultFrame
-	)
-
-	if err := json.Unmarshal(frame.Payload, &result); err != nil {
-		return caps, fmt.Errorf("decode capabilities result frame: %w", err)
-	}
-	if result.Status != "ok" {
-		if result.Error == "" {
-			return caps, fmt.Errorf("capabilities request failed with status %q", result.Status)
-		}
-		return caps, fmt.Errorf("capabilities request failed: %s", result.Error)
-	}
-	if len(result.Data) == 0 {
-		return caps, fmt.Errorf("capabilities request returned empty data")
-	}
-	if err := json.Unmarshal(result.Data, &caps); err != nil {
-		return caps, fmt.Errorf("decode capabilities payload: %w", err)
-	}
-
-	return caps, nil
-}
-
-func readCapabilitiesResponse(stream io.Reader) (session.CapabilitiesAvailable, error) {
-	for {
-		frame, err := relay.ReadRelayFrame(stream)
-		if err != nil {
-			return session.CapabilitiesAvailable{}, fmt.Errorf("read capabilities response: %w", err)
-		}
-
-		switch frame.Opcode {
-		case relay.OpStreamProgress:
-			continue
-		case relay.OpStreamResult:
-			return decodeCapabilitiesResult(frame)
-		case relay.OpStreamClose:
-			return session.CapabilitiesAvailable{}, fmt.Errorf("capabilities stream closed before result")
-		default:
-			return session.CapabilitiesAvailable{}, fmt.Errorf("unexpected capabilities opcode: 0x%02x", frame.Opcode)
-		}
-	}
-}
-
-func fetchSessionCapabilities(ctx context.Context, sessionID string) (session.CapabilitiesAvailable, error) {
-	yamuxSession, err := GetYamuxSession(sessionID)
-	if err != nil {
-		return session.CapabilitiesAvailable{}, fmt.Errorf("get yamux session: %w", err)
-	}
-
-	handshakeCtx, cancel := context.WithTimeout(ctx, capabilitiesTimeout)
-	defer cancel()
-	stream, err := yamuxSession.Open(handshakeCtx)
-	if err != nil {
-		return session.CapabilitiesAvailable{}, fmt.Errorf("open capabilities stream: %w", err)
-	}
-	defer stream.Close()
-	deadline, _ := handshakeCtx.Deadline() // WithTimeout always supplies one.
-	if err := stream.SetDeadline(deadline); err != nil {
-		return session.CapabilitiesAvailable{}, fmt.Errorf("set capabilities stream deadline: %w", err)
-	}
-
-	if err := writeCapabilitiesRequest(stream); err != nil {
-		return session.CapabilitiesAvailable{}, fmt.Errorf("write capabilities request: %w", err)
-	}
-
-	return readCapabilitiesResponse(stream)
-}
+const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
-func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
@@ -170,22 +83,6 @@ func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, 
 				"error", delErr)
 		}
 		return nil, attachErr
-	}
-
-	caps, err := fetchSessionCapabilities(ctx, sess.SessionID)
-	if err != nil {
-		slog.Warn("failed to fetch session capabilities, using defaults",
-			"session_id", sess.SessionID,
-			"error", err)
-	}
-	sess.Capabilities = caps
-	if err := sm.SetCapabilities(sess.SessionID, caps); err != nil {
-		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
-			slog.Warn("failed to cleanup session after capability persistence failure",
-				"session_id", sess.SessionID,
-				"error", delErr)
-		}
-		return nil, fmt.Errorf("failed to persist session capabilities: %w", err)
 	}
 
 	slog.Debug("bridge launch via daemon acknowledged",

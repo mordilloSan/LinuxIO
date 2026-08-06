@@ -33,9 +33,10 @@ type UpdateInfo struct {
 	ReleaseURL     string `json:"release_url,omitempty"`
 }
 
-// CheckForUpdate queries GitHub for the latest release and compares with installed version.
-// Called during login for privileged users only.
-func CheckForUpdate() *UpdateInfo {
+// CheckForUpdate queries GitHub for the latest release and compares it with
+// the installed version. The request is scoped to ctx so callers can cancel
+// an in-flight update check.
+func CheckForUpdate(ctx context.Context) *UpdateInfo {
 	current := getInstalledVersion()
 
 	if current == "" || current == "unknown" {
@@ -43,7 +44,7 @@ func CheckForUpdate() *UpdateInfo {
 		return nil
 	}
 
-	latest, releaseURL := fetchLatestRelease()
+	latest, releaseURL := fetchLatestRelease(ctx)
 	if latest == "" {
 		slog.Debug("could not fetch latest release")
 		return nil
@@ -74,11 +75,16 @@ func getInstalledVersion() string {
 	return ver.Version
 }
 
-func fetchLatestRelease() (version string, releaseURL string) {
+func fetchLatestRelease(ctx context.Context) (version string, releaseURL string) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	url := fmt.Sprintf(GitHubAPI, ver.RepoOwner, ver.RepoName)
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		slog.Debug("failed to create latest release request", "error", err)
+		return "", ""
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		slog.Debug("failed to fetch latest release", "error", err)
 		return "", ""

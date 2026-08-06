@@ -115,7 +115,10 @@ Server just reads/writes bytes from/to streams.
 The bridge is **not** a long-running server that the webserver dials. Instead:
 
 1. On login, `bridge.StartBridge()` dials the auth daemon over a Unix socket.
-2. The auth daemon validates PAM credentials, checks sudo, then forks `linuxio-bridge`.
+2. PAM authenticates the user once. The root auth daemon then runs
+   `sudo -n -l -U <user> -u root -- /usr/local/bin/linuxio-bridge` as a
+   non-interactive policy query and forks `linuxio-bridge`; sudo does not
+   execute the bridge.
 3. No new data-path socketpair is created. The auth daemon **reuses the accepted
    connection**: it `dup2`s the webserver↔auth-daemon socket onto the bridge's
    FD 3, then execs the bridge. The separate FD 4 socketpair described below is
@@ -146,9 +149,9 @@ The bridge is **not** a long-running server that the webserver dials. Instead:
    targeting a 10-second error-delivery margin inside the webserver's 30-second
    read deadline. Within that budget, the READY phase defaults to 10 seconds;
    `LINUXIO_BRIDGE_READY_TIMEOUT` accepts 1–20 seconds and is clipped to the
-   remaining request budget. The sudo child wait uses that same remaining
-   budget. The launcher does not interrupt synchronous PAM calls; if PAM returns
-   after the deadline, it fails before bridge launch. See
+   remaining request budget. The sudo policy-query child wait uses that same
+   remaining budget. The launcher does not interrupt synchronous PAM calls; if
+   PAM returns after the deadline, it fails before bridge launch. See
    `backend/auth/linuxio_protocol.h`.
 8. The webserver keeps its end of the connection it dialed. That `net.Conn` now reaches the forked bridge directly — the auth daemon is no longer in the data path.
 9. `relay.NewYamuxClient(conn)` wraps that connection into a yamux client session.
@@ -156,7 +159,7 @@ The bridge is **not** a long-running server that the webserver dials. Instead:
 
 ```go
 // bridge/bridge.go — called at login
-func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
     result, _ := Authenticate(req) // dials auth daemon; conn now reaches the forked bridge
     sess, _ := sm.CreateSession(sessionID, result.User, result.Privileged)
     attachBridgeSession(sess, result.Conn)

@@ -1308,98 +1308,72 @@ fail:
   return -1;
 }
 
-// sudo probing
-static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const argv[],
-                                      const char *stdin_data, int timeout_sec,
-                                      int64_t request_deadline_ns)
+// sudo policy probing. This runs from the root launcher context: -U asks
+// sudoers about the authenticated identity without changing credentials.
+static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
+                                 int64_t request_deadline_ns)
 {
-  int inpipe[2] = {-1, -1};
-  if (pipe2(inpipe, O_CLOEXEC) != 0)
-    return -1;
-
   pid_t pid = fork();
   if (pid < 0)
-  {
-    close(inpipe[0]);
-    close(inpipe[1]);
     return -1;
-  }
   if (pid == 0)
   {
-    if (setgroups(0, NULL) != 0)
+    int devnull = open("/dev/null", O_RDWR);
+    if (devnull < 0 || dup2(devnull, STDIN_FILENO) < 0 ||
+        dup2(devnull, STDOUT_FILENO) < 0)
       _exit(127);
-    if (initgroups(pw->pw_name, pw->pw_gid) != 0)
-      _exit(127);
-    if (setgid(pw->pw_gid) != 0)
-      _exit(127);
-    if (setuid(pw->pw_uid) != 0)
-      _exit(127);
+    if (devnull != STDIN_FILENO && devnull != STDOUT_FILENO)
+      close(devnull);
 
-    if (dup2(inpipe[0], STDIN_FILENO) < 0)
+    if (clearenv() != 0 ||
+        setenv("PATH",
+               "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1) != 0 ||
+        setenv("LANG", "C", 1) != 0)
       _exit(127);
-    close(inpipe[0]);
-    close(inpipe[1]);
-
-    // Inherited stdout is the client socket; sudo -l prints the permitted
-    // command there, which would corrupt the binary response stream.
-    {
-      int devnull = open("/dev/null", O_WRONLY);
-      if (devnull < 0)
-        _exit(127);
-      if (dup2(devnull, STDOUT_FILENO) < 0)
-        _exit(127);
-      if (devnull != STDOUT_FILENO)
-        close(devnull);
-    }
-
-    clearenv();
-    setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-    setenv("LANG", "C", 1);
     execv("/usr/bin/sudo", ARGV_UNCONST(argv));
 
     _exit(127);
   }
-  close(inpipe[0]);
-  if (stdin_data && *stdin_data)
-    (void)write_all(inpipe[1], stdin_data, strlen(stdin_data));
-  close(inpipe[1]);
-
   return wait_for_child_with_timeout(pid, timeout_sec, request_deadline_ns);
 }
 
+static int build_sudo_policy_argv(const char *canonical_username,
+                                  const char **argv, size_t argv_cap)
+{
+  if (!canonical_username || !*canonical_username || !argv || argv_cap < 10)
+    return -1;
+  argv[0] = "/usr/bin/sudo";
+  argv[1] = "-n";
+  argv[2] = "-l";
+  argv[3] = "-U";
+  argv[4] = canonical_username;
+  argv[5] = "-u";
+  argv[6] = "root";
+  argv[7] = "--";
+  argv[8] = BRIDGE_PATH;
+  argv[9] = NULL;
+  return 0;
+}
+
 // Privileged-mode policy: the user must be allowed by sudoers to run the
-// bridge binary as root. "sudo -l -- <cmd>" exits 0 only if the security
-// policy permits the invoking user to run that exact command (sudo(8)), so
-// sudoers stays the single source of truth: full admins (ALL) qualify,
-// users with unrelated narrow rules do not, and an admin can grant web
-// admin access explicitly by whitelisting BRIDGE_PATH in sudoers. This probe
-// is authorization only: the already-root launcher executes the bridge
+// bridge binary as root. "sudo -n -l -U <user> -u root -- <cmd>" exits 0 only
+// if the security policy permits the specified user to run that exact command
+// (sudo(8)), so sudoers stays the single source of truth: full admins (ALL)
+// qualify, users with unrelated narrow rules do not, and an admin can grant
+// web admin access explicitly by whitelisting BRIDGE_PATH in sudoers. This
+// probe is authorization only: the already-root launcher executes the bridge
 // directly, so sudo runtime tags and environment rules do not wrap it.
-static int user_can_run_bridge_as_root(const struct passwd *pw, const char *password,
+static int user_can_run_bridge_as_root(const char *canonical_username,
                                        int64_t request_deadline_ns)
 {
-  // How long we wait for the sudo policy check to complete
-  int to_pw = env_get_int("LINUXIO_SUDO_TIMEOUT_PASSWORD", 4, 1, 30);
-
-  // If we don't have a password, don't even try
-  if (!password || !*password)
+  if (!canonical_username || !*canonical_username)
     return 0;
-
-  // Authenticate with the same password we used for PAM
-  const char *argv_list[] = {"/usr/bin/sudo", "-k", "-S", "-p", "", "-u", "root",
-                             "-l", "--", BRIDGE_PATH, NULL};
-
-  // Buffer must accommodate password + newline + null terminator
-  char buf[PROTO_MAX_PASSWORD + 2];
-  (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
-
-  int rc = run_cmd_as_user_with_input(pw, argv_list, buf, to_pw,
-                                      request_deadline_ns);
-
-  // Wipe the temporary buffer
-  secure_bzero(buf, sizeof(buf));
-
-  return rc == 0;
+  int timeout_sec = env_get_int("LINUXIO_SUDO_TIMEOUT", 4, 1, 30);
+  const char *argv_list[10];
+  if (build_sudo_policy_argv(canonical_username, argv_list,
+                             sizeof(argv_list) / sizeof(argv_list[0])) != 0)
+    return 0;
+  return run_sudo_policy_query(argv_list, timeout_sec, request_deadline_ns) == 0;
 }
 
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
@@ -2268,14 +2242,15 @@ static int handle_client(int input_fd, int output_fd)
     journal_info_fieldsf(fields, 2, "pam auth success");
   }
 
+  // PAM is finished with the plaintext password; the policy query does not
+  // receive it, and no later launcher stage needs it.
+  secure_bzero(password, sizeof(password));
+
   // Privileged mode iff sudoers lets this user run the bridge as root
   (void)monotonic_now_ns(&timing.sudo_started_ns);
   int want_privileged =
-      user_can_run_bridge_as_root(pw, password, request_deadline_ns) ? 1 : 0;
+      user_can_run_bridge_as_root(auth_user.name, request_deadline_ns) ? 1 : 0;
   (void)monotonic_now_ns(&timing.sudo_completed_ns);
-
-  // Do not retain the plaintext password while the parent supervises the bridge.
-  secure_bzero(password, sizeof(password));
 
   uint8_t mode = want_privileged ? PROTO_MODE_PRIVILEGED : PROTO_MODE_UNPRIVILEGED;
   const char *mode_name = mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged";

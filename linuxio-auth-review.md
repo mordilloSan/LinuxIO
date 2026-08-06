@@ -234,10 +234,10 @@ coverage of the implemented startup-handoff protocol.
 | Item | Final disposition |
 |---|---|
 | **1.1 — 100 ms sudo polling** | **Implemented.** The fixed-sleep loop is replaced by `pidfd_open` plus `ppoll` against an absolute monotonic deadline. Unsupported pidfd kernels use a short-sleep fallback; other pidfd errors fail closed. Both paths make a final nonblocking reap before timeout handling, close the pidfd on every path, and retry interrupted waits. One deployed observation shows no fixed polling delay, but does not establish the end-to-end improvement. |
-| **1.2 — merge `sudo -k` into the probe** | **Implemented.** The existing `sudo -l` probe now includes `-k`, so it ignores and does not update cached credentials. The redundant post-success invalidation child is removed. The exact latency saving is not established by one deployed observation. |
-| **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; measurement-gated.** Serialization is confirmed, but concurrency adds child ownership, cancellation, password-lifetime, and PAM-ordering complexity without evidence of a material end-to-end saving. Successful launches with complete monotonic clock reads now emit PAM, sudo, session-setup, bridge-startup, accounting, and request-to-OK timings so this decision can use the deployed path rather than historical estimates. |
+| **1.2 — merge `sudo -k` into the probe** | **Implemented, then superseded by the policy-only query.** The redundant post-success invalidation child was removed first. The current launcher no longer sends a password to sudo or uses its credential cache: after PAM authenticates once, root runs `sudo -n -l -U <user> -u root -- BRIDGE_PATH` solely to query sudoers. |
+| **1.3 — overlap sudo with PAM/bridge setup** | **Not implemented; superseded.** The root-side policy query is approximately 11 ms on the measured host, leaving too little work to justify concurrent child ownership and cancellation. Reconsider only if deployed timing shows the policy query becoming material again. |
 | **1.4 — move accounting after OK** | **Not implemented; policy-gated.** Current glibc retains an alarm-bounded blocking lock of about 10 seconds per lock. Moving accounting after OK improves response isolation but gives up the current guarantee that accounting is attempted before success is reported. |
-| **2.1 — shared cleanup epilogue** | **Implemented.** `handle_client` now has one state-aware epilogue for owned fds, child reaping, accounting, PAM session/credential teardown, `pam_end`, and password wiping. The immediate post-sudo password wipe remains in place so plaintext is not retained during bridge supervision, and intentional child fd handoffs are marked before cleanup. |
+| **2.1 — shared cleanup epilogue** | **Implemented.** `handle_client` now has one state-aware epilogue for owned fds, child reaping, accounting, PAM session/credential teardown, `pam_end`, and password wiping. The password is wiped immediately after PAM finishes and before the policy query because no later stage needs it; intentional child fd handoffs are marked before cleanup. |
 | **2.2 — simplify `safe_vsnprintf`** | **Implemented.** The dead Annex K and manual checked-builtin branches are removed. The helper now calls fortified `vsnprintf` directly, preserving compiler-derived object-size checking and C99 termination semantics. |
 | **2.3 — simplify constant bridge-path lookup** | **Implemented.** The constant parent directory is opened and validated before `openat` resolves the bridge basename relative to that pinned fd. The bridge inode is then `fstat`ed once, its ownership and mode are validated, and its fd remains open for execution. This removes the validation-time `/proc/self/fd` path reconstruction without claiming metadata immutability after validation. |
 | **2.4a–h — mechanical deletions and organization** | **Implemented.** Unused Linux-audit-noise includes, the ineffective platform guard, the `strdup` clone, dead `pipe2` fallbacks, the temporary field allocation, the duplicate path-size constant, and unnecessary forward declarations are removed; exact I/O helpers are colocated and the header now describes the binary request. Direct field reads wipe partial data and reject embedded NULs. `<time.h>` is retained because item 1.1 now requires it. |
@@ -342,22 +342,33 @@ for shared kill/reap cleanup.
 
 ### E. Sudoers authorizes but does not execute the bridge
 
-The launcher consumes `sudo -l -- BRIDGE_PATH` as a Boolean. On success, the
-already-root auth process sets ids and directly executes the bridge; sudo is not
-in that execution chain. Runtime sudo controls such as NOEXEC, environment
-rules, working-directory settings, and security profiles therefore do not wrap
-the bridge process. A `Digest_Spec` still affects command matching during the
-probe.
+After PAM authenticates and canonicalizes the account, the root launcher runs
+`sudo -n -l -U <user> -u root -- BRIDGE_PATH` and consumes its exit status as a
+Boolean. Exit status zero grants privileged bridge mode; every denial, error,
+signal, or timeout selects the unprivileged bridge. The query has no password
+input and cannot prompt. This makes the contract explicit: PAM authenticates
+the login once, while sudoers authorizes whether that user's bridge may remain
+root.
 
-This can be a coherent login-time authorization architecture, but repository
-source and history do not establish that on-demand escalation was explicitly
-evaluated and rejected. Describe sudoers as the source of authorization for
-privileged login mode, not as the executor or as a broader source of runtime
-policy.
+On success, the already-root auth process sets ids and directly executes the
+bridge; sudo is not in that execution chain. Runtime sudo controls such as
+NOEXEC, environment rules, working-directory settings, and security profiles
+therefore do not wrap the bridge process. A `Digest_Spec` still affects command
+matching during the probe. Hosts that disable root's use of sudo or install a
+policy plugin without compatible `-U` list semantics fail closed to
+unprivileged mode. Sudo-specific password or MFA stacks are intentionally not a
+second login authentication layer.
 
-**Disposition: Documented architecture.** The launcher source now states that
-the sudo probe is authorization only and that the already-root launcher executes
-the bridge directly. No claim is made that sudo runtime tags wrap the bridge.
+This is the selected login-time authorization architecture: sudoers is the
+source of authorization for privileged mode, not the bridge executor or a
+broader source of runtime policy. Removing sudo's second authentication stack
+is intentional; installations that require sudo-specific MFA must account for
+that distinction when enabling privileged LinuxIO access.
+
+**Disposition: Implemented and documented architecture.** The launcher now
+performs the authorization-only query from its root context, with stdin and
+stdout isolated from the client connection, and directly executes the bridge.
+No claim is made that sudo runtime tags wrap the bridge.
 
 Reference: [`sudoers(5)`](https://man7.org/linux/man-pages/man5/sudoers.5.html).
 
@@ -432,10 +443,13 @@ Priorities, in order:
    timeout before writing the HTTP response. Moving this to a cache, background
    refresh, or explicit authenticated endpoint requires deciding when update
    banner data may be stale or initially absent.
-3. **Evaluate capability discovery separately.** The backend currently waits
-   for a bridge capability RPC before completing login; the two measured scans
-   took roughly 170–256 ms. Deferring or caching it changes the initial
-   capability contract and needs coordinated fallback/refresh behavior.
+3. **Measure the decoupled capability stage separately.** Capability discovery
+   no longer blocks bridge/login completion: `AuthContext` requests it once
+   per authenticated frontend bootstrap after the mux opens, with cached values
+   available on reload and stale completions ignored. The capability stage
+   measured about **14.5 ms warm** and **51.6 ms on the first login after
+   restart**. These are stage measurements, not proof of an overall login
+   improvement; accumulate new deployed samples before making that claim.
 4. **Eliminate the blank configuration gate without accepting stale writes.**
    Sign-in clears the configuration cache, while `ConfigProvider` renders
    nothing until the new mux-backed request completes or its 2.5-second
@@ -446,17 +460,17 @@ Priorities, in order:
    Moving accounting after OK remains a product-policy choice because it gives
    up accounting-before-success.
 
-These are recorded work items, not implemented behavior. Items 2–4 cross API,
-session, or UI semantics and require explicit decisions plus their respective
-backend/frontend tests; they are not safe source-local deletions.
+These are recorded work items, not implemented behavior. Items 2 and 4 cross
+API, session, or UI semantics and require explicit decisions plus their
+respective backend/frontend tests; they are not safe source-local deletions.
 
 ## Recommended order
 
 1. Add dedicated root host-integration coverage for PAM identity, sudo outcomes,
    privilege-drop fd closure, and controlled `execveat` failure. The hermetic C
    suite now covers identity validation, the PAM conversation adapter, bridge
-   policy, bootstrap encoding, child timeout/reaping, and controlled child
-   startup reporting.
+   policy, exact sudo policy-query construction, bootstrap encoding, child
+   timeout/reaping, and controlled child startup reporting.
 2. Add cross-language coverage for the implemented READY/GO startup handoff:
    launch the real C/Go pair and exercise READY, GO, negative status, EOF,
    timeout, inherited-fd behavior, and authentication-response byte ordering.
@@ -482,9 +496,10 @@ The implementation is compiled with the repository's warning-as-error auth
 build and is covered by `make test-auth`, `make analyze-auth` (cppcheck, GCC
 analyzer, scan-build, and clang-tidy), and `make check-backend`. The hermetic C
 suite exercises input validation, PAM conversation responses, bridge metadata
-policy, binary bootstrap bytes, timing conversion, bounded response writes on a
-shared nonblocking socket, controlled child-failure status, exit-status mapping,
-timeout termination, and reaping. It does not exercise a real PAM stack
+policy, exact sudo policy-query arguments, binary bootstrap bytes, timing
+conversion, bounded response writes on a shared nonblocking socket, controlled
+child-failure status, exit-status mapping, timeout termination, and reaping. It
+does not exercise a real PAM stack
 (including session-open cleanup status), sudoers policy, privileged descriptor
 setup, `execveat`, accounting, descriptor-failure injection, or a real
 cross-language READY/GO exchange with authentication-response ordering. Those
@@ -582,9 +597,9 @@ improvement.
 
 The same trace places request start to WebSocket connection at about **616 ms**,
 making the helper about **5%** of that observed path. The remainder occurred
-after the helper in this trace; attributing it among the release check,
-capability RPC, configuration gate, and other work still requires stage-level
-measurements across enough comparable logins.
+after the helper in this trace. That trace predates capability decoupling; the
+separate response-to-WebSocket interval (roughly 32–40 ms in the newer stage
+timing) remains opaque and should be instrumented independently.
 
 ### Post-fix login-path breakdown (2026-08-05 16:58–17:05)
 
@@ -592,7 +607,9 @@ Two successful logins using the corrected READY/GO binaries provide the first
 post-fix smoke baseline. The earlier 16:50 invalid-response-magic failure is
 excluded. The center below is the midpoint of exactly two observations, not a
 stable median or percentile; the ≥30 comparable-login measurement gate remains
-open.
+open. This baseline predates the capability-discovery decoupling described
+below, so its capability scan row is historical and must not be read as the
+current login contract.
 
 | Order | Step | Observed duration | Two-sample center | Share of centered 605 ms path |
 |---:|---|---:|---:|---:|
@@ -612,15 +629,30 @@ open.
 | 12 | Authentication succeeded → WebSocket connected | 371.6–377.2 ms | **374.4 ms** | **61.9%** |
 |  | **Request → WebSocket connected** | **597.3–612.9 ms** | **605.1 ms** | **100%** |
 
-The two visible bottlenecks are the authentication-success-to-WebSocket window
+The two visible bottlenecks in this pre-decoupling sample are the
+authentication-success-to-WebSocket window
 (center **374.4 ms**) and the capability scan (center **193.8 ms**); together
-they account for about **94%** of the centered login path. The current journal
-can derive the aggregate capability duration from its start/end messages, but
-does not split either bottleneck into internal operations. Long-term analysis
-should add a structured `LINUXIO_CAPABILITIES_US` field and accumulate at least
-30 comparable warm-login samples, with cold starts reported separately.
+they account for about **94%** of the centered login path. At the time of this
+comparison, the journal could derive the aggregate capability duration from its
+start/end messages but could not split it into detector durations. The
+performance follow-up now emits one `capabilities timing` event after each
+successful scan. `LINUXIO_CAPABILITIES_US` covers detector launch through all
+detectors completing, and the 16 `LINUXIO_CAPABILITIES_<NAME>_US` fields report
+each detector's wall time. Query them with
+`journalctl SYSLOG_IDENTIFIER=linuxio-bridge MESSAGE='capabilities timing' -o json`.
+Accumulate at least 30 comparable warm-login samples, with cold starts reported
+separately, before quoting a stable improvement.
 
-## Implemented from the comparison (2026-08-05)
+The first four deployed timing events identified `memory_inventory` as the
+scan's critical path: **133.8–141.5 ms** of a **134.3–144.3 ms** total. A
+10-command warm host comparison measured `udevadm info --export-db` at
+158.3 ms median versus 6.9 ms for a targeted property query. The availability
+probe now queries `/sys/class/dmi/id` directly and retains the `dmidecode`
+fallback; the actual memory-module fetch still exports the full udev database.
+The command comparison supports the change, but its deployed login-path effect
+remains to be measured.
+
+## Implemented follow-ups (2026-08-05 to 2026-08-06)
 
 - `pam_setcred(PAM_REINITIALIZE_CRED)` after `pam_open_session`, failure fatal
   with the real rc propagated to `pam_end` — sshd/cockpit parity for
@@ -632,6 +664,22 @@ should add a structured `LINUXIO_CAPABILITIES_US` field and accumulate at least
   prctl call is `PR_SET_DUMPABLE`). Wiring NNP on the bridge child remains a
   product question — it must never precede the sudo probe, and could break
   future setuid-helper use by the unprivileged bridge.
+- Replaced the authenticated-user `sudo -k -S` probe with a root-side,
+  non-interactive `sudo -n -l -U <user> -u root -- BRIDGE_PATH` query. PAM now
+  authenticates once and sudoers supplies only the privileged-mode policy
+  decision; the password is never sent to sudo. Pre-change calm-login samples
+  placed this phase around 83–95 ms. Two deployed post-change logins measured
+  the policy query at **9.4 ms** and **10.2 ms**; that is smoke evidence, not a
+  stable performance distribution.
+- Decoupled capability discovery from bridge/login completion. `StartBridge` no
+  longer runs or persists `system.get_capabilities` synchronously, and login
+  JSON carries no capability fields. After the authenticated mux opens,
+  `AuthContext` invokes the existing RPC once per frontend authentication
+  bootstrap asynchronously, ignores stale completions, and persists valid
+  results. Reloads may use cached values; a new sign-in clears the prior cache.
+  The measured capability stage is about **14.5 ms warm** and **51.6 ms on the
+  first login after restart**. These stage timings do not establish an overall
+  login improvement before new deployed samples are collected.
 
 Verified with `make build-auth` (also `WERROR=1`), `make test-auth` (all pass),
 and a clean `make analyze-auth` (cppcheck, GCC analyzer, scan-build, clang-tidy).
@@ -659,7 +707,10 @@ and a clean `make analyze-auth` (cppcheck, GCC analyzer, scan-build, clang-tidy)
    `/proc/self/fd` + `getresuid`, an execveat failure matrix (missing,
    non-executable, setuid-rejected, exits-post-exec, garbage-on-fd-3), and
    accounting record contents against tmpfile paths. Tier 2, disposable root
-   host — sudoers outcome matrix (NOPASSWD / password / absent, with faillock),
+   host — root-side sudoers outcome matrix (NOPASSWD / password / absent,
+   unrelated command, and `root_sudo` disabled), including confirmation that
+   the command-specific `-U` query never prompts and that incompatible policy
+   plugins fail closed,
    real `who`/`last`/`lastb` assertions, the implemented READY/GO handoff across
    the real C/Go process boundary, authentication-response ordering, its startup
    race regressions, and kill/cleanup ordering against the journal as oracle.

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -295,10 +296,10 @@ func logUnavailableCapability(name, message string) {
 }
 
 // setCapabilityField writes (ok, errMsg) into the matching fields of out for
-// the given wire name. The available/error fields are promoted from the
-// embedded session.Capabilities* structs (the single source of truth); the
-// bare switch keeps them strongly typed, and the anti-drift test guarantees
-// every wire name has a matching field, so no silent misses are possible.
+// the given wire name. The available/error fields are promoted from the shared
+// session.Capabilities* structs embedded in the wire response; the bare switch
+// keeps them strongly typed, and the anti-drift test guarantees every wire name
+// has a matching field, so no silent misses are possible.
 func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok bool, errMsg string) {
 	var errPtr *string
 	if errMsg != "" {
@@ -346,23 +347,50 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesResponse, error) {
 	slog.Info("Checking system capabilities.")
 
-	var out apischema.CapabilitiesResponse
-	summary := make([]string, 0, len(capabilityRegistry))
-
-	for _, spec := range capabilityRegistry {
-		if err := ctx.Err(); err != nil {
-			return apischema.CapabilitiesResponse{}, err
-		}
-		ok, errMsg := spec.Detect(ctx)
-		setCapabilityField(&out, spec.Name, ok, errMsg)
-		summary = append(summary, fmt.Sprintf("%s=%s", strings.ReplaceAll(spec.Name, "_", "-"), capabilityStatus(ok)))
-		logUnavailableCapability(spec.LogName, errMsg)
-	}
 	if err := ctx.Err(); err != nil {
 		return apischema.CapabilitiesResponse{}, err
 	}
 
+	type detectionResult struct {
+		ok       bool
+		errMsg   string
+		duration time.Duration
+	}
+	results := make([]detectionResult, len(capabilityRegistry))
+	detectionStarted := time.Now()
+	var wg sync.WaitGroup
+	for index, spec := range capabilityRegistry {
+		wg.Go(func() {
+			started := time.Now()
+			results[index].ok, results[index].errMsg = spec.Detect(ctx)
+			results[index].duration = time.Since(started)
+		})
+	}
+	wg.Wait()
+	detectionDuration := time.Since(detectionStarted)
+
+	if err := ctx.Err(); err != nil {
+		return apischema.CapabilitiesResponse{}, err
+	}
+
+	var out apischema.CapabilitiesResponse
+	summary := make([]string, 0, len(capabilityRegistry))
+
+	for index, spec := range capabilityRegistry {
+		result := results[index]
+		setCapabilityField(&out, spec.Name, result.ok, result.errMsg)
+		summary = append(summary, fmt.Sprintf("%s=%s", strings.ReplaceAll(spec.Name, "_", "-"), capabilityStatus(result.ok)))
+		logUnavailableCapability(spec.LogName, result.errMsg)
+	}
+
 	slog.Info("Capabilities: " + strings.Join(summary, " ") + ".")
+	timingAttrs := make([]slog.Attr, 0, len(capabilityRegistry)+1)
+	timingAttrs = append(timingAttrs, slog.Int64("capabilities_us", detectionDuration.Microseconds()))
+	for index, spec := range capabilityRegistry {
+		timingAttrs = append(timingAttrs,
+			slog.Int64("capabilities_"+spec.Name+"_us", results[index].duration.Microseconds()))
+	}
+	slog.LogAttrs(ctx, slog.LevelInfo, "capabilities timing", timingAttrs...)
 
 	return out, nil
 }

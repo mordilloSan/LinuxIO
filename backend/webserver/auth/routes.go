@@ -9,10 +9,11 @@ import (
 
 // --- test seams (overridden in tests) ---
 var (
-	startBridge = bridge.StartBridge
+	startBridge    = bridge.StartBridge
+	checkForUpdate = CheckForUpdate
 )
 
-// RegisterAuthRoutes wires public and private auth endpoints under /auth.
+// RegisterAuthRoutes wires authentication, version, and update endpoints.
 func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, verbose bool) {
 	h := &Handlers{
 		SM:      sm,
@@ -27,4 +28,5 @@ func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, verbose bool) {
 
 	// private (wrapped with session middleware)
 	mux.Handle("GET /auth/logout", sm.RequireSession(http.HandlerFunc(h.Logout)))
+	mux.Handle("GET /api/update-info", sm.RequireSession(http.HandlerFunc(h.UpdateInfo)))
 }

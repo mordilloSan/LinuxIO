@@ -6,15 +6,9 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinkButton from "@/components/ui/AppLinkButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import type { UpdateInfo } from "@/types/auth";
 
 import UpdateDialog from "./UpdateDialog";
-
-interface UpdateInfo {
-  available: boolean;
-  current_version: string;
-  latest_version?: string;
-  release_url?: string;
-}
 
 interface UpdateBannerProps {
   onDismiss: () => void;
@@ -57,7 +51,12 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
 
   const handleContinue = () => {
     // Clear update info and reload to login page
-    sessionStorage.removeItem("update_info");
+    try {
+      sessionStorage.removeItem("update_info");
+      sessionStorage.setItem("update_info_checked", "1");
+    } catch {
+      // Storage may be unavailable; the reload still completes the update flow.
+    }
     window.location.reload();
   };
 

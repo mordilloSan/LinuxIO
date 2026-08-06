@@ -32,10 +32,8 @@ type loginErrorResponse struct {
 }
 
 type loginSuccessResponse struct {
-	session.CapabilitiesAvailable
-	Success    bool        `json:"success"`
-	Privileged bool        `json:"privileged"`
-	Update     *UpdateInfo `json:"update,omitempty"`
+	Success    bool `json:"success"`
+	Privileged bool `json:"privileged"`
 }
 
 func writeLoginError(w http.ResponseWriter, status int, code, message string) {
@@ -67,7 +65,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteHost := clientRemoteHost(r)
-	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
+	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
 	if err != nil {
 		var authErr *bridge.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
@@ -109,16 +107,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		"remote_host", remoteHost)
 
 	response := loginSuccessResponse{
-		Success:               true,
-		Privileged:            sess.Privileged,
-		CapabilitiesAvailable: sess.Capabilities,
-	}
-
-	// Only check for updates if user is privileged
-	if sess.Privileged {
-		if updateInfo := CheckForUpdate(); updateInfo != nil {
-			response.Update = updateInfo
-		}
+		Success:    true,
+		Privileged: sess.Privileged,
 	}
 
 	web.WriteJSON(w, http.StatusOK, response)
@@ -143,4 +133,21 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 // Used by frontend to detect when server is back up after updates.
 func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
 	web.WriteJSON(w, http.StatusOK, getComponentVersions(r.Context()))
+}
+
+// UpdateInfo reports whether a newer LinuxIO release is available. Update
+// checks are restricted to privileged sessions and are kept out of login so
+// authentication is not delayed by the external GitHub request.
+func (h *Handlers) UpdateInfo(w http.ResponseWriter, r *http.Request) {
+	sess := session.SessionFromContext(r.Context())
+	if sess == nil || !sess.Privileged {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if updateInfo := checkForUpdate(r.Context()); updateInfo != nil {
+		web.WriteJSON(w, http.StatusOK, updateInfo)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

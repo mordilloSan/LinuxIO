@@ -12,8 +12,11 @@ features on it, and installs it from the UI.
   - Backend: the `capabilityRegistry` in `backend/bridge/handlers/system/capabilities.go`.
   - Frontend: the `CAPABILITIES` array in `frontend/src/api/capabilities.ts`.
 - `system.get_capabilities` reports, for every capability, an `*_available`
-  boolean and an optional `*_error` string. The frontend caches this in auth
-  state and uses it to gate routes and individual actions.
+  boolean and an optional `*_error` string. It is a post-login UI hint, not
+  part of the login JSON or an authorization decision: once the authenticated
+  session mux opens, `AuthContext` invokes the RPC asynchronously once for the
+  frontend authentication lifecycle and persists valid results for route/action
+  gating.
 - Installable capabilities expose an `Install` spec; `system.install_capability`
   installs the package and/or enables the service, then re-detects.
 - An anti-drift test keeps the backend registry and wire struct in lock-step.
@@ -34,7 +37,21 @@ features on it, and installs it from the UI.
 - `<wire>_error` — human-readable reason, present only when unavailable.
 
 The frontend collapses this into a tri-state per capability: `true` (available),
-`false` (unavailable), or `null` (unknown / not yet checked).
+`false` (unavailable), or `null` (unknown / not yet checked). On an authenticated
+reload, cached values may seed the UI while the session refresh runs. A new
+sign-in clears the prior capability cache so results cannot leak between users;
+the asynchronous refresh then replaces the unknown values. These booleans only
+control UI availability; backend handlers continue to enforce authorization.
+
+### Session and bootstrap lifecycle
+
+`StartBridge` creates and attaches the authenticated bridge without waiting for
+`system.get_capabilities`, and the login response does not include capability
+fields. `AuthContext` starts the authenticated mux eagerly, then performs one
+best-effort capability refresh per authenticated frontend bootstrap after the
+mux opens. Completion is ignored when the user/authentication generation is
+stale, and only valid results are persisted. Callers may explicitly refresh
+after an install; that is separate from the initial bootstrap refresh.
 
 ## Backend Pieces
 
@@ -134,7 +151,7 @@ PackageKit capability itself).
 | `capabilityStateFromWire` | `api/capabilities.ts` | Maps the wire response into tri-state auth state. |
 | `useCapability` | `hooks/useCapabilities.ts` | Per-capability `{ status, isEnabled, reason }`. |
 | `hasAccessPolicy` / `useAccessContext` | `hooks/useCapabilities.ts` | Evaluate a route's access policy. |
-| `AuthContext` | `contexts/AuthContext.tsx` | Fetches `get_capabilities`, persists, exposes state. |
+| `AuthContext` | `contexts/AuthContext.tsx` | Seeds cached state on reload; refreshes `get_capabilities` asynchronously after mux open, persists valid results, and exposes state. |
 | `CapabilityManagerSection` | `components/navbar/CapabilityManagerSection.tsx` | Lists capabilities, shows status, offers Install. |
 
 A `CapabilityDef` (see the interface in `api/capabilities.ts` for the full set):
