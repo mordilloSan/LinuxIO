@@ -16,13 +16,13 @@ import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
 import {
-  getAccentCardHoverStyles,
   getAccentCardStyles,
+  getFrostedCardLiftShadow,
 } from "@/theme/surfaces";
 
 import FrostedCard from "./FrostedCard";
 
-/** A single option rendered inside the card's dropdown selector. */
+/** A single option rendered inside a card header dropdown. */
 export interface SelectOption {
   /** Optional stable key; falls back to array index when omitted. */
   id?: string;
@@ -31,12 +31,6 @@ export interface SelectOption {
   /** The internal value passed to `onSelect`. */
   value: string;
 }
-
-/**
- * Whether the card's data source is reachable.
- * Drives the color of the status indicator dot in the header.
- */
-export type ConnectionStatus = "online" | "offline" | "warning" | "error";
 
 /**
  * Controls how horizontal space is divided between the primary stats
@@ -51,107 +45,40 @@ export type ConnectionStatus = "online" | "offline" | "warning" | "error";
  */
 export type ContentLayout = "equal" | "auto" | [number, number];
 
-/**
- * Discriminated union that enforces the dropdown props are used together.
- * When `selectOptions` is provided, `onSelect` becomes required.
- * Without `selectOptions`, none of the select props are accepted.
- */
-type SelectProps =
-  | {
-      /** Items to populate the header dropdown. Requires `onSelect`. */
-      selectOptions: SelectOption[];
-      /** Currently selected value; defaults to `""` when omitted. */
-      selectedOption?: string;
-      /** Override label shown in the collapsed select trigger. */
-      selectedOptionLabel?: string;
-      /** Called with the new value whenever the user changes the selection. */
-      onSelect: (value: string) => void;
-    }
-  | {
-      selectOptions?: never;
-      selectedOption?: never;
-      selectedOptionLabel?: never;
-      onSelect?: never;
-    };
-
-export type DashboardCardProps = SelectProps & {
-  /** Displayed in the card header. */
-  title: string;
-  /** Optional color override for the card title (e.g. "primary.main"). */
-  titleColor?: string;
-  /** Left-column content — typically a vertical list of `Typography` metrics. */
-  stats: ReactNode;
-  /**
-   * Right-column content — typically a chart, gauge, or icon grid.
-   * When omitted the card renders `stats` across the full width.
-   */
-  stats2?: ReactNode;
-  /** Iconify icon ID rendered as the card's top-right avatar. */
-  avatarIcon: string;
-  /** Optional Iconify icon ID shown next to `icon_text` in the header. */
-  icon?: string;
-  /** Short string (e.g. temperature) rendered beside `icon`. */
-  icon_text?: string;
-  /** Shows a colored dot in the header indicating connectivity state. */
-  connectionStatus?: ConnectionStatus;
-  /** @see {@link ContentLayout} */
-  contentLayout?: ContentLayout;
-  /** Options shown when the user clicks the icon-text temperature badge. */
-  iconTextSelectOptions?: SelectOption[];
-  /** Currently selected icon-text option value. */
-  selectedIconTextOption?: string;
-  /** Called when the user picks a different icon-text option. */
-  onIconTextSelect?: (value: string) => void;
-};
-
-const DashboardCard = ({
-  title,
-  titleColor,
-  stats,
-  stats2,
-  avatarIcon,
-  icon,
-  icon_text,
-  selectOptions = [],
-  selectedOption = "",
-
-  onSelect,
-  connectionStatus,
-  contentLayout = "equal",
-  iconTextSelectOptions,
-  selectedIconTextOption,
-  onIconTextSelect,
-}: DashboardCardProps) => {
+/** Colored header dot indicating whether the card's data source is reachable. */
+export const CardStatusDot = ({ online }: { online: boolean }) => {
   const theme = useAppTheme();
-  const primaryColor = theme.palette.primary.main;
-  const [hovered, setHovered] = useState(false);
-  const [iconTextMenuAnchor, setIconTextMenuAnchor] =
-    useState<null | HTMLElement>(null);
-  const iconTextMenuId = useId();
 
-  const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
-    if (contentLayout === "equal") return [1, 1];
-    if (contentLayout === "auto") return [1, "0 0 auto"];
-    return contentLayout;
-  })();
-
-  const handleSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    onSelect?.(event.target.value);
-  };
-
-  const statusDot = connectionStatus && (
+  return (
     <StatusDot
-      color={
-        connectionStatus === "online"
-          ? theme.palette.success.main
-          : theme.palette.error.main
-      }
+      color={online ? theme.palette.success.main : theme.palette.error.main}
       style={{ marginBottom: 2 }}
-      tooltip={connectionStatus === "online" ? "Connected" : "Disconnected"}
+      tooltip={online ? "Connected" : "Disconnected"}
     />
   );
+};
 
-  const renderSelect = selectOptions.length > 0 && (
+interface CardHeaderSelectProps {
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  value: string;
+}
+
+/** Compact underline-less dropdown for the card header (interface/drive pickers). */
+export const CardHeaderSelect = ({
+  onChange,
+  options,
+  value,
+}: CardHeaderSelectProps) => {
+  const theme = useAppTheme();
+
+  if (options.length === 0) return null;
+
+  const handleSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    onChange(event.target.value);
+  };
+
+  return (
     <AppSelect
       disableUnderline
       onChange={handleSelectionChange}
@@ -165,19 +92,59 @@ const DashboardCard = ({
           "--app-select-input-font-size": "0.75rem",
         } as CSSProperties
       }
-      value={selectedOption}
+      value={value}
       variant="standard"
     >
-      {!selectedOption && <option disabled hidden value=""></option>}
-      {selectOptions.map((option, index) => (
+      {!value && <option disabled hidden value=""></option>}
+      {options.map((option, index) => (
         <option key={option.id ?? index} value={option.value}>
           {option.label}
         </option>
       ))}
     </AppSelect>
   );
+};
 
-  const iconTextContent = icon && icon_text && (
+const badgeStyle: CSSProperties = {
+  alignItems: "center",
+  background: "none",
+  border: 0,
+  borderRadius: 4,
+  display: "inline-flex",
+  gap: 0,
+  lineHeight: 1,
+  marginBottom: 4,
+  marginLeft: -4,
+  minWidth: 0,
+  padding: 0,
+};
+
+interface CardBadgeProps {
+  /** Iconify icon ID shown before the text. */
+  icon: string;
+  /** Short string (e.g. temperature) rendered beside the icon. */
+  text: string;
+  /** When non-empty, the badge becomes a menu trigger for these options. */
+  options?: SelectOption[];
+  /** Currently selected option value. */
+  selected?: string;
+  /** Called when the user picks a different option. */
+  onSelect?: (value: string) => void;
+}
+
+/** Icon-and-text header badge; opens a picker menu when options are given. */
+export const CardBadge = ({
+  icon,
+  onSelect,
+  options,
+  selected,
+  text,
+}: CardBadgeProps) => {
+  const theme = useAppTheme();
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const menuId = useId();
+
+  const content = (
     <>
       <div
         style={{
@@ -186,45 +153,126 @@ const DashboardCard = ({
           marginRight: -4,
         }}
       >
-        <Icon color={primaryColor} height="24px" icon={icon} width="24px" />
+        <Icon
+          color={theme.palette.primary.main}
+          height="24px"
+          icon={icon}
+          width="24px"
+        />
       </div>
       <AppTypography
         color="text.secondary"
         style={{ marginLeft: 0, lineHeight: 1 }}
         variant="body2"
       >
-        {icon_text}
+        {text}
       </AppTypography>
     </>
   );
 
-  const iconTextStyle: CSSProperties = {
-    alignItems: "center",
-    background: "none",
-    border: 0,
-    borderRadius: 4,
-    display: "inline-flex",
-    gap: 0,
-    lineHeight: 1,
-    marginBottom: 4,
-    marginLeft: -4,
-    minWidth: 0,
-    padding: 0,
-  };
+  if (!options?.length) {
+    return <div style={{ ...badgeStyle, cursor: "default" }}>{content}</div>;
+  }
+
+  return (
+    <>
+      <AppButton
+        aria-controls={menuId}
+        aria-expanded={Boolean(menuAnchor)}
+        aria-haspopup="menu"
+        aria-label={`Select ${text}`}
+        color="inherit"
+        onClick={(event) => setMenuAnchor(event.currentTarget)}
+        style={{ ...badgeStyle, cursor: "pointer" }}
+      >
+        {content}
+      </AppButton>
+      <AppMenu
+        anchorEl={menuAnchor}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        minWidth={180}
+        id={menuId}
+        onClose={() => setMenuAnchor(null)}
+        open={Boolean(menuAnchor)}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+      >
+        {options.map((opt, i) => (
+          <AppMenuItem
+            key={opt.id ?? i}
+            onClick={() => {
+              onSelect?.(opt.value);
+              setMenuAnchor(null);
+            }}
+            selected={opt.value === selected}
+          >
+            {opt.label}
+          </AppMenuItem>
+        ))}
+      </AppMenu>
+    </>
+  );
+};
+
+export interface DashboardCardProps {
+  /** Displayed in the card header. */
+  title: string;
+  /** Left-column content — typically a vertical list of `Typography` metrics. */
+  stats: ReactNode;
+  /**
+   * Right-column content — typically a chart, gauge, or icon grid.
+   * When omitted the card renders `stats` across the full width.
+   */
+  stats2?: ReactNode;
+  /** Iconify icon ID rendered as the card's top-right avatar. */
+  avatarIcon: string;
+  /**
+   * Header widgets rendered after the title — `CardStatusDot`,
+   * `CardHeaderSelect`, `CardBadge`.
+   */
+  headerExtras?: ReactNode;
+  /** @see {@link ContentLayout} */
+  contentLayout?: ContentLayout;
+}
+
+/**
+ * Static card shell: it takes no data props and holds no polling state, so it
+ * renders once and stays inert while data updates. Anything data-driven —
+ * stats columns and header widgets alike — must be passed as an element whose
+ * component owns its own query subscription; that confines refetch re-renders
+ * to the slot contents instead of the whole card.
+ */
+const DashboardCard = ({
+  title,
+  stats,
+  stats2,
+  avatarIcon,
+  headerExtras,
+  contentLayout = "equal",
+}: DashboardCardProps) => {
+  const theme = useAppTheme();
+  const primaryColor = theme.palette.primary.main;
+
+  const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
+    if (contentLayout === "equal") return [1, 1];
+    if (contentLayout === "auto") return [1, "0 0 auto"];
+    return contentLayout;
+  })();
 
   return (
     <FrostedCard
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        minHeight: cardHeight,
-        display: "flex",
-        flexDirection: "column",
-        transition:
-          "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
-        ...getAccentCardStyles(primaryColor),
-        ...(hovered && getAccentCardHoverStyles(theme, primaryColor)),
-      }}
+      className="dc-accent-card"
+      style={
+        {
+          minHeight: cardHeight,
+          display: "flex",
+          flexDirection: "column",
+          transition:
+            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
+          ...getAccentCardStyles(primaryColor),
+          "--dc-accent": primaryColor,
+          "--dc-hover-shadow": getFrostedCardLiftShadow(theme),
+        } as CSSProperties
+      }
     >
       <AppCardContent>
         {/* Header */}
@@ -240,59 +288,13 @@ const DashboardCard = ({
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <AppTypography
               fontWeight={700}
-              style={{
-                transform: "translateY(-1px)",
-                ...(titleColor && { color: titleColor }),
-              }}
+              style={{ transform: "translateY(-1px)" }}
               variant="h5"
             >
               {title}
             </AppTypography>
 
-            {statusDot}
-            {renderSelect}
-
-            {iconTextContent && iconTextSelectOptions?.length ? (
-              <AppButton
-                aria-controls={iconTextMenuId}
-                aria-expanded={Boolean(iconTextMenuAnchor)}
-                aria-haspopup="menu"
-                aria-label={`Select ${icon_text}`}
-                color="inherit"
-                onClick={(event) => setIconTextMenuAnchor(event.currentTarget)}
-                style={{ ...iconTextStyle, cursor: "pointer" }}
-              >
-                {iconTextContent}
-              </AppButton>
-            ) : iconTextContent ? (
-              <div style={{ ...iconTextStyle, cursor: "default" }}>
-                {iconTextContent}
-              </div>
-            ) : null}
-            {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
-              <AppMenu
-                anchorEl={iconTextMenuAnchor}
-                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-                minWidth={180}
-                id={iconTextMenuId}
-                onClose={() => setIconTextMenuAnchor(null)}
-                open={Boolean(iconTextMenuAnchor)}
-                transformOrigin={{ vertical: "top", horizontal: "left" }}
-              >
-                {iconTextSelectOptions.map((opt, i) => (
-                  <AppMenuItem
-                    key={opt.id ?? i}
-                    onClick={() => {
-                      onIconTextSelect?.(opt.value);
-                      setIconTextMenuAnchor(null);
-                    }}
-                    selected={opt.value === selectedIconTextOption}
-                  >
-                    {opt.label}
-                  </AppMenuItem>
-                ))}
-              </AppMenu>
-            )}
+            {headerExtras}
           </div>
 
           {/* Avatar/Icon */}

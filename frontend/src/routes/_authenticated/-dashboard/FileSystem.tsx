@@ -6,28 +6,28 @@ import MetricBar from "@/components/gauge/MetricBar";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
-const FsInfoCard = () => {
+const isRelevantMount = (fs: FilesystemInfo): boolean => {
+  const mount = fs.mountpoint;
+
+  return (
+    fs.total > 0 &&
+    mount !== "" &&
+    !mount.startsWith("/var/lib/docker/") &&
+    !mount.startsWith("/sys/firmware/") &&
+    !mount.startsWith("/dev") &&
+    !mount.startsWith("/run") &&
+    !mount.startsWith("/proc") &&
+    !mount.startsWith("/sys/fs")
+  );
+};
+
+const FsStats = () => {
   const { data: fsInfo } = useSuspenseQuery(
     linuxio.system.get_fs_info.queryOptions({
       refetchInterval: 2000,
     }),
   );
   const theme = useAppTheme();
-
-  const isRelevantMount = (fs: FilesystemInfo): boolean => {
-    const mount = fs.mountpoint;
-
-    return (
-      fs.total > 0 &&
-      mount !== "" &&
-      !mount.startsWith("/var/lib/docker/") &&
-      !mount.startsWith("/sys/firmware/") &&
-      !mount.startsWith("/dev") &&
-      !mount.startsWith("/run") &&
-      !mount.startsWith("/proc") &&
-      !mount.startsWith("/sys/fs")
-    );
-  };
 
   const renderFsProgressBars = () => {
     if (!fsInfo || fsInfo.length === 0) {
@@ -58,13 +58,15 @@ const FsInfoCard = () => {
       });
   };
 
-  const data = {
-    title: "FileSystems",
-    stats: <div style={{ width: "100%" }}>{renderFsProgressBars()}</div>,
-    avatarIcon: "eos-icons:file-system",
-  };
-
-  return <DashboardCard {...data} />;
+  return <div style={{ width: "100%" }}>{renderFsProgressBars()}</div>;
 };
+
+const FsInfoCard = () => (
+  <DashboardCard
+    avatarIcon="eos-icons:file-system"
+    stats={<FsStats />}
+    title="FileSystems"
+  />
+);
 
 export default FsInfoCard;

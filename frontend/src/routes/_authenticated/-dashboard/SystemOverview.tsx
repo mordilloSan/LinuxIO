@@ -1,12 +1,14 @@
-import { useSuspenseQueries } from "@tanstack/react-query";
+import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio } from "@/api";
+import { type HostInfo, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 
 import DashboardStatRows from "./DashboardStatRows";
 import SetDateTimeDialog from "./SetDateTimeDialog";
 import SetHostnameDialog from "./SetHostnameDialog";
+
+const HOST_INFO_REFETCH_MS = 50000;
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
@@ -28,17 +30,22 @@ function formatServerTime(iso: string): string {
   });
 }
 
+const selectPlatform = (hostInfo: HostInfo): string =>
+  hostInfo?.platform || "linux";
+
 interface OverviewRow {
   label: string;
   onEdit?: () => void;
   value: string;
 }
 
-const SystemOverview = () => {
+const OverviewStats = () => {
   const [{ data: hostInfo }, { data: uptime }, { data: serverTime }] =
     useSuspenseQueries({
       queries: [
-        linuxio.system.get_host_info.queryOptions({ refetchInterval: 50000 }),
+        linuxio.system.get_host_info.queryOptions({
+          refetchInterval: HOST_INFO_REFETCH_MS,
+        }),
         linuxio.system.get_uptime.queryOptions({ refetchInterval: 30000 }),
         linuxio.system.get_server_time.queryOptions({
           refetchInterval: 60000,
@@ -72,15 +79,9 @@ const SystemOverview = () => {
     },
   ];
 
-  const stats = <DashboardStatRows rows={rows} />;
-
   return (
     <>
-      <DashboardCard
-        avatarIcon={`simple-icons:${hostInfo?.platform || "linux"}`}
-        stats={stats}
-        title="System Overview"
-      />
+      <DashboardStatRows rows={rows} />
       <SetHostnameDialog
         current={hostInfo?.hostname ?? ""}
         onClose={() => setHostnameDialogOpen(false)}
@@ -91,6 +92,23 @@ const SystemOverview = () => {
         open={dateTimeDialogOpen}
       />
     </>
+  );
+};
+
+const SystemOverview = () => {
+  const { data: platform } = useSuspenseQuery(
+    linuxio.system.get_host_info.queryOptions({
+      refetchInterval: HOST_INFO_REFETCH_MS,
+      select: selectPlatform,
+    }),
+  );
+
+  return (
+    <DashboardCard
+      avatarIcon={`simple-icons:${platform}`}
+      stats={<OverviewStats />}
+      title="System Overview"
+    />
   );
 };
 

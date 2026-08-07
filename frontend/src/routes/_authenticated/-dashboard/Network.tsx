@@ -1,113 +1,156 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { linuxio } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
+import { type InterfaceStats, linuxio } from "@/api";
+import DashboardCard, {
+  CardHeaderSelect,
+  CardStatusDot,
+} from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";
 
-const NetworkInterfacesCard = () => {
-  const { data: rawInterfaces } = useSuspenseQuery(
+const REFETCH_INTERVAL_MS = 1000;
+
+const filterInterfaces = (interfaces: InterfaceStats[]): InterfaceStats[] =>
+  interfaces.filter(
+    (iface) =>
+      !iface.name.startsWith("veth") &&
+      !iface.name.startsWith("docker") &&
+      !iface.name.startsWith("br") &&
+      iface.name !== "lo",
+  );
+
+const resolveInterface = (
+  interfaces: InterfaceStats[],
+  selected: string,
+): InterfaceStats | undefined =>
+  interfaces.find((iface) => iface.name === selected) ?? interfaces[0];
+
+interface InterfaceSelectionProps {
+  selected: string;
+}
+
+const NetworkHeader = ({
+  onSelect,
+  selected,
+}: InterfaceSelectionProps & { onSelect: (name: string) => void }) => {
+  const { data: header } = useSuspenseQuery(
     linuxio.system.get_network_info.queryOptions({
-      refetchInterval: 1000,
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: useCallback(
+        (interfaces: InterfaceStats[]) => {
+          const filtered = filterInterfaces(interfaces);
+          const current = resolveInterface(filtered, selected);
+
+          return {
+            names: filtered.map((iface) => iface.name),
+            online: Boolean(current?.ipv4?.length),
+            selectedName: current?.name ?? "",
+          };
+        },
+        [selected],
+      ),
     }),
   );
 
-  const interfaces = useMemo(
-    () =>
-      rawInterfaces.map((iface) => ({
-        ...iface,
-        ipv4: Array.isArray(iface.ipv4) ? iface.ipv4 : [],
-        type: iface.name.startsWith("wl")
-          ? "wifi"
-          : iface.name.startsWith("lo")
-            ? "loopback"
-            : "ethernet",
-      })),
-    [rawInterfaces],
+  return (
+    <>
+      <CardStatusDot online={header.online} />
+      <CardHeaderSelect
+        onChange={onSelect}
+        options={header.names.map((name) => ({ label: name, value: name }))}
+        value={header.selectedName}
+      />
+    </>
   );
+};
 
-  const filteredInterfaces = useMemo(
-    () =>
-      interfaces.filter(
-        (iface) =>
-          !iface.name.startsWith("veth") &&
-          !iface.name.startsWith("docker") &&
-          !iface.name.startsWith("br") &&
-          iface.name !== "lo",
+const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
+  const { data: details } = useSuspenseQuery(
+    linuxio.system.get_network_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: useCallback(
+        (interfaces: InterfaceStats[]) => {
+          const current = resolveInterface(
+            filterInterfaces(interfaces),
+            selected,
+          );
+
+          return current
+            ? {
+                ipv4: current.ipv4?.length ? current.ipv4.join(", ") : "None",
+                mac: current.mac,
+                speed: current.speed,
+              }
+            : null;
+        },
+        [selected],
       ),
-    [interfaces],
+    }),
   );
 
-  const [selected, setSelected] = useState<string>("");
+  if (!details) {
+    return <AppTypography variant="body2">No interface selected.</AppTypography>;
+  }
 
-  const firstName = filteredInterfaces[0]?.name ?? "";
-  const selectedExists =
-    selected && filteredInterfaces.some((i) => i.name === selected);
-  const effectiveSelected = selectedExists ? selected : firstName;
-
-  const selectedInterface = useMemo(
-    () => filteredInterfaces.find((i) => i.name === effectiveSelected),
-    [filteredInterfaces, effectiveSelected],
-  );
-
-  const options = useMemo(
-    () =>
-      filteredInterfaces.map((iface) => ({
-        value: iface.name,
-        label: iface.name,
-      })),
-    [filteredInterfaces],
-  );
-
-  const content = selectedInterface ? (
+  return (
     <DashboardStatRows
       rows={[
-        {
-          label: "IPv4",
-          value: selectedInterface.ipv4?.length
-            ? selectedInterface.ipv4.join(", ")
-            : "None",
-        },
-        { label: "MAC", value: selectedInterface.mac },
-        { label: "Speed", value: selectedInterface.speed },
+        { label: "IPv4", value: details.ipv4 },
+        { label: "MAC", value: details.mac },
+        { label: "Speed", value: details.speed },
       ]}
     />
-  ) : (
-    <AppTypography variant="body2">No interface selected.</AppTypography>
+  );
+};
+
+const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
+  const { data: throughput } = useSuspenseQuery(
+    linuxio.system.get_network_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: useCallback(
+        (interfaces: InterfaceStats[]) => {
+          const current = resolveInterface(
+            filterInterfaces(interfaces),
+            selected,
+          );
+
+          return current
+            ? { name: current.name, rx: current.rx_speed, tx: current.tx_speed }
+            : null;
+        },
+        [selected],
+      ),
+    }),
   );
 
-  const content2 = selectedInterface ? (
+  if (!throughput) {
+    return <AppTypography variant="body2">No graph data.</AppTypography>;
+  }
+
+  return (
     <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
       <NetworkGraph
-        interfaceName={effectiveSelected}
-        key={effectiveSelected}
-        rx={selectedInterface.rx_speed}
-        tx={selectedInterface.tx_speed}
+        interfaceName={throughput.name}
+        key={throughput.name}
+        rx={throughput.rx}
+        tx={throughput.tx}
       />
     </div>
-  ) : (
-    <AppTypography variant="body2">No graph data.</AppTypography>
   );
+};
+
+const NetworkInterfacesCard = () => {
+  const [selected, setSelected] = useState("");
 
   return (
     <DashboardCard
       avatarIcon="mdi:ethernet"
-      connectionStatus={
-        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
-          ? "online"
-          : "offline"
-      }
-      onSelect={(val: string) => {
-        setSelected(val);
-      }}
-      selectedOption={effectiveSelected}
-      selectedOptionLabel={effectiveSelected}
-      selectOptions={options}
-      stats={content}
-      stats2={content2}
+      headerExtras={<NetworkHeader onSelect={setSelected} selected={selected} />}
+      stats={<NetworkStats selected={selected} />}
+      stats2={<NetworkGraphPane selected={selected} />}
       title="Network"
     />
   );

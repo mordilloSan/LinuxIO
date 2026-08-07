@@ -2,22 +2,26 @@ import { describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
-import DashboardCard from "./DashboardCard";
+import DashboardCard, { CardBadge } from "./DashboardCard";
 
 vi.mock("@iconify/react", () => ({
   Icon: () => <span aria-hidden="true" />,
 }));
 
 describe("DashboardCard", () => {
-  it("uses a named menu trigger for icon-text options", async () => {
+  it("uses a named menu trigger for badge options", async () => {
     const onSelect = vi.fn();
     const { user } = render(
       <DashboardCard
         avatarIcon="mdi:server"
-        icon="mdi:thermometer"
-        iconTextSelectOptions={[{ label: "Celsius", value: "c" }]}
-        icon_text="22 °C"
-        onIconTextSelect={onSelect}
+        headerExtras={
+          <CardBadge
+            icon="mdi:thermometer"
+            onSelect={onSelect}
+            options={[{ label: "Celsius", value: "c" }]}
+            text="22 °C"
+          />
+        }
         stats={<span>Stats</span>}
         title="System"
       />,

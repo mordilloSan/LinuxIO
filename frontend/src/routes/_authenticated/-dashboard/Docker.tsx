@@ -1,15 +1,14 @@
 import { Icon } from "@iconify/react";
-import { useSuspenseQueries } from "@tanstack/react-query";
+import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import {
   lazy,
   Suspense,
   useCallback,
-  useMemo,
   useState,
   type MouseEvent,
 } from "react";
 
-import { linuxio } from "@/api";
+import { type ContainerInfo, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDivider from "@/components/ui/AppDivider";
@@ -25,6 +24,10 @@ import DashboardStatRows from "./DashboardStatRows";
 
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
+
+const CONTAINERS_REFETCH_MS = 5000;
+const COLLECTIONS_REFETCH_MS = 30_000;
+
 const cleanName = (name: string) => name.replace(/^\//, "");
 const getStatusLabel = (status: string, state: string): string => {
   const health = status.match(/\((\w+)\)/)?.[1];
@@ -33,7 +36,89 @@ const getStatusLabel = (status: string, state: string): string => {
 };
 const getCollectionCount = <T,>(items: T[] | null | undefined) =>
   items?.length ?? 0;
-const DockerInfo = () => {
+
+const selectContainerCounts = (containers: ContainerInfo[]) => ({
+  running: containers.filter((c) => c.State === "running").length,
+  total: containers.length,
+});
+
+interface ContainerSummary {
+  icon?: string;
+  id: string;
+  name: string;
+  state: string;
+  statusLabel: string;
+}
+
+const selectContainerSummaries = (
+  containers: ContainerInfo[],
+): ContainerSummary[] =>
+  [...containers]
+    .sort((a, b) => {
+      if (a.State === "running" && b.State !== "running") return -1;
+      if (a.State !== "running" && b.State === "running") return 1;
+      return 0;
+    })
+    .map((c) => ({
+      icon: c.icon,
+      id: c.Id,
+      name: cleanName(c.Names[0] ?? c.Id.slice(0, 12)),
+      state: c.State,
+      statusLabel: getStatusLabel(c.Status, c.State),
+    }));
+
+const DockerStats = () => {
+  const [
+    { data: counts },
+    { data: imagesCount },
+    { data: networksCount },
+    { data: volumesCount },
+  ] = useSuspenseQueries({
+    queries: [
+      linuxio.docker.list_containers.queryOptions({
+        refetchInterval: CONTAINERS_REFETCH_MS,
+        select: selectContainerCounts,
+      }),
+      linuxio.docker.list_images.queryOptions({
+        refetchInterval: COLLECTIONS_REFETCH_MS,
+        select: getCollectionCount,
+      }),
+      linuxio.docker.list_networks.queryOptions({
+        refetchInterval: COLLECTIONS_REFETCH_MS,
+        select: getCollectionCount,
+      }),
+      linuxio.docker.list_volumes.queryOptions({
+        refetchInterval: COLLECTIONS_REFETCH_MS,
+        select: getCollectionCount,
+      }),
+    ],
+  });
+
+  return (
+    <DashboardStatRows
+      rows={[
+        {
+          label: "Containers",
+          value: `${counts.running}/${counts.total}`,
+        },
+        {
+          label: "Images",
+          value: imagesCount,
+        },
+        {
+          label: "Networks",
+          value: networksCount,
+        },
+        {
+          label: "Volumes",
+          value: volumesCount,
+        },
+      ]}
+    />
+  );
+};
+
+const DockerContainers = () => {
   const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
@@ -125,223 +210,162 @@ const DockerInfo = () => {
       toast,
     ],
   );
-  const [
-    { data: rawContainers },
-    { data: imagesCount },
-    { data: networksCount },
-    { data: volumesCount },
-  ] = useSuspenseQueries({
-    queries: [
-      linuxio.docker.list_containers.queryOptions({
-        refetchInterval: 5000,
-      }),
-      linuxio.docker.list_images.queryOptions({
-        refetchInterval: 30_000,
-        select: getCollectionCount,
-      }),
-      linuxio.docker.list_networks.queryOptions({
-        refetchInterval: 30_000,
-        select: getCollectionCount,
-      }),
-      linuxio.docker.list_volumes.queryOptions({
-        refetchInterval: 30_000,
-        select: getCollectionCount,
-      }),
-    ],
-  });
-  const containers = rawContainers;
-  const runningCount = useMemo(
-    () => containers.filter((c) => c.State === "running").length,
-    [containers],
+  const { data: containers } = useSuspenseQuery(
+    linuxio.docker.list_containers.queryOptions({
+      refetchInterval: CONTAINERS_REFETCH_MS,
+      select: selectContainerSummaries,
+    }),
   );
-  const sorted = useMemo(
-    () =>
-      [...containers].sort((a, b) => {
-        if (a.State === "running" && b.State !== "running") return -1;
-        if (a.State !== "running" && b.State === "running") return 1;
-        return 0;
-      }),
-    [containers],
-  );
-  const statsContent = (
-    <DashboardStatRows
-      rows={[
-        {
-          label: "Containers",
-          value: `${runningCount}/${containers.length}`,
-        },
-        {
-          label: "Images",
-          value: imagesCount,
-        },
-        {
-          label: "Networks",
-          value: networksCount,
-        },
-        {
-          label: "Volumes",
-          value: volumesCount,
-        },
-      ]}
-    />
-  );
-  const stats2 = (
-    <div
-      className="custom-scrollbar"
-      style={{
-        display: "grid",
-        gridTemplateColumns: isSmallUp ? "repeat(4, 36px)" : "repeat(3, 36px)",
-        columnGap: theme.spacing(4.5),
-        rowGap: theme.spacing(5),
-        justifyContent: "center",
-        width: "fit-content",
-        maxHeight: 110,
-        overflowX: "hidden",
-        overflowY: "auto",
-        paddingRight: theme.spacing(0.5),
-      }}
-    >
-      {sorted.map((c) => {
-        const name = cleanName(c.Names[0] ?? c.Id.slice(0, 12));
-        const statusColor = resolveStateColor(
-          getStatusLabel(c.Status, c.State),
-        );
-        return (
-          <AppTooltip
-            arrow
-            key={c.Id}
-            placement="top"
-            title={
-              <div
-                style={{
-                  textAlign: "center",
-                }}
-              >
-                <AppTypography
-                  component="span"
-                  style={{
-                    fontSize: "0.8rem",
-                  }}
-                >
-                  {name}
-                </AppTypography>
-                <AppTypography
-                  component="span"
-                  style={{
-                    color: statusColor,
-                  }}
-                >
-                  {getStatusLabel(c.Status, c.State)}
-                </AppTypography>
-              </div>
-            }
-          >
-            <div
-              onContextMenu={(e) => handleContextMenu(e, c.Id, name, c.State)}
-              style={{
-                position: "relative",
-                width: 36,
-                height: 36,
-                cursor: "context-menu",
-              }}
-            >
-              <DockerIcon alt={name} identifier={c.icon} size={36} />
-              <StatusDot
-                color={resolveStateColor(c.State)}
-                size={8}
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  right: 0,
-                  border: `1.5px solid ${theme.palette.background.paper}`,
-                }}
-              />
-            </div>
-          </AppTooltip>
-        );
-      })}
-      <AppMenu
-        anchorEl={menuAnchor}
-        autoFocus={false}
-        minWidth={140}
-        onClose={handleMenuClose}
-        open={Boolean(menuAnchor)}
-      >
-        {menuContainer?.state !== "running" && (
-          <AppMenuItem
-            onClick={() => handleAction("start")}
-            startAdornment={<Icon icon="mdi:play" width={18} />}
-          >
-            Start
-          </AppMenuItem>
-        )}
-        {menuContainer?.state === "running" && (
-          <AppMenuItem
-            onClick={() => handleAction("stop")}
-            startAdornment={<Icon icon="mdi:stop" width={18} />}
-          >
-            Stop
-          </AppMenuItem>
-        )}
-        <AppMenuItem
-          onClick={() => handleAction("restart")}
-          startAdornment={<Icon icon="mdi:restart" width={18} />}
-        >
-          Restart
-        </AppMenuItem>
-        {menuContainer?.state !== "running" && (
-          <AppMenuItem
-            onClick={() => handleAction("remove")}
-            startAdornment={<Icon icon="mdi:delete-outline" width={18} />}
-          >
-            Remove
-          </AppMenuItem>
-        )}
-        <AppDivider />
-        <AppMenuItem
-          onClick={() => {
-            if (menuContainer) {
-              setDialogContainer({
-                id: menuContainer.id,
-                name: menuContainer.name,
-              });
-              setHasLoadedLogsDialog(true);
-              setLogsOpen(true);
-            }
-            handleMenuClose();
-          }}
-          startAdornment={<Icon icon="mdi:text-box-outline" width={18} />}
-        >
-          Logs
-        </AppMenuItem>
-        <AppMenuItem
-          onClick={() => {
-            if (menuContainer) {
-              setDialogContainer({
-                id: menuContainer.id,
-                name: menuContainer.name,
-              });
-              setHasLoadedTerminalDialog(true);
-              setTerminalOpen(true);
-            }
-            handleMenuClose();
-          }}
-          startAdornment={<Icon icon="mdi:console" width={18} />}
-        >
-          Terminal
-        </AppMenuItem>
-      </AppMenu>
-    </div>
-  );
+
   return (
     <>
-      <DashboardCard
-        avatarIcon="mdi:docker"
-        contentLayout="auto"
-        stats={statsContent}
-        stats2={stats2}
-        title="Docker"
-      />
+      <div
+        className="custom-scrollbar"
+        style={{
+          display: "grid",
+          gridTemplateColumns: isSmallUp
+            ? "repeat(4, 36px)"
+            : "repeat(3, 36px)",
+          columnGap: theme.spacing(4.5),
+          rowGap: theme.spacing(5),
+          justifyContent: "center",
+          width: "fit-content",
+          maxHeight: 110,
+          overflowX: "hidden",
+          overflowY: "auto",
+          paddingRight: theme.spacing(0.5),
+        }}
+      >
+        {containers.map((c) => {
+          const statusColor = resolveStateColor(c.statusLabel);
+          return (
+            <AppTooltip
+              arrow
+              key={c.id}
+              placement="top"
+              title={
+                <div
+                  style={{
+                    textAlign: "center",
+                  }}
+                >
+                  <AppTypography
+                    component="span"
+                    style={{
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    {c.name}
+                  </AppTypography>
+                  <AppTypography
+                    component="span"
+                    style={{
+                      color: statusColor,
+                    }}
+                  >
+                    {c.statusLabel}
+                  </AppTypography>
+                </div>
+              }
+            >
+              <div
+                onContextMenu={(e) =>
+                  handleContextMenu(e, c.id, c.name, c.state)
+                }
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 36,
+                  cursor: "context-menu",
+                }}
+              >
+                <DockerIcon alt={c.name} identifier={c.icon} size={36} />
+                <StatusDot
+                  color={resolveStateColor(c.state)}
+                  size={8}
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    right: 0,
+                    border: `1.5px solid ${theme.palette.background.paper}`,
+                  }}
+                />
+              </div>
+            </AppTooltip>
+          );
+        })}
+        <AppMenu
+          anchorEl={menuAnchor}
+          autoFocus={false}
+          minWidth={140}
+          onClose={handleMenuClose}
+          open={Boolean(menuAnchor)}
+        >
+          {menuContainer?.state !== "running" && (
+            <AppMenuItem
+              onClick={() => handleAction("start")}
+              startAdornment={<Icon icon="mdi:play" width={18} />}
+            >
+              Start
+            </AppMenuItem>
+          )}
+          {menuContainer?.state === "running" && (
+            <AppMenuItem
+              onClick={() => handleAction("stop")}
+              startAdornment={<Icon icon="mdi:stop" width={18} />}
+            >
+              Stop
+            </AppMenuItem>
+          )}
+          <AppMenuItem
+            onClick={() => handleAction("restart")}
+            startAdornment={<Icon icon="mdi:restart" width={18} />}
+          >
+            Restart
+          </AppMenuItem>
+          {menuContainer?.state !== "running" && (
+            <AppMenuItem
+              onClick={() => handleAction("remove")}
+              startAdornment={<Icon icon="mdi:delete-outline" width={18} />}
+            >
+              Remove
+            </AppMenuItem>
+          )}
+          <AppDivider />
+          <AppMenuItem
+            onClick={() => {
+              if (menuContainer) {
+                setDialogContainer({
+                  id: menuContainer.id,
+                  name: menuContainer.name,
+                });
+                setHasLoadedLogsDialog(true);
+                setLogsOpen(true);
+              }
+              handleMenuClose();
+            }}
+            startAdornment={<Icon icon="mdi:text-box-outline" width={18} />}
+          >
+            Logs
+          </AppMenuItem>
+          <AppMenuItem
+            onClick={() => {
+              if (menuContainer) {
+                setDialogContainer({
+                  id: menuContainer.id,
+                  name: menuContainer.name,
+                });
+                setHasLoadedTerminalDialog(true);
+                setTerminalOpen(true);
+              }
+              handleMenuClose();
+            }}
+            startAdornment={<Icon icon="mdi:console" width={18} />}
+          >
+            Terminal
+          </AppMenuItem>
+        </AppMenu>
+      </div>
       {dialogContainer && (
         <Suspense fallback={null}>
           {hasLoadedLogsDialog && (
@@ -365,4 +389,15 @@ const DockerInfo = () => {
     </>
   );
 };
+
+const DockerInfo = () => (
+  <DashboardCard
+    avatarIcon="mdi:docker"
+    contentLayout="auto"
+    stats={<DockerStats />}
+    stats2={<DockerContainers />}
+    title="Docker"
+  />
+);
+
 export default DockerInfo;

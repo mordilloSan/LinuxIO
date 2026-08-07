@@ -1,7 +1,13 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, useState, type CSSProperties, type MouseEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 
 import { type AccountUserLogin, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -20,6 +26,8 @@ import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
+
+const HEALTH_REFETCH_MS = 50000;
 
 type HealthRoute = "/accounts" | "/logs" | "/services" | "/updates";
 
@@ -89,44 +97,28 @@ function failedLoginDetail(
     .join("\n");
 }
 
-const SystemHealth = () => {
+interface FailedLoginsProps {
+  onOpenFailedLogins: () => void;
+}
+
+const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const theme = useAppTheme();
-  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
 
   const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({ refetchInterval: 50000 }),
-  );
-
-  const {
-    data: failedLoginEvents = [],
-    isLoading: failedLoginEventsLoading,
-    isError: failedLoginEventsError,
-    error: failedLoginEventsErrorValue,
-  } = useQuery(
-    linuxio.system.list_failed_login_events.queryOptions(
-      { limit: "24" },
-      {
-        enabled: failedLoginsOpen,
-        refetchInterval: failedLoginsOpen ? 30000 : false,
-      },
-    ),
+    linuxio.system.get_health_summary.queryOptions({
+      refetchInterval: HEALTH_REFETCH_MS,
+    }),
   );
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
     linuxio.system.dismiss_unclean_shutdown.useAction();
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useAction({
-      success: () => {
-        setFailedLoginsOpen(false);
-      },
-    });
+    linuxio.system.dismiss_failed_login_alert.useAction();
 
   const items: HealthItem[] = [];
   const failedLoginAlert = health?.failedLoginAlert;
-  const openFailedLogins = () => setFailedLoginsOpen(true);
 
   if (health !== undefined) {
     items.push({
@@ -156,7 +148,7 @@ const SystemHealth = () => {
       icon: "mdi:account-alert-outline",
       color: theme.palette.error.main,
       text: `${pluralize(failedLoginAlert.count, "failed login attempt", "failed login attempts")}\nbefore this session`,
-      onClick: openFailedLogins,
+      onClick: onOpenFailedLogins,
       detail: failedLoginDetail(failedLoginAlert.latestEvent),
       textColor: "#fff",
       detailColor: "rgba(255, 255, 255, 0.72)",
@@ -254,46 +246,6 @@ const SystemHealth = () => {
       iconStyle: { transform: "translateY(-6px)" },
     });
   }
-
-  let statusColor = theme.palette.success.dark;
-  let iconName = "mdi:shield-check-outline";
-  let iconLink: HealthRoute = "/updates";
-
-  if (health?.failedServicesCount) {
-    statusColor = theme.palette.error.main;
-    iconName = "mdi:shield-alert-outline";
-    iconLink = "/services";
-  } else if (failedLoginAlert) {
-    statusColor = theme.palette.warning.main;
-    iconName = "mdi:shield-alert-outline";
-  } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
-    statusColor = theme.palette.warning.main;
-    iconName = "mdi:shield-alert-outline";
-    iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
-  }
-
-  const handleStatusIconClick = () => {
-    if (failedLoginAlert) {
-      openFailedLogins();
-      return;
-    }
-    navigate({ to: iconLink });
-  };
-
-  const stats2 = (
-    <AppIconButton
-      aria-label={
-        failedLoginAlert ? "Review failed login alerts" : "View system status"
-      }
-      onClick={handleStatusIconClick}
-      style={{
-        backgroundColor: "transparent",
-        cursor: "pointer",
-      }}
-    >
-      <Icon color={statusColor} height={100} icon={iconName} width={100} />
-    </AppIconButton>
-  );
 
   const renderItem = (item: HealthItem) => {
     const mainContent = (
@@ -437,20 +389,6 @@ const SystemHealth = () => {
     );
   };
 
-  const skeletonRow = (key: string, width: string) => (
-    <div
-      key={key}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(1),
-      }}
-    >
-      <AppSkeleton height={18} variant="circular" width={18} />
-      <AppSkeleton textVariant="body2" width={width} />
-    </div>
-  );
-
   const servicesItem = items.find((i) => i.icon === "mdi:cog-sync-outline");
   const updatesItem = items.find(
     (i) => i.icon === "mdi:package-up" || i.icon === "mdi:check-circle",
@@ -464,7 +402,7 @@ const SystemHealth = () => {
     (i) => i !== servicesItem && i !== updatesItem && i !== bottomItem,
   );
 
-  const stats = (
+  return (
     <div
       style={{
         display: "flex",
@@ -479,141 +417,249 @@ const SystemHealth = () => {
       {bottomItem ? renderItem(bottomItem) : null}
     </div>
   );
+};
+
+const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
+  const theme = useAppTheme();
+  const navigate = useNavigate();
+
+  const { data: health } = useSuspenseQuery(
+    linuxio.system.get_health_summary.queryOptions({
+      refetchInterval: HEALTH_REFETCH_MS,
+    }),
+  );
+
+  const failedLoginAlert = health?.failedLoginAlert;
+
+  let statusColor = theme.palette.success.dark;
+  let iconName = "mdi:shield-check-outline";
+  let iconLink: HealthRoute = "/updates";
+
+  if (health?.failedServicesCount) {
+    statusColor = theme.palette.error.main;
+    iconName = "mdi:shield-alert-outline";
+    iconLink = "/services";
+  } else if (failedLoginAlert) {
+    statusColor = theme.palette.warning.main;
+    iconName = "mdi:shield-alert-outline";
+  } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
+    statusColor = theme.palette.warning.main;
+    iconName = "mdi:shield-alert-outline";
+    iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
+  }
+
+  const handleStatusIconClick = () => {
+    if (failedLoginAlert) {
+      onOpenFailedLogins();
+      return;
+    }
+    navigate({ to: iconLink });
+  };
+
+  return (
+    <AppIconButton
+      aria-label={
+        failedLoginAlert ? "Review failed login alerts" : "View system status"
+      }
+      onClick={handleStatusIconClick}
+      style={{
+        backgroundColor: "transparent",
+        cursor: "pointer",
+      }}
+    >
+      <Icon color={statusColor} height={100} icon={iconName} width={100} />
+    </AppIconButton>
+  );
+};
+
+interface FailedLoginsDialogProps {
+  onClose: () => void;
+  open: boolean;
+}
+
+const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
+  const theme = useAppTheme();
+
+  const { data: health } = useSuspenseQuery(
+    linuxio.system.get_health_summary.queryOptions({
+      refetchInterval: HEALTH_REFETCH_MS,
+    }),
+  );
+
+  const {
+    data: failedLoginEvents = [],
+    isLoading: failedLoginEventsLoading,
+    isError: failedLoginEventsError,
+    error: failedLoginEventsErrorValue,
+  } = useQuery(
+    linuxio.system.list_failed_login_events.queryOptions(
+      { limit: "24" },
+      {
+        enabled: open,
+        refetchInterval: open ? 30000 : false,
+      },
+    ),
+  );
+
+  const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
+    linuxio.system.dismiss_failed_login_alert.useAction({
+      success: () => {
+        onClose();
+      },
+    });
+
+  const failedLoginAlert = health?.failedLoginAlert;
+
+  const skeletonRow = (key: string, width: string) => (
+    <div
+      key={key}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(1),
+      }}
+    >
+      <AppSkeleton height={18} variant="circular" width={18} />
+      <AppSkeleton textVariant="body2" width={width} />
+    </div>
+  );
+
   const failedLoginGridColumns =
     "minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto";
+
+  return (
+    <GeneralDialog fullWidth maxWidth="md" onClose={onClose} open={open}>
+      <AppDialogTitle
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+        }}
+      >
+        <Icon
+          color={theme.palette.warning.main}
+          height={22}
+          icon="mdi:account-alert-outline"
+          width={22}
+        />
+        <AppTypography variant="h6">Failed logins</AppTypography>
+      </AppDialogTitle>
+      <AppDialogContent style={{ paddingTop: 12 }}>
+        {failedLoginEventsLoading ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {skeletonRow("failed-login-1", "28ch")}
+            {skeletonRow("failed-login-2", "24ch")}
+            {skeletonRow("failed-login-3", "22ch")}
+          </div>
+        ) : failedLoginEventsError ? (
+          <AppAlert severity="error">
+            {failedLoginEventsErrorValue instanceof Error
+              ? failedLoginEventsErrorValue.message
+              : "Failed login history unavailable"}
+          </AppAlert>
+        ) : failedLoginEvents.length === 0 ? (
+          <AppTypography color="text.secondary" variant="body2">
+            No failed login attempts found before this session.
+          </AppTypography>
+        ) : (
+          <div style={{ display: "grid", gap: 0 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: failedLoginGridColumns,
+                gap: 12,
+                padding: "0 0 8px",
+              }}
+            >
+              {["Time", "Username", "Source", "Result"].map((label) => (
+                <AppTypography
+                  color="text.secondary"
+                  key={label}
+                  style={{ fontSize: "0.65rem" }}
+                  variant="overline"
+                >
+                  {label}
+                </AppTypography>
+              ))}
+            </div>
+            {failedLoginEvents.map((login, index) => (
+              <Fragment key={login.id || `${login.username}-${index}`}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: failedLoginGridColumns,
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "8px 0",
+                  }}
+                >
+                  <AppTypography fontWeight={500} noWrap variant="body2">
+                    {login.time || "-"}
+                  </AppTypography>
+                  <AppTypography fontWeight={500} noWrap variant="body2">
+                    {login.username || "unknown"}
+                  </AppTypography>
+                  <AppTypography color="text.secondary" noWrap variant="body2">
+                    {loginAttemptLocation(login)}
+                  </AppTypography>
+                  <Chip
+                    color="error"
+                    label="Failed"
+                    size="small"
+                    style={{ fontSize: "0.7rem" }}
+                    variant="soft"
+                  />
+                </div>
+                {index < failedLoginEvents.length - 1 ? <AppDivider /> : null}
+              </Fragment>
+            ))}
+          </div>
+        )}
+      </AppDialogContent>
+      <AppDialogActions
+        style={{
+          padding: 8,
+          borderTop: `1px solid ${theme.palette.divider}`,
+        }}
+      >
+        <AppButton color="inherit" onClick={onClose}>
+          Close
+        </AppButton>
+        {failedLoginAlert?.id ? (
+          <AppButton
+            color="warning"
+            disabled={dismissingFailedLogin}
+            onClick={() =>
+              dismissFailedLoginAlert({ alertId: failedLoginAlert.id })
+            }
+            startIcon={<Icon height={18} icon="mdi:check" width={18} />}
+            variant="contained"
+          >
+            {dismissingFailedLogin ? "Dismissing..." : "Dismiss alert"}
+          </AppButton>
+        ) : null}
+      </AppDialogActions>
+    </GeneralDialog>
+  );
+};
+
+const SystemHealth = () => {
+  const [failedLoginsOpen, setFailedLoginsOpen] = useState(false);
+  const openFailedLogins = useCallback(() => setFailedLoginsOpen(true), []);
+  const closeFailedLogins = useCallback(() => setFailedLoginsOpen(false), []);
 
   return (
     <>
       <DashboardCard
         avatarIcon="mdi:heart-pulse"
         contentLayout={[1.5, 1]}
-        stats={stats}
-        stats2={stats2}
+        stats={<HealthStats onOpenFailedLogins={openFailedLogins} />}
+        stats2={<HealthShield onOpenFailedLogins={openFailedLogins} />}
         title="System Health"
       />
 
-      <GeneralDialog
-        fullWidth
-        maxWidth="md"
-        onClose={() => setFailedLoginsOpen(false)}
-        open={failedLoginsOpen}
-      >
-        <AppDialogTitle
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            borderBottom: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <Icon
-            color={theme.palette.warning.main}
-            height={22}
-            icon="mdi:account-alert-outline"
-            width={22}
-          />
-          <AppTypography variant="h6">Failed logins</AppTypography>
-        </AppDialogTitle>
-        <AppDialogContent style={{ paddingTop: 12 }}>
-          {failedLoginEventsLoading ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              {skeletonRow("failed-login-1", "28ch")}
-              {skeletonRow("failed-login-2", "24ch")}
-              {skeletonRow("failed-login-3", "22ch")}
-            </div>
-          ) : failedLoginEventsError ? (
-            <AppAlert severity="error">
-              {failedLoginEventsErrorValue instanceof Error
-                ? failedLoginEventsErrorValue.message
-                : "Failed login history unavailable"}
-            </AppAlert>
-          ) : failedLoginEvents.length === 0 ? (
-            <AppTypography color="text.secondary" variant="body2">
-              No failed login attempts found before this session.
-            </AppTypography>
-          ) : (
-            <div style={{ display: "grid", gap: 0 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: failedLoginGridColumns,
-                  gap: 12,
-                  padding: "0 0 8px",
-                }}
-              >
-                {["Time", "Username", "Source", "Result"].map((label) => (
-                  <AppTypography
-                    color="text.secondary"
-                    key={label}
-                    style={{ fontSize: "0.65rem" }}
-                    variant="overline"
-                  >
-                    {label}
-                  </AppTypography>
-                ))}
-              </div>
-              {failedLoginEvents.map((login, index) => (
-                <Fragment key={login.id || `${login.username}-${index}`}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: failedLoginGridColumns,
-                      gap: 12,
-                      alignItems: "center",
-                      padding: "8px 0",
-                    }}
-                  >
-                    <AppTypography fontWeight={500} noWrap variant="body2">
-                      {login.time || "-"}
-                    </AppTypography>
-                    <AppTypography fontWeight={500} noWrap variant="body2">
-                      {login.username || "unknown"}
-                    </AppTypography>
-                    <AppTypography
-                      color="text.secondary"
-                      noWrap
-                      variant="body2"
-                    >
-                      {loginAttemptLocation(login)}
-                    </AppTypography>
-                    <Chip
-                      color="error"
-                      label="Failed"
-                      size="small"
-                      style={{ fontSize: "0.7rem" }}
-                      variant="soft"
-                    />
-                  </div>
-                  {index < failedLoginEvents.length - 1 ? <AppDivider /> : null}
-                </Fragment>
-              ))}
-            </div>
-          )}
-        </AppDialogContent>
-        <AppDialogActions
-          style={{
-            padding: 8,
-            borderTop: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <AppButton color="inherit" onClick={() => setFailedLoginsOpen(false)}>
-            Close
-          </AppButton>
-          {failedLoginAlert?.id ? (
-            <AppButton
-              color="warning"
-              disabled={dismissingFailedLogin}
-              onClick={() =>
-                dismissFailedLoginAlert({ alertId: failedLoginAlert.id })
-              }
-              startIcon={<Icon height={18} icon="mdi:check" width={18} />}
-              variant="contained"
-            >
-              {dismissingFailedLogin ? "Dismissing..." : "Dismiss alert"}
-            </AppButton>
-          ) : null}
-        </AppDialogActions>
-      </GeneralDialog>
+      <FailedLoginsDialog onClose={closeFailedLogins} open={failedLoginsOpen} />
     </>
   );
 };

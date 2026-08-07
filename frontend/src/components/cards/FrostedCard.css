@@ -28,6 +28,15 @@
   box-shadow: var(--devtools-hover-shadow);
 }
 
+/* DashboardCard: hover accent — lift shadow + stronger bottom border.
+   !important beats the inline frosted/accent base styles. */
+.dc-accent-card:hover {
+  box-shadow: var(--dc-hover-shadow) !important;
+  border-bottom-width: 3px !important;
+  border-bottom-color: var(--dc-accent) !important;
+  margin-block-end: -1px;
+}
+
 /* DashboardCard: truncate typography in stats columns */
 .dc-stats-col > * {
   min-width: 0;

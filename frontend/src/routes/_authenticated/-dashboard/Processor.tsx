@@ -1,14 +1,15 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-import { linuxio } from "@/api";
-import DashboardCard, {
-  type SelectOption,
-} from "@/components/cards/DashboardCard";
+import { type CPUInfoResponse, linuxio } from "@/api";
+import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
 import ProcessorGraph from "./ProcessorGraph";
+import { formatSensorLabel } from "./sensors";
+
+const REFETCH_INTERVAL_MS = 1000;
 
 const formatLoadAverage = (loadAverage?: {
   load1: number;
@@ -19,91 +20,119 @@ const formatLoadAverage = (loadAverage?: {
     ? `${loadAverage.load1.toFixed(2)} / ${loadAverage.load5.toFixed(2)} / ${loadAverage.load15.toFixed(2)}`
     : "N/A";
 
-const Processor = () => {
-  const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const { data: CPUInfo } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: 1000,
-    }),
-  );
+const selectAverageUsage = (CPUInfo: CPUInfoResponse): number =>
+  CPUInfo?.perCoreUsage?.length
+    ? CPUInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
+      CPUInfo.perCoreUsage.length
+    : 0;
 
+const CpuTempBadge = () => {
+  const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
     undefined,
   );
 
-  const averageCpuUsage = CPUInfo?.perCoreUsage?.length
-    ? CPUInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
-      CPUInfo.perCoreUsage.length
-    : 0;
+  const { data: badge } = useSuspenseQuery(
+    linuxio.system.get_cpu_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: useCallback(
+        (CPUInfo: CPUInfoResponse) => {
+          const temperatures = CPUInfo?.temperature ?? {};
+          const keys = Object.keys(temperatures);
+          const defaultSensor =
+            temperatures["package"] !== undefined ? "package" : keys[0];
+          const effectiveSensor =
+            selectedSensor && temperatures[selectedSensor] !== undefined
+              ? selectedSensor
+              : defaultSensor;
+
+          return {
+            sensorKeys: keys,
+            selected: effectiveSensor,
+            text:
+              effectiveSensor !== undefined &&
+              temperatures[effectiveSensor] !== undefined
+                ? `${temperatures[effectiveSensor].toFixed(1)}°C`
+                : "--°C",
+          };
+        },
+        [selectedSensor],
+      ),
+    }),
+  );
+
+  if (!lmSensorsAvailable) {
+    return <CardBadge icon="mdi:thermometer" text="N/A" />;
+  }
+
+  return (
+    <CardBadge
+      icon="mdi:thermometer"
+      onSelect={setSelectedSensor}
+      options={badge.sensorKeys.map((key) => ({
+        value: key,
+        label: formatSensorLabel(key),
+      }))}
+      selected={badge.selected}
+      text={badge.text}
+    />
+  );
+};
+
+const CpuStats = () => {
+  const { data: CPUInfo } = useSuspenseQuery(
+    linuxio.system.get_cpu_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+    }),
+  );
+
+  const averageCpuUsage = selectAverageUsage(CPUInfo);
   const peakCpuUsage = Math.max(...(CPUInfo?.perCoreUsage || [0]));
 
-  const temperatures = CPUInfo?.temperature ?? {};
-  const temperatureKeys = Object.keys(temperatures);
-
-  const formatSensorLabel = (key: string): string => {
-    const match = key.match(/^([a-zA-Z]+)(\d+)$/);
-    if (match)
-      return `${match[1].charAt(0).toUpperCase() + match[1].slice(1)} ${match[2]}`;
-    return key.charAt(0).toUpperCase() + key.slice(1);
-  };
-
-  const defaultSensor =
-    temperatures["package"] !== undefined ? "package" : temperatureKeys[0];
-  const effectiveSensor =
-    selectedSensor && temperatures[selectedSensor] !== undefined
-      ? selectedSensor
-      : defaultSensor;
-
-  const displayTemp =
-    effectiveSensor !== undefined && temperatures[effectiveSensor] !== undefined
-      ? `${temperatures[effectiveSensor].toFixed(1)}°C`
-      : "--°C";
-
-  const sensorOptions: SelectOption[] = temperatureKeys.map((key) => ({
-    value: key,
-    label: formatSensorLabel(key),
-  }));
-
-  const IconText = lmSensorsAvailable ? displayTemp : "N/A";
-
-  const data = {
-    title: "Processor",
-    avatarIcon: "ph:cpu",
-    stats2: (
-      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
-        <ProcessorGraph usage={averageCpuUsage} />
-      </div>
-    ),
-    stats: (
-      <DashboardStatRows
-        rows={[
-          { label: "CPU", value: CPUInfo?.modelName },
-          {
-            label: "Usage",
-            value: `${averageCpuUsage.toFixed(0)}% (${peakCpuUsage.toFixed(0)}% peak)`,
-          },
-          {
-            label: "Load",
-            value: formatLoadAverage(CPUInfo?.loadAverage),
-          },
-          {
-            label: "Cores",
-            value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
-          },
-        ]}
-      />
-    ),
-    icon_text: IconText,
-    icon: "mdi:thermometer",
-    ...(lmSensorsAvailable &&
-      sensorOptions.length >= 1 && {
-        iconTextSelectOptions: sensorOptions,
-        selectedIconTextOption: effectiveSensor,
-        onIconTextSelect: setSelectedSensor,
-      }),
-  };
-
-  return <DashboardCard {...data} />;
+  return (
+    <DashboardStatRows
+      rows={[
+        { label: "CPU", value: CPUInfo?.modelName },
+        {
+          label: "Usage",
+          value: `${averageCpuUsage.toFixed(0)}% (${peakCpuUsage.toFixed(0)}% peak)`,
+        },
+        {
+          label: "Load",
+          value: formatLoadAverage(CPUInfo?.loadAverage),
+        },
+        {
+          label: "Cores",
+          value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
+        },
+      ]}
+    />
+  );
 };
+
+const CpuUsageGraph = () => {
+  const { data: usage } = useSuspenseQuery(
+    linuxio.system.get_cpu_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: selectAverageUsage,
+    }),
+  );
+
+  return <ProcessorGraph usage={usage} />;
+};
+
+const Processor = () => (
+  <DashboardCard
+    avatarIcon="ph:cpu"
+    headerExtras={<CpuTempBadge />}
+    stats={<CpuStats />}
+    stats2={
+      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
+        <CpuUsageGraph />
+      </div>
+    }
+    title="Processor"
+  />
+);
 
 export default Processor;

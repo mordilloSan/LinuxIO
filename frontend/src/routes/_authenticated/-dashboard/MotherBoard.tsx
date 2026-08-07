@@ -1,24 +1,85 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-import { linuxio } from "@/api";
-import DashboardCard, {
-  type SelectOption,
-} from "@/components/cards/DashboardCard";
+import { linuxio, type MotherboardInfo } from "@/api";
+import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
+import { formatSensorLabel } from "./sensors";
 
-const MotherBoardInfo = () => {
+const REFETCH_INTERVAL_MS = 50000;
+
+const MotherboardTempBadge = () => {
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
-  const { data: motherboardInfo } = useSuspenseQuery(
+  const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
+    undefined,
+  );
+
+  const { data: badge } = useSuspenseQuery(
     linuxio.system.get_motherboard_info.queryOptions({
-      refetchInterval: 50000,
+      refetchInterval: REFETCH_INTERVAL_MS,
+      select: useCallback(
+        (motherboardInfo: MotherboardInfo) => {
+          const sensors = motherboardInfo?.temperatures?.sensors ?? {};
+          const keys = Object.keys(sensors);
+          const defaultMbSensor =
+            keys.find((k) => k.startsWith("mb")) ?? keys[0];
+          const effectiveSensor =
+            selectedSensor && sensors[selectedSensor] !== undefined
+              ? selectedSensor
+              : defaultMbSensor;
+
+          return {
+            sensorKeys: keys,
+            selected: effectiveSensor,
+            text:
+              effectiveSensor !== undefined &&
+              sensors[effectiveSensor] !== undefined
+                ? `${sensors[effectiveSensor]}°C`
+                : "--°C",
+          };
+        },
+        [selectedSensor],
+      ),
     }),
   );
 
-  const visibleDetails = motherboardInfo ? (
+  if (!lmSensorsAvailable) {
+    return <CardBadge icon="mdi:thermometer" text="N/A" />;
+  }
+
+  return (
+    <CardBadge
+      icon="mdi:thermometer"
+      onSelect={setSelectedSensor}
+      options={badge.sensorKeys.map((key) => ({
+        value: key,
+        label: formatSensorLabel(key),
+      }))}
+      selected={badge.selected}
+      text={badge.text}
+    />
+  );
+};
+
+const MotherboardStats = () => {
+  const { data: motherboardInfo } = useSuspenseQuery(
+    linuxio.system.get_motherboard_info.queryOptions({
+      refetchInterval: REFETCH_INTERVAL_MS,
+    }),
+  );
+
+  if (!motherboardInfo) {
+    return (
+      <AppTypography variant="body2">
+        No system information available.
+      </AppTypography>
+    );
+  }
+
+  return (
     <DashboardStatRows
       containerStyle={{ alignSelf: "auto", width: "100%", minWidth: 0 }}
       rows={[
@@ -37,58 +98,16 @@ const MotherBoardInfo = () => {
         valueTitle: row.value,
       }))}
     />
-  ) : (
-    <AppTypography variant="body2">
-      No system information available.
-    </AppTypography>
-  );
-
-  const sensors = motherboardInfo?.temperatures?.sensors ?? {};
-  const sensorKeys = Object.keys(sensors);
-  const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
-    undefined,
-  );
-
-  const formatSensorLabel = (key: string): string => {
-    const match = key.match(/^([a-zA-Z]+)(\d+)$/);
-    if (match)
-      return `${match[1].charAt(0).toUpperCase() + match[1].slice(1)} ${match[2]}`;
-    return key.charAt(0).toUpperCase() + key.slice(1);
-  };
-
-  const defaultMbSensor =
-    sensorKeys.find((k) => k.startsWith("mb")) ?? sensorKeys[0];
-  const effectiveSensor =
-    selectedSensor && sensors[selectedSensor] !== undefined
-      ? selectedSensor
-      : defaultMbSensor;
-
-  const IconText = lmSensorsAvailable
-    ? effectiveSensor !== undefined && sensors[effectiveSensor] !== undefined
-      ? `${sensors[effectiveSensor]}°C`
-      : "--°C"
-    : "N/A";
-
-  const sensorOptions: SelectOption[] = sensorKeys.map((key) => ({
-    value: key,
-    label: formatSensorLabel(key),
-  }));
-
-  return (
-    <DashboardCard
-      avatarIcon="bi:motherboard"
-      icon="mdi:thermometer"
-      icon_text={IconText}
-      stats={visibleDetails}
-      title="Motherboard"
-      {...(lmSensorsAvailable &&
-        sensorOptions.length >= 1 && {
-          iconTextSelectOptions: sensorOptions,
-          selectedIconTextOption: effectiveSensor,
-          onIconTextSelect: setSelectedSensor,
-        })}
-    />
   );
 };
+
+const MotherBoardInfo = () => (
+  <DashboardCard
+    avatarIcon="bi:motherboard"
+    headerExtras={<MotherboardTempBadge />}
+    stats={<MotherboardStats />}
+    title="Motherboard"
+  />
+);
 
 export default MotherBoardInfo;
