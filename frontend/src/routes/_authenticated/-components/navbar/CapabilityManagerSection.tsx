@@ -177,12 +177,12 @@ const CapabilityManagerSection = () => {
     [installCapability],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

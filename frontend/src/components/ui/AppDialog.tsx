@@ -11,6 +11,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { acquireBodyScrollLock } from "./bodyScrollLock";
+
 import "./app-dialog.css";
 
 let _openDialogCount = 0;
@@ -78,20 +80,19 @@ export const AppDialog = ({
   useEffect(() => {
     if (open) {
       lastFocusedElement.current = document.activeElement as HTMLElement | null;
-      document.body.style.overflow = "hidden";
+      const releaseBodyScrollLock = acquireBodyScrollLock();
       _openDialogCount++;
       if (_openDialogCount === 1) document.body.classList.add("dialog-open");
-    } else if (lastFocusedElement.current) {
-      lastFocusedElement.current.focus();
-    }
-    return () => {
-      document.body.style.overflow = "";
-      if (open) {
+
+      return () => {
+        releaseBodyScrollLock();
         _openDialogCount--;
         if (_openDialogCount === 0)
           document.body.classList.remove("dialog-open");
-      }
-    };
+      };
+    } else if (lastFocusedElement.current) {
+      lastFocusedElement.current.focus();
+    }
   }, [open]);
 
   // fire transition callbacks

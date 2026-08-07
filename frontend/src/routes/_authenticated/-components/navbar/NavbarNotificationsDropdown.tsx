@@ -225,7 +225,7 @@ const TransferItem = memo(function TransferItem({
 
 // --- Main component ---
 
-function NavbarNotificationsDropdown() {
+export function NavbarNotificationsDropdown() {
   const theme = useAppTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const iconSize = iconSizes.md;
@@ -315,6 +315,13 @@ function NavbarNotificationsDropdown() {
       return () => window.clearTimeout(openTimer);
     }
   }, [transferIds, isFullOpen]);
+
+  // Keep the hide timer alive when transfers disappear because that effect
+  // rerun has no replacement timer. New transfers clear and replace it above;
+  // the component lifecycle owns the final cleanup.
+  useEffect(() => {
+    return () => window.clearTimeout(peekTimerRef.current);
+  }, []);
 
   const handleOpen = () => {
     // User clicked — close peek, open full
