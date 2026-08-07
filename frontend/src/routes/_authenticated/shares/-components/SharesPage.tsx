@@ -688,7 +688,7 @@ const EditFolderShareDialog = ({
     group?.samba?.properties["guest ok"] === "yes",
   );
   const [nfsClients, setNFSClients] = useState(
-    group?.nfs?.clients.map((client) => client.host).join(", ") || "*",
+    () => group?.nfs?.clients.map((client) => client.host).join(", ") || "*",
   );
   const [nfsOptions, setNFSOptions] = useState<ClientOptions>(
     group?.nfs?.clients[0]

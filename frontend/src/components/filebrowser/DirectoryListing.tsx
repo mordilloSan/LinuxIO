@@ -97,7 +97,7 @@ const DirectoryListing = ({
     },
     [resource.path],
   );
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
+  const lastSelectedIndexRef = useRef(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch all subfolder sizes in one request
@@ -214,17 +214,17 @@ const DirectoryListing = ({
 
       focusItemByPath(path);
 
-      if (event.shiftKey && lastSelectedIndex !== -1) {
+      if (event.shiftKey && lastSelectedIndexRef.current !== -1) {
         // Shift+click: select range from lastSelectedIndex to currentIndex
-        const start = Math.min(lastSelectedIndex, currentIndex);
-        const end = Math.max(lastSelectedIndex, currentIndex);
+        const start = Math.min(lastSelectedIndexRef.current, currentIndex);
+        const end = Math.max(lastSelectedIndexRef.current, currentIndex);
         const next = new Set(selectedPaths);
 
         for (let i = start; i <= end; i++) {
           next.add(allItems[i].path);
         }
         onSelectedPathsChange(next);
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       } else if (event.ctrlKey || event.metaKey) {
         // Ctrl/Cmd+click: toggle selection
         const next = new Set(selectedPaths);
@@ -234,20 +234,14 @@ const DirectoryListing = ({
           next.add(path);
         }
         onSelectedPathsChange(next);
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       } else {
         // Regular click: single selection
         onSelectedPathsChange(new Set([path]));
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       }
     },
-    [
-      focusItemByPath,
-      selectedPaths,
-      onSelectedPathsChange,
-      allItems,
-      lastSelectedIndex,
-    ],
+    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
   );
 
   const handleItemContextMenu = useCallback(
@@ -260,7 +254,7 @@ const DirectoryListing = ({
       if (!selectedPaths.has(path)) {
         onSelectedPathsChange(new Set([path]));
       }
-      setLastSelectedIndex(currentIndex);
+      lastSelectedIndexRef.current = currentIndex;
     },
     [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
   );

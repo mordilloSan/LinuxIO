@@ -521,6 +521,13 @@ const GeneralLogsPage = () => {
   const flushScheduledRef = useRef(false);
   const { streamRef, openStream, closeStream } = useLiveStream();
 
+  // Keep the retention target in sync after a logs state commit. This belongs
+  // outside state updater callbacks so those callbacks remain pure and safe
+  // under concurrent rendering.
+  useLayoutEffect(() => {
+    bufferLimitRef.current = Math.max(bufferLimitRef.current, logs.length);
+  }, [logs]);
+
   const { isOpen: muxIsOpen } = useStreamMux();
   const fetchLogsPage = linuxio.logs.general_page.useFetcher();
 
@@ -955,10 +962,6 @@ const GeneralLogsPage = () => {
           withBoundary,
           olderLogs,
           Number.POSITIVE_INFINITY,
-        );
-        bufferLimitRef.current = Math.max(
-          bufferLimitRef.current,
-          merged.length,
         );
         return merged;
       });

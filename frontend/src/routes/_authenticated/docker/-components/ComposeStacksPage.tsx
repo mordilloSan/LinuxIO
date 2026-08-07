@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { memo, Suspense, useCallback, useState } from "react";
+import { memo, Suspense, useCallback, useRef, useState } from "react";
 
 import {
   CACHE_TTL_MS,
@@ -59,7 +59,7 @@ const ComposeStacksPage = ({
   // Post-save dialog state
   const [postSaveDialogOpen, setPostSaveDialogOpen] = useState(false);
   const [postSaveStackName, setPostSaveStackName] = useState("");
-  const [postSaveFilePath, setPostSaveFilePath] = useState("");
+  const postSaveFilePathRef = useRef("");
   const [postSaveStackState, setPostSaveStackState] = useState<
     "new" | "running" | "stopped"
   >("new");
@@ -317,7 +317,7 @@ const ComposeStacksPage = ({
 
       // Show post-save dialog
       setPostSaveStackName(stackName);
-      setPostSaveFilePath(filePath);
+      postSaveFilePathRef.current = filePath;
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
@@ -388,12 +388,12 @@ const ComposeStacksPage = ({
 
   // Post-save action handlers
   const handlePostSaveStart = () => {
-    startProject(postSaveStackName, postSaveFilePath);
+    startProject(postSaveStackName, postSaveFilePathRef.current);
     setPostSaveDialogOpen(false);
   };
 
   const handlePostSaveRestart = () => {
-    restartProject(postSaveStackName, postSaveFilePath);
+    restartProject(postSaveStackName, postSaveFilePathRef.current);
     setPostSaveDialogOpen(false);
   };
 

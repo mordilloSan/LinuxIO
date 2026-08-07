@@ -5,6 +5,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -81,6 +82,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
     ref,
   ) => {
     const [open, setOpen] = useState(false);
+    const dropdownId = useId();
     const containerRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLUListElement>(null);
     const [dropdownPos, setDropdownPos] = useState<{
@@ -188,6 +190,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
         {label && <label className="app-select__label">{label}</label>}
         <div className="app-select__control" ref={containerRef}>
           <div
+            aria-controls={open ? dropdownId : undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
             className={triggerClass}
@@ -215,6 +218,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
           dropdownPos &&
           createPortal(
             <ul
+              id={dropdownId}
               className="app-select__dropdown app-select__dropdown--portal custom-scrollbar"
               ref={dropdownRef}
               role="listbox"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getIconForType } from "@/components/filebrowser/FileIcon";
+import { getIconForType } from "@/components/filebrowser/fileIconUtils";
 
 describe("FileIcon", () => {
   it("uses the YAML icon for yaml and yml files", () => {

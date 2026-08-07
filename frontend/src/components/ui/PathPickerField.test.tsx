@@ -1,7 +1,7 @@
 import { useState, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/test/render";
+import { render, screen, waitFor } from "@/test/render";
 
 import PathPickerField from "./PathPickerField";
 
@@ -89,6 +89,45 @@ describe("PathPickerField", () => {
     expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
     expect(screen.getByLabelText("ISO path")).toHaveValue("/media/debian.iso");
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+  });
+
+  it("clears the loading state and stays collapsed when expanding fails", async () => {
+    mocks.resourceGet.mockRejectedValueOnce(new Error("resource unavailable"));
+    const { user } = render(<PickerHarness />);
+
+    await user.click(screen.getByLabelText("Directory Path"));
+    const expandButton = screen.getByRole("button", { name: "Expand /" });
+    await user.click(expandButton);
+
+    await waitFor(() => expect(expandButton).not.toBeDisabled());
+    expect(screen.getByRole("treeitem", { name: "/" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("ignores repeated row activation while loading", async () => {
+    let resolveResource: (resource: unknown) => void = () => undefined;
+    const pendingResource = new Promise((resolve) => {
+      resolveResource = resolve;
+    });
+    mocks.resourceGet.mockReturnValueOnce(pendingResource);
+    const { user } = render(<PickerHarness selectableTypes={[]} />);
+
+    await user.click(screen.getByLabelText("Directory Path"));
+    const root = screen.getByRole("treeitem", { name: "/" });
+    await user.click(root);
+    await user.click(root);
+
+    expect(mocks.resourceGet).toHaveBeenCalledTimes(1);
+
+    resolveResource({ folders: [{ name: "media", type: "directory" }] });
+    await waitFor(() =>
+      expect(screen.getByRole("treeitem", { name: "/" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      ),
+    );
   });
 
   it("closes with Escape", async () => {

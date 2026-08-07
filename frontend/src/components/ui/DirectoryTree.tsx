@@ -63,6 +63,7 @@ const TreeNode = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const isSelected = selectedPath === node.path;
   const directory = node.kind === "directory";
   const selectable = isSelectable(node);
@@ -71,11 +72,22 @@ const TreeNode = ({
     if (!directory) {
       return;
     }
+    if (loadingRef.current) {
+      return;
+    }
     if (!expanded) {
+      loadingRef.current = true;
       setLoading(true);
-      await onToggle(node);
-      setLoading(false);
-      setExpanded(true);
+      try {
+        await onToggle(node);
+        setExpanded(true);
+      } catch {
+        // Keep the directory collapsed when loading fails. The next
+        // activation can retry the load.
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     } else {
       setExpanded(false);
     }
@@ -211,18 +223,14 @@ const DirectoryTree = ({
     async (node: TreeNodeData) => {
       if (node.loaded || node.kind !== "directory") return;
 
-      try {
-        const resource = await fetchResource({ path: node.path });
+      const resource = await fetchResource({ path: node.path });
 
-        const children = resourceChildren(resource, node.path, {
-          fileFilter,
-          includeFiles,
-        });
+      const children = resourceChildren(resource, node.path, {
+        fileFilter,
+        includeFiles,
+      });
 
-        setRoots((prev) => updateNode(prev, node.path, children));
-      } catch {
-        setRoots((prev) => updateNode(prev, node.path, []));
-      }
+      setRoots((prev) => updateNode(prev, node.path, children));
     },
     [fetchResource, fileFilter, includeFiles],
   );

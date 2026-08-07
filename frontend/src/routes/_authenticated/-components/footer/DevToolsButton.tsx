@@ -46,7 +46,8 @@ const DevToolsButton = () => {
               boxShadow: isOpen ? shadowSm : "none",
               whiteSpace: "nowrap",
               minWidth: 90,
-              transition: "all 0.2s",
+              transition:
+                "background-color 0.2s, border-color 0.2s, box-shadow 0.2s",
               "--devtools-hover-border": theme.palette.primary.main,
               "--devtools-hover-shadow": shadowSm,
             } as CSSProperties

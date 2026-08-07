@@ -140,7 +140,8 @@ const MultiFileItemRow = ({
         backgroundColor: hovered
           ? "color-mix(in srgb, var(--app-palette-primary-main), transparent 95%)"
           : "transparent",
-        transition: "all 120ms ease",
+        transition:
+          "background-color 120ms ease, border-color 120ms ease, transform 120ms ease",
         transform: hovered ? "translateY(-1px)" : "none",
       }}
     >

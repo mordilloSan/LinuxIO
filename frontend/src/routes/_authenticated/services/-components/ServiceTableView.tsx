@@ -1,7 +1,8 @@
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
 
-import { MobileExpandedDetails, statusDot, UnitTableView } from "./UnitViews";
+import UnitStatusDot from "./UnitStatusDot";
+import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -66,7 +67,7 @@ const ServiceTableView = ({
     renderMainRow={(service, isMobile) => (
       <>
         <AppTableCell style={{ paddingLeft: 8 }}>
-          {statusDot(service.active_state)}
+          <UnitStatusDot activeState={service.active_state} />
           {service.active_state}
         </AppTableCell>
         <AppTableCell>{service.name}</AppTableCell>

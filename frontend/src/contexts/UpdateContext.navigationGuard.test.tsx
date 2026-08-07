@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
-import { useUpdateNavigationGuard } from "@/contexts/UpdateContext";
+import { useUpdateNavigationGuard } from "@/contexts/useUpdateNavigationGuard";
 import { renderWithTanStackRouter, screen, waitFor } from "@/test/render";
 
 function Harness({ isUpdating }: { isUpdating: boolean }) {

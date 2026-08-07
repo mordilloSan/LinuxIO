@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "@/api";
@@ -51,9 +52,8 @@ vi.mock("@/api", async () => {
     },
   };
 });
-
 const { LinuxIOError } = await import("@/api");
-const { ConfigProvider } = await import("@/contexts/ConfigContext");
+const { ConfigProvider } = await import("@/contexts/ConfigProvider");
 const { useConfig } = await import("@/hooks/useConfig");
 const { act, createAuthContextValue, createTestQueryClient, render } =
   await import("@/test/render");
@@ -142,9 +142,11 @@ interface CapturedJobActionConfig {
 function renderProvider({
   configQueryFn = async () => remoteConfig(),
   sessionExpired = vi.fn(),
+  strictMode = false,
 }: {
   configQueryFn?: () => Promise<AppConfig>;
   sessionExpired?: () => void;
+  strictMode?: boolean;
 } = {}) {
   const jobActionConfigs: CapturedJobActionConfig[] = [];
   const queryClient = createTestQueryClient();
@@ -180,6 +182,12 @@ function renderProvider({
     }
   };
 
+  const provider = (
+    <ConfigProvider>
+      <Probe />
+    </ConfigProvider>
+  );
+
   render(
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider
@@ -189,9 +197,7 @@ function renderProvider({
           user: { id: "miguel", name: "Miguel" },
         })}
       >
-        <ConfigProvider>
-          <Probe />
-        </ConfigProvider>
+        {strictMode ? <StrictMode>{provider}</StrictMode> : provider}
       </AuthContext.Provider>
     </QueryClientProvider>,
   );
@@ -255,6 +261,22 @@ describe("ConfigProvider", () => {
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
       '"theme":"DARK"',
     );
+  });
+
+  it("persists a StrictMode-replayed update only once", async () => {
+    renderProvider({ strictMode: true });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set theme" }).click();
+    });
+
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(1);
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+      appSettings: {
+        theme: "DARK",
+      },
+    });
   });
 
   it("invalidates compose projects after persisted Docker folder changes", async () => {

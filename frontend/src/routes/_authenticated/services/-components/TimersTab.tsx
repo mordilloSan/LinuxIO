@@ -5,8 +5,9 @@ import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
 
 import TimerCardsView from "./TimerCardsView";
 import TimerTableView from "./TimerTableView";
+import { formatUsec } from "./unitFormatters";
 import UnitListTab from "./UnitListTab";
-import { formatUsec, UnitInfoPanel } from "./UnitViews";
+import { UnitInfoPanel } from "./UnitViews";
 
 function compareTimersByName(a: Timer, b: Timer): number {
   return a.name.localeCompare(b.name, undefined, {

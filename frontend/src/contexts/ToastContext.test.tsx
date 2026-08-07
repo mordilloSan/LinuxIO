@@ -24,8 +24,8 @@ vi.mock("sonner", () => ({
   }),
 }));
 
-const { __resetToastHistoryStore, ToastProvider } =
-  await import("@/contexts/ToastContext");
+const { __resetToastHistoryStore } = await import("@/contexts/ToastContext");
+const { ToastProvider } = await import("@/contexts/ToastProvider");
 const { useClearToastHistory, useToastHistory } =
   await import("@/hooks/useToastHistory");
 const { act, render, screen } = await import("@/test/render");

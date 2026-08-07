@@ -2,19 +2,18 @@ import { type PropsWithChildren, useMemo } from "react";
 
 import { BackgroundJobsProvider } from "@/contexts/BackgroundJobsContext";
 import { ComposeProviders, withProps } from "@/contexts/composeProviders";
-import { ConfigProvider } from "@/contexts/ConfigContext";
-import { PowerActionProvider } from "@/contexts/PowerActionContext";
-import { ToastProvider } from "@/contexts/ToastContext";
-import { UpdateProvider } from "@/contexts/UpdateContext";
+import { ConfigProvider } from "@/contexts/ConfigProvider";
+import { PowerActionProvider } from "@/contexts/PowerActionProvider";
+import { ToastProvider } from "@/contexts/ToastProvider";
+import { UpdateProvider } from "@/contexts/UpdateProvider";
 import { useConfigValue } from "@/hooks/useConfig";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 
-import { SidebarProvider } from "./sidebar/SidebarContext";
+import { SidebarProvider } from "./sidebar/SidebarProvider";
 
 interface AuthenticatedRuntimeProviderProps extends PropsWithChildren {
   userId?: string;
 }
-
 function AuthedThemeShell({ children }: PropsWithChildren) {
   const [themeName] = useConfigValue("theme");
   const [primaryColorName] = useConfigValue("primaryColor");

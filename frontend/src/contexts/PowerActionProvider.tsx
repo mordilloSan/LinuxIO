@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useEffect,
   useMemo,
@@ -11,16 +10,9 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { redirectToSignIn } from "@/utils/navigation";
 
+import { PowerActionContext } from "./PowerActionContext";
+
 type PowerActionState = "rebooting" | "poweringOff" | null;
-
-export interface PowerActionContextType {
-  triggerPowerOff: () => void;
-  triggerReboot: () => void;
-}
-
-export const PowerActionContext = createContext<
-  PowerActionContextType | undefined
->(undefined);
 
 export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
@@ -34,9 +26,15 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
     if (powerAction !== "rebooting") return;
 
     let cancelled = false;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
     const pollInterval = 3000;
+    let poll: () => Promise<void>;
 
-    const poll = async () => {
+    const schedulePoll = () => {
+      pollTimeout = setTimeout(poll, pollInterval);
+    };
+
+    poll = async () => {
       try {
         const response = await fetch("/api/version", {
           method: "GET",
@@ -45,11 +43,11 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
         if (response.ok && !cancelled) {
           redirectToSignIn();
         } else if (!cancelled) {
-          setTimeout(poll, pollInterval);
+          schedulePoll();
         }
       } catch {
         if (!cancelled) {
-          setTimeout(poll, pollInterval);
+          schedulePoll();
         }
       }
     };
@@ -59,6 +57,7 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
       clearTimeout(initialDelay);
+      if (pollTimeout !== null) clearTimeout(pollTimeout);
     };
   }, [powerAction]);
 

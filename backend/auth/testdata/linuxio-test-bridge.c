@@ -7,10 +7,10 @@
 //
 // Behavior is selected by the first line of ./bridge_control in the cwd:
 //   ok       full dump, READY on fd 4, wait for GO, marker on fd 3, exit 0
-//   eof      exit 7 immediately without writing a status byte
-//   garbage  write an unknown status byte (0x7f) on fd 4, exit 7
-//   error    write PROTO_STARTUP_ERROR plus a message on fd 4, exit 3
-//   sleep    write nothing and sleep until killed
+//   eof      consume bootstrap, then exit 7 without writing a status byte
+//   garbage  consume bootstrap, write an unknown byte (0x7f) on fd 4, exit 7
+//   error    consume bootstrap, write STARTUP_ERROR plus a message, exit 3
+//   sleep    consume bootstrap, then write nothing and sleep until killed
 //   linger   like ok, then write ./linger-started and block until terminated
 //            (a live supervised session for service-stop scenarios)
 //   stubborn like linger, but SIGTERM is ignored (forces SIGKILL escalation)
@@ -112,31 +112,12 @@ int main(void)
     control[strcspn(control, "\n")] = '\0';
   }
 
-  if (strcmp(control, "eof") == 0)
-    _exit(7);
-  if (strcmp(control, "garbage") == 0)
-  {
-    const unsigned char weird = 0x7f;
-    (void)write_all(STATUS_FD, &weird, 1);
-    _exit(7);
-  }
-  if (strcmp(control, "error") == 0)
-  {
-    const char frame[] = {STARTUP_ERROR, 's', 't', 'u', 'b', ' ', 'b', 'r',
-                          'i', 'd', 'g', 'e', ' ', 'e', 'x', 'p', 'l', 'o',
-                          'd', 'e', 'd'};
-    (void)write_all(STATUS_FD, frame, sizeof(frame));
-    _exit(3);
-  }
-  if (strcmp(control, "sleep") == 0)
-  {
-    for (;;)
-      pause();
-  }
   int linger = strcmp(control, "linger") == 0 || strcmp(control, "stubborn") == 0;
   if (strcmp(control, "stubborn") == 0 && signal(SIGTERM, SIG_IGN) == SIG_ERR)
     die("ignore SIGTERM");
-  if (!linger && strcmp(control, "ok") != 0)
+  if (!linger && strcmp(control, "ok") != 0 && strcmp(control, "eof") != 0 &&
+      strcmp(control, "garbage") != 0 && strcmp(control, "error") != 0 &&
+      strcmp(control, "sleep") != 0)
     die("unknown bridge_control word");
 
   // Enumerate open descriptors before creating any new ones, excluding the
@@ -186,6 +167,31 @@ int main(void)
     bootstrap_len += (size_t)n;
     if (bootstrap_len == sizeof(bootstrap))
       die("bootstrap too large");
+  }
+
+  // Every post-exec startup scenario first consumes the launcher's bootstrap.
+  // Otherwise an immediate exit can race the parent's pipe write and turn the
+  // intended status-channel outcome into an unrelated EPIPE failure.
+  if (strcmp(control, "eof") == 0)
+    _exit(7);
+  if (strcmp(control, "garbage") == 0)
+  {
+    const unsigned char weird = 0x7f;
+    (void)write_all(STATUS_FD, &weird, 1);
+    _exit(7);
+  }
+  if (strcmp(control, "error") == 0)
+  {
+    const char frame[] = {STARTUP_ERROR, 's', 't', 'u', 'b', ' ', 'b', 'r',
+                          'i', 'd', 'g', 'e', ' ', 'e', 'x', 'p', 'l', 'o',
+                          'd', 'e', 'd'};
+    (void)write_all(STATUS_FD, frame, sizeof(frame));
+    _exit(3);
+  }
+  if (strcmp(control, "sleep") == 0)
+  {
+    for (;;)
+      pause();
   }
 
   {

@@ -1,8 +1,8 @@
-// src/contexts/ConfigContext.tsx
+// src/contexts/ConfigProvider.tsx
 import {
-  createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,9 +22,14 @@ import {
   type TableCardViewMode,
   useStreamMux,
 } from "@/api";
+import {
+  ConfigAccessorContext,
+  ConfigContext,
+  type ConfigAccessorContextValue,
+} from "@/contexts/ConfigContext";
 import useAuth from "@/hooks/useAuth";
 import { useLatestRef } from "@/hooks/useLatestRef";
-import {
+import type {
   ConfigContextType,
   ConfigPatch,
   ConfigProviderProps,
@@ -306,21 +311,6 @@ const patchConfigValue = <K extends ConfigValueKey>(
   };
 };
 
-export const ConfigContext = createContext<ConfigContextType | undefined>(
-  undefined,
-);
-
-export interface ConfigAccessorContextValue {
-  /** Current config, read through a ref — always fresh, never a rerender. */
-  getConfig: () => AppConfig;
-}
-
-// Identity-stable escape hatch for providers that must not rerender on
-// config changes (BackgroundJobsProvider): its value never changes after
-// mount, so subscribing costs nothing per config update.
-export const ConfigAccessorContext =
-  createContext<ConfigAccessorContextValue | null>(null);
-
 // Config state is deliberately layered: the sessionStorage cache seeds the
 // initial render synchronously (no theme flash before the mux is up), the
 // useState mirror is the live copy feature code reads, and the backend is the
@@ -335,6 +325,12 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const [isLoaded, setLoaded] = useState(false);
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
+  // Keep a synchronously updated draft so multiple actions in one event use
+  // the latest state even before React commits the queued update.
+  const configDraftRef = useRef(config);
+  useLayoutEffect(() => {
+    configDraftRef.current = config;
+  }, [config]);
   const { isOpen: isMuxOpen } = useStreamMux();
   const fetchConfigSettings = linuxio.config.get.useFetcher();
   const { mutate: setConfigRemote } = linuxio.config.set.useAction({
@@ -444,30 +440,30 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
-      setConfig((prev) => {
-        const current = getConfigValue(prev, key);
-        const nextVal =
-          typeof value === "function" ? (value as any)(current) : value;
-        if (Object.is(current, nextVal)) return prev;
-        const patch = patchConfigValue(key, nextVal);
-        const next = mergeConfig(prev, patch);
-        if (canSave) writeConfigCache(username, next);
-        save(patch);
-        return next;
-      });
+      const prev = configDraftRef.current;
+      const current = getConfigValue(prev, key);
+      const nextVal =
+        typeof value === "function" ? (value as any)(current) : value;
+      if (Object.is(current, nextVal)) return;
+      const patch = patchConfigValue(key, nextVal);
+      const next = mergeConfig(prev, patch);
+      configDraftRef.current = next;
+      setConfig(next);
+      if (canSave) writeConfigCache(username, next);
+      save(patch);
     },
     [canSave, save, username],
   );
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
     (patch, onSaved) => {
-      setConfig((prev) => {
-        const partial = typeof patch === "function" ? patch(prev) : patch;
-        const next = mergeConfig(prev, partial);
-        if (canSave) writeConfigCache(username, next);
-        save(partial, onSaved);
-        return next;
-      });
+      const prev = configDraftRef.current;
+      const partial = typeof patch === "function" ? patch(prev) : patch;
+      const next = mergeConfig(prev, partial);
+      configDraftRef.current = next;
+      setConfig(next);
+      if (canSave) writeConfigCache(username, next);
+      save(partial, onSaved);
     },
     [canSave, save, username],
   );

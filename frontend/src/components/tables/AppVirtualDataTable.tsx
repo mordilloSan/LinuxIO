@@ -160,6 +160,15 @@ function easeStandard(progress: number) {
     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 }
 
+function observeDetailContent(
+  node: HTMLDivElement,
+  onResize: ResizeObserverCallback,
+) {
+  const observer = new ResizeObserver(onResize);
+  observer.observe(node);
+  return observer;
+}
+
 // React Compiler skips this component because of @tanstack/react-virtual
 // (no compiler-compatible release exists); Table itself is v9 and fine.
 // Manual memoization stays load-bearing here.
@@ -289,7 +298,6 @@ function AppVirtualDataTable<TData extends RowData>({
     }
     return next;
   }, [rows]);
-  expandedRowIdsRef.current = expandedRowIds;
 
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
     const entries: Array<VirtualTableEntry<TData>> = [];
@@ -334,7 +342,14 @@ function AppVirtualDataTable<TData extends RowData>({
     overscan,
     useAnimationFrameWithResizeObserver: true,
   });
-  latestVirtualEntriesRef.current = virtualEntries;
+
+  useLayoutEffect(() => {
+    expandedRowIdsRef.current = expandedRowIds;
+  }, [expandedRowIds]);
+
+  useLayoutEffect(() => {
+    latestVirtualEntriesRef.current = virtualEntries;
+  }, [virtualEntries]);
 
   const scheduleMeasure = useCallback(() => {
     if (measureFrameRef.current !== null) return;
@@ -466,11 +481,17 @@ function AppVirtualDataTable<TData extends RowData>({
       measureDetailContent(rowId, node);
       if (typeof ResizeObserver === "undefined") return;
 
-      const observer = new ResizeObserver(() => {
+      const observer = observeDetailContent(node, () => {
         measureDetailContent(rowId, node);
       });
-      observer.observe(node);
       detailContentObserverRefs.current.set(rowId, observer);
+
+      return () => {
+        observer.disconnect();
+        if (detailContentObserverRefs.current.get(rowId) === observer) {
+          detailContentObserverRefs.current.delete(rowId);
+        }
+      };
     },
     [measureDetailContent],
   );

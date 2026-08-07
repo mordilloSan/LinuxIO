@@ -1,6 +1,4 @@
-import { useBlocker } from "@tanstack/react-router";
 import {
-  createContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -15,6 +13,14 @@ import {
   openAppUpdateStream,
   type Stream,
 } from "@/api";
+import {
+  publishLiveUpdateBlocked,
+  UpdateContext,
+  UpdateNavigationContext,
+  type UpdateContextValue,
+  type UpdatePhase,
+} from "@/contexts/UpdateContext";
+import { useUpdateNavigationGuard } from "@/contexts/useUpdateNavigationGuard";
 
 const UPDATE_TIMEOUT_MS = 20 * 60 * 1000;
 const POLL_START_DELAY_MS = 2000;
@@ -31,29 +37,6 @@ const buildUpdateRunId = () => {
   return `update-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-export type UpdatePhase =
-  | "idle"
-  | "running"
-  | "restarting"
-  | "verifying"
-  | "done"
-  | "failed";
-
-export interface UpdateContextValue {
-  canNavigate: boolean;
-  error: string | null;
-  isUpdating: boolean;
-  output: string[];
-  phase: UpdatePhase;
-  progress: number;
-  resetUpdate: () => void;
-  startUpdate: (targetVersion?: string) => void;
-  status: string;
-  targetVersion: string | null;
-  updateComplete: boolean;
-  updateSuccess: boolean;
-}
-
 interface UpdateStatusResponse {
   exit_code?: number;
   finished_at?: number;
@@ -61,35 +44,6 @@ interface UpdateStatusResponse {
   message?: string;
   started_at?: number;
   status: "unknown" | "running" | "ok" | "error";
-}
-
-export const UpdateContext = createContext<UpdateContextValue | null>(null);
-UpdateContext.displayName = "UpdateContext";
-
-export const UpdateNavigationContext = createContext<boolean | null>(null);
-UpdateNavigationContext.displayName = "UpdateNavigationContext";
-
-/*
- * The router is mounted above UpdateProvider, therefore router context cannot
- * consume UpdateContext directly. This mutable value remains owned and
- * published exclusively by UpdateProvider; router consumers receive only the
- * getter. The owner guard makes cleanup safe when ConfigProvider remounts the
- * authenticated runtime for a different user.
- */
-let liveUpdateBlockerOwner: object | null = null;
-let liveUpdateBlocked = false;
-
-export const isLiveUpdateBlocked = () => liveUpdateBlocked;
-
-function publishLiveUpdateBlocked(owner: object, blocked: boolean) {
-  liveUpdateBlockerOwner = owner;
-  liveUpdateBlocked = blocked;
-
-  return () => {
-    if (liveUpdateBlockerOwner !== owner) return;
-    liveUpdateBlockerOwner = null;
-    liveUpdateBlocked = false;
-  };
 }
 
 export const UpdateProvider = ({ children }: { children: ReactNode }) => {
@@ -496,12 +450,4 @@ const useUpdateController = (): UpdateContextValue => {
     startUpdate,
     resetUpdate,
   };
-};
-
-export const useUpdateNavigationGuard = (isUpdating: boolean) => {
-  useBlocker({
-    disabled: !isUpdating,
-    enableBeforeUnload: isUpdating,
-    shouldBlockFn: () => isUpdating,
-  });
 };

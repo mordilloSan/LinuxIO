@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import {
   createContext,
   useCallback,
@@ -39,7 +39,7 @@ export interface RoutedTab {
 }
 
 interface RoutedTabContainerProps {
-  children: ReactNode;
+  children?: ReactNode;
   containerStyle?: CSSProperties;
   tabs: readonly RoutedTab[];
 }
@@ -122,19 +122,6 @@ export const RoutedTabLayout = ({
     </TabActionSlotContext>
   );
 };
-
-export function makeTabLayout(
-  tabs: readonly RoutedTab[],
-  containerStyle?: CSSProperties,
-) {
-  return function RoutedTabRouteLayout() {
-    return (
-      <RoutedTabLayout containerStyle={containerStyle} tabs={tabs}>
-        <Outlet />
-      </RoutedTabLayout>
-    );
-  };
-}
 
 const TabLayout = ({
   children,

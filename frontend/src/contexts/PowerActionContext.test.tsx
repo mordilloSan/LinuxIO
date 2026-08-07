@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PowerActionProvider } from "@/contexts/PowerActionContext";
+import { PowerActionProvider } from "@/contexts/PowerActionProvider";
 import usePowerAction from "@/hooks/usePowerAction";
 import { act, render, screen } from "@/test/render";
 
@@ -92,5 +92,26 @@ describe("PowerActionProvider", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops scheduled reboot retries when the provider unmounts", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockResolvedValue({ ok: false } as Response);
+    const rendered = renderProvider();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "reboot" }).click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    rendered.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

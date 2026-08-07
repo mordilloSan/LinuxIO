@@ -9,10 +9,8 @@ const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("sonner", () => ({ toast: toastMocks }));
 
-import AppQueryClientProvider, {
-  createQueryClient,
-  getAppQueryClient,
-} from "./query-client";
+import AppQueryClientProvider from "./query-client";
+import { createQueryClient, getAppQueryClient } from "./query-client-core";
 
 describe("AppQueryClientProvider", () => {
   beforeEach(() => {

@@ -3,7 +3,7 @@ import { useCallback, useContext } from "react";
 
 import type { AppConfig, AppSettings } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { ConfigValueKey, ConfigValueMap } from "@/types/config";
+import type { ConfigValueKey, ConfigValueMap } from "@/types/config";
 
 export const useConfig = () => {
   const ctx = useContext(ConfigContext);

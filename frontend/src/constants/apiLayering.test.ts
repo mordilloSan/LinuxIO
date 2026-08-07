@@ -59,7 +59,7 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   // Router loader transport readiness (the only routing-level mux primitive).
   "routes/-loader.ts",
   // App-update stream lifecycle (mux handle + frame decoding).
-  "contexts/UpdateContext.tsx",
+  "contexts/UpdateProvider.tsx",
   // Upload chunk sizing from the transport default.
   "hooks/useUploadChunkSize.ts",
   // Stream-lifecycle hooks — the sanctioned way pages consume streams.

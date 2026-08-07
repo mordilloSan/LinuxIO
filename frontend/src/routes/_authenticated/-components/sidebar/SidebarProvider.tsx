@@ -1,29 +1,11 @@
-import {
-  createContext,
-  useCallback,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery } from "@/theme";
 import breakpoints from "@/theme/breakpoints";
 import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
 
-export interface SidebarContextType {
-  collapsed: boolean;
-  isDesktop: boolean;
-  mobileOpen: boolean;
-  setMobileOpen: (value: boolean) => void;
-  sidebarWidth: number;
-  toggleCollapse: () => void;
-  toggleMobileOpen: () => void;
-}
-
-export const SidebarContext = createContext<SidebarContextType | undefined>(
-  undefined,
-);
+import { SidebarContext } from "./SidebarContext";
 
 export const SidebarProvider = ({ children }: { children: ReactNode }) => {
   const isDesktop = useAppMediaQuery(`(min-width:${breakpoints.values.md}px)`);
@@ -49,15 +31,8 @@ export const SidebarProvider = ({ children }: { children: ReactNode }) => {
     setMobileOpen(false);
   }
 
-  const sidebarWidth = useMemo(
-    () =>
-      isDesktop
-        ? collapsed
-          ? collapsedDrawerWidth
-          : drawerWidth
-        : drawerWidth,
-    [isDesktop, collapsed],
-  );
+  const sidebarWidth =
+    isDesktop && collapsed ? collapsedDrawerWidth : drawerWidth;
 
   const value = useMemo(
     () => ({

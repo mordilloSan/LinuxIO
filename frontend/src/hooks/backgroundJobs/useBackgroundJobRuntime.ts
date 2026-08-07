@@ -34,7 +34,10 @@ export function useBackgroundJobRuntime(): BackgroundJobRuntime {
   const activeBackgroundJobIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferJobIdsRef = useRef<Set<string>>(new Set());
   const recoveringJobIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalJobKeysRef = useRef(makeCountedSet());
+  const pendingLocalJobKeysRef = useMemo<RefObject<CountedSet>>(
+    () => ({ current: makeCountedSet() }),
+    [],
+  );
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<Map<string, TransferRateSample>>(new Map());

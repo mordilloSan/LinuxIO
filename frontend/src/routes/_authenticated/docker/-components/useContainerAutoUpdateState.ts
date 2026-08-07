@@ -47,6 +47,7 @@ export const useContainerAutoUpdateState = () => {
     null,
   );
   const saveLoopRunningRef = useRef(false);
+  const mountedRef = useRef(true);
   const flushTimerRef = useRef<number | undefined>(undefined);
   const query = useQuery(
     linuxio.docker.get_container_auto_update.queryOptions({
@@ -96,16 +97,20 @@ export const useContainerAutoUpdateState = () => {
     }
   }, [autoUpdateCache, query.data]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       if (flushTimerRef.current !== undefined) {
         window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = undefined;
       }
-    },
-    [],
-  );
+      queuedOptionsRef.current = null;
+    };
+  }, []);
 
-  const runQueuedSave = async () => {
+  const runQueuedSave = () => {
+    if (!mountedRef.current) return;
     if (saveLoopRunningRef.current) return;
 
     if (flushTimerRef.current !== undefined) {
@@ -115,59 +120,66 @@ export const useContainerAutoUpdateState = () => {
 
     saveLoopRunningRef.current = true;
     setIsSaving(true);
-    // No try/finally around the loop — the React Compiler (oxc port) cannot
-    // lower finalizers yet. Each iteration catches its own errors without
-    // rethrowing, so the flag reset below is always reached.
-    while (queuedOptionsRef.current) {
-      const options = queuedOptionsRef.current;
-      queuedOptionsRef.current = null;
+    const drainQueuedSaves = async () => {
+      while (mountedRef.current && queuedOptionsRef.current) {
+        const options = queuedOptionsRef.current;
+        queuedOptionsRef.current = null;
 
-      try {
-        const savedState = await saveAutoUpdateOptions(options);
-        const savedOptions = normalizeOptions(savedState.options);
-        const desiredOptions = desiredOptionsRef.current ?? savedOptions;
+        try {
+          const savedState = await saveAutoUpdateOptions(options);
+          if (!mountedRef.current) break;
+          const savedOptions = normalizeOptions(savedState.options);
+          const desiredOptions = desiredOptionsRef.current ?? savedOptions;
 
-        confirmedOptionsRef.current = savedOptions;
-        setConfirmedOptions(savedOptions);
-        autoUpdateCache.set(
-          optionsKey(savedOptions) === optionsKey(desiredOptions)
-            ? savedState
-            : stateWithOptions(savedState, desiredOptions),
-        );
+          confirmedOptionsRef.current = savedOptions;
+          setConfirmedOptions(savedOptions);
+          autoUpdateCache.set(
+            optionsKey(savedOptions) === optionsKey(desiredOptions)
+              ? savedState
+              : stateWithOptions(savedState, desiredOptions),
+          );
 
-        if (optionsKey(savedOptions) === optionsKey(desiredOptions)) {
-          toast.success("Container auto-update settings saved");
+          if (optionsKey(savedOptions) === optionsKey(desiredOptions)) {
+            toast.success("Container auto-update settings saved");
+          }
+        } catch (err) {
+          if (!mountedRef.current) break;
+          const desiredOptions = desiredOptionsRef.current;
+          if (
+            desiredOptions &&
+            optionsKey(desiredOptions) !== optionsKey(options)
+          ) {
+            queuedOptionsRef.current = desiredOptions;
+            continue;
+          }
+
+          const confirmed =
+            confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
+          desiredOptionsRef.current = confirmed;
+          const current = autoUpdateCache.get();
+          if (current) {
+            autoUpdateCache.set(stateWithOptions(current, confirmed));
+          }
+          toast.error(
+            getMutationErrorMessage(
+              err,
+              "Failed to save container auto-update setting",
+            ),
+          );
         }
-      } catch (err) {
-        const desiredOptions = desiredOptionsRef.current;
-        if (
-          desiredOptions &&
-          optionsKey(desiredOptions) !== optionsKey(options)
-        ) {
-          queuedOptionsRef.current = desiredOptions;
-          continue;
-        }
-
-        const confirmed =
-          confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
-        desiredOptionsRef.current = confirmed;
-        const current = autoUpdateCache.get();
-        if (current) {
-          autoUpdateCache.set(stateWithOptions(current, confirmed));
-        }
-        toast.error(
-          getMutationErrorMessage(
-            err,
-            "Failed to save container auto-update setting",
-          ),
-        );
       }
-    }
-    saveLoopRunningRef.current = false;
-    setIsSaving(false);
+    };
+
+    // Promise.finally provides unconditional cleanup without the
+    // try/finally syntax the current React Compiler cannot lower.
+    void drainQueuedSaves().finally(() => {
+      saveLoopRunningRef.current = false;
+      if (mountedRef.current) setIsSaving(false);
+    });
   };
 
   const scheduleSave = (options: DockerContainerAutoUpdateOptions) => {
+    if (!mountedRef.current) return;
     queuedOptionsRef.current = normalizeOptions(options);
     if (saveLoopRunningRef.current) return;
 
@@ -181,6 +193,7 @@ export const useContainerAutoUpdateState = () => {
   };
 
   const toggleContainer = (name: string) => {
+    if (!mountedRef.current) return;
     const state = autoUpdateCache.get();
     if (!state) return;
     const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
@@ -206,6 +219,7 @@ export const useContainerAutoUpdateState = () => {
   // Explicit whole-form save (settings dialog): optimistic like the toggles,
   // but flushed immediately instead of waiting out the toggle debounce.
   const saveOptions = (options: DockerContainerAutoUpdateOptions) => {
+    if (!mountedRef.current) return;
     const nextOptions = normalizeOptions(options);
     desiredOptionsRef.current = nextOptions;
     const current = autoUpdateCache.get();

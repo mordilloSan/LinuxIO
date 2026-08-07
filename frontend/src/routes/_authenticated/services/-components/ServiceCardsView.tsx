@@ -6,9 +6,9 @@ import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
+import { formatBytes } from "./unitFormatters";
 import {
   DetailRow,
-  formatBytes,
   UnitCardActions,
   UnitCardsView,
   UnitStatusRows,

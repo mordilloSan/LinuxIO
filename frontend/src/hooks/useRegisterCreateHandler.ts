@@ -1,4 +1,6 @@
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
+
+import { useLatestRef } from "@/hooks/useLatestRef";
 
 /**
  * Registers a parent-owned "create" action handler exactly once on mount.
@@ -8,8 +10,9 @@ import { useEffect, useEffectEvent, useRef } from "react";
  * `[register, handler]` deps re-runs on every parent render, because both are
  * usually fresh identities (inline arrows / `useCallback`). This hook registers
  * a stable wrapper once: the wrapper always calls the latest `handler` (via a
- * ref), and the one-time registration reads `register` non-reactively through
- * `useEffectEvent`, so there are no needless re-registrations.
+ * post-commit ref), and the one-time registration reads `register`
+ * non-reactively through `useEffectEvent`, so there are no needless
+ * re-registrations.
  *
  * @param register Parent callback that stores the child's create handler.
  * @param handler  The child's current create action.
@@ -18,11 +21,7 @@ export function useRegisterCreateHandler(
   register: ((handler: () => void) => void) | undefined,
   handler: () => void,
 ): void {
-  const handlerRef = useRef(handler);
-  // Deliberate render-phase ref write (latest-ref pattern) so the registered
-  // callback stays identity-stable while always seeing the newest handler.
-  // oxlint-disable-next-line react/react-compiler
-  handlerRef.current = handler;
+  const handlerRef = useLatestRef(handler);
 
   const registerOnMount = useEffectEvent(() => {
     register?.(() => handlerRef.current());

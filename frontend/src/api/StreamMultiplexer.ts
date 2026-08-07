@@ -540,10 +540,17 @@ export class StreamMultiplexer {
       this.notifyStatusChange("connecting");
     }
 
-    this.ws = new WebSocket(this.url);
-    this.ws.binaryType = "arraybuffer";
+    // Handlers close over the socket they were attached to: a reconnect
+    // (visibility/online) can replace this.ws while the old socket's close
+    // handshake is still in flight (readyState CLOSING passes the guard
+    // above), and the superseded socket's late events must not mutate the
+    // live connection's state.
+    const ws = new WebSocket(this.url);
+    ws.binaryType = "arraybuffer";
+    this.ws = ws;
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.clearReconnectTimer();
       this.reconnectAttempts = 0;
       this.shouldReconnect = true;
@@ -560,7 +567,8 @@ export class StreamMultiplexer {
       }, StreamMultiplexer.RAPID_CLOSE_THRESHOLD_MS);
     };
 
-    this.ws.onclose = (event: CloseEvent) => {
+    ws.onclose = (event: CloseEvent) => {
+      if (this.ws !== ws) return;
       this.ws = null;
 
       if (this.stableConnectionTimer) {
@@ -616,11 +624,13 @@ export class StreamMultiplexer {
       }
     };
 
-    this.ws.onerror = (event) => {
+    ws.onerror = (event) => {
+      if (this.ws !== ws) return;
       console.warn("[StreamMultiplexer] WebSocket error:", event);
     };
 
-    this.ws.onmessage = (event) => {
+    ws.onmessage = (event) => {
+      if (this.ws !== ws) return;
       if (event.data instanceof ArrayBuffer) {
         this.handleMessage(event.data);
       }
@@ -869,10 +879,17 @@ export class StreamMultiplexer {
     }
     this.closeAllStreams();
     if (this.ws) {
-      this.ws.close();
+      // Null the reference before closing so the socket's own close event
+      // is treated as stale — the "closed" notification below is the only
+      // one listeners receive for an explicit teardown.
+      const ws = this.ws;
       this.ws = null;
+      ws.close();
     }
-    this._status = "closed";
+    if (this._status !== "closed") {
+      this._status = "closed";
+      this.notifyStatusChange("closed");
+    }
   }
 }
 

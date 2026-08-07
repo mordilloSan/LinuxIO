@@ -230,6 +230,45 @@ describe("StreamMultiplexer", () => {
     expect(updatingListener).toHaveBeenCalledWith(true);
   });
 
+  it("notifies status listeners exactly once on explicit close()", () => {
+    const { mux } = openMux();
+    const statusListener = vi.fn();
+    mux.addStatusListener(statusListener);
+
+    mux.close();
+
+    expect(mux.status).toBe("closed");
+    expect(statusListener).toHaveBeenCalledWith("closed");
+    expect(statusListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores events from a superseded socket after reconnecting", () => {
+    const { mux, socket } = openMux();
+    const stream = mux.openStream("terminal.open");
+    const statusListener = vi.fn();
+    mux.addStatusListener(statusListener);
+
+    // The server-initiated close handshake is still in flight when a
+    // visibility/online reconnect replaces the socket.
+    socket.readyState = FakeWebSocket.CLOSING;
+    mux.reconnect();
+    const replacement = FakeWebSocket.latest();
+    expect(replacement).not.toBe(socket);
+    replacement.open();
+    expect(mux.status).toBe("open");
+
+    // The stale socket's close event finally arrives: it must not kill
+    // live streams, flip status, or schedule a ghost reconnect.
+    statusListener.mockClear();
+    socket.closeWith({ code: 1006 });
+
+    expect(mux.status).toBe("open");
+    expect(statusListener).not.toHaveBeenCalled();
+    expect(stream.status).toBe("open");
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
   it("reconnects after non-auth closes without duplicate timers", () => {
     const { socket } = openMux();
 

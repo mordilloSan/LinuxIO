@@ -1,12 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
-import { toast, Toaster, type ToastT, useSonner } from "sonner";
+import { createContext, type ReactNode } from "react";
+import { type ToastT } from "sonner";
 
 import type { ToastMeta } from "@/types/navigation";
 
@@ -140,10 +133,10 @@ let inMemoryHistory: ToastHistoryItem[] | null = null;
 let persistTimer: number | undefined;
 const historyListeners = new Set<() => void>();
 
-const getHistorySnapshot = (): ToastHistoryItem[] =>
+export const getHistorySnapshot = (): ToastHistoryItem[] =>
   (inMemoryHistory ??= parseStoredHistory());
 
-const subscribeToHistory = (listener: () => void): (() => void) => {
+export const subscribeToHistory = (listener: () => void): (() => void) => {
   historyListeners.add(listener);
   return () => {
     historyListeners.delete(listener);
@@ -184,7 +177,7 @@ const sameHistory = (a: ToastHistoryItem[], b: ToastHistoryItem[]): boolean =>
     );
   });
 
-const setHistoryStore = (next: ToastHistoryItem[]) => {
+export const setHistoryStore = (next: ToastHistoryItem[]) => {
   inMemoryHistory = next;
   for (const listener of historyListeners) {
     listener();
@@ -193,7 +186,7 @@ const setHistoryStore = (next: ToastHistoryItem[]) => {
 
 // Fold a sonner change into the merged history. Idempotent (entries are
 // keyed by id), so re-runs with the same toasts leave the store untouched.
-const foldSonnerToasts = (toasts: ToastT[]) => {
+export const foldSonnerToasts = (toasts: ToastT[]) => {
   const current = getHistorySnapshot();
   const next = buildHistorySnapshot(current, toasts);
   if (sameHistory(current, next)) return;
@@ -208,6 +201,14 @@ export const __resetToastHistoryStore = () => {
   persistTimer = undefined;
 };
 
+export const clearToastHistory = (toasts: ToastT[]) => {
+  toasts.forEach((toastItem) => {
+    ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
+  });
+  persist([]);
+  setHistoryStore([]);
+};
+
 export interface ToastHistoryContextValue {
   clearHistory: () => void;
   history: ToastHistoryItem[];
@@ -215,40 +216,3 @@ export interface ToastHistoryContextValue {
 
 export const ToastHistoryContext =
   createContext<ToastHistoryContextValue | null>(null);
-
-export const ToastProvider = ({ children }: { children: ReactNode }) => {
-  const { toasts } = useSonner();
-  const history = useSyncExternalStore(subscribeToHistory, getHistorySnapshot);
-
-  useEffect(() => {
-    foldSonnerToasts(toasts);
-  }, [toasts]);
-
-  const clearHistory = useCallback(() => {
-    const activeToasts = toast
-      .getHistory()
-      .filter((item): item is ToastT => !("dismiss" in item));
-    activeToasts.forEach((toastItem) => {
-      ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
-    });
-    persist([]);
-    setHistoryStore([]);
-    toast.dismiss();
-  }, []);
-
-  const contextValue = useMemo(
-    () => ({ history, clearHistory }),
-    [history, clearHistory],
-  );
-
-  return (
-    <ToastHistoryContext.Provider value={contextValue}>
-      {children}
-      <Toaster
-        position="top-right"
-        richColors
-        toastOptions={{ duration: 1500 }}
-      />
-    </ToastHistoryContext.Provider>
-  );
-};

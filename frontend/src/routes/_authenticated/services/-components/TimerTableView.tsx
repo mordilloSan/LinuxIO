@@ -1,12 +1,9 @@
 import type { Timer } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
 
-import {
-  formatUsec,
-  MobileExpandedDetails,
-  statusDot,
-  UnitTableView,
-} from "./UnitViews";
+import { formatUsec } from "./unitFormatters";
+import UnitStatusDot from "./UnitStatusDot";
+import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
 
 interface TimerTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -66,7 +63,7 @@ const TimerTableView = ({
     renderMainRow={(timer, isMobile) => (
       <>
         <AppTableCell style={{ paddingLeft: 8 }}>
-          {statusDot(timer.active_state)}
+          <UnitStatusDot activeState={timer.active_state} />
           {timer.active_state}
         </AppTableCell>
         <AppTableCell>{timer.name}</AppTableCell>

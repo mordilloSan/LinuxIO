@@ -5,9 +5,9 @@ import type { Timer } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 
+import { formatUsec } from "./unitFormatters";
 import {
   DetailRow,
-  formatUsec,
   UnitCardActions,
   UnitCardsView,
   UnitStatusRows,

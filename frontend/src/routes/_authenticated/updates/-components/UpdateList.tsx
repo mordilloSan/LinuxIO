@@ -17,7 +17,9 @@ const UpdateList = ({
   isUpdating,
   currentPackage,
 }: Props) => {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [expandedPackageId, setExpandedPackageId] = useState<string | null>(
+    null,
+  );
   // Kept across collapse so the changelog stays visible during the collapse
   // animation; expanding a card drives the fetch.
   const [changelogPackageId, setChangelogPackageId] = useState<string | null>(
@@ -34,11 +36,11 @@ const UpdateList = ({
   const changelog = changelogQuery.isError
     ? "Failed to load changelog"
     : changelogQuery.data;
-  const toggleExpanded = (index: number, packageId: string) => {
-    if (index === expandedIdx) {
-      setExpandedIdx(null);
+  const toggleExpanded = (packageId: string) => {
+    if (packageId === expandedPackageId) {
+      setExpandedPackageId(null);
     } else {
-      setExpandedIdx(index);
+      setExpandedPackageId(packageId);
       setChangelogPackageId(packageId);
     }
   };
@@ -48,7 +50,7 @@ const UpdateList = ({
         containerRef.current &&
         !containerRef.current.contains(e.target as Node)
       ) {
-        setExpandedIdx(null);
+        setExpandedPackageId(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -77,20 +79,20 @@ const UpdateList = ({
         paddingBottom: 16,
       }}
     >
-      {updates.map((update, idx) => (
-        <AppGrid key={idx} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+      {updates.map((update) => (
+        <AppGrid key={update.package_id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
           <UpdateCard
             changelog={
               update.package_id === changelogPackageId ? changelog : undefined
             }
             isCurrentPackage={currentPackage === update.package_id}
-            isExpanded={expandedIdx === idx}
+            isExpanded={expandedPackageId === update.package_id}
             isLoadingChangelog={
               update.package_id === changelogPackageId &&
               changelogQuery.isLoading
             }
             isUpdating={!!isUpdating}
-            onToggleChangelog={() => toggleExpanded(idx, update.package_id)}
+            onToggleChangelog={() => toggleExpanded(update.package_id)}
             onUpdate={() => onUpdateClick(update.package_id)}
             update={update}
           />

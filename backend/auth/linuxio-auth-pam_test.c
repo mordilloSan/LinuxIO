@@ -288,8 +288,13 @@ static int check_error_response(const struct login_result *res,
   CHECK(res->out_len == (size_t)PROTO_AUTH_RESP_HEADER_SIZE + 2 + msg_len);
   if (want_msg)
   {
-    CHECK(msg_len == strlen(want_msg));
-    CHECK(memcmp(res->out + 10, want_msg, msg_len) == 0);
+    size_t want_len = strlen(want_msg);
+    if (msg_len != want_len || memcmp(res->out + 10, want_msg, msg_len) != 0)
+    {
+      fprintf(stderr, "unexpected error message: got=\"%.*s\" want=\"%s\"\n",
+              (int)msg_len, res->out + 10, want_msg);
+      return 1;
+    }
   }
   return 0;
 }

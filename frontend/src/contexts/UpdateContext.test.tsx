@@ -20,8 +20,8 @@ vi.mock("@/api", async () => {
   };
 });
 
-const { isLiveUpdateBlocked, UpdateProvider } =
-  await import("@/contexts/UpdateContext");
+const { isLiveUpdateBlocked } = await import("@/contexts/UpdateContext");
+const { UpdateProvider } = await import("@/contexts/UpdateProvider");
 const { useLinuxIOUpdater } = await import("@/hooks/useLinuxIOUpdater");
 const { act, renderWithTanStackRouter, screen, waitFor } =
   await import("@/test/render");

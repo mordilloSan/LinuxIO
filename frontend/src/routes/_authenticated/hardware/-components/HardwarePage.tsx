@@ -4,7 +4,7 @@ import { Suspense, useCallback, useMemo, useState } from "react";
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
-import { isPrimarySensorReading } from "@/components/cards/SensorGroupCard";
+import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
@@ -23,11 +23,11 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
-  type HardwareHistoryRangeId,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "./HardwareHistoryCards";
+import type { HardwareHistoryRangeId } from "./hardwareHistoryRanges";
 import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,

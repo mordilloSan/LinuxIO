@@ -3,7 +3,8 @@ import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
 import { useAppTheme } from "@/theme";
 
-import { MobileExpandedDetails, statusDot, UnitTableView } from "./UnitViews";
+import UnitStatusDot from "./UnitStatusDot";
+import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
 
 interface SocketTableViewProps {
   onDoubleClick?: (name: string) => void;
@@ -71,7 +72,7 @@ const SocketTableView = ({
       renderMainRow={(socket, isMobile) => (
         <>
           <AppTableCell style={{ paddingLeft: 8 }}>
-            {statusDot(socket.active_state)}
+            <UnitStatusDot activeState={socket.active_state} />
             {socket.active_state}
           </AppTableCell>
           <AppTableCell>{socket.name}</AppTableCell>

@@ -2,7 +2,7 @@ import { useContext } from "react";
 
 import {
   PowerActionContext,
-  PowerActionContextType,
+  type PowerActionContextType,
 } from "@/contexts/PowerActionContext";
 
 const usePowerAction = (): PowerActionContextType => {

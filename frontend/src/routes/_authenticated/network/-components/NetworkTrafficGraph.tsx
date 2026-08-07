@@ -3,6 +3,7 @@ import {
   useEffect,
   useEffectEvent,
   useImperativeHandle,
+  useMemo,
   useRef,
 } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
@@ -27,12 +28,12 @@ const NetworkTrafficGraph = forwardRef<
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
-  const seriesRef = useRef<TimeSeries>(new TimeSeries());
+  const series = useMemo(() => new TimeSeries(), []);
 
   useImperativeHandle(ref, () => canvasRef.current!);
 
   const appendLatestValue = useEffectEvent(() => {
-    seriesRef.current.append(Date.now(), value);
+    series.append(Date.now(), value);
   });
 
   useEffect(() => {
@@ -74,7 +75,7 @@ const NetworkTrafficGraph = forwardRef<
       maxValueScale: 1.15,
     });
 
-    chart.addTimeSeries(seriesRef.current, {
+    chart.addTimeSeries(series, {
       strokeStyle: color,
       fillStyle: alpha(color, 0.09),
       lineWidth: 1.5,
@@ -93,7 +94,7 @@ const NetworkTrafficGraph = forwardRef<
       clearInterval(intervalId);
       chart.stop();
     };
-  }, [color, label, theme.chart.neutral]);
+  }, [color, label, series, theme.chart.neutral]);
 
   return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
 });

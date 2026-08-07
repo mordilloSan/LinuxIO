@@ -13,11 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 
 import {
-  makeTabLayout,
   RoutedTabActions,
   RoutedTabLayout,
   type RoutedTab,
 } from "./RoutedTabContainer";
+import { makeTabLayout } from "./tabLayoutFactory";
 
 const tabs = [
   { label: "Users", to: "/accounts" },

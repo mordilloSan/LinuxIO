@@ -323,10 +323,10 @@ const EditCIFSForm = ({
   mount: CIFSMount;
   onClose: () => void;
 }) => {
-  const [readOnly, setReadOnly] = useState(
+  const [readOnly, setReadOnly] = useState(() =>
     (mount.options ?? []).includes("ro"),
   );
-  const [customOptions, setCustomOptions] = useState(
+  const [customOptions, setCustomOptions] = useState(() =>
     (mount.options ?? []).filter((o) => o !== "ro" && o !== "rw").join(","),
   );
 
