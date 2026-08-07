@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
@@ -21,22 +21,21 @@ interface InterfaceDetailsProps {
   };
 }
 
+interface PeerIdentity {
+  name: string;
+}
+
+export const selectPeerIdentities = (peers: Peer[]): PeerIdentity[] =>
+  peers.map((peer) => ({ name: peer.name }));
+
 const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   // Peer whose QR code dialog is open; opening the dialog drives the fetch.
   const [qrPeer, setQrPeer] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
   const interfaceName = params.id;
 
-  // Update current time every 3 seconds (matches refetchInterval)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now() / 1000);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
   const {
-    data: peersData,
+    data: peerIdentities,
     isLoading,
     isError,
   } = useQuery(
@@ -44,6 +43,7 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
       enabled: !!interfaceName,
       // poll so bps updates
       refetchInterval: 3000,
+      select: selectPeerIdentities,
     }),
   );
 
@@ -54,20 +54,6 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
     error: "Failed to delete peer",
     toast: WIREGUARD_TOAST_META,
   });
-  // Type-safe API returns Peer[] directly
-  const peers: Peer[] = useMemo(() => peersData || [], [peersData]);
-
-  // Calculate online status (re-calculates when peers or time updates)
-  const peersWithStatus = useMemo(() => {
-    return peers.map((peer) => {
-      const lastUnix = peer.last_handshake_unix ?? 0;
-      const isOnline = lastUnix > 0 && currentTime - lastUnix < 180; // 3 min window
-      return {
-        ...peer,
-        isOnline,
-      };
-    });
-  }, [peers, currentTime]);
   const handleDeletePeer = (peerName: string) => {
     deletePeer({ interfaceName, peerName });
   };
@@ -110,7 +96,7 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   return (
     <>
       <AppGrid container spacing={3}>
-        {peersWithStatus.length === 0 ? (
+        {!peerIdentities || peerIdentities.length === 0 ? (
           <AppGrid
             size={{
               xs: 6,
@@ -123,19 +109,19 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
             <AppTypography>No peers found for this interface.</AppTypography>
           </AppGrid>
         ) : (
-          peersWithStatus.map((peer, idx) => (
+          peerIdentities.map((peer, idx) => (
             <AppGrid
               key={peer.name || idx}
               size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
             >
               <WireguardPeerCard
-                isOnline={peer.isOnline}
-                onDelete={() => handleDeletePeer(peer.name)}
-                onDownloadConfig={() =>
-                  downloadConfig({ interfaceName, peerName: peer.name })
+                interfaceName={interfaceName}
+                onDelete={handleDeletePeer}
+                onDownloadConfig={(peerName) =>
+                  downloadConfig({ interfaceName, peerName })
                 }
-                onViewQrCode={() => setQrPeer(peer.name)}
-                peer={peer}
+                onViewQrCode={setQrPeer}
+                peerName={peer.name}
               />
             </AppGrid>
           ))

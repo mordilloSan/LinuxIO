@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed. A working implementation was explored on top of `3cfd870f`, but the
-worktree is intentionally being discarded. Reimplement this plan from a clean
-checkout; do not recover or blindly reapply the discarded diff.
+Implemented on 2026-08-07 from a clean checkout. Automated source, compiler,
+unit, production-build, and browser verification is complete. The final live
+React Scan check remains a manual release-environment step.
 
 The dashboard baseline is commit `7ae83016` (`performance: - reduced cards
 re-renders on data pull`). That commit established the desired pattern for the
@@ -125,6 +125,10 @@ handling.
   compiler.
 - Preserve the current `oxc-transform` version note, React target `19`, ES2022
   target, hard-error handling, compiler-panic fallback, and sourcemap behavior.
+- Keep state-dependent dashboard selectors as named `useCallback` bindings
+  passed into `queryOptions`. Nesting `useCallback` directly inside the
+  generated `queryOptions` call prevents Oxc from preserving the manual
+  memoization and causes it to skip the component.
 
 ### Network interface cards
 
@@ -267,6 +271,9 @@ Use the TypeScript compiler AST rather than regex-balanced function bodies:
 - For stable-selector owners, inspect the direct query call text and require the
   named `select:` function there, rather than matching an unrelated property in
   the whole component.
+- For state-dependent dashboard selectors, require the named selector to be a
+  direct `useCallback` binding outside `queryOptions`; this preserves selector
+  identity in development without making the production compiler skip it.
 - For WireGuard live children, require one direct `usePeer` call, and separately
   require `usePeer` to own one query using `selectPeer`.
 - Record shell-to-live and parent-to-card JSX relationships and assert the
@@ -313,10 +320,16 @@ An interrupted exploratory run produced this evidence:
   suspense query.
 - A complete rerun after those fixes was started but interrupted for shutdown.
 
-These are not final results because source changed afterward. All three targets
-must pass again from the clean reimplementation before handoff. For the browser
-target, confirm the actual Playwright count and result rather than relying only
-on the Make exit code.
+Final automated verification on 2026-08-07 produced this evidence:
+
+- `make check-frontend` passed TypeScript, lint/format with no warnings, and
+  663/663 unit tests.
+- `make compiler-coverage` passed with 324 memoized files, 152 files with
+  nothing to memoize, and 4 unrelated compiler skips.
+- `make test-frontend-browser` passed the production build and 11/11 Chromium
+  tests. The minimal test host required Playwright's Chromium download plus a
+  temporary user-local font/shared-library runtime; no repository files were
+  changed for that environment setup.
 
 Finally, use React Scan in both development and production against live polling:
 
@@ -329,19 +342,19 @@ Finally, use React Scan in both development and production against live polling:
 
 ## Acceptance checklist
 
-- [ ] Vitest compiles imported production modules with the shared production
+- [x] Vitest compiles imported production modules with the shared production
       Oxc React Compiler transform.
-- [ ] Development Vite behavior is unchanged.
-- [ ] Every refactored query key has one polling observer per active view.
-- [ ] Live observers share the same query key and do not poll or refetch on
+- [x] Development Vite behavior is unchanged.
+- [x] Every refactored query key has one polling observer per active view.
+- [x] Live observers share the same query key and do not poll or refetch on
       mount.
-- [ ] Protected card shells contain no direct React Query hook.
-- [ ] Hoisted identity selectors contain no volatile values.
-- [ ] The AST source guard covers dashboard owners, refactored shells, live
+- [x] Protected card shells contain no direct React Query hook.
+- [x] Hoisted identity selectors contain no volatile values.
+- [x] The AST source guard covers dashboard owners, refactored shells, live
       slots, selector names, and JSX ownership relationships.
-- [ ] No behavioral QueryClient/render-count test was added.
-- [ ] `make check-frontend` passes.
-- [ ] `make compiler-coverage` passes after the final source change.
-- [ ] `make test-frontend-browser` passes with an explicit Playwright result.
+- [x] No behavioral QueryClient/render-count test was added.
+- [x] `make check-frontend` passes.
+- [x] `make compiler-coverage` passes after the final source change.
+- [x] `make test-frontend-browser` passes with an explicit Playwright result.
 - [ ] React Scan confirms the live values update without invoking the shell in
       both development and production.

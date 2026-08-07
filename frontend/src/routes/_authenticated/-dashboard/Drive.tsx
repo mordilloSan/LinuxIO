@@ -59,15 +59,17 @@ const DriveSelect = ({
   onSelect,
   selected,
 }: DriveSelectionProps & { onSelect: (name: string) => void }) => {
+  const selectHeader = useCallback(
+    (drives: ApiDisk[]) => ({
+      names: drives.map((drive) => drive.name),
+      selectedName: resolveDriveName(drives, selected),
+    }),
+    [selected],
+  );
+
   const { data: header } = useSuspenseQuery(
     linuxio.storage.get_drive_info.queryOptions({
-      select: useCallback(
-        (drives: ApiDisk[]) => ({
-          names: drives.map((drive) => drive.name),
-          selectedName: resolveDriveName(drives, selected),
-        }),
-        [selected],
-      ),
+      select: selectHeader,
     }),
   );
 
@@ -81,24 +83,26 @@ const DriveSelect = ({
 };
 
 const DriveStats = ({ selected }: DriveSelectionProps) => {
+  const selectDrive = useCallback(
+    (drives: ApiDisk[]) => {
+      const name = resolveDriveName(drives, selected);
+      const raw = drives.find((drive) => drive.name === name);
+
+      return raw
+        ? {
+            model: raw.model,
+            sizeBytes: parseSizeToBytes(raw.size),
+            transport: raw.type ?? "unknown",
+            vendor: raw.vendor,
+          }
+        : null;
+    },
+    [selected],
+  );
+
   const { data: drive } = useSuspenseQuery(
     linuxio.storage.get_drive_info.queryOptions({
-      select: useCallback(
-        (drives: ApiDisk[]) => {
-          const name = resolveDriveName(drives, selected);
-          const raw = drives.find((d) => d.name === name);
-
-          return raw
-            ? {
-                model: raw.model,
-                sizeBytes: parseSizeToBytes(raw.size),
-                transport: raw.type ?? "unknown",
-                vendor: raw.vendor,
-              }
-            : null;
-        },
-        [selected],
-      ),
+      select: selectDrive,
     }),
   );
 
@@ -123,13 +127,15 @@ const DriveStats = ({ selected }: DriveSelectionProps) => {
 };
 
 const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
+  const selectDriveName = useCallback(
+    (drives: ApiDisk[]) => resolveDriveName(drives, selected),
+    [selected],
+  );
+
   const [{ data: driveName }, { data: diskThroughput }] = useSuspenseQueries({
     queries: [
       linuxio.storage.get_drive_info.queryOptions({
-        select: useCallback(
-          (drives: ApiDisk[]) => resolveDriveName(drives, selected),
-          [selected],
-        ),
+        select: selectDriveName,
       }),
       linuxio.system.get_disk_throughput.queryOptions({
         refetchInterval: 1000,

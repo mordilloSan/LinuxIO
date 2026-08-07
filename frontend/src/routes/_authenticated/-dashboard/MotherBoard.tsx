@@ -17,32 +17,34 @@ const MotherboardTempBadge = () => {
     undefined,
   );
 
+  const selectBadge = useCallback(
+    (motherboardInfo: MotherboardInfo) => {
+      const sensors = motherboardInfo?.temperatures?.sensors ?? {};
+      const keys = Object.keys(sensors);
+      const defaultMbSensor =
+        keys.find((key) => key.startsWith("mb")) ?? keys[0];
+      const effectiveSensor =
+        selectedSensor && sensors[selectedSensor] !== undefined
+          ? selectedSensor
+          : defaultMbSensor;
+
+      return {
+        sensorKeys: keys,
+        selected: effectiveSensor,
+        text:
+          effectiveSensor !== undefined &&
+          sensors[effectiveSensor] !== undefined
+            ? `${sensors[effectiveSensor]}°C`
+            : "--°C",
+      };
+    },
+    [selectedSensor],
+  );
+
   const { data: badge } = useSuspenseQuery(
     linuxio.system.get_motherboard_info.queryOptions({
       refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (motherboardInfo: MotherboardInfo) => {
-          const sensors = motherboardInfo?.temperatures?.sensors ?? {};
-          const keys = Object.keys(sensors);
-          const defaultMbSensor =
-            keys.find((k) => k.startsWith("mb")) ?? keys[0];
-          const effectiveSensor =
-            selectedSensor && sensors[selectedSensor] !== undefined
-              ? selectedSensor
-              : defaultMbSensor;
-
-          return {
-            sensorKeys: keys,
-            selected: effectiveSensor,
-            text:
-              effectiveSensor !== undefined &&
-              sensors[effectiveSensor] !== undefined
-                ? `${sensors[effectiveSensor]}°C`
-                : "--°C",
-          };
-        },
-        [selectedSensor],
-      ),
+      select: selectBadge,
     }),
   );
 

@@ -353,14 +353,12 @@ const HistoryCardShell = ({
   title,
   avatarIcon,
   headerRight,
-  message,
   children,
 }: {
   title: string;
   avatarIcon: string;
   headerRight?: ReactNode;
-  message?: string;
-  children?: ReactNode;
+  children: ReactNode;
 }) => {
   const theme = useAppTheme();
 
@@ -388,27 +386,39 @@ const HistoryCardShell = ({
         style={{ marginBottom: 8 }}
         title={title}
       />
-      {message ? (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: theme.palette.text.secondary,
-            padding: 16,
-          }}
-        >
-          <AppTypography align="center" variant="body2">
-            {message}
-          </AppTypography>
-        </div>
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, padding: "0 4px 2px" }}>
-          {children}
-        </div>
-      )}
+      {children}
     </FrostedCard>
+  );
+};
+
+const HistoryCardBody = ({
+  children,
+  message,
+}: {
+  children: ReactNode;
+  message: string | null;
+}) => {
+  const theme = useAppTheme();
+
+  return message ? (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: theme.palette.text.secondary,
+        padding: 16,
+      }}
+    >
+      <AppTypography align="center" variant="body2">
+        {message}
+      </AppTypography>
+    </div>
+  ) : (
+    <div style={{ flex: 1, minHeight: 0, padding: "0 4px 2px" }}>
+      {children}
+    </div>
   );
 };
 
@@ -420,6 +430,8 @@ interface HistoryCardProps {
   hoverTime: number | null;
   onHoverTimeChange: (t: number | null) => void;
 }
+
+type HistoryLiveProps = Omit<HistoryCardProps, "onRangeChange">;
 
 const historyCardMessage = (
   points: readonly unknown[] | undefined,
@@ -443,12 +455,11 @@ const historyCardMessage = (
   return null;
 };
 
-export const CPUHistoryCard = ({
+const CPUHistoryLive = ({
   rangeId,
-  onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}: HistoryCardProps) => {
+}: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -512,12 +523,7 @@ export const CPUHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="ph:cpu"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Processor"
-    >
+    <HistoryCardBody message={message}>
       <HistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
@@ -529,16 +535,15 @@ export const CPUHistoryCard = ({
         series={series}
         yMax={100}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const MemoryHistoryCard = ({
+const MemoryHistoryLive = ({
   rangeId,
-  onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}: HistoryCardProps) => {
+}: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -606,12 +611,7 @@ export const MemoryHistoryCard = ({
   }, [buffersColor, data, dockerColor, theme.palette.primary.main, zfsColor]);
 
   return (
-    <HistoryCardShell
-      avatarIcon="la:memory"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Memory"
-    >
+    <HistoryCardBody message={message}>
       <HistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
@@ -623,16 +623,15 @@ export const MemoryHistoryCard = ({
         series={series}
         yMax={100}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const DiskIOHistoryCard = ({
+const DiskIOLive = ({
   rangeId,
-  onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}: HistoryCardProps) => {
+}: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -674,12 +673,7 @@ export const DiskIOHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="mdi:harddisk"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Disk I/O"
-    >
+    <HistoryCardBody message={message}>
       <HistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
@@ -688,16 +682,15 @@ export const DiskIOHistoryCard = ({
         windowMs={range.windowMs}
         series={series}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const NetworkHistoryCard = ({
+const NetworkHistoryLive = ({
   rangeId,
-  onRangeChange,
   hoverTime,
   onHoverTimeChange,
-}: HistoryCardProps) => {
+}: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -739,12 +732,7 @@ export const NetworkHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="mdi:ethernet"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Network"
-    >
+    <HistoryCardBody message={message}>
       <HistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
@@ -753,6 +741,82 @@ export const NetworkHistoryCard = ({
         windowMs={range.windowMs}
         series={series}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
+
+export const CPUHistoryCard = ({
+  rangeId,
+  onRangeChange,
+  hoverTime,
+  onHoverTimeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="ph:cpu"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Processor"
+  >
+    <CPUHistoryLive
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+      rangeId={rangeId}
+    />
+  </HistoryCardShell>
+);
+
+export const MemoryHistoryCard = ({
+  rangeId,
+  onRangeChange,
+  hoverTime,
+  onHoverTimeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="la:memory"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Memory"
+  >
+    <MemoryHistoryLive
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+      rangeId={rangeId}
+    />
+  </HistoryCardShell>
+);
+
+export const DiskIOHistoryCard = ({
+  rangeId,
+  onRangeChange,
+  hoverTime,
+  onHoverTimeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="mdi:harddisk"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Disk I/O"
+  >
+    <DiskIOLive
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+      rangeId={rangeId}
+    />
+  </HistoryCardShell>
+);
+
+export const NetworkHistoryCard = ({
+  rangeId,
+  onRangeChange,
+  hoverTime,
+  onHoverTimeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="mdi:ethernet"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Network"
+  >
+    <NetworkHistoryLive
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+      rangeId={rangeId}
+    />
+  </HistoryCardShell>
+);

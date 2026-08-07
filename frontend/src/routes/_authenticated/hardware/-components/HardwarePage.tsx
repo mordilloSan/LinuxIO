@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
@@ -37,34 +37,34 @@ import {
   resolvedHardwareSections,
 } from "./hardwareSections";
 
+export const selectVisibleSensorGroupIdentities = (groups: SensorGroup[]) =>
+  groups.flatMap((group, sourceIndex) => {
+    const visibleReadingCount = group.readings.filter(
+      isPrimarySensorReading,
+    ).length;
+
+    // Retain the raw index so filtering an empty adapter cannot make a live
+    // card observe a different source group.
+    return visibleReadingCount > 0
+      ? [{ adapter: group.adapter, sourceIndex, visibleReadingCount }]
+      : [];
+  });
+
 function SensorReadings() {
-  const { data } = useSuspenseQuery(
+  const { data: visibleSensorGroups } = useSuspenseQuery(
     linuxio.system.get_sensor_info.queryOptions({
       ...hardwareSensorQueryOptions,
       refetchInterval: 5_000,
+      select: selectVisibleSensorGroupIdentities,
     }),
   );
-  const sensorGroups = data as SensorGroup[];
-  const visibleSensorGroups = useMemo(
-    () =>
-      sensorGroups
-        .map((group) => ({
-          ...group,
-          readings: group.readings.filter(isPrimarySensorReading),
-        }))
-        .filter((group) => group.readings.length > 0),
-    [sensorGroups],
-  );
-  const sensorSummary = useMemo(
-    () => ({
-      adapters: visibleSensorGroups.length,
-      readings: visibleSensorGroups.reduce(
-        (sum, group) => sum + group.readings.length,
-        0,
-      ),
-    }),
-    [visibleSensorGroups],
-  );
+  const sensorSummary = {
+    adapters: visibleSensorGroups.length,
+    readings: visibleSensorGroups.reduce(
+      (sum, group) => sum + group.visibleReadingCount,
+      0,
+    ),
+  };
 
   if (visibleSensorGroups.length === 0) return <SensorEmptyCard />;
 
@@ -90,14 +90,20 @@ function SensorReadings() {
         spacing={2}
         style={{ marginBottom: 16 }}
       >
-        {visibleSensorGroups.map((group, index) => (
-          <AppGrid
-            key={`${group.adapter}-${index}`}
-            size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
-          >
-            <SensorGroupCard group={group} />
-          </AppGrid>
-        ))}
+        {visibleSensorGroups.map(
+          ({ adapter, sourceIndex, visibleReadingCount }) => (
+            <AppGrid
+              key={`${adapter}-${sourceIndex}`}
+              size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
+            >
+              <SensorGroupCard
+                adapter={adapter}
+                sourceIndex={sourceIndex}
+                visibleReadingCount={visibleReadingCount}
+              />
+            </AppGrid>
+          ),
+        )}
       </AppGrid>
     </>
   );

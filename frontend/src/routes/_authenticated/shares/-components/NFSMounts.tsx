@@ -821,6 +821,247 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
     </>
   );
 };
+const selectNFSMountIdentities = (mounts: NFSMount[]) =>
+  mounts.map((mount) => mount.mountpoint);
+
+interface NFSMountActionProps {
+  mountingMountpoint: string | null;
+  nfsClientAvailable: boolean;
+  nfsReason: string;
+  onEdit: (mount: NFSMount) => void;
+  onMount: (mount: NFSMount) => void;
+  onRemove: (mount: NFSMount) => void;
+  onUnmount: (mount: NFSMount) => void;
+}
+
+interface NFSMountTableProps extends NFSMountActionProps {
+  search: string;
+}
+
+const NFSMountCardGrid = ({
+  mountingMountpoint,
+  nfsClientAvailable,
+  nfsReason,
+  onEdit,
+  onMount,
+  onRemove,
+  onUnmount,
+}: NFSMountActionProps) => {
+  const { data: mountpoints } = useSuspenseQuery(
+    linuxio.storage.list_nfs_mounts.queryOptions({
+      refetchInterval: 10000,
+      select: selectNFSMountIdentities,
+    }),
+  );
+
+  if (mountpoints.length === 0) {
+    return (
+      <div style={{ textAlign: "center", paddingBlock: 16 }}>
+        <AppTypography color="text.secondary" variant="body2">
+          No NFS entries found. Click Mount NFS to add one.
+        </AppTypography>
+      </div>
+    );
+  }
+
+  const renderActions = (mount: NFSMount) => (
+    <MountEntryActions
+      mount={mount}
+      mountingMountpoint={mountingMountpoint}
+      nfsClientAvailable={nfsClientAvailable}
+      nfsReason={nfsReason}
+      onEdit={onEdit}
+      onMount={onMount}
+      onRemove={onRemove}
+      onUnmount={onUnmount}
+    />
+  );
+
+  return (
+    <AppGrid container spacing={2}>
+      {mountpoints.map((mountpoint) => (
+        <AppGrid key={mountpoint} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+          <NFSMountCard actions={renderActions} mountpoint={mountpoint} />
+        </AppGrid>
+      ))}
+    </AppGrid>
+  );
+};
+
+const NFSMountTable = ({
+  mountingMountpoint,
+  nfsClientAvailable,
+  nfsReason,
+  onEdit,
+  onMount,
+  onRemove,
+  onUnmount,
+  search,
+}: NFSMountTableProps) => {
+  const { data: mounts } = useSuspenseQuery(
+    linuxio.storage.list_nfs_mounts.queryOptions({
+      refetchInterval: 10000,
+    }),
+  );
+  const mountsList = Array.isArray(mounts) ? mounts : [];
+  const normalizedSearch = search.toLowerCase();
+  const filtered = mountsList.filter(
+    (mount) =>
+      mount.source.toLowerCase().includes(normalizedSearch) ||
+      mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
+      getMountStatusLabel(mount).toLowerCase().includes(normalizedSearch),
+  );
+  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
+    {
+      accessorKey: "source",
+      header: "NFS Share",
+      cell: ({ row }) => (
+        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          {row.original.source}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      accessorKey: "mountpoint",
+      header: "Mount Point",
+      cell: ({ row }) => (
+        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          {row.original.mountpoint}
+        </AppTypography>
+      ),
+      meta: { align: "left" },
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (mount) =>
+        `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
+      cell: ({ row }) => {
+        const mount = row.original;
+        return (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <Chip
+              label={getMountStatusLabel(mount)}
+              size="small"
+              variant="soft"
+            />
+            <Chip
+              label={getPersistenceLabel(mount)}
+              size="small"
+              variant="soft"
+            />
+          </div>
+        );
+      },
+      meta: { align: "left", width: "160px" },
+    },
+    {
+      accessorKey: "usedPct",
+      header: "Usage",
+      cell: ({ row }) => {
+        const mount = row.original;
+        return mount.mounted ? (
+          <div style={{ width: "100%" }}>
+            <AppLinearProgress
+              color={
+                mount.usedPct > 90
+                  ? "error"
+                  : mount.usedPct > 70
+                    ? "warning"
+                    : "primary"
+              }
+              style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
+              value={mount.usedPct}
+              variant="determinate"
+            />
+            <AppTypography color="text.secondary" variant="caption">
+              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+            </AppTypography>
+          </div>
+        ) : (
+          <AppTypography color="text.secondary" variant="caption">
+            Not mounted
+          </AppTypography>
+        );
+      },
+      meta: { align: "left", hideBelow: "sm", width: "200px" },
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <MountEntryActions
+          mount={row.original}
+          mountingMountpoint={mountingMountpoint}
+          nfsClientAvailable={nfsClientAvailable}
+          nfsReason={nfsReason}
+          onEdit={onEdit}
+          onMount={onMount}
+          onRemove={onRemove}
+          onUnmount={onUnmount}
+          stopPropagation
+        />
+      ),
+      meta: { align: "right", width: "160px" },
+    },
+  ];
+
+  return (
+    <AppDataTable
+      ariaLabel="NFS mounts"
+      columns={columns}
+      data={filtered}
+      emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
+      getRowId={(mount) => mount.mountpoint}
+      renderExpandedContent={({ original: mount }) => (
+        <div className="expand-panel">
+          <AppTypography gutterBottom variant="subtitle2">
+            <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
+            {getPersistenceLabel(mount)}
+          </AppTypography>
+          <div>
+            <AppTypography gutterBottom variant="subtitle2">
+              <strong>Options:</strong>
+            </AppTypography>
+            <div className="expand-panel__chips">
+              {mount.options && mount.options.length > 0 ? (
+                mount.options.map((option, index) => (
+                  <Chip
+                    key={index}
+                    label={option}
+                    size="small"
+                    variant="soft"
+                  />
+                ))
+              ) : (
+                <AppTypography color="text.secondary" variant="body2">
+                  (no options)
+                </AppTypography>
+              )}
+            </div>
+          </div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <strong>Filesystem Type:</strong> {mount.fsType}
+          </AppTypography>
+          {mount.mounted ? (
+            <AppTypography gutterBottom variant="subtitle2">
+              <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
+              {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
+              {formatFileSize(mount.free)} free)
+            </AppTypography>
+          ) : (
+            <AppTypography gutterBottom variant="subtitle2">
+              <strong>Storage:</strong> Not currently mounted
+            </AppTypography>
+          )}
+        </div>
+      )}
+    />
+  );
+};
+
 const NFSMounts = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -836,11 +1077,6 @@ const NFSMounts = ({
   const [selectedMount, setSelectedMount] = useState<NFSMount | null>(null);
   const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
     null,
-  );
-  const { data: mounts } = useSuspenseQuery(
-    linuxio.storage.list_nfs_mounts.queryOptions({
-      refetchInterval: 10000,
-    }),
   );
   const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useAction({
     success: "NFS entry mounted",
@@ -898,137 +1134,16 @@ const NFSMounts = ({
       persist: mount.inFstab ? "true" : "false",
     });
   };
-  const mountsList = Array.isArray(mounts) ? mounts : [];
-  const filtered = mountsList.filter(
-    (m) =>
-      m.source.toLowerCase().includes(search.toLowerCase()) ||
-      m.mountpoint.toLowerCase().includes(search.toLowerCase()) ||
-      getMountStatusLabel(m).toLowerCase().includes(search.toLowerCase()),
-  );
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      accessorKey: "source",
-      header: "NFS Share",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "monospace",
-          }}
-          variant="body2"
-        >
-          {row.original.source}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "mountpoint",
-      header: "Mount Point",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "monospace",
-          }}
-          variant="body2"
-        >
-          {row.original.mountpoint}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: (mount) =>
-        `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
-      cell: ({ row }) => {
-        const mount = row.original;
-        return (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            <Chip
-              label={getMountStatusLabel(mount)}
-              size="small"
-              variant="soft"
-            />
-            <Chip
-              label={getPersistenceLabel(mount)}
-              size="small"
-              variant="soft"
-            />
-          </div>
-        );
-      },
-      meta: {
-        align: "left",
-        width: "160px",
-      },
-    },
-    {
-      accessorKey: "usedPct",
-      header: "Usage",
-      cell: ({ row }) => {
-        const mount = row.original;
-        return mount.mounted ? (
-          <div
-            style={{
-              width: "100%",
-            }}
-          >
-            <AppLinearProgress
-              color={
-                mount.usedPct > 90
-                  ? "error"
-                  : mount.usedPct > 70
-                    ? "warning"
-                    : "primary"
-              }
-              style={{
-                height: 6,
-                borderRadius: 3,
-                marginBottom: 2,
-              }}
-              value={mount.usedPct}
-              variant="determinate"
-            />
-            <AppTypography color="text.secondary" variant="caption">
-              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-            </AppTypography>
-          </div>
-        ) : (
-          <AppTypography color="text.secondary" variant="caption">
-            Not mounted
-          </AppTypography>
-        );
-      },
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "200px",
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <MountEntryActions
-          mount={row.original}
-          mountingMountpoint={mountingMountpoint}
-          nfsClientAvailable={!nfsUnavailable}
-          nfsReason={nfsReason}
-          onEdit={handleEdit}
-          onMount={handleMountExisting}
-          onRemove={handleRemove}
-          onUnmount={handleUnmount}
-          stopPropagation
-        />
-      ),
-      meta: {
-        align: "right",
-        width: "160px",
-      },
-    },
-  ];
+  const actionProps: NFSMountActionProps = {
+    mountingMountpoint,
+    nfsClientAvailable: !nfsUnavailable,
+    nfsReason,
+    onEdit: handleEdit,
+    onMount: handleMountExisting,
+    onRemove: handleRemove,
+    onUnmount: handleUnmount,
+  };
+
   return (
     <div
       style={{
@@ -1042,96 +1157,9 @@ const NFSMounts = ({
       ) : null}
 
       {viewMode === "card" ? (
-        filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((mount) => (
-              <AppGrid
-                key={mount.mountpoint}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 3,
-                }}
-              >
-                <NFSMountCard
-                  actions={
-                    <MountEntryActions
-                      mount={mount}
-                      mountingMountpoint={mountingMountpoint}
-                      nfsClientAvailable={!nfsUnavailable}
-                      nfsReason={nfsReason}
-                      onEdit={handleEdit}
-                      onMount={handleMountExisting}
-                      onRemove={handleRemove}
-                      onUnmount={handleUnmount}
-                    />
-                  }
-                  mount={mount}
-                  persistenceLabel={getPersistenceLabel(mount)}
-                  statusLabel={getMountStatusLabel(mount)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
-        ) : (
-          <div
-            style={{
-              textAlign: "center",
-              paddingBlock: 16,
-            }}
-          >
-            <AppTypography color="text.secondary" variant="body2">
-              No NFS entries found. Click Mount NFS to add one.
-            </AppTypography>
-          </div>
-        )
+        <NFSMountCardGrid {...actionProps} />
       ) : (
-        <AppDataTable
-          ariaLabel="NFS mounts"
-          columns={columns}
-          data={filtered}
-          emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
-          getRowId={(mount) => mount.mountpoint}
-          renderExpandedContent={({ original: mount }) => (
-            <div className="expand-panel">
-              <AppTypography gutterBottom variant="subtitle2">
-                <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
-                {getPersistenceLabel(mount)}
-              </AppTypography>
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <strong>Options:</strong>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {mount.options && mount.options.length > 0 ? (
-                    mount.options.map((opt, i) => (
-                      <Chip key={i} label={opt} size="small" variant="soft" />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no options)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-              <AppTypography gutterBottom variant="subtitle2">
-                <strong>Filesystem Type:</strong> {mount.fsType}
-              </AppTypography>
-              {mount.mounted ? (
-                <AppTypography gutterBottom variant="subtitle2">
-                  <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
-                  {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}%
-                  used, {formatFileSize(mount.free)} free)
-                </AppTypography>
-              ) : (
-                <AppTypography gutterBottom variant="subtitle2">
-                  <strong>Storage:</strong> Not currently mounted
-                </AppTypography>
-              )}
-            </div>
-          )}
-        />
+        <NFSMountTable {...actionProps} search={search} />
       )}
 
       <MountNFSDialog

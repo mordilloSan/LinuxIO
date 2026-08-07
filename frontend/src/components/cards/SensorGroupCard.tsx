@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 
-import type { SensorGroup, SensorReading } from "@/api";
+import { linuxio, type SensorGroup, type SensorReading } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -92,8 +94,39 @@ const sensorChipColor = (
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-const SensorGroupCard = ({ group }: { group: SensorGroup }) => {
+interface SensorGroupIdentity {
+  adapter: string;
+  sourceIndex: number;
+}
+
+interface SensorGroupCardProps extends SensorGroupIdentity {
+  visibleReadingCount: number;
+}
+
+const selectSensorGroup =
+  ({ adapter, sourceIndex }: SensorGroupIdentity) =>
+  (groups: SensorGroup[]): SensorGroup | null => {
+    const group = groups[sourceIndex];
+    // The adapter check protects against a reordered source array between the
+    // parent identity update and this cache observer's notification.
+    return group?.adapter === adapter ? group : null;
+  };
+
+const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
   const theme = useAppTheme();
+  const selectGroup = useMemo(
+    () => selectSensorGroup({ adapter, sourceIndex }),
+    [adapter, sourceIndex],
+  );
+  const { data: group } = useQuery(
+    linuxio.system.get_sensor_info.queryOptions({
+      refetchOnMount: false,
+      select: selectGroup,
+    }),
+  );
+
+  if (!group) return null;
+
   const visibleReadings = group.readings.filter(isPrimarySensorReading);
   const temps = visibleReadings.filter(isTemperatureReading);
   const fans = visibleReadings.filter(isFanReading);
@@ -105,21 +138,7 @@ const SensorGroupCard = ({ group }: { group: SensorGroup }) => {
   });
 
   return (
-    <FrostedCard style={{ padding: 10, height: "100%" }}>
-      <CardIconHeader
-        icon={
-          <Icon
-            color={theme.palette.primary.main}
-            height={24}
-            icon="mdi:chip"
-            width={24}
-          />
-        }
-        style={{ marginBottom: 8 }}
-        subtitle={`${visibleReadings.length} reading${visibleReadings.length !== 1 ? "s" : ""}`}
-        title={group.adapter}
-      />
-
+    <>
       {temps.length > 0 && (
         <div
           style={{
@@ -248,8 +267,35 @@ const SensorGroupCard = ({ group }: { group: SensorGroup }) => {
             />
           </div>
         ))}
+    </>
+  );
+};
+
+export const SensorGroupCardShell = ({
+  adapter,
+  sourceIndex,
+  visibleReadingCount,
+}: SensorGroupCardProps) => {
+  const theme = useAppTheme();
+
+  return (
+    <FrostedCard style={{ padding: 10, height: "100%" }}>
+      <CardIconHeader
+        icon={
+          <Icon
+            color={theme.palette.primary.main}
+            height={24}
+            icon="mdi:chip"
+            width={24}
+          />
+        }
+        style={{ marginBottom: 8 }}
+        subtitle={`${visibleReadingCount} reading${visibleReadingCount !== 1 ? "s" : ""}`}
+        title={adapter}
+      />
+      <SensorGroupCardLive adapter={adapter} sourceIndex={sourceIndex} />
     </FrostedCard>
   );
 };
 
-export default SensorGroupCard;
+export default SensorGroupCardShell;

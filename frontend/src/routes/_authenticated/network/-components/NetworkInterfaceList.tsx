@@ -1,13 +1,7 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  type MouseEvent,
-} from "react";
+import { useCallback, useEffect, useRef, type MouseEvent } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
@@ -24,75 +18,42 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 export type { NetworkInterface };
 const networkRouteApi = getRouteApi("/_authenticated/network");
 
-const NetworkInterfaceList = () => {
-  const search = networkRouteApi.useSearch();
-  const navigate = networkRouteApi.useNavigate();
-  const expanded = typeof search.iface === "string" ? search.iface : undefined;
+interface NetworkInterfaceIdentity {
+  name: string;
+  type: string;
+}
 
-  const { data: rawInterfaces } = useSuspenseQuery(
+const getNetworkInterfaceType = (name: string): string => {
+  if (name.startsWith("wl")) return "wifi";
+  if (name.startsWith("lo")) return "loopback";
+  return "ethernet";
+};
+
+export const selectNetworkInterfaceIdentities = (
+  interfaces: NetworkInterface[],
+): NetworkInterfaceIdentity[] =>
+  interfaces
+    .filter((iface) => !iface.name.startsWith("veth"))
+    .map((iface) => ({
+      name: iface.name,
+      type: getNetworkInterfaceType(iface.name),
+    }));
+
+const selectNetworkInterface =
+  (name: string) => (interfaces: NetworkInterface[]) =>
+    interfaces.find((iface) => iface.name === name);
+
+const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
+  const theme = useAppTheme();
+  const rxCanvasRef = useRef<HTMLCanvasElement>(null);
+  const txCanvasRef = useRef<HTMLCanvasElement>(null);
+  const { data: iface } = useQuery(
     linuxio.network.get_network_info.queryOptions({
-      refetchInterval: 1000,
+      refetchOnMount: false,
+      select: selectNetworkInterface(name),
     }),
   );
 
-  // Transform data - filter veths and add type field
-  const interfaces = useMemo(
-    () =>
-      rawInterfaces
-        .filter((iface) => !iface.name.startsWith("veth"))
-        .map((iface) => ({
-          ...iface,
-          type: iface.name.startsWith("wl")
-            ? "wifi"
-            : iface.name.startsWith("lo")
-              ? "loopback"
-              : "ethernet",
-        })),
-    [rawInterfaces],
-  );
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        navigate({
-          to: ".",
-          search: (previous) => ({
-            ...previous,
-            iface: undefined,
-          }),
-        });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
-
-  const handleToggle = (iface: NetworkInterface) => {
-    if (expanded === iface.name) {
-      navigate({
-        to: ".",
-        search: (previous) => ({
-          ...previous,
-          iface: undefined,
-        }),
-      });
-    } else {
-      navigate({
-        to: ".",
-        search: (previous) => ({
-          ...previous,
-          iface: iface.name,
-        }),
-      });
-    }
-  };
-
-  const theme = useAppTheme();
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
-  const rxCanvasRef = useRef<HTMLCanvasElement>(null);
-  const txCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Dispatch a synthetic mouse event directly to a canvas (bubbles: false to avoid loops)
   const dispatchToCanvas = useCallback(
     (
       canvas: HTMLCanvasElement | null,
@@ -136,7 +97,137 @@ const NetworkInterfaceList = () => {
     }
   }, []);
 
-  const selectedIface = interfaces.find((i) => i.name === expanded);
+  if (!iface) return null;
+
+  return (
+    <div
+      onMouseLeave={handleGraphMouseLeave}
+      onMouseMove={handleGraphMouseMove}
+      style={{ display: "flex", flexDirection: "column", gap: 8 }}
+    >
+      <div>
+        <div style={{ height: 120, width: "100%", minWidth: 0 }}>
+          <NetworkTrafficGraph
+            color={theme.chart.rx}
+            key={`rx-${name}`}
+            label="RX"
+            ref={rxCanvasRef}
+            value={iface.rx_speed}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            marginLeft: 4,
+            marginTop: 2,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              backgroundColor: theme.chart.rx,
+              borderRadius: "50%",
+              display: "inline-block",
+            }}
+          />
+          <AppTypography style={{ opacity: 0.7 }} variant="caption">
+            RX: {(iface.rx_speed / 1024).toFixed(1)} kB/s
+          </AppTypography>
+        </div>
+      </div>
+      <div>
+        <div style={{ height: 120, width: "100%", minWidth: 0 }}>
+          <NetworkTrafficGraph
+            color={theme.chart.tx}
+            key={`tx-${name}`}
+            label="TX"
+            ref={txCanvasRef}
+            value={iface.tx_speed}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            marginLeft: 4,
+            marginTop: 2,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              backgroundColor: theme.chart.tx,
+              borderRadius: "50%",
+              display: "inline-block",
+            }}
+          />
+          <AppTypography style={{ opacity: 0.7 }} variant="caption">
+            TX: {(iface.tx_speed / 1024).toFixed(1)} kB/s
+          </AppTypography>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NetworkInterfaceList = () => {
+  const search = networkRouteApi.useSearch();
+  const navigate = networkRouteApi.useNavigate();
+  const expanded = typeof search.iface === "string" ? search.iface : undefined;
+
+  const { data: interfaces } = useSuspenseQuery(
+    linuxio.network.get_network_info.queryOptions({
+      refetchInterval: 1000,
+      select: selectNetworkInterfaceIdentities,
+    }),
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        navigate({
+          to: ".",
+          search: (previous) => ({
+            ...previous,
+            iface: undefined,
+          }),
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigate]);
+
+  const handleClose = useCallback(() => {
+    navigate({
+      to: ".",
+      search: (previous) => ({
+        ...previous,
+        iface: undefined,
+      }),
+    });
+  }, [navigate]);
+
+  const handleToggle = useCallback(
+    (name: string) => {
+      navigate({
+        to: ".",
+        search: (previous) => ({
+          ...previous,
+          iface: expanded === name ? undefined : name,
+        }),
+      });
+    },
+    [expanded, navigate],
+  );
+
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const selectedIface = interfaces.find((iface) => iface.name === expanded);
 
   return (
     <div>
@@ -163,17 +254,10 @@ const NetworkInterfaceList = () => {
               >
                 <NetworkInterfaceCard
                   expanded={expanded === iface.name}
-                  iface={iface}
-                  onClose={() =>
-                    navigate({
-                      to: ".",
-                      search: (previous) => ({
-                        ...previous,
-                        iface: undefined,
-                      }),
-                    })
-                  }
-                  onToggle={() => handleToggle(iface)}
+                  name={iface.name}
+                  onClose={handleClose}
+                  onToggle={handleToggle}
+                  type={iface.type}
                 />
               </AppGrid>
             ),
@@ -194,78 +278,7 @@ const NetworkInterfaceList = () => {
                 ease: EASING_STANDARD,
               }}
             >
-              <div
-                onMouseLeave={handleGraphMouseLeave}
-                onMouseMove={handleGraphMouseMove}
-                style={{ display: "flex", flexDirection: "column", gap: 8 }}
-              >
-                <div>
-                  <div style={{ height: 120, width: "100%", minWidth: 0 }}>
-                    <NetworkTrafficGraph
-                      color={theme.chart.rx}
-                      key={`rx-${selectedIface.name}`}
-                      label="RX"
-                      ref={rxCanvasRef}
-                      value={selectedIface.rx_speed}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 2,
-                      marginLeft: 4,
-                      marginTop: 2,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 7,
-                        height: 7,
-                        backgroundColor: theme.chart.rx,
-                        borderRadius: "50%",
-                        display: "inline-block",
-                      }}
-                    />
-                    <AppTypography style={{ opacity: 0.7 }} variant="caption">
-                      RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
-                    </AppTypography>
-                  </div>
-                </div>
-                <div>
-                  <div style={{ height: 120, width: "100%", minWidth: 0 }}>
-                    <NetworkTrafficGraph
-                      color={theme.chart.tx}
-                      key={`tx-${selectedIface.name}`}
-                      label="TX"
-                      ref={txCanvasRef}
-                      value={selectedIface.tx_speed}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 2,
-                      marginLeft: 4,
-                      marginTop: 2,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 7,
-                        height: 7,
-                        backgroundColor: theme.chart.tx,
-                        borderRadius: "50%",
-                        display: "inline-block",
-                      }}
-                    />
-                    <AppTypography style={{ opacity: 0.7 }} variant="caption">
-                      TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
-                    </AppTypography>
-                  </div>
-                </div>
-              </div>
+              <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
             </AppGrid>
           )}
         </AnimatePresence>

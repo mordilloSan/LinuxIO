@@ -20,6 +20,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 | [Card Query Render Boundaries Plan](./card-query-render-boundaries-plan.md) | Plan for keeping polled query updates inside live card slots, sharing the production React Compiler with Vitest, and guarding component ownership. |
+| [React useEffect Audit](./use-effect-audit.md) | Inventory and evaluation of every `useEffect`, including replacement candidates and lifecycle findings. |
 
 ## Product Areas
 
