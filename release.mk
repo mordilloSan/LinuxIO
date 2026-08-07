@@ -37,6 +37,12 @@ define _repo_flag
 $(if $(REPO),--repo $(REPO),)
 endef
 
+# Tail of a `gh run list --jq` filter: collapse the selected run into one TSV row,
+# or emit nothing when no run matched. Keep the free-text title last so a tab
+# inside it cannot shift the earlier fields when the shell splits the row.
+# gh embeds its own jq (gojq), so none of this needs the jq binary installed.
+_run_tsv = if . == null then empty else [ (.databaseId|tostring), .status, (.conclusion // "n/a"), .createdAt, (.headBranch // "n/a"), (.event // "n/a"), (.displayTitle // .name) ] | @tsv end
+
 # ==================== Release Targets ====================
 
 start-dev:
@@ -290,34 +296,28 @@ merge-release:
 	  echo ""; \
 	  echo " Checking for release workflow..."; \
 	  sleep 2; \
-	  WORKFLOW_RUN=""; \
+	  WORKFLOW_TSV=""; \
 	  for i in $$(seq 1 10); do \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
+	    WORKFLOW_TSV="$$(VER="$$VERSION" BR="$$BRANCH" T="$$TRIGGER_MARK" \
+	      gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
 	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
-	      | jq -c --arg ver "$$VERSION" --arg main "main" --arg branch "$$BRANCH" --argjson t $$TRIGGER_MARK \
-	        '[ .[] \
-	           | select((.createdAt|fromdateiso8601) >= $$t) \
-	           | select((.headBranch == $$main) or (.headBranch == $$branch) or ((.displayTitle // .name) | test($$ver))) \
-	         ] \
-	         | .[0]')" ; \
-	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then break; fi; \
+	      --jq '[ .[] \
+	              | select((.createdAt|fromdateiso8601) >= ($$ENV.T|tonumber)) \
+	              | select((.headBranch == "main") or (.headBranch == $$ENV.BR) or ((.displayTitle // .name) | contains($$ENV.VER))) \
+	            ] \
+	            | .[0] | $(_run_tsv)')" ; \
+	    if [ -n "$$WORKFLOW_TSV" ]; then break; fi; \
 	    echo "  Waiting for workflow to start... (attempt $$i/10)"; \
 	    sleep 2; \
 	  done; \
-	  if [ -z "$$WORKFLOW_RUN" ] || [ "$$WORKFLOW_RUN" = "null" ]; then \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
+	  if [ -z "$$WORKFLOW_TSV" ]; then \
+	    WORKFLOW_TSV="$$(T="$$TRIGGER_MARK" \
+	      gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
 	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
-	      | jq -c --argjson t $$TRIGGER_MARK \
-	        '[ .[] | select((.createdAt|fromdateiso8601) >= $$t) ] | .[0]')" ; \
+	      --jq '[ .[] | select((.createdAt|fromdateiso8601) >= ($$ENV.T|tonumber)) ] | .[0] | $(_run_tsv)')" ; \
 	  fi; \
-	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then \
-	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
-	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
-	    CONCLUSION="$$(echo "$$WORKFLOW_RUN" | jq -r '.conclusion // "n/a"')"; \
-	    CREATED="$$(echo "$$WORKFLOW_RUN" | jq -r '.createdAt')"; \
-	    TITLE="$$(echo "$$WORKFLOW_RUN" | jq -r '.displayTitle // .name')"; \
-	    HBRANCH="$$(echo "$$WORKFLOW_RUN" | jq -r '.headBranch // "n/a"')"; \
-	    EVENT="$$(echo "$$WORKFLOW_RUN" | jq -r '.event // "n/a"')"; \
+	  if [ -n "$$WORKFLOW_TSV" ]; then \
+	    IFS=$$'\t' read -r RUN_ID STATUS CONCLUSION CREATED HBRANCH EVENT TITLE <<< "$$WORKFLOW_TSV" || true; \
 	    echo " Release workflow found"; \
 	    echo "   Run ID: #$$RUN_ID"; \
 	    echo "   Title: $$TITLE"; \
@@ -345,9 +345,8 @@ merge-release:
 	      ( \
 	        while true; do \
 	          ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	          RUN_INFO="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status,conclusion 2>/dev/null || echo '')"; \
-	          if [ -n "$$RUN_INFO" ]; then \
-	            CURRENT_STATUS="$$(echo "$$RUN_INFO" | jq -r '.status // "unknown"')"; \
+	          CURRENT_STATUS="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status --jq '.status // "unknown"' 2>/dev/null || echo '')"; \
+	          if [ -n "$$CURRENT_STATUS" ]; then \
 	            printf "\r  Elapsed: %02d:%02d | Status: %-15s" $$((ELAPSED/60)) $$((ELAPSED%60)) "$$CURRENT_STATUS"; \
 	          else \
 	            printf "\r  Elapsed: %02d:%02d | Status: checking...      " $$((ELAPSED/60)) $$((ELAPSED%60)); \
