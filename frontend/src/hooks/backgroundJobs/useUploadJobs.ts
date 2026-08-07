@@ -152,19 +152,20 @@ export function useUploadJobs(
         };
       }
 
-      // False positive in the pinned React Compiler port (oxc-transform
-      // 0.136.0): the dep array below is complete, but the compiler still
-      // reports a missing dependency here and skips the file. Manual
-      // memoization in this hook remains fully in effect.
-      // oxlint-disable-next-line react/react-compiler
-      updateUpload(uploadId, { jobId: job.id });
-      activeFileTransferJobIdsRef.current.add(job.id);
+      // Read the id once. `job` is a `let` assigned across an `await` and the
+      // closures below capture it; dereferencing it repeatedly from there
+      // defeats the React Compiler's mutable-range analysis, which then skips
+      // this whole file (shipping it unmemoized). Keep this as one read.
+      const jobId = job.id;
+
+      updateUpload(uploadId, { jobId });
+      activeFileTransferJobIdsRef.current.add(jobId);
       pendingLocalJobKeysRef.current.delete(pendingUploadKey);
 
-      const stream = openJobDataStream(job.id, 0);
+      const stream = openJobDataStream(jobId, 0);
       if (!stream) {
-        activeFileTransferJobIdsRef.current.delete(job.id);
-        cancelBridgeJob(job.id);
+        activeFileTransferJobIdsRef.current.delete(jobId);
+        cancelBridgeJob(jobId);
         return { success: false, error: "Failed to open upload stream" };
       }
 
@@ -183,13 +184,14 @@ export function useUploadJobs(
         let bytesSent = 0;
         let bytesAcked = 0;
         let pendingSend = false;
+        const binding: { unbind: (() => void) | null } = { unbind: null };
 
         const resolveSafe = (outcome: BatchStreamOutcome) => {
           if (settled) return;
           settled = true;
-          unbind();
+          binding.unbind?.();
           streamRefsRef.current.delete(uploadId);
-          activeFileTransferJobIdsRef.current.delete(job.id);
+          activeFileTransferJobIdsRef.current.delete(jobId);
           // Free the bridge job slot when abandoning an incomplete upload. On a
           // stream error/early close the bridge parks the job in
           // `waiting_for_client` (to allow resume) rather than failing it, so
@@ -197,7 +199,7 @@ export function useUploadJobs(
           // limited per-user upload slots. (User-cancelled uploads are already
           // cancelled by cancelUpload.)
           if (!outcome.success && !outcome.cancelled) {
-            cancelBridgeJob(job.id);
+            cancelBridgeJob(jobId);
           }
           setUploads((prev) =>
             prev.map((u) =>
@@ -236,7 +238,7 @@ export function useUploadJobs(
           reader.readAsArrayBuffer(slice);
         };
 
-        const unbind = bindStreamHandlers(stream, {
+        binding.unbind = bindStreamHandlers(stream, {
           onProgress: (progress: BatchUploadProgressFrame) => {
             bytesAcked = progress.bytes;
             onProgress(progress);
