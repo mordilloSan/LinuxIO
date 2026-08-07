@@ -1,8 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Download } from "@/types/backgroundJobs";
-
 import {
   isConnected,
   type JobSnapshot,
@@ -12,7 +10,9 @@ import {
   type ProgressFrame,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import type { Download } from "@/types/backgroundJobs";
 import {
   createProgressSpeedCalculator,
   jobIdentityKey,
@@ -23,6 +23,7 @@ import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
 export function useDownloadJobs(runtime: BackgroundJobRuntime) {
   const [downloads, setDownloads] = useState<Download[]>([]);
+  const downloadsRef = useLatestRef(downloads);
   const { run: runStreamResult } = useStreamResult();
   const {
     activeFileTransferJobIdsRef,
@@ -72,13 +73,13 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
     async (
       paths: string[],
       reqId: string,
-      _downloadLabelBase: string,
       downloadJob: JobSnapshot,
       abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
         options?: { percent?: number; name?: string },
       ) => string,
+      markDataProgress: () => void,
     ) => {
       const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
       const chunks: Uint8Array[] = [];
@@ -95,6 +96,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
           chunks.push(data);
         },
         onProgress: (progress) => {
+          markDataProgress();
           const speed = getSpeed(progress.bytes);
 
           let phaseLabel: string;
@@ -175,11 +177,8 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
       }
 
       const pendingKey = isSingleFile
-        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, { path: paths[0] })
-        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, {
-            format: "zip",
-            paths,
-          });
+        ? jobIdentityKey(JobTypes.JOB_TYPE_FILE_DOWNLOAD, [paths[0]])
+        : jobIdentityKey(JobTypes.JOB_TYPE_FILE_ARCHIVE, ["zip", ...paths]);
       pendingLocalJobKeysRef.current.add(pendingKey);
       let pendingKeyHeld = true;
 
@@ -209,6 +208,12 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         };
 
         setDownloads((prev) => [...prev, download]);
+        // Both streams receive the job's progress frames. Once the data
+        // stream is delivering them, the attach stream stays silent so each
+        // frame updates the item once; attach keeps covering the phases
+        // before bytes flow to the client (preparing, compressing,
+        // waiting_for_client).
+        let dataStreamHasProgress = false;
         const getJobSpeed = createProgressSpeedCalculator();
         void runStreamResult<unknown, ProgressFrame>({
           open: () => openJobAttachStream(activeDownloadJob.id),
@@ -217,6 +222,9 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
           openErrorMessage: "Failed to attach download job",
           closeMessage: "Download job stream closed unexpectedly",
           onProgress: (progress) => {
+            if (dataStreamHasProgress) {
+              return;
+            }
             const speed = getJobSpeed(progress.bytes);
             let phaseLabel: string;
             switch (progress.phase) {
@@ -254,10 +262,12 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         const blob = await startStreamBasedDownload(
           paths,
           reqId,
-          downloadLabelBase,
           activeDownloadJob,
           abortController.signal,
           formatDownloadLabel,
+          () => {
+            dataStreamHasProgress = true;
+          },
         );
 
         updateDownload(reqId, {
@@ -315,7 +325,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
 
   const cancelDownload = useCallback(
     (id: string) => {
-      const download = downloads.find((d) => d.id === id);
+      const download = downloadsRef.current.find((d) => d.id === id);
       if (download) {
         download.abortController.abort();
         // Abort stream if using stream-based download (RST for immediate cancel)
@@ -332,7 +342,7 @@ export function useDownloadJobs(runtime: BackgroundJobRuntime) {
         removeDownload(id);
       }
     },
-    [downloads, cancelBridgeJob, removeDownload, streamRefsRef],
+    [downloadsRef, cancelBridgeJob, removeDownload, streamRefsRef],
   );
 
   return {

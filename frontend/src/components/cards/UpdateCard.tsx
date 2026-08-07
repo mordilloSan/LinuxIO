@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { Update } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -7,6 +5,7 @@ import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
+import { isDeferredUpdate } from "@/utils/packageUpdates";
 
 export interface UpdateCardProps {
   changelog: string | undefined;
@@ -15,11 +14,11 @@ export interface UpdateCardProps {
   isLoadingChangelog: boolean;
   isUpdating: boolean;
   onToggleChangelog: () => void;
-  onUpdate: () => Promise<void>;
+  onUpdate: () => void;
   update: Update;
 }
 
-const UpdateCard: React.FC<UpdateCardProps> = ({
+const UpdateCard = ({
   update,
   isExpanded,
   isUpdating,
@@ -28,101 +27,126 @@ const UpdateCard: React.FC<UpdateCardProps> = ({
   isLoadingChangelog,
   onToggleChangelog,
   onUpdate,
-}) => (
-  <FrostedCard hoverLift>
-    <AppCardContent>
-      {/* Title */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 24,
-        }}
-      >
+}: UpdateCardProps) => {
+  const isDeferred = isDeferredUpdate(update);
+
+  return (
+    <FrostedCard hoverLift>
+      <AppCardContent>
+        {/* Title */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 24,
+          }}
+        >
+          <AppTypography
+            noWrap
+            style={{
+              maxWidth: "90%",
+            }}
+            variant="h6"
+          >
+            {update.summary}
+          </AppTypography>
+        </div>
+
+        {/* Package & version */}
         <AppTypography
+          color="text.secondary"
+          gutterBottom
           noWrap
           style={{
             maxWidth: "90%",
           }}
-          variant="h6"
+          variant="body2"
         >
-          {update.summary}
+          Package: {update.package_id}
         </AppTypography>
-      </div>
 
-      {/* Package & version */}
-      <AppTypography
-        color="text.secondary"
-        gutterBottom
-        noWrap
-        style={{
-          maxWidth: "90%",
-        }}
-        variant="body2"
-      >
-        Package: {update.package_id}
-      </AppTypography>
-      <AppTypography
-        color="text.secondary"
-        gutterBottom
-        noWrap
-        style={{
-          maxWidth: "90%",
-        }}
-        variant="body2"
-      >
-        Version: {update.version}
-      </AppTypography>
-
-      {/* Actions */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          marginTop: 12,
-        }}
-      >
-        <Chip
-          label="View Changelog"
-          onClick={onToggleChangelog}
-          size="small"
-          variant="outlined"
-        />
-        <Chip
-          disabled={isUpdating}
-          label={
-            isCurrentPackage ? <AppCircularProgress size={16} /> : "Update"
-          }
-          onClick={onUpdate}
-          size="small"
-          variant="outlined"
-        />
-      </div>
-
-      {/* Changelog */}
-      <AppCollapse in={isExpanded} unmountOnExit>
-        <div style={{ whiteSpace: "pre-wrap", fontSize: 14, marginTop: 32 }}>
-          {isLoadingChangelog ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                paddingTop: 16,
-                paddingBottom: 16,
-              }}
+        {isDeferred ? (
+          <>
+            <AppTypography
+              color="text.secondary"
+              style={{ marginTop: 12 }}
+              variant="body2"
             >
-              <AppCircularProgress size={20} />
-            </div>
-          ) : (
-            <AppTypography color="text.secondary" variant="body2">
-              {changelog || "Loading..."}
+              This update is currently deferred by PackageKit. This commonly
+              happens during phased rollouts; try again later.
             </AppTypography>
-          )}
+          </>
+        ) : null}
+        <AppTypography
+          color="text.secondary"
+          gutterBottom
+          noWrap
+          style={{
+            maxWidth: "90%",
+          }}
+          variant="body2"
+        >
+          Version: {update.version}
+        </AppTypography>
+
+        {/* Actions */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: 12,
+          }}
+        >
+          {isDeferred ? (
+            <Chip
+              color="warning"
+              label="Available later"
+              size="small"
+              variant="soft"
+            />
+          ) : null}
+          <Chip
+            label="View Changelog"
+            onClick={onToggleChangelog}
+            size="small"
+            variant="outlined"
+          />
+          <Chip
+            disabled={isUpdating || isDeferred}
+            label={
+              isCurrentPackage ? <AppCircularProgress size={16} /> : "Update"
+            }
+            onClick={onUpdate}
+            size="small"
+            variant="outlined"
+          />
         </div>
-      </AppCollapse>
-    </AppCardContent>
-  </FrostedCard>
-);
+
+        {/* Changelog */}
+        <AppCollapse in={isExpanded} unmountOnExit>
+          <div style={{ whiteSpace: "pre-wrap", fontSize: 14, marginTop: 32 }}>
+            {isLoadingChangelog ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  paddingTop: 16,
+                  paddingBottom: 16,
+                }}
+              >
+                <AppCircularProgress size={20} />
+              </div>
+            ) : (
+              <AppTypography color="text.secondary" variant="body2">
+                {changelog || "Loading..."}
+              </AppTypography>
+            )}
+          </div>
+        </AppCollapse>
+      </AppCardContent>
+    </FrostedCard>
+  );
+};
 
 export default UpdateCard;

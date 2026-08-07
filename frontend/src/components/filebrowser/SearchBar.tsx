@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState, type ChangeEvent } from "react";
 
 import "./search-bar.css";
 
@@ -14,12 +14,12 @@ interface SearchBarProps {
   value: string;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({
+const SearchBar = ({
   value,
   onChange,
   placeholder = "Search files...",
   disabled = false,
-}) => {
+}: SearchBarProps) => {
   const theme = useAppTheme();
   const [isFocused, setIsFocused] = useState(false);
 
@@ -28,7 +28,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   }, [onChange]);
 
   const handleChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       onChange(event.target.value);
     },
     [onChange],
@@ -42,6 +42,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         value ? (
           <AppIconButton
             aria-label="clear search"
+            disabled={disabled}
             edge="end"
             onClick={handleClear}
             size="small"

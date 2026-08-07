@@ -5,9 +5,12 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
 } from "react";
 
-import { decodeString, type Stream, useStreamMux } from "@/api";
+import { type Stream, useStreamMux } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
 export interface UseLogStreamOptions {
@@ -25,12 +28,27 @@ export interface UseLogStreamResult {
   isLoading: boolean;
   liveMode: boolean;
   logs: string;
-  logsBoxRef: React.RefObject<HTMLDivElement | null>;
+  logsBoxRef: RefObject<HTMLDivElement | null>;
   resetState: () => void;
-  setLiveMode: React.Dispatch<React.SetStateAction<boolean>>;
+  setLiveMode: Dispatch<SetStateAction<boolean>>;
 }
 
 const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
+
+// A live stream is unbounded; without a cap the buffer grows forever and
+// every appended frame pays an O(buffer) string copy. Oldest lines fall off
+// the top, trimmed to the next newline so the buffer starts on a whole line.
+const MAX_LOG_BUFFER_CHARS = 512 * 1024;
+
+function appendLogs(prev: string, text: string): string {
+  const next = prev + text;
+  if (next.length <= MAX_LOG_BUFFER_CHARS) {
+    return next;
+  }
+  const trimmed = next.slice(next.length - MAX_LOG_BUFFER_CHARS);
+  const newlineIndex = trimmed.indexOf("\n");
+  return newlineIndex === -1 ? trimmed : trimmed.slice(newlineIndex + 1);
+}
 
 /**
  * Manages a live log stream: opens/closes based on dialog state and live mode,
@@ -79,14 +97,13 @@ export function useLogStream({
     });
   });
 
-  const handleStreamData = useEffectEvent((data: Uint8Array) => {
-    const text = decodeString(data);
+  const handleStreamText = useEffectEvent((text: string) => {
     if (!hasReceivedData.current) {
       hasReceivedData.current = true;
       clearInitialLoadTimeout();
       setIsLoading(false);
     }
-    setLogs((prev) => prev + text);
+    setLogs((prev) => appendLogs(prev, text));
   });
 
   const handleStreamResult = useEffectEvent(
@@ -104,6 +121,19 @@ export function useLogStream({
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
+  });
+
+  // Effect event so the opening effects don't depend on `createStream`, which
+  // callers pass as a fresh closure every render (see the hook doc comment) —
+  // depending on it would close and reopen the stream on every caller render.
+  const startStream = useEffectEvent((tail: string) => {
+    openStream({
+      open: () => createStream(tail),
+      onOpenError: handleStreamOpenError,
+      onText: handleStreamText,
+      onResult: handleStreamResult,
+      onClose: handleStreamClose,
+    });
   });
 
   // Scroll to bottom whenever new logs arrive (before paint to avoid a flash).
@@ -130,15 +160,8 @@ export function useLogStream({
 
     hasReceivedData.current = false;
     scheduleInitialLoadTimeout();
-
-    openStream({
-      open: () => createStream(initialTail),
-      onOpenError: handleStreamOpenError,
-      onData: handleStreamData,
-      onResult: handleStreamResult,
-      onClose: handleStreamClose,
-    });
-  }, [initialTail, open, muxIsOpen, streamRef]);
+    startStream(initialTail);
+  }, [initialTail, open, muxIsOpen, streamRef, scheduleInitialLoadTimeout]);
 
   // Handle live mode toggle.
   useEffect(() => {
@@ -149,15 +172,17 @@ export function useLogStream({
         queueMicrotask(() => setIsLoading(false));
       }
     } else if (liveMode && !streamRef.current && open && muxIsOpen) {
-      openStream({
-        open: () => createStream(liveTail),
-        onOpenError: handleStreamOpenError,
-        onData: handleStreamData,
-        onResult: handleStreamResult,
-        onClose: handleStreamClose,
-      });
+      startStream(liveTail);
     }
-  }, [liveMode, open, muxIsOpen, streamRef]);
+  }, [
+    liveMode,
+    liveTail,
+    open,
+    muxIsOpen,
+    streamRef,
+    closeStream,
+    clearInitialLoadTimeout,
+  ]);
 
   // Close stream when the dialog closes (state is reset separately via onExited).
   useEffect(() => {

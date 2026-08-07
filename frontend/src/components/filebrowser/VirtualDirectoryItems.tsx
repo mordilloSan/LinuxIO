@@ -1,5 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, { useLayoutEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type MouseEventHandler,
+  type RefObject,
+} from "react";
 
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
@@ -45,24 +53,25 @@ interface ItemsRow {
 type DirectoryVirtualRow = SectionHeaderRow | ItemsRow;
 
 interface VirtualDirectoryItemsProps {
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   cutPaths: Set<string>;
   files: FileItem[];
-  focusedIndex: number;
   folders: FileItem[];
   isLoadingSubfolders: boolean;
   isMarqueeSelecting: boolean;
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
-  onContainerMouseDown: React.MouseEventHandler<HTMLDivElement>;
+  onContainerMouseDown: MouseEventHandler<HTMLDivElement>;
   onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
-  onMarqueeMouseDown: React.MouseEventHandler<HTMLDivElement>;
+  onFileClick: (event: MouseEvent, path: string) => void;
+  onFileContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
+  onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
+  /** Item index to scroll into view, or -1 to leave the viewport alone. */
+  revealIndex: number;
   selectedPaths: Set<string>;
   selectionBox: SelectionBoxState | null;
   subfoldersMap: Map<string, SubfolderData>;
@@ -78,10 +87,10 @@ interface DirectoryItemProps {
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
   onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: React.MouseEvent, path: string) => void;
-  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
-  onFolderClick: (event: React.MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onFileClick: (event: MouseEvent, path: string) => void;
+  onFileContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderClick: (event: MouseEvent, path: string) => void;
+  onFolderContextMenu: (event: MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
   selectedPaths: Set<string>;
@@ -140,8 +149,8 @@ function buildRows({
   return rows;
 }
 
-const SectionHeader: React.FC<{ label: string; viewMode: ViewMode }> =
-  React.memo(({ label, viewMode }) => (
+const SectionHeader = memo<{ label: string; viewMode: ViewMode }>(
+  ({ label, viewMode }) => (
     <h6
       style={{
         color: "inherit",
@@ -154,11 +163,12 @@ const SectionHeader: React.FC<{ label: string; viewMode: ViewMode }> =
     >
       {label}
     </h6>
-  ));
+  ),
+);
 
 SectionHeader.displayName = "VirtualDirectorySectionHeader";
 
-const DirectoryItem: React.FC<DirectoryItemProps> = React.memo(
+const DirectoryItem = memo<DirectoryItemProps>(
   ({
     item,
     itemKind,
@@ -252,11 +262,13 @@ const DirectoryItem: React.FC<DirectoryItemProps> = React.memo(
 
 DirectoryItem.displayName = "VirtualDirectoryItem";
 
-const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
+// React Compiler skips this component: TanStack Virtual's API returns
+// unstable functions it cannot memoize. Manual memoization stays load-bearing.
+// oxlint-disable-next-line react/react-compiler
+const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
   files,
-  focusedIndex,
   folders,
   isLoadingSubfolders,
   isMarqueeSelecting,
@@ -271,11 +283,12 @@ const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
   onMarqueeMouseDown,
   onOpenDirectory,
   renamingPath,
+  revealIndex,
   selectedPaths,
   selectionBox,
   subfoldersMap,
   viewMode,
-}) => {
+}: VirtualDirectoryItemsProps) => {
   "use no memo";
 
   const theme = useAppTheme();
@@ -339,12 +352,12 @@ const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
   }, [columnCount, rows.length, viewMode, virtualizer]);
 
   useLayoutEffect(() => {
-    if (focusedIndex < 0) return;
+    if (revealIndex < 0) return;
 
     const rowIndex = rows.findIndex(
       (row) =>
         row.type === "items" &&
-        row.items.some((item) => item.allItemsIndex === focusedIndex),
+        row.items.some((item) => item.allItemsIndex === revealIndex),
     );
 
     if (rowIndex === -1) return;
@@ -352,7 +365,7 @@ const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
     virtualizer.scrollToIndex(rowIndex, {
       align: "auto",
     });
-  }, [focusedIndex, rows, virtualizer]);
+  }, [revealIndex, rows, virtualizer]);
 
   return (
     <div
@@ -451,4 +464,4 @@ const VirtualDirectoryItems: React.FC<VirtualDirectoryItemsProps> = ({
   );
 };
 
-export default React.memo(VirtualDirectoryItems);
+export default memo(VirtualDirectoryItems);

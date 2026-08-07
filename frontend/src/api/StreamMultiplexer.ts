@@ -540,10 +540,17 @@ export class StreamMultiplexer {
       this.notifyStatusChange("connecting");
     }
 
-    this.ws = new WebSocket(this.url);
-    this.ws.binaryType = "arraybuffer";
+    // Handlers close over the socket they were attached to: a reconnect
+    // (visibility/online) can replace this.ws while the old socket's close
+    // handshake is still in flight (readyState CLOSING passes the guard
+    // above), and the superseded socket's late events must not mutate the
+    // live connection's state.
+    const ws = new WebSocket(this.url);
+    ws.binaryType = "arraybuffer";
+    this.ws = ws;
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.clearReconnectTimer();
       this.reconnectAttempts = 0;
       this.shouldReconnect = true;
@@ -560,7 +567,8 @@ export class StreamMultiplexer {
       }, StreamMultiplexer.RAPID_CLOSE_THRESHOLD_MS);
     };
 
-    this.ws.onclose = (event: CloseEvent) => {
+    ws.onclose = (event: CloseEvent) => {
+      if (this.ws !== ws) return;
       this.ws = null;
 
       if (this.stableConnectionTimer) {
@@ -616,11 +624,13 @@ export class StreamMultiplexer {
       }
     };
 
-    this.ws.onerror = (event) => {
+    ws.onerror = (event) => {
+      if (this.ws !== ws) return;
       console.warn("[StreamMultiplexer] WebSocket error:", event);
     };
 
-    this.ws.onmessage = (event) => {
+    ws.onmessage = (event) => {
+      if (this.ws !== ws) return;
       if (event.data instanceof ArrayBuffer) {
         this.handleMessage(event.data);
       }
@@ -869,10 +879,17 @@ export class StreamMultiplexer {
     }
     this.closeAllStreams();
     if (this.ws) {
-      this.ws.close();
+      // Null the reference before closing so the socket's own close event
+      // is treated as stale — the "closed" notification below is the only
+      // one listeners receive for an explicit teardown.
+      const ws = this.ws;
       this.ws = null;
+      ws.close();
     }
-    this._status = "closed";
+    if (this._status !== "closed") {
+      this._status = "closed";
+      this.notifyStatusChange("closed");
+    }
   }
 }
 
@@ -966,10 +983,19 @@ export function closeStreamMux(): void {
  * Wait for the stream multiplexer to be ready (status === "open").
  * Returns immediately if already open, or waits up to timeoutMs.
  * @param timeoutMs Maximum time to wait (default 10 seconds)
+ * @param signal Optional caller cancellation signal
  * @returns Promise that resolves to true if ready, false if timeout/error
  */
-export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
-  return new Promise((resolve) => {
+export function waitForStreamMux(
+  timeoutMs = 10000,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortSignalError(signal));
+      return;
+    }
+
     const mux = instance;
     if (!mux) {
       resolve(false);
@@ -986,22 +1012,56 @@ export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
       return;
     }
 
-    // Wait for status change
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", handleAbort);
+      unsubscribe();
+      resolve(ready);
+    };
+    const handleAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", handleAbort);
+      unsubscribe();
+      reject(abortSignalError(signal));
+    };
     const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
+      finish(false);
     }, timeoutMs);
 
-    const cleanup = mux.addStatusListener((status) => {
+    unsubscribe = mux.addStatusListener((status) => {
       if (status === "open") {
-        clearTimeout(timeout);
-        cleanup();
-        resolve(true);
+        finish(true);
       } else if (status === "closed" || status === "error") {
-        clearTimeout(timeout);
-        cleanup();
-        resolve(false);
+        finish(false);
       }
     });
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    const readCurrentStatus = (): MuxStatus => mux.status;
+    const statusAfterSubscribe = readCurrentStatus();
+    if (signal?.aborted) {
+      handleAbort();
+    } else if (statusAfterSubscribe === "open") {
+      finish(true);
+    } else if (
+      statusAfterSubscribe === "closed" ||
+      statusAfterSubscribe === "error"
+    ) {
+      finish(false);
+    }
   });
+}
+
+function abortSignalError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
+  const error = new Error("Operation cancelled");
+  error.name = "AbortError";
+  return error;
 }

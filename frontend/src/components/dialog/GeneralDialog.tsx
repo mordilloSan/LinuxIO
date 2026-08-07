@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 import { AppDialog, AppDialogProps } from "@/components/ui/AppDialog";
 import { useAppTheme } from "@/theme";
@@ -6,14 +6,14 @@ import { alpha } from "@/utils/color";
 
 interface GeneralDialogProps extends AppDialogProps {
   /** Extra styles merged onto the paper */
-  paperStyle?: React.CSSProperties;
+  paperStyle?: CSSProperties;
 }
 
-const GeneralDialog: React.FC<GeneralDialogProps> = ({
+const GeneralDialog = ({
   children,
   paperStyle,
   ...dialogProps
-}) => {
+}: GeneralDialogProps) => {
   const theme = useAppTheme();
 
   return (

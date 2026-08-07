@@ -1,19 +1,16 @@
-import React from "react";
+import { forwardRef, type ChangeEvent, type InputHTMLAttributes } from "react";
 
 import "./app-switch.css";
 
 export interface AppSwitchProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
+  InputHTMLAttributes<HTMLInputElement>,
   "size" | "type" | "onChange"
 > {
-  onChange?: (
-    event: React.ChangeEvent<HTMLInputElement>,
-    checked: boolean,
-  ) => void;
+  onChange?: (event: ChangeEvent<HTMLInputElement>, checked: boolean) => void;
   size?: "small" | "medium";
 }
 
-const AppSwitch = React.forwardRef<HTMLInputElement, AppSwitchProps>(
+const AppSwitch = forwardRef<HTMLInputElement, AppSwitchProps>(
   ({ size = "medium", onChange, className, ...rest }, ref) => {
     const cls = [
       "app-switch",
@@ -23,7 +20,7 @@ const AppSwitch = React.forwardRef<HTMLInputElement, AppSwitchProps>(
       .filter(Boolean)
       .join(" ");
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
       onChange?.(e, e.target.checked);
     };
 

@@ -1,5 +1,16 @@
+import {
+  columnVisibilityFeature,
+  createExpandedRowModel,
+  createSortedRowModel,
+  rowExpandingFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_datetime,
+  sortFn_text,
+  tableFeatures,
+} from "@tanstack/react-table";
 import type { ColumnDef, RowData } from "@tanstack/react-table";
-import type React from "react";
+import type { CSSProperties } from "react";
 
 export type AppDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
 
@@ -8,31 +19,43 @@ export type AppDataTableCellRenderKey = unknown | readonly unknown[];
 export interface AppDataTableColumnMeta {
   align?: "left" | "center" | "right";
   cellClassName?: string;
-  cellStyle?: React.CSSProperties;
+  cellStyle?: CSSProperties;
   className?: string;
   getCellRenderKey?: (
     row: unknown,
     rowIndex: number,
   ) => AppDataTableCellRenderKey;
   headerClassName?: string;
-  headerStyle?: React.CSSProperties;
+  headerStyle?: CSSProperties;
   hideBelow?: AppDataTableBreakpoint;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   width?: string | number;
 }
 
-/* eslint-disable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars */
-declare module "@tanstack/react-table" {
-  interface ColumnMeta<
-    TData extends RowData,
-    TValue,
-  > extends AppDataTableColumnMeta {}
-}
-/* eslint-enable @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unused-vars */
+// v9 tree-shakeable feature registry, shared by AppDataTable and
+// AppVirtualDataTable: only sorting, expanding, and responsive column
+// visibility ship in the bundle. The type-only `columnMeta` slot replaces the
+// v8 `declare module` ColumnMeta augmentation.
 
-export type AppDataTableColumnDef<TData, TValue = unknown> = ColumnDef<
-  TData,
-  TValue
-> & {
+export const appTableFeatures = tableFeatures({
+  columnVisibilityFeature,
+  rowExpandingFeature,
+  rowSortingFeature,
+  expandedRowModel: createExpandedRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    datetime: sortFn_datetime,
+    text: sortFn_text,
+  },
+  columnMeta: {} as AppDataTableColumnMeta,
+});
+
+export type AppTableFeatures = typeof appTableFeatures;
+
+export type AppDataTableColumnDef<
+  TData extends RowData,
+  TValue = unknown,
+> = ColumnDef<AppTableFeatures, TData, TValue> & {
   meta?: AppDataTableColumnMeta;
 };

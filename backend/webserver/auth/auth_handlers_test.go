@@ -25,6 +25,7 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 
 	// private (with session middleware)
 	mux.Handle("POST /auth/logout", h.SM.RequireSession(http.HandlerFunc(h.Logout)))
+	mux.Handle("GET /api/update-info", h.SM.RequireSession(http.HandlerFunc(h.UpdateInfo)))
 
 	return mux
 }
@@ -66,6 +67,36 @@ func assertResponseFields(t *testing.T, resp map[string]any, fields map[string]a
 	}
 }
 
+var capabilityJSONKeys = []string{
+	"docker_available", "watchtower_available", "indexer_available", "monitoring_available",
+	"lm_sensors_available", "memory_inventory_available", "smartmontools_available",
+	"packagekit_available", "nfs_client_available", "nfs_server_available", "samba_server_available",
+	"samba_client_available", "tuned_available", "avahi_available", "wireguard_available", "libvirt_available",
+}
+
+func assertLoginOmitsCapabilities(t *testing.T, resp map[string]any) {
+	t.Helper()
+	for _, key := range capabilityJSONKeys {
+		if _, ok := resp[key]; ok {
+			t.Fatalf("login response unexpectedly contains capability field %q", key)
+		}
+	}
+}
+
+func sessionCookie(t *testing.T, sm *session.Manager, privileged bool) *http.Cookie {
+	t.Helper()
+	id, err := sm.NewSessionID()
+	if err != nil {
+		t.Fatalf("new session ID: %v", err)
+	}
+	if _, err := sm.CreateSession(id, session.User{Username: "test", UID: 1000, GID: 1000}, privileged); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	w := httptest.NewRecorder()
+	sm.WriteCookie(w, id)
+	return extractCookie(t, w, sm.CookieName())
+}
+
 // --- tests -----------------------------------------------------------------
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
@@ -76,24 +107,10 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	var gotRemoteHost string
-	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
 		gotRemoteHost = remoteHost
-		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
+		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
-			return nil, err
-		}
-		caps := session.CapabilitiesAvailable{
-			DockerAvailable:        true,
-			IndexerAvailable:       false,
-			LMSensorsAvailable:     true,
-			SmartmontoolsAvailable: false,
-			PackageKitAvailable:    true,
-			NFSClientAvailable:     true,
-			NFSServerAvailable:     true,
-			TunedAvailable:         true,
-		}
-		sess.Capabilities = caps
-		if err := sm.SetCapabilities(sessionID, caps); err != nil {
 			return nil, err
 		}
 		return sess, nil
@@ -122,17 +139,13 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
 	assertResponseFields(t, resp, map[string]any{
-		"success":                 true,
-		"privileged":              true,
-		"docker_available":        true,
-		"indexer_available":       false,
-		"lm_sensors_available":    true,
-		"smartmontools_available": false,
-		"packagekit_available":    true,
-		"nfs_client_available":    true,
-		"nfs_server_available":    true,
-		"tuned_available":         true,
+		"success":    true,
+		"privileged": true,
 	})
+	assertLoginOmitsCapabilities(t, resp)
+	if _, ok := resp["update"]; ok {
+		t.Fatalf("login response unexpectedly contains update information: %v", resp["update"])
+	}
 
 	// Session exists and is marked privileged (validated later by websocket)
 	sess, err := sm.GetSession(c.Value)
@@ -145,8 +158,95 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	if gotRemoteHost != "192.0.2.1" {
 		t.Fatalf("remote host = %q, want %q", gotRemoteHost, "192.0.2.1")
 	}
-	if !sess.Capabilities.DockerAvailable || sess.Capabilities.IndexerAvailable || !sess.Capabilities.LMSensorsAvailable || sess.Capabilities.SmartmontoolsAvailable || !sess.Capabilities.PackageKitAvailable || !sess.Capabilities.NFSClientAvailable || !sess.Capabilities.NFSServerAvailable || !sess.Capabilities.TunedAvailable {
-		t.Fatalf("expected session capabilities to persist, got %+v", sess.Capabilities)
+}
+
+func TestUpdateInfo_MissingSessionReturns401ThroughMiddleware(t *testing.T) {
+	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	mux := http.NewServeMux()
+	RegisterAuthRoutes(mux, sm, false)
+
+	w := doJSON(mux, http.MethodGet, "/api/update-info", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateInfo_UnprivilegedReturns204WithoutChecking(t *testing.T) {
+	oldCheck := checkForUpdate
+	t.Cleanup(func() { checkForUpdate = oldCheck })
+	called := false
+	checkForUpdate = func(context.Context) *UpdateInfo {
+		called = true
+		return &UpdateInfo{Available: true}
+	}
+
+	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
+	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, false))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if called {
+		t.Fatal("unprivileged update request invoked checkForUpdate")
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("want empty 204 body, got %q", w.Body.String())
+	}
+}
+
+func TestUpdateInfo_PrivilegedNilReturns204(t *testing.T) {
+	oldCheck := checkForUpdate
+	t.Cleanup(func() { checkForUpdate = oldCheck })
+	called := false
+	checkForUpdate = func(ctx context.Context) *UpdateInfo {
+		called = true
+		if ctx == nil {
+			t.Fatal("checkForUpdate received nil context")
+		}
+		return nil
+	}
+
+	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
+	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Fatal("privileged update request did not invoke checkForUpdate")
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("want empty 204 body, got %q", w.Body.String())
+	}
+}
+
+func TestUpdateInfo_PrivilegedResultReturnsExactJSON(t *testing.T) {
+	oldCheck := checkForUpdate
+	t.Cleanup(func() { checkForUpdate = oldCheck })
+	want := &UpdateInfo{
+		Available:      true,
+		CurrentVersion: "v1.2.3",
+		LatestVersion:  "v1.3.0",
+		ReleaseURL:     "https://example.test/linuxio/releases/v1.3.0",
+	}
+	checkForUpdate = func(context.Context) *UpdateInfo { return want }
+
+	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
+	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got UpdateInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if got != *want {
+		t.Fatalf("update response = %+v, want %+v", got, *want)
 	}
 }
 
@@ -225,12 +325,12 @@ func TestClientRemoteHost_FallsBackToForwardedWhenEarlierHeadersOnlyHaveTrustedP
 	}
 }
 
-func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) {
+func TestLogin_Success_OmitsCapabilities(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
-		sess, err := sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
 		}
@@ -251,23 +351,15 @@ func TestLogin_Success_ReturnsFallbackCapabilitiesWhenUnavailable(t *testing.T) 
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal login response: %v", err)
 	}
-	assertResponseFields(t, resp, map[string]any{
-		"docker_available":        false,
-		"indexer_available":       false,
-		"lm_sensors_available":    false,
-		"smartmontools_available": false,
-		"packagekit_available":    false,
-		"nfs_client_available":    false,
-		"nfs_server_available":    false,
-		"tuned_available":         false,
-	})
+	assertResponseFields(t, resp, map[string]any{"success": true, "privileged": false})
+	assertLoginOmitsCapabilities(t, resp)
 }
 
 func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    authipc.ResultAuthFailed,
 			Message: "authentication failed",
@@ -303,7 +395,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		return nil, &bridge.AuthError{
 			Code:    authipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
@@ -340,7 +432,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	// reached, which (per Login) only happens after the semaphore is acquired.
 	block := make(chan struct{})
 	entered := make(chan struct{}, 1)
-	startBridge = func(context.Context, *session.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
 		select {
 		case entered <- struct{}{}:
 		default:
@@ -394,8 +486,8 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ context.Context, sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
-		return sm.CreateSessionWithID(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
+	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+		return sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})

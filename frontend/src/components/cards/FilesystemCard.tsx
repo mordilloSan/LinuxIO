@@ -1,4 +1,4 @@
-import React from "react";
+import { useId } from "react";
 
 import { type FilesystemInfo, type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -38,7 +38,7 @@ interface FilesystemCardDetailsProps {
   subvolumeName: string;
 }
 
-const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
+const FilesystemCardDetails = ({
   filesystem,
   backingDrive,
   nfsMount,
@@ -50,12 +50,12 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
-}) => {
+}: FilesystemCardDetailsProps) => {
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
   return (
     <AppCollapse in={true} unmountOnExit>
-      <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      <div>
         <AppDivider style={{ margin: "16px 0" }} />
 
         <div
@@ -236,7 +236,6 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
               onChange={(event) =>
                 onSubvolumeNameChange(filesystem.mountpoint, event.target.value)
               }
-              onClick={(event) => event.stopPropagation()}
               placeholder="@data"
               size="small"
               style={{ minWidth: 220, flex: "1 1 220px" }}
@@ -274,7 +273,7 @@ export interface FilesystemCardProps {
   subvolumeName: string;
 }
 
-const FilesystemCard: React.FC<FilesystemCardProps> = ({
+const FilesystemCard = ({
   filesystem,
   selected,
   backingDrive,
@@ -288,77 +287,91 @@ const FilesystemCard: React.FC<FilesystemCardProps> = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
-}) => (
-  <FrostedCard
-    aria-label={`Toggle details for ${filesystem.mountpoint}`}
-    hoverLift={!selected}
-    onClick={onClick}
-    onKeyDown={(event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        onClick();
-      }
-    }}
-    role="button"
-    style={{
-      padding: 8,
-      cursor: "pointer",
-    }}
-    tabIndex={0}
-  >
-    <AppTypography
-      fontWeight={600}
-      noWrap
-      title={filesystem.mountpoint}
-      variant="subtitle2"
-    >
-      {filesystem.mountpoint}
-    </AppTypography>
-    <AppTypography
-      color="text.secondary"
-      noWrap
-      style={{ marginBottom: 6 }}
-      title={`${filesystem.device} (${filesystem.fstype})`}
-      variant="body2"
-    >
-      {filesystem.device} ({filesystem.fstype})
-    </AppTypography>
-    <AppLinearProgress
-      color={
-        filesystem.usedPercent > 90
-          ? "error"
-          : filesystem.usedPercent > 70
-            ? "warning"
-            : "primary"
-      }
+}: FilesystemCardProps) => {
+  const detailsId = useId();
+
+  return (
+    <FrostedCard
+      hoverLift={!selected}
       style={{
-        height: 8,
-        borderRadius: 4,
-        marginBottom: 8,
+        padding: 8,
       }}
-      value={filesystem.usedPercent}
-      variant="determinate"
-    />
-    <AppTypography color="text.secondary" variant="body2">
-      {formatFileSize(filesystem.used)} / {formatFileSize(filesystem.total)} (
-      {filesystem.usedPercent.toFixed(1)}%)
-    </AppTypography>
-    {selected && (
-      <FilesystemCardDetails
-        backingDrive={backingDrive}
-        filesystem={filesystem}
-        isCreatingSubvolume={isCreatingSubvolume}
-        isUnmounting={isUnmounting}
-        nfsMount={nfsMount}
-        onBrowse={onBrowse}
-        onCreateSubvolume={onCreateSubvolume}
-        onInspectDrive={onInspectDrive}
-        onSubvolumeNameChange={onSubvolumeNameChange}
-        onUnmount={onUnmount}
-        subvolumeName={subvolumeName}
-      />
-    )}
-  </FrostedCard>
-);
+    >
+      <AppButton
+        aria-controls={detailsId}
+        aria-expanded={selected}
+        aria-label={`Toggle details for ${filesystem.mountpoint}`}
+        color="inherit"
+        fullWidth
+        onClick={onClick}
+        style={{
+          alignItems: "stretch",
+          background: "transparent",
+          border: 0,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          padding: 0,
+          textAlign: "left",
+        }}
+      >
+        <AppTypography
+          fontWeight={600}
+          noWrap
+          title={filesystem.mountpoint}
+          variant="subtitle2"
+        >
+          {filesystem.mountpoint}
+        </AppTypography>
+        <AppTypography
+          color="text.secondary"
+          noWrap
+          style={{ marginBottom: 6 }}
+          title={`${filesystem.device} (${filesystem.fstype})`}
+          variant="body2"
+        >
+          {filesystem.device} ({filesystem.fstype})
+        </AppTypography>
+        <AppLinearProgress
+          color={
+            filesystem.usedPercent > 90
+              ? "error"
+              : filesystem.usedPercent > 70
+                ? "warning"
+                : "primary"
+          }
+          style={{
+            height: 8,
+            borderRadius: 4,
+            marginBottom: 8,
+          }}
+          value={filesystem.usedPercent}
+          variant="determinate"
+        />
+        <AppTypography color="text.secondary" variant="body2">
+          {formatFileSize(filesystem.used)} / {formatFileSize(filesystem.total)}{" "}
+          ({filesystem.usedPercent.toFixed(1)}%)
+        </AppTypography>
+      </AppButton>
+      <div id={detailsId}>
+        {selected && (
+          <FilesystemCardDetails
+            backingDrive={backingDrive}
+            filesystem={filesystem}
+            isCreatingSubvolume={isCreatingSubvolume}
+            isUnmounting={isUnmounting}
+            nfsMount={nfsMount}
+            onBrowse={onBrowse}
+            onCreateSubvolume={onCreateSubvolume}
+            onInspectDrive={onInspectDrive}
+            onSubvolumeNameChange={onSubvolumeNameChange}
+            onUnmount={onUnmount}
+            subvolumeName={subvolumeName}
+          />
+        )}
+      </div>
+    </FrostedCard>
+  );
+};
 
 export default FilesystemCard;

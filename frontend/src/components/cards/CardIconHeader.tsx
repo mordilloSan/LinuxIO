@@ -1,27 +1,27 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
 import { GAP_SM } from "@/theme/constants";
 
 export interface CardIconHeaderProps {
-  icon: React.ReactNode;
+  icon: ReactNode;
   /** Content rendered on the right side (chips, buttons, dropdowns…). */
-  right?: React.ReactNode;
-  style?: React.CSSProperties;
-  subtitle?: React.ReactNode;
-  title: React.ReactNode;
+  right?: ReactNode;
+  style?: CSSProperties;
+  subtitle?: ReactNode;
+  title: ReactNode;
   /** Content rendered inline, immediately after the title. */
-  titleSuffix?: React.ReactNode;
+  titleSuffix?: ReactNode;
 }
 
-const CardIconHeader: React.FC<CardIconHeaderProps> = ({
+const CardIconHeader = ({
   icon,
   title,
   subtitle,
   titleSuffix,
   right,
   style,
-}) => (
+}: CardIconHeaderProps) => (
   <div
     style={{
       display: "flex",

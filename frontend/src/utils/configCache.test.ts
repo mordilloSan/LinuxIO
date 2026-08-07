@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { AppConfig } from "@/api";
 import {
   clearConfigCache,
   readConfigCache,
   writeConfigCache,
 } from "@/utils/configCache";
-import type { AppConfig } from "@/api";
 
 const config = {
   appSettings: {

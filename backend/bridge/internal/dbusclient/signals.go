@@ -55,10 +55,6 @@ func WatchObjectSignals(ctx context.Context, path godbus.ObjectPath, buffer int,
 	})
 }
 
-func CloseSignals(ctx context.Context) error {
-	return signals.close(ctx)
-}
-
 func (s *SignalSubscription) Chan() <-chan *godbus.Signal {
 	if s == nil {
 		return nil
@@ -280,35 +276,6 @@ func (m *signalManager) closeSubscription(ctx context.Context, sub *SignalSubscr
 	m.mu.Unlock()
 
 	return conn.RemoveMatchSignalContext(ctx, options...)
-}
-
-func (m *signalManager) close(ctx context.Context) error {
-	ctx = requireContext(ctx)
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	m.mu.Lock()
-	for sub := range m.subs {
-		sub.closeOnce.Do(func() {
-			// Closing the shared connection drops the bus-side match rules, so
-			// individual subscriptions intentionally retain a nil closeErr.
-			close(sub.ch)
-		})
-	}
-	m.subs = nil
-	m.matchRefs = nil
-	m.raw = nil
-
-	if m.conn == nil {
-		m.mu.Unlock()
-		return nil
-	}
-
-	conn := m.conn
-	m.conn = nil
-	m.mu.Unlock()
-	return conn.Close()
 }
 
 func (m *signalManager) closeSubscriptionsFromDispatcher(raw <-chan *godbus.Signal) {

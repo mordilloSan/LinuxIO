@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// Max lengths for fields (used for validation)
+// Max lengths for fields, matching the C daemon's buffer sizes (which
+// include the NUL terminator): the maximum accepted string length is N-1
+// bytes. Keep in sync with backend/auth/linuxio_protocol.h.
 const (
 	MaxUsername   = 256
 	MaxPassword   = 2048
@@ -66,8 +69,33 @@ type AuthResponse struct {
 	Error      string
 }
 
+// checkField rejects fields the C daemon cannot represent: its buffers are max
+// bytes including the NUL terminator, and embedded NULs are protocol-ambiguous.
+func checkField(name, s string, max int) error {
+	if len(s) >= max {
+		return fmt.Errorf("%s too long: %d bytes (limit %d)", name, len(s), max-1)
+	}
+	if strings.IndexByte(s, 0) >= 0 {
+		return fmt.Errorf("%s contains a NUL byte", name)
+	}
+	return nil
+}
+
 // WriteAuthRequest writes a binary auth request to the writer.
 func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
+	if err := checkField("user", req.User, MaxUsername); err != nil {
+		return err
+	}
+	if err := checkField("password", req.Password, MaxPassword); err != nil {
+		return err
+	}
+	if err := checkField("session_id", req.SessionID, MaxSessionID); err != nil {
+		return err
+	}
+	if err := checkField("remote_host", req.RemoteHost, MaxRemoteHost); err != nil {
+		return err
+	}
+
 	// Write header
 	var header [AuthReqHeaderSize]byte
 	header[0] = ProtoMagic0

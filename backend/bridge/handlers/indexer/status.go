@@ -18,6 +18,7 @@ type Status struct {
 	NumDirs      int64  `json:"num_dirs"`
 	NumFiles     int64  `json:"num_files"`
 	TotalSize    int64  `json:"total_size"`
+	FTSActive    bool   `json:"fts_active"`
 	LastIndexed  string `json:"last_indexed,omitempty"`
 	TotalIndexes int64  `json:"total_indexes"`
 	TotalEntries int64  `json:"total_entries"`

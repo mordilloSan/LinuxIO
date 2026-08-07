@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 import "./app-skeleton.css";
 import "./app-typography.css";
@@ -23,7 +23,7 @@ type SkeletonTextVariant =
 export interface AppSkeletonProps {
   className?: string;
   height?: number | string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   /**
    * Sizes a text skeleton bar to an AppTypography variant: the bar height
    * (and `ch`-based widths) track the variant font-size straight from
@@ -35,14 +35,14 @@ export interface AppSkeletonProps {
   width?: number | string;
 }
 
-const AppSkeleton: React.FC<AppSkeletonProps> = ({
+const AppSkeleton = ({
   variant = "text",
   textVariant,
   width,
   height,
   className,
   style,
-}) => (
+}: AppSkeletonProps) => (
   <span
     aria-hidden="true"
     className={[

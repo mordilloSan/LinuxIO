@@ -26,11 +26,11 @@ type jobDataRequest struct {
 func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req Request) error {
 	switch req.Route {
 	case "jobs.get":
-		return r.handleJobGet(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobGet)
 	case "jobs.list":
-		return r.handleJobList(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobList)
 	case "jobs.cancel":
-		return r.handleJobCancel(stream, req)
+		return r.dispatchJobQueryPrimitive(ctx, stream, req, r.handleJobCancel)
 	case "jobs.attach":
 		return r.handleJobAttach(stream, req)
 	case "jobs.data":
@@ -44,35 +44,78 @@ func (r *Router) dispatchJobPrimitive(ctx context.Context, stream net.Conn, req 
 	}
 }
 
-func (r *Router) handleJobGet(stream net.Conn, req Request) error {
+type jobQueryPrimitiveHandler func(context.Context, net.Conn, Request) error
+
+func (r *Router) dispatchJobQueryPrimitive(
+	ctx context.Context,
+	stream net.Conn,
+	req Request,
+	handler jobQueryPrimitiveHandler,
+) error {
+	ctx, cleanup := queryAbortContext(ctx, stream)
+	defer cleanup()
+	return handler(ctx, stream, req)
+}
+
+func (r *Router) handleJobGet(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
 	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-func (r *Router) handleJobList(stream net.Conn, req Request) error {
+func (r *Router) handleJobList(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobListRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil {
 		return relay.WriteResultErrorAndClose(stream, 0, "invalid jobs list request", 400)
 	}
+	var snapshots []Snapshot
 	if payload.Status == "active" {
-		return relay.WriteResultOKAndClose(stream, 0, r.registry.ListActiveForOwner(req.Owner))
+		snapshots = r.registry.ListActiveForOwner(req.Owner)
+	} else {
+		snapshots = r.registry.ListForOwner(req.Owner)
 	}
-	return relay.WriteResultOKAndClose(stream, 0, r.registry.ListForOwner(req.Owner))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return relay.WriteResultOKAndClose(stream, 0, snapshots)
 }
 
-func (r *Router) handleJobCancel(stream net.Conn, req Request) error {
+func (r *Router) handleJobCancel(ctx context.Context, stream net.Conn, req Request) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload, err := decodeJobPrimitiveRequest[jobIDRequest](req.RawRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil || payload.JobID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing job id", 400)
 	}
 	job, ok := r.registry.GetForOwner(payload.JobID, req.Owner)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("job not found: %s", payload.JobID), 404)
 	}
@@ -203,38 +246,92 @@ func AttachJobStream(stream net.Conn, job *Job) error {
 	detachCh := make(chan struct{})
 	go monitorClient(stream, abortCh, detachCh)
 
-	events, replay, unsubscribe := job.SubscribeWithReplay(256)
+	// The general-log backlog is deliberately sized to fit this full replay
+	// window. Matching the live channel prevents a subscriber that attaches
+	// before backlog emission from dropping a burst that would otherwise fit
+	// when it attaches afterwards.
+	events, replay, lagged, unsubscribe := job.subscribeWithReplayStatus(DefaultJobProgressReplayLimit)
 	defer unsubscribe()
 
 	snapshot := job.Snapshot()
-	for _, event := range replay {
-		if !writeAttachEvent(stream, event) {
-			return nil
-		}
+	if !writeAttachReplay(stream, replay, lagged) {
+		return nil
 	}
 	if writeTerminalSnapshot(stream, snapshot) {
 		return nil
 	}
+	return streamAttachedJobEvents(stream, job, events, abortCh, detachCh, lagged)
+}
 
+func writeAttachReplay(stream net.Conn, replay []Event, lagged <-chan struct{}) bool {
+	for _, event := range replay {
+		if !writeAttachEvent(stream, event) || stopAttachForLag(stream, lagged) {
+			return false
+		}
+	}
+	return true
+}
+
+func streamAttachedJobEvents(
+	stream net.Conn,
+	job *Job,
+	events <-chan Event,
+	abortCh <-chan struct{},
+	detachCh <-chan struct{},
+	lagged <-chan struct{},
+) error {
 	for {
+		if stopAttachForLag(stream, lagged) {
+			return nil
+		}
 		select {
 		case <-abortCh:
 			job.Cancel()
 			return nil
 		case <-detachCh:
 			return nil
+		case <-lagged:
+			writeAttachLagError(stream)
+			return nil
 		case event, ok := <-events:
-			if !ok {
-				return nil
-			}
-			if !writeAttachEvent(stream, event) {
-				return nil
-			}
-			if event.Type == EventResult || event.Type == EventError || event.Type == EventCanceled {
+			if !ok || !forwardAttachedJobEvent(stream, event, lagged) {
 				return nil
 			}
 		}
 	}
+}
+
+func forwardAttachedJobEvent(stream net.Conn, event Event, lagged <-chan struct{}) bool {
+	if stopAttachForLag(stream, lagged) || !writeAttachEvent(stream, event) {
+		return false
+	}
+	return event.Type != EventResult && event.Type != EventError && event.Type != EventCanceled
+}
+
+func stopAttachForLag(stream net.Conn, lagged <-chan struct{}) bool {
+	if !attachStreamLagged(lagged) {
+		return false
+	}
+	writeAttachLagError(stream)
+	return true
+}
+
+func attachStreamLagged(lagged <-chan struct{}) bool {
+	select {
+	case <-lagged:
+		return true
+	default:
+		return false
+	}
+}
+
+func writeAttachLagError(stream net.Conn) {
+	_ = relay.WriteResultErrorAndClose(
+		stream,
+		0,
+		"job stream fell behind; reconnect to resume",
+		503,
+	)
 }
 
 func decodeJobPrimitiveRequest[T any](raw json.RawMessage) (T, error) {

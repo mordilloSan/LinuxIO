@@ -33,6 +33,10 @@ type fakePackageKit struct {
 	details         map[string][]any
 	installed       []string
 	updated         []string
+	updateCalls     [][]string
+	updateErrors    map[string]string
+	updateHangs     map[string]bool
+	updateStarted   chan string
 	refreshes       int
 	offlineTriggers []string
 	triggerErr      *godbus.Error
@@ -48,16 +52,16 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
-	t.Cleanup(func() {
-		_ = dbusclient.CloseSignals(context.Background())
-	})
 
 	conn := bus.OwnName(t, dbusclient.PackageKitBusName)
 	service := &fakePackageKit{
-		t:        t,
-		conn:     conn,
-		prepared: prepared,
-		details:  make(map[string][]any),
+		t:             t,
+		conn:          conn,
+		prepared:      prepared,
+		details:       make(map[string][]any),
+		updateErrors:  make(map[string]string),
+		updateHangs:   make(map[string]bool),
+		updateStarted: make(chan string, 16),
 	}
 
 	path := godbus.ObjectPath(dbusclient.PackageKitPath)
@@ -146,6 +150,28 @@ func (s *fakePackageKit) updatedPackages() []string {
 	return append([]string(nil), s.updated...)
 }
 
+func (s *fakePackageKit) updatePackageCalls() [][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	updates := make([][]string, len(s.updateCalls))
+	for index, call := range s.updateCalls {
+		updates[index] = append([]string(nil), call...)
+	}
+	return updates
+}
+
+func (s *fakePackageKit) setUpdateError(packageID, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.updateErrors[packageID] = message
+}
+
+func (s *fakePackageKit) setUpdateHang(packageID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.updateHangs[packageID] = true
+}
+
 func (s *fakePackageKit) refreshCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -213,9 +239,22 @@ func (tx *fakeTransaction) InstallPackages(flags uint64, packageIDs []string) *g
 func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *godbus.Error {
 	tx.service.mu.Lock()
 	tx.service.updated = append(tx.service.updated, packageIDs...)
+	tx.service.updateCalls = append(tx.service.updateCalls, append([]string(nil), packageIDs...))
+	packageID := packageIDs[0]
+	updateError := tx.service.updateErrors[packageID]
+	updateHangs := tx.service.updateHangs[packageID]
 	tx.service.mu.Unlock()
+	tx.service.updateStarted <- packageID
+	if updateHangs {
+		return nil
+	}
 	tx.emitLater(func() {
-		tx.emit("Package", uint32(11), packageIDs[0], "Kernel update")
+		if updateError != "" {
+			tx.emit("ErrorCode", uint32(1), updateError)
+			tx.emit("Finished", uint32(1), uint32(0))
+			return
+		}
+		tx.emit("Package", uint32(11), packageID, "Kernel update")
 		_ = tx.service.conn.Emit(
 			tx.path,
 			dbusclient.PropertiesIface+".PropertiesChanged",
@@ -226,7 +265,7 @@ func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *go
 			},
 			[]string{},
 		)
-		tx.emit("ItemProgress", packageIDs[0], uint32(10), uint32(50))
+		tx.emit("ItemProgress", packageID, uint32(10), uint32(50))
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
 	return nil
@@ -369,6 +408,107 @@ func TestUpdatePackagesWithProgressReportsSignals(t *testing.T) {
 	}
 	if !hasProgressType(progress, "package") || !hasProgressType(progress, "status") || !hasProgressType(progress, "percentage") || !hasProgressType(progress, "item_progress") {
 		t.Fatalf("progress frames = %#v", progress)
+	}
+}
+
+func TestUpdatePackagesWithProgressContinuesAfterPackageFailure(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	packageIDs := []string{
+		"first;1.0;x86_64;repo",
+		"blocked;1.0;x86_64;repo",
+		"last;1.0;x86_64;repo",
+	}
+	service.setUpdateError(packageIDs[1], "not available yet")
+	var progress []PkgUpdateProgress
+	report := func(p *PkgUpdateProgress) error {
+		progress = append(progress, *p)
+		return nil
+	}
+
+	err := updatePackagesWithProgress(context.Background(), packageIDs, report)
+	if err == nil || !strings.Contains(err.Error(), packageIDs[1]) || !strings.Contains(err.Error(), "not available yet") {
+		t.Fatalf("error = %v, want aggregated failed package", err)
+	}
+	if !strings.Contains(err.Error(), "updated 2 of 3 packages; 1 failed") {
+		t.Fatalf("error = %q, want partial-success counts", err)
+	}
+	if got := service.updatePackageCalls(); !slices.EqualFunc(got, [][]string{{packageIDs[0]}, {packageIDs[1]}, {packageIDs[2]}}, slices.Equal) {
+		t.Fatalf("UpdatePackages calls = %#v, want one call per package", got)
+	}
+
+	var percentages []uint32
+	var continued bool
+	var completedPackages int
+	for _, frame := range progress {
+		if frame.Percentage != nil {
+			percentages = append(percentages, *frame.Percentage)
+		}
+		if strings.Contains(frame.Message, "Continuing with remaining updates") {
+			continued = true
+		}
+		if strings.HasPrefix(frame.Status, "Completed package ") {
+			completedPackages++
+		}
+	}
+	if !continued {
+		t.Fatalf("progress frames = %#v, want failure continuation message", progress)
+	}
+	if completedPackages != 2 {
+		t.Fatalf("completed package frames = %d, want 2", completedPackages)
+	}
+	for index := 1; index < len(percentages); index++ {
+		if percentages[index] < percentages[index-1] {
+			t.Fatalf("percentages = %#v, want monotonic progress", percentages)
+		}
+	}
+	if len(percentages) == 0 || percentages[len(percentages)-1] != 100 {
+		t.Fatalf("percentages = %#v, want final 100", percentages)
+	}
+}
+
+func TestUpdatePackagesWithProgressPreservesSinglePackageError(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	const packageID = "blocked;1.0;x86_64;repo"
+	service.setUpdateError(packageID, "not available yet")
+
+	err := updatePackagesWithProgress(
+		context.Background(),
+		[]string{packageID},
+		func(*PkgUpdateProgress) error { return nil },
+	)
+	if err == nil || err.Error() != "PackageKit error 1: not available yet" {
+		t.Fatalf("error = %v, want original single-package error", err)
+	}
+}
+
+func TestUpdatePackagesWithProgressStopsOnCancellation(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	packageIDs := []string{
+		"first;1.0;x86_64;repo",
+		"last;1.0;x86_64;repo",
+	}
+	service.setUpdateHang(packageIDs[0])
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- updatePackagesWithProgress(ctx, packageIDs, func(*PkgUpdateProgress) error { return nil })
+	}()
+
+	select {
+	case started := <-service.updateStarted:
+		if started != packageIDs[0] {
+			t.Fatalf("started package = %q, want %q", started, packageIDs[0])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first package update to start")
+	}
+	cancel()
+	err := <-errCh
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+	if got := service.updatePackageCalls(); !slices.EqualFunc(got, [][]string{{packageIDs[0]}}, slices.Equal) {
+		t.Fatalf("UpdatePackages calls = %#v, want cancellation to stop the batch", got)
 	}
 }
 

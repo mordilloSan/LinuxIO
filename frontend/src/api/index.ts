@@ -2,10 +2,9 @@
  * LinuxIO API - Unified Entry Point
  *
  * JSON API (generated, Go-owned request/response contracts):
- *   await linuxio.system.get_cpu_info()
- *   await linuxio.jobs.cancel(jobId)
- *   linuxio.system.get_cpu_info.useQuery()
- *   linuxio.docker.start_container.useMutation()
+ *   useQuery(linuxio.system.get_cpu_info.queryOptions())
+ *   linuxio.docker.start_container.useAction({ invalidates, success, error })
+ *   linuxio.docker.compose.useJobStreamAction({ onProgress })
  *
  * Streaming API (persistent/long-lived streams):
  *   const stream = openTerminalStream(cols, rows);
@@ -15,6 +14,12 @@
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
 export { CACHE_TTL_MS } from "./react-query";
+export type {
+  ActionConfig,
+  EndpointCache,
+  JobStreamActionConfig,
+  JobStreamActionResult,
+} from "./react-query";
 export {
   ROUTE_MODES,
   getRouteMode,
@@ -22,17 +27,19 @@ export {
 } from "./generated/route-metadata";
 export type { RouteMode } from "./generated/route-metadata";
 export {
+  isJobCancellationError,
   isJobSnapshot,
-  isJobLocallyHandled,
   isTerminalJobState,
   jobSnapshotResult,
+  JOB_CANCELED_CODE,
 } from "./jobs";
 
 // === API Error Type ===
-export { LinuxIOError } from "./linuxio-core";
+export { LinuxIOError, ensureLoaderRequestReady } from "./linuxio-core";
 
 // === React Hooks ===
-export { useStreamMux, useIsUpdating } from "./linuxio";
+export { useStreamMux } from "./linuxio";
+export { isRequestAvailable, subscribeRequestAvailability } from "./linuxio";
 
 // === Connection Utilities ===
 export { isConnected, getStatus } from "./linuxio";
@@ -74,6 +81,8 @@ export {
   streamWriteChunks,
 } from "./stream-helpers";
 export type * from "./stream-helpers";
+export { uploadContent } from "./uploads";
+export type { UploadContentOptions } from "./uploads";
 export {
   createStreamMessageChannel,
   StreamMessageChannel,

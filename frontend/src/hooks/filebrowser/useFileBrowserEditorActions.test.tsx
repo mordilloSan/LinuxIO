@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserEditorActions";
+import type { EditorSlice } from "@/hooks/filebrowser/useFileEditor";
 import { act, renderHook } from "@/test/render";
 
 const toastMocks = vi.hoisted(() => ({
@@ -12,12 +13,8 @@ const toastMocks = vi.hoisted(() => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
-  isConnected: vi.fn(),
-  openJobDataStream: vi.fn(),
-  upload: vi.fn(),
+  uploadContent: vi.fn(),
 }));
-
-const runChunkedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("sonner", () => ({
   toast: {
@@ -32,51 +29,48 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
-    isConnected: apiMocks.isConnected,
-    linuxio: {
-      ...actual.linuxio,
-      filebrowser: {
-        ...actual.linuxio.filebrowser,
-        upload: apiMocks.upload,
-      },
-    },
-    openJobDataStream: apiMocks.openJobDataStream,
+    uploadContent: apiMocks.uploadContent,
   };
 });
 
-vi.mock("@/hooks/useConfig", () => ({
-  useConfig: () => ({ config: { appSettings: { chunkSizeMB: 1 } } }),
-}));
-
-vi.mock("@/hooks/useStreamResult", () => ({
-  useStreamResult: () => ({ runChunked: runChunkedMock }),
-}));
-
-type Params = Parameters<typeof useFileBrowserEditorActions>[0];
-
 function editorRef(content = "file body"): RefObject<FileEditorHandle | null> {
   return {
-    current: { getContent: () => content } as unknown as FileEditorHandle,
+    current: {
+      getContent: () => content,
+      isDirty: () => true,
+      save: vi.fn(async () => true),
+    },
   };
 }
 
-function setup(overrides: Partial<Params> = {}, client?: QueryClient) {
+function editorSlice(overrides: Partial<EditorSlice> = {}): EditorSlice {
+  return {
+    actions: {
+      close: vi.fn(),
+      dismissClosePrompt: vi.fn(),
+      openFile: vi.fn(),
+      promptClose: vi.fn(),
+      setDirty: vi.fn(),
+      setSaving: vi.fn(),
+    },
+    closeEditorDialog: false,
+    editingPath: "/srv/note.md",
+    editorRef: editorRef(),
+    isEditorDirty: false,
+    isSavingFile: false,
+    showQuickSave: true,
+    ...overrides,
+  };
+}
+
+function setup(overrides: Partial<EditorSlice> = {}, client?: QueryClient) {
   const queryClient =
     client ??
     new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
 
-  const params: Params = {
-    editingPath: "/srv/note.md",
-    editorRef: editorRef(),
-    isEditorDirty: false,
-    setCloseEditorDialog: vi.fn(),
-    setEditingPath: vi.fn(),
-    setIsEditorDirty: vi.fn(),
-    setIsSavingFile: vi.fn(),
-    ...overrides,
-  };
+  const editor = editorSlice(overrides);
 
   function wrapper({ children }: { children: ReactNode }) {
     return (
@@ -84,55 +78,51 @@ function setup(overrides: Partial<Params> = {}, client?: QueryClient) {
     );
   }
 
-  const utils = renderHook(() => useFileBrowserEditorActions(params), {
+  const utils = renderHook(() => useFileBrowserEditorActions({ editor }), {
     wrapper,
   });
-  return { ...utils, params, queryClient };
+  return { ...utils, editor, queryClient };
 }
 
 describe("useFileBrowserEditorActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.isConnected.mockReturnValue(true);
-    apiMocks.upload.mockResolvedValue({ id: "job-1" });
-    runChunkedMock.mockResolvedValue(undefined);
+    apiMocks.uploadContent.mockResolvedValue(undefined);
   });
 
   describe("close flow", () => {
     it("prompts for confirmation when there are unsaved changes", () => {
-      const { result, params } = setup({ isEditorDirty: true });
+      const { result, editor } = setup({ isEditorDirty: true });
 
       act(() => result.current.handleCloseEditor());
 
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(true);
-      expect(params.setEditingPath).not.toHaveBeenCalled();
+      expect(editor.actions.promptClose).toHaveBeenCalledTimes(1);
+      expect(editor.actions.close).not.toHaveBeenCalled();
     });
 
     it("closes immediately when the editor is clean", () => {
-      const { result, params } = setup({ isEditorDirty: false });
+      const { result, editor } = setup({ isEditorDirty: false });
 
       act(() => result.current.handleCloseEditor());
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
+      expect(editor.actions.promptClose).not.toHaveBeenCalled();
     });
 
     it("keeps editing by dismissing the confirm dialog", () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       act(() => result.current.handleKeepEditing());
 
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.dismissClosePrompt).toHaveBeenCalledTimes(1);
     });
 
     it("discards changes and exits", () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       act(() => result.current.handleDiscardAndExit());
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -142,98 +132,86 @@ describe("useFileBrowserEditorActions", () => {
         defaultOptions: { queries: { retry: false } },
       });
       const invalidateSpy = vi.spyOn(client, "invalidateQueries");
-      const { result, params } = setup(
+      const { result, editor } = setup(
         { editorRef: editorRef("hello") },
         client,
       );
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
-      expect(apiMocks.upload).toHaveBeenCalledWith({
-        overwrite: true,
-        size: "5",
-        targetPath: "/srv/note.md",
-      });
-      expect(runChunkedMock).toHaveBeenCalledTimes(1);
-      expect(runChunkedMock.mock.calls[0][0]).toMatchObject({
+      expect(apiMocks.uploadContent).toHaveBeenCalledTimes(1);
+      const [path, bytes, options] = apiMocks.uploadContent.mock.calls[0];
+      expect(path).toBe("/srv/note.md");
+      expect(bytes).toHaveLength(5);
+      expect(options).toEqual({
         chunkSize: 1024 * 1024,
+        onJobStart: expect.any(Function),
+        overwrite: true,
       });
       expect(toastMocks.success).toHaveBeenCalledWith(
         "File saved successfully!",
         expect.anything(),
       );
-      expect(params.setIsEditorDirty).toHaveBeenCalledWith(false);
-      expect(params.setIsSavingFile).toHaveBeenNthCalledWith(1, true);
-      expect(params.setIsSavingFile).toHaveBeenLastCalledWith(false);
+      expect(editor.actions.setSaving).toHaveBeenNthCalledWith(1, true);
+      expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("aborts the save when the stream is not connected", async () => {
-      apiMocks.isConnected.mockReturnValue(false);
-      const { result, params } = setup();
-
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
-
-      expect(toastMocks.error).toHaveBeenCalledWith(
-        "Stream connection not ready",
-        expect.anything(),
-      );
-      expect(apiMocks.upload).not.toHaveBeenCalled();
-      expect(params.setIsSavingFile).not.toHaveBeenCalled();
-    });
-
     it("does nothing when there is no editor or path", async () => {
-      const { result, params } = setup({ editingPath: null });
+      const { result, editor } = setup({ editingPath: null });
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
-      expect(apiMocks.upload).not.toHaveBeenCalled();
-      expect(params.setIsSavingFile).not.toHaveBeenCalled();
+      expect(apiMocks.uploadContent).not.toHaveBeenCalled();
+      expect(editor.actions.setSaving).not.toHaveBeenCalled();
     });
 
     it("surfaces a save error and clears the saving flag", async () => {
-      runChunkedMock.mockRejectedValue(new Error("stream broke"));
-      const { result, params } = setup();
+      apiMocks.uploadContent.mockRejectedValue(new Error("stream broke"));
+      const { result, editor } = setup();
 
-      await act(async () => {
-        await result.current.handleSaveFile();
-      });
+      await act(() => result.current.handleSaveContent("hello"));
 
       expect(toastMocks.error).toHaveBeenCalledWith(
         "stream broke",
         expect.anything(),
       );
-      expect(params.setIsSavingFile).toHaveBeenLastCalledWith(false);
+      expect(editor.actions.setSaving).toHaveBeenLastCalledWith(false);
+    });
+
+    it("routes save requests through the editor handle", async () => {
+      const ref = editorRef();
+      const { result } = setup({ editorRef: ref });
+
+      await act(async () => {
+        await result.current.handleSaveFile();
+      });
+
+      expect(ref.current?.save).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("save-and-exit flow", () => {
     it("exits after a successful save", async () => {
-      const { result, params } = setup();
+      const { result, editor } = setup();
 
       await act(async () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(params.setEditingPath).toHaveBeenCalledWith(null);
-      expect(params.setCloseEditorDialog).toHaveBeenCalledWith(false);
+      expect(editor.actions.close).toHaveBeenCalledTimes(1);
     });
 
     it("stays open when the save fails", async () => {
-      apiMocks.isConnected.mockReturnValue(false);
-      const { result, params } = setup();
+      const ref = editorRef();
+      vi.mocked(ref.current!.save).mockResolvedValue(false);
+      const { result, editor } = setup({ editorRef: ref });
 
       await act(async () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(params.setEditingPath).not.toHaveBeenCalled();
+      expect(editor.actions.close).not.toHaveBeenCalled();
     });
   });
 });

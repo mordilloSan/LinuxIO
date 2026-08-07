@@ -17,23 +17,25 @@ import (
 const maxIndexerConfigPayloadBytes = 1 << 20
 
 type configPatch struct {
-	IndexPath            *string `json:"index_path,omitempty"`
-	IndexName            *string `json:"index_name,omitempty"`
-	IncludeHidden        *bool   `json:"include_hidden,omitempty"`
-	IncludeNetworkMounts *bool   `json:"include_network_mounts,omitempty"`
-	FreshIndex           *bool   `json:"fresh_index,omitempty"`
-	KeepIndexes          *int    `json:"keep_indexes,omitempty"`
-	DBPath               *string `json:"db_path,omitempty"`
-	DBBusyTimeout        *string `json:"db_busy_timeout,omitempty"`
-	DBJournalMode        *string `json:"db_journal_mode,omitempty"`
-	DBSynchronous        *string `json:"db_synchronous,omitempty"`
-	DBAutoVacuum         *string `json:"db_auto_vacuum,omitempty"`
-	DBMaxOpenConns       *int    `json:"db_max_open_conns,omitempty"`
-	DBMaxIdleConns       *int    `json:"db_max_idle_conns,omitempty"`
-	DBConnMaxIdleTime    *string `json:"db_conn_max_idle_time,omitempty"`
-	SocketPath           *string `json:"socket_path,omitempty"`
-	ListenAddr           *string `json:"listen_addr,omitempty"`
-	Interval             *string `json:"interval,omitempty"`
+	IndexPath            *string                          `json:"index_path,omitempty"`
+	IndexName            *string                          `json:"index_name,omitempty"`
+	IncludeHidden        *bool                            `json:"include_hidden,omitempty"`
+	IncludeNetworkMounts *bool                            `json:"include_network_mounts,omitempty"`
+	FreshIndex           *bool                            `json:"fresh_index,omitempty"`
+	FTSSearch            *bool                            `json:"fts_search,omitempty"`
+	KeepIndexes          *int                             `json:"keep_indexes,omitempty"`
+	IntegrityCheck       *apischema.IndexerIntegrityCheck `json:"integrity_check,omitempty"`
+	DBPath               *string                          `json:"db_path,omitempty"`
+	DBBusyTimeout        *string                          `json:"db_busy_timeout,omitempty"`
+	DBJournalMode        *string                          `json:"db_journal_mode,omitempty"`
+	DBSynchronous        *string                          `json:"db_synchronous,omitempty"`
+	DBAutoVacuum         *string                          `json:"db_auto_vacuum,omitempty"`
+	DBMaxOpenConns       *int                             `json:"db_max_open_conns,omitempty"`
+	DBMaxIdleConns       *int                             `json:"db_max_idle_conns,omitempty"`
+	DBConnMaxIdleTime    *string                          `json:"db_conn_max_idle_time,omitempty"`
+	SocketPath           *string                          `json:"socket_path,omitempty"`
+	ListenAddr           *string                          `json:"listen_addr,omitempty"`
+	Interval             *string                          `json:"interval,omitempty"`
 }
 
 func FetchConfig(ctx context.Context) (apischema.IndexerConfig, error) {

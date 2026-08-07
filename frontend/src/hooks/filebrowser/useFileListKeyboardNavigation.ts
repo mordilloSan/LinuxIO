@@ -1,10 +1,11 @@
-import { useEffect, useEffectEvent, useLayoutEffect } from "react";
+import { useEffect, useEffectEvent, type RefObject } from "react";
 
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
   allItems: FileItem[];
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: RefObject<HTMLDivElement>;
   focusedIndex: number;
   global?: boolean; // Listen to document events instead of container events
   onDelete?: () => void;
@@ -35,6 +36,13 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
+    // Dialogs autofocus their action button, which passes the guard above;
+    // handling Escape here would preventDefault before the overlay's own
+    // handler sees it, clearing the selection while the dialog stays open.
+    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) {
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
       onSelectionChange(new Set());
@@ -60,8 +68,9 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
-    // CTRL+A to select all
-    if (e.ctrlKey && e.key === "a") {
+    // CTRL+A to select all (key is compared lowercased so CapsLock cannot
+    // break the match; Shift is excluded to keep Ctrl+Shift+A inert)
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
       const allPaths = new Set(allItems.map((item) => item.path));
       onSelectionChange(allPaths);
@@ -132,23 +141,7 @@ export const useFileListKeyboardNavigation = ({
     }
   }, [global, containerRef]);
 
-  // Scroll focused item into view (before paint to avoid a visible jump)
-  useLayoutEffect(() => {
-    if (focusedIndex >= 0 && focusedIndex < allItems.length) {
-      const container = containerRef.current;
-      if (!container) return;
-
-      // Get all file cards in order
-      const fileCards = container.querySelectorAll('[data-file-card="true"]');
-      const focusedCard = fileCards[focusedIndex] as HTMLElement;
-
-      if (focusedCard) {
-        focusedCard.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "nearest",
-        });
-      }
-    }
-  }, [focusedIndex, allItems.length, containerRef]);
+  // Revealing the focused item is the virtualizer's job (VirtualDirectoryItems
+  // scrolls by row index). Doing it here by indexing the rendered cards would
+  // resolve to the wrong element, since only the virtual window is in the DOM.
 };

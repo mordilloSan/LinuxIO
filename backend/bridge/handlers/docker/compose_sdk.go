@@ -189,7 +189,10 @@ func composeValidateContent(ctx context.Context, content string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(stderr.String()))
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
 	}
 	return nil
 }

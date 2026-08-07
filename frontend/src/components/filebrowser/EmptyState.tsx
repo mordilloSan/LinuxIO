@@ -1,6 +1,4 @@
-import React from "react";
-
-const EmptyState: React.FC = () => {
+const EmptyState = () => {
   return (
     <div
       style={{

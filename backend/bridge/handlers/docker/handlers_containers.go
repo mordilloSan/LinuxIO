@@ -7,68 +7,60 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := ListContainers(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.NoRequest) ([]apischema.ContainerInfo, error) {
+	return ListContainers(ctx)
 }
 
-func (h dockerHandlers) handleStartContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
-	result, err := StartContainer(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleStartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	_, err := StartContainer(ctx, req.ContainerID)
+	return err
 }
 
-func (h dockerHandlers) handleStopContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
-	result, err := StopContainer(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleStopContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	_, err := StopContainer(ctx, req.ContainerID)
+	return err
 }
 
-func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
-	result, err := RemoveContainer(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	_, err := RemoveContainer(ctx, req.ContainerID)
+	return err
 }
 
-func (h dockerHandlers) handleRestartContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
-	result, err := RestartContainer(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleRestartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	_, err := RestartContainer(ctx, req.ContainerID)
+	return err
 }
 
-func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := StartAllStopped(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStartedFailedResponse, error) {
+	return StartAllStopped(ctx)
 }
 
-func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := StopAllRunning(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStoppedFailedResponse, error) {
+	return StopAllRunning(ctx)
 }
 
-func (h dockerHandlers) handleCheckUpdates(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := RefreshDockerImageUpdates(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleCheckUpdates(ctx context.Context, _ apischema.NoRequest) (apischema.DockerUpdateCheckResult, error) {
+	return RefreshDockerImageUpdates(ctx)
 }
 
-func (h dockerHandlers) handleCheckContainerUpdate(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleCheckContainerUpdate(ctx context.Context, req apischema.ContainerIDRequest) (apischema.DockerUpdateCheckResult, error) {
 	if req.ContainerID == "" {
-		return bridgeipc.ErrInvalidArgs
+		return apischema.DockerUpdateCheckResult{}, bridgeipc.ErrInvalidArgs
 	}
-	result, err := RefreshContainerImageUpdate(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+	return RefreshContainerImageUpdate(ctx, req.ContainerID)
 }
 
-func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema.ContainerIDRequest, emit bridgeipc.Events) error {
+func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema.ContainerIDRequest) (apischema.DockerContainerUpdateResult, error) {
 	if req.ContainerID == "" {
-		return bridgeipc.ErrInvalidArgs
+		return apischema.DockerContainerUpdateResult{}, bridgeipc.ErrInvalidArgs
 	}
-	result, err := UpdateContainer(ctx, req.ContainerID)
-	return bridgeipc.EmitResult(emit, result, err)
+	return UpdateContainer(ctx, req.ContainerID)
 }
 
-func (h dockerHandlers) handleGetContainerAutoUpdate(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	result, err := GetContainerAutoUpdate(ctx)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleGetContainerAutoUpdate(ctx context.Context, _ apischema.NoRequest) (apischema.DockerContainerAutoUpdateState, error) {
+	return GetContainerAutoUpdate(ctx)
 }
 
-func (h dockerHandlers) handleSetContainerAutoUpdate(ctx context.Context, req apischema.DockerContainerAutoUpdateOptions, emit bridgeipc.Events) error {
-	result, err := SetContainerAutoUpdate(ctx, req)
-	return bridgeipc.EmitResult(emit, result, err)
+func (h dockerHandlers) handleSetContainerAutoUpdate(ctx context.Context, req apischema.DockerContainerAutoUpdateOptions) (apischema.DockerContainerAutoUpdateState, error) {
+	return SetContainerAutoUpdate(ctx, req)
 }

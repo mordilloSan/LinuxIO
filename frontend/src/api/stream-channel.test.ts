@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createStreamMessageChannel } from "./stream-channel";
-
 import type { Stream } from "./StreamMultiplexer";
 
 function fakeStream(): Stream & {

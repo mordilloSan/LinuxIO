@@ -1,23 +1,23 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface FolderShareCardProps {
-  actions: React.ReactNode;
+  actions: ReactNode;
   comment?: string;
   name: string;
   path: string;
-  protocolSummary: React.ReactNode;
+  protocolSummary: ReactNode;
 }
 
-const FolderShareCard: React.FC<FolderShareCardProps> = ({
+const FolderShareCard = ({
   name,
   path,
   comment,
   actions,
   protocolSummary,
-}) => (
+}: FolderShareCardProps) => (
   <FrostedCard style={{ padding: 10 }}>
     {/* Header: name + actions */}
     <div

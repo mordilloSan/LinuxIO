@@ -1,7 +1,15 @@
-import React from "react";
+import {
+  forwardRef,
+  isValidElement,
+  type CSSProperties,
+  type ElementType,
+  type HTMLAttributes,
+  type JSX,
+  type ReactNode,
+} from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
-import type { ToastMeta } from "@/contexts/ToastContext";
+import type { ToastMeta } from "@/types/navigation";
 
 import "./app-typography.css";
 
@@ -28,7 +36,7 @@ type SemanticColor =
   | "warning"
   | "inherit";
 
-const VARIANT_ELEMENT: Record<Variant, keyof React.JSX.IntrinsicElements> = {
+const VARIANT_ELEMENT: Record<Variant, keyof JSX.IntrinsicElements> = {
   h1: "h1",
   h2: "h2",
   h3: "h3",
@@ -53,7 +61,7 @@ const COLOR_MAP: Record<SemanticColor, string> = {
   inherit: "inherit",
 };
 
-const getPlainText = (node: React.ReactNode): string => {
+const getPlainText = (node: ReactNode): string => {
   if (typeof node === "string" || typeof node === "number") {
     return String(node).trim();
   }
@@ -62,8 +70,8 @@ const getPlainText = (node: React.ReactNode): string => {
     return node.map(getPlainText).filter(Boolean).join(" ").trim();
   }
 
-  if (React.isValidElement(node)) {
-    const props = node.props as { children?: React.ReactNode };
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode };
     return getPlainText(props.children);
   }
 
@@ -71,15 +79,15 @@ const getPlainText = (node: React.ReactNode): string => {
 };
 
 export interface AppTypographyProps extends Omit<
-  React.HTMLAttributes<HTMLElement>,
+  HTMLAttributes<HTMLElement>,
   "color"
 > {
   align?: "left" | "center" | "right" | "justify";
-  children?: React.ReactNode;
+  children?: ReactNode;
   color?: SemanticColor | (string & {});
-  component?: React.ElementType;
-  copyErrorMessage?: React.ReactNode;
-  copySuccessMessage?: React.ReactNode;
+  component?: ElementType;
+  copyErrorMessage?: ReactNode;
+  copySuccessMessage?: ReactNode;
   copyText?: string | false;
   fontSize?: string | number;
   fontWeight?: number | string;
@@ -90,7 +98,7 @@ export interface AppTypographyProps extends Omit<
   variant?: Variant;
 }
 
-const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
+const AppTypography = forwardRef<HTMLElement, AppTypographyProps>(
   (
     {
       variant = "body1",
@@ -114,7 +122,7 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
     },
     ref,
   ) => {
-    const Tag = (component ?? VARIANT_ELEMENT[variant]) as React.ElementType;
+    const Tag = (component ?? VARIANT_ELEMENT[variant]) as ElementType;
     const isInsideTooltip = useIsInsideAppTooltip();
 
     const resolvedColor = color
@@ -131,7 +139,7 @@ const AppTypography = React.forwardRef<HTMLElement, AppTypographyProps>(
       .filter(Boolean)
       .join(" ");
 
-    const merged: React.CSSProperties = {
+    const merged: CSSProperties = {
       ...(resolvedColor && { color: resolvedColor }),
       ...(fontWeight != null && { fontWeight: fontWeight as number }),
       ...(fontSize != null && { fontSize }),

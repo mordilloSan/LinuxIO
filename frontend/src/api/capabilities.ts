@@ -6,6 +6,8 @@
  * Adding a capability = adding one entry to this list.
  */
 
+import type { ToastMeta } from "@/types/navigation";
+
 import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
 
 export interface CapabilityDef {
@@ -41,7 +43,7 @@ export interface CapabilityDef {
    * install-completion notification. Omit for capabilities with no dedicated
    * page (e.g. TuneD, Avahi).
    */
-  route?: { href: string; label: string };
+  route?: ToastMeta;
   /** camelCase field used in auth state (e.g. "dockerAvailable"). */
   state: string;
   /** snake_case prefix used on the wire (e.g. "docker" -> "docker_available", "docker_error"). */
@@ -71,7 +73,7 @@ export const CAPABILITIES = [
     reasonUnknown: "libvirt availability is still being checked.",
     reasonUnavailable: "libvirt daemon is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/vm", label: "Open VMs" },
+    route: { label: "Open VMs", to: "/vm" },
   },
   {
     wire: "watchtower",
@@ -120,7 +122,7 @@ export const CAPABILITIES = [
     reasonUnknown: "lm-sensors dependency check is still running.",
     reasonUnavailable: "lm-sensors dependency is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/hardware", label: "Open hardware" },
+    route: { label: "Open hardware", to: "/hardware" },
   },
   {
     wire: "memory_inventory",
@@ -133,7 +135,7 @@ export const CAPABILITIES = [
     reasonUnknown: "Memory inventory availability is still being checked.",
     reasonUnavailable: "Memory module inventory is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/hardware", label: "Open hardware" },
+    route: { label: "Open hardware", to: "/hardware" },
   },
   {
     wire: "smartmontools",
@@ -146,7 +148,7 @@ export const CAPABILITIES = [
     reasonUnknown: "smartmontools dependency check is still running.",
     reasonUnavailable: "smartmontools dependency is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/storage", label: "Open storage" },
+    route: { label: "Open storage", to: "/storage" },
   },
   {
     wire: "packagekit",
@@ -170,7 +172,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS client utilities availability is still being checked.",
     reasonUnavailable: "NFS client utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/shares", label: "Open shares" },
+    route: { label: "Open shares", to: "/shares" },
   },
   {
     wire: "nfs_server",
@@ -183,7 +185,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS server utilities availability is still being checked.",
     reasonUnavailable: "NFS server utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/shares", label: "Open shares" },
+    route: { label: "Open shares", to: "/shares" },
   },
   {
     wire: "samba_client",
@@ -196,7 +198,7 @@ export const CAPABILITIES = [
     reasonUnknown: "SMB client utilities availability is still being checked.",
     reasonUnavailable: "SMB client utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/shares", label: "Open shares" },
+    route: { label: "Open shares", to: "/shares" },
   },
   {
     wire: "samba_server",
@@ -209,7 +211,7 @@ export const CAPABILITIES = [
     reasonUnknown: "Samba server availability is still being checked.",
     reasonUnavailable: "Samba server is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/shares", label: "Open shares" },
+    route: { label: "Open shares", to: "/shares" },
   },
   {
     wire: "tuned",
@@ -246,7 +248,7 @@ export const CAPABILITIES = [
     reasonUnknown: "WireGuard tools availability is still being checked.",
     reasonUnavailable: "WireGuard tools are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { href: "/wireguard", label: "Open WireGuard" },
+    route: { label: "Open WireGuard", to: "/wireguard" },
   },
 ] as const satisfies readonly CapabilityDef[];
 

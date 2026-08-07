@@ -1,5 +1,27 @@
-export function jobIdentityKey(type: string, request: unknown = {}) {
-  return JSON.stringify([type, request ?? {}]);
+export function jobIdentityKey(type: string, identity: readonly string[] = []) {
+  return JSON.stringify([type, identity]);
+}
+
+/** Safe, route-declared public job metadata; raw requests are never available. */
+export function jobMetadataObject(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === "object"
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+export function jobMetadataIdentity(metadata: unknown): string[] {
+  const identity = jobMetadataObject(metadata).identity;
+  return Array.isArray(identity)
+    ? identity.filter((part): part is string => typeof part === "string")
+    : [];
+}
+
+export function requestString(
+  request: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = request[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 export function makeCountedSet() {

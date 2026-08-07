@@ -1,8 +1,5 @@
-import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { ReactNode, useCallback, useMemo } from "react";
+import { useCallback, useMemo, type MouseEvent } from "react";
 
-import { linuxio } from "@/api";
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
@@ -12,7 +9,6 @@ import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserE
 import { useFileBrowserFilteredResource } from "@/hooks/filebrowser/useFileBrowserFilteredResource";
 import { useFileBrowserItemActions } from "@/hooks/filebrowser/useFileBrowserItemActions";
 import { useFileBrowserNavigation } from "@/hooks/filebrowser/useFileBrowserNavigation";
-import { useFileBrowserSearchAndSort } from "@/hooks/filebrowser/useFileBrowserSearchAndSort";
 import { useFileBrowserUploadActions } from "@/hooks/filebrowser/useFileBrowserUploadActions";
 import { useFileConflictResolution } from "@/hooks/filebrowser/useFileConflicts";
 import { useFileDialogs } from "@/hooks/filebrowser/useFileDialogs";
@@ -20,17 +16,14 @@ import { useFileDragAndDrop } from "@/hooks/filebrowser/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileMutations } from "@/hooks/filebrowser/useFileMutations";
 import { useFileQueries } from "@/hooks/filebrowser/useFileQueries";
-import { useFileSelection } from "@/hooks/filebrowser/useFileSelection";
-import { clearFileSubfoldersCache } from "@/hooks/filebrowser/useFileSubfolders";
+import {
+  useFileSelection,
+  useFileSelectionState,
+} from "@/hooks/filebrowser/useFileSelection";
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
+import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
 import { useCapability } from "@/hooks/useCapabilities";
-import { ViewMode } from "@/types/filebrowser";
-
-const viewIconMap: Record<ViewMode, ReactNode> = {
-  card: <Icon height={20} icon="mdi:card-multiple" width={20} />,
-  list: <Icon height={20} icon="mdi:view-list" width={20} />,
-};
 
 export interface FileBrowserController {
   contentProps: FileBrowserContentProps;
@@ -38,77 +31,63 @@ export interface FileBrowserController {
 }
 
 export function useFileBrowserController(): FileBrowserController {
-  // View state management
+  // View slice: state plus a stable semantic-action API
+  const view = useFileViewState();
   const {
-    viewMode,
+    actions: viewActions,
+    contextMenuPosition,
+    searchQuery,
     showHiddenFiles,
     sortField,
-    setSortField,
     sortOrder,
-    setSortOrder,
-    contextMenuPosition,
-    setContextMenuPosition,
-    handleSwitchView,
-    handleToggleHiddenFiles,
-  } = useFileViewState();
-  const viewIcon = useMemo(() => viewIconMap[viewMode], [viewMode]);
-
-  // Dialog states
+    viewMode,
+  } = view;
+  // Dialogs slice: state plus a stable semantic-action API
+  const dialogs = useFileDialogs();
   const {
     createFileDialog,
-    setCreateFileDialog,
     createFolderDialog,
-    setCreateFolderDialog,
     deleteDialog,
-    setDeleteDialog,
-    pendingDeletePaths,
-    setPendingDeletePaths,
     detailTarget,
-    setDetailTarget,
+    pendingDeletePaths,
     permissionsDialog,
-    setPermissionsDialog,
-  } = useFileDialogs();
+  } = dialogs;
 
-  // Editor state
+  // Editor slice: state plus a stable semantic-action API
+  const editor = useFileEditor();
   const {
-    editingPath,
-    setEditingPath,
-    isSavingFile,
-    setIsSavingFile,
-    isEditorDirty,
-    setIsEditorDirty,
+    actions: editorActions,
     closeEditorDialog,
-    setCloseEditorDialog,
+    editingPath,
     editorRef,
+    isEditorDirty,
+    isSavingFile,
     showQuickSave,
-  } = useFileEditor();
+  } = editor;
 
-  // Upload state
+  // Upload slice: state plus a stable semantic-action API
+  const upload = useFileUpload();
   const {
-    uploadDialogOpen,
-    setUploadDialogOpen,
-    isUploadProcessing,
-    setIsUploadProcessing,
-    uploadEntries,
-    setUploadEntries,
     fileInputRef,
     folderInputRef,
+    isUploadProcessing,
+    uploadDialogOpen,
+    uploadEntries,
     uploadSummary,
-  } = useFileUpload();
-  const {
-    handlePathChange,
-    handleSearchChange,
-    handleSortChange,
-    searchQuery,
-    setSearchQuery,
-  } = useFileBrowserSearchAndSort({
-    setSortField,
-    setSortOrder,
-  });
+  } = upload;
+
   const { handleOpenDirectory, normalizedPath } = useFileBrowserNavigation({
-    onPathChange: handlePathChange,
+    onPathChange: viewActions.clearSearch,
   });
-  const queryClient = useQueryClient();
+
+  // Selection is directory-scoped; clipboard state survives navigation.
+  const selection = useFileSelectionState(normalizedPath);
+  const {
+    actions: selectionActions,
+    clipboard,
+    cutPaths,
+    selectedPaths,
+  } = selection;
   const { startDownload, startUpload } = useBackgroundJobActions();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
@@ -134,8 +113,7 @@ export function useFileBrowserController(): FileBrowserController {
     renameItem,
   } = useFileMutations({
     normalizedPath,
-    queryClient,
-    onDeleteSuccess: () => setSelectedPaths(new Set()),
+    onDeleteSuccess: selectionActions.clear,
     resolveCollisions,
   });
   const detailTargetCount = detailTarget?.length ?? 0;
@@ -143,12 +121,10 @@ export function useFileBrowserController(): FileBrowserController {
   const hasMultipleDetailTargets = detailTargetCount > 1;
   const {
     resource,
-    isPending,
-    errorMessage,
     detailResource,
     detailError,
     statData,
-    isStatPending,
+    isStatLoading,
     multiItemsStats,
     editingFileResource,
     isEditingFileLoading,
@@ -160,31 +136,21 @@ export function useFileBrowserController(): FileBrowserController {
     hasSingleDetailTarget,
     hasMultipleDetailTargets,
   });
-  const filteredResource = useFileBrowserFilteredResource({
+  const { filteredResource, isSearchLoading } = useFileBrowserFilteredResource({
     resource,
     searchQuery,
   });
 
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenuPosition(null);
-  }, [setContextMenuPosition]);
-
-  // Selection and clipboard management
-  const {
-    selectedPaths,
-    setSelectedPaths,
-    selectedItems,
-    clipboard,
-    handleCopy,
-    handleCut,
-    handlePaste,
-  } = useFileSelection({
-    resource,
-    normalizedPath,
-    copyItems,
-    moveItems,
-    onContextMenuClose: handleCloseContextMenu,
-  });
+  // Clipboard behaviors on top of the selection slice
+  const { handleCopy, handleCut, handlePaste, selectedItems } =
+    useFileSelection({
+      resource,
+      normalizedPath,
+      copyItems,
+      moveItems,
+      onContextMenuClose: viewActions.closeContextMenu,
+      selection,
+    });
 
   const {
     canShowDetails,
@@ -221,23 +187,15 @@ export function useFileBrowserController(): FileBrowserController {
     createFile,
     createFolder,
     deleteItems,
+    dialogs,
+    editor,
     handleOpenDirectory,
-    onContextMenuClose: handleCloseContextMenu,
-    pendingDeletePaths,
-    permissionsDialog,
     renameItem,
     resource,
     selectedItems,
     selectedPaths,
-    setCreateFileDialog,
-    setCreateFolderDialog,
-    setDeleteDialog,
-    setDetailTarget,
-    setEditingPath,
-    setPendingDeletePaths,
-    setPermissionsDialog,
-    setSearchQuery,
     startDownload,
+    view,
   });
 
   useFileBrowserClipboardShortcuts({
@@ -247,14 +205,6 @@ export function useFileBrowserController(): FileBrowserController {
     onPaste: handlePaste,
     renamingPath,
   });
-
-  // Derive cut paths from clipboard for visual dimming
-  const cutPaths = useMemo(() => {
-    if (clipboard?.operation === "cut") {
-      return new Set(clipboard.paths);
-    }
-    return new Set<string>();
-  }, [clipboard]);
 
   const {
     canCompressSelection,
@@ -268,21 +218,21 @@ export function useFileBrowserController(): FileBrowserController {
     compressItems,
     extractArchive,
     normalizedPath,
-    onContextMenuClose: handleCloseContextMenu,
+    onContextMenuClose: viewActions.closeContextMenu,
     resource,
     selectedItems,
     selectedPaths,
   });
 
   const handleContextMenu = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       event.preventDefault();
-      setContextMenuPosition({
+      viewActions.openContextMenu({
         top: event.clientY,
         left: event.clientX,
       });
     },
-    [setContextMenuPosition],
+    [viewActions],
   );
 
   const {
@@ -290,24 +240,10 @@ export function useFileBrowserController(): FileBrowserController {
     handleDiscardAndExit,
     handleKeepEditing,
     handleSaveAndExit,
+    handleSaveContent,
     handleSaveFile,
-  } = useFileBrowserEditorActions({
-    editingPath,
-    editorRef,
-    isEditorDirty,
-    setCloseEditorDialog,
-    setEditingPath,
-    setIsEditorDirty,
-    setIsSavingFile,
-  });
-  const invalidateListing = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.filebrowser.resource_get.queryKey({
-        path: normalizedPath,
-      }),
-    });
-    clearFileSubfoldersCache(queryClient);
-  }, [normalizedPath, queryClient]);
+  } = useFileBrowserEditorActions({ editor });
+  const invalidateListing = useListingInvalidation(normalizedPath);
   const {
     isDragOver,
     handleDragEnter,
@@ -332,18 +268,12 @@ export function useFileBrowserController(): FileBrowserController {
     handleUpload,
     handleUploadInputChange,
   } = useFileBrowserUploadActions({
-    fileInputRef,
-    folderInputRef,
     invalidateListing,
-    isUploadProcessing,
     normalizedPath,
-    onContextMenuClose: handleCloseContextMenu,
+    onContextMenuClose: viewActions.closeContextMenu,
     resolveCollisions,
-    setIsUploadProcessing,
-    setUploadDialogOpen,
-    setUploadEntries,
     startUpload,
-    uploadEntries,
+    upload,
   });
 
   const selectedPathsCount = selectedPaths.size;
@@ -359,41 +289,39 @@ export function useFileBrowserController(): FileBrowserController {
       isEditingFileLoading,
       isSaving: isSavingFile,
       onClose: handleCloseEditor,
-      onDirtyChange: setIsEditorDirty,
+      onDirtyChange: editorActions.setDirty,
       onDiscardAndExit: handleDiscardAndExit,
       onKeepEditing: handleKeepEditing,
-      onSave: handleSaveFile,
+      onRequestSave: handleSaveFile,
+      onSaveContent: handleSaveContent,
       onSaveAndExit: handleSaveAndExit,
-      onSearchChange: handleSearchChange,
-      onSwitchView: handleSwitchView,
-      onToggleHiddenFiles: handleToggleHiddenFiles,
+      onSearchChange: viewActions.setSearch,
+      onSwitchView: viewActions.switchView,
+      onToggleHiddenFiles: viewActions.toggleHiddenFiles,
       searchQuery,
       showHiddenFiles,
       showQuickSave,
-      viewIcon,
       viewMode,
     }),
     [
       closeEditorDialog,
       editingFileResource,
       editingPath,
+      editorActions,
       editorRef,
       handleCloseEditor,
       handleDiscardAndExit,
       handleKeepEditing,
       handleSaveAndExit,
+      handleSaveContent,
       handleSaveFile,
-      handleSearchChange,
-      handleSwitchView,
-      handleToggleHiddenFiles,
       isEditorDirty,
       isEditingFileLoading,
       isSavingFile,
       searchQuery,
-      setIsEditorDirty,
       showHiddenFiles,
       showQuickSave,
-      viewIcon,
+      viewActions,
       viewMode,
     ],
   );
@@ -409,7 +337,7 @@ export function useFileBrowserController(): FileBrowserController {
       hasClipboard: clipboardAvailable,
       hasSelection: selectedPathsCount > 0,
       onChangePermissions: handleChangePermissions,
-      onClose: handleCloseContextMenu,
+      onClose: viewActions.closeContextMenu,
       onCompress: handleCompressSelection,
       onCopy: handleCopy,
       onCreateFile: handleCreateFile,
@@ -431,7 +359,6 @@ export function useFileBrowserController(): FileBrowserController {
       clipboardAvailable,
       contextMenuPosition,
       handleChangePermissions,
-      handleCloseContextMenu,
       handleCompressSelection,
       handleContextMenuRename,
       handleCopy,
@@ -447,6 +374,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleUpload,
       searchQuery,
       selectedPathsCount,
+      viewActions,
     ],
   );
 
@@ -457,7 +385,7 @@ export function useFileBrowserController(): FileBrowserController {
       detailTarget,
       hasMultipleTargets: hasMultipleDetailTargets,
       hasSingleTarget: hasSingleDetailTarget,
-      isStatPending,
+      isStatLoading,
       multiItemsStats,
       onClose: handleCloseDetailDialog,
       onDownload: handleDownloadDetail,
@@ -474,7 +402,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleEditFile,
       hasMultipleDetailTargets,
       hasSingleDetailTarget,
-      isStatPending,
+      isStatLoading,
       multiItemsStats,
       shouldShowDetailLoader,
       statData,
@@ -612,23 +540,18 @@ export function useFileBrowserController(): FileBrowserController {
       isSavingFile,
       normalizedPath,
       onOpenDirectory: handleOpenDirectory,
-      onSearchChange: handleSearchChange,
-      onSortChange: handleSortChange,
-      onSwitchView: handleSwitchView,
-      onToggleHiddenFiles: handleToggleHiddenFiles,
+      onSearchChange: viewActions.setSearch,
+      onSortChange: viewActions.changeSort,
+      onSwitchView: viewActions.switchView,
+      onToggleHiddenFiles: viewActions.toggleHiddenFiles,
       searchQuery,
       showHiddenFiles,
       sortOrder,
-      viewIcon,
       viewMode,
     }),
     [
       editingPath,
       handleOpenDirectory,
-      handleSearchChange,
-      handleSortChange,
-      handleSwitchView,
-      handleToggleHiddenFiles,
       indexerEnabled,
       indexerStatus,
       isSavingFile,
@@ -636,19 +559,18 @@ export function useFileBrowserController(): FileBrowserController {
       searchQuery,
       showHiddenFiles,
       sortOrder,
-      viewIcon,
+      viewActions,
       viewMode,
     ],
   );
 
   const contentData = useMemo(
     () => ({
-      errorMessage,
       filteredResource,
-      isPending,
+      isSearchLoading,
       resource,
     }),
-    [errorMessage, filteredResource, isPending, resource],
+    [filteredResource, isSearchLoading, resource],
   );
 
   const contentListing = useMemo(
@@ -660,7 +582,7 @@ export function useFileBrowserController(): FileBrowserController {
       onDelete: handleDelete,
       onDownloadFile: handleDoubleClickFile,
       onOpenDirectory: handleOpenDirectory,
-      onSelectedPathsChange: setSelectedPaths,
+      onSelectedPathsChange: selectionActions.select,
       onStartRename: handleStartInlineRename,
       renamingPath,
       selectedPaths,
@@ -680,7 +602,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleStartInlineRename,
       renamingPath,
       selectedPaths,
-      setSelectedPaths,
+      selectionActions,
       showHiddenFiles,
       sortField,
       sortOrder,

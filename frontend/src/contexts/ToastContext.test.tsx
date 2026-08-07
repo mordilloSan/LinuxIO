@@ -1,4 +1,4 @@
-import type React from "react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sonnerMocks = vi.hoisted(() => ({
@@ -7,8 +7,8 @@ const sonnerMocks = vi.hoisted(() => ({
   toasts: [] as Array<{
     description?: string;
     id: string | number;
-    meta?: { href?: string; label?: string };
-    title?: React.ReactNode;
+    meta?: { label?: string; params?: { _splat: string }; to: string };
+    title?: ReactNode;
     type?: string;
   }>,
 }));
@@ -24,7 +24,8 @@ vi.mock("sonner", () => ({
   }),
 }));
 
-const { ToastProvider } = await import("@/contexts/ToastContext");
+const { __resetToastHistoryStore } = await import("@/contexts/ToastContext");
+const { ToastProvider } = await import("@/contexts/ToastProvider");
 const { useClearToastHistory, useToastHistory } =
   await import("@/hooks/useToastHistory");
 const { act, render, screen } = await import("@/test/render");
@@ -41,7 +42,7 @@ function Probe({ limit = 5 }: { limit?: number }) {
               item.title,
               item.description ?? "",
               item.type ?? "",
-              item.meta?.href ?? "",
+              item.meta?.to ?? "",
             ].join(":"),
           )
           .join("|")}
@@ -61,17 +62,19 @@ function renderProvider(limit?: number) {
 
 describe("ToastProvider", () => {
   beforeEach(() => {
+    __resetToastHistoryStore();
     sonnerMocks.toasts = [];
     sonnerMocks.getHistory.mockReturnValue([]);
   });
 
-  it("records active sonner toasts into history and localStorage", () => {
+  it("records active sonner toasts into history and persists after the debounce", () => {
+    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     sonnerMocks.toasts = [
       {
         description: "Compose stack is up",
         id: 1,
-        meta: { href: "/docker", label: "Open Docker" },
+        meta: { label: "Open Docker", to: "/docker" },
         title: "Started",
         type: "success",
       },
@@ -82,6 +85,13 @@ describe("ToastProvider", () => {
     expect(screen.getByTestId("history")).toHaveTextContent(
       "Started:Compose stack is up:success:/docker",
     );
+    // Persist is debounced: nothing hits localStorage until the timer fires.
+    expect(localStorage.getItem("linuxio.toastHistory")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
     expect(localStorage.getItem("linuxio.toastHistory")).toContain("Started");
   });
 

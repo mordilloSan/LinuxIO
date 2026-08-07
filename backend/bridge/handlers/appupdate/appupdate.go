@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -96,17 +97,9 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *o
 	}
 }
 
-type VersionInfo struct {
-	CurrentVersion  string `json:"current_version"`
-	LatestVersion   string `json:"latest_version,omitempty"`
-	UpdateAvailable bool   `json:"update_available"`
-	CheckedAt       string `json:"checked_at"`
-	Error           string `json:"error,omitempty"`
-}
-
-func getVersionInfo(ctx context.Context) (VersionInfo, error) {
+func getVersionInfo(ctx context.Context) (apischema.VersionResponse, error) {
 	currentVersion := getInstalledVersion(ctx)
-	info := VersionInfo{
+	info := apischema.VersionResponse{
 		CurrentVersion:  currentVersion,
 		UpdateAvailable: false,
 		CheckedAt:       time.Now().UTC().Format(time.RFC3339),

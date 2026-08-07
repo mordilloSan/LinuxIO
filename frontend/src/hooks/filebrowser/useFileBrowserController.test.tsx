@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useFileBrowserController } from "./useFileBrowserController";
-
 import type { FileItem, FileResource } from "@/types/filebrowser";
+
+import { useFileBrowserController } from "./useFileBrowserController";
 
 const mocks = vi.hoisted(() => ({
   archiveActions: {
@@ -25,20 +25,26 @@ const mocks = vi.hoisted(() => ({
     isEnabled: true,
     status: "available",
   },
-  clearFileSubfoldersCache: vi.fn(),
   dialogs: {
+    actions: {
+      clearPendingDelete: vi.fn(),
+      closeCreateFile: vi.fn(),
+      closeCreateFolder: vi.fn(),
+      closeDelete: vi.fn(),
+      closeDetails: vi.fn(),
+      closePermissions: vi.fn(),
+      openCreateFile: vi.fn(),
+      openCreateFolder: vi.fn(),
+      openPermissions: vi.fn(),
+      requestDelete: vi.fn(),
+      showDetails: vi.fn(),
+    },
     createFileDialog: false,
     createFolderDialog: true,
     deleteDialog: false,
     detailTarget: ["/srv/projects/readme.md"],
     pendingDeletePaths: ["/srv/projects/readme.md"],
     permissionsDialog: null,
-    setCreateFileDialog: vi.fn(),
-    setCreateFolderDialog: vi.fn(),
-    setDeleteDialog: vi.fn(),
-    setDetailTarget: vi.fn(),
-    setPendingDeletePaths: vi.fn(),
-    setPermissionsDialog: vi.fn(),
   },
   dragAndDrop: {
     handleDragEnter: vi.fn(),
@@ -48,15 +54,19 @@ const mocks = vi.hoisted(() => ({
     isDragOver: false,
   },
   editor: {
+    actions: {
+      close: vi.fn(),
+      dismissClosePrompt: vi.fn(),
+      openFile: vi.fn(),
+      promptClose: vi.fn(),
+      setDirty: vi.fn(),
+      setSaving: vi.fn(),
+    },
     closeEditorDialog: false,
     editingPath: null,
     editorRef: { current: null },
     isEditorDirty: false,
     isSavingFile: false,
-    setCloseEditorDialog: vi.fn(),
-    setEditingPath: vi.fn(),
-    setIsEditorDirty: vi.fn(),
-    setIsSavingFile: vi.fn(),
     showQuickSave: false,
   },
   editorActions: {
@@ -64,6 +74,7 @@ const mocks = vi.hoisted(() => ({
     handleDiscardAndExit: vi.fn(),
     handleKeepEditing: vi.fn(),
     handleSaveAndExit: vi.fn(),
+    handleSaveContent: vi.fn(),
     handleSaveFile: vi.fn(),
   },
   filteredResource: undefined as FileResource | undefined,
@@ -98,6 +109,7 @@ const mocks = vi.hoisted(() => ({
     renamingPath: null,
     unsupportedEditPath: null,
   },
+  invalidateListing: vi.fn(),
   mutations: {
     changePermissions: vi.fn(),
     compressItems: vi.fn(),
@@ -120,44 +132,49 @@ const mocks = vi.hoisted(() => ({
     errorMessage: null,
     isEditingFileLoading: false,
     isPending: false,
-    isStatPending: false,
+    isStatLoading: false,
     multiItemsStats: null,
     resource: undefined as FileResource | undefined,
     shouldShowDetailLoader: false,
     statData: null,
   },
-  searchAndSort: {
-    handlePathChange: vi.fn(),
-    handleSearchChange: vi.fn(),
-    handleSortChange: vi.fn(),
-    searchQuery: "readme",
-    setSearchQuery: vi.fn(),
-  },
   selection: {
-    clipboard: {
-      operation: "cut",
-      paths: ["/srv/projects/readme.md"],
-    },
     handleCopy: vi.fn(),
     handleCut: vi.fn(),
     handlePaste: vi.fn(),
     selectedItems: [] as FileItem[],
+  },
+  selectionState: {
+    actions: {
+      clear: vi.fn(),
+      clearClipboard: vi.fn(),
+      copyToClipboard: vi.fn(),
+      cutToClipboard: vi.fn(),
+      select: vi.fn(),
+    },
+    clipboard: {
+      operation: "cut",
+      paths: ["/srv/projects/readme.md"],
+    },
+    cutPaths: new Set(["/srv/projects/readme.md"]),
     selectedPaths: new Set(["/srv/projects/readme.md"]),
-    setSelectedPaths: vi.fn(),
   },
   upload: {
+    actions: {
+      clearEntries: vi.fn(),
+      closeDialog: vi.fn(),
+      mergeEntries: vi.fn(),
+      openDialog: vi.fn(),
+      setProcessing: vi.fn(),
+    },
     fileInputRef: { current: null },
     folderInputRef: { current: null },
     isUploadProcessing: false,
-    setIsUploadProcessing: vi.fn(),
-    setUploadDialogOpen: vi.fn(),
-    setUploadEntries: vi.fn(),
     uploadDialogOpen: false,
     uploadEntries: [],
     uploadSummary: {
-      directories: 0,
       files: 0,
-      totalBytes: 0,
+      folders: 0,
     },
   },
   uploadActions: {
@@ -175,7 +192,6 @@ const mocks = vi.hoisted(() => ({
   useFileBrowserFilteredResource: vi.fn(),
   useFileBrowserItemActions: vi.fn(),
   useFileBrowserNavigation: vi.fn(),
-  useFileBrowserSearchAndSort: vi.fn(),
   useFileBrowserUploadActions: vi.fn(),
   useFileDialogs: vi.fn(),
   useFileDragAndDrop: vi.fn(),
@@ -183,15 +199,21 @@ const mocks = vi.hoisted(() => ({
   useFileMutations: vi.fn(),
   useFileQueries: vi.fn(),
   useFileSelection: vi.fn(),
+  useFileSelectionState: vi.fn(),
   useFileUpload: vi.fn(),
   useFileViewState: vi.fn(),
   viewState: {
+    actions: {
+      changeSort: vi.fn(),
+      clearSearch: vi.fn(),
+      closeContextMenu: vi.fn(),
+      openContextMenu: vi.fn(),
+      setSearch: vi.fn(),
+      switchView: vi.fn(),
+      toggleHiddenFiles: vi.fn(),
+    },
     contextMenuPosition: { left: 12, top: 24 },
-    handleSwitchView: vi.fn(),
-    handleToggleHiddenFiles: vi.fn(),
-    setContextMenuPosition: vi.fn(),
-    setSortField: vi.fn(),
-    setSortOrder: vi.fn(),
+    searchQuery: "readme",
     showHiddenFiles: false,
     sortField: "name",
     sortOrder: "asc",
@@ -202,12 +224,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api", () => ({
   linuxio: {
     filebrowser: {
-      resource_get: {
-        queryKey: ({ path }: { path: string }) => [
-          "filebrowser",
-          "resource",
-          path,
-        ],
+      exists_batch: {
+        useFetcher: () => () => Promise.resolve({ existing: [] }),
       },
     },
   },
@@ -241,10 +259,6 @@ vi.mock("@/hooks/filebrowser/useFileBrowserNavigation", () => ({
   useFileBrowserNavigation: mocks.useFileBrowserNavigation,
 }));
 
-vi.mock("@/hooks/filebrowser/useFileBrowserSearchAndSort", () => ({
-  useFileBrowserSearchAndSort: mocks.useFileBrowserSearchAndSort,
-}));
-
 vi.mock("@/hooks/filebrowser/useFileBrowserUploadActions", () => ({
   useFileBrowserUploadActions: mocks.useFileBrowserUploadActions,
 }));
@@ -271,10 +285,7 @@ vi.mock("@/hooks/filebrowser/useFileQueries", () => ({
 
 vi.mock("@/hooks/filebrowser/useFileSelection", () => ({
   useFileSelection: mocks.useFileSelection,
-}));
-
-vi.mock("@/hooks/filebrowser/useFileSubfolders", () => ({
-  clearFileSubfoldersCache: mocks.clearFileSubfoldersCache,
+  useFileSelectionState: mocks.useFileSelectionState,
 }));
 
 vi.mock("@/hooks/filebrowser/useFileUpload", () => ({
@@ -283,6 +294,10 @@ vi.mock("@/hooks/filebrowser/useFileUpload", () => ({
 
 vi.mock("@/hooks/filebrowser/useFileViewState", () => ({
   useFileViewState: mocks.useFileViewState,
+}));
+
+vi.mock("@/hooks/filebrowser/useListingInvalidation", () => ({
+  useListingInvalidation: () => mocks.invalidateListing,
 }));
 
 vi.mock("@/hooks/useCapabilities", () => ({
@@ -301,15 +316,17 @@ function applyDefaultHookReturns() {
   mocks.selection.selectedItems = [
     { name: "readme.md", path: "/srv/projects/readme.md", type: "file" },
   ];
-  mocks.selection.selectedPaths = new Set(["/srv/projects/readme.md"]);
+  mocks.selectionState.selectedPaths = new Set(["/srv/projects/readme.md"]);
   mocks.viewState.contextMenuPosition = { left: 12, top: 24 };
 
   mocks.useFileBrowserArchiveActions.mockReturnValue(mocks.archiveActions);
   mocks.useFileBrowserEditorActions.mockReturnValue(mocks.editorActions);
-  mocks.useFileBrowserFilteredResource.mockReturnValue(mocks.filteredResource);
+  mocks.useFileBrowserFilteredResource.mockReturnValue({
+    filteredResource: mocks.filteredResource,
+    isSearchLoading: false,
+  });
   mocks.useFileBrowserItemActions.mockReturnValue(mocks.itemActions);
   mocks.useFileBrowserNavigation.mockReturnValue(mocks.navigation);
-  mocks.useFileBrowserSearchAndSort.mockReturnValue(mocks.searchAndSort);
   mocks.useFileBrowserUploadActions.mockReturnValue(mocks.uploadActions);
   mocks.useFileDialogs.mockReturnValue(mocks.dialogs);
   mocks.useFileDragAndDrop.mockReturnValue(mocks.dragAndDrop);
@@ -317,6 +334,7 @@ function applyDefaultHookReturns() {
   mocks.useFileMutations.mockReturnValue(mocks.mutations);
   mocks.useFileQueries.mockReturnValue(mocks.queries);
   mocks.useFileSelection.mockReturnValue(mocks.selection);
+  mocks.useFileSelectionState.mockReturnValue(mocks.selectionState);
   mocks.useFileUpload.mockReturnValue(mocks.upload);
   mocks.useFileViewState.mockReturnValue(mocks.viewState);
 }
@@ -359,9 +377,8 @@ describe("useFileBrowserController", () => {
         viewMode: "card",
       },
       data: {
-        errorMessage: null,
         filteredResource: resource,
-        isPending: false,
+        isSearchLoading: false,
         resource,
       },
       listing: {
@@ -369,7 +386,7 @@ describe("useFileBrowserController", () => {
         onDelete: mocks.itemActions.handleDelete,
         onDownloadFile: mocks.itemActions.handleDoubleClickFile,
         onOpenDirectory: mocks.navigation.handleOpenDirectory,
-        selectedPaths: mocks.selection.selectedPaths,
+        selectedPaths: mocks.selectionState.selectedPaths,
         sortField: "name",
         sortOrder: "asc",
         viewMode: "card",
@@ -407,7 +424,8 @@ describe("useFileBrowserController", () => {
         closeEditorDialog: false,
         isDirty: false,
         isSaving: false,
-        onSave: mocks.editorActions.handleSaveFile,
+        onRequestSave: mocks.editorActions.handleSaveFile,
+        onSaveContent: mocks.editorActions.handleSaveContent,
       },
       upload: {
         normalizedPath: "/srv/projects",
@@ -428,40 +446,36 @@ describe("useFileBrowserController", () => {
         clientX: 42,
         clientY: 84,
         preventDefault,
-      } as unknown as React.MouseEvent<HTMLDivElement>);
+      } as unknown as MouseEvent<HTMLDivElement>);
     });
 
     expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(mocks.viewState.setContextMenuPosition).toHaveBeenCalledWith({
+    expect(mocks.viewState.actions.openContextMenu).toHaveBeenCalledWith({
       left: 42,
       top: 84,
     });
 
     act(() => result.current.dialogsProps.contextMenu.onClose());
 
-    expect(mocks.viewState.setContextMenuPosition).toHaveBeenLastCalledWith(
-      null,
-    );
+    expect(mocks.viewState.actions.closeContextMenu).toHaveBeenCalledTimes(1);
   });
 
   it("wires cross-domain callbacks for selection clearing and listing invalidation", () => {
-    const { queryClient } = setup();
-    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    setup();
     const mutationArgs = mocks.useFileMutations.mock.calls[0]?.[0];
     const dragArgs = mocks.useFileDragAndDrop.mock.calls[0]?.[0];
     const uploadArgs = mocks.useFileBrowserUploadActions.mock.calls[0]?.[0];
 
     expect(mutationArgs).toMatchObject({
       normalizedPath: "/srv/projects",
-      queryClient,
     });
     expect(dragArgs).toMatchObject({
       normalizedPath: "/srv/projects",
       resource,
     });
     expect(uploadArgs).toMatchObject({
-      isUploadProcessing: false,
       normalizedPath: "/srv/projects",
+      upload: mocks.upload,
     });
 
     // Paste, upload, and drag-and-drop all share one collision resolver so a
@@ -472,17 +486,12 @@ describe("useFileBrowserController", () => {
 
     act(() => mutationArgs.onDeleteSuccess());
 
-    const clearedSelection =
-      mocks.selection.setSelectedPaths.mock.calls.at(-1)?.[0];
-    expect(clearedSelection).toBeInstanceOf(Set);
-    expect([...(clearedSelection as Set<string>)]).toEqual([]);
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
 
     act(() => dragArgs.onUploadComplete());
     act(() => uploadArgs.invalidateListing());
 
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ["filebrowser", "resource", "/srv/projects"],
-    });
-    expect(mocks.clearFileSubfoldersCache).toHaveBeenCalledWith(queryClient);
+    // Both flows share the one useListingInvalidation callback.
+    expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
   });
 });

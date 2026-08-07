@@ -71,6 +71,24 @@ describe("useFileBrowserClipboardShortcuts", () => {
     expect(paste.defaultPrevented).toBe(true);
   });
 
+  it("matches shortcuts with CapsLock on (uppercase event.key)", () => {
+    const { handlers } = mountShortcuts();
+
+    const copy = dispatchKey("C", { ctrlKey: true });
+
+    expect(handlers.onCopy).toHaveBeenCalledTimes(1);
+    expect(copy.defaultPrevented).toBe(true);
+  });
+
+  it("ignores shifted combos like Ctrl+Shift+C", () => {
+    const { handlers } = mountShortcuts();
+
+    const event = dispatchKey("C", { ctrlKey: true, shiftKey: true });
+
+    expect(handlers.onCopy).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("treats Cmd (metaKey) the same as Ctrl", () => {
     const { handlers } = mountShortcuts();
 
@@ -118,6 +136,19 @@ describe("useFileBrowserClipboardShortcuts", () => {
     appendNode(
       Object.assign(document.createElement("div"), {
         className: "app-dialog-root",
+      }),
+    );
+    const { handlers } = mountShortcuts();
+
+    dispatchKey("v", { ctrlKey: true });
+
+    expect(handlers.onPaste).not.toHaveBeenCalled();
+  });
+
+  it("suppresses shortcuts while a fullscreen dialog is open", () => {
+    appendNode(
+      Object.assign(document.createElement("div"), {
+        className: "app-fullscreen-dialog-root",
       }),
     );
     const { handlers } = mountShortcuts();

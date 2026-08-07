@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -73,6 +74,88 @@ func checkHandlerFile(t *testing.T, path string) error {
 func checkHandlerEmitCalls(t *testing.T, path string, src []byte) {
 	if bytes.Contains(src, []byte("emit.Result(")) || bytes.Contains(src, []byte("emit.Error(")) {
 		t.Errorf("%s: use bridgeipc.EmitResult from handlers.go adapters", path)
+	}
+}
+
+// The handler emits progress or data frames, so it needs the raw emitter. This
+// is the only legitimate reason a route can remain on HandleEvents.
+const progressEmitter = "progress-emitter"
+
+// handleEventsInventory is the single record of raw-emitter bindings. It
+// replaces per-file prose that could go stale silently. Every route bound with
+// HandleEvents must appear here with its reason, and every entry must still be
+// bound that way:
+// TestHandleEventsInventoryIsCurrent fails on either mismatch, so this table
+// cannot drift from the code the way comments did.
+//
+// It doubles as the ratchet. To pay one down, tighten the domain signature, move
+// the binding to Handle/HandleVoid, and delete its line.
+var handleEventsInventory = map[string]string{
+	"filebrowser.resource_patch": progressEmitter,
+	"virt.create":                progressEmitter,
+}
+
+// handleEventsRoute finds the route name a `.HandleEvents(` binding belongs to by
+// taking the nearest preceding route literal. Options like apischema.Privileged()
+// sit between the two, so a single forward regex misses those bindings.
+var routeLiteral = regexp.MustCompile(`"([a-z_]+\.[a-z_0-9]+)"`)
+
+func TestHandleEventsInventoryIsCurrent(t *testing.T) {
+	bound := map[string]bool{}
+	total := 0
+	if err := walkGoFiles(func(path string) error {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for offset := 0; ; {
+			idx := bytes.Index(src[offset:], []byte(".HandleEvents("))
+			if idx < 0 {
+				return nil
+			}
+			total++
+			if m := routeLiteral.FindAllStringSubmatch(string(src[:offset+idx]), -1); len(m) > 0 {
+				bound[m[len(m)-1][1]] = true
+			}
+			offset += idx + 1
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for route := range bound {
+		if _, ok := handleEventsInventory[route]; !ok {
+			t.Errorf("%s is bound with HandleEvents but is not in handleEventsInventory: add it with the reason, or bind it with Handle/HandleVoid", route)
+		}
+	}
+	for route := range handleEventsInventory {
+		if !bound[route] {
+			t.Errorf("%s is in handleEventsInventory but no longer bound with HandleEvents: delete its line", route)
+		}
+	}
+	if total != len(handleEventsInventory) {
+		t.Errorf("found %d HandleEvents bindings but the inventory lists %d", total, len(handleEventsInventory))
+	}
+}
+
+func TestTypedBindingsAreTheDefault(t *testing.T) {
+	counts := map[string]int{}
+	if err := walkGoFiles(func(path string) error {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, form := range []string{".HandleEvents(", ".HandleVoid(", ".Handle("} {
+			counts[form] += bytes.Count(src, []byte(form))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The typed forms must stay the overwhelming default; the inventory above is
+	// the authority on the exact HandleEvents set.
+	if typed := counts[".Handle("] + counts[".HandleVoid("]; typed < counts[".HandleEvents("] {
+		t.Errorf("typed bindings (%d) should outnumber raw-emitter bindings (%d)", typed, counts[".HandleEvents("])
 	}
 }
 

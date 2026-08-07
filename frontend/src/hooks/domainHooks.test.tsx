@@ -1,3 +1,5 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PowerActionContext } from "@/contexts/PowerActionContext";
@@ -7,16 +9,20 @@ import {
   type UpdateContextValue,
 } from "@/contexts/UpdateContext";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
-import { useIntentPreload } from "@/hooks/useIntentPreload";
 import {
   useLinuxIOUpdater,
   useUpdateCanNavigate,
 } from "@/hooks/useLinuxIOUpdater";
 import usePowerAction from "@/hooks/usePowerAction";
-import { act, renderHook } from "@/test/render";
+import { createTestQueryClient, renderHook } from "@/test/render";
+
+const queryClient = createTestQueryClient();
+const queryWrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
 
 const apiMocks = vi.hoisted(() => ({
-  getIconUriUseQuery: vi.fn(),
+  getIconUriQueryOptions: vi.fn(),
 }));
 
 vi.mock("@/api", async () => {
@@ -28,7 +34,7 @@ vi.mock("@/api", async () => {
       docker: {
         ...actual.linuxio.docker,
         get_icon_uri: {
-          useQuery: apiMocks.getIconUriUseQuery,
+          queryOptions: apiMocks.getIconUriQueryOptions,
         },
       },
     },
@@ -52,19 +58,25 @@ const updateValue: UpdateContextValue = {
 
 describe("useDockerIcon", () => {
   beforeEach(() => {
-    apiMocks.getIconUriUseQuery.mockReturnValue({
-      data: { uri: "data:image/svg+xml;base64,abc" },
-      error: null,
-      isError: false,
-      isLoading: false,
-    });
+    queryClient.clear();
+    apiMocks.getIconUriQueryOptions.mockImplementation(
+      (identifier: string, options: Record<string, unknown>) => ({
+        queryKey: ["test", "docker-icon", identifier],
+        queryFn: () =>
+          Promise.resolve({ uri: "data:image/svg+xml;base64,abc" }),
+        initialData: { uri: "data:image/svg+xml;base64,abc" },
+        ...options,
+      }),
+    );
   });
 
   it("enables icon lookup only when an identifier is present and enabled", () => {
-    const { result } = renderHook(() => useDockerIcon("si:nginx"));
+    const { result } = renderHook(() => useDockerIcon("si:nginx"), {
+      wrapper: queryWrapper,
+    });
 
     expect(result.current.iconUri).toBe("data:image/svg+xml;base64,abc");
-    expect(apiMocks.getIconUriUseQuery).toHaveBeenCalledWith(
+    expect(apiMocks.getIconUriQueryOptions).toHaveBeenCalledWith(
       "si:nginx",
       expect.objectContaining({
         enabled: true,
@@ -74,77 +86,25 @@ describe("useDockerIcon", () => {
   });
 
   it("returns null and disables the query for missing or disabled identifiers", () => {
-    const missing = renderHook(() => useDockerIcon(undefined));
-    const disabled = renderHook(() => useDockerIcon("si:nginx", false));
+    const missing = renderHook(() => useDockerIcon(undefined), {
+      wrapper: queryWrapper,
+    });
+    const disabled = renderHook(() => useDockerIcon("si:nginx", false), {
+      wrapper: queryWrapper,
+    });
 
     expect(missing.result.current.iconUri).toBeNull();
     expect(disabled.result.current.iconUri).toBe(
       "data:image/svg+xml;base64,abc",
     );
-    expect(apiMocks.getIconUriUseQuery.mock.calls[0]).toEqual([
+    expect(apiMocks.getIconUriQueryOptions.mock.calls[0]).toEqual([
       "",
       expect.objectContaining({ enabled: false }),
     ]);
-    expect(apiMocks.getIconUriUseQuery.mock.calls[1]).toEqual([
+    expect(apiMocks.getIconUriQueryOptions.mock.calls[1]).toEqual([
       "si:nginx",
       expect.objectContaining({ enabled: false }),
     ]);
-  });
-});
-
-describe("useIntentPreload", () => {
-  it("debounces scheduled preloads and cancels pending work", () => {
-    vi.useFakeTimers();
-    const preload = vi.fn(async () => undefined);
-    const { result } = renderHook(() =>
-      useIntentPreload({ delayMs: 200, preload }),
-    );
-
-    act(() => result.current.schedule());
-    act(() => vi.advanceTimersByTime(199));
-    expect(preload).not.toHaveBeenCalled();
-
-    act(() => result.current.cancel());
-    act(() => vi.advanceTimersByTime(1));
-    expect(preload).not.toHaveBeenCalled();
-
-    act(() => result.current.schedule());
-    act(() => vi.advanceTimersByTime(200));
-    expect(preload).toHaveBeenCalledTimes(1);
-  });
-
-  it("dedupes successful preloads and retries after a rejected preload", async () => {
-    const preload = vi
-      .fn<() => Promise<unknown>>()
-      .mockRejectedValueOnce(new Error("chunk failed"))
-      .mockResolvedValue(undefined);
-    const { result } = renderHook(() => useIntentPreload({ preload }));
-
-    act(() => result.current.run());
-    await vi.waitFor(() => expect(preload).toHaveBeenCalledTimes(1));
-
-    act(() => result.current.run());
-    await vi.waitFor(() => expect(preload).toHaveBeenCalledTimes(2));
-
-    act(() => result.current.run());
-    expect(preload).toHaveBeenCalledTimes(2);
-  });
-
-  it("does nothing when disabled or when no preload callback exists", () => {
-    const preload = vi.fn(async () => undefined);
-    const disabled = renderHook(() =>
-      useIntentPreload({ disabled: true, preload }),
-    );
-    const missing = renderHook(() => useIntentPreload({}));
-
-    act(() => {
-      disabled.result.current.run();
-      disabled.result.current.schedule();
-      missing.result.current.run();
-      missing.result.current.schedule();
-    });
-
-    expect(preload).not.toHaveBeenCalled();
   });
 });
 

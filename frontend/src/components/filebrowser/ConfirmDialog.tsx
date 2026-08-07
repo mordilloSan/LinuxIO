@@ -1,10 +1,10 @@
-import React from "react";
-
-import GeneralDialog from "../dialog/GeneralDialog";
+import type { KeyboardEventHandler, SubmitEventHandler } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import GeneralDialog from "../dialog/GeneralDialog";
 
 interface ConfirmDialogProps {
   cancelText?: string;
@@ -16,7 +16,7 @@ interface ConfirmDialogProps {
   title: string;
 }
 
-const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+const ConfirmDialog = ({
   open,
   title,
   message,
@@ -24,18 +24,16 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelText = "Cancel",
   onClose,
   onConfirm,
-}) => {
+}: ConfirmDialogProps) => {
   const theme = useAppTheme();
 
-  const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {
+  const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     onConfirm();
     onClose();
   };
 
-  const handleKeyDown: React.KeyboardEventHandler<HTMLFormElement> = (
-    event,
-  ) => {
+  const handleKeyDown: KeyboardEventHandler<HTMLFormElement> = (event) => {
     if (event.key !== "Enter" || event.defaultPrevented || event.repeat) {
       return;
     }

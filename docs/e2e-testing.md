@@ -71,6 +71,32 @@ runtime behavior, and UI state transitions that do not need a real host.
 - No test in this tier requires sudo, Docker daemon access, systemd mutation, or
   a real LinuxIO install.
 
+## Isolated Router Browser Regressions
+
+The frontend workspace includes a safe Playwright harness for routing behavior
+that does not require credentials, a backend, or host mutation. It builds a
+small browser fixture with the production `RoutedTabContainer` and TanStack
+Router, then runs Chromium coverage for:
+
+- direct child-route links and refresh
+- back/forward URL, active-tab, and content synchronization
+- route pending and error UI inside the parent layout
+- first-navigation loading of a lazy child component
+- all 21 real page-level child-route components remaining distinct dynamic
+  entries in the production Vite manifest
+
+Install the pinned Playwright Chromium build once, then run the suite:
+
+```sh
+make setup-frontend-browser
+make test-frontend-browser
+```
+
+Failed runs retain Playwright traces and screenshots under
+`.cache/playwright/test-results/`. This harness protects router mechanics and
+production chunk boundaries; it does not claim to cover real authentication,
+the WebSocket bridge, or backend data. Those remain Tier 2 concerns below.
+
 ## Tier 2: Local Playwright For Non-Privileged Queries
 
 Tier 2 proves that the real browser, real login, real WebSocket bridge, and real
@@ -112,9 +138,8 @@ non-privileged.
 - No app update tests.
 - No destructive route coverage.
 
-### Harness Shape
+### Remaining Harness Shape
 
-- Add Playwright under the frontend workspace.
 - Add tags such as `@local-query` and `@session`.
 - Provide a setup check that fails clearly when `E2E_BASE_URL`,
   `E2E_USERNAME`, or `E2E_PASSWORD` is missing.
@@ -219,10 +244,10 @@ These remain manual until there is a stronger isolation story:
 
 1. Add Tier 1 missing tests around auth/session, high-risk hooks, UI dialog
    behavior, update edge cases, and generated runtime behavior.
-2. Add the Playwright harness with local credentials, tags, traces, and a small
-   real login/logout suite.
-3. Expand Tier 2 to non-privileged generated query smoke tests and session expiry
-   flows.
+2. Extend the existing isolated Playwright tooling with local credentials,
+   tags, and a small real login/logout suite.
+3. Expand Tier 2 to non-privileged generated query smoke tests and session
+   expiry flows.
 4. Add the VM recipe for Ubuntu 24.04 with Docker and a sudo test user.
 5. Add Tier 3 fixtures and the safe mutation allowlist.
 6. Add VM Playwright specs for privileged queries, config write/read,

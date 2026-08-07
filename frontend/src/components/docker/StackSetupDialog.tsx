@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -20,19 +20,18 @@ interface StackSetupDialogProps {
   onConfirm: (stackName: string, workingDir: string) => void;
   open: boolean;
 }
-const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
+const StackSetupDialog = ({
   open,
   onClose,
   onConfirm,
   defaultWorkingDir,
-}) => {
+}: StackSetupDialogProps) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/docker", label: "Open Docker" });
+  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [isWorkingDirManuallyEdited, setIsWorkingDirManuallyEdited] =
     useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [errors, setErrors] = useState<{
     stackName?: string;
     workingDir?: string;
@@ -56,7 +55,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       .substring(0, 63);
   };
   const handleStackNameChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const sanitized = sanitizeStackName(e.target.value);
     setStackName(sanitized);
@@ -76,7 +75,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     }
   };
   const handleWorkingDirChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     setWorkingDir(e.target.value);
     setIsWorkingDirManuallyEdited(true);
@@ -103,35 +102,28 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-  const handleConfirm = async () => {
+  // Validate the directory with the backend, then proceed to the editor.
+  const { mutate: validateWorkingDir, isPending: isValidating } =
+    linuxio.docker.validate_stack_directory.useAction({
+      success: (result) => {
+        if (!result.valid) {
+          setErrors((prev) => ({
+            ...prev,
+            workingDir: result.error || "Invalid directory",
+          }));
+          toast.error(result.error || "Invalid directory");
+          return;
+        }
+        onConfirm(stackName.trim(), workingDir.trim());
+      },
+      error: "Failed to validate directory",
+      toast: { label: "Open Docker", to: "/docker" },
+    });
+  const handleConfirm = () => {
     if (!validate()) {
       return;
     }
-    setIsValidating(true);
-    try {
-      // Validate the directory with the backend
-      const result = await linuxio.docker.validate_stack_directory(
-        workingDir.trim(),
-      );
-      if (!result.valid) {
-        setErrors({
-          ...errors,
-          workingDir: result.error || "Invalid directory",
-        });
-        toast.error(result.error || "Invalid directory");
-        setIsValidating(false);
-        return;
-      }
-
-      // Directory is valid, proceed
-      onConfirm(stackName.trim(), workingDir.trim());
-    } catch (error) {
-      toast.error(
-        `Failed to validate directory: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    } finally {
-      setIsValidating(false);
-    }
+    validateWorkingDir({ dirPath: workingDir.trim() });
   };
   return (
     <GeneralDialog

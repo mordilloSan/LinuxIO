@@ -12,7 +12,7 @@ import (
 )
 
 // List all images
-func ListImages(ctx context.Context) (any, error) {
+func ListImages(ctx context.Context) ([]apischema.DockerImage, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)

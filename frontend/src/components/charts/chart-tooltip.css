@@ -16,7 +16,7 @@
   border: 1px solid var(--app-palette-divider);
   border-radius: 6px;
   padding: 4px 8px;
-  font-family: var(--app-font-family, Inter, sans-serif);
+  font-family: var(--app-font-family);
   font-size: 11px;
   white-space: nowrap;
   color: var(--app-palette-text-primary);

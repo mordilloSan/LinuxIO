@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -8,21 +8,21 @@ import { alpha } from "@/utils/color";
 
 interface MetricBarProps {
   color: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   label: string;
   percent: number;
-  rightLabel?: React.ReactNode;
+  rightLabel?: ReactNode;
   tooltip?: string;
 }
 
-const MetricBar: React.FC<MetricBarProps> = ({
+const MetricBar = ({
   label,
   percent,
   color,
   tooltip,
   rightLabel,
   icon,
-}) => {
+}: MetricBarProps) => {
   const theme = useAppTheme();
 
   return (
@@ -74,7 +74,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
                 theme.palette.mode === "dark" ? 0.18 : 0.12,
               ),
               "--_lp-color": color,
-            } as React.CSSProperties
+            } as CSSProperties
           }
           value={percent}
           variant="determinate"

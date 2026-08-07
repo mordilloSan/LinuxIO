@@ -1,5 +1,4 @@
 import type { JobSnapshot } from "./generated/linuxio-types";
-
 import { isTerminalJobState } from "./job-state";
 import { openJobAttachStream } from "./linuxio";
 import { LinuxIOError, request } from "./linuxio-core";
@@ -24,63 +23,93 @@ export function jobSnapshotResult<T>(value: T | JobSnapshot): T {
   return value;
 }
 
-const LOCAL_HANDLER_RETENTION_MS = 5_000;
-const locallyHandledJobIds = new Set<string>();
+/** Status code the bridge publishes for a canceled job (markCanceledLocked). */
+export const JOB_CANCELED_CODE = 499;
 
-export function markJobLocallyHandled(id: string): void {
-  locallyHandledJobIds.add(id);
+/**
+ * True when a job stream ended because the job was canceled — by this page, the
+ * navbar chip, or another session — rather than because it failed. Cancellation
+ * arrives as an ordinary result-error frame, so every terminal-error surface has
+ * to tell the two apart before reporting a failure.
+ */
+export function isJobCancellationError(error: unknown): boolean {
+  return (
+    error instanceof LinuxIOError && Number(error.code) === JOB_CANCELED_CODE
+  );
 }
 
-export function unmarkJobLocallyHandled(id: string): void {
-  setTimeout(() => locallyHandledJobIds.delete(id), LOCAL_HANDLER_RETENTION_MS);
+const JOB_POLL_INTERVAL_MS = 1_000;
+
+/**
+ * Poll `jobs.get` until the job reaches a terminal state. Fallback for when
+ * the attach stream cannot be opened (mux dropped between job start and
+ * attach); the connection_closed retry policy re-initializes the mux and
+ * waits, so this resolves at actual completion instead of failing fast.
+ */
+async function pollJobUntilTerminal(jobId: string): Promise<JobSnapshot> {
+  for (;;) {
+    const snapshot = await request<JobSnapshot>(
+      "jobs",
+      "get",
+      { jobId },
+      { retryPolicy: "connection_closed" },
+    );
+    if (isTerminalJobState(snapshot.state)) {
+      return snapshot;
+    }
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+  }
 }
 
-export function isJobLocallyHandled(id: string): boolean {
-  return locallyHandledJobIds.has(id);
+/**
+ * Return a completed snapshot, or throw the job's structured error
+ * (message + code) for a failed/canceled one.
+ */
+export function terminalSnapshotOrThrow(snapshot: JobSnapshot): JobSnapshot {
+  if (snapshot.state === "completed") return snapshot;
+  throw new LinuxIOError(
+    snapshot.error?.message ?? "Job failed",
+    snapshot.error?.code,
+  );
 }
 
 export async function waitForJobCompletion(
   snapshot: JobSnapshot,
 ): Promise<JobSnapshot> {
   if (isTerminalJobState(snapshot.state)) {
-    if (snapshot.state === "completed") return snapshot;
-    throw new LinuxIOError(
-      snapshot.error?.message ?? "Job failed",
-      snapshot.error?.code,
-    );
+    return terminalSnapshotOrThrow(snapshot);
   }
 
   const attach = openJobAttachStream(snapshot.id);
   if (!attach) {
-    return snapshot;
+    // Unlike useJobStreamAction (which promises live progress and fails fast
+    // when it cannot attach), a plain job action promises completion — so a
+    // missed attach falls back to polling rather than resolving mid-job with
+    // an undefined result.
+    return terminalSnapshotOrThrow(await pollJobUntilTerminal(snapshot.id));
   }
 
-  markJobLocallyHandled(snapshot.id);
-  try {
-    const result = await waitForStreamResult(attach, {
-      closeMessage: "Job stream closed before completion",
-    });
+  const result = await waitForStreamResult(attach, {
+    closeMessage: "Job stream closed before completion",
+  });
 
-    try {
-      return await request<JobSnapshot>(
-        "jobs",
-        "get",
-        { jobId: snapshot.id },
-        {
-          retryPolicy: "connection_closed",
-        },
-      );
-    } catch {
-      const now = new Date().toISOString();
-      return {
-        ...snapshot,
-        state: "completed",
-        result,
-        updated_at: now,
-        finished_at: now,
-      };
-    }
-  } finally {
-    unmarkJobLocallyHandled(snapshot.id);
+  try {
+    return await request<JobSnapshot>(
+      "jobs",
+      "get",
+      { jobId: snapshot.id },
+      {
+        retryPolicy: "connection_closed",
+      },
+    );
+  } catch {
+    const now = new Date().toISOString();
+    return {
+      ...snapshot,
+      state: "completed",
+      result,
+      updated_at: now,
+      finished_at: now,
+    };
   }
 }

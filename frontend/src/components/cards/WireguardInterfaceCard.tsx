@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { motion } from "framer-motion";
-import React, { RefObject, useState } from "react";
+import { motion } from "motion/react";
+import { RefObject, useState } from "react";
 
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -28,7 +29,7 @@ interface InterfaceCardProps {
   selectedInterface: string | null;
 }
 
-const InterfaceCard: React.FC<InterfaceCardProps> = ({
+const InterfaceCard = ({
   iface,
   selectedInterface,
   selectedCardRef,
@@ -37,7 +38,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   handleToggleBootPersistence,
   handleDelete,
   handleAddPeer,
-}) => {
+}: InterfaceCardProps) => {
   const theme = useAppTheme();
   const color = "primary";
   const activeAccentColor =
@@ -58,12 +59,10 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
-        onClick={() => handleSelectInterface(iface)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         ref={isSelected ? selectedCardRef : null}
         style={{
-          cursor: "pointer",
           ...getAccentCardStyles(idleAccentColor),
           transition:
             "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
@@ -71,24 +70,48 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
         }}
       >
         <AppCardContent>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <AppTypography fontWeight={700} variant="subtitle1">
-              {iface.name}
-            </AppTypography>
-            <div>
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <AppButton
+              aria-pressed={isSelected}
+              color="inherit"
+              onClick={() => handleSelectInterface(iface)}
+              style={{
+                appearance: "none",
+                background: "none",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                display: "block",
+                flex: 1,
+                font: "inherit",
+                padding: 0,
+                textAlign: "left",
+              }}
+            >
+              <AppTypography fontWeight={700} variant="subtitle1">
+                {iface.name}
+              </AppTypography>
+              <div style={{ marginTop: 6 }}>
+                <InfoRow label="Address" wrap>
+                  {iface.address}
+                </InfoRow>
+                <InfoRow label="Port">{iface.port}</InfoRow>
+                <InfoRow label="Peers" noBorder>
+                  {iface.peerCount}
+                </InfoRow>
+              </div>
+            </AppButton>
+            <div style={{ marginLeft: 8 }}>
               <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
                 <AppIconButton
-                  aria-label="Power"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  aria-label={
+                    iface.isConnected === "Active"
+                      ? "Turn interface off"
+                      : "Turn interface on"
+                  }
+                  onClick={() => {
                     handleToggleInterface(
                       iface.name,
                       iface.isConnected === "Active" ? "down" : "up",
@@ -112,9 +135,12 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 }
               >
                 <AppIconButton
-                  aria-label="Boot Persistence"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  aria-label={
+                    iface.isEnabled
+                      ? "Disable boot persistence"
+                      : "Enable boot persistence"
+                  }
+                  onClick={() => {
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
                   style={{
@@ -128,8 +154,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               </AppTooltip>
               <AppTooltip title="Add Peer">
                 <AppIconButton
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  aria-label="Add peer"
+                  onClick={() => {
                     handleAddPeer(iface.name, {});
                   }}
                 >
@@ -138,9 +164,9 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               </AppTooltip>
               <AppTooltip title="Delete Interface">
                 <AppIconButton
+                  aria-label="Delete interface"
                   color="error"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     handleDelete(iface.name);
                   }}
                 >
@@ -148,15 +174,6 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 </AppIconButton>
               </AppTooltip>
             </div>
-          </div>
-          <div style={{ marginTop: 6 }}>
-            <InfoRow label="Address" wrap>
-              {iface.address}
-            </InfoRow>
-            <InfoRow label="Port">{iface.port}</InfoRow>
-            <InfoRow label="Peers" noBorder>
-              {iface.peerCount}
-            </InfoRow>
           </div>
         </AppCardContent>
       </FrostedCard>

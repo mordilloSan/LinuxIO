@@ -12,8 +12,8 @@ import (
 var api = apischema.Bindings(
 	apischema.Query[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
 	apischema.Query[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Job[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Job[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
+	apischema.Query[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Query[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
 
 var Routes = api.Routes()
@@ -23,35 +23,33 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetConfig(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	cfg, err := FetchConfig(ctx)
-	return bridgeipc.EmitResult(emit, cfg, err)
+func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerConfig, error) {
+	return FetchConfig(ctx)
 }
 
-func handleGetStatus(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
+func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerDaemonStatus, error) {
 	status, err := FetchStatus(ctx)
-	return bridgeipc.EmitResult(emit, status, err)
+	return indexerStatusToAPI(status), err
 }
 
-func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch, emit bridgeipc.Events) error {
+func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch) (apischema.IndexerConfigSetResult, error) {
 	raw, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return apischema.IndexerConfigSetResult{}, err
 	}
 	cfg, restartRequired, err := UpdateConfig(ctx, raw)
 	if err != nil {
-		return err
+		return apischema.IndexerConfigSetResult{}, err
 	}
-	return bridgeipc.EmitResult(emit, apischema.IndexerConfigSetResult{
+	return apischema.IndexerConfigSetResult{
 		Config:          cfg,
 		RestartRequired: restartRequired,
-	}, nil)
+	}, nil
 }
 
-func handleSetTimerInterval(ctx context.Context, req apischema.IntervalRequest, emit bridgeipc.Events) error {
+func handleSetTimerInterval(ctx context.Context, req apischema.IntervalRequest) (apischema.IndexerTimerSetResult, error) {
 	if req.Interval == "" {
-		return bridgeipc.ErrInvalidArgs
+		return apischema.IndexerTimerSetResult{}, bridgeipc.ErrInvalidArgs
 	}
-	result, err := SetTimerInterval(ctx, req.Interval)
-	return bridgeipc.EmitResult(emit, result, err)
+	return SetTimerInterval(ctx, req.Interval)
 }

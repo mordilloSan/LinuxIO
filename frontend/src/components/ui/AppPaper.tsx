@@ -1,12 +1,12 @@
-import React from "react";
+import { forwardRef, HTMLAttributes } from "react";
 
 import "./app-paper.css";
 
-export interface AppPaperProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface AppPaperProps extends HTMLAttributes<HTMLDivElement> {
   variant?: "elevation" | "outlined";
 }
 
-const AppPaper = React.forwardRef<HTMLDivElement, AppPaperProps>(
+const AppPaper = forwardRef<HTMLDivElement, AppPaperProps>(
   ({ variant = "elevation", className, ...rest }, ref) => {
     const cls = [
       "app-paper",

@@ -31,7 +31,7 @@ CC ?= cc
 
 # Pinned external component versions
 WATCHTOWER_REPO ?= nicholas-fedor/watchtower
-WATCHTOWER_VERSION ?= 1.19.0
+WATCHTOWER_VERSION ?= 1.20.3
 WATCHTOWER_UPDATE_CHECK ?= 1
 ifneq ($(WATCHTOWER_UPDATE_CHECK),0)
 RELEASE_PRE_PR_TARGETS += check-watchtower-update-for-pr
@@ -58,6 +58,16 @@ COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
+# Go's test cache re-runs only packages whose inputs changed. Pass
+# GO_TEST_FLAGS=-count=1 to force a full fresh run (or: go clean -testcache).
+GO_TEST_FLAGS ?= 
+# Extra env vars / build tags injected into build-backend and build-bridge.
+# Normally empty; build-leak-profile sets them for pprof debug binaries.
+GO_BUILD_EXTRA_ENV ?=
+GO_BUILD_TAGS      ?=
+GO_BUILD_TAGS_FLAG  = $(if $(GO_BUILD_TAGS),-tags $(GO_BUILD_TAGS))
+# Captured at Makefile parse so the `make test` timer includes prerequisites.
+TEST_TIMER_START := $(shell date +%s%N)
 
 MODULE_PATH = $(shell awk '/^module / {print $$2; exit}' "$(BACKEND_DIR)/go.mod" 2>/dev/null || echo "github.com/mordilloSan/LinuxIO/backend")
 
@@ -148,6 +158,7 @@ GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_TOOLS_DIR)/bin/golangci-lint
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 MODERNIZE_VERSION     ?= latest
+MODERNIZE             := $(GO_TOOLS_DIR)/bin/modernize
 DEADCODE_MODULE       := golang.org/x/tools/cmd/deadcode
 DEADCODE_VERSION      ?= latest
 DEADCODE              := $(GO_TOOLS_DIR)/bin/deadcode
@@ -337,13 +348,26 @@ ensure-deadcode: ensure-go
 	   echo "✅ deadcode ready."; \
 	}
 
+ensure-modernize: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(MODERNIZE)"; \
+	   if [ ! -x "$$bin" ]; then \
+	     echo "📥 Installing modernize $(MODERNIZE_VERSION) with local Go ($(GO_BIN))..."; \
+	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)"; \
+	   fi; \
+	   "$$bin" -h >/dev/null 2>&1 || { echo "❌ modernize is installed but not runnable"; exit 1; }; \
+	   echo "✅ modernize ready."; \
+	}
+
 setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-update-deps: ensure-node
+# React Compiler requires oxc-transform 0.136.0; keep it out of dependency bumps.
+update-deps: ensure-node ensure-go
 	@echo ""
 	@echo "📦 Frontend dependency update (npm → latest)"
 	@bash -c '\
@@ -354,16 +378,31 @@ update-deps: ensure-node
 	  npm outdated || true; \
 	  echo ""; \
 	  echo "⬆️  Bumping package.json to latest with npm-check-updates..."; \
-	  npx --yes npm-check-updates -u; \
+	  npx --yes npm-check-updates -u --reject oxc-transform; \
 	  echo ""; \
 	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
-	  npm install; \
+	  npm install --no-audit --no-fund; \
+	  echo ""; \
+	  echo "🛡️  Applying available npm audit fixes..."; \
+	  if ! npm audit fix --no-fund; then \
+	    echo "⚠️  npm audit fix did not complete; checking for remaining vulnerabilities." >&2; \
+	  fi; \
+	  echo ""; \
+	  if ! npm audit --audit-level=low >/dev/null 2>&1; then \
+	    echo "⚠️  npm vulnerabilities remain after npm audit fix; review the audit report above." >&2; \
+	    npm audit || true; \
+	  fi; \
 	  echo ""; \
 	  echo "🔎 Remaining outdated after update:"; \
 	  npm outdated || true; \
 	  echo ""; \
 	  echo "✅ Frontend dependencies updated to latest!"; \
 	'
+	@echo ""
+	@echo "📦 Go dependency update (go get -u -t ./...)"
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" get -u -t ./...
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy
+	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
@@ -372,53 +411,86 @@ lint: ensure-node setup
 tsc: ensure-node setup
 	@$(MAKE) --no-print-directory tsc-only
 
-golint: ensure-golint
+golint: ensure-golint ensure-modernize
 	@$(MAKE) --no-print-directory golint-only
 
-test: ensure-node ensure-go ensure-golint ensure-deadcode setup dev-prep
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
-	$(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only     & PID_TSC=$$!; \
-	$(MAKE) --no-print-directory golint-only  & PID_GOLINT=$$!; \
-	wait $$PID_LINT   || ST=1; \
-	wait $$PID_TSC    || ST=1; \
-	wait $$PID_GOLINT || ST=1; \
+	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
+	export FRONTEND_LINT_WARNINGS_FILE; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/golint"; \
+	$(MAKE) --no-print-directory lint-only   > "$$TMPDIR_JOBS/lint"   2>&1 & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only    > "$$TMPDIR_JOBS/tsc"    2>&1 & PID_TSC=$$!; \
+	$(MAKE) --no-print-directory golint-only > "$$TMPDIR_JOBS/golint" 2>&1 & PID_GOLINT=$$!; \
+	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
+	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
+	follow "$$TMPDIR_JOBS/tsc"    $$PID_TSC    || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	touch "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	follow "$$TMPDIR_JOBS/fe"   $$PID_FE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
+	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
+	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
+	  $(PRINTC) "$(COLOR_YELLOW)   Warnings are non-blocking; review the Oxlint output above or run 'make lint'.$(COLOR_RESET)"; \
+	fi; \
+	ELAPSED="$$(awk -v ns=$$(( $$(date +%s%N) - $(TEST_TIMER_START) )) 'BEGIN{printf "%.1f", ns/1e9}')"; \
 	if [ $$ST -ne 0 ]; then \
-	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET)"; \
+	  $(PRINTC) "\n$(COLOR_RED)❌ Some checks failed.$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"; \
 	  exit 1; \
 	fi; \
-	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)"
+	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"
 
 check-frontend: ensure-node setup
 	@set -uo pipefail; \
 	ST=0; \
-	$(MAKE) --no-print-directory lint-only & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only  & PID_TSC=$$!; \
-	wait $$PID_LINT || ST=1; \
-	wait $$PID_TSC  || ST=1; \
+	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
+	export FRONTEND_LINT_WARNINGS_FILE; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc"; \
+	$(MAKE) --no-print-directory lint-only > "$$TMPDIR_JOBS/lint" 2>&1 & PID_LINT=$$!; \
+	$(MAKE) --no-print-directory tsc-only  > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
+	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
+	follow "$$TMPDIR_JOBS/lint" $$PID_LINT || ST=1; \
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
+	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
+	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  Frontend checks completed with $$FRONTEND_LINT_WARNINGS lint warning(s).$(COLOR_RESET)"; \
+	  $(PRINTC) "$(COLOR_YELLOW)   Warnings are non-blocking; review the Oxlint output above or run 'make lint'.$(COLOR_RESET)"; \
+	fi; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Frontend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ Frontend checks passed!$(COLOR_RESET)"
 
-check-backend: ensure-go ensure-golint ensure-deadcode
+check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 	@set -uo pipefail; \
 	ST=0; \
 	$(MAKE) --no-print-directory golint-only || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
+	TMPDIR_JOBS="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TMPDIR_JOBS"' EXIT; \
+	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
+	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -428,9 +500,119 @@ check-backend: ensure-go ensure-golint ensure-deadcode
 test-frontend: ensure-node setup
 	@$(MAKE) --no-print-directory test-frontend-only
 
+setup-frontend-browser: ensure-node setup
+	@echo "🌐 Installing Playwright Chromium..."
+	@bash -c 'cd frontend && ./node_modules/.bin/playwright install chromium'
+	@echo "✅ Playwright Chromium installed!"
+
+test-frontend-browser: ensure-node setup
+	@set -e
+	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
+	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
+	@echo "🌐 Running frontend browser tests..."
+	@bash -c 'cd frontend && ./node_modules/.bin/playwright test --config config/playwright.config.ts'
+	@echo "✅ Frontend browser tests passed!"
+
 test-frontend-only:
 	@echo "🧪 Running frontend unit tests..."
-	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run | sed "/^$$/d" && echo "✅ Frontend unit tests passed!"'
+	@bash -o pipefail -c 'cd frontend && ./node_modules/.bin/vitest run --config config/vitest.config.ts --reporter=default | sed -u "/^$$/d" && echo "✅ Frontend unit tests passed!"'
+
+test-auth: check-c-build-deps
+	@echo "🧪 Running C authentication helper tests..."
+	@set -euo pipefail; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	TEST_BIN="$$TEST_DIR/linuxio-auth-test"; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_BIN" backend/auth/linuxio-auth_test.c $(LDFLAGS) $$LIBS; \
+	"$$TEST_BIN"; \
+	echo "✅ C authentication helper tests passed!"
+
+test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
+	@echo ""
+	@echo "🧪 Running cross-language auth protocol tests..."
+	@set -euo pipefail; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	TEST_BIN="$$TEST_DIR/linuxio-auth-frametool"; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_BIN" backend/auth/linuxio-auth-frametool.c $(LDFLAGS) $$LIBS; \
+	cd "$(BACKEND_DIR)" && LINUXIO_AUTH_FRAMETOOL="$$TEST_BIN" $(GO_CMD_ENV) \
+	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1; \
+	echo "✅ Cross-language auth protocol tests passed!"
+
+# Tier-1 hermetic PAM/host-integration suite for the C launcher. Runs the
+# real handle_client() against a pam_wrapper/pam_matrix PAM stack, an
+# nss_wrapper user database, uid_wrapper emulated-root privilege drops, a
+# stub bridge exec'd through the fixed fd layout, and tmpfile accounting
+# databases. Requires the cwrap wrapper libraries
+# (apt install libpam-wrapper libnss-wrapper libuid-wrapper); skips with a
+# warning when they are missing. Non-standard library location:
+#   make test-auth-pam LINUXIO_CWRAP_LIBDIR=/path/containing/the/so/files
+test-auth-pam: check-c-build-deps
+	@echo ""
+	@echo "🧪 Running hermetic PAM integration tests (pam_wrapper)..."
+	@set -euo pipefail; \
+	CWRAP_DIR="$(LINUXIO_CWRAP_LIBDIR)"; \
+	find_lib() { \
+	  for f in $${CWRAP_DIR:+"$$CWRAP_DIR/$$1"} /usr/lib/*/"$$1" /usr/lib/"$$1" /usr/lib64/"$$1" /usr/local/lib/"$$1"; do \
+	    if [ -e "$$f" ]; then echo "$$f"; return 0; fi; \
+	  done; return 1; \
+	}; \
+	PAM_WRAPPER_LIB="$$(find_lib libpam_wrapper.so || true)"; \
+	NSS_WRAPPER_LIB="$$(find_lib libnss_wrapper.so || true)"; \
+	UID_WRAPPER_LIB="$$(find_lib libuid_wrapper.so || true)"; \
+	PAM_MATRIX_LIB="$$(find_lib pam_wrapper/pam_matrix.so || true)"; \
+	if [ -z "$$PAM_WRAPPER_LIB" ] || [ -z "$$NSS_WRAPPER_LIB" ] || \
+	   [ -z "$$UID_WRAPPER_LIB" ] || [ -z "$$PAM_MATRIX_LIB" ]; then \
+	  echo "⚠️  Skipping PAM integration tests: cwrap wrapper libraries not found."; \
+	  echo "   Install them with: apt install libpam-wrapper libnss-wrapper libuid-wrapper"; \
+	  echo "   (or pass LINUXIO_CWRAP_LIBDIR=<dir containing the .so files>)"; \
+	  exit 0; \
+	fi; \
+	TEST_DIR="$$(mktemp -d)"; \
+	trap 'rm -rf "$$TEST_DIR"' EXIT; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	else \
+	  LIBS="$$LIBS -lsystemd"; \
+	fi; \
+	$(CC) -shared -fPIC -O2 -Wall -Wextra -Werror \
+	  -o "$$TEST_DIR/pam_linuxio_probe.so" backend/auth/testdata/pam_linuxio_probe.c -lpam; \
+	$(CC) -O2 -Wall -Wextra -Werror \
+	  -o "$$TEST_DIR/bridge-stub" backend/auth/testdata/linuxio-test-bridge.c; \
+	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
+	  -o "$$TEST_DIR/linuxio-auth-pam-test" backend/auth/linuxio-auth-pam_test.c $(LDFLAGS) $$LIBS; \
+	mkdir -p "$$TEST_DIR/pam.d"; \
+	sed -e "s|@PROBE_MODULE@|$$TEST_DIR/pam_linuxio_probe.so|g" \
+	    -e "s|@PAM_MATRIX@|$$PAM_MATRIX_LIB|g" \
+	    -e "s|@PASSDB@|$$TEST_DIR/passdb|g" \
+	    backend/auth/testdata/linuxio.pam.in > "$$TEST_DIR/pam.d/linuxio"; \
+	: > "$$TEST_DIR/passwd"; : > "$$TEST_DIR/group"; \
+	cd "$$TEST_DIR" && env -u JOURNAL_STREAM \
+	  LD_PRELOAD="$$PAM_WRAPPER_LIB:$$NSS_WRAPPER_LIB:$$UID_WRAPPER_LIB" \
+	  PAM_WRAPPER=1 \
+	  PAM_WRAPPER_SERVICE_DIR="$$TEST_DIR/pam.d" \
+	  NSS_WRAPPER_PASSWD="$$TEST_DIR/passwd" \
+	  NSS_WRAPPER_GROUP="$$TEST_DIR/group" \
+	  UID_WRAPPER=1 UID_WRAPPER_ROOT=1 \
+	  LINUXIO_TEST_REAL_UID="$$(id -u)" LINUXIO_TEST_REAL_GID="$$(id -g)" \
+	  LANG=C.UTF-8 TERM=xterm \
+	  ./linuxio-auth-pam-test; \
+	echo "✅ PAM integration tests passed!"
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -443,13 +625,22 @@ test-updater: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo "🔎 Running ESLint (auto-fix, concurrent)..."
+	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
 	@bash -c ' \
 	  cd frontend; \
-	  filter_ts_warn() { grep -v -F -e "=============" -e "WARNING: You are currently running" -e "@typescript-eslint/typescript-estree version:" -e "Supported TypeScript versions:" -e "Your TypeScript version:" -e "Please only submit bug reports" || true; }; \
-	  ./node_modules/.bin/eslint src --ext .js,.jsx,.ts,.tsx --fix --cache --cache-location .eslintcache --concurrency auto 2>&1 | filter_ts_warn; \
+	  lint_output="$$(mktemp)"; \
+	  trap "rm -f \"$$lint_output\"" EXIT; \
+	  	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
-	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting passed!" || { echo "❌ ESLint failed!"; exit "$$status"; } \
+	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
+	  if [ -n "$$warning_count" ]; then \
+	    echo "⚠️  Oxlint completed with $$warning_count warning(s); warnings are non-blocking."; \
+	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
+	  fi; \
+	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/oxlint.config.mts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
+	  status=$$?; \
+	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
 
 tsc-only:
@@ -458,7 +649,8 @@ tsc-only:
 
 golint-only:
 	@set -euo pipefail
-	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
+	@echo ""
+	@echo "🔎 test-backend: $(BACKEND_DIR)"
 	@echo "   Running Go formatters..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" fmt --diff 2>&1)"; \
@@ -471,46 +663,64 @@ endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
-	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(MODERNIZE)" -fix ./... )
 	@echo "   Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
-test-backend: $(GO_BUILD_PREREQ)
-	@echo "🧪 Running Go unit tests (backend)..."
+# Backend test entry point; this is what `make test` and CI run. Race results
+# are cached like normal test results, so incremental runs stay fast. Pass
+# GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
+# interleavings (races only surface on interleavings that actually happen).
+test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
+	@echo ""
+	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
-		status=$$?; \
-		echo "$$out" | grep -v '\[no test files\]' || true; \
-		exit $$status
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
+		| grep --line-buffered -v '\[no test files\]'; \
+		exit "$${PIPESTATUS[0]}"
 
 deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
 
+# Scan with tests for wholly unreachable code, then without tests to surface
+# production APIs kept alive only by tests. testdbus is deliberately test-only
+# cross-package infrastructure and is the sole production-scan exclusion.
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
-		status=$$?; \
-		if [ $$status -ne 0 ]; then \
+		test_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
+		test_status=$$?; \
+		production_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" ./... 2>&1 )"; \
+		production_status=$$?; \
+		if [ $$production_status -eq 0 ]; then \
+			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
+		fi; \
+		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
-		elif [ -n "$$out" ]; then \
+			if [ $$test_status -ne 0 ]; then printf '%s\n' "$$test_out"; fi; \
+			if [ $$production_status -ne 0 ]; then printf '%s\n' "$$production_out"; fi; \
+		elif [ -n "$$test_out" ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found unreachable functions (informational, not failing):$(COLOR_RESET)"; \
-			printf '%s\n' "$$out"; \
+			printf '%s\n' "$$test_out"; \
+		elif [ -n "$$production_out" ]; then \
+			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode found functions reachable only from tests (informational, not failing):$(COLOR_RESET)"; \
+			printf '%s\n' "$$production_out"; \
 		else \
 			$(PRINTC) "$(COLOR_GREEN)✅ No dead code found!$(COLOR_RESET)"; \
 		fi
 
+# libpam's conversation callback ABI requires void *appdata_ptr. Cppcheck's
+# callback-specific const suggestion would require an incompatible function type.
 analyze-auth:
 	@echo ""
 	@echo "🔬 Running C static analysis (linuxio-auth)..."
 	@set -euo pipefail; \
 	FILE="backend/auth/linuxio-auth.c"; \
 	CPPCHK_DEFS='-D__has_include(x)=0 -DLINUXIO_VERSION="dev"'; \
-	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c --suppress=normalCheckLevelMaxBranches'; \
+	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c --suppress=constParameterCallback:backend/auth/linuxio-auth.c --suppress=normalCheckLevelMaxBranches'; \
 	SB_WARNFLAGS="$(filter-out -Wduplicated-cond -Wlogical-op,$(WARNFLAGS)) -Wno-format-nonliteral"; \
-	CLANG_TIDY_OPTS='--quiet -checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral'; \
+	CLANG_TIDY_OPTS='--quiet -checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral --extra-arg=-Wno-unknown-warning-option'; \
 	CC_DB_DIR=".cache/clang"; \
 	CC_DB="$$CC_DB_DIR/compile_commands.json"; \
 	if ! command -v cppcheck >/dev/null 2>&1; then \
@@ -527,11 +737,17 @@ analyze-auth:
 	echo "   $(CC) -fanalyzer"; \
 	"$(CC)" -fanalyzer -Wall -Wextra -Wshadow -Wformat=2 -Wconversion -Wnull-dereference -Wvla -O2 -c "$$FILE"; \
 	rm -f linuxio-auth.o; \
+	CLANG_BIN=""; \
+	for c in clang clang-{30..14}; do \
+	  if command -v "$$c" >/dev/null 2>&1; then CLANG_BIN="$$c"; break; fi; \
+	done; \
 	if ! command -v scan-build >/dev/null 2>&1; then \
 	  echo "  scan-build not found - skipping clang static analyzer"; \
+	elif [ -z "$$CLANG_BIN" ]; then \
+	  echo "  clang not found - skipping clang static analyzer (install: sudo apt-get install clang)"; \
 	else \
-	  echo "   scan-build (clang static analyzer)"; \
-	  scan-build --use-cc=clang $(MAKE) --no-print-directory build-auth CC=clang WARNFLAGS="$$SB_WARNFLAGS"; \
+	  echo "   scan-build (clang static analyzer, $$CLANG_BIN)"; \
+	  scan-build --use-cc="$$CLANG_BIN" $(MAKE) --no-print-directory build-auth CC="$$CLANG_BIN" WARNFLAGS="$$SB_WARNFLAGS"; \
 	fi; \
 	if ! command -v bear >/dev/null 2>&1; then \
 	  echo "❌ bear not found (install: sudo apt-get install bear)"; \
@@ -559,15 +775,37 @@ bundle-metrics:
 	@echo "📊 Reporting frontend bundle metrics..."
 	@bash -c 'cd frontend && npm run bundle:metrics'
 
-bundle-budget:
+compiler-coverage:
 	@echo ""
-	@echo "📏 Checking frontend bundle budgets..."
-	@bash -c 'cd frontend && npm run bundle:budget'
+	@echo "⚛️  Reporting React Compiler coverage..."
+	@bash -c 'cd frontend && npm run compiler:coverage'
 
 analyze: ensure-node setup
 	@echo ""
 	@echo "🔬 Building frontend bundle analysis..."
 	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
+
+# Debug-only binaries for goroutine leak hunting. Compiled with
+# GOEXPERIMENT=goroutineleakprofile and the pprofdebug build tag, which serves
+# net/http/pprof on localhost only (webserver :6060, bridge :6061). The leak
+# report lives at /debug/pprof/goroutineleak. The endpoint has no auth (it is
+# loopback-bound) and the GOEXPERIMENT is not production-stable — never ship
+# these binaries; rebuild with `make build` afterwards.
+build-leak-profile:
+	@echo ""
+	@echo "🕵️  Building DEBUG binaries with pprof + goroutine leak profile..."
+	@$(MAKE) --no-print-directory build-bridge \
+		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
+		GO_BUILD_TAGS="pprofdebug"
+	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	echo "   Bridge hash: $$BRIDGE_HASH"; \
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1 \
+		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
+		GO_BUILD_TAGS="pprofdebug"
+	@echo ""
+	@echo "   Webserver pprof: http://127.0.0.1:6060/debug/pprof/  (leaks: /debug/pprof/goroutineleak)"
+	@echo "   Bridge pprof:    http://127.0.0.1:6061/debug/pprof/"
+	@echo "   ⚠️  Debug binaries only — rebuild with 'make build' before packaging."
 
 build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
@@ -580,7 +818,7 @@ build-backend: $(GO_BUILD_PREREQ)
 		echo "   Bridge SHA256: (not embedded - development mode)"; \
 	fi
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
@@ -588,6 +826,7 @@ build-backend: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/version.BridgeSHA256=$(BRIDGE_SHA256)'" \
+	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-webserver" && \
@@ -601,7 +840,7 @@ build-bridge: $(GO_BUILD_PREREQ)
 	@echo "   Module: $(MODULE_PATH)"
 	@echo "   Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "\
 		-s -w \
@@ -609,6 +848,7 @@ build-bridge: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/version.WatchtowerVersion=$(WATCHTOWER_VERSION)'" \
+	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-bridge" && \
@@ -766,7 +1006,7 @@ dev: setup dev-prep
 	  echo "  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
 	  rm -f "$(VITE_DEV_PID)"; \
-	  nohup bash -c 'cd frontend && exec npx vite --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  nohup bash -c 'cd frontend && exec npx vite --config config/vite.config.ts --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
 	  echo $$! > "$(VITE_DEV_PID)"; \
 	  STARTED_VITE=1; \
 	fi
@@ -798,7 +1038,7 @@ build-nocheck: generate build-vite build-bridge _build-binaries
 
 fastbuild: generate build-bridge _build-binaries
 
-generate: ensure-go
+generate: ensure-go ensure-node setup
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
 	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
@@ -810,7 +1050,7 @@ clean:
 	@rm -f $(VITE_DEV_PID) $(VITE_DEV_LOG) $(SCRIPT_SERVER_PID) || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find "$(BACKEND_DIR)/webserver/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/webserver/web/frontend" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ========== Installation Targets ==========
@@ -830,11 +1070,6 @@ reinstall: uninstall fastbuild localinstall
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "  WARNING: Quick & dirty build - no tests executed!"
 
-fullinstall: uninstall
-	@echo ""
-	@echo "📦 Installing LinuxIO from GitHub repo..."
-	@sudo ./packaging/scripts/install-linuxio-binaries.sh
-
 help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_BLUE)  Available commands:$(COLOR_RESET)"
@@ -844,11 +1079,12 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-deadcode  $(COLOR_RESET) Install deadcode (built with local Go $(GO_VERSION))"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
-	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Bump frontend package.json to latest + npm install"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies (keeps oxc-transform at 0.136.0)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
@@ -856,9 +1092,15 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make setup-frontend-browser$(COLOR_RESET) Install Playwright Chromium"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go + C backend tests (used by 'make test' + CI)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
-	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
+	@$(PRINTC) "$(COLOR_GREEN)    make bundle-metrics   $(COLOR_RESET) Report frontend bundle sizes after a Vite build (informational)"
+	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
@@ -874,13 +1116,13 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
 	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
-	@$(PRINTC) "$(COLOR_RED)    make fullinstall      $(COLOR_RESET) Uninstall + install latest release from GitHub"
 	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -889,37 +1131,13 @@ help:
 	@$(PRINTC) ""
 
 cloc:
-	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
-
-cloc-clean:
 	@echo "==> Handwritten LOC (also excluding generated/minified files)"
 	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
 
-cloc-breakdown:
-	@echo "============================================================"
-	@echo " LinuxIO LOC breakdown (excluding node_modules + embedded build)"
-	@echo "============================================================"
-	@echo
-	@echo "==> Frontend (Vite/React source)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count frontend/src "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Embedded frontend build inside backend (for visibility)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count backend/webserver/web/frontend "$(LOC_INCLUDE_EXT)" 0'
-	@echo
-	@echo "==> Packaging / helper C code (if present)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count packaging "c,h" 0'
-	@echo
-	@echo "==> TOTAL (same as make cloc)"
-	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 0'
-
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget analyze build-backend build-bridge build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
-  dev dev-prep setup update-deps test check-frontend check-backend test-backend test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
-  ensure-node ensure-go ensure-golint ensure-deadcode \
-  generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  cloc cloc-clean cloc-breakdown
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
+  generate localinstall reinstall uninstall print-toolchain-versions \
+  cloc

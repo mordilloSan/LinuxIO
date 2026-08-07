@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import type { SensorGroup, SensorReading } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
@@ -9,6 +8,12 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+
+import {
+  formatNumericSensorValue,
+  isPrimarySensorReading,
+  isTemperatureReading,
+} from "./sensorGroupHelpers";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -21,40 +26,17 @@ const getTempColor = (
   return palette.error;
 };
 
-const isNumericSensorReading = (reading: SensorReading): boolean =>
-  reading.kind === "number";
-
 const isBooleanSensorReading = (reading: SensorReading): boolean =>
   reading.kind === "boolean";
 
-export const isTemperatureReading = (reading: SensorReading): boolean => {
-  if (!isNumericSensorReading(reading)) return false;
-  const unit = reading.unit.toLowerCase();
-  return unit === "c" || unit === "°c";
-};
+const isNumericSensorReading = (reading: SensorReading): boolean =>
+  reading.kind === "number";
 
 const isFanReading = (reading: SensorReading): boolean =>
   isNumericSensorReading(reading) && reading.unit.toLowerCase() === "rpm";
 
 const isVoltageReading = (reading: SensorReading): boolean =>
   isNumericSensorReading(reading) && reading.unit.toLowerCase() === "v";
-
-export const formatNumericSensorValue = (
-  value: number,
-  unit: string,
-): string => {
-  const normalizedUnit = unit.toLowerCase();
-  if (normalizedUnit === "rpm")
-    return value > 0 ? `${Math.round(value)} RPM` : "Off";
-
-  let digits = 2;
-  if (normalizedUnit === "c" || normalizedUnit === "°c") digits = 1;
-  if (normalizedUnit === "%") digits = 1;
-  if (Number.isInteger(value)) digits = 0;
-
-  const formatted = value.toFixed(digits);
-  return unit ? `${formatted} ${unit}` : formatted;
-};
 
 const formatSensorValue = (reading: SensorReading): string => {
   if (isBooleanSensorReading(reading))
@@ -78,11 +60,6 @@ const getSensorLabelMeta = (label: string) => {
     parts.length > 0 ? parts[parts.length - 1].toLowerCase() : null;
   const context = parts.slice(0, -1).join(" / ");
   return { baseLabel, suffix, context };
-};
-
-export const isPrimarySensorReading = (reading: SensorReading): boolean => {
-  const { suffix } = getSensorLabelMeta(reading.label);
-  return suffix === null || suffix === "input";
 };
 
 const getSensorDisplayLabel = (reading: SensorReading): string => {
@@ -115,7 +92,7 @@ const sensorChipColor = (
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
+const SensorGroupCard = ({ group }: { group: SensorGroup }) => {
   const theme = useAppTheme();
   const visibleReadings = group.readings.filter(isPrimarySensorReading);
   const temps = visibleReadings.filter(isTemperatureReading);

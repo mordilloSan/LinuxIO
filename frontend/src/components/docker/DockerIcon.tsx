@@ -1,5 +1,3 @@
-import React from "react";
-
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
 import { useAppTheme } from "@/theme";
@@ -14,11 +12,11 @@ interface DockerIconProps {
  * Component to display Docker container/stack icons
  * Automatically fetches and caches icons from the backend
  */
-const DockerIcon: React.FC<DockerIconProps> = ({
+const DockerIcon = ({
   identifier,
   size = 24,
   alt = "icon",
-}) => {
+}: DockerIconProps) => {
   const theme = useAppTheme();
   const { iconUri, isLoading, isError } = useDockerIcon(identifier);
 

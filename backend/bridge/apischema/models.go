@@ -10,6 +10,7 @@ type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
+type IndexerIntegrityCheck string
 type JobState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
@@ -22,6 +23,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
+	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
@@ -434,6 +436,7 @@ type DockerImage struct {
 }
 
 type DockerNetworkContainer struct {
+	EndpointID  string  `json:"EndpointID,omitempty"`
 	Name        string  `json:"Name"`
 	IPv4Address *string `json:"IPv4Address,omitempty"`
 	IPv6Address *string `json:"IPv6Address,omitempty"`
@@ -441,36 +444,52 @@ type DockerNetworkContainer struct {
 }
 
 type DockerNetworkIPAMConfig struct {
-	Subnet  string `json:"Subnet"`
-	Gateway string `json:"Gateway"`
+	AuxiliaryAddresses map[string]string `json:"AuxiliaryAddresses,omitempty"`
+	Gateway            string            `json:"Gateway"`
+	IPRange            string            `json:"IPRange,omitempty"`
+	Subnet             string            `json:"Subnet"`
 }
 
 type DockerNetworkIPAM struct {
-	Config []DockerNetworkIPAMConfig `json:"Config,omitempty"`
+	Config  []DockerNetworkIPAMConfig `json:"Config,omitempty"`
+	Driver  string                    `json:"Driver,omitempty"`
+	Options map[string]string         `json:"Options,omitempty"`
 }
 
 type DockerNetwork struct {
+	Attachable bool                              `json:"Attachable"`
+	ConfigOnly bool                              `json:"ConfigOnly"`
 	Containers map[string]DockerNetworkContainer `json:"Containers,omitempty"`
+	Created    *string                           `json:"Created,omitempty"`
 	Driver     string                            `json:"Driver"`
 	EnableIPv4 *bool                             `json:"EnableIPv4,omitempty"`
 	EnableIPv6 *bool                             `json:"EnableIPv6,omitempty"`
 	ID         string                            `json:"Id"`
 	Internal   *bool                             `json:"Internal,omitempty"`
 	IPAM       *DockerNetworkIPAM                `json:"IPAM,omitempty"`
+	Ingress    bool                              `json:"Ingress"`
 	Labels     map[string]string                 `json:"Labels,omitempty"`
 	Name       string                            `json:"Name"`
 	Options    map[string]string                 `json:"Options,omitempty"`
 	Scope      string                            `json:"Scope"`
 }
 
+type DockerVolumeUsageData struct {
+	RefCount int64 `json:"RefCount"`
+	Size     int64 `json:"Size"`
+}
+
 type DockerVolume struct {
-	CreatedAt  *string           `json:"CreatedAt,omitempty"`
-	Driver     string            `json:"Driver"`
-	Labels     map[string]string `json:"Labels,omitempty"`
-	Mountpoint string            `json:"Mountpoint"`
-	Name       string            `json:"Name"`
-	Options    map[string]string `json:"Options,omitempty"`
-	Scope      *string           `json:"Scope,omitempty"`
+	ClusterVolume map[string]any         `json:"ClusterVolume,omitempty"`
+	CreatedAt     *string                `json:"CreatedAt,omitempty"`
+	Driver        string                 `json:"Driver"`
+	Labels        map[string]string      `json:"Labels,omitempty"`
+	Mountpoint    string                 `json:"Mountpoint"`
+	Name          string                 `json:"Name"`
+	Options       map[string]string      `json:"Options,omitempty"`
+	Scope         *string                `json:"Scope,omitempty"`
+	Status        map[string]any         `json:"Status,omitempty"`
+	UsageData     *DockerVolumeUsageData `json:"UsageData,omitempty"`
 }
 
 type DockerSystemInfo struct {
@@ -698,14 +717,16 @@ type SubfoldersResponse struct {
 }
 
 type SearchResult struct {
-	Path     string  `json:"path"`
-	Name     string  `json:"name"`
-	Type     *string `json:"type,omitempty"`
-	IsDir    *bool   `json:"isDir,omitempty"`
-	Size     int64   `json:"size"`
-	ModTime  *string `json:"mod_time,omitempty"`
-	ModTime2 *string `json:"modTime,omitempty"`
-	Modified *string `json:"modified,omitempty"`
+	Inode      uint64 `json:"inode"`
+	IsDir      bool   `json:"isDir"`
+	ModTime    string `json:"mod_time"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	TotalDirs  *int64 `json:"total_dirs,omitempty"`
+	TotalFiles *int64 `json:"total_files,omitempty"`
+	TotalSize  *int64 `json:"total_size,omitempty"`
+	Type       string `json:"type"`
 }
 
 type SearchResponse struct {
@@ -721,6 +742,7 @@ type UsersGroupsResponse struct {
 
 type IndexerStatusResponse struct {
 	DirsIndexed  int     `json:"dirs_indexed"`
+	FTSActive    bool    `json:"fts_active"`
 	FilesIndexed int     `json:"files_indexed"`
 	LastIndexed  *string `json:"last_indexed,omitempty"`
 	Running      bool    `json:"running"`
@@ -744,33 +766,33 @@ type AccountUser struct {
 }
 
 type AccountUserLogin struct {
-	ID        string  `json:"id"`
-	Source    string  `json:"source"`
-	StartedAt *string `json:"startedAt,omitempty"`
-	Status    string  `json:"status"`
-	Terminal  string  `json:"terminal"`
-	Time      string  `json:"time"`
-	Username  string  `json:"username"`
+	ID        string `json:"id"`
+	Source    string `json:"source"`
+	StartedAt string `json:"startedAt,omitempty"`
+	Status    string `json:"status"`
+	Terminal  string `json:"terminal"`
+	Time      string `json:"time"`
+	Username  string `json:"username"`
 }
 
 type AccountActiveSession struct {
-	Idle      *string `json:"idle,omitempty"`
-	PID       *int    `json:"pid,omitempty"`
-	SessionID *string `json:"sessionId,omitempty"`
-	Source    *string `json:"source,omitempty"`
-	StartedAt string  `json:"startedAt"`
-	Terminal  string  `json:"terminal"`
+	Idle      string `json:"idle,omitempty"`
+	PID       *int   `json:"pid,omitempty"`
+	SessionID string `json:"sessionId,omitempty"`
+	Source    string `json:"source,omitempty"`
+	StartedAt string `json:"startedAt"`
+	Terminal  string `json:"terminal"`
 }
 
 type AccountPasswordState struct {
-	Error         *string `json:"error,omitempty"`
-	Expires       *string `json:"expires,omitempty"`
-	ExpiresInDays *int    `json:"expiresInDays,omitempty"`
-	HasPassword   bool    `json:"hasPassword"`
-	LastChanged   *string `json:"lastChanged,omitempty"`
-	Locked        bool    `json:"locked"`
-	MaxDays       *int    `json:"maxDays,omitempty"`
-	WarningDays   *int    `json:"warningDays,omitempty"`
+	Error         string `json:"error,omitempty"`
+	Expires       string `json:"expires,omitempty"`
+	ExpiresInDays *int   `json:"expiresInDays,omitempty"`
+	HasPassword   bool   `json:"hasPassword"`
+	LastChanged   string `json:"lastChanged,omitempty"`
+	Locked        bool   `json:"locked"`
+	MaxDays       *int   `json:"maxDays,omitempty"`
+	WarningDays   *int   `json:"warningDays,omitempty"`
 }
 
 type AccountAdminAccess struct {
@@ -779,24 +801,24 @@ type AccountAdminAccess struct {
 }
 
 type AccountHomeHealth struct {
-	Error        *string `json:"error,omitempty"`
-	Exists       bool    `json:"exists"`
-	GroupGID     *int    `json:"groupGid,omitempty"`
-	GroupName    *string `json:"groupName,omitempty"`
-	IsDirectory  bool    `json:"isDirectory"`
-	Mode         *string `json:"mode,omitempty"`
-	OwnerMatches bool    `json:"ownerMatches"`
-	OwnerUID     *int    `json:"ownerUid,omitempty"`
+	Error        string `json:"error,omitempty"`
+	Exists       bool   `json:"exists"`
+	GroupGID     *int   `json:"groupGid,omitempty"`
+	GroupName    string `json:"groupName,omitempty"`
+	IsDirectory  bool   `json:"isDirectory"`
+	Mode         string `json:"mode,omitempty"`
+	OwnerMatches bool   `json:"ownerMatches"`
+	OwnerUID     *int   `json:"ownerUid,omitempty"`
 }
 
 type AccountSSHAccess struct {
-	AuthorizedKeysCount        int     `json:"authorizedKeysCount"`
-	AuthorizedKeysExists       bool    `json:"authorizedKeysExists"`
-	AuthorizedKeysMode         *string `json:"authorizedKeysMode,omitempty"`
-	AuthorizedKeysOwnerMatches bool    `json:"authorizedKeysOwnerMatches"`
-	Error                      *string `json:"error,omitempty"`
-	SSHDirExists               bool    `json:"sshDirExists"`
-	SSHDirMode                 *string `json:"sshDirMode,omitempty"`
+	AuthorizedKeysCount        int    `json:"authorizedKeysCount"`
+	AuthorizedKeysExists       bool   `json:"authorizedKeysExists"`
+	AuthorizedKeysMode         string `json:"authorizedKeysMode,omitempty"`
+	AuthorizedKeysOwnerMatches bool   `json:"authorizedKeysOwnerMatches"`
+	Error                      string `json:"error,omitempty"`
+	SSHDirExists               bool   `json:"sshDirExists"`
+	SSHDirMode                 string `json:"sshDirMode,omitempty"`
 }
 
 type AccountUserProcess struct {
@@ -808,7 +830,7 @@ type AccountUserProcess struct {
 
 type AccountProcessSummary struct {
 	Count int                  `json:"count"`
-	Error *string              `json:"error,omitempty"`
+	Error string               `json:"error,omitempty"`
 	Top   []AccountUserProcess `json:"top"`
 }
 
@@ -817,7 +839,7 @@ type AccountUserDetails struct {
 	Admin                        AccountAdminAccess     `json:"admin"`
 	FailedLoginAttempts          int                    `json:"failedLoginAttempts"`
 	FailedLoginAttemptsAvailable bool                   `json:"failedLoginAttemptsAvailable"`
-	FailedLoginAttemptsError     *string                `json:"failedLoginAttemptsError,omitempty"`
+	FailedLoginAttemptsError     string                 `json:"failedLoginAttemptsError,omitempty"`
 	Home                         AccountHomeHealth      `json:"home"`
 	Password                     AccountPasswordState   `json:"password"`
 	Processes                    AccountProcessSummary  `json:"processes"`
@@ -967,23 +989,25 @@ type InstallCapabilityResult struct {
 }
 
 type IndexerConfig struct {
-	DBAutoVacuum         string `json:"db_auto_vacuum"`
-	DBBusyTimeout        string `json:"db_busy_timeout"`
-	DBConnMaxIdleTime    string `json:"db_conn_max_idle_time"`
-	DBJournalMode        string `json:"db_journal_mode"`
-	DBMaxIdleConns       int    `json:"db_max_idle_conns"`
-	DBMaxOpenConns       int    `json:"db_max_open_conns"`
-	DBPath               string `json:"db_path"`
-	DBSynchronous        string `json:"db_synchronous"`
-	FreshIndex           bool   `json:"fresh_index"`
-	IncludeHidden        bool   `json:"include_hidden"`
-	IncludeNetworkMounts bool   `json:"include_network_mounts"`
-	IndexName            string `json:"index_name"`
-	IndexPath            string `json:"index_path"`
-	Interval             string `json:"interval"`
-	KeepIndexes          int    `json:"keep_indexes"`
-	ListenAddr           string `json:"listen_addr"`
-	SocketPath           string `json:"socket_path"`
+	DBAutoVacuum         string                `json:"db_auto_vacuum"`
+	DBBusyTimeout        string                `json:"db_busy_timeout"`
+	DBConnMaxIdleTime    string                `json:"db_conn_max_idle_time"`
+	DBJournalMode        string                `json:"db_journal_mode"`
+	DBMaxIdleConns       int                   `json:"db_max_idle_conns"`
+	DBMaxOpenConns       int                   `json:"db_max_open_conns"`
+	DBPath               string                `json:"db_path"`
+	DBSynchronous        string                `json:"db_synchronous"`
+	FreshIndex           bool                  `json:"fresh_index"`
+	FTSSearch            bool                  `json:"fts_search"`
+	IncludeHidden        bool                  `json:"include_hidden"`
+	IncludeNetworkMounts bool                  `json:"include_network_mounts"`
+	IntegrityCheck       IndexerIntegrityCheck `json:"integrity_check"`
+	IndexName            string                `json:"index_name"`
+	IndexPath            string                `json:"index_path"`
+	Interval             string                `json:"interval"`
+	KeepIndexes          int                   `json:"keep_indexes"`
+	ListenAddr           string                `json:"listen_addr"`
+	SocketPath           string                `json:"socket_path"`
 }
 
 type IndexerConfigSetResult struct {
@@ -1001,6 +1025,7 @@ type IndexerDaemonStatus struct {
 	ActiveOperation *string `json:"active_operation,omitempty"`
 	ActivePath      *string `json:"active_path,omitempty"`
 	DatabaseSize    int64   `json:"database_size"`
+	FTSActive       bool    `json:"fts_active"`
 	LastIndexed     *string `json:"last_indexed,omitempty"`
 	NumDirs         int     `json:"num_dirs"`
 	NumFiles        int     `json:"num_files"`
@@ -1132,19 +1157,31 @@ type JobOwner struct {
 	UID       *int    `json:"uid,omitempty"`
 }
 
+type JobMetadata struct {
+	Action      *string  `json:"action,omitempty"`
+	Capability  *string  `json:"capability,omitempty"`
+	Device      *string  `json:"device,omitempty"`
+	Identity    []string `json:"identity,omitempty"`
+	Label       *string  `json:"label,omitempty"`
+	PackageIDs  []string `json:"packageIds,omitempty"`
+	Path        *string  `json:"path,omitempty"`
+	ProjectName *string  `json:"projectName,omitempty"`
+	TestType    *string  `json:"testType,omitempty"`
+}
+
 type JobSnapshot struct {
-	CreatedAt  string    `json:"created_at"`
-	Error      *JobError `json:"error,omitempty"`
-	FinishedAt *string   `json:"finished_at,omitempty"`
-	ID         string    `json:"id"`
-	Owner      *JobOwner `json:"owner,omitempty"`
-	Progress   any       `json:"progress,omitempty"`
-	Request    any       `json:"request,omitempty"`
-	Result     any       `json:"result,omitempty"`
-	StartedAt  *string   `json:"started_at,omitempty"`
-	State      JobState  `json:"state"`
-	Type       string    `json:"type"`
-	UpdatedAt  string    `json:"updated_at"`
+	CreatedAt  string       `json:"created_at"`
+	Error      *JobError    `json:"error,omitempty"`
+	FinishedAt *string      `json:"finished_at,omitempty"`
+	ID         string       `json:"id"`
+	Owner      *JobOwner    `json:"owner,omitempty"`
+	Metadata   *JobMetadata `json:"metadata,omitempty"`
+	Progress   any          `json:"progress,omitempty"`
+	Result     any          `json:"result,omitempty"`
+	StartedAt  *string      `json:"started_at,omitempty"`
+	State      JobState     `json:"state"`
+	Type       string       `json:"type"`
+	UpdatedAt  string       `json:"updated_at"`
 }
 
 type JobEvent struct {
@@ -1158,6 +1195,7 @@ type JobEvent struct {
 type Update struct {
 	Changelog string   `json:"changelog"`
 	CVE       []string `json:"cve"`
+	InfoEnum  uint32   `json:"info_enum"`
 	Issued    string   `json:"issued"`
 	PackageID string   `json:"package_id"`
 	Restart   int      `json:"restart"`

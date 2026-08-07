@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+func TestServeWithSocketActivationErrorHandled(t *testing.T) {
+	t.Setenv("LISTEN_PID", "invalid")
+
+	handled, err := serveWithSocketActivation(ServerConfig{}, nil, nil, nil)
+	if !handled || err == nil {
+		t.Fatalf("got handled=%v err=%v, want handled true and error", handled, err)
+	}
+}
+
 func TestSystemdListenersNoEnv(t *testing.T) {
 	t.Setenv("LISTEN_PID", "")
 	t.Setenv("LISTEN_FDS", "")
@@ -83,4 +92,57 @@ func TestSystemdListenersHappyPath(t *testing.T) {
 	if os.Getenv("LISTEN_PID") != "" || os.Getenv("LISTEN_FDS") != "" {
 		t.Fatal("env vars should be unset after systemdListeners()")
 	}
+}
+
+func TestListenersFromFilesClosesPartialResultsOnError(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	address := tcpListener.Addr().String()
+
+	tcpFileListener, ok := tcpListener.(*net.TCPListener)
+	if !ok {
+		_ = tcpListener.Close()
+		t.Fatalf("want *net.TCPListener, got %T", tcpListener)
+	}
+	tcpFile, err := tcpFileListener.File()
+	if err != nil {
+		_ = tcpListener.Close()
+		t.Fatalf("file: %v", err)
+	}
+	if closeErr := tcpListener.Close(); closeErr != nil {
+		_ = tcpFile.Close()
+		t.Fatalf("close source listener: %v", closeErr)
+	}
+
+	invalidFile, err := os.Open(os.DevNull)
+	if err != nil {
+		_ = tcpFile.Close()
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+
+	listeners, err := listenersFromFiles([]*os.File{tcpFile, invalidFile})
+	if err == nil {
+		closeListeners(listeners)
+		_ = tcpFile.Close()
+		_ = invalidFile.Close()
+		t.Fatal("expected second file to fail listener conversion")
+	}
+	if listeners != nil {
+		t.Fatalf("want nil listeners on partial failure, got %d", len(listeners))
+	}
+	if closeErr := tcpFile.Close(); closeErr != nil {
+		_ = invalidFile.Close()
+		t.Fatalf("close TCP file: %v", closeErr)
+	}
+	if closeErr := invalidFile.Close(); closeErr != nil {
+		t.Fatalf("close invalid file: %v", closeErr)
+	}
+
+	rebound, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatalf("partial listener was not closed: %v", err)
+	}
+	_ = rebound.Close()
 }

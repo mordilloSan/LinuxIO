@@ -87,3 +87,11 @@ type DeleteProgress struct {
 	Phase         string `json:"phase,omitempty"`
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
+
+// ChmodProgress represents entry-count progress for chmod batch jobs. The
+// per-entry total is unknown up front, so the count is indeterminate.
+type ChmodProgress struct {
+	Processed     int64  `json:"processed"`
+	Phase         string `json:"phase,omitempty"`
+	Indeterminate bool   `json:"indeterminate,omitempty"`
+}

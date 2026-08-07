@@ -1,22 +1,28 @@
-import React, { useEffect, useEffectEvent, useRef } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
+
+import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
 
 import "./app-fullscreen-dialog.css";
 
 export interface AppFullscreenDialogProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
   className?: string;
   contentClassName?: string;
-  contentStyle?: React.CSSProperties;
+  contentStyle?: CSSProperties;
   disableEscapeKeyDown?: boolean;
   onClose?: () => void;
   open: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
-const OVERLAY_ROOT_SELECTOR = ".app-dialog-root, .app-fullscreen-dialog-root";
-
-const AppFullscreenDialog: React.FC<AppFullscreenDialogProps> = ({
+const AppFullscreenDialog = ({
   open,
   onClose,
   disableEscapeKeyDown = false,
@@ -25,7 +31,7 @@ const AppFullscreenDialog: React.FC<AppFullscreenDialogProps> = ({
   style,
   contentClassName,
   contentStyle,
-}) => {
+}: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
   const previousBodyOverflow = useRef<string>("");

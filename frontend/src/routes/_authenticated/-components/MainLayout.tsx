@@ -1,0 +1,117 @@
+import { Outlet, useLocation } from "@tanstack/react-router";
+
+import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
+import "@/icons/icons";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+
+import Footer from "./footer/Footer";
+import Navbar from "./navbar/Navbar";
+import Sidebar from "./sidebar/Sidebar";
+import { useCloseMobileSidebarOnNavigate } from "./sidebar/useCloseMobileSidebarOnNavigate";
+import useSidebar from "./sidebar/useSidebar";
+import { useSidebarItems } from "./sidebar/useSidebarItems";
+import UpdateBanner from "./update/UpdateBanner";
+import { useUpdateInfo } from "./update/useUpdateInfo";
+
+const MainLayout = () => {
+  const location = useLocation();
+  const theme = useAppTheme();
+  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
+  const { updateInfo, dismissUpdate } = useUpdateInfo();
+  const sidebarItems = useSidebarItems();
+
+  useCloseMobileSidebarOnNavigate();
+
+  const contentSpacing =
+    location.pathname === "/"
+      ? {
+          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+          paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+          paddingTop: 0,
+          paddingBottom: 0,
+        }
+      : location.pathname.includes("/filebrowser")
+        ? { padding: 0 }
+        : {
+            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+            paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+            paddingTop: theme.spacing(5),
+            paddingBottom: theme.spacing(5),
+          };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100dvh",
+        minHeight: "100vh",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <Sidebar items={sidebarItems} />
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
+            transition: theme.transitions.create(["margin-left", "width"], {
+              easing: theme.transitions.easing.easeInOut,
+              duration: theme.transitions.duration.leavingScreen,
+            }),
+            marginLeft: isDesktop ? `${sidebarWidth}px` : undefined,
+            width: isDesktop ? `calc(100% - ${sidebarWidth}px)` : "100%",
+          }}
+        >
+          <Navbar onDrawerToggle={toggleMobileOpen} />
+
+          {updateInfo?.available && (
+            <div
+              style={{
+                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+                paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+                paddingTop: 0,
+                paddingBottom: theme.spacing(1),
+              }}
+            >
+              <UpdateBanner onDismiss={dismissUpdate} updateInfo={updateInfo} />
+            </div>
+          )}
+
+          <div
+            className="custom-scrollbar"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "auto",
+              background: theme.palette.background.default,
+              position: "relative",
+              ...contentSpacing,
+            }}
+          >
+            <Outlet />
+            <BootstrapLoaderReady />
+          </div>
+        </div>
+      </div>
+      <div style={{ flexShrink: 0, width: "100%" }}>
+        <Footer />
+      </div>
+    </div>
+  );
+};
+
+export default MainLayout;

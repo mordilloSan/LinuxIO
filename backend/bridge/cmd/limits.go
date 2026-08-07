@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,7 +30,7 @@ func logResourceLimit(name string, resource int, units string) {
 	}
 	soft := formatResourceLimit(limit.Cur)
 	hard := formatResourceLimit(limit.Max)
-	slog.Info(fmt.Sprintf("bridge resource limit resource=%s soft=%s hard=%s units=%s", name, soft, hard, units),
+	slog.Info("bridge resource limit",
 		"resource", name,
 		"soft", soft,
 		"hard", hard,
@@ -39,7 +39,7 @@ func logResourceLimit(name string, resource int, units string) {
 
 // formatResourceLimit formats an rlimit value for logs, including infinity.
 func formatResourceLimit(value uint64) string {
-	if value == ^uint64(0) {
+	if value == math.MaxUint64 {
 		return "infinity"
 	}
 	return strconv.FormatUint(value, 10)
@@ -56,7 +56,7 @@ func logCgroupLimit(name, filename, units string) {
 		return
 	}
 	limit := formatCgroupLimit(value)
-	slog.Info(fmt.Sprintf("bridge cgroup limit resource=%s limit=%s units=%s", name, limit, units),
+	slog.Info("bridge cgroup limit",
 		"resource", name,
 		"limit", limit,
 		"units", units)

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFileBrowserUploadActions } from "@/hooks/filebrowser/useFileBrowserUploadActions";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
+import type { UploadSlice } from "@/hooks/filebrowser/useFileUpload";
 import { act, renderHook } from "@/test/render";
 
 const toastMocks = vi.hoisted(() => ({
@@ -27,26 +28,39 @@ function inputRef(): RefObject<HTMLInputElement | null> {
   return { current: { click: vi.fn() } as unknown as HTMLInputElement };
 }
 
-function setup(overrides: Partial<Params> = {}) {
-  const params: Params = {
+function uploadSlice(overrides: Partial<UploadSlice> = {}): UploadSlice {
+  return {
+    actions: {
+      clearEntries: vi.fn(),
+      closeDialog: vi.fn(),
+      mergeEntries: vi.fn(),
+      openDialog: vi.fn(),
+      setProcessing: vi.fn(),
+    },
     fileInputRef: inputRef(),
     folderInputRef: inputRef(),
-    invalidateListing: vi.fn(),
     isUploadProcessing: false,
+    uploadDialogOpen: false,
+    uploadEntries: [],
+    uploadSummary: { files: 0, folders: 0 },
+    ...overrides,
+  };
+}
+
+function setup(overrides: Partial<Params> = {}) {
+  const params: Params = {
+    invalidateListing: vi.fn(),
     normalizedPath: "/srv/data",
     onContextMenuClose: vi.fn(),
     resolveCollisions: vi.fn(async (items: unknown[]) => ({
       kept: items,
       overwrite: false,
     })) as unknown as Params["resolveCollisions"],
-    setIsUploadProcessing: vi.fn(),
-    setUploadDialogOpen: vi.fn(),
-    setUploadEntries: vi.fn(),
     startUpload: vi.fn().mockResolvedValue({
       failures: [],
       uploaded: 0,
     }),
-    uploadEntries: [],
+    upload: uploadSlice(),
     ...overrides,
   };
 
@@ -77,8 +91,7 @@ describe("useFileBrowserUploadActions", () => {
     act(() => result.current.handleUpload());
 
     expect(params.onContextMenuClose).toHaveBeenCalledTimes(1);
-    expect(params.setUploadEntries).toHaveBeenCalledWith([]);
-    expect(params.setUploadDialogOpen).toHaveBeenCalledWith(true);
+    expect(params.upload.actions.openDialog).toHaveBeenCalledTimes(1);
   });
 
   it("clicks the hidden file and folder inputs when picking", () => {
@@ -87,8 +100,10 @@ describe("useFileBrowserUploadActions", () => {
     act(() => result.current.handlePickFiles());
     act(() => result.current.handlePickFolder());
 
-    expect(params.fileInputRef.current?.click).toHaveBeenCalledTimes(1);
-    expect(params.folderInputRef.current?.click).toHaveBeenCalledTimes(1);
+    expect(params.upload.fileInputRef.current?.click).toHaveBeenCalledTimes(1);
+    expect(params.upload.folderInputRef.current?.click).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it("merges selected files into the upload entries and resets the input", () => {
@@ -97,10 +112,7 @@ describe("useFileBrowserUploadActions", () => {
 
     act(() => result.current.handleUploadInputChange(event));
 
-    expect(params.setUploadEntries).toHaveBeenCalledTimes(1);
-    const updater = (params.setUploadEntries as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as (prev: DroppedEntry[]) => DroppedEntry[];
-    expect(updater([])).toEqual([
+    expect(params.upload.actions.mergeEntries).toHaveBeenCalledWith([
       expect.objectContaining({ isDirectory: false, relativePath: "a.txt" }),
     ]);
     expect(event.target.value).toBe("");
@@ -112,7 +124,7 @@ describe("useFileBrowserUploadActions", () => {
 
     act(() => result.current.handleUploadInputChange(event));
 
-    expect(params.setUploadEntries).not.toHaveBeenCalled();
+    expect(params.upload.actions.mergeEntries).not.toHaveBeenCalled();
     expect(toastMocks.error).not.toHaveBeenCalled();
     expect(event.target.value).toBe("");
   });
@@ -123,7 +135,7 @@ describe("useFileBrowserUploadActions", () => {
 
     act(() => result.current.handleUploadInputChange(event));
 
-    expect(params.setUploadEntries).not.toHaveBeenCalled();
+    expect(params.upload.actions.mergeEntries).not.toHaveBeenCalled();
     expect(toastMocks.error).toHaveBeenCalledWith(
       "No files detected in selection",
       expect.anything(),
@@ -131,26 +143,31 @@ describe("useFileBrowserUploadActions", () => {
   });
 
   it("does not close or clear the dialog while an upload is processing", () => {
-    const { result, params } = setup({ isUploadProcessing: true });
+    const { result, params } = setup({
+      upload: uploadSlice({ isUploadProcessing: true }),
+    });
 
     act(() => result.current.handleCloseUploadDialog());
     act(() => result.current.handleClearUploadSelection());
 
-    expect(params.setUploadDialogOpen).not.toHaveBeenCalled();
-    expect(params.setUploadEntries).not.toHaveBeenCalled();
+    expect(params.upload.actions.closeDialog).not.toHaveBeenCalled();
+    expect(params.upload.actions.clearEntries).not.toHaveBeenCalled();
   });
 
   it("closes and clears the dialog when idle", () => {
-    const { result, params } = setup({ isUploadProcessing: false });
+    const { result, params } = setup({
+      upload: uploadSlice({ isUploadProcessing: false }),
+    });
 
     act(() => result.current.handleCloseUploadDialog());
 
-    expect(params.setUploadDialogOpen).toHaveBeenCalledWith(false);
-    expect(params.setUploadEntries).toHaveBeenCalledWith([]);
+    expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
   });
 
   it("rejects starting an upload with no entries", async () => {
-    const { result, params } = setup({ uploadEntries: [] });
+    const { result, params } = setup({
+      upload: uploadSlice({ uploadEntries: [] }),
+    });
 
     await act(async () => {
       await result.current.handleStartUpload();
@@ -168,7 +185,10 @@ describe("useFileBrowserUploadActions", () => {
       failures: [],
       uploaded: 2,
     });
-    const { result, params } = setup({ startUpload, uploadEntries: [entry] });
+    const { result, params } = setup({
+      startUpload,
+      upload: uploadSlice({ uploadEntries: [entry] }),
+    });
 
     await act(async () => {
       await result.current.handleStartUpload();
@@ -184,10 +204,12 @@ describe("useFileBrowserUploadActions", () => {
     expect(getDestPath(entry)).toBe("/srv/data/a.txt");
     expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data", false);
     expect(params.invalidateListing).toHaveBeenCalledTimes(1);
-    expect(params.setUploadDialogOpen).toHaveBeenCalledWith(false);
-    expect(params.setUploadEntries).toHaveBeenCalledWith([]);
-    expect(params.setIsUploadProcessing).toHaveBeenNthCalledWith(1, true);
-    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
+    expect(params.upload.actions.setProcessing).toHaveBeenNthCalledWith(
+      1,
+      true,
+    );
+    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
   });
 
   it("keeps the dialog open when the conflict prompt is cancelled", async () => {
@@ -198,7 +220,7 @@ describe("useFileBrowserUploadActions", () => {
     const { result, params } = setup({
       resolveCollisions,
       startUpload,
-      uploadEntries: [entry],
+      upload: uploadSlice({ uploadEntries: [entry] }),
     });
 
     await act(async () => {
@@ -206,9 +228,8 @@ describe("useFileBrowserUploadActions", () => {
     });
 
     expect(startUpload).not.toHaveBeenCalled();
-    expect(params.setUploadDialogOpen).not.toHaveBeenCalled();
-    expect(params.setUploadEntries).not.toHaveBeenCalled();
-    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.closeDialog).not.toHaveBeenCalled();
+    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
   });
 
   it("sends only kept items with overwrite when the user resolves conflicts", async () => {
@@ -228,7 +249,7 @@ describe("useFileBrowserUploadActions", () => {
     const { result } = setup({
       resolveCollisions,
       startUpload,
-      uploadEntries: [entry, other],
+      upload: uploadSlice({ uploadEntries: [entry, other] }),
     });
 
     await act(async () => {
@@ -247,7 +268,7 @@ describe("useFileBrowserUploadActions", () => {
     const { result, params } = setup({
       resolveCollisions,
       startUpload,
-      uploadEntries: [entry],
+      upload: uploadSlice({ uploadEntries: [entry] }),
     });
 
     await act(async () => {
@@ -259,12 +280,15 @@ describe("useFileBrowserUploadActions", () => {
       "All items skipped",
       expect.anything(),
     );
-    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
   });
 
   it("reports a failed upload and always clears the processing flag", async () => {
     const startUpload = vi.fn().mockRejectedValue(new Error("network down"));
-    const { result, params } = setup({ startUpload, uploadEntries: [entry] });
+    const { result, params } = setup({
+      startUpload,
+      upload: uploadSlice({ uploadEntries: [entry] }),
+    });
 
     await act(async () => {
       await result.current.handleStartUpload();
@@ -274,6 +298,6 @@ describe("useFileBrowserUploadActions", () => {
       "Upload failed",
       expect.anything(),
     );
-    expect(params.setIsUploadProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
   });
 });

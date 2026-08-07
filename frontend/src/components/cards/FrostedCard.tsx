@@ -1,4 +1,4 @@
-import React from "react";
+import { forwardRef, type CSSProperties, type HTMLAttributes } from "react";
 
 import "./FrostedCard.css";
 
@@ -9,12 +9,12 @@ import {
   getFrostedCardStyles,
 } from "@/theme/surfaces";
 
-type FrostedCardProps = React.HTMLAttributes<HTMLDivElement> & {
+type FrostedCardProps = HTMLAttributes<HTMLDivElement> & {
   /** When true, card lifts on hover (translateY + stronger shadow). */
   hoverLift?: boolean;
 };
 
-const FrostedCard = React.forwardRef<HTMLDivElement, FrostedCardProps>(
+const FrostedCard = forwardRef<HTMLDivElement, FrostedCardProps>(
   ({ children, style, hoverLift, className, ...props }, ref) => {
     const theme = useAppTheme();
 
@@ -27,7 +27,7 @@ const FrostedCard = React.forwardRef<HTMLDivElement, FrostedCardProps>(
         "--fc-lift-shadow": getFrostedCardLiftShadow(theme),
       }),
       ...style,
-    } as React.CSSProperties;
+    } as CSSProperties;
 
     const cls = [hoverLift && "fc-hover-lift", className]
       .filter(Boolean)

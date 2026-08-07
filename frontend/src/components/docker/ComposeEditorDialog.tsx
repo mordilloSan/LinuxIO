@@ -1,14 +1,4 @@
-import React, {
-  Suspense,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
-
-import ComposeValidationFeedback, {
-  ValidationResult,
-} from "./ComposeValidationFeedback";
+import { lazy, Suspense, useRef, useState, type ChangeEvent } from "react";
 
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
@@ -24,6 +14,10 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
+import ComposeValidationFeedback, {
+  ValidationResult,
+} from "./ComposeValidationFeedback";
+
 interface ComposeEditorDialogProps {
   filePath?: string;
   initialContent?: string;
@@ -33,16 +27,14 @@ interface ComposeEditorDialogProps {
     content: string,
     stackName: string,
     filePath: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   onValidate?: (content: string) => Promise<ValidationResult>;
   open: boolean;
   readOnly?: boolean;
   stackName?: string;
 }
-const FileEditor = React.lazy(
-  () => import("@/components/filebrowser/FileEditor"),
-);
-const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
+const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
+const ComposeEditorDialog = ({
   open,
   mode,
   readOnly = false,
@@ -52,7 +44,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   onClose,
   onSave,
   onValidate,
-}) => {
+}: ComposeEditorDialogProps) => {
   const theme = useAppTheme();
   const editorRef = useRef<FileEditorHandle>(null);
   const [stackName, setStackName] = useState(initialStackName);
@@ -62,9 +54,14 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
-  const [prevOpen, setPrevOpen] = useState(false);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
+  const [editorSource, setEditorSource] = useState({
+    filePath: "",
+    open: false,
+  });
+  const sourceChanged =
+    open !== editorSource.open || (open && filePath !== editorSource.filePath);
+  if (sourceChanged) {
+    setEditorSource({ filePath, open });
     if (open) {
       setStackName(initialStackName);
       setIsEditorDirty(false);
@@ -84,7 +81,8 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
     onClose();
   };
   const handleSaveAndExit = async () => {
-    await handleSave();
+    const saved = await editorRef.current?.save();
+    if (!saved) return;
     setShowUnsavedDialog(false);
   };
   const handleValidate = async () => {
@@ -100,9 +98,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       setIsValidating(false);
     }
   };
-  const handleSave = async () => {
-    if (!editorRef.current) return;
-
+  const handleSave = async (content: string): Promise<boolean> => {
     // Validate stack name for create mode
     if (mode === "create" && !stackName.trim()) {
       setValidation({
@@ -114,12 +110,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           },
         ],
       });
-      return;
+      return false;
     }
     setIsSaving(true);
     setIsValidating(true);
     try {
-      const content = editorRef.current.getContent();
       let contentToSave = content;
 
       // Run validation before save
@@ -129,7 +124,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
         if (!validationResult.valid) {
           setIsSaving(false);
           setIsValidating(false);
-          return;
+          return false;
         }
 
         // Use normalized content if available (auto-adds container_name)
@@ -139,10 +134,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       }
 
       // Save the file (with normalized content)
-      await onSave(contentToSave, stackName.trim(), filePath);
-
-      // Reset dirty state after successful save
-      setIsEditorDirty(false);
+      return await onSave(contentToSave, stackName.trim(), filePath);
     } catch (error) {
       console.error("Save error:", error);
       setValidation({
@@ -155,26 +147,16 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           },
         ],
       });
+      return false;
     } finally {
       setIsSaving(false);
       setIsValidating(false);
     }
   };
 
-  // Add Ctrl+S keyboard shortcut
-  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-      e.preventDefault();
-      if (!isSaving && !isValidating) {
-        handleSave();
-      }
-    }
-  });
-  useEffect(() => {
-    if (!open) return;
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
+  const requestSave = () => {
+    void editorRef.current?.save();
+  };
   const sanitizeStackName = (name: string): string => {
     return name
       .toLowerCase()
@@ -183,7 +165,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
       .substring(0, 63);
   };
   const handleStackNameChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     setStackName(sanitizeStackName(e.target.value));
   };
@@ -278,6 +260,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                 fileName="docker-compose.yml"
                 filePath={filePath || "docker-compose.yml"}
                 initialContent={initialContent}
+                isSaving={isSaving || isValidating}
                 onDirtyChange={readOnly ? undefined : setIsEditorDirty}
                 onSave={handleSave}
                 readOnly={readOnly}
@@ -313,7 +296,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
               <AppButton
                 color="primary"
                 disabled={isSaving || isValidating}
-                onClick={handleSave}
+                onClick={requestSave}
                 variant="contained"
               >
                 {isSaving ? "Saving..." : "Save"}

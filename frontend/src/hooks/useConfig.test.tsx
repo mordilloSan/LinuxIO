@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { useConfig, useConfigReady, useConfigValue } from "@/hooks/useConfig";
+import { useConfig, useConfigValue } from "@/hooks/useConfig";
 import { act, renderHook } from "@/test/render";
 import type { ConfigContextType } from "@/types/config";
 
@@ -52,7 +53,7 @@ function makeContext(
 }
 
 function wrapper(value = makeContext()) {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
     );
@@ -64,26 +65,17 @@ describe("useConfig", () => {
     expect(() => renderHook(() => useConfig())).toThrow(
       "useConfig must be used within ConfigProvider",
     );
-    expect(() => renderHook(() => useConfigReady())).toThrow(
-      "useConfig must be used within ConfigProvider",
-    );
     expect(() => renderHook(() => useConfigValue("theme"))).toThrow(
       "useConfig must be used within ConfigProvider",
     );
   });
 
-  it("returns config context and ready state", () => {
-    const value = makeContext({ isLoaded: false });
-
-    const configHook = renderHook(() => useConfig(), {
-      wrapper: wrapper(value),
-    });
-    const readyHook = renderHook(() => useConfigReady(), {
-      wrapper: wrapper(value),
+  it("returns the config context", () => {
+    const { result } = renderHook(() => useConfig(), {
+      wrapper: wrapper(),
     });
 
-    expect(configHook.result.current.config.appSettings.theme).toBe("DARK");
-    expect(readyHook.result.current).toBe(false);
+    expect(result.current.config.appSettings.theme).toBe("DARK");
   });
 
   it("reads typed config values", () => {

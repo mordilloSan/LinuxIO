@@ -1,24 +1,24 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { GAP_SM } from "@/theme/constants";
 
 export interface DockerSectionCardProps {
-  children: React.ReactNode;
+  children: ReactNode;
   fullHeight?: boolean;
-  icon: React.ReactNode;
+  icon: ReactNode;
   subtitle: string;
   title: string;
 }
 
-const DockerSectionCard: React.FC<DockerSectionCardProps> = ({
+const DockerSectionCard = ({
   icon,
   title,
   subtitle,
   children,
   fullHeight,
-}) => (
+}: DockerSectionCardProps) => (
   <FrostedCard
     style={{ padding: GAP_SM, ...(fullHeight ? { height: "100%" } : {}) }}
   >

@@ -1,11 +1,17 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
+  type RefObject,
 } from "react";
+
+import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
+import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 
 import EmptyState from "./EmptyState";
 import VirtualDirectoryItems from "./VirtualDirectoryItems";
@@ -16,10 +22,6 @@ import {
   SortOrder,
   ViewMode,
 } from "../../types/filebrowser";
-
-import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
-import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
-import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 
 interface DirectoryListingProps {
   cutPaths: Set<string>;
@@ -40,7 +42,7 @@ interface DirectoryListingProps {
   viewMode: ViewMode;
 }
 
-const DirectoryListing: React.FC<DirectoryListingProps> = ({
+const DirectoryListing = ({
   resource,
   showHiddenFiles,
   viewMode,
@@ -57,25 +59,45 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onStartRename,
   onConfirmRename,
   onCancelRename,
-}) => {
+}: DirectoryListingProps) => {
+  // `source` gates auto-scrolling: keyboard navigation has to reveal the item it
+  // moved to, but a mouse click must never move the viewport under the cursor.
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;
+    source: "keyboard" | "pointer";
   }>({
     path: resource.path,
     index: 0,
+    source: "pointer",
   });
-  const focusedIndex = focusState.path === resource.path ? focusState.index : 0;
-  const setFocusedIndex = useCallback(
+  const isFocusForCurrentPath = focusState.path === resource.path;
+  const focusedIndex = isFocusForCurrentPath ? focusState.index : 0;
+  const revealIndex =
+    isFocusForCurrentPath && focusState.source === "keyboard"
+      ? focusState.index
+      : -1;
+  const focusIndexFromKeyboard = useCallback(
     (nextIndex: number) => {
       setFocusState({
         path: resource.path,
         index: nextIndex,
+        source: "keyboard",
       });
     },
     [resource.path],
   );
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
+  const focusIndexFromPointer = useCallback(
+    (nextIndex: number) => {
+      setFocusState({
+        path: resource.path,
+        index: nextIndex,
+        source: "pointer",
+      });
+    },
+    [resource.path],
+  );
+  const lastSelectedIndexRef = useRef(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch all subfolder sizes in one request
@@ -85,8 +107,8 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
 
   const clearSelection = useCallback(() => {
     onSelectedPathsChange(new Set());
-    setFocusedIndex(-1);
-  }, [onSelectedPathsChange, setFocusedIndex]);
+    focusIndexFromPointer(-1);
+  }, [onSelectedPathsChange, focusIndexFromPointer]);
 
   const { folders, files } = useMemo(() => {
     const filtered = (resource.items ?? []).filter((item) =>
@@ -140,11 +162,11 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
 
   // Use keyboard navigation hook
   useFileListKeyboardNavigation({
-    containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    containerRef: containerRef as RefObject<HTMLDivElement>,
     allItems,
     focusedIndex,
     selectedPaths,
-    onFocusChange: setFocusedIndex,
+    onFocusChange: focusIndexFromKeyboard,
     onSelectionChange: onSelectedPathsChange,
     onDelete: onDelete,
     onRename: onStartRename,
@@ -156,16 +178,18 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     useFileMarqueeSelection(containerRef, allItems, onSelectedPathsChange);
 
   // Handle document click to clear selection
-  const handleDocumentMouseDown = useEffectEvent((event: MouseEvent) => {
-    if (isContextMenuOpen) {
-      return;
-    }
-    if (!containerRef.current) return;
-    if (containerRef.current.contains(event.target as Node)) {
-      return;
-    }
-    clearSelection();
-  });
+  const handleDocumentMouseDown = useEffectEvent(
+    (event: globalThis.MouseEvent) => {
+      if (isContextMenuOpen) {
+        return;
+      }
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target as Node)) {
+        return;
+      }
+      clearSelection();
+    },
+  );
 
   useEffect(() => {
     document.addEventListener("mousedown", handleDocumentMouseDown);
@@ -174,37 +198,33 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    onSelectedPathsChange(new Set());
-  }, [resource.path, onSelectedPathsChange]);
-
   const focusItemByPath = useCallback(
     (path: string) => {
       const index = allItems.findIndex((item) => item.path === path);
       if (index === -1) return;
-      setFocusedIndex(index);
+      focusIndexFromPointer(index);
     },
-    [allItems, setFocusedIndex],
+    [allItems, focusIndexFromPointer],
   );
 
   const handleItemSelection = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       const currentIndex = allItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
 
       focusItemByPath(path);
 
-      if (event.shiftKey && lastSelectedIndex !== -1) {
+      if (event.shiftKey && lastSelectedIndexRef.current !== -1) {
         // Shift+click: select range from lastSelectedIndex to currentIndex
-        const start = Math.min(lastSelectedIndex, currentIndex);
-        const end = Math.max(lastSelectedIndex, currentIndex);
+        const start = Math.min(lastSelectedIndexRef.current, currentIndex);
+        const end = Math.max(lastSelectedIndexRef.current, currentIndex);
         const next = new Set(selectedPaths);
 
         for (let i = start; i <= end; i++) {
           next.add(allItems[i].path);
         }
         onSelectedPathsChange(next);
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       } else if (event.ctrlKey || event.metaKey) {
         // Ctrl/Cmd+click: toggle selection
         const next = new Set(selectedPaths);
@@ -214,24 +234,18 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
           next.add(path);
         }
         onSelectedPathsChange(next);
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       } else {
         // Regular click: single selection
         onSelectedPathsChange(new Set([path]));
-        setLastSelectedIndex(currentIndex);
+        lastSelectedIndexRef.current = currentIndex;
       }
     },
-    [
-      focusItemByPath,
-      selectedPaths,
-      onSelectedPathsChange,
-      allItems,
-      lastSelectedIndex,
-    ],
+    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
   );
 
   const handleItemContextMenu = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       event.preventDefault();
       const currentIndex = allItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
@@ -240,13 +254,13 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       if (!selectedPaths.has(path)) {
         onSelectedPathsChange(new Set([path]));
       }
-      setLastSelectedIndex(currentIndex);
+      lastSelectedIndexRef.current = currentIndex;
     },
     [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
   );
 
   const handleContainerMouseDown = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       const element = event.target as HTMLElement | null;
       if (element && element.closest("[data-file-card='true']")) {
         return;
@@ -261,14 +275,14 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   );
 
   const handleFolderClick = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       handleItemSelection(event, path);
     },
     [handleItemSelection],
   );
 
   const handleFileClick = useCallback(
-    (event: React.MouseEvent, path: string) => {
+    (event: MouseEvent, path: string) => {
       handleItemSelection(event, path);
     },
     [handleItemSelection],
@@ -283,7 +297,6 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       containerRef={containerRef}
       cutPaths={cutPaths}
       files={files}
-      focusedIndex={focusedIndex}
       folders={folders}
       isLoadingSubfolders={isLoadingSubfolders}
       isMarqueeSelecting={isSelecting}
@@ -298,6 +311,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       onMarqueeMouseDown={handleMouseDown}
       onOpenDirectory={onOpenDirectory}
       renamingPath={renamingPath}
+      revealIndex={revealIndex}
       selectedPaths={selectedPaths}
       selectionBox={selectionBox}
       subfoldersMap={subfoldersMap}

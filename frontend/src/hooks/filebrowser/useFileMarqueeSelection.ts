@@ -4,6 +4,8 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type MouseEvent,
+  type RefObject,
 } from "react";
 
 import { FileItem } from "@/types/filebrowser";
@@ -16,7 +18,7 @@ interface MarqueeBox {
 }
 
 interface MarqueeSelectionResult {
-  handleMouseDown: (event: React.MouseEvent) => void;
+  handleMouseDown: (event: MouseEvent) => void;
   isSelecting: boolean;
   selectionBox: {
     left: number;
@@ -31,7 +33,7 @@ interface MarqueeSelectionResult {
  * Allows click-and-drag selection of items
  */
 export const useFileMarqueeSelection = (
-  containerRef: React.RefObject<HTMLElement | null>,
+  containerRef: RefObject<HTMLElement | null>,
   allItems: FileItem[],
   onSelectionChange: (paths: Set<string>) => void,
 ): MarqueeSelectionResult => {
@@ -39,7 +41,7 @@ export const useFileMarqueeSelection = (
   const isSelectingRef = useRef(false);
 
   const handleMouseDown = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent) => {
       // Only start marquee selection on left mouse button
       if (event.button !== 0) return;
 
@@ -128,7 +130,7 @@ export const useFileMarqueeSelection = (
     [containerRef],
   );
 
-  const handleMouseMove = useEffectEvent((event: MouseEvent) => {
+  const handleMouseMove = useEffectEvent((event: globalThis.MouseEvent) => {
     if (!isSelectingRef.current || !marqueeBox) return;
 
     const container = containerRef.current;
@@ -194,7 +196,12 @@ export const useFileMarqueeSelection = (
     : null;
 
   return {
-    isSelecting: isSelectingRef.current && marqueeBox !== null,
+    // Derived from state, not isSelectingRef: the ref flips in the same
+    // handlers that set/clear marqueeBox, so at render time the two are
+    // always in lockstep — and state keeps this hook compilable. The ref
+    // stays as the synchronous guard between native events, where a stale
+    // mousemove can arrive before React commits the mouseup update.
+    isSelecting: isMarqueeActive,
     selectionBox,
     handleMouseDown,
   };

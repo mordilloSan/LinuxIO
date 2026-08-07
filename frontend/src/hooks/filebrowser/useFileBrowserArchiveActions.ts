@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
+import type { FileExtractRequest } from "@/api";
 import {
   ensureTarGzExtension,
   ensureZipExtension,
   isArchiveFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
-import type { FileExtractRequest } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { splitName, stripNumericSuffix } from "@/utils/fileUpload";
@@ -36,22 +36,6 @@ interface UseFileBrowserArchiveActionsParams {
   selectedPaths: Set<string>;
 }
 
-type ErrorWithResponse = {
-  message?: string;
-  name?: string;
-  response?: {
-    data?: {
-      error?: string;
-    };
-    status?: number;
-  };
-};
-
-const getErrorDetails = (error: unknown): ErrorWithResponse =>
-  typeof error === "object" && error !== null
-    ? (error as ErrorWithResponse)
-    : {};
-
 export const useFileBrowserArchiveActions = ({
   compressItems,
   extractArchive,
@@ -61,12 +45,15 @@ export const useFileBrowserArchiveActions = ({
   selectedItems,
   selectedPaths,
 }: UseFileBrowserArchiveActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
   const { joinPath } = useFilePathUtilities();
   const [compressFormatDialog, setCompressFormatDialog] =
     useState<CompressFormatDialogState | null>(null);
   const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
-  const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
 
   const existingNames = useMemo(
     () => new Set(resource?.items?.map((item) => item.name) ?? []),
@@ -84,9 +71,6 @@ export const useFileBrowserArchiveActions = ({
     (baseName: string, additionalNames?: Set<string>) => {
       const nameSet = new Set(existingNames);
       additionalNames?.forEach((name) => nameSet.add(name));
-      pendingArchiveConflictNamesRef.current.forEach((name) =>
-        nameSet.add(name),
-      );
 
       const { base, ext } = splitName(baseName);
       const { root } = stripNumericSuffix(base);
@@ -117,17 +101,6 @@ export const useFileBrowserArchiveActions = ({
     },
     [existingNames],
   );
-
-  useEffect(() => {
-    const conflicts = pendingArchiveConflictNamesRef.current;
-    const toRemove: string[] = [];
-    conflicts.forEach((name) => {
-      if (existingNames.has(name)) {
-        toRemove.push(name);
-      }
-    });
-    toRemove.forEach((name) => conflicts.delete(name));
-  }, [existingNames]);
 
   const handleCloseCompressFormatDialog = useCallback(() => {
     setCompressFormatDialog(null);
@@ -163,22 +136,11 @@ export const useFileBrowserArchiveActions = ({
           destination: normalizedPath,
         });
       } catch (error) {
-        const details = getErrorDetails(error);
-        const isConflict = details.response?.status === 409;
-        if (isConflict) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
           const message =
-            details.response?.data?.error || `${archiveName} already exists`;
-          toast.error(message);
-          pendingArchiveConflictNamesRef.current.add(archiveName);
-        } else if (
-          details.name !== "CanceledError" &&
-          details.name !== "AbortError" &&
-          details.message !== "canceled"
-        ) {
-          const message =
-            details.response?.data?.error ||
-            details.message ||
-            "Failed to create archive";
+            error instanceof Error && error.message
+              ? error.message
+              : "Failed to create archive";
           toast.error(message);
         }
       } finally {

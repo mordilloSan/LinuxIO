@@ -84,9 +84,45 @@
 /* Bootstrap flags byte (bit field) */
 #define PROTO_FLAG_VERBOSE           0x01
 #define PROTO_FLAG_PRIVILEGED        0x02
+#define PROTO_FLAG_READY_ACK         0x04
+
+/* ==========================================================================
+ * Startup-status Protocol (Bridge <-> Auth via inherited status fd)
+ *
+ * The launcher leaves one end of a socketpair open across exec at a fixed fd
+ * and sets PROTO_FLAG_READY_ACK in the bootstrap. The bridge first writes
+ * exactly one status byte on that fd:
+ *
+ *   PROTO_STARTUP_EXEC_FAILED  written by the pre-exec C child on any setup
+ *                              or exec failure (followed by _exit)
+ *   PROTO_STARTUP_READY        initialization is complete and the bridge is
+ *                              waiting for PROTO_STARTUP_GO before starting
+ *                              Yamux on the client fd
+ *   PROTO_STARTUP_ERROR        fatal error before serving; optionally
+ *                              followed by a short UTF-8 message (at most
+ *                              PROTO_MAX_ERROR-1 bytes), then close/exit
+ *
+ * After READY, the launcher writes the complete authentication response to
+ * the client connection and then sends PROTO_STARTUP_GO back to the bridge.
+ * The bridge closes the status fd and starts Yamux only after receiving GO,
+ * so Yamux cannot corrupt the preceding authentication response.
+ *
+ * EOF before any byte means the process died (or closed the fd) before
+ * becoming ready. EOF or an unknown byte while waiting for GO also fails
+ * closed.
+ * ========================================================================== */
+
+#define PROTO_STARTUP_EXEC_FAILED    0x01
+#define PROTO_STARTUP_READY          0x02
+#define PROTO_STARTUP_ERROR          0x03
+#define PROTO_STARTUP_GO             0x04
 
 /* ==========================================================================
  * Max lengths for variable fields
+ *
+ * These are C buffer sizes including the NUL terminator: the maximum
+ * accepted string length is N-1 bytes. The Go sender enforces the same
+ * limits (see backend/common/ipc/auth).
  * ========================================================================== */
 
 #define PROTO_MAX_USERNAME           256

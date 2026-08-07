@@ -1,7 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
-
-import { FileResource, ResourceStatData } from "../../types/filebrowser";
+import type { ReactNode } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -12,6 +10,8 @@ import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
+import { FileResource, ResourceStatData } from "../../types/filebrowser";
+
 interface FileDetailProps {
   isLoadingStat?: boolean;
   onDownload: (path: string) => void;
@@ -19,10 +19,7 @@ interface FileDetailProps {
   resource?: FileResource;
   statData?: ResourceStatData | null;
 }
-const DetailRow: React.FC<{
-  label: string;
-  value: React.ReactNode;
-}> = ({ label, value }) => {
+const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => {
   const theme = useAppTheme();
   return (
     <div
@@ -54,13 +51,13 @@ const DetailRow: React.FC<{
     </div>
   );
 };
-const FileDetail: React.FC<FileDetailProps> = ({
+const FileDetail = ({
   resource,
   onDownload,
   onEdit,
   statData,
   isLoadingStat,
-}) => {
+}: FileDetailProps) => {
   const theme = useAppTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";

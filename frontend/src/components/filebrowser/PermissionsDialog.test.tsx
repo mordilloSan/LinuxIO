@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@/test/render";
 
 const apiMocks = vi.hoisted(() => ({
-  usersGroupsUseQuery: vi.fn(),
+  usersGroupsQueryOptions: vi.fn(),
 }));
 
 vi.mock("@/api", async () => {
@@ -15,7 +15,7 @@ vi.mock("@/api", async () => {
       filebrowser: {
         ...actual.linuxio.filebrowser,
         users_groups: {
-          useQuery: apiMocks.usersGroupsUseQuery,
+          queryOptions: apiMocks.usersGroupsQueryOptions,
         },
       },
     },
@@ -26,8 +26,10 @@ const { default: PermissionsDialog } = await import("./PermissionsDialog");
 
 describe("PermissionsDialog", () => {
   it("updates permission checkboxes after selecting and deselecting them", async () => {
-    apiMocks.usersGroupsUseQuery.mockReturnValue({
-      data: { groups: ["root"], users: ["root"] },
+    apiMocks.usersGroupsQueryOptions.mockReturnValue({
+      queryKey: ["test", "users-groups"],
+      queryFn: () => Promise.resolve({ groups: ["root"], users: ["root"] }),
+      initialData: { groups: ["root"], users: ["root"] },
     });
 
     const { user } = render(

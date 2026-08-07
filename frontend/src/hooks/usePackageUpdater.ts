@@ -1,224 +1,157 @@
-// src/hooks/usePackageUpdater.ts
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useReducer } from "react";
 
-import { linuxio, openJobAttachStream, type Stream } from "@/api";
-import { useStreamResult } from "@/hooks/useStreamResult";
+import { isJobCancellationError } from "@/api";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
-const MIN_PROGRESS_VISIBLE_MS = 1500;
+import {
+  initialPackageUpdateState,
+  packageUpdateReducer,
+} from "./packageUpdateState";
+import {
+  type PackageUpdateProgress,
+  type PackageUpdateRequest,
+  usePackageUpdateTransaction,
+} from "./usePackageUpdateTransaction";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function ensureMinimumVisible(startedAtMs: number): Promise<void> {
-  const elapsed = Date.now() - startedAtMs;
-  const remaining = MIN_PROGRESS_VISIBLE_MS - elapsed;
-  if (remaining > 0) {
-    await sleep(remaining);
-  }
-}
-
-// Progress event types from backend
-interface PkgUpdateProgress {
-  info_code?: number;
-  item_pct?: number;
-  message?: string;
-  package_id?: string;
-  package_summary?: string;
-  percentage?: number;
-  status?: string;
-  status_code?: number;
-  type: "item_progress" | "package" | "status" | "percentage" | "message";
-}
-
-// Extract package name from package ID (e.g., "nginx;1.24.0-1ubuntu1;amd64;ubuntu" -> "nginx")
 function extractPackageName(packageId: string): string {
-  const parts = packageId.split(";");
-  return parts[0] || packageId;
+  return packageId.split(";")[0] || packageId;
 }
 
-export const usePackageUpdater = (onComplete: () => unknown) => {
-  const [updatingPackage, setUpdatingPackage] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState<string | null>(null);
-  const [eventLog, setEventLog] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const jobIdRef = useRef<string | null>(null);
-  const cancelledRef = useRef(false);
-  const { run: runStreamResult } = useStreamResult();
+export const usePackageUpdater = () => {
+  const [state, dispatch] = useReducer(
+    packageUpdateReducer,
+    initialPackageUpdateState,
+  );
 
-  const appendEvent = useCallback((message: string) => {
-    const trimmed = message.trim();
-    if (!trimmed) {
-      return;
-    }
+  const finishSuccess = useCallback(
+    (_request: PackageUpdateRequest) => dispatch({ type: "complete" }),
+    [],
+  );
 
-    setEventLog((previous) => {
-      if (previous[previous.length - 1] === trimmed) {
-        return previous;
+  const finishError = useCallback(
+    (error: unknown, request: PackageUpdateRequest) => {
+      if (isJobCancellationError(error)) {
+        dispatch({ type: "canceled" });
+        return;
       }
-      const next = [...previous, trimmed];
-      return next.slice(-8);
+      const message = getMutationErrorMessage(error, "Update failed");
+      dispatch({
+        type: "failed",
+        error:
+          request.packageIds.length === 1
+            ? `Failed to update ${extractPackageName(request.packageIds[0])}: ${message}`
+            : message,
+      });
+    },
+    [],
+  );
+
+  const handleProgress = useCallback((data: PackageUpdateProgress) => {
+    dispatch({ type: "progress", percentage: data.percentage });
+    switch (data.type) {
+      case "item_progress":
+        if (data.package_id) {
+          dispatch({
+            type: "package",
+            packageName: extractPackageName(data.package_id),
+            status: data.status,
+          });
+        } else if (data.status) {
+          dispatch({ type: "status", status: data.status });
+        }
+        break;
+      case "package":
+        if (data.package_id) {
+          const packageName = extractPackageName(data.package_id);
+          dispatch({
+            type: "package",
+            packageName,
+            status: data.status,
+            event: data.status ? `${data.status}: ${packageName}` : undefined,
+          });
+        } else if (data.status) {
+          dispatch({ type: "status", status: data.status });
+        }
+        break;
+      case "status":
+        if (data.status) {
+          dispatch({
+            type: "status",
+            status: data.status,
+            event: data.status,
+          });
+        }
+        break;
+      case "message": {
+        const message = data.message || data.status;
+        if (message) {
+          dispatch({ type: "status", status: message, event: message });
+        }
+        break;
+      }
+      case "percentage":
+        break;
+    }
+  }, []);
+
+  const handleRecover = useCallback((request: PackageUpdateRequest) => {
+    dispatch({
+      type: "start",
+      packageName:
+        request.packageIds.length === 1
+          ? extractPackageName(request.packageIds[0])
+          : "Resuming updates...",
+      status: "Resuming update transaction",
+      event: "Resuming update transaction",
     });
   }, []);
 
+  const transaction = usePackageUpdateTransaction({
+    onError: finishError,
+    onProgress: handleProgress,
+    onRecover: handleRecover,
+    onSuccess: finishSuccess,
+  });
+
   const runUpdate = useCallback(
     async (packages: string[], initialLabel: string) => {
-      const startedAtMs = Date.now();
-      if (packages.length === 0) {
-        console.log("No packages to update");
-        return;
-      }
-
-      setProgress(0);
-      setEventLog([]);
-      setError(null);
-      setStatus("Initializing");
-      setUpdatingPackage(initialLabel);
-      appendEvent("Initializing update transaction");
-      cancelledRef.current = false;
-
-      // Drive the overall bar from the global transaction percentage only,
-      // clamped to [0,100] and kept monotonic so interleaved frames can't pull
-      // it backwards. Per-package item_pct is intentionally NOT used here — it
-      // resets every package and every download/install phase.
-      const bumpProgress = (pct?: number) => {
-        if (pct === undefined || pct > 100) return;
-        setProgress((prev) => Math.max(prev, pct));
-      };
-
-      try {
-        const job = await linuxio.packages.update(packages);
-        jobIdRef.current = job.id;
-
-        await runStreamResult<void, PkgUpdateProgress>({
-          open: () => openJobAttachStream(job.id),
-          closeOnAbort: "none",
-          onOpen: (stream) => {
-            streamRef.current = stream;
-          },
-          onProgress: (data) => {
-            switch (data.type) {
-              case "item_progress":
-                // item_pct is a per-package / per-phase sub-percentage, not a
-                // global value — use it only to track the current package and
-                // status, never to set the overall bar.
-                if (data.package_id) {
-                  setUpdatingPackage(extractPackageName(data.package_id));
-                }
-                if (data.status) {
-                  setStatus(data.status);
-                }
-                break;
-              case "package":
-                if (data.package_id) {
-                  const packageName = extractPackageName(data.package_id);
-                  setUpdatingPackage(packageName);
-                  if (data.status) {
-                    appendEvent(`${data.status}: ${packageName}`);
-                  }
-                }
-                if (data.status) {
-                  setStatus(data.status);
-                }
-                break;
-              case "status":
-                if (data.status) {
-                  setStatus(data.status);
-                  appendEvent(data.status);
-                }
-                bumpProgress(data.percentage);
-                break;
-              case "percentage":
-                bumpProgress(data.percentage);
-                break;
-              case "message":
-                if (data.message) {
-                  setStatus(data.message);
-                  appendEvent(data.message);
-                } else if (data.status) {
-                  setStatus(data.status);
-                  appendEvent(data.status);
-                }
-                break;
-            }
-          },
-          closeMessage: "Update stream closed unexpectedly",
-        });
-
-        if (cancelledRef.current) {
-          return;
-        }
-
-        setProgress(100);
-        setStatus("Finished");
-        appendEvent("Finished");
-        await ensureMinimumVisible(startedAtMs);
-        setUpdatingPackage(null);
-        setStatus(null);
-        await Promise.resolve(onComplete()).catch(() => undefined);
-      } catch (err: unknown) {
-        if (cancelledRef.current) {
-          cancelledRef.current = false;
-          return;
-        }
-
-        const errorMsg = err instanceof Error ? err.message : "Update failed";
-        setError(
-          packages.length === 1
-            ? `Failed to update ${extractPackageName(packages[0])}: ${errorMsg}`
-            : errorMsg,
-        );
-        setUpdatingPackage(null);
-        setStatus(null);
-      } finally {
-        streamRef.current = null;
-        jobIdRef.current = null;
-        cancelledRef.current = false;
-      }
+      if (packages.length === 0) return;
+      const pending = transaction.start({ packageIds: packages });
+      if (!pending) return;
+      dispatch({
+        type: "start",
+        packageName: initialLabel,
+        status: "Initializing",
+        event: "Initializing update transaction",
+      });
+      await pending;
     },
-    [appendEvent, onComplete, runStreamResult],
+    [transaction],
   );
 
   const updateOne = useCallback(
     (pkg: string) => runUpdate([pkg], extractPackageName(pkg)),
     [runUpdate],
   );
-
   const updateAll = useCallback(
     (packages: string[]) => runUpdate(packages, "Preparing updates..."),
     [runUpdate],
   );
-
   const cancelUpdate = useCallback(() => {
-    if (streamRef.current || jobIdRef.current) {
-      cancelledRef.current = true;
-      streamRef.current?.abort();
-      streamRef.current = null;
-      if (jobIdRef.current) {
-        void linuxio.jobs.cancel(jobIdRef.current).catch(() => undefined);
-        jobIdRef.current = null;
-      }
-      setUpdatingPackage(null);
-      setStatus(null);
-      setError("Update cancelled");
-    }
-  }, []);
+    if (state.phase === "running") transaction.cancel();
+  }, [state.phase, transaction]);
+  const clearError = useCallback(() => dispatch({ type: "clearError" }), []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const isUpdating = state.phase === "running";
 
   return {
-    updatingPackage,
-    updateOne,
-    updateAll,
+    ...state,
+    canCancel: isUpdating && transaction.canCancel,
     cancelUpdate,
-    progress,
-    status,
-    eventLog,
-    error,
     clearError,
+    isUpdating,
+    recoveryPending: transaction.isScanning,
+    updateAll,
+    updateOne,
   };
 };

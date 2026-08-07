@@ -19,6 +19,38 @@ func TypeOf[T any]() TypeSpec {
 	return TypeSpec{GoType: reflect.TypeFor[T]()}
 }
 
+var (
+	noRequestType  = reflect.TypeFor[NoRequest]()
+	noResponseType = reflect.TypeFor[NoResponse]()
+)
+
+// IsVoidType reports whether t is the NoResponse contract, through any level of
+// pointer. This is the single definition of "carries no result": the bridge emit
+// path uses it to keep nil on the wire, and the TypeScript generator uses it to
+// render `void`. They must agree, so neither gets its own copy.
+func IsVoidType(t reflect.Type) bool {
+	return derefType(t) == noResponseType
+}
+
+// IsEmptyRequestType reports whether t is the NoRequest contract, through any
+// level of pointer.
+func IsEmptyRequestType(t reflect.Type) bool {
+	return derefType(t) == noRequestType
+}
+
+func derefType(t reflect.Type) reflect.Type {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t
+}
+
+// Void reports whether this payload carries no result. Reads the reflect.Type
+// the route already materialized at construction — no extra reflection.
+func (t TypeSpec) Void() bool {
+	return IsVoidType(t.GoType)
+}
+
 // Common route contract fragments.
 type MessageResponse struct {
 	Message string `json:"message"`
@@ -523,6 +555,32 @@ type GeneralLogsFollowRequest struct {
 	Priority     *string  `json:"priority,omitempty"`
 	Identifier   *string  `json:"identifier,omitempty"`
 	FieldFilters []string `json:"fieldFilters,omitempty"`
+	// Follow controls whether the job keeps streaming new entries after the
+	// backlog. nil defaults to true (live mode).
+	Follow *bool `json:"follow,omitempty"`
+	// AfterCursor resumes a live stream strictly after an entry already held by
+	// the client. When set, the initial backlog query is skipped.
+	AfterCursor *string `json:"afterCursor,omitempty"`
+}
+
+type GeneralLogEntryRequest struct {
+	Cursor string `json:"cursor"`
+}
+
+type GeneralLogsPageRequest struct {
+	// Cursor is the exclusive boundary: the page holds entries strictly older.
+	Cursor       string   `json:"cursor"`
+	Lines        *string  `json:"lines,omitempty"`
+	TimePeriod   *string  `json:"timePeriod,omitempty"`
+	Priority     *string  `json:"priority,omitempty"`
+	Identifier   *string  `json:"identifier,omitempty"`
+	FieldFilters []string `json:"fieldFilters,omitempty"`
+}
+
+type GeneralLogsPageResponse struct {
+	// Entries are trimmed journalctl -o json lines, newest-first.
+	Entries []string `json:"entries"`
+	HasMore bool     `json:"hasMore"`
 }
 
 type DockerSystemPruneRequest struct {
@@ -546,12 +604,14 @@ type FileArchiveRequest struct {
 	Paths  []string `json:"paths"`
 }
 
-type FileChmodRequest struct {
-	Path      string `json:"path"`
-	Mode      string `json:"mode"`
-	Owner     string `json:"owner"`
-	Group     string `json:"group"`
-	Recursive *bool  `json:"recursive,omitempty"`
+// FileChmodBatchRequest changes permissions (and optionally ownership) of
+// many paths within one job.
+type FileChmodBatchRequest struct {
+	Paths     []string `json:"paths"`
+	Mode      string   `json:"mode"`
+	Owner     string   `json:"owner"`
+	Group     string   `json:"group"`
+	Recursive *bool    `json:"recursive,omitempty"`
 }
 
 type FileCompressRequest struct {
@@ -615,23 +675,25 @@ type FileUploadBatchRequest struct {
 }
 
 type IndexerConfigPatch struct {
-	IndexPath            *string `json:"index_path,omitempty"`
-	IndexName            *string `json:"index_name,omitempty"`
-	IncludeHidden        *bool   `json:"include_hidden,omitempty"`
-	IncludeNetworkMounts *bool   `json:"include_network_mounts,omitempty"`
-	FreshIndex           *bool   `json:"fresh_index,omitempty"`
-	KeepIndexes          *int    `json:"keep_indexes,omitempty"`
-	DBPath               *string `json:"db_path,omitempty"`
-	DBBusyTimeout        *string `json:"db_busy_timeout,omitempty"`
-	DBJournalMode        *string `json:"db_journal_mode,omitempty"`
-	DBSynchronous        *string `json:"db_synchronous,omitempty"`
-	DBAutoVacuum         *string `json:"db_auto_vacuum,omitempty"`
-	DBMaxOpenConns       *int    `json:"db_max_open_conns,omitempty"`
-	DBMaxIdleConns       *int    `json:"db_max_idle_conns,omitempty"`
-	DBConnMaxIdleTime    *string `json:"db_conn_max_idle_time,omitempty"`
-	SocketPath           *string `json:"socket_path,omitempty"`
-	ListenAddr           *string `json:"listen_addr,omitempty"`
-	Interval             *string `json:"interval,omitempty"`
+	IndexPath            *string                `json:"index_path,omitempty"`
+	IndexName            *string                `json:"index_name,omitempty"`
+	IncludeHidden        *bool                  `json:"include_hidden,omitempty"`
+	IncludeNetworkMounts *bool                  `json:"include_network_mounts,omitempty"`
+	FreshIndex           *bool                  `json:"fresh_index,omitempty"`
+	FTSSearch            *bool                  `json:"fts_search,omitempty"`
+	KeepIndexes          *int                   `json:"keep_indexes,omitempty"`
+	IntegrityCheck       *IndexerIntegrityCheck `json:"integrity_check,omitempty"`
+	DBPath               *string                `json:"db_path,omitempty"`
+	DBBusyTimeout        *string                `json:"db_busy_timeout,omitempty"`
+	DBJournalMode        *string                `json:"db_journal_mode,omitempty"`
+	DBSynchronous        *string                `json:"db_synchronous,omitempty"`
+	DBAutoVacuum         *string                `json:"db_auto_vacuum,omitempty"`
+	DBMaxOpenConns       *int                   `json:"db_max_open_conns,omitempty"`
+	DBMaxIdleConns       *int                   `json:"db_max_idle_conns,omitempty"`
+	DBConnMaxIdleTime    *string                `json:"db_conn_max_idle_time,omitempty"`
+	SocketPath           *string                `json:"socket_path,omitempty"`
+	ListenAddr           *string                `json:"listen_addr,omitempty"`
+	Interval             *string                `json:"interval,omitempty"`
 }
 
 // MonitoringConfigPatch mirrors the go-monitoring `config.set` command params.

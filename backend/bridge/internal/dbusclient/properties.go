@@ -36,23 +36,3 @@ func GetProperty[T any](ctx context.Context, obj godbus.BusObject, iface, proper
 	}
 	return value, nil
 }
-
-func (i SystemInterface) GetVariantProperty(ctx context.Context, property string) (godbus.Variant, error) {
-	var result godbus.Variant
-	err := i.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
-		var err error
-		result, err = GetVariantProperty(ctx, obj, i.Name, property)
-		return err
-	})
-	return result, err
-}
-
-func GetInterfaceProperty[T any](ctx context.Context, iface SystemInterface, property string) (T, error) {
-	var result T
-	err := iface.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
-		var err error
-		result, err = GetProperty[T](ctx, obj, iface.Name, property)
-		return err
-	})
-	return result, err
-}

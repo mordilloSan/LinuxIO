@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -39,19 +40,23 @@ type IndexerCallbacks struct {
 	OnError    func(msg string, code int) error
 }
 
-// StreamIndexer triggers a reindex via POST /reindex?path=<path> and then
-// attaches to GET /status?stream=true for live SSE updates. The caller
-// controls cancellation through ctx (e.g. via ipc.AbortContext).
+// StreamIndexer triggers a full index for / or a path reindex for a subpath,
+// then attaches to GET /status?stream=true for live SSE updates. The caller
+// controls cancellation through ctx.
 //
 // HTTP status-to-error mapping is centralized here so handler wrappers stay thin.
 func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error {
 	// Send initial "connecting" progress
-	if progressErr := callOnProgress(cb, IndexerProgress{Phase: "connecting"}); progressErr != nil {
+	if progressErr := callOnProgress(cb, IndexerProgress{
+		Phase:     "connecting",
+		State:     "connecting",
+		Operation: indexerOperationForPath(path),
+	}); progressErr != nil {
 		return fmt.Errorf("on progress callback: %w", progressErr)
 	}
 
-	// Step 1: Trigger the reindex operation
-	if err := triggerReindex(ctx, path, cb); err != nil {
+	// Step 1: Trigger the requested operation.
+	if err := triggerIndexer(ctx, path, cb); err != nil {
 		return err
 	}
 
@@ -59,11 +64,28 @@ func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error 
 	return attachStatusStream(ctx, cb)
 }
 
-// triggerReindex sends POST /reindex?path=<path> to start the operation.
-func triggerReindex(ctx context.Context, path string, cb IndexerCallbacks) error {
-	query := url.Values{}
-	query.Set("path", path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
+func indexerOperationForPath(path string) string {
+	if path == "" || path == "/" {
+		return "index"
+	}
+	return "reindex"
+}
+
+func isIndexerOperation(operation string) bool {
+	return operation == "index" || operation == "reindex"
+}
+
+// triggerIndexer sends POST /index for a full run or POST /reindex?path= for
+// a subpath. Full indexing reconciles index-wide settings such as fts_search.
+func triggerIndexer(ctx context.Context, path string, cb IndexerCallbacks) error {
+	endpoint := "http://unix/index"
+	if indexerOperationForPath(path) == "reindex" {
+		query := url.Values{}
+		query.Set("path", path)
+		endpoint = "http://unix/reindex?" + query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		if callbackErr := callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500); callbackErr != nil {
 			return fmt.Errorf("on error callback: %w", callbackErr)
@@ -163,6 +185,8 @@ func attachStatusStreamOnce(ctx context.Context, cb IndexerCallbacks) error {
 type indexerStatusSnapshot struct {
 	Running      bool
 	Status       string
+	Operation    string
+	Path         string
 	FilesIndexed int64
 	DirsIndexed  int64
 	TotalSize    int64
@@ -176,6 +200,8 @@ func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
 	return indexerStatusSnapshot{
 		Running:      status.Running,
 		Status:       status.Status,
+		Operation:    status.ActiveOp,
+		Path:         status.ActivePath,
 		FilesIndexed: status.NumFiles,
 		DirsIndexed:  status.NumDirs,
 		TotalSize:    status.TotalSize,
@@ -192,12 +218,8 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, attempt 
 	}
 
 	if status.Running {
-		if progressErr := callOnProgress(cb, IndexerProgress{
-			FilesIndexed: status.FilesIndexed,
-			DirsIndexed:  status.DirsIndexed,
-			Phase:        "indexing",
-		}); progressErr != nil {
-			return false, fmt.Errorf("on progress callback: %w", progressErr)
+		if err := reportRecoveredIndexerProgress(cb, status); err != nil {
+			return false, err
 		}
 		if attempt >= maxStatusStreamReattachAttempts {
 			if callbackErr := callOnError(cb, "indexer status stream kept closing while indexer was running", 500); callbackErr != nil {
@@ -233,6 +255,25 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, attempt 
 	return false, nil
 }
 
+func reportRecoveredIndexerProgress(cb IndexerCallbacks, status indexerStatusSnapshot) error {
+	if err := validateIndexerOperation(cb, status.Operation); err != nil {
+		return err
+	}
+
+	progress := IndexerProgress{
+		FilesIndexed: status.FilesIndexed,
+		DirsIndexed:  status.DirsIndexed,
+		Operation:    status.Operation,
+		CurrentPath:  status.Path,
+		State:        status.Status,
+	}
+	normalizeIndexerProgress(&progress)
+	if progressErr := callOnProgress(cb, progress); progressErr != nil {
+		return fmt.Errorf("on progress callback: %w", progressErr)
+	}
+	return nil
+}
+
 // StreamIndexerAttach connects to the indexer status SSE endpoint to attach
 // to an already-running operation. Uses GET /status?stream=true which streams
 // the same SSE events (started, progress, complete, error) as StreamIndexer.
@@ -240,7 +281,10 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, attempt 
 // Returns an error if no operation is currently running or the connection fails.
 func StreamIndexerAttach(ctx context.Context, cb IndexerCallbacks) error {
 	// Send initial "connecting" progress
-	if progressErr := callOnProgress(cb, IndexerProgress{Phase: "connecting"}); progressErr != nil {
+	if progressErr := callOnProgress(cb, IndexerProgress{
+		Phase: "connecting",
+		State: "connecting",
+	}); progressErr != nil {
 		return fmt.Errorf("on progress callback: %w", progressErr)
 	}
 
@@ -282,8 +326,8 @@ func consumeSSEEvents(ctx context.Context, resp *http.Response, cb IndexerCallba
 func handleIndexerSSEEvent(cb IndexerCallbacks, evt SSEEvent) (bool, error) {
 	switch evt.Type {
 	case "started":
-		return false, reportIndexerStart(cb)
-	case "progress":
+		return false, reportIndexerStart(cb, evt.Data)
+	case "progress", "state":
 		return false, reportIndexerProgress(cb, evt.Data)
 	case "complete":
 		return reportIndexerComplete(cb, evt.Data)
@@ -294,8 +338,19 @@ func handleIndexerSSEEvent(cb IndexerCallbacks, evt SSEEvent) (bool, error) {
 	}
 }
 
-func reportIndexerStart(cb IndexerCallbacks) error {
-	if err := callOnProgress(cb, IndexerProgress{Phase: "indexing"}); err != nil {
+func reportIndexerStart(cb IndexerCallbacks, data string) error {
+	var progress IndexerProgress
+	if err := json.Unmarshal([]byte(data), &progress); err != nil {
+		progress = IndexerProgress{}
+	}
+	if err := validateIndexerOperation(cb, progress.Operation); err != nil {
+		return err
+	}
+	if progress.CurrentPath == "" {
+		progress.CurrentPath = progress.Path
+	}
+	normalizeIndexerProgress(&progress)
+	if err := callOnProgress(cb, progress); err != nil {
 		return fmt.Errorf("on progress callback: %w", err)
 	}
 	return nil
@@ -306,7 +361,13 @@ func reportIndexerProgress(cb IndexerCallbacks, data string) error {
 	if err := json.Unmarshal([]byte(data), &progress); err != nil {
 		return nil
 	}
-	progress.Phase = "indexing"
+	if err := validateIndexerOperation(cb, progress.Operation); err != nil {
+		return err
+	}
+	if progress.CurrentPath == "" {
+		progress.CurrentPath = progress.Path
+	}
+	normalizeIndexerProgress(&progress)
 	if err := callOnProgress(cb, progress); err != nil {
 		return fmt.Errorf("on progress callback: %w", err)
 	}
@@ -318,12 +379,45 @@ func reportIndexerComplete(cb IndexerCallbacks, data string) (bool, error) {
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		return false, nil
 	}
+	if err := validateIndexerOperation(cb, result.Operation); err != nil {
+		return false, err
+	}
 	if cb.OnResult != nil {
 		if err := cb.OnResult(result); err != nil {
 			return false, fmt.Errorf("on result callback: %w", err)
 		}
 	}
 	return true, nil
+}
+
+func normalizeIndexerProgress(progress *IndexerProgress) {
+	if progress.Phase == "" {
+		progress.Phase = progress.State
+	}
+	switch strings.ToLower(progress.Phase) {
+	case "running", "started":
+		progress.Phase = "indexing"
+	case "scanning":
+		progress.Phase = "scan"
+	}
+	if progress.Phase == "" {
+		progress.Phase = "indexing"
+	}
+	if progress.State == "" {
+		progress.State = progress.Phase
+	}
+}
+
+func validateIndexerOperation(cb IndexerCallbacks, operation string) error {
+	if operation == "" || isIndexerOperation(operation) {
+		return nil
+	}
+
+	message := fmt.Sprintf("cannot attach to %q: it is not an indexing operation", operation)
+	if callbackErr := callOnError(cb, message, http.StatusConflict); callbackErr != nil {
+		return fmt.Errorf("on error callback: %w", callbackErr)
+	}
+	return errors.New(message)
 }
 
 func reportIndexerError(cb IndexerCallbacks, data string) error {

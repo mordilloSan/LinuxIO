@@ -1,29 +1,28 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import type { CSSProperties, ReactNode } from "react";
 
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 
 export interface UnitInfoRow {
   hidden?: boolean;
   label: string;
   noBorder?: boolean;
-  value: React.ReactNode;
+  value: ReactNode;
 }
 
 interface UnitInfoPanelProps {
   onClose: () => void;
-  renderInfoRows?: (
-    info: UnitInfo | undefined,
-    isPending: boolean,
-  ) => UnitInfoRow[];
+  renderInfoRows?: (info: UnitInfo | undefined) => UnitInfoRow[];
   title?: string;
   unitName: string;
 }
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",
@@ -32,11 +31,15 @@ const labelStyle: React.CSSProperties = {
   width: 90,
 };
 
-export const DetailRow: React.FC<{
+export const DetailRow = ({
+  label,
+  children,
+  noBorder,
+}: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   noBorder?: boolean;
-}> = ({ label, children, noBorder }) => (
+}) => (
   <div
     className="svc-detail-row"
     style={{
@@ -73,15 +76,14 @@ export function UnitInfoPanel({
   title = "Unit file & dependencies",
   renderInfoRows,
 }: UnitInfoPanelProps) {
-  const { data: info, isPending } = linuxio.systemd.get_unit_info.useQuery(
-    unitName,
-    {
+  const { data: info } = useSuspenseQuery(
+    linuxio.systemd.get_unit_info.queryOptions(unitName, {
       refetchInterval: 2000,
-    },
+    }),
   );
 
   const fragmentPath = String(info?.FragmentPath ?? "");
-  const extraRows = renderInfoRows?.(info, isPending) ?? [];
+  const extraRows = renderInfoRows?.(info) ?? [];
 
   return (
     <FrostedCard
@@ -115,7 +117,8 @@ export function UnitInfoPanel({
           </AppTypography>
         </div>
 
-        <button
+        <AppIconButton
+          aria-label="Close unit information"
           onClick={onClose}
           style={{
             background: "none",
@@ -130,33 +133,22 @@ export function UnitInfoPanel({
           }}
         >
           <Icon height={20} icon="mdi:close" width={20} />
-        </button>
+        </AppIconButton>
       </div>
 
       <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
         <div style={{ minWidth: "max-content" }}>
           <DetailRow label="Path" noBorder>
-            {isPending ? (
-              <div
-                style={{
-                  height: 18,
-                  width: "80%",
-                  borderRadius: 4,
-                  backgroundColor: "var(--app-palette-action-hover)",
-                }}
-              />
-            ) : (
-              <AppTypography
-                component="span"
-                fontSize="0.8rem"
-                fontWeight={500}
-                noWrap
-                title={fragmentPath || "—"}
-                variant="body2"
-              >
-                {fragmentPath || "—"}
-              </AppTypography>
-            )}
+            <AppTypography
+              component="span"
+              fontSize="0.8rem"
+              fontWeight={500}
+              noWrap
+              title={fragmentPath || "—"}
+              variant="body2"
+            >
+              {fragmentPath || "—"}
+            </AppTypography>
           </DetailRow>
 
           {extraRows
@@ -185,25 +177,24 @@ export function UnitInfoPanel({
               </DetailRow>
             ))}
 
-          {!isPending &&
-            depFields.map(({ label, key }) => {
-              const items = toStringArray(info?.[key]);
-              if (!items.length) return null;
-              return (
-                <DetailRow key={label} label={label}>
-                  <AppTypography
-                    component="span"
-                    fontSize="0.75rem"
-                    fontWeight={500}
-                    noWrap
-                    title={items.join(", ")}
-                    variant="body2"
-                  >
-                    {items.join(", ")}
-                  </AppTypography>
-                </DetailRow>
-              );
-            })}
+          {depFields.map(({ label, key }) => {
+            const items = toStringArray(info?.[key]);
+            if (!items.length) return null;
+            return (
+              <DetailRow key={label} label={label}>
+                <AppTypography
+                  component="span"
+                  fontSize="0.75rem"
+                  fontWeight={500}
+                  noWrap
+                  title={items.join(", ")}
+                  variant="body2"
+                >
+                  {items.join(", ")}
+                </AppTypography>
+              </DetailRow>
+            );
+          })}
         </div>
       </div>
     </FrostedCard>

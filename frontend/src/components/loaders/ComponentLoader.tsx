@@ -1,5 +1,3 @@
-import React from "react";
-
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 
 function ComponentLoader() {

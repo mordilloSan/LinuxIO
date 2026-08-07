@@ -1,14 +1,11 @@
-import React, { ReactNode } from "react";
-
-import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
+import { memo, type DragEventHandler, type MouseEventHandler } from "react";
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
-import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
-import PageLoader from "@/components/loaders/PageLoader";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useAppTheme } from "@/theme";
 import type {
   FileItem,
@@ -17,14 +14,17 @@ import type {
   SortOrder,
   ViewMode,
 } from "@/types/filebrowser";
+import { allowContextMenuProps } from "@/utils/contextMenu";
+
+import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
 
 export interface FileBrowserSurfaceProps {
   isDragOver: boolean;
-  onContextMenu: React.MouseEventHandler<HTMLDivElement>;
-  onDragEnter: React.DragEventHandler<HTMLDivElement>;
-  onDragLeave: React.DragEventHandler<HTMLDivElement>;
-  onDragOver: React.DragEventHandler<HTMLDivElement>;
-  onDrop: React.DragEventHandler<HTMLDivElement>;
+  onContextMenu: MouseEventHandler<HTMLDivElement>;
+  onDragEnter: DragEventHandler<HTMLDivElement>;
+  onDragLeave: DragEventHandler<HTMLDivElement>;
+  onDragOver: DragEventHandler<HTMLDivElement>;
+  onDrop: DragEventHandler<HTMLDivElement>;
 }
 
 export interface FileBrowserChromeProps {
@@ -41,14 +41,12 @@ export interface FileBrowserChromeProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   sortOrder: SortOrder;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
 export interface FileBrowserDataProps {
-  errorMessage?: string | null;
   filteredResource?: FileResource;
-  isPending: boolean;
+  isSearchLoading: boolean;
   resource?: FileResource;
 }
 
@@ -83,18 +81,18 @@ export interface FileBrowserContentProps {
   surface: FileBrowserSurfaceProps;
 }
 
-const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
+const FileBrowserContent = ({
   chrome,
   data,
   file,
   listing,
   surface,
-}) => {
+}: FileBrowserContentProps) => {
   const theme = useAppTheme();
 
   return (
     <div
-      data-allow-context-menu="true"
+      {...allowContextMenuProps}
       onContextMenu={surface.onContextMenu}
       onDragEnter={surface.onDragEnter}
       onDragLeave={surface.onDragLeave}
@@ -117,7 +115,6 @@ const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
           searchQuery={chrome.searchQuery}
           showHiddenFiles={chrome.showHiddenFiles}
-          viewIcon={chrome.viewIcon}
           viewMode={chrome.viewMode}
         />
       )}
@@ -143,15 +140,13 @@ const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
               path={chrome.normalizedPath}
             />
 
-            {!data.isPending &&
-              !data.errorMessage &&
-              data.resource &&
-              data.resource.type === "directory" && (
-                <SortBar
-                  onSortChange={chrome.onSortChange}
-                  sortOrder={chrome.sortOrder}
-                />
-              )}
+            {data.resource?.type === "directory" && (
+              <SortBar
+                onSortChange={chrome.onSortChange}
+                sortField={listing.sortField}
+                sortOrder={chrome.sortOrder}
+              />
+            )}
           </>
         )}
         <div
@@ -165,18 +160,10 @@ const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
             position: "relative",
           }}
         >
-          {data.isPending && <PageLoader />}
-
-          {!data.isPending && data.errorMessage && (
-            <ErrorState
-              message={data.errorMessage}
-              onReset={() => chrome.onOpenDirectory("/")}
-            />
-          )}
+          {data.isSearchLoading && <ComponentLoader />}
 
           {!chrome.editingPath &&
-            !data.isPending &&
-            !data.errorMessage &&
+            !data.isSearchLoading &&
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing
@@ -201,8 +188,6 @@ const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
             )}
 
           {!chrome.editingPath &&
-            !data.isPending &&
-            !data.errorMessage &&
             data.resource &&
             data.resource.type !== "directory" && (
               <FileDetail
@@ -223,4 +208,4 @@ const FileBrowserContent: React.FC<FileBrowserContentProps> = ({
   );
 };
 
-export default React.memo(FileBrowserContent);
+export default memo(FileBrowserContent);

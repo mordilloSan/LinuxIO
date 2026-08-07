@@ -3,6 +3,8 @@ package filebrowser
 import (
 	"context"
 	"errors"
+	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -71,12 +73,12 @@ func TestArchiveResourceLimiterCancelsWhileWaiting(t *testing.T) {
 	}
 }
 
-func TestParseChmodRequest(t *testing.T) {
+func TestParseChmodBatchRequest(t *testing.T) {
 	tests := []struct {
 		name          string
-		req           apischema.FileChmodRequest
-		wantPath      string
-		wantMode      string
+		req           apischema.FileChmodBatchRequest
+		wantPaths     []string
+		wantMode      os.FileMode
 		wantOwner     string
 		wantGroup     string
 		wantRecursive bool
@@ -84,35 +86,45 @@ func TestParseChmodRequest(t *testing.T) {
 	}{
 		{
 			name:    "missing mode",
-			req:     apischema.FileChmodRequest{Path: "/tmp/file"},
+			req:     apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}},
 			wantErr: true,
 		},
 		{
-			name:     "path and mode only",
-			req:      apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644"},
-			wantPath: "/tmp/file",
-			wantMode: "0644",
+			name:    "missing paths",
+			req:     apischema.FileChmodBatchRequest{Mode: "0644"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid mode",
+			req:     apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "rw-r--r--"},
+			wantErr: true,
+		},
+		{
+			name:      "paths and mode only",
+			req:       apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "0644"},
+			wantPaths: []string{"/tmp/file"},
+			wantMode:  0o644,
 		},
 		{
 			name:      "owner only",
-			req:       apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel"},
-			wantPath:  "/tmp/file",
-			wantMode:  "0644",
+			req:       apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "0644", Owner: "miguel"},
+			wantPaths: []string{"/tmp/file"},
+			wantMode:  0o644,
 			wantOwner: "miguel",
 		},
 		{
 			name:      "owner and group",
-			req:       apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel", Group: "staff"},
-			wantPath:  "/tmp/file",
-			wantMode:  "0644",
+			req:       apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "0644", Owner: "miguel", Group: "staff"},
+			wantPaths: []string{"/tmp/file"},
+			wantMode:  0o644,
 			wantOwner: "miguel",
 			wantGroup: "staff",
 		},
 		{
-			name:          "owner group recursive",
-			req:           apischema.FileChmodRequest{Path: "/tmp/file", Mode: "0644", Owner: "miguel", Group: "staff", Recursive: new(true)},
-			wantPath:      "/tmp/file",
-			wantMode:      "0644",
+			name:          "many paths owner group recursive",
+			req:           apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file", "/tmp/dir"}, Mode: "0644", Owner: "miguel", Group: "staff", Recursive: new(true)},
+			wantPaths:     []string{"/tmp/file", "/tmp/dir"},
+			wantMode:      0o644,
 			wantOwner:     "miguel",
 			wantGroup:     "staff",
 			wantRecursive: true,
@@ -121,18 +133,18 @@ func TestParseChmodRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, mode, owner, group, recursive, err := parseChmodRequest(tt.req)
+			paths, mode, owner, group, recursive, err := parseChmodBatchRequest(tt.req)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatal("parseChmodRequest returned nil error")
+					t.Fatal("parseChmodBatchRequest returned nil error")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseChmodRequest returned error: %v", err)
+				t.Fatalf("parseChmodBatchRequest returned error: %v", err)
 			}
-			if path != tt.wantPath || mode != tt.wantMode || owner != tt.wantOwner || group != tt.wantGroup || recursive != tt.wantRecursive {
-				t.Fatalf("parseChmodRequest() = (%q, %q, %q, %q, %v), want (%q, %q, %q, %q, %v)", path, mode, owner, group, recursive, tt.wantPath, tt.wantMode, tt.wantOwner, tt.wantGroup, tt.wantRecursive)
+			if !slices.Equal(paths, tt.wantPaths) || mode != tt.wantMode || owner != tt.wantOwner || group != tt.wantGroup || recursive != tt.wantRecursive {
+				t.Fatalf("parseChmodBatchRequest() = (%q, %v, %q, %q, %v), want (%q, %v, %q, %q, %v)", paths, mode, owner, group, recursive, tt.wantPaths, tt.wantMode, tt.wantOwner, tt.wantGroup, tt.wantRecursive)
 			}
 		})
 	}

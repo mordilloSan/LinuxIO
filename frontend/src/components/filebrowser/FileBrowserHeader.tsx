@@ -1,20 +1,21 @@
 import { Icon } from "@iconify/react";
-import React, { ReactNode, useCallback } from "react";
-
-import IndexerDialog from "./IndexerDialog";
-import SearchBar from "./SearchBar";
-import { ViewMode } from "../../types/filebrowser";
+import { useCallback, useState } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
-import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
+import { useIsIndexing } from "@/hooks/backgroundJobs/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
+
+import IndexerDialog from "./IndexerDialog";
+import SearchBar from "./SearchBar";
+import type { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
   editingFileName?: string;
@@ -29,10 +30,9 @@ interface FileBrowserHeaderProps {
   searchQuery?: string;
   showHiddenFiles: boolean;
   showQuickSave?: boolean;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
-const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
+const FileBrowserHeader = ({
   showHiddenFiles,
   showQuickSave = false,
   onSwitchView,
@@ -40,21 +40,22 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   onSaveFile,
   onCloseEditor,
   isSaving = false,
-  viewIcon,
+  viewMode,
   editingFileName,
   editingFilePath,
   isDirty = false,
   searchQuery = "",
   onSearchChange = () => {},
-}) => {
+}: FileBrowserHeaderProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [actionsAnchorEl, setActionsAnchorEl] =
-    React.useState<HTMLElement | null>(null);
+  const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
+    null,
+  );
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundJobActions();
-  const { isIndexing } = useBackgroundJobIndexer();
+  const isIndexing = useIsIndexing();
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
     openIndexerDialog();
@@ -157,8 +158,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
               <>
                 <AppTooltip title="Close editor">
                   <AppIconButton
-                    disabled={isSaving}
-                    onClick={onCloseEditor || (() => {})}
+                    aria-label="Close editor"
+                    disabled={isSaving || !onCloseEditor}
+                    onClick={onCloseEditor}
                   >
                     <Icon height={22} icon="mdi:close" width={22} />
                   </AppIconButton>
@@ -166,8 +168,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 
                 <AppTooltip title="Save changes">
                   <AppIconButton
-                    disabled={isSaving}
-                    onClick={onSaveFile || (() => {})}
+                    aria-label="Save changes"
+                    disabled={isSaving || !onSaveFile}
+                    onClick={onSaveFile}
                   >
                     <Icon height={22} icon="mdi:content-save" width={22} />
                   </AppIconButton>
@@ -197,17 +200,14 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       <div
                         style={{ display: "flex", gap: 8, padding: "4px 8px" }}
                       >
-                        <AppTooltip title="Switch view">
-                          <AppIconButton
-                            aria-label="Switch view"
-                            onClick={() => {
-                              setActionsAnchorEl(null);
-                              onSwitchView();
-                            }}
-                          >
-                            {viewIcon}
-                          </AppIconButton>
-                        </AppTooltip>
+                        <ViewModeToggle
+                          alternateMode="list"
+                          onViewModeChange={() => {
+                            setActionsAnchorEl(null);
+                            onSwitchView();
+                          }}
+                          viewMode={viewMode}
+                        />
                         <AppTooltip
                           title={
                             showHiddenFiles
@@ -270,14 +270,11 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                   </>
                 ) : (
                   <>
-                    <AppTooltip title="Switch view">
-                      <AppIconButton
-                        aria-label="Switch view"
-                        onClick={onSwitchView}
-                      >
-                        {viewIcon}
-                      </AppIconButton>
-                    </AppTooltip>
+                    <ViewModeToggle
+                      alternateMode="list"
+                      onViewModeChange={onSwitchView}
+                      viewMode={viewMode}
+                    />
                     <AppTooltip
                       title={
                         showHiddenFiles

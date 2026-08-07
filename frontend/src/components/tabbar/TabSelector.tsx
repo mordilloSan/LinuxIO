@@ -1,36 +1,29 @@
-import { Icon } from "@iconify/react";
-import React from "react";
+import type { CSSProperties } from "react";
 
 import "./tab-selector.css";
 
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppMenu from "@/components/ui/AppMenu";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppTheme } from "@/theme";
 
-interface TabOption {
+interface TabOption<TValue extends string> {
   label: string;
-  value: string;
+  value: TValue;
 }
-interface TabSelectorProps {
+interface TabSelectorProps<TValue extends string> {
   className?: string;
-  onChange: (value: string) => void;
-  options: TabOption[];
-  rightContent?: React.ReactNode;
-  style?: React.CSSProperties;
-  value: string;
+  onChange: (value: TValue) => void;
+  options: readonly TabOption<TValue>[];
+  style?: CSSProperties;
+  value: TValue;
 }
 
-const TabSelector: React.FC<TabSelectorProps> = ({
+const TabSelector = <TValue extends string>({
   value,
   onChange,
   options,
-  rightContent,
   className,
   style,
-}) => {
+}: TabSelectorProps<TValue>) => {
   const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
 
   const primaryHex = theme.palette.primary.main;
   const contrast = theme.palette.primary.contrastText;
@@ -46,7 +39,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
           "--tab-selector-hover": theme.palette.action.hover,
           "--tab-selector-text": theme.palette.text.secondary,
           ...style,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       <div className="tab-selector__scroller custom-scrollbar">
@@ -65,36 +58,6 @@ const TabSelector: React.FC<TabSelectorProps> = ({
           ))}
         </div>
       </div>
-
-      {rightContent && (
-        <>
-          {isMobile ? (
-            <>
-              <AppIconButton
-                onClick={(e) => setAnchorEl(e.currentTarget)}
-                size="small"
-                style={{ marginTop: 2, flexShrink: 0 }}
-              >
-                <Icon height={20} icon="mdi:tune" width={20} />
-              </AppIconButton>
-              <AppMenu
-                anchorEl={anchorEl}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                minWidth="unset"
-                onClose={() => setAnchorEl(null)}
-                open={Boolean(anchorEl)}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-              >
-                <div className="tab-selector__mobile-actions">
-                  {rightContent}
-                </div>
-              </AppMenu>
-            </>
-          ) : (
-            <div className="tab-selector__actions">{rightContent}</div>
-          )}
-        </>
-      )}
     </div>
   );
 };

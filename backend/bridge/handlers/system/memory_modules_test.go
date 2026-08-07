@@ -120,13 +120,16 @@ func TestFetchMemoryModulesReturnsEmptyWhenInventoryUnavailable(t *testing.T) {
 func TestCheckMemoryModuleInventoryAvailabilityUsesUdev(t *testing.T) {
 	lookPathCalled := false
 	restore := stubMemoryModuleCommands(t,
-		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		func(_ context.Context, name string, args ...string) ([]byte, error) {
 			if name != "udevadm" {
 				t.Fatalf("unexpected command %q", name)
 			}
-			return []byte(`P: /devices/virtual/dmi/id
-E: MEMORY_ARRAY_NUM_DEVICES=1
-E: MEMORY_DEVICE_0_SIZE=8589934592
+			wantArgs := []string{"info", "--query=property", "--path=/sys/class/dmi/id"}
+			if !reflect.DeepEqual(args, wantArgs) {
+				t.Fatalf("udevadm args = %v, want %v", args, wantArgs)
+			}
+			return []byte(`MEMORY_ARRAY_NUM_DEVICES=1
+MEMORY_DEVICE_0_SIZE=8589934592
 `), nil
 		},
 		func(string) (string, error) {
@@ -145,6 +148,36 @@ E: MEMORY_DEVICE_0_SIZE=8589934592
 	}
 	if lookPathCalled {
 		t.Fatal("dmidecode lookup was called despite udev inventory")
+	}
+}
+
+func TestFetchMemoryModulesUsesUdevExportDatabase(t *testing.T) {
+	commands := make([][]string, 0, 2)
+	restore := stubMemoryModuleCommands(t,
+		func(_ context.Context, name string, args ...string) ([]byte, error) {
+			commands = append(commands, append([]string{name}, args...))
+			if name != "udevadm" {
+				t.Fatalf("unexpected command %q", name)
+			}
+			return []byte(`P: /devices/virtual/dmi/id
+E: MEMORY_ARRAY_NUM_DEVICES=1
+E: MEMORY_DEVICE_0_SIZE=8589934592
+`), nil
+		},
+		nil,
+	)
+	defer restore()
+
+	modules, err := FetchMemoryModules(context.Background())
+	if err != nil {
+		t.Fatalf("FetchMemoryModules() error = %v", err)
+	}
+	if len(modules) != 1 {
+		t.Fatalf("FetchMemoryModules() returned %d modules, want 1", len(modules))
+	}
+	want := [][]string{{"udevadm", "info", "--export-db"}}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %v, want %v", commands, want)
 	}
 }
 

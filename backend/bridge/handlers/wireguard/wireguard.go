@@ -26,7 +26,7 @@ import (
 )
 
 // --- Handler Implementations ---
-func ListInterfaces(ctx context.Context) (any, error) {
+func ListInterfaces(ctx context.Context) ([]WireGuardInterfaceUI, error) {
 	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
@@ -507,6 +507,7 @@ func applyPeerRuntimeStats(peers []PeerInfo, statsByPub map[string]peerRuntimeSt
 		peers[i].TxBytes = stats.TxBytes
 		peers[i].RxBps = stats.RxBps
 		peers[i].TxBps = stats.TxBps
+		peers[i].runtimeStatsKnown = true
 	}
 }
 
@@ -724,7 +725,7 @@ func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRe
 	return "removed", nil
 }
 
-func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) (any, error) {
+func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerInfo, error) {
 	if req.InterfaceName == "" {
 		slog.Error("invalid list peers request")
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
@@ -802,66 +803,66 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 	}, nil
 }
 
-func PeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
+func PeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.QRCodeResponse, error) {
 	if req.InterfaceName == "" || req.PeerName == "" {
 		slog.Error("invalid peer QR code request")
-		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
+		return apischema.QRCodeResponse{}, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
 	}
 
 	if err := validateInterfaceName(req.InterfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
-		return nil, fmt.Errorf("invalid interface name: %w", err)
+		return apischema.QRCodeResponse{}, fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(req.PeerName); err != nil {
 		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
-		return nil, fmt.Errorf("invalid peer name: %w", err)
+		return apischema.QRCodeResponse{}, fmt.Errorf("invalid peer name: %w", err)
 	}
 
 	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.QRCodeResponse{}, err
 	}
 	rawConfig, err := os.ReadFile(peerPath)
 	if err != nil {
 		slog.Error("failed to read peer config for QR code", "path", peerPath, "error", err)
-		return nil, fmt.Errorf("read peer config: %w", err)
+		return apischema.QRCodeResponse{}, fmt.Errorf("read peer config: %w", err)
 	}
 
 	// Generate QR code
 	png, err := qrcode.Encode(string(rawConfig), qrcode.Medium, 256)
 	if err != nil {
 		slog.Error("failed to generate peer QR code", "path", peerPath, "error", err)
-		return nil, fmt.Errorf("generate QR code: %w", err)
+		return apischema.QRCodeResponse{}, fmt.Errorf("generate QR code: %w", err)
 	}
 
 	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
 	slog.Info("generated peer QR code", "path", peerPath)
-	return map[string]string{"qrcode": dataURI}, nil
+	return apischema.QRCodeResponse{QRCode: dataURI}, nil
 }
 
-func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
+func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.PeerConfigDownload, error) {
 	if req.InterfaceName == "" || req.PeerName == "" {
 		slog.Error("invalid peer config download request")
-		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
+		return apischema.PeerConfigDownload{}, fmt.Errorf("usage: peer_config_download <interface> <peername>")
 	}
 
 	if err := validateInterfaceName(req.InterfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
-		return nil, fmt.Errorf("invalid interface name: %w", err)
+		return apischema.PeerConfigDownload{}, fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(req.PeerName); err != nil {
 		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
-		return nil, fmt.Errorf("invalid peer name: %w", err)
+		return apischema.PeerConfigDownload{}, fmt.Errorf("invalid peer name: %w", err)
 	}
 
 	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return apischema.PeerConfigDownload{}, err
 	}
 	data, err := os.ReadFile(peerPath)
 	if err != nil {
 		slog.Error("failed to read peer config for download", "path", peerPath, "error", err)
-		return nil, fmt.Errorf("read peer config: %w", err)
+		return apischema.PeerConfigDownload{}, fmt.Errorf("read peer config: %w", err)
 	}
 	slog.Info("served peer config download", "path", peerPath, "size", len(data))
 	return apischema.PeerConfigDownload{

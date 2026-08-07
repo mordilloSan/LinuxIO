@@ -5,7 +5,6 @@ import type { Stream } from "@/api";
 const streamRef: { current: Stream | null } = { current: null };
 
 const apiMocks = vi.hoisted(() => ({
-  decodeString: vi.fn((data: Uint8Array) => new TextDecoder().decode(data)),
   muxIsOpen: true,
 }));
 
@@ -20,7 +19,6 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
-    decodeString: apiMocks.decodeString,
     useStreamMux: () => ({ isOpen: apiMocks.muxIsOpen }),
   };
 });
@@ -114,12 +112,31 @@ describe("useLogStream", () => {
     expect(result.current.isLoading).toBe(true);
 
     await act(async () => {
-      harness.handlers.onData?.(new TextEncoder().encode("line 1\n"));
-      harness.handlers.onData?.(new TextEncoder().encode("line 2\n"));
+      harness.handlers.onText?.("line 1\n");
+      harness.handlers.onText?.("line 2\n");
     });
 
     expect(result.current.logs).toBe("line 1\nline 2\n");
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("caps the accumulated buffer and trims to a whole line", async () => {
+    const harness = setupOpenStream();
+    const { result } = renderHook(() =>
+      useLogStream({ createStream: () => createStream(), open: true }),
+    );
+
+    const cap = 512 * 1024;
+    const bigLine = `${"x".repeat(cap - 10)}\n`;
+    await act(async () => {
+      harness.handlers.onText?.(bigLine);
+      harness.handlers.onText?.("older line\n");
+      harness.handlers.onText?.("newest line\n");
+    });
+
+    expect(result.current.logs.length).toBeLessThanOrEqual(cap);
+    expect(result.current.logs.startsWith("older line\n")).toBe(true);
+    expect(result.current.logs.endsWith("newest line\n")).toBe(true);
   });
 
   it("clears loading after initial stream silence", () => {
@@ -188,7 +205,7 @@ describe("useLogStream", () => {
     );
 
     await act(async () => {
-      harness.handlers.onData?.(new TextEncoder().encode("old logs"));
+      harness.handlers.onText?.("old logs");
       harness.handlers.onResult?.({ status: "error", error: "failed" });
     });
     expect(result.current.logs).toBe("old logs");

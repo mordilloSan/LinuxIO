@@ -9,7 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Job[apischema.HostnameRequest, apischema.NoResponse]("hostname.set_hostname").Handle(handleSetHostname),
+	apischema.Query[apischema.HostnameRequest, apischema.NoResponse]("hostname.set_hostname").HandleVoid(handleSetHostname),
 )
 
 var Routes = api.Routes()
@@ -18,6 +18,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleSetHostname(ctx context.Context, req apischema.HostnameRequest, emit bridgeipc.Events) error {
-	return bridgeipc.EmitResult(emit, nil, SetHostname(ctx, req.Hostname))
+func handleSetHostname(ctx context.Context, req apischema.HostnameRequest) error {
+	return SetHostname(ctx, req.Hostname)
 }

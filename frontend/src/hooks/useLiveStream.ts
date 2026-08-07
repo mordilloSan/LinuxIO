@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import {
   bindStreamHandlers,
+  decodeString,
   type Stream,
   type StreamEventHandlers,
 } from "@/api";
@@ -11,6 +12,11 @@ export interface OpenLiveStreamOptions<
 > extends StreamEventHandlers<TProgress> {
   onOpen?: (stream: Stream) => void;
   onOpenError?: () => void;
+  /**
+   * Like `onData`, but with the frame decoded to text. Page-level consumers
+   * take this so byte decoding stays inside the lifecycle hook.
+   */
+  onText?: (text: string) => void;
   open: () => Stream | null;
 }
 
@@ -20,6 +26,11 @@ export interface UseLiveStreamOptions {
 
 export interface UseLiveStreamReturn {
   closeStream: () => void;
+  /**
+   * Unbind handlers and forget the stream without closing it — for streams
+   * that persist server-side across consumer unmounts (the terminal PTY).
+   */
+  detachStream: () => void;
   // Returns true when a stream is active (existing or newly opened), false when opening failed.
   openStream: <TProgress = unknown>(
     options: OpenLiveStreamOptions<TProgress>,
@@ -36,6 +47,14 @@ export function useLiveStream(
   const closeOnUnmount = options.closeOnUnmount ?? true;
   const streamRef = useRef<Stream | null>(null);
   const unbindRef = useRef<(() => void) | null>(null);
+
+  const detachStream = useCallback(() => {
+    if (unbindRef.current) {
+      unbindRef.current();
+      unbindRef.current = null;
+    }
+    streamRef.current = null;
+  }, []);
 
   const closeStream = useCallback(() => {
     if (unbindRef.current) {
@@ -67,7 +86,12 @@ export function useLiveStream(
       options.onOpen?.(stream);
 
       unbindRef.current = bindStreamHandlers<TProgress>(stream, {
-        onData: options.onData,
+        onData: (data) => {
+          options.onData?.(data);
+          if (options.onText) {
+            options.onText(decodeString(data));
+          }
+        },
         onProgress: options.onProgress,
         onResult: options.onResult,
         onClose: () => {
@@ -96,5 +120,6 @@ export function useLiveStream(
     streamRef,
     openStream,
     closeStream,
+    detachStream,
   };
 }

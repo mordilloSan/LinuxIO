@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -8,11 +8,11 @@ import { useAppTheme } from "@/theme";
 
 export type SummaryRow = {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   noWrap?: boolean;
 };
 
-export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
+export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => {
   const theme = useAppTheme();
 
   return (
@@ -79,14 +79,21 @@ export const SummaryRowsList: React.FC<{ rows: SummaryRow[] }> = ({ rows }) => {
   );
 };
 
-const HardwareCard: React.FC<{
+const HardwareCard = ({
+  title,
+  subtitle,
+  avatarIcon,
+  accentColor,
+  rows,
+  actions,
+}: {
   title: string;
   subtitle: string;
   avatarIcon: string;
   accentColor: string;
   rows: SummaryRow[];
-  actions?: React.ReactNode;
-}> = ({ title, subtitle, avatarIcon, accentColor, rows, actions }) => (
+  actions?: ReactNode;
+}) => (
   <FrostedCard
     hoverLift
     style={{

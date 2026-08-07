@@ -63,19 +63,37 @@ func (o Owner) Matches(other Owner) bool {
 }
 
 type Snapshot struct {
-	ID         string     `json:"id"`
-	Type       string     `json:"type"`
-	Request    any        `json:"request,omitempty"`
-	Owner      Owner      `json:"owner"`
-	State      State      `json:"state"`
-	Progress   any        `json:"progress,omitempty"`
-	Result     any        `json:"result,omitempty"`
-	Error      *Error     `json:"error,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID         string       `json:"id"`
+	Type       string       `json:"type"`
+	Metadata   *JobMetadata `json:"metadata,omitempty"`
+	Owner      Owner        `json:"owner"`
+	State      State        `json:"state"`
+	Progress   any          `json:"progress,omitempty"`
+	Result     any          `json:"result,omitempty"`
+	Error      *Error       `json:"error,omitempty"`
+	CreatedAt  time.Time    `json:"created_at"`
+	StartedAt  *time.Time   `json:"started_at,omitempty"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	FinishedAt *time.Time   `json:"finished_at,omitempty"`
 }
+
+// JobMetadata is the deliberately small public projection of a job request.
+// It is populated only by route-declared builders; the decoded request remains
+// private execution state and must never be copied into a Snapshot.
+type JobMetadata struct {
+	Identity    []string `json:"identity,omitempty"`
+	Label       string   `json:"label,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	Action      string   `json:"action,omitempty"`
+	ProjectName string   `json:"projectName,omitempty"`
+	PackageIDs  []string `json:"packageIds,omitempty"`
+	Device      string   `json:"device,omitempty"`
+	TestType    string   `json:"testType,omitempty"`
+	Capability  string   `json:"capability,omitempty"`
+}
+
+// JobMetadataBuilder returns the safe public projection for one decoded request.
+type JobMetadataBuilder func(request any) JobMetadata
 
 type EventType string
 
@@ -122,20 +140,26 @@ type Job struct {
 	id          string
 	typ         string
 	request     any
+	metadata    *JobMetadata
 	owner       Owner
 	state       State
 	progress    any
 	progressLog []Event
-	result      any
-	err         *Error
-	createdAt   time.Time
-	startedAt   *time.Time
-	updatedAt   time.Time
-	finishedAt  *time.Time
-	cancel      context.CancelFunc
-	done        chan struct{}
-	doneOnce    sync.Once
-	subscribers map[chan Event]*eventSubscriber
+	// progressLogBytes tracks transient data payload bytes. Before the first
+	// replay subscriber, the event-count window covers the start/attach race;
+	// afterwards replaySubscribed enables a much smaller rolling byte window.
+	progressLogBytes int
+	replaySubscribed bool
+	result           any
+	err              *Error
+	createdAt        time.Time
+	startedAt        *time.Time
+	updatedAt        time.Time
+	finishedAt       *time.Time
+	cancel           context.CancelFunc
+	done             chan struct{}
+	doneOnce         sync.Once
+	subscribers      map[chan Event]*eventSubscriber
 }
 
 var DefaultRegistry = NewRegistry()
@@ -144,13 +168,25 @@ const (
 	DefaultTerminalJobTTL         = 30 * time.Minute
 	DefaultTerminalJobSweepPeriod = time.Minute
 	DefaultJobProgressReplayLimit = 1024
-	slowSubscriberLogInterval     = 30 * time.Second
+	// Once at least one direct subscriber has received the initial replay, only
+	// retain a small reconnect window. This prevents 64 KiB follow frames from
+	// pinning roughly 64 MiB per active job indefinitely.
+	DefaultSubscribedJobProgressReplayBytes = 4 * 1024 * 1024
+	slowSubscriberLogInterval               = 30 * time.Second
 )
 
 type eventSubscriber struct {
 	ch          chan Event
+	lagged      chan struct{}
 	dropped     atomic.Uint64
 	lastDropLog atomic.Int64
+}
+
+func newEventSubscriber(ch chan Event) *eventSubscriber {
+	return &eventSubscriber{
+		ch:     ch,
+		lagged: make(chan struct{}, 1),
+	}
 }
 
 // NewRegistry creates a new job registry with automatic cleanup of terminal jobs.
@@ -205,7 +241,7 @@ func (r *Registry) Create(jobType string, request any) (*Job, error) {
 }
 
 // CreateForOwner creates a new job owned by the specified owner.
-func (r *Registry) CreateForOwner(jobType string, request any, owner Owner) (*Job, error) {
+func (r *Registry) CreateForOwner(jobType string, request any, owner Owner, metadata ...*JobMetadata) (*Job, error) {
 	if jobType == "" {
 		return nil, fmt.Errorf("job type cannot be empty")
 	}
@@ -217,12 +253,17 @@ func (r *Registry) CreateForOwner(jobType string, request any, owner Owner) (*Jo
 	// Jobs are intentionally detached from the stream that created them; cancel
 	// through jobs.cancel, attached stream abort, or policy timeout instead.
 	ctx, cancel := context.WithCancel(context.Background())
+	var publicMetadata *JobMetadata
+	if len(metadata) > 0 && metadata[0] != nil {
+		publicMetadata = cloneJobMetadata(metadata[0])
+	}
 	job := &Job{
 		registry:    r,
 		ctx:         ctx,
 		id:          id,
 		typ:         jobType,
 		request:     request,
+		metadata:    publicMetadata,
 		owner:       owner,
 		state:       StateQueued,
 		createdAt:   now,
@@ -317,7 +358,7 @@ func (r *Registry) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 	ch := make(chan Event, buffer)
 	r.mu.Lock()
-	r.subscribers[ch] = &eventSubscriber{ch: ch}
+	r.subscribers[ch] = newEventSubscriber(ch)
 	r.mu.Unlock()
 
 	unsubscribe := func() {
@@ -355,7 +396,7 @@ func (j *Job) Snapshot() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Request:    j.request,
+		Metadata:   cloneJobMetadata(j.metadata),
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,
@@ -372,13 +413,21 @@ func (j *Job) Snapshot() Snapshot {
 // canceled immediately; if running, the context is canceled and the job will
 // transition to canceled when it detects the cancellation.
 func (j *Job) Cancel() {
-	j.cancel()
 	j.mu.Lock()
-	queued := j.state == StateQueued
-	j.mu.Unlock()
-	if queued {
-		j.markCanceled()
+	if j.state == StateQueued {
+		// Queue cancellation and Start contend on this same lock. Once this
+		// transition wins, Start observes a terminal state and cannot run the
+		// handler after a router has reserved the job for promotion.
+		j.cancel()
+		event := j.markCanceledLocked(time.Now().UTC())
+		j.mu.Unlock()
+		j.publishTerminal(event)
+		return
 	}
+	j.mu.Unlock()
+	// A running job owns its runner; cancellation is delivered through its
+	// context and the runner's normal terminal path publishes the event.
+	j.cancel()
 }
 
 // CancelForSession cancels all non-terminal jobs belonging to the given session.
@@ -409,12 +458,26 @@ func (j *Job) Done() <-chan struct{} {
 }
 
 // Start begins executing the job with the given runner. If runner is nil, the job fails immediately.
-func (j *Job) Start(runner Runner) {
+func (j *Job) Start(runner Runner) bool {
 	if runner == nil {
 		j.markFailed(NewError("job runner cannot be nil", 500))
-		return
+		return false
 	}
-	go j.run(j.ctx, runner)
+	now := time.Now().UTC()
+	j.mu.Lock()
+	if j.state != StateQueued {
+		j.mu.Unlock()
+		return false
+	}
+	j.state = StateRunning
+	j.startedAt = &now
+	j.updatedAt = now
+	request := j.request
+	event := Event{Type: EventStarted, Job: j.snapshotLocked()}
+	j.mu.Unlock()
+	j.broadcast(event)
+	go j.run(j.ctx, runner, request)
+	return true
 }
 
 // IsTerminal reports whether the job has reached a terminal state (completed, failed, or canceled).
@@ -480,8 +543,38 @@ func (j *Job) ReportTransientProgress(progress any) {
 
 func (j *Job) appendProgressLogLocked(event Event) {
 	j.progressLog = append(j.progressLog, event)
-	if limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog) > limit {
-		j.progressLog = append([]Event(nil), j.progressLog[len(j.progressLog)-limit:]...)
+	j.progressLogBytes += jobDataProgressBytes(event.Progress)
+	j.trimProgressLogLocked()
+}
+
+func jobDataProgressBytes(progress any) int {
+	payload, ok := progress.(map[string]any)
+	if !ok || payload["type"] != "data" {
+		return 0
+	}
+	data, ok := payload["data"].(string)
+	if !ok {
+		return 0
+	}
+	return len(data)
+}
+
+func (j *Job) trimProgressLogLocked() {
+	start := 0
+	for limit := DefaultJobProgressReplayLimit; limit > 0 && len(j.progressLog)-start > limit; {
+		j.progressLogBytes -= jobDataProgressBytes(j.progressLog[start].Progress)
+		start++
+	}
+	if j.replaySubscribed {
+		for limit := DefaultSubscribedJobProgressReplayBytes; limit > 0 &&
+			j.progressLogBytes > limit &&
+			start < len(j.progressLog); {
+			j.progressLogBytes -= jobDataProgressBytes(j.progressLog[start].Progress)
+			start++
+		}
+	}
+	if start > 0 {
+		j.progressLog = append([]Event(nil), j.progressLog[start:]...)
 	}
 }
 
@@ -495,13 +588,24 @@ func (j *Job) Subscribe(buffer int) (<-chan Event, func()) {
 // events for replay, and an unsubscribe function. The replay contains up to
 // DefaultJobProgressReplayLimit recent progress events.
 func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
+	ch, replay, _, unsubscribe := j.subscribeWithReplayStatus(buffer)
+	return ch, replay, unsubscribe
+}
+
+// subscribeWithReplayStatus additionally reports when the bounded live-event
+// channel has overflowed. Attach streams use this to fail explicitly so a
+// cursor-aware client can reconnect instead of silently accepting a gap.
+func (j *Job) subscribeWithReplayStatus(buffer int) (<-chan Event, []Event, <-chan struct{}, func()) {
 	if buffer <= 0 {
 		buffer = 8
 	}
 	ch := make(chan Event, buffer)
+	subscriber := newEventSubscriber(ch)
 	j.mu.Lock()
 	replay := append([]Event(nil), j.progressLog...)
-	j.subscribers[ch] = &eventSubscriber{ch: ch}
+	j.replaySubscribed = true
+	j.trimProgressLogLocked()
+	j.subscribers[ch] = subscriber
 	j.mu.Unlock()
 
 	unsubscribe := func() {
@@ -512,12 +616,11 @@ func (j *Job) SubscribeWithReplay(buffer int) (<-chan Event, []Event, func()) {
 		}
 		j.mu.Unlock()
 	}
-	return ch, replay, unsubscribe
+	return ch, replay, subscriber.lagged, unsubscribe
 }
 
-func (j *Job) run(ctx context.Context, runner Runner) {
-	j.markStarted()
-	result, err := runner(ctx, j, j.request)
+func (j *Job) run(ctx context.Context, runner Runner, request any) {
+	result, err := runner(ctx, j, request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			j.markFailed(NewError("operation timed out", 504))
@@ -537,15 +640,14 @@ func (j *Job) run(ctx context.Context, runner Runner) {
 	j.markCompleted(result)
 }
 
-func (j *Job) markStarted() {
-	now := time.Now().UTC()
-	j.mu.Lock()
-	j.state = StateRunning
-	j.startedAt = &now
-	j.updatedAt = now
-	event := Event{Type: EventStarted, Job: j.snapshotLocked()}
-	j.mu.Unlock()
+// publishTerminal is the publication tail shared by every terminal transition:
+// release Done() waiters, broadcast the terminal event, and close direct
+// subscribers. Call exactly once per job, after j.mu has been released — the
+// lock split is required by the Start/Cancel race, the tail is not.
+func (j *Job) publishTerminal(event Event) {
+	j.signalDone()
 	j.broadcast(event)
+	j.closeSubscribers()
 }
 
 func (j *Job) markCompleted(result any) {
@@ -556,14 +658,13 @@ func (j *Job) markCompleted(result any) {
 		return
 	}
 	j.state = StateCompleted
+	j.request = nil
 	j.result = result
 	j.updatedAt = now
 	j.finishedAt = &now
 	event := Event{Type: EventResult, Job: j.snapshotLocked(), Result: result}
 	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	j.publishTerminal(event)
 }
 
 func (j *Job) markFailed(err *Error) {
@@ -574,33 +675,46 @@ func (j *Job) markFailed(err *Error) {
 		return
 	}
 	j.state = StateFailed
+	j.request = nil
 	j.err = err
 	j.updatedAt = now
 	j.finishedAt = &now
 	event := Event{Type: EventError, Job: j.snapshotLocked(), Error: err}
 	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	j.publishTerminal(event)
 }
 
 func (j *Job) markCanceled() {
-	now := time.Now().UTC()
-	jobErr := NewError("operation aborted", 499)
 	j.mu.Lock()
 	if j.isTerminalLocked() {
 		j.mu.Unlock()
 		return
 	}
+	event := j.markCanceledLocked(time.Now().UTC())
+	j.mu.Unlock()
+	j.publishTerminal(event)
+}
+
+// markCanceledLocked records cancellation while j.mu is held. The caller is
+// responsible for signaling and broadcasting after releasing the lock.
+func (j *Job) markCanceledLocked(now time.Time) Event {
+	jobErr := NewError("operation aborted", 499)
 	j.state = StateCanceled
+	j.request = nil
 	j.err = jobErr
 	j.updatedAt = now
 	j.finishedAt = &now
-	event := Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
-	j.mu.Unlock()
-	j.signalDone()
-	j.broadcast(event)
-	j.closeSubscribers()
+	return Event{Type: EventCanceled, Job: j.snapshotLocked(), Error: jobErr}
+}
+
+func cloneJobMetadata(metadata *JobMetadata) *JobMetadata {
+	if metadata == nil {
+		return nil
+	}
+	clone := *metadata
+	clone.Identity = append([]string(nil), metadata.Identity...)
+	clone.PackageIDs = append([]string(nil), metadata.PackageIDs...)
+	return &clone
 }
 
 func (j *Job) signalDone() {
@@ -673,6 +787,11 @@ func (s *eventSubscriber) dropOldest() bool {
 }
 
 func (s *eventSubscriber) logDropped(event Event, scope string) {
+	select {
+	case s.lagged <- struct{}{}:
+	default:
+	}
+
 	if event.transient || isJobDataProgress(event.Progress) {
 		return
 	}
@@ -716,7 +835,7 @@ func (j *Job) snapshotLocked() Snapshot {
 	return Snapshot{
 		ID:         j.id,
 		Type:       j.typ,
-		Request:    j.request,
+		Metadata:   cloneJobMetadata(j.metadata),
 		Owner:      j.owner,
 		State:      j.state,
 		Progress:   j.progress,

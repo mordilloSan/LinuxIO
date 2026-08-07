@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Stream } from "@/api/StreamMultiplexer";
 import type { JobSnapshot } from "@/api/generated/linuxio-types";
+import type { Stream } from "@/api/StreamMultiplexer";
 
 const mocks = vi.hoisted(() => ({
   openJobAttachStream: vi.fn(),
@@ -31,12 +31,9 @@ vi.mock("@/api/stream-helpers", () => ({
 }));
 
 const {
-  isJobLocallyHandled,
   isJobSnapshot,
   isTerminalJobState,
   jobSnapshotResult,
-  markJobLocallyHandled,
-  unmarkJobLocallyHandled,
   waitForJobCompletion,
 } = await import("@/api/jobs");
 
@@ -75,18 +72,6 @@ describe("jobs helpers", () => {
     expect(jobSnapshotResult("plain")).toBe("plain");
   });
 
-  it("retains locally handled job ids briefly", () => {
-    vi.useFakeTimers();
-    markJobLocallyHandled("job-1");
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-
-    unmarkJobLocallyHandled("job-1");
-    vi.advanceTimersByTime(4999);
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(isJobLocallyHandled("job-1")).toBe(false);
-  });
-
   it("returns completed snapshots and throws failed terminal snapshots", async () => {
     await expect(
       waitForJobCompletion(snapshot({ state: "completed", result: "done" })),
@@ -102,15 +87,39 @@ describe("jobs helpers", () => {
     ).rejects.toMatchObject({ message: "failed", code: 500 });
   });
 
-  it("returns the original active snapshot when attach is unavailable", async () => {
-    const active = snapshot();
+  it("polls to completion when attach is unavailable", async () => {
+    const finalSnapshot = snapshot({ state: "completed", result: "polled" });
     mocks.openJobAttachStream.mockReturnValue(null);
+    mocks.request
+      .mockResolvedValueOnce(snapshot())
+      .mockResolvedValueOnce(finalSnapshot);
 
-    await expect(waitForJobCompletion(active)).resolves.toBe(active);
+    vi.useFakeTimers();
+    const completion = waitForJobCompletion(snapshot());
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(completion).resolves.toBe(finalSnapshot);
+    expect(mocks.request).toHaveBeenCalledWith(
+      "jobs",
+      "get",
+      { jobId: "job-1" },
+      { retryPolicy: "connection_closed" },
+    );
+    expect(mocks.waitForStreamResult).not.toHaveBeenCalled();
   });
 
-  it("attaches active jobs, refetches final snapshots, and clears local handling", async () => {
-    vi.useFakeTimers();
+  it("throws when the polled job ends in a failed state", async () => {
+    mocks.openJobAttachStream.mockReturnValue(null);
+    mocks.request.mockResolvedValue(
+      snapshot({ state: "failed", error: { code: 500, message: "boom" } }),
+    );
+
+    await expect(waitForJobCompletion(snapshot())).rejects.toMatchObject({
+      message: "boom",
+      code: 500,
+    });
+  });
+
+  it("attaches active jobs and refetches their final snapshots", async () => {
     const stream = {} as Stream;
     const finalSnapshot = snapshot({ state: "completed", result: "fresh" });
     mocks.openJobAttachStream.mockReturnValue(stream);
@@ -128,9 +137,6 @@ describe("jobs helpers", () => {
       { jobId: "job-1" },
       { retryPolicy: "connection_closed" },
     );
-    expect(isJobLocallyHandled("job-1")).toBe(true);
-    vi.advanceTimersByTime(5000);
-    expect(isJobLocallyHandled("job-1")).toBe(false);
   });
 
   it("falls back to the stream result when final snapshot refetch fails", async () => {

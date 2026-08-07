@@ -1,6 +1,5 @@
-import React, { useCallback, useState } from "react";
-
-import AppCheckbox from "../ui/AppCheckbox";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 
 import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
@@ -16,6 +15,8 @@ import {
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+
+import AppCheckbox from "../ui/AppCheckbox";
 
 interface PermissionsDialogProps {
   currentMode: string; // e.g., "0755", "755", or "-rw-r--r--"
@@ -130,7 +131,7 @@ const permissionsToOctal = (perms: PermissionBits): string => {
     (perms.others.execute ? 1 : 0);
   return `${ownerBits}${groupBits}${othersBits}`;
 };
-const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
+const PermissionsDialog = ({
   open,
   pathLabel,
   currentMode,
@@ -139,7 +140,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   group,
   onClose,
   onConfirm,
-}) => {
+}: PermissionsDialogProps) => {
   const [permissions, setPermissions] = useState<PermissionBits>(() =>
     parseMode(currentMode),
   );
@@ -156,9 +157,11 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     }
   }
   // Fetch users and groups when dialog opens
-  const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
-    enabled: open,
-  });
+  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } = useQuery(
+    linuxio.filebrowser.users_groups.queryOptions({
+      enabled: open,
+    }),
+  );
 
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];
@@ -275,6 +278,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             freeSolo
             fullWidth
             label="Owner"
+            loading={isLoadingUsersGroups}
             maxListHeight={150}
             onChange={setOwnerInput}
             onInputChange={setOwnerInput}
@@ -288,6 +292,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             freeSolo
             fullWidth
             label="Group"
+            loading={isLoadingUsersGroups}
             maxListHeight={150}
             onChange={setGroupInput}
             onInputChange={setGroupInput}

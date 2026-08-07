@@ -56,8 +56,8 @@ func WithRetryDelay(delay time.Duration) Option {
 	}
 }
 
-// WithExclusive holds an exclusive advisory lock while fn runs.
-func WithExclusive(ctx context.Context, path string, fn func() error, opts ...Option) error {
+// RunExclusive holds an exclusive advisory lock while fn runs.
+func RunExclusive(ctx context.Context, path string, fn func() error, opts ...Option) error {
 	if fn == nil {
 		return errors.New("lock function is nil")
 	}

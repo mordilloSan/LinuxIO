@@ -43,7 +43,7 @@ type dockerStatsPayload struct {
 }
 
 // List all containers with metrics.
-func ListContainers(ctx context.Context) (any, error) {
+func ListContainers(ctx context.Context) ([]apischema.ContainerInfo, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -356,27 +356,27 @@ func RestartContainer(ctx context.Context, id string) (any, error) {
 }
 
 // StartAllStopped starts all exited/dead containers and returns counts.
-func StartAllStopped(ctx context.Context) (any, error) {
+func StartAllStopped(ctx context.Context) (apischema.DockerStartedFailedResponse, error) {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return apischema.DockerStartedFailedResponse{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
+		return apischema.DockerStartedFailedResponse{}, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	started, failed := 0, 0
 	for _, c := range containers.Items {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return apischema.DockerStartedFailedResponse{}, err
 		}
 		if c.State == "exited" || c.State == "dead" {
 			if _, err := cli.ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
 				if ctx.Err() != nil {
-					return nil, ctx.Err()
+					return apischema.DockerStartedFailedResponse{}, ctx.Err()
 				}
 				slog.Warn("failed to start container", "component", "docker", "container", c.ID[:12], "error", err)
 				failed++
@@ -386,31 +386,31 @@ func StartAllStopped(ctx context.Context) (any, error) {
 		}
 	}
 
-	return map[string]any{"started": started, "failed": failed}, nil
+	return apischema.DockerStartedFailedResponse{Started: started, Failed: failed}, nil
 }
 
 // StopAllRunning stops all running containers and returns counts.
-func StopAllRunning(ctx context.Context) (any, error) {
+func StopAllRunning(ctx context.Context) (apischema.DockerStoppedFailedResponse, error) {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return apischema.DockerStoppedFailedResponse{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
+		return apischema.DockerStoppedFailedResponse{}, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	stopped, failed := 0, 0
 	for _, c := range containers.Items {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return apischema.DockerStoppedFailedResponse{}, err
 		}
 		if c.State == "running" {
 			if _, err := cli.ContainerStop(ctx, c.ID, client.ContainerStopOptions{}); err != nil {
 				if ctx.Err() != nil {
-					return nil, ctx.Err()
+					return apischema.DockerStoppedFailedResponse{}, ctx.Err()
 				}
 				slog.Warn("failed to stop container", "component", "docker", "container", c.ID[:12], "error", err)
 				failed++
@@ -420,5 +420,5 @@ func StopAllRunning(ctx context.Context) (any, error) {
 		}
 	}
 
-	return map[string]any{"stopped": stopped, "failed": failed}, nil
+	return apischema.DockerStoppedFailedResponse{Stopped: stopped, Failed: failed}, nil
 }

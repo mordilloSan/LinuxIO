@@ -1,5 +1,3 @@
-import React from "react";
-
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -15,7 +13,7 @@ interface ComposePostSaveDialogProps {
   stackState: "new" | "running" | "stopped";
 }
 
-const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
+const ComposePostSaveDialog = ({
   open,
   stackName,
   stackState,
@@ -23,7 +21,7 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
   onRestart,
   onDoNothing,
   isExecuting = false,
-}) => {
+}: ComposePostSaveDialogProps) => {
   const theme = useAppTheme();
 
   const getActionLabel = () => {

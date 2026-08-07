@@ -1,28 +1,33 @@
-import React from "react";
+import {
+  cloneElement,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import "./app-form-control-label.css";
 
 export interface AppFormControlLabelProps {
   className?: string;
-  control: React.ReactElement;
+  control: ReactElement;
   disabled?: boolean;
-  label: React.ReactNode;
-  style?: React.CSSProperties;
+  label: ReactNode;
+  style?: CSSProperties;
   /** Passed through to the control child (e.g. Radio value for RadioGroup) */
   value?: string;
 }
 
-const AppFormControlLabel: React.FC<AppFormControlLabelProps> = ({
+const AppFormControlLabel = ({
   control,
   label,
   style,
   className,
   disabled,
   value,
-}) => {
+}: AppFormControlLabelProps) => {
   const cls = ["app-form-control-label", className].filter(Boolean).join(" ");
 
-  const clonedControl = React.cloneElement(control, {
+  const clonedControl = cloneElement(control, {
     ...(disabled !== undefined && { disabled }),
     ...(value !== undefined && { value }),
   });

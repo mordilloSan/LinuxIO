@@ -42,7 +42,7 @@ func Run(args []string) int {
 		runCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
 			fmt.Fprintln(os.Stderr, "\nUsage:")
-			fmt.Fprintln(os.Stderr, "  linuxio run [flags]")
+			fmt.Fprintln(os.Stderr, "  linuxio-webserver run [flags]")
 			fmt.Fprintln(os.Stderr, "\nFlags:")
 			runCmd.PrintDefaults()
 		}
@@ -67,11 +67,10 @@ func Run(args []string) int {
 		return 0
 
 	default:
-		// Unknown subcommand → help
 		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
 		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", args[1])
 		printUsage()
-		return 0
+		return 2
 	}
 }
 
@@ -82,7 +81,7 @@ func printGeneralUsage() {
 
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  linuxio <command> [flags]
+  linuxio-webserver <command> [flags]
 
 Commands:
   run         Run the HTTP server
@@ -90,8 +89,8 @@ Commands:
   help        Show this help
 
 Examples:
-  linuxio run
-  linuxio run -port 8090 -verbose
+  linuxio-webserver run
+  linuxio-webserver run -port 8090 -verbose
 
 Use "linuxio-webserver <command> -h" for more info about a command.
 `)

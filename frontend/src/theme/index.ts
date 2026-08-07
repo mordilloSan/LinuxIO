@@ -1,19 +1,19 @@
-import React, {
+import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
   useInsertionEffect,
   useMemo,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 
 import type {
   AppSettings,
   ConfigThemeColorsByModePayload as ThemeColorsByMode,
 } from "@/api";
-
-import { useConfig } from "@/hooks/useConfig";
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
@@ -192,13 +192,14 @@ export interface AppTheme {
 }
 
 interface AppThemeProviderProps {
-  children: React.ReactNode;
-  value?: AppTheme;
+  children: ReactNode;
+  value: AppTheme;
 }
 
 const APP_THEME_CONTEXT = createContext<AppTheme | undefined>(undefined);
 const BASE_SPACING_UNIT = 4;
 const FONT_FAMILY = [
+  '"Inter Variable"',
   "Inter",
   "-apple-system",
   "BlinkMacSystemFont",
@@ -509,7 +510,8 @@ function resolveVariantTheme(
 
 export function buildAppTheme(
   configOrTheme:
-    Pick<AppSettings, "theme" | "primaryColor" | "themeColors"> | string,
+    | Pick<AppSettings, "theme" | "primaryColor" | "themeColors">
+    | string,
   primaryColorToken?: string,
   themeColors?: ThemeColorsByMode,
 ): AppTheme {
@@ -537,7 +539,7 @@ export function buildAppTheme(
     shape: {
       borderRadius: 4,
     },
-    spacing: (...values: SpacingInput[]) => createSpacing(...values),
+    spacing: createSpacing,
     breakpoints: createBreakpoints(),
     transitions,
     typography,
@@ -545,6 +547,15 @@ export function buildAppTheme(
     lighten,
     darken,
   };
+}
+
+export function applyCssVariables(
+  root: HTMLElement,
+  vars: Record<string, string>,
+): void {
+  for (const [key, value] of Object.entries(vars)) {
+    root.style.setProperty(key, value);
+  }
 }
 
 function getThemeCssVariables(theme: AppTheme): Record<string, string> {
@@ -667,61 +678,33 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
 }
 
 export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
-  const resolvedTheme = value;
-  const cssVariables = useMemo(
-    () => (resolvedTheme ? getThemeCssVariables(resolvedTheme) : {}),
-    [resolvedTheme],
-  );
+  const cssVariables = useMemo(() => getThemeCssVariables(value), [value]);
 
   useInsertionEffect(() => {
-    if (!resolvedTheme) return;
-
     const root = document.documentElement;
-    root.dataset.appTheme = resolvedTheme.name.toLowerCase();
-    root.dataset.appColorScheme = resolvedTheme.colorScheme;
+    root.dataset.appTheme = value.name.toLowerCase();
+    root.dataset.appColorScheme = value.colorScheme;
 
-    for (const [key, value] of Object.entries(cssVariables)) {
-      root.style.setProperty(key, value);
-    }
-  }, [cssVariables, resolvedTheme]);
+    applyCssVariables(root, cssVariables);
+  }, [cssVariables, value]);
 
   useEffect(() => {
-    if (!resolvedTheme) return;
     try {
       localStorage.setItem(
         "linuxio_theme_bootstrap",
         JSON.stringify({
-          scheme: resolvedTheme.colorScheme,
-          bg: resolvedTheme.palette.background.default,
-          text: resolvedTheme.palette.text.primary,
-          primary: resolvedTheme.palette.primary.main,
+          scheme: value.colorScheme,
+          bg: value.palette.background.default,
+          text: value.palette.text.primary,
+          primary: value.palette.primary.main,
         }),
       );
     } catch {
       // Best-effort cache only.
     }
-  }, [resolvedTheme]);
+  }, [value]);
 
-  if (!resolvedTheme) {
-    return null;
-  }
-
-  return React.createElement(
-    APP_THEME_CONTEXT.Provider,
-    { value: resolvedTheme },
-    children,
-  );
-}
-
-export function ConfiguredAppThemeProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { config } = useConfig();
-  const theme = useMemo(() => buildAppTheme(config.appSettings), [config]);
-
-  return React.createElement(AppThemeProvider, { value: theme, children });
+  return createElement(APP_THEME_CONTEXT.Provider, { value }, children);
 }
 
 export function useAppTheme() {

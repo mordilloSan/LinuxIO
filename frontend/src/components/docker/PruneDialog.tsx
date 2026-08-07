@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -33,12 +33,12 @@ interface PruneDialogProps {
   onConfirm: (opts: PruneOptions) => void;
   open: boolean;
 }
-const PruneDialog: React.FC<PruneDialogProps> = ({
+const PruneDialog = ({
   open,
   onClose,
   onConfirm,
   isLoading = false,
-}) => {
+}: PruneDialogProps) => {
   const [opts, setOpts] = useState<PruneOptions>(defaultOptions);
   const toggle = (key: keyof PruneOptions) =>
     setOpts((prev) => ({

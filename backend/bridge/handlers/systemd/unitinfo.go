@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
@@ -16,10 +17,10 @@ var commonUnitInfoProps = []string{
 	"Conflicts", "PartOf", "TriggeredBy",
 }
 
-func GetUnitInfo(ctx context.Context, unitName string) (map[string]any, error) {
+func GetUnitInfo(ctx context.Context, unitName string) (apischema.UnitInfo, error) {
 	unitName = strings.TrimSpace(unitName)
 	if unitName == "" {
-		return nil, fmt.Errorf("missing unit name")
+		return apischema.UnitInfo{}, fmt.Errorf("missing unit name")
 	}
 
 	var info map[string]any
@@ -51,7 +52,117 @@ func GetUnitInfo(ctx context.Context, unitName string) (map[string]any, error) {
 		return nil
 	})
 
-	return info, err
+	return unitInfoFromMap(info), err
+}
+
+func unitInfoFromMap(values map[string]any) apischema.UnitInfo {
+	return apischema.UnitInfo{
+		ActiveEnterTimestamp:   unitInfoInt64(values, "ActiveEnterTimestamp"),
+		ActiveState:            unitInfoString(values, "ActiveState"),
+		After:                  unitInfoStrings(values, "After"),
+		Before:                 unitInfoStrings(values, "Before"),
+		Conflicts:              unitInfoStrings(values, "Conflicts"),
+		Description:            unitInfoString(values, "Description"),
+		ExecMainStatus:         unitInfoInt(values, "ExecMainStatus"),
+		FragmentPath:           unitInfoString(values, "FragmentPath"),
+		ID:                     unitInfoString(values, "Id"),
+		InactiveEnterTimestamp: unitInfoInt64(values, "InactiveEnterTimestamp"),
+		LastTriggerUSec:        unitInfoInt64(values, "LastTriggerUSec"),
+		Listen:                 unitInfoStrings(values, "Listen"),
+		LoadState:              unitInfoString(values, "LoadState"),
+		MainPID:                unitInfoInt(values, "MainPID"),
+		MemoryCurrent:          unitInfoInt64(values, "MemoryCurrent"),
+		NAccepted:              unitInfoInt(values, "NAccepted"),
+		NConnections:           unitInfoInt(values, "NConnections"),
+		NextElapseUSec:         unitInfoInt64(values, "NextElapseUSec"),
+		PartOf:                 unitInfoStrings(values, "PartOf"),
+		Requires:               unitInfoStrings(values, "Requires"),
+		SubState:               unitInfoString(values, "SubState"),
+		TriggeredBy:            unitInfoStrings(values, "TriggeredBy"),
+		Unit:                   unitInfoString(values, "Unit"),
+		UnitFileState:          unitInfoString(values, "UnitFileState"),
+		WantedBy:               unitInfoStrings(values, "WantedBy"),
+		Wants:                  unitInfoStrings(values, "Wants"),
+	}
+}
+
+func unitInfoString(values map[string]any, key string) *string {
+	value, ok := values[key].(string)
+	if !ok {
+		return nil
+	}
+	return &value
+}
+
+func unitInfoStrings(values map[string]any, key string) []string {
+	value, ok := values[key].([]string)
+	if ok {
+		return value
+	}
+
+	items, ok := values[key].([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(string)
+		if ok {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func unitInfoInt64(values map[string]any, key string) *int64 {
+	value, ok := unitInfoNumber(values[key])
+	if !ok {
+		return nil
+	}
+	result := value
+	return &result
+}
+
+func unitInfoInt(values map[string]any, key string) *int {
+	value, ok := unitInfoNumber(values[key])
+	if !ok || value < -int64(^uint(0)>>1)-1 || value > int64(^uint(0)>>1) {
+		return nil
+	}
+	result := int(value)
+	return &result
+}
+
+func unitInfoNumber(value any) (int64, bool) {
+	switch value := value.(type) {
+	case uint8:
+		return int64(value), true
+	case uint16:
+		return int64(value), true
+	case uint32:
+		return int64(value), true
+	case uint64:
+		if value > ^uint64(0)>>1 {
+			return 0, false
+		}
+		return int64(value), true
+	case uint:
+		if uint64(value) > ^uint64(0)>>1 {
+			return 0, false
+		}
+		return int64(value), true
+	case int8:
+		return int64(value), true
+	case int16:
+		return int64(value), true
+	case int32:
+		return int64(value), true
+	case int64:
+		return value, true
+	case int:
+		return int64(value), true
+	default:
+		return 0, false
+	}
 }
 
 func populateUnitFileInfo(

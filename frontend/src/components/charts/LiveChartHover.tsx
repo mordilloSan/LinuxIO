@@ -1,9 +1,4 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   getLiveHoverNowMs,
@@ -34,7 +29,7 @@ interface LiveChartHoverProps {
  * LIVE_MILLIS_PER_PIXEL, so hovering one chart shows the same moment on all
  * of them, like the synchronized hardware history cards.
  */
-const LiveChartHover: React.FC<LiveChartHoverProps> = ({ delayMs, rowsAt }) => {
+const LiveChartHover = ({ delayMs, rowsAt }: LiveChartHoverProps) => {
   const theme = useAppTheme();
   const overlayRef = useRef<HTMLDivElement>(null);
   const hoverRightPx = useSyncExternalStore(

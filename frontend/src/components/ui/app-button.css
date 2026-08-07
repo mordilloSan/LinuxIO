@@ -67,6 +67,11 @@
   background-color: color-mix(in srgb, var(--_btn-main) 4%, transparent);
 }
 
+.app-btn:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
 /* contained */
 .app-btn--contained {
   color: var(--_btn-contrast);

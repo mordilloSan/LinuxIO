@@ -138,7 +138,7 @@ func formatResourceModTime(modTime time.Time) string {
 }
 
 // resourceStat returns extended metadata.
-func resourceStat(ctx context.Context, req apischema.PathRequest) (any, error) {
+func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.ResourceStatData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -989,18 +989,17 @@ func checkIndexerServiceAvailability(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func indexerUnitStates(info map[string]any) (string, string, bool) {
-	activeState, ok := info["ActiveState"].(string)
-	if !ok || activeState == "" {
+func indexerUnitStates(info apischema.UnitInfo) (string, string, bool) {
+	if info.ActiveState == nil || *info.ActiveState == "" {
 		return "", "", false
 	}
 
-	subState, subStateOK := info["SubState"].(string)
-	if !subStateOK {
-		subState = ""
+	var subState string
+	if info.SubState != nil {
+		subState = *info.SubState
 	}
 
-	return activeState, subState, true
+	return *info.ActiveState, subState, true
 }
 
 func indexerUnitStateError(label, activeState, subState string) error {
@@ -1025,6 +1024,7 @@ type indexerEntryCountResponse struct {
 type indexerStatusResponse struct {
 	Running      bool   `json:"running"`
 	Status       string `json:"status"`
+	FTSActive    bool   `json:"fts_active"`
 	FilesIndexed int64  `json:"files_indexed"`
 	DirsIndexed  int64  `json:"dirs_indexed"`
 	TotalSize    int64  `json:"total_size"`
@@ -1131,6 +1131,7 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 
 	var raw struct {
 		Status      string `json:"status"`
+		FTSActive   bool   `json:"fts_active"`
 		NumDirs     int64  `json:"num_dirs"`
 		NumFiles    int64  `json:"num_files"`
 		TotalSize   int64  `json:"total_size"`
@@ -1149,8 +1150,9 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 	}
 
 	return indexerStatusResponse{
-		Running:      status == "running",
+		Running:      status == "running" || status == "indexing",
 		Status:       status,
+		FTSActive:    raw.FTSActive,
 		FilesIndexed: raw.NumFiles,
 		DirsIndexed:  raw.NumDirs,
 		TotalSize:    raw.TotalSize,
@@ -1160,28 +1162,28 @@ func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, 
 }
 
 // indexerStatus returns current indexer status for refresh recovery.
-func indexerStatus(ctx context.Context) (any, error) {
+func indexerStatus(ctx context.Context) (indexerStatusResponse, error) {
 	status, err := fetchIndexerStatusFromIndexer(ctx)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
-			return nil, fmt.Errorf("bad_request:indexer unavailable")
+			return indexerStatusResponse{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
 		slog.Debug("error fetching indexer status", "error", err)
-		return nil, fmt.Errorf("error fetching indexer status: %w", err)
+		return indexerStatusResponse{}, fmt.Errorf("error fetching indexer status: %w", err)
 	}
 
 	return status, nil
 }
 
 // dirSize calculates the total size of a directory recursively.
-func dirSize(ctx context.Context, req apischema.PathRequest) (any, error) {
+func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
 	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:missing path")
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
@@ -1189,40 +1191,37 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (any, error) {
 	stat, err := root.Root.Stat(fsroot.ToRel(req.Path))
 	if err != nil {
 		slog.Debug("error stating directory", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("bad_request:directory not found")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:directory not found")
 	}
 
 	if !stat.IsDir() {
-		return nil, fmt.Errorf("bad_request:path is not a directory")
+		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:path is not a directory")
 	}
 
 	// Get directory size from the indexer daemon (precomputed)
 	size, err := fetchDirSizeFromIndexer(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
-			return nil, fmt.Errorf("bad_request:indexer unavailable")
+			return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
 		slog.Debug("error fetching directory size from indexer", "path", req.Path, "error", err)
-		return nil, fmt.Errorf("error fetching directory size: %w", err)
+		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory size: %w", err)
 	}
 
-	return map[string]any{
-		"path": req.Path,
-		"size": size,
-	}, nil
+	return apischema.DirectorySizeData{Path: req.Path, Size: size}, nil
 }
 
-// subfoldersResponse represents a subfolder entry from the indexer
-type subfoldersResponse struct {
+// indexerSubfolder is the canonical response shape from the indexer. Keep this
+// private so SDK/daemon compatibility fields cannot leak into our API contract.
+type indexerSubfolder struct {
 	Path    string `json:"path"`
 	Name    string `json:"name"`
 	Size    int64  `json:"size"`
-	Bytes   int64  `json:"bytes,omitempty"`
 	ModTime string `json:"mod_time"`
 }
 
 // subfolders gets direct child folders with their pre-calculated sizes.
-func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
+func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.SubfoldersResponse, error) {
 	path := "/"
 	if req.Path != "" {
 		path = req.Path
@@ -1230,7 +1229,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
@@ -1239,10 +1238,10 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
 		stat, statErr := root.Root.Stat(fsroot.ToRel(path))
 		if statErr != nil {
 			slog.Debug("error stating directory", "path", path, "error", statErr)
-			return nil, fmt.Errorf("bad_request:directory not found")
+			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:directory not found")
 		}
 		if !stat.IsDir() {
-			return nil, fmt.Errorf("bad_request:path is not a directory")
+			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:path is not a directory")
 		}
 	}
 
@@ -1250,21 +1249,17 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (any, error) {
 	folders, err := fetchSubfoldersFromIndexer(ctx, path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
-			return nil, fmt.Errorf("bad_request:indexer unavailable")
+			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
 		slog.Debug("error fetching subfolders from indexer", "path", path, "error", err)
-		return nil, fmt.Errorf("error fetching subfolders: %w", err)
+		return apischema.SubfoldersResponse{}, fmt.Errorf("error fetching subfolders: %w", err)
 	}
 
-	return map[string]any{
-		"path":       path,
-		"subfolders": folders,
-		"count":      len(folders),
-	}, nil
+	return apischema.SubfoldersResponse{Path: path, Subfolders: folders, Count: len(folders)}, nil
 }
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
-func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]subfoldersResponse, error) {
+func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, error) {
 	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/subfolders", nil)
@@ -1290,31 +1285,34 @@ func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]subfoldersR
 		return nil, fmt.Errorf("indexer subfolders returned status %s", resp.Status)
 	}
 
-	var folders []subfoldersResponse
+	var folders []indexerSubfolder
 	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
 		return nil, fmt.Errorf("decode indexer subfolders response: %w", err)
 	}
 
 	setIndexerAvailability(true)
 
-	for i := range folders {
-		if folders[i].Size == 0 && folders[i].Bytes != 0 {
-			folders[i].Size = folders[i].Bytes
-		}
-		folders[i].Bytes = 0
-	}
+	return subfoldersFromIndexer(folders), nil
+}
 
-	return folders, nil
+func subfoldersFromIndexer(folders []indexerSubfolder) []apischema.SubfolderData {
+	result := make([]apischema.SubfolderData, 0, len(folders))
+	for _, folder := range folders {
+		result = append(result, apischema.SubfolderData{
+			Path: folder.Path, Name: folder.Name, Size: folder.Size, ModTime: folder.ModTime,
+		})
+	}
+	return result
 }
 
 // searchFiles searches for files/directories in the indexer database.
-func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (any, error) {
+func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischema.SearchResponse, error) {
 	if req.Query == "" {
-		return nil, fmt.Errorf("bad_request:missing search query")
+		return apischema.SearchResponse{}, fmt.Errorf("bad_request:missing search query")
 	}
 
 	if strings.TrimSpace(req.Query) == "" {
-		return nil, fmt.Errorf("bad_request:search query cannot be empty")
+		return apischema.SearchResponse{}, fmt.Errorf("bad_request:search query cannot be empty")
 	}
 
 	limit := "100" // default limit
@@ -1330,63 +1328,87 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (any, err
 	results, err := searchInIndexer(ctx, req.Query, limit, basePath)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
-			return nil, fmt.Errorf("bad_request:indexer unavailable")
+			return apischema.SearchResponse{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
 		slog.Debug("error searching indexer", "query", req.Query, "base_path", basePath, "error", err)
-		return nil, fmt.Errorf("error searching files: %w", err)
+		return apischema.SearchResponse{}, fmt.Errorf("error searching files: %w", err)
 	}
 
-	normalizeIndexerSearchResults(results)
-
-	return map[string]any{
-		"query":   req.Query,
-		"results": results,
-		"count":   len(results),
-	}, nil
+	return searchResponseFromIndexer(req.Query, results), nil
 }
 
-func normalizeIndexerSearchResults(results []map[string]any) {
+// indexerSearchResult is the private compatibility decoder for indexer search
+// responses. Legacy timestamp aliases stop here; all public results emit only
+// mod_time.
+type indexerSearchResult struct {
+	Inode      uint64  `json:"inode"`
+	IsDir      *bool   `json:"isDir,omitempty"`
+	ModTime    *string `json:"mod_time,omitempty"`
+	ModTimeOld *string `json:"modTime,omitempty"`
+	Modified   *string `json:"modified,omitempty"`
+	Name       string  `json:"name"`
+	Path       string  `json:"path"`
+	Size       int64   `json:"size"`
+	TotalDirs  *int64  `json:"total_dirs,omitempty"`
+	TotalFiles *int64  `json:"total_files,omitempty"`
+	TotalSize  *int64  `json:"total_size,omitempty"`
+	Type       string  `json:"type"`
+}
+
+func searchResponseFromIndexer(query string, results []indexerSearchResult) apischema.SearchResponse {
+	response := apischema.SearchResponse{Query: query, Results: make([]apischema.SearchResult, 0, len(results))}
 	for _, result := range results {
-		path, pathOK := result["path"].(string)
-		if !pathOK {
-			path = ""
-		}
-		typeRaw, typeOk := result["type"].(string)
-		normalizedType := strings.ToLower(typeRaw)
-
-		isDir, isDirOk := result["isDir"].(bool)
-
-		derivedIsDir := false
-		switch normalizedType {
-		case "directory", "dir", "folder":
-			derivedIsDir = true
-		case "file":
-			derivedIsDir = false
-		default:
-			if isDirOk {
-				derivedIsDir = isDir
-			} else if strings.HasSuffix(path, "/") {
-				derivedIsDir = true
-			}
-		}
-
-		if !isDirOk {
-			result["isDir"] = derivedIsDir
-		}
-
-		if derivedIsDir {
-			result["type"] = "directory"
-			continue
-		}
-
-		if !typeOk || normalizedType == "" || normalizedType == "file" || normalizedType == "directory" || normalizedType == "dir" || normalizedType == "folder" {
-			result["type"] = "file"
-		}
+		response.Results = append(response.Results, searchResultFromIndexer(result))
 	}
+	response.Count = len(response.Results)
+	return response
+}
+
+func searchResultFromIndexer(result indexerSearchResult) apischema.SearchResult {
+	typeName, isDir := normalizeIndexerSearchType(result.Type, result.IsDir, result.Path)
+	return apischema.SearchResult{
+		Inode: result.Inode, IsDir: isDir, ModTime: indexerModTime(result), Name: result.Name,
+		Path: result.Path, Size: result.Size, TotalDirs: result.TotalDirs, TotalFiles: result.TotalFiles,
+		TotalSize: result.TotalSize, Type: typeName,
+	}
+}
+
+func indexerModTime(result indexerSearchResult) string {
+	if result.ModTime != nil {
+		return *result.ModTime
+	}
+	if result.ModTimeOld != nil {
+		return *result.ModTimeOld
+	}
+	if result.Modified != nil {
+		return *result.Modified
+	}
+	return ""
+}
+
+func normalizeIndexerSearchType(typeName string, legacyIsDir *bool, path string) (string, bool) {
+	switch strings.ToLower(typeName) {
+	case "directory", "dir", "folder":
+		return "directory", true
+	case "file":
+		return "file", false
+	}
+
+	isDir := legacyIsDir != nil && *legacyIsDir
+	if legacyIsDir == nil {
+		isDir = strings.HasSuffix(path, "/")
+	}
+	if typeName == "" {
+		if isDir {
+			return "directory", true
+		}
+		return "file", false
+	}
+	return typeName, isDir
 }
 
 // searchInIndexer queries the indexer for files matching the search term
-func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]map[string]any, error) {
+func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerSearchResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/search", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build indexer search request: %w", err)
@@ -1416,13 +1438,16 @@ func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]map[
 	}
 
 	// Indexer returns array directly, not wrapped in object
-	var results []map[string]any
+	var results []indexerSearchResult
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
 		return nil, fmt.Errorf("decode indexer search response: %w", err)
 	}
 
 	setIndexerAvailability(true)
 
+	if results == nil {
+		return []indexerSearchResult{}, nil
+	}
 	return results, nil
 }
 
@@ -1491,23 +1516,20 @@ func resolveGroupID(identifier string) (int, error) {
 
 // usersGroups returns lists of all users and groups on the system
 // Args: []
-func usersGroups(ctx context.Context) (any, error) {
+func usersGroups(ctx context.Context) (apischema.UsersGroupsResponse, error) {
 	users, err := getAllUsers(ctx)
 	if err != nil {
 		slog.Debug("error getting users", "error", err)
-		return nil, fmt.Errorf("error getting users: %w", err)
+		return apischema.UsersGroupsResponse{}, fmt.Errorf("error getting users: %w", err)
 	}
 
 	groups, err := getAllGroups(ctx)
 	if err != nil {
 		slog.Debug("error getting groups", "error", err)
-		return nil, fmt.Errorf("error getting groups: %w", err)
+		return apischema.UsersGroupsResponse{}, fmt.Errorf("error getting groups: %w", err)
 	}
 
-	return map[string]any{
-		"users":  users,
-		"groups": groups,
-	}, nil
+	return apischema.UsersGroupsResponse{Users: users, Groups: groups}, nil
 }
 
 func getAllUsers(ctx context.Context) ([]string, error) {

@@ -1,12 +1,13 @@
-import React from "react";
-
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
+import { indexerPhaseLabel } from "@/hooks/backgroundJobs/indexerProgress";
+import { useAnimatedIndexerStats } from "@/hooks/backgroundJobs/useAnimatedIndexerStats";
 import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
 import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
+import { formatFileSize } from "@/utils/formaters";
 
-const IndexerDialog: React.FC = () => {
+const IndexerDialog = () => {
   const { closeIndexerDialog } = useBackgroundJobActions();
   const { indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError } =
     useBackgroundJobIndexer();
@@ -14,23 +15,30 @@ const IndexerDialog: React.FC = () => {
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);
   const error = !isRunning ? lastIndexerError : null;
+  const animatedStats = useAnimatedIndexerStats(
+    {
+      bytesIndexed: activeIndexer?.bytesIndexed ?? 0,
+      dirsIndexed: activeIndexer?.dirsIndexed ?? 0,
+      filesIndexed: activeIndexer?.filesIndexed ?? 0,
+    },
+    {
+      enabled: isRunning && isIndexerDialogOpen,
+      jobId: activeIndexer?.id,
+    },
+  );
   const filesIndexed = isRunning
-    ? (activeIndexer?.filesIndexed ?? 0)
+    ? animatedStats.filesIndexed
     : (lastIndexerResult?.filesIndexed ?? 0);
   const dirsIndexed = isRunning
-    ? (activeIndexer?.dirsIndexed ?? 0)
+    ? animatedStats.dirsIndexed
     : (lastIndexerResult?.dirsIndexed ?? 0);
+  const indexedSize = isRunning
+    ? animatedStats.bytesIndexed
+    : (lastIndexerResult?.totalSize ?? 0);
 
   const getPhaseLabel = () => {
-    if (isRunning) {
-      switch (activeIndexer?.phase) {
-        case "connecting":
-          return "Connecting to indexer...";
-        case "indexing":
-          return "Indexing filesystem...";
-        default:
-          return "Processing...";
-      }
+    if (isRunning && activeIndexer) {
+      return indexerPhaseLabel(activeIndexer);
     }
 
     if (success) {
@@ -54,6 +62,12 @@ const IndexerDialog: React.FC = () => {
     {
       value: dirsIndexed.toLocaleString(),
       label: "Directories indexed",
+      valueColor: "primary.main",
+      valueVariant: "h4",
+    },
+    {
+      value: formatFileSize(indexedSize, 1, "0 Bytes"),
+      label: isRunning ? "Data indexed" : "Indexed size",
       valueColor: "primary.main",
       valueVariant: "h4",
     },

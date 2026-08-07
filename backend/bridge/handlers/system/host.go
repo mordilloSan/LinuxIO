@@ -19,8 +19,11 @@ func FetchUptimeSeconds(ctx context.Context) (uint64, error) {
 	return host.UptimeWithContext(ctx)
 }
 
-func GetCurrentServerTime(ctx context.Context) string {
-	return time.Now().Format(time.RFC3339)
+func GetCurrentServerTime(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return time.Now().Format(time.RFC3339), nil
 }
 
 func GetTimezones(ctx context.Context) ([]string, error) {

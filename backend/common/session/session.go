@@ -150,7 +150,8 @@ type Manager struct {
 	onDeleteMu sync.RWMutex
 	onDelete   []func(*Session, DeleteReason)
 
-	gcStop chan struct{}
+	gcStop    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewManager constructs a manager from a fully resolved SessionConfig.
@@ -177,16 +178,17 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 }
 
 func (m *Manager) Close() {
-	if m.gcStop != nil {
-		close(m.gcStop)
-		m.gcStop = nil
-	}
-	if closer, ok := m.st.(interface{ Close() error }); ok {
-		if err := closer.Close(); err != nil {
-			slog.Warn("failed to close session store", "error", err)
+	m.closeOnce.Do(func() {
+		if m.gcStop != nil {
+			close(m.gcStop)
 		}
-	}
-	slog.Info("Session manager stopped")
+		if closer, ok := m.st.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				slog.Warn("failed to close session store", "error", err)
+			}
+		}
+		slog.Info("Session manager stopped")
+	})
 }
 
 // -----------------------------------------------------------------------------
@@ -323,15 +325,7 @@ func (m *Manager) NewSessionID() (string, error) {
 	return randID(16)
 }
 
-func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
-	id, err := m.NewSessionID()
-	if err != nil {
-		return nil, fmt.Errorf("rand id: %w", err)
-	}
-	return m.CreateSessionWithID(id, user, privileged)
-}
-
-func (m *Manager) CreateSessionWithID(id string, user User, privileged bool) (*Session, error) {
+func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session, error) {
 	if id == "" {
 		return nil, fmt.Errorf("session id required")
 	}
@@ -406,24 +400,6 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 		m.broadcastOnDelete(s, r)
 	}
 	return nil
-}
-
-func (m *Manager) SetPrivileged(id string, v bool) error {
-	s, err := m.GetSession(id)
-	if err != nil {
-		return err
-	}
-	s.Privileged = v
-	return m.commitSession(s)
-}
-
-func (m *Manager) SetCapabilities(id string, v CapabilitiesAvailable) error {
-	s, err := m.GetSession(id)
-	if err != nil {
-		return err
-	}
-	s.Capabilities = v
-	return m.commitSession(s)
 }
 
 func (m *Manager) Refresh(id string) error {

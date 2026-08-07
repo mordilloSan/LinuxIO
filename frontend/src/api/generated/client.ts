@@ -172,7 +172,6 @@ const linuxio = {
       kind: "field",
       field: "identifier",
     }),
-    indexer: createEndpoint("docker", "indexer", { kind: "none" }),
     list_compose_projects: createEndpoint("docker", "list_compose_projects", {
       kind: "none",
     }),
@@ -227,7 +226,9 @@ const linuxio = {
   },
   filebrowser: {
     archive: createEndpoint("filebrowser", "archive", { kind: "object" }),
-    chmod: createEndpoint("filebrowser", "chmod", { kind: "object" }),
+    chmod_batch: createEndpoint("filebrowser", "chmod_batch", {
+      kind: "object",
+    }),
     compress: createEndpoint("filebrowser", "compress", { kind: "object" }),
     copy_batch: createEndpoint("filebrowser", "copy_batch", { kind: "object" }),
     delete_batch: createEndpoint("filebrowser", "delete_batch", {
@@ -297,6 +298,13 @@ const linuxio = {
     cancel: createEndpoint("jobs", "cancel", { kind: "field", field: "jobId" }),
     get: createEndpoint("jobs", "get", { kind: "field", field: "jobId" }),
     list: createEndpoint("jobs", "list", { kind: "object" }),
+  },
+  logs: {
+    general_entry: createEndpoint("logs", "general_entry", {
+      kind: "field",
+      field: "cursor",
+    }),
+    general_page: createEndpoint("logs", "general_page", { kind: "object" }),
   },
   monitoring: {
     get_config: createEndpoint("monitoring", "get_config", { kind: "none" }),

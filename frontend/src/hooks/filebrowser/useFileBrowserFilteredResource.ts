@@ -2,7 +2,6 @@ import { useMemo } from "react";
 
 import { useFileSearch } from "@/hooks/filebrowser/useFileSearch";
 import type { FileResource } from "@/types/filebrowser";
-import { isDirectoryPath } from "@/utils/path";
 
 interface UseFileBrowserFilteredResourceParams {
   resource?: FileResource;
@@ -12,15 +11,18 @@ interface UseFileBrowserFilteredResourceParams {
 export const useFileBrowserFilteredResource = ({
   resource,
   searchQuery,
-}: UseFileBrowserFilteredResourceParams): FileResource | undefined => {
-  const { results: searchResults, isUnavailable: isSearchUnavailable } =
-    useFileSearch({
-      query: searchQuery,
-      basePath: "/",
-      enabled: searchQuery.trim().length >= 2,
-    });
+}: UseFileBrowserFilteredResourceParams) => {
+  const {
+    results: searchResults,
+    isLoading: isSearchLoading,
+    isUnavailable: isSearchUnavailable,
+  } = useFileSearch({
+    query: searchQuery,
+    basePath: "/",
+    enabled: searchQuery.trim().length >= 2,
+  });
 
-  return useMemo(() => {
+  const filteredResource = useMemo(() => {
     if (!resource || !searchQuery.trim()) {
       return resource;
     }
@@ -41,25 +43,14 @@ export const useFileBrowserFilteredResource = ({
 
     if (searchResults.length > 0) {
       const items = searchResults.map((result) => {
-        const normalizedType =
-          typeof result.type === "string" ? result.type.toLowerCase() : "";
-        const isDirectory =
-          normalizedType === "directory" ||
-          normalizedType === "dir" ||
-          normalizedType === "folder" ||
-          Boolean(result.isDir) ||
-          isDirectoryPath(result.path);
+        const isDirectory = result.isDir;
 
         return {
           name: result.name,
           path: result.path,
           size: result.size,
-          type: isDirectory
-            ? "directory"
-            : normalizedType && normalizedType !== "file"
-              ? (result.type ?? "file")
-              : "file",
-          modTime: result.mod_time || result.modTime || result.modified || "",
+          type: result.type,
+          modTime: result.mod_time,
           isDirectory,
           extension: isDirectory ? "" : result.name.split(".").pop() || "",
           showFullPath: true,
@@ -77,4 +68,9 @@ export const useFileBrowserFilteredResource = ({
       items: [],
     };
   }, [resource, searchQuery, searchResults, isSearchUnavailable]);
+
+  return {
+    filteredResource,
+    isSearchLoading: resource?.type === "directory" && isSearchLoading,
+  };
 };

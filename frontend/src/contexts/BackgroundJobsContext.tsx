@@ -1,9 +1,8 @@
-import React, { useContext, useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
-import { STREAM_MULTIPLEXER_CONFIG } from "@/api";
-import { ConfigContext } from "@/contexts/ConfigContext";
 import {
   BackgroundJobsIndexerContext,
+  BackgroundJobsIsIndexingContext,
   type BackgroundJobsIndexerContextValue,
 } from "@/contexts/IndexerContext";
 import {
@@ -14,42 +13,48 @@ import {
   BackgroundJobsStateContext,
   type BackgroundJobsStateContextValue,
 } from "@/contexts/JobsStateContext";
-import { useArchiveJobs } from "@/hooks/backgroundJobs/useArchiveJobs";
 import { useBackgroundJobRuntime } from "@/hooks/backgroundJobs/useBackgroundJobRuntime";
-import { useCopyMoveJobs } from "@/hooks/backgroundJobs/useCopyMoveJobs";
 import { useDownloadJobs } from "@/hooks/backgroundJobs/useDownloadJobs";
 import { useGenericBackgroundJobs } from "@/hooks/backgroundJobs/useGenericBackgroundJobs";
 import { useIndexerJobs } from "@/hooks/backgroundJobs/useIndexerJobs";
 import { useRecoveredJobs } from "@/hooks/backgroundJobs/useRecoveredJobs";
+import { useTransferJobs } from "@/hooks/backgroundJobs/useTransferJobs";
 import { useUploadJobs } from "@/hooks/backgroundJobs/useUploadJobs";
+import { useUploadChunkSizeGetter } from "@/hooks/useUploadChunkSize";
 import type { BackgroundJobItem } from "@/types/backgroundJobs";
 
-export const BackgroundJobsProvider: React.FC<{
-  children: React.ReactNode;
-}> = ({ children }) => {
-  const configCtx = useContext(ConfigContext);
-  const chunkSize =
-    (configCtx?.config.appSettings.chunkSizeMB ?? 0) > 0
-      ? (configCtx!.config.appSettings.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
-  const uploadWindowSize =
-    chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;
+// Module scope on purpose: declared inside the transfers useMemo, this
+// rest-params closure trips an invariant in the React Compiler (oxc port)
+// and the whole file is left unmemoized.
+const addIds = (ids: Set<string>, ...values: (string | undefined)[]) => {
+  for (const v of values) if (v) ids.add(v);
+};
+
+export const BackgroundJobsProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
+  const getUploadChunkSize = useUploadChunkSizeGetter();
 
   const runtime = useBackgroundJobRuntime();
   const { downloads, startDownload, cancelDownload } = useDownloadJobs(runtime);
-  const { uploads, startUpload, cancelUpload } = useUploadJobs(runtime, {
-    chunkSize,
-    uploadWindowSize,
-  });
+  const { uploads, startUpload, cancelUpload } = useUploadJobs(
+    runtime,
+    getUploadChunkSize,
+  );
   const {
     compressions,
     extractions,
+    copies,
+    moves,
     startCompression,
-    cancelCompression,
     startExtraction,
-    cancelExtraction,
-    recoveryControls: archiveRecoveryControls,
-  } = useArchiveJobs(runtime);
+    startCopy,
+    startMove,
+    cancelTransfer,
+    recoverTransfer,
+  } = useTransferJobs(runtime);
   const {
     indexers,
     startIndexer,
@@ -66,35 +71,27 @@ export const BackgroundJobsProvider: React.FC<{
     cancelJob,
     recoveryControls: genericJobRecoveryControls,
   } = useGenericBackgroundJobs(runtime);
-  const {
-    copies,
-    moves,
-    startCopy,
-    cancelCopy,
-    startMove,
-    cancelMove,
-    recoveryControls: copyMoveRecoveryControls,
-  } = useCopyMoveJobs(runtime);
 
   useRecoveredJobs(runtime, {
-    archives: archiveRecoveryControls,
-    copyMove: copyMoveRecoveryControls,
+    recoverTransfer,
     indexers: indexerRecoveryControls,
     genericJobs: genericJobRecoveryControls,
   });
 
   const transfers = useMemo<BackgroundJobItem[]>(() => {
-    const addIds = (ids: Set<string>, ...values: (string | undefined)[]) => {
-      for (const v of values) if (v) ids.add(v);
-    };
     const localTransferIds = new Set<string>();
-    for (const d of downloads) addIds(localTransferIds, d.id);
-    for (const u of uploads) addIds(localTransferIds, u.id, u.jobId);
-    for (const c of compressions) addIds(localTransferIds, c.id);
-    for (const e of extractions) addIds(localTransferIds, e.id);
-    for (const i of indexers) addIds(localTransferIds, i.id);
-    for (const c of copies) addIds(localTransferIds, c.id);
-    for (const m of moves) addIds(localTransferIds, m.id);
+    const localItems: { id: string; jobId?: string }[] = [
+      ...downloads,
+      ...uploads,
+      ...compressions,
+      ...extractions,
+      ...indexers,
+      ...copies,
+      ...moves,
+    ];
+    for (const item of localItems) {
+      addIds(localTransferIds, item.id, item.jobId);
+    }
     return [
       ...downloads,
       ...uploads,
@@ -129,10 +126,10 @@ export const BackgroundJobsProvider: React.FC<{
       startUpload,
       cancelDownload,
       cancelUpload,
-      cancelCompression,
-      cancelExtraction,
-      cancelCopy,
-      cancelMove,
+      cancelCompression: cancelTransfer,
+      cancelExtraction: cancelTransfer,
+      cancelCopy: cancelTransfer,
+      cancelMove: cancelTransfer,
       cancelJob,
     }),
     [
@@ -147,10 +144,7 @@ export const BackgroundJobsProvider: React.FC<{
       startUpload,
       cancelDownload,
       cancelUpload,
-      cancelCompression,
-      cancelExtraction,
-      cancelCopy,
-      cancelMove,
+      cancelTransfer,
       cancelJob,
     ],
   );
@@ -158,18 +152,11 @@ export const BackgroundJobsProvider: React.FC<{
   const indexerValue = useMemo<BackgroundJobsIndexerContextValue>(
     () => ({
       indexers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
     }),
-    [
-      indexers,
-      isIndexing,
-      isIndexerDialogOpen,
-      lastIndexerResult,
-      lastIndexerError,
-    ],
+    [indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError],
   );
 
   const stateValue = useMemo<BackgroundJobsStateContextValue>(
@@ -183,7 +170,6 @@ export const BackgroundJobsProvider: React.FC<{
       moves,
       backgroundJobs,
       transfers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
@@ -198,7 +184,6 @@ export const BackgroundJobsProvider: React.FC<{
       moves,
       backgroundJobs,
       transfers,
-      isIndexing,
       isIndexerDialogOpen,
       lastIndexerResult,
       lastIndexerError,
@@ -207,11 +192,13 @@ export const BackgroundJobsProvider: React.FC<{
 
   return (
     <BackgroundJobsActionsContext.Provider value={actionsValue}>
-      <BackgroundJobsIndexerContext.Provider value={indexerValue}>
-        <BackgroundJobsStateContext.Provider value={stateValue}>
-          {children}
-        </BackgroundJobsStateContext.Provider>
-      </BackgroundJobsIndexerContext.Provider>
+      <BackgroundJobsIsIndexingContext.Provider value={isIndexing}>
+        <BackgroundJobsIndexerContext.Provider value={indexerValue}>
+          <BackgroundJobsStateContext.Provider value={stateValue}>
+            {children}
+          </BackgroundJobsStateContext.Provider>
+        </BackgroundJobsIndexerContext.Provider>
+      </BackgroundJobsIsIndexingContext.Provider>
     </BackgroundJobsActionsContext.Provider>
   );
 };

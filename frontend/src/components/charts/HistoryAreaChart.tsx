@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
@@ -127,7 +127,7 @@ const niceMax = (value: number): number => {
   return 10 * pow * unit;
 };
 
-const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
+const HistoryAreaChart = ({
   series,
   yMax,
   formatValue,
@@ -137,7 +137,7 @@ const HistoryAreaChart: React.FC<HistoryAreaChartProps> = ({
   onHoverTimeChange,
   windowMs,
   stacked = false,
-}) => {
+}: HistoryAreaChartProps) => {
   const theme = useAppTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });

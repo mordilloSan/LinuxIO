@@ -1,7 +1,11 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
-  searchUseQuery: vi.fn(),
+  searchData: undefined as unknown,
+  searchError: null as Error | null,
+  searchQueryOptions: vi.fn(),
 }));
 
 const capabilityMocks = vi.hoisted(() => ({
@@ -17,7 +21,7 @@ vi.mock("@/api", async () => {
       filebrowser: {
         ...actual.linuxio.filebrowser,
         search: {
-          useQuery: apiMocks.searchUseQuery,
+          queryOptions: apiMocks.searchQueryOptions,
         },
       },
     },
@@ -35,33 +39,43 @@ vi.mock("@/hooks/useCapabilities", async () => {
 });
 
 const { useFileSearch } = await import("@/hooks/filebrowser/useFileSearch");
-const { renderHook } = await import("@/test/render");
+const { createTestQueryClient, renderHook, waitFor } =
+  await import("@/test/render");
+const queryClient = createTestQueryClient();
+const queryWrapper = ({ children }: { children: ReactNode }) =>
+  createElement(QueryClientProvider, { client: queryClient }, children);
 
 describe("useFileSearch", () => {
   beforeEach(() => {
+    queryClient.clear();
     capabilityMocks.useCapability.mockReturnValue({
       isEnabled: true,
       reason: "",
       status: "available",
       value: true,
     });
-    apiMocks.searchUseQuery.mockReturnValue({
-      data: undefined,
-      error: null,
-      isLoading: false,
-    });
+    apiMocks.searchData = undefined;
+    apiMocks.searchError = null;
+    apiMocks.searchQueryOptions.mockImplementation(
+      (request: unknown, options: Record<string, unknown>) => ({
+        queryKey: ["test", "file-search", request],
+        queryFn: () =>
+          apiMocks.searchError
+            ? Promise.reject(apiMocks.searchError)
+            : Promise.resolve(apiMocks.searchData),
+        initialData: apiMocks.searchData,
+        retryDelay: 0,
+        ...options,
+      }),
+    );
   });
 
   it("keeps short queries disabled and suppresses loading", () => {
-    apiMocks.searchUseQuery.mockReturnValue({
-      data: undefined,
-      error: null,
-      isLoading: true,
+    const { result } = renderHook(() => useFileSearch({ query: "a" }), {
+      wrapper: queryWrapper,
     });
 
-    const { result } = renderHook(() => useFileSearch({ query: "a" }));
-
-    expect(apiMocks.searchUseQuery).toHaveBeenCalledWith(
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
       { basePath: "/", limit: "100", query: "a" },
       expect.objectContaining({ enabled: false }),
     );
@@ -71,32 +85,30 @@ describe("useFileSearch", () => {
   });
 
   it("runs searches with query params and returns backend results", () => {
-    apiMocks.searchUseQuery.mockReturnValue({
-      data: {
-        count: 1,
-        query: "compose",
-        results: [
-          {
-            name: "compose.yaml",
-            path: "/srv/compose.yaml",
-            size: 100,
-            type: "file",
-          },
-        ],
-      },
-      error: null,
-      isLoading: false,
-    });
+    apiMocks.searchData = {
+      count: 1,
+      query: "compose",
+      results: [
+        {
+          name: "compose.yaml",
+          path: "/srv/compose.yaml",
+          size: 100,
+          type: "file",
+        },
+      ],
+    };
 
-    const { result } = renderHook(() =>
-      useFileSearch({
-        basePath: "/srv",
-        limit: 25,
-        query: "compose",
-      }),
+    const { result } = renderHook(
+      () =>
+        useFileSearch({
+          basePath: "/srv",
+          limit: 25,
+          query: "compose",
+        }),
+      { wrapper: queryWrapper },
     );
 
-    expect(apiMocks.searchUseQuery).toHaveBeenCalledWith(
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
       { basePath: "/srv", limit: "25", query: "compose" },
       expect.objectContaining({
         enabled: true,
@@ -119,17 +131,12 @@ describe("useFileSearch", () => {
       status: "unknown",
       value: null,
     });
-    apiMocks.searchUseQuery.mockReturnValue({
-      data: undefined,
-      error: null,
-      isLoading: true,
-    });
-
-    const { result } = renderHook(() =>
-      useFileSearch({ query: "compose", enabled: true }),
+    const { result } = renderHook(
+      () => useFileSearch({ query: "compose", enabled: true }),
+      { wrapper: queryWrapper },
     );
 
-    expect(apiMocks.searchUseQuery).toHaveBeenCalledWith(
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
       { basePath: "/", limit: "100", query: "compose" },
       expect.objectContaining({ enabled: false }),
     );
@@ -138,15 +145,15 @@ describe("useFileSearch", () => {
     expect(result.current.error?.message).toBe("Indexer status unknown");
   });
 
-  it("passes through backend query errors when searching is enabled", () => {
-    apiMocks.searchUseQuery.mockReturnValue({
-      data: undefined,
-      error: new Error("backend failed"),
-      isLoading: false,
+  it("passes through backend query errors when searching is enabled", async () => {
+    apiMocks.searchError = new Error("backend failed");
+
+    const { result } = renderHook(() => useFileSearch({ query: "compose" }), {
+      wrapper: queryWrapper,
     });
 
-    const { result } = renderHook(() => useFileSearch({ query: "compose" }));
-
-    expect(result.current.error?.message).toBe("backend failed");
+    await waitFor(() =>
+      expect(result.current.error?.message).toBe("backend failed"),
+    );
   });
 });

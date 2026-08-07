@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+
 interface UseFileBrowserClipboardShortcutsParams {
   editingPath: string | null;
   onCopy: () => void;
@@ -21,7 +23,7 @@ export const useFileBrowserClipboardShortcuts = ({
     if (
       editingPath ||
       renamingPath ||
-      document.querySelector(".app-dialog-root") ||
+      document.querySelector(OVERLAY_ROOT_SELECTOR) ||
       active instanceof HTMLInputElement ||
       active instanceof HTMLTextAreaElement ||
       active instanceof HTMLSelectElement ||
@@ -34,14 +36,17 @@ export const useFileBrowserClipboardShortcuts = ({
       return;
     }
 
-    const isCtrlOrCmd = event.ctrlKey || event.metaKey;
-    if (isCtrlOrCmd && event.key === "c") {
+    // Key is compared lowercased so CapsLock cannot break the match; Shift is
+    // excluded to keep combos like Ctrl+Shift+C (browser devtools) inert.
+    const isCtrlOrCmd = (event.ctrlKey || event.metaKey) && !event.shiftKey;
+    const key = event.key.toLowerCase();
+    if (isCtrlOrCmd && key === "c") {
       event.preventDefault();
       onCopy();
-    } else if (isCtrlOrCmd && event.key === "x") {
+    } else if (isCtrlOrCmd && key === "x") {
       event.preventDefault();
       onCut();
-    } else if (isCtrlOrCmd && event.key === "v") {
+    } else if (isCtrlOrCmd && key === "v") {
       event.preventDefault();
       onPaste();
     }

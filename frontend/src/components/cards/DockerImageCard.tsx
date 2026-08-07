@@ -1,5 +1,3 @@
-import React from "react";
-
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -15,7 +13,7 @@ export interface DockerImageRow {
   repo: string;
   shortId: string;
   size: string;
-  tag: string;
+  tags: string[];
   updateAvailable?: boolean;
 }
 
@@ -25,13 +23,13 @@ export interface DockerImageCardProps {
   selected: boolean;
 }
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
-const DockerImageCard: React.FC<DockerImageCardProps> = ({
+const DockerImageCard = ({
   image,
   selected,
   onSelect,
-}) => {
+}: DockerImageCardProps) => {
   const theme = useAppTheme();
 
   return (
@@ -67,20 +65,32 @@ const DockerImageCard: React.FC<DockerImageCardProps> = ({
             {image.repo}
           </AppTypography>
         </div>
-        <AppTooltip
-          contentWidth
-          copyText={image.tag}
-          onlyWhenTruncated
-          title={image.tag}
-          toastMeta={DOCKER_TOAST_META}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: theme.spacing(0.5),
+          }}
         >
-          <Chip
-            label={image.tag}
-            size="small"
-            style={{ fontSize: "0.75rem" }}
-            variant="soft"
-          />
-        </AppTooltip>
+          {image.tags.map((tag) => (
+            <AppTooltip
+              contentWidth
+              copyText={tag}
+              key={tag}
+              onlyWhenTruncated
+              title={tag}
+              toastMeta={DOCKER_TOAST_META}
+            >
+              <Chip
+                label={tag}
+                size="small"
+                style={{ fontSize: "0.75rem" }}
+                variant="soft"
+              />
+            </AppTooltip>
+          ))}
+        </div>
       </div>
 
       <div

@@ -1,10 +1,12 @@
-import React, {
+import {
+  memo,
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -29,9 +31,9 @@ export interface FileListRowProps {
   modTime?: string;
   name: string;
   onCancelRename?: () => void;
-  onClick: (event: React.MouseEvent) => void;
+  onClick: (event: MouseEvent) => void;
   onConfirmRename?: (newName: string) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
   selected?: boolean;
@@ -43,7 +45,7 @@ export interface FileListRowProps {
 const COLUMN_TEMPLATE =
   "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
 
-const FileListRow: React.FC<FileListRowProps> = React.memo(
+const FileListRow = memo<FileListRowProps>(
   ({
     name,
     path,
@@ -70,9 +72,16 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const syncRenameValue = useEffectEvent(() => {
-      setRenameValue(name);
-    });
+    // Reset the draft to the current name when entering rename mode — the
+    // render-time adjustment pattern (react.dev "adjusting state when a prop
+    // changes"), not a setState-in-effect.
+    const [wasRenaming, setWasRenaming] = useState(isRenaming);
+    if (isRenaming !== wasRenaming) {
+      setWasRenaming(isRenaming);
+      if (isRenaming) {
+        setRenameValue(name);
+      }
+    }
 
     // Auto-focus and select text when entering rename mode
     useEffect(() => {
@@ -86,13 +95,10 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           inputRef.current.select();
         }
       }
-      if (isRenaming) {
-        syncRenameValue();
-      }
     }, [isRenaming, name, isDirectory]);
 
     const handleRenameKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
+      (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -122,7 +128,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
     const {
       size: fetchedSize,
-      isLoading: isFetchingSize,
+      isLoading: isSizeLoading,
       error: fetchError,
       isUnavailable: isSizeUnavailable,
     } = useFileDirectorySize(path || "", needsIndividualDirSize);
@@ -130,7 +136,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
     const effectiveSizeLoading = needsIndividualDirSize
-      ? isFetchingSize
+      ? isSizeLoading
       : directorySizeLoading;
     const effectiveSizeError = needsIndividualDirSize
       ? fetchError
@@ -164,7 +170,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     }, [effectiveSize, effectiveSizeLoading, effectiveSizeUnavailable]);
 
     const handleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onClick(e);
       },
@@ -172,7 +178,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     );
 
     const handleDoubleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onDoubleClick?.();
       },

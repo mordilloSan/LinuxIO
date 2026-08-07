@@ -1,9 +1,11 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { memo } from "react";
 
 import { useAppTheme } from "@/theme";
 import { FILE_TYPE_COLORS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
+
+import { getIconForType } from "./fileIconUtils";
 
 interface FileIconProps {
   filename?: string;
@@ -12,77 +14,6 @@ interface FileIconProps {
   isSymlink?: boolean;
   size?: number;
 }
-
-export const getIconForType = (filename?: string): string => {
-  if (!filename) return "mdi:file";
-
-  // Extract extension from filename
-  const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return "mdi:file";
-
-  const ext = filename.slice(lastDotIndex + 1).toLowerCase();
-
-  // PDF
-  if (ext === "pdf") return "mdi:file-pdf-box";
-
-  // Documents
-  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "mdi:file-document";
-
-  // Spreadsheets
-  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "mdi:file-table";
-
-  // YAML
-  if (["yaml", "yml"].includes(ext)) return "mdi:file-cog-outline";
-
-  // Images
-  if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext))
-    return "mdi:file-image";
-
-  // Code
-  if (
-    [
-      "js",
-      "ts",
-      "tsx",
-      "jsx",
-      "py",
-      "go",
-      "cpp",
-      "c",
-      "java",
-      "rs",
-      "php",
-      "rb",
-      "sh",
-      "bash",
-      "json",
-      "html",
-      "css",
-    ].includes(ext)
-  )
-    return "mdi:file-code";
-
-  // Text
-  if (["txt", "md", "markdown", "log"].includes(ext))
-    return "mdi:file-document-outline";
-
-  // Video
-  if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext))
-    return "mdi:file-video";
-
-  // Audio
-  if (["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].includes(ext))
-    return "mdi:file-music";
-
-  // Archives
-  if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext))
-    return "mdi:archive";
-
-  // Executables
-  if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return "mdi:console";
-
-  return "mdi:file";
-};
 
 const getIconColor = (
   filename: string | undefined,
@@ -171,7 +102,7 @@ const getIconColor = (
   return defaultColor;
 };
 
-const FileIcon = React.memo(
+const FileIcon = memo(
   ({
     isDirectory,
     filename,

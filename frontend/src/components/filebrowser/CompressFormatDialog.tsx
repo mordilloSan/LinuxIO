@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
-
-import GeneralDialog from "../dialog/GeneralDialog";
+import { useState, type SubmitEventHandler } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+
+import GeneralDialog from "../dialog/GeneralDialog";
 
 type CompressFormat = "zip" | "tar.gz";
 
@@ -39,15 +39,15 @@ interface CompressFormatDialogProps {
   open: boolean;
 }
 
-const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
+const CompressFormatDialog = ({
   open,
   onClose,
   onConfirm,
-}) => {
+}: CompressFormatDialogProps) => {
   const theme = useAppTheme();
   const [selected, setSelected] = useState<CompressFormat>("zip");
 
-  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (event) => {
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     onConfirm(selected);
     onClose();
@@ -78,7 +78,9 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
           {FORMAT_OPTIONS.map((opt) => {
             const isSelected = selected === opt.value;
             return (
-              <button
+              <AppButton
+                aria-pressed={isSelected}
+                color="inherit"
                 key={opt.value}
                 onClick={() => setSelected(opt.value)}
                 style={{
@@ -151,7 +153,7 @@ const CompressFormatDialog: React.FC<CompressFormatDialogProps> = ({
                     width={20}
                   />
                 )}
-              </button>
+              </AppButton>
             );
           })}
         </div>

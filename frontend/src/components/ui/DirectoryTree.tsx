@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 
 import { linuxio } from "@/api";
@@ -43,15 +44,7 @@ interface TreeNodeData {
 // TreeNode (single row)
 // ============================================================================
 
-const TreeNode: React.FC<{
-  node: TreeNodeData;
-  depth: number;
-  isSelectable: (node: TreeNodeData) => boolean;
-  onBrowsePathChange?: (path: string) => void;
-  selectedPath?: string;
-  onSelect: (path: string) => void;
-  onToggle: (node: TreeNodeData) => Promise<void>;
-}> = ({
+const TreeNode = ({
   node,
   depth,
   isSelectable,
@@ -59,9 +52,18 @@ const TreeNode: React.FC<{
   selectedPath,
   onSelect,
   onToggle,
+}: {
+  node: TreeNodeData;
+  depth: number;
+  isSelectable: (node: TreeNodeData) => boolean;
+  onBrowsePathChange?: (path: string) => void;
+  selectedPath?: string;
+  onSelect: (path: string) => void;
+  onToggle: (node: TreeNodeData) => Promise<void>;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const isSelected = selectedPath === node.path;
   const directory = node.kind === "directory";
   const selectable = isSelectable(node);
@@ -70,11 +72,22 @@ const TreeNode: React.FC<{
     if (!directory) {
       return;
     }
+    if (loadingRef.current) {
+      return;
+    }
     if (!expanded) {
+      loadingRef.current = true;
       setLoading(true);
-      await onToggle(node);
-      setLoading(false);
-      setExpanded(true);
+      try {
+        await onToggle(node);
+        setExpanded(true);
+      } catch {
+        // Keep the directory collapsed when loading fails. The next
+        // activation can retry the load.
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     } else {
       setExpanded(false);
     }
@@ -91,7 +104,7 @@ const TreeNode: React.FC<{
     void toggleDirectory();
   };
 
-  const handleToggleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleToggleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (directory) {
       onBrowsePathChange?.(node.path);
@@ -186,7 +199,7 @@ function joinFilePath(parent: string, name: string): string {
   return joinPathUtil(parent, name).replace(/\/{2,}/g, "/");
 }
 
-const DirectoryTree: React.FC<DirectoryTreeProps> = ({
+const DirectoryTree = ({
   fileFilter,
   includeFiles = false,
   onBrowsePathChange,
@@ -194,8 +207,9 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
   selectableTypes = ["directory"],
   selectedPath,
   onSelect,
-}) => {
+}: DirectoryTreeProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fetchResource = linuxio.filebrowser.resource_get.useFetcher();
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [
     { name: rootPath, path: rootPath, kind: "directory", loaded: false },
   ]);
@@ -209,22 +223,16 @@ const DirectoryTree: React.FC<DirectoryTreeProps> = ({
     async (node: TreeNodeData) => {
       if (node.loaded || node.kind !== "directory") return;
 
-      try {
-        const resource = await linuxio.filebrowser.resource_get({
-          path: node.path,
-        });
+      const resource = await fetchResource({ path: node.path });
 
-        const children = resourceChildren(resource, node.path, {
-          fileFilter,
-          includeFiles,
-        });
+      const children = resourceChildren(resource, node.path, {
+        fileFilter,
+        includeFiles,
+      });
 
-        setRoots((prev) => updateNode(prev, node.path, children));
-      } catch {
-        setRoots((prev) => updateNode(prev, node.path, []));
-      }
+      setRoots((prev) => updateNode(prev, node.path, children));
     },
-    [fileFilter, includeFiles],
+    [fetchResource, fileFilter, includeFiles],
   );
 
   // Keyboard: press a letter to jump to the first visible folder starting with it

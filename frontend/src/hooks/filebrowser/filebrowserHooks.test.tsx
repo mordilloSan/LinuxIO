@@ -1,8 +1,12 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useFilePathUtilities } from "@/hooks/filebrowser/useFilePathUtilities";
-import { useFileSelection } from "@/hooks/filebrowser/useFileSelection";
+import {
+  useFileSelection,
+  useFileSelectionState,
+} from "@/hooks/filebrowser/useFileSelection";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
 import { act, renderHook } from "@/test/render";
 import type { ConfigContextType } from "@/types/config";
@@ -81,7 +85,7 @@ function configWrapper({
     updateConfig: vi.fn(),
   } satisfies ConfigContextType;
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
     );
@@ -113,10 +117,52 @@ describe("useFilePathUtilities", () => {
   });
 });
 
+// Drives the clipboard behaviors against a real selection slice so the
+// state transitions are exercised end-to-end.
+function useSelectionHarness(
+  params: Omit<Parameters<typeof useFileSelection>[0], "selection">,
+) {
+  const selection = useFileSelectionState(params.normalizedPath);
+  const api = useFileSelection({ ...params, selection });
+  return { ...api, selection };
+}
+
 describe("useFileSelection", () => {
+  it("clears selection on navigation while preserving the clipboard", () => {
+    const { result, rerender } = renderHook(
+      ({ normalizedPath }) =>
+        useSelectionHarness({
+          copyItems: vi.fn(),
+          moveItems: vi.fn(),
+          normalizedPath,
+          resource: directoryResource,
+        }),
+      { initialProps: { normalizedPath: "/srv/projects" } },
+    );
+
+    act(() => {
+      result.current.selection.actions.select(
+        new Set(["/srv/projects/alpha.txt"]),
+      );
+      result.current.selection.actions.copyToClipboard([
+        "/srv/projects/alpha.txt",
+      ]);
+    });
+
+    rerender({ normalizedPath: "/srv/target" });
+    expect(result.current.selection.selectedPaths.size).toBe(0);
+    expect(result.current.selection.clipboard).toEqual({
+      operation: "copy",
+      paths: ["/srv/projects/alpha.txt"],
+    });
+
+    rerender({ normalizedPath: "/srv/projects" });
+    expect(result.current.selection.selectedPaths.size).toBe(0);
+  });
+
   it("derives selected items from the current directory resource", () => {
     const { result } = renderHook(() =>
-      useFileSelection({
+      useSelectionHarness({
         copyItems: vi.fn(),
         moveItems: vi.fn(),
         normalizedPath: "/srv/projects",
@@ -125,7 +171,7 @@ describe("useFileSelection", () => {
     );
 
     act(() => {
-      result.current.setSelectedPaths(
+      result.current.selection.actions.select(
         new Set(["/srv/projects/beta", "/srv/projects/missing"]),
       );
     });
@@ -141,7 +187,7 @@ describe("useFileSelection", () => {
   it("copies selected paths to clipboard and notifies the scoped toast", () => {
     const closeMenu = vi.fn();
     const { result } = renderHook(() =>
-      useFileSelection({
+      useSelectionHarness({
         copyItems: vi.fn(),
         moveItems: vi.fn(),
         normalizedPath: "/srv/projects",
@@ -151,30 +197,55 @@ describe("useFileSelection", () => {
     );
 
     act(() => {
-      result.current.setSelectedPaths(
+      result.current.selection.actions.select(
         new Set(["/srv/projects/alpha.txt", "/srv/projects/beta"]),
       );
     });
     act(() => result.current.handleCopy());
 
     expect(closeMenu).toHaveBeenCalledTimes(1);
-    expect(result.current.clipboard).toEqual({
+    expect(result.current.selection.clipboard).toEqual({
       operation: "copy",
       paths: ["/srv/projects/alpha.txt", "/srv/projects/beta"],
     });
+    expect(result.current.selection.cutPaths.size).toBe(0);
     expect(toastMocks.success).toHaveBeenCalledWith(
       "2 item(s) copied to clipboard",
       expect.objectContaining({
-        meta: { href: "/filebrowser", label: "Open files" },
+        meta: {
+          label: "Open files",
+          params: { _splat: "" },
+          to: "/filebrowser/$",
+        },
       }),
     );
+  });
+
+  it("exposes cut paths for visual dimming until pasted", () => {
+    const { result } = renderHook(() =>
+      useSelectionHarness({
+        copyItems: vi.fn(),
+        moveItems: vi.fn(),
+        normalizedPath: "/srv/projects",
+        resource: directoryResource,
+      }),
+    );
+
+    act(() => {
+      result.current.selection.actions.select(new Set(["/srv/projects/beta"]));
+    });
+    act(() => result.current.handleCut());
+
+    expect([...result.current.selection.cutPaths]).toEqual([
+      "/srv/projects/beta",
+    ]);
   });
 
   it("pastes copy operations into the current directory", async () => {
     const copyItems = vi.fn(async () => undefined);
     const moveItems = vi.fn(async () => undefined);
     const { result } = renderHook(() =>
-      useFileSelection({
+      useSelectionHarness({
         copyItems,
         moveItems,
         normalizedPath: "/srv/target",
@@ -183,10 +254,9 @@ describe("useFileSelection", () => {
     );
 
     act(() => {
-      result.current.setClipboard({
-        operation: "copy",
-        paths: ["/srv/projects/alpha.txt"],
-      });
+      result.current.selection.actions.copyToClipboard([
+        "/srv/projects/alpha.txt",
+      ]);
     });
     await act(async () => {
       await result.current.handlePaste();
@@ -197,7 +267,7 @@ describe("useFileSelection", () => {
       destinationDir: "/srv/target",
     });
     expect(moveItems).not.toHaveBeenCalled();
-    expect(result.current.clipboard).toEqual({
+    expect(result.current.selection.clipboard).toEqual({
       operation: "copy",
       paths: ["/srv/projects/alpha.txt"],
     });
@@ -207,7 +277,7 @@ describe("useFileSelection", () => {
     const copyItems = vi.fn(async () => undefined);
     const moveItems = vi.fn(async () => undefined);
     const { result } = renderHook(() =>
-      useFileSelection({
+      useSelectionHarness({
         copyItems,
         moveItems,
         normalizedPath: "/srv/target",
@@ -216,11 +286,8 @@ describe("useFileSelection", () => {
     );
 
     act(() => {
-      result.current.setSelectedPaths(new Set(["/srv/projects/beta"]));
-      result.current.setClipboard({
-        operation: "cut",
-        paths: ["/srv/projects/beta"],
-      });
+      result.current.selection.actions.select(new Set(["/srv/projects/beta"]));
+      result.current.selection.actions.cutToClipboard(["/srv/projects/beta"]);
     });
     await act(async () => {
       await result.current.handlePaste();
@@ -231,15 +298,15 @@ describe("useFileSelection", () => {
       destinationDir: "/srv/target",
     });
     expect(copyItems).not.toHaveBeenCalled();
-    expect(result.current.clipboard).toBeNull();
-    expect(result.current.selectedPaths.size).toBe(0);
+    expect(result.current.selection.clipboard).toBeNull();
+    expect(result.current.selection.selectedPaths.size).toBe(0);
   });
 
   it("reports an empty clipboard instead of calling mutations", async () => {
     const copyItems = vi.fn(async () => undefined);
     const moveItems = vi.fn(async () => undefined);
     const { result } = renderHook(() =>
-      useFileSelection({
+      useSelectionHarness({
         copyItems,
         moveItems,
         normalizedPath: "/srv/target",
@@ -254,7 +321,11 @@ describe("useFileSelection", () => {
     expect(toastMocks.error).toHaveBeenCalledWith(
       "Nothing to paste",
       expect.objectContaining({
-        meta: { href: "/filebrowser", label: "Open files" },
+        meta: {
+          label: "Open files",
+          params: { _splat: "" },
+          to: "/filebrowser/$",
+        },
       }),
     );
     expect(copyItems).not.toHaveBeenCalled();
@@ -263,19 +334,64 @@ describe("useFileSelection", () => {
 });
 
 describe("useFileViewState", () => {
-  it("switches view modes and sort state locally", () => {
+  it("switches view modes locally", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    const initialActions = result.current.actions;
+
+    expect(result.current.viewMode).toBe("card");
+    act(() => result.current.actions.switchView());
+    expect(result.current.viewMode).toBe("list");
+    expect(result.current.actions).toBe(initialActions);
+  });
+
+  it("toggles the sort order when the active field is selected again", () => {
     const { result } = renderHook(() => useFileViewState(), {
       wrapper: configWrapper(),
     });
 
-    expect(result.current.viewMode).toBe("card");
-    act(() => result.current.handleSwitchView());
-    expect(result.current.viewMode).toBe("list");
-    act(() => result.current.setSortField("size"));
-    act(() => result.current.setSortOrder("desc"));
+    act(() => result.current.actions.changeSort("name"));
+    expect(result.current.sortField).toBe("name");
+    expect(result.current.sortOrder).toBe("desc");
+
+    act(() => result.current.actions.changeSort("name"));
+    expect(result.current.sortOrder).toBe("asc");
+  });
+
+  it("switches field and resets order to ascending for a new field", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+
+    act(() => result.current.actions.changeSort("name")); // -> desc
+    act(() => result.current.actions.changeSort("size")); // new field -> asc
 
     expect(result.current.sortField).toBe("size");
-    expect(result.current.sortOrder).toBe("desc");
+    expect(result.current.sortOrder).toBe("asc");
+  });
+
+  it("tracks the search query and clears it on demand", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+
+    expect(result.current.searchQuery).toBe("");
+    act(() => result.current.actions.setSearch("readme"));
+    expect(result.current.searchQuery).toBe("readme");
+    act(() => result.current.actions.clearSearch());
+    expect(result.current.searchQuery).toBe("");
+  });
+
+  it("opens and closes the context menu at a position", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+
+    act(() => result.current.actions.openContextMenu({ left: 4, top: 8 }));
+    expect(result.current.contextMenuPosition).toEqual({ left: 4, top: 8 });
+    act(() => result.current.actions.closeContextMenu());
+    expect(result.current.contextMenuPosition).toBeNull();
   });
 
   it("delegates hidden-file visibility changes to config", () => {
@@ -285,14 +401,12 @@ describe("useFileViewState", () => {
     });
 
     expect(result.current.showHiddenFiles).toBe(false);
-    act(() => result.current.handleToggleHiddenFiles());
-    act(() => result.current.setShowHiddenFiles(true));
+    act(() => result.current.actions.toggleHiddenFiles());
 
-    expect(setKey).toHaveBeenCalledTimes(2);
+    expect(setKey).toHaveBeenCalledTimes(1);
     expect(setKey.mock.calls[0][0]).toBe("showHiddenFiles");
     expect(
       (setKey.mock.calls[0][1] as (value: boolean) => boolean)(false),
     ).toBe(true);
-    expect(setKey.mock.calls[1]).toEqual(["showHiddenFiles", true]);
   });
 });

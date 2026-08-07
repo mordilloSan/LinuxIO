@@ -1,4 +1,4 @@
-import { LinuxIOError } from "@/api";
+import { LinuxIOError } from "@/api/linuxio-core";
 
 /**
  * Centralized error message extraction for mutations

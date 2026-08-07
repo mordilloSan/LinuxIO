@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/disk"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 var (
@@ -44,83 +46,81 @@ func isProtectedMount(mountpoint string) bool {
 	return false
 }
 
-func UnmountFilesystem(ctx context.Context, mountpoint string) (map[string]any, error) {
+func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.StorageMountResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
 	if isProtectedMount(mountpoint) {
-		return nil, fmt.Errorf("cannot unmount protected system mount: %s", mountpoint)
+		return apischema.StorageMountResult{}, fmt.Errorf("cannot unmount protected system mount: %s", mountpoint)
 	}
 
 	partition, err := getPartitionByMountpoint(mountpoint)
 	if err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	if partition.Fstype == "nfs" || partition.Fstype == "nfs4" {
-		return UnmountNFS(ctx, mountpoint, false)
+		unmounted, unmountErr := UnmountNFS(ctx, mountpoint, false)
+		if unmountErr != nil {
+			return apischema.StorageMountResult{}, unmountErr
+		}
+		// UnmountNFS never reported a mountpoint; keep that shape.
+		return apischema.StorageMountResult{Success: unmounted.Success, Warning: unmounted.Warning}, nil
 	}
 
 	cmd := exec.CommandContext(ctx, "umount", mountpoint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+		return apischema.StorageMountResult{}, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
 	}
 
-	return map[string]any{
-		"success":    true,
-		"mountpoint": mountpoint,
-	}, nil
+	return mountResult(mountpoint, ""), nil
 }
 
-func CreateBtrfsSubvolume(ctx context.Context, mountpoint, name string) (map[string]any, error) {
+func CreateBtrfsSubvolume(ctx context.Context, mountpoint, name string) (apischema.StoragePathResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StoragePathResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
 	name = strings.TrimSpace(name)
 	if !validSubvolumeName.MatchString(name) {
-		return nil, fmt.Errorf("invalid subvolume name")
+		return apischema.StoragePathResult{}, fmt.Errorf("invalid subvolume name")
 	}
 
 	partition, err := getPartitionByMountpoint(mountpoint)
 	if err != nil {
-		return nil, err
+		return apischema.StoragePathResult{}, err
 	}
 
 	if partition.Fstype != "btrfs" {
-		return nil, fmt.Errorf("%s is not a btrfs filesystem", mountpoint)
+		return apischema.StoragePathResult{}, fmt.Errorf("%s is not a btrfs filesystem", mountpoint)
 	}
 
 	if slices.Contains(partition.Opts, "ro") {
-		return nil, fmt.Errorf("%s is mounted read-only", mountpoint)
+		return apischema.StoragePathResult{}, fmt.Errorf("%s is mounted read-only", mountpoint)
 	}
 
 	targetPath := filepath.Join(mountpoint, name)
 	if !strings.HasPrefix(targetPath, filepath.Clean(mountpoint)+string(os.PathSeparator)) &&
 		filepath.Clean(mountpoint) != "/" {
-		return nil, fmt.Errorf("invalid subvolume path")
+		return apischema.StoragePathResult{}, fmt.Errorf("invalid subvolume path")
 	}
 	if filepath.Clean(mountpoint) == "/" {
 		targetPath = filepath.Join("/", name)
 	}
 
 	if _, statErr := os.Stat(targetPath); statErr == nil {
-		return nil, fmt.Errorf("path already exists: %s", targetPath)
+		return apischema.StoragePathResult{}, fmt.Errorf("path already exists: %s", targetPath)
 	} else if !os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("failed to inspect target path: %w", statErr)
+		return apischema.StoragePathResult{}, fmt.Errorf("failed to inspect target path: %w", statErr)
 	}
 
 	cmd := exec.CommandContext(ctx, "btrfs", "subvolume", "create", targetPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("btrfs subvolume create failed: %s", strings.TrimSpace(string(out)))
+		return apischema.StoragePathResult{}, fmt.Errorf("btrfs subvolume create failed: %s", strings.TrimSpace(string(out)))
 	}
 
-	return map[string]any{
-		"success":    true,
-		"mountpoint": mountpoint,
-		"path":       targetPath,
-	}, nil
+	return apischema.StoragePathResult{Success: true, Mountpoint: &mountpoint, Path: &targetPath}, nil
 }

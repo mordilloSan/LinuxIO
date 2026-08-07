@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState, type ChangeEvent } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import { linuxio, openContainerStream, useStreamMux } from "@/api";
@@ -23,12 +24,12 @@ interface Props {
   onClose: () => void;
   open: boolean;
 }
-const TerminalDialog: React.FC<Props> = ({
+const TerminalDialog = ({
   open,
   onClose,
   containerId,
   containerName,
-}) => {
+}: Props) => {
   const { streamRef, openStream, closeStream } = useLiveStream();
   const handleClose = useCallback(() => {
     onClose();
@@ -42,9 +43,11 @@ const TerminalDialog: React.FC<Props> = ({
     data: shells,
     isLoading: loadingShells,
     isFetched: hasFetchedShells,
-  } = linuxio.terminal.list_shells.useQuery(containerId, {
-    enabled: open && !!containerId,
-  });
+  } = useQuery(
+    linuxio.terminal.list_shells.queryOptions(containerId, {
+      enabled: open && !!containerId,
+    }),
+  );
   const availableShells = useMemo(() => {
     if (!shells) return [];
     return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");
@@ -122,7 +125,7 @@ const TerminalDialog: React.FC<Props> = ({
   });
 
   // Shell picker handler
-  const handleShellChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleShellChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const newShell = e.target.value;
     closeStream();
     setSelectedShell(newShell);

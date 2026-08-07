@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import React from "react";
 
 import { type AccountGroup } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -19,11 +18,7 @@ export interface GroupCardProps {
   onEditMembers: () => void;
 }
 
-const GroupCard: React.FC<GroupCardProps> = ({
-  group,
-  onEditMembers,
-  onDelete,
-}) => {
+const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
   const theme = useAppTheme();
   const isRoot = group.name === "root";
   const isProtected = isRoot || group.isSystem;

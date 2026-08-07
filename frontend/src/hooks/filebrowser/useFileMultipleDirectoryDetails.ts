@@ -1,11 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
 
-import {
-  type DirectorySizeData,
-  linuxio,
-  useIsUpdating,
-  useStreamMux,
-} from "@/api";
+import { type DirectorySizeData, linuxio } from "@/api";
 import { MultiStatsItem } from "@/types/filebrowser";
 
 import {
@@ -29,8 +24,6 @@ export const useFileMultipleDirectoryDetails = (
   paths: string[],
   fileResourceMap: Record<string, { name: string; type: string; size: number }>,
 ): UseMultipleDirectoryDetailsResult => {
-  const { isOpen } = useStreamMux();
-  const isUpdating = useIsUpdating();
   // Filter to only directories that should have size calculations
   const directoryPaths = paths.filter(
     (path) =>
@@ -43,15 +36,14 @@ export const useFileMultipleDirectoryDetails = (
     ? new Error("Directory size indexing is unavailable")
     : null;
 
-  // Use useQueries to fetch directory sizes - shares cache with useDirectorySize!
+  // One dir_size query per directory - shares cache with useDirectorySize!
   const queries = useQueries({
-    queries: directoryPaths.map((path) => ({
-      ...linuxio.filebrowser.dir_size.queryOptions(
-        path,
-        getDirectorySizeQueryOptions(),
-      ),
-      enabled: isOpen && !isUpdating && !indexerDisabled,
-    })),
+    queries: directoryPaths.map((path) =>
+      linuxio.filebrowser.dir_size.queryOptions(path, {
+        ...getDirectorySizeQueryOptions(),
+        enabled: !indexerDisabled,
+      }),
+    ),
   });
 
   // Create a map of path -> query result for easy lookup

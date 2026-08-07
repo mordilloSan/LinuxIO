@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -24,10 +24,10 @@ interface ComposeValidationFeedbackProps {
   validation: ValidationResult | null;
 }
 
-const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
+const ComposeValidationFeedback = ({
   validation,
   isValidating = false,
-}) => {
+}: ComposeValidationFeedbackProps) => {
   const theme = useAppTheme();
 
   // Track which validation result has been dismissed. When a new validation

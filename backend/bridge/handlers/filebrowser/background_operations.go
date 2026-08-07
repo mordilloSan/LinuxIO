@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -189,13 +188,6 @@ func archiveExtractWorkers(jobSettings config.PersistedJobSettings) int {
 	return workers
 }
 
-type ChmodProgress struct {
-	Processed int64  `json:"processed"`
-	Total     int64  `json:"total"`
-	Pct       int    `json:"pct"`
-	Phase     string `json:"phase,omitempty"`
-}
-
 const (
 	routeArchive     = "filebrowser.archive"
 	routeDownload    = "filebrowser.download"
@@ -207,51 +199,104 @@ var fileJobRoutes = fileJobBindings(nil).Routes()
 
 func fileJobBindings(store *config.UserStore) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.FileCompressRequest, apischema.JobSnapshot]("filebrowser.compress").Run(
+		apischema.Runner[apischema.FileCompressRequest, apischema.JobSnapshot]("filebrowser.compress", apischema.WithJobMetadata(func(req apischema.FileCompressRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: []string{req.TargetPath}, Label: req.TargetPath, Path: req.TargetPath}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileCompressRequest) (any, error) {
 				return runCompressJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner[apischema.FileExtractRequest, apischema.JobSnapshot]("filebrowser.extract").Run(
+		apischema.Runner[apischema.FileExtractRequest, apischema.JobSnapshot]("filebrowser.extract", apischema.WithJobMetadata(func(req apischema.FileExtractRequest) bridgejobs.JobMetadata {
+			identity := []string{req.ArchivePath}
+			if req.Destination != nil {
+				identity = append(identity, *req.Destination)
+			}
+			return bridgejobs.JobMetadata{Identity: identity, Label: req.ArchivePath, Path: req.ArchivePath}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileExtractRequest) (any, error) {
 				return runExtractJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.copy_batch").Run(
+		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.copy_batch", apischema.WithJobMetadata(func(req apischema.BatchTransferRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchJobLabel(req.Sources), Path: req.Destination}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchTransferRequest) (any, error) {
 				return runCopyBatchJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.move_batch").Run(
+		apischema.Runner[apischema.BatchTransferRequest, apischema.JobSnapshot]("filebrowser.move_batch", apischema.WithJobMetadata(func(req apischema.BatchTransferRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchJobLabel(req.Sources), Path: req.Destination}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.BatchTransferRequest) (any, error) {
 				return runMoveBatchJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner[apischema.BatchPathRequest, apischema.JobSnapshot]("filebrowser.delete_batch").Run(
+		apischema.Runner[apischema.BatchPathRequest, apischema.JobSnapshot]("filebrowser.delete_batch", apischema.WithJobMetadata(func(req apischema.BatchPathRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append([]string{}, req.Paths...), Label: batchJobLabel(req.Paths)}
+		})).Run(
 			runDeleteBatchJob,
 			bridgejobs.ActionDefault,
 		),
-		apischema.Runner[apischema.OptionalPathRequest, apischema.JobSnapshot]("filebrowser.index").Run(runIndexerJob, bridgejobs.SingletonSystem),
-		apischema.Runner[apischema.FileUploadRequest, apischema.JobSnapshot](routeUpload).Run(runUploadJob, bridgejobs.StreamDefault),
-		apischema.Runner[apischema.FileUploadBatchRequest, apischema.JobSnapshot](routeUploadBatch).Run(runUploadBatchJob, bridgejobs.StreamDefault),
-		apischema.Runner[apischema.PathRequest, apischema.JobSnapshot](routeDownload).Run(runDownloadJob, bridgejobs.StreamDefault),
-		apischema.Runner[apischema.FileArchiveRequest, apischema.JobSnapshot](routeArchive).Run(
+		apischema.Runner[apischema.OptionalPathRequest, apischema.JobSnapshot]("filebrowser.index", apischema.WithJobMetadata(func(req apischema.OptionalPathRequest) bridgejobs.JobMetadata {
+			path := ""
+			if req.Path != nil {
+				path = *req.Path
+			}
+			return bridgejobs.JobMetadata{Identity: []string{path}, Path: path, Label: path}
+		})).Run(runIndexerJob, bridgejobs.SingletonSystem),
+		apischema.Runner[apischema.FileUploadRequest, apischema.JobSnapshot](routeUpload, apischema.WithJobMetadata(func(req apischema.FileUploadRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: []string{req.TargetPath}, Path: req.TargetPath, Label: req.TargetPath}
+		})).Run(runUploadJob, bridgejobs.StreamDefault),
+		apischema.Runner[apischema.FileUploadBatchRequest, apischema.JobSnapshot](routeUploadBatch, apischema.WithJobMetadata(func(req apischema.FileUploadBatchRequest) bridgejobs.JobMetadata {
+			identity := []string{req.Destination}
+			for _, file := range req.Files {
+				identity = append(identity, "file", file.Path, "size", file.Size)
+			}
+			for _, directory := range req.Directories {
+				identity = append(identity, "directory", directory)
+			}
+			if req.Overwrite != nil && *req.Overwrite {
+				identity = append(identity, "overwrite", "true")
+			} else {
+				identity = append(identity, "overwrite", "false")
+			}
+			return bridgejobs.JobMetadata{Identity: identity, Path: req.Destination, Label: req.Destination}
+		})).Run(runUploadBatchJob, bridgejobs.StreamDefault),
+		apischema.Runner[apischema.PathRequest, apischema.JobSnapshot](routeDownload, apischema.WithJobMetadata(func(req apischema.PathRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: []string{req.Path}, Path: req.Path, Label: req.Path}
+		})).Run(runDownloadJob, bridgejobs.StreamDefault),
+		apischema.Runner[apischema.FileArchiveRequest, apischema.JobSnapshot](routeArchive, apischema.WithJobMetadata(func(req apischema.FileArchiveRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchJobLabel(req.Paths)}
+		})).Run(
 			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileArchiveRequest) (any, error) {
 				return runArchiveJob(ctx, job, store, req)
 			},
 			bridgejobs.StreamDefault,
 		),
-		apischema.Runner[apischema.FileChmodRequest, apischema.JobSnapshot]("filebrowser.chmod").Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodRequest) (any, error) {
-				return runChmodJob(ctx, job, store, req)
+		apischema.Runner[apischema.FileChmodBatchRequest, apischema.JobSnapshot]("filebrowser.chmod_batch", apischema.WithJobMetadata(func(req apischema.FileChmodBatchRequest) bridgejobs.JobMetadata {
+			return bridgejobs.JobMetadata{Identity: append([]string{req.Mode, req.Owner, req.Group}, req.Paths...), Label: batchJobLabel(req.Paths)}
+		})).Run(
+			func(ctx context.Context, job *bridgejobs.Job, req apischema.FileChmodBatchRequest) (any, error) {
+				return runChmodBatchJob(ctx, job, store, req)
 			},
 			bridgejobs.ActionDefault,
 		),
 	)
+}
+
+func batchJobLabel(paths []string) string {
+	if len(paths) == 1 {
+		trimmed := strings.TrimRight(paths[0], "/")
+		if trimmed == "" {
+			return "item"
+		}
+		return filepath.Base(trimmed)
+	}
+	return fmt.Sprintf("%d items", len(paths))
 }
 
 func RegisterJobRoutes(router *bridgejobs.Router, store *config.UserStore) {
@@ -412,87 +457,6 @@ func notifyExtractedFiles(destination string) {
 		}
 		return nil
 	})
-}
-
-func parseChmodRequest(req apischema.FileChmodRequest) (path, modeStr, owner, group string, recursive bool, err error) {
-	if req.Path == "" || req.Mode == "" {
-		return "", "", "", "", false, fmt.Errorf("missing path or mode")
-	}
-	return req.Path, req.Mode, req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
-}
-
-func newChmodProgressReporter(job *bridgejobs.Job, jobSettings config.PersistedJobSettings, phase string) func(processed, total int64) {
-	limiter := newCountProgressLimiter(jobSettings)
-	return func(processed, total int64) {
-		processed, pct, ok := limiter.Set(processed, total)
-		if !ok {
-			return
-		}
-		job.ReportProgress(ChmodProgress{
-			Processed: processed,
-			Total:     total,
-			Pct:       pct,
-			Phase:     phase,
-		})
-	}
-}
-
-func runChmodJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileChmodRequest) (any, error) {
-	path, modeStr, owner, group, recursive, err := parseChmodRequest(req)
-	if err != nil {
-		return nil, bridgejobs.NewError(err.Error(), 400)
-	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, context.Canceled
-	}
-
-	mode, err := strconv.ParseInt(modeStr, 8, 32)
-	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("invalid mode: %v", err), 400)
-	}
-
-	realPath := filepath.Clean(path)
-	settings := jobSettingsForJob(ctx, job, store)
-	job.ReportProgress(ChmodProgress{Phase: "preparing"})
-
-	if err := services.ChangePermissionsCtx(ctx, realPath, os.FileMode(mode), recursive, newChmodProgressReporter(job, settings, "chmod")); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil, context.Canceled
-		}
-		slog.Debug("error changing permissions", "path", realPath, "error", err)
-		return nil, bridgejobs.NewError(err.Error(), 400)
-	}
-
-	if strings.TrimSpace(owner) != "" || strings.TrimSpace(group) != "" {
-		if err := ctx.Err(); err != nil {
-			return nil, context.Canceled
-		}
-		uid, err := resolveUserID(owner)
-		if err != nil {
-			slog.Debug("error resolving owner", "owner", owner, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-		gid, err := resolveGroupID(group)
-		if err != nil {
-			slog.Debug("error resolving group", "group", group, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-		if err := services.ChangeOwnershipCtx(ctx, realPath, uid, gid, recursive, newChmodProgressReporter(job, settings, "chown")); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil, context.Canceled
-			}
-			slog.Debug("error changing ownership", "path", realPath, "owner", owner, "group", group, "error", err)
-			return nil, bridgejobs.NewError(err.Error(), 400)
-		}
-	}
-
-	return map[string]any{
-		"message": "permissions changed",
-		"path":    path,
-		"mode":    fmt.Sprintf("%04o", mode),
-		"owner":   owner,
-		"group":   group,
-	}, nil
 }
 
 func runCompressJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {

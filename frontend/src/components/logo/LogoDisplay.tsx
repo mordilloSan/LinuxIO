@@ -1,12 +1,10 @@
-import React from "react";
-
 import { useAppTheme } from "@/theme";
 
 interface LogoDisplayProps {
   showText?: boolean;
 }
 
-const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
+const LogoDisplay = ({ showText = false }: LogoDisplayProps) => {
   const theme = useAppTheme();
   const dur = theme.transitions.duration.standard;
 

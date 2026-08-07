@@ -1,5 +1,11 @@
 import { Icon } from "@iconify/react";
-import React, { useId, useRef, useState } from "react";
+import {
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
@@ -14,7 +20,7 @@ interface PathPickerFieldProps {
   editable?: boolean;
   error?: boolean;
   fileFilter?: (path: string) => boolean;
-  helperText?: React.ReactNode;
+  helperText?: ReactNode;
   id?: string;
   includeFiles?: boolean;
   label?: string;
@@ -26,11 +32,11 @@ interface PathPickerFieldProps {
   placeholder?: string;
   required?: boolean;
   selectableTypes?: Array<"directory" | "file">;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   value: string;
 }
 
-const PathPickerField: React.FC<PathPickerFieldProps> = ({
+const PathPickerField = ({
   value,
   onChange,
   label = "Directory Path",
@@ -51,7 +57,7 @@ const PathPickerField: React.FC<PathPickerFieldProps> = ({
   browsePath,
   onPickerClose,
   style,
-}) => {
+}: PathPickerFieldProps) => {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
   const anchorRef = useRef<HTMLDivElement>(null);

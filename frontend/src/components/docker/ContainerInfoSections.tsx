@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
 
 import type { ContainerInfo, ContainerPort } from "@/api";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -11,7 +11,11 @@ import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 export type ContainerInfoSection =
-  "overview" | "monitoring" | "ports" | "networks" | "volumes";
+  | "overview"
+  | "monitoring"
+  | "ports"
+  | "networks"
+  | "volumes";
 
 const formatUptime = (createdUnix: number) => {
   const secs = Math.floor(Date.now() / 1000) - createdUnix;
@@ -46,9 +50,7 @@ const formatPort = (port: ContainerPort) =>
     ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
     : `${port.PrivatePort}/${port.Type}`;
 
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => (
+const SectionTitle = ({ children }: { children: ReactNode }) => (
   <AppTypography fontWeight={700} style={{ margin: 0 }} variant="subtitle2">
     {children}
   </AppTypography>
@@ -61,7 +63,7 @@ const emptyText = (text: string) => (
 );
 
 /** Single-line value that truncates and exposes the full text via a copy tooltip. */
-const TruncatedValue: React.FC<{ text: string }> = ({ text }) => (
+const TruncatedValue = ({ text }: { text: string }) => (
   <AppTypography
     component="div"
     fontSize="0.75rem"
@@ -84,10 +86,10 @@ interface ContainerInfoSectionsProps {
  * Shared by the selected container card (config sections) and the monitoring
  * panel so the two stay in sync.
  */
-const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
+const ContainerInfoSections = ({
   container,
   sections,
-}) => {
+}: ContainerInfoSectionsProps) => {
   const theme = useAppTheme();
 
   const ports = useMemo(() => getPorts(container), [container]);
@@ -110,18 +112,18 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
   const memPercent =
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
-  const sectionStyle: React.CSSProperties = {
+  const sectionStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     gap: theme.spacing(1),
     minWidth: 0,
   };
 
-  const valueStyle: React.CSSProperties = {
+  const valueStyle: CSSProperties = {
     fontSize: "0.75rem",
     fontWeight: 500,
   };
-  const networkLabelStyle: React.CSSProperties = {
+  const networkLabelStyle: CSSProperties = {
     textTransform: "uppercase",
     letterSpacing: "0.06em",
     fontSize: "0.6rem",
@@ -133,7 +135,7 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   };
-  const renderSection = (section: ContainerInfoSection): React.ReactNode => {
+  const renderSection = (section: ContainerInfoSection): ReactNode => {
     switch (section) {
       case "overview":
         return (
@@ -280,7 +282,7 @@ const ContainerInfoSections: React.FC<ContainerInfoSectionsProps> = ({
   return (
     <>
       {sections.map((section) => (
-        <React.Fragment key={section}>{renderSection(section)}</React.Fragment>
+        <Fragment key={section}>{renderSection(section)}</Fragment>
       ))}
     </>
   );

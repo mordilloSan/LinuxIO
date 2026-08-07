@@ -149,6 +149,11 @@ export interface AppSettings {
   viewModes?: Record<string, TableCardViewMode>;
 }
 
+export interface AppUpdateRequest {
+  runId: string;
+  version?: string;
+}
+
 export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
 
 export interface AutoUpdateOptions {
@@ -161,7 +166,10 @@ export interface AutoUpdateOptions {
 }
 
 export type AutoUpdateRebootPolicy =
-  "never" | "if_needed" | "always" | "schedule";
+  | "never"
+  | "if_needed"
+  | "always"
+  | "schedule";
 
 export type AutoUpdateScope = "security" | "updates" | "all";
 
@@ -297,6 +305,29 @@ export interface ComposeFilePathResponse {
   path: string;
   exists: boolean;
   directory: string;
+}
+
+export interface ComposeJobMessage {
+  type: string;
+  message: string;
+  code?: number;
+  progress?: ComposeProgress;
+}
+
+export interface ComposeJobResult {
+  type: string;
+  message: string;
+}
+
+export interface ComposeProgress {
+  id: string;
+  parent_id?: string;
+  text: string;
+  status: string;
+  details?: string;
+  current?: number;
+  total?: number;
+  percent?: number;
 }
 
 export interface ComposeProject {
@@ -475,6 +506,13 @@ export interface ContainerNetworkSettings {
   Networks?: Record<string, ContainerEndpoint>;
 }
 
+export interface ContainerOpenRequest {
+  containerId: string;
+  shell: string;
+  cols: number;
+  rows: number;
+}
+
 export interface ContainerPort {
   IP?: string;
   PrivatePort: number;
@@ -651,14 +689,23 @@ export interface DockerImage {
   updateAvailable?: boolean;
 }
 
+export interface DockerLogsFollowRequest {
+  containerId: string;
+  tail?: string;
+}
+
 export interface DockerNetwork {
+  Attachable: boolean;
+  ConfigOnly: boolean;
   Containers?: Record<string, DockerNetworkContainer>;
+  Created?: string;
   Driver: string;
   EnableIPv4?: boolean;
   EnableIPv6?: boolean;
   Id: string;
   Internal?: boolean;
   IPAM?: DockerNetworkIPAM;
+  Ingress: boolean;
   Labels?: Record<string, string>;
   Name: string;
   Options?: Record<string, string>;
@@ -666,6 +713,7 @@ export interface DockerNetwork {
 }
 
 export interface DockerNetworkContainer {
+  EndpointID?: string;
   Name: string;
   IPv4Address?: string;
   IPv6Address?: string;
@@ -674,11 +722,15 @@ export interface DockerNetworkContainer {
 
 export interface DockerNetworkIPAM {
   Config?: DockerNetworkIPAMConfig[];
+  Driver?: string;
+  Options?: Record<string, string>;
 }
 
 export interface DockerNetworkIPAMConfig {
-  Subnet: string;
+  AuxiliaryAddresses?: Record<string, string>;
   Gateway: string;
+  IPRange?: string;
+  Subnet: string;
 }
 
 export interface DockerProxySettings {
@@ -762,6 +814,7 @@ export interface DockerUpdateCheckResult {
 }
 
 export interface DockerVolume {
+  ClusterVolume?: Record<string, unknown>;
   CreatedAt?: string;
   Driver: string;
   Labels?: Record<string, string>;
@@ -769,6 +822,13 @@ export interface DockerVolume {
   Name: string;
   Options?: Record<string, string>;
   Scope?: string;
+  Status?: Record<string, unknown>;
+  UsageData?: DockerVolumeUsageData;
+}
+
+export interface DockerVolumeUsageData {
+  RefCount: number;
+  Size: number;
 }
 
 export interface EnabledRequest {
@@ -807,8 +867,8 @@ export interface FileArchiveRequest {
   paths: string[];
 }
 
-export interface FileChmodRequest {
-  path: string;
+export interface FileChmodBatchRequest {
+  paths: string[];
   mode: string;
   owner: string;
   group: string;
@@ -884,6 +944,34 @@ export interface FilesystemInfo {
   total: number;
   used: number;
   usedPercent: number;
+}
+
+export interface GeneralLogEntryRequest {
+  cursor: string;
+}
+
+export interface GeneralLogsFollowRequest {
+  lines?: string;
+  timePeriod?: string;
+  priority?: string;
+  identifier?: string;
+  fieldFilters?: string[];
+  follow?: boolean;
+  afterCursor?: string;
+}
+
+export interface GeneralLogsPageRequest {
+  cursor: string;
+  lines?: string;
+  timePeriod?: string;
+  priority?: string;
+  identifier?: string;
+  fieldFilters?: string[];
+}
+
+export interface GeneralLogsPageResponse {
+  entries: string[];
+  hasMore: boolean;
 }
 
 export interface GpuDevice {
@@ -988,8 +1076,10 @@ export interface IndexerConfig {
   db_path: string;
   db_synchronous: string;
   fresh_index: boolean;
+  fts_search: boolean;
   include_hidden: boolean;
   include_network_mounts: boolean;
+  integrity_check: IndexerIntegrityCheck;
   index_name: string;
   index_path: string;
   interval: string;
@@ -1004,7 +1094,9 @@ export interface IndexerConfigPatch {
   include_hidden?: boolean;
   include_network_mounts?: boolean;
   fresh_index?: boolean;
+  fts_search?: boolean;
   keep_indexes?: number;
+  integrity_check?: IndexerIntegrityCheck;
   db_path?: string;
   db_busy_timeout?: string;
   db_journal_mode?: string;
@@ -1027,6 +1119,7 @@ export interface IndexerDaemonStatus {
   active_operation?: string;
   active_path?: string;
   database_size: number;
+  fts_active: boolean;
   last_indexed?: string;
   num_dirs: number;
   num_files: number;
@@ -1041,8 +1134,11 @@ export interface IndexerDaemonStatus {
   warning?: string;
 }
 
+export type IndexerIntegrityCheck = "full" | "quick" | "off";
+
 export interface IndexerStatusResponse {
   dirs_indexed: number;
+  fts_active: boolean;
   files_indexed: number;
   last_indexed?: string;
   running: boolean;
@@ -1098,6 +1194,11 @@ export interface IntervalRequest {
   interval: string;
 }
 
+export interface JobDataRequest {
+  jobId: string;
+  offset?: string;
+}
+
 export interface JobError {
   code?: number;
   message: string;
@@ -1117,6 +1218,18 @@ export interface JobIDRequest {
 
 export interface JobListRequest {
   status?: string;
+}
+
+export interface JobMetadata {
+  action?: string;
+  capability?: string;
+  device?: string;
+  identity?: string[];
+  label?: string;
+  packageIds?: string[];
+  path?: string;
+  projectName?: string;
+  testType?: string;
 }
 
 export interface JobOwner {
@@ -1140,8 +1253,8 @@ export interface JobSnapshot {
   finished_at?: string;
   id: string;
   owner?: JobOwner;
+  metadata?: JobMetadata;
   progress?: unknown;
-  request?: unknown;
   result?: unknown;
   started_at?: string;
   state: JobState;
@@ -1150,7 +1263,11 @@ export interface JobSnapshot {
 }
 
 export type JobState =
-  "queued" | "running" | "completed" | "failed" | "canceled";
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export interface LogicalVolume {
   attributes: string;
@@ -1265,7 +1382,11 @@ export interface MonitoringHistoryRequest {
 }
 
 export type MonitoringHistoryResolution =
-  "1m" | "10m" | "20m" | "120m" | "480m";
+  | "1m"
+  | "10m"
+  | "20m"
+  | "120m"
+  | "480m";
 
 export interface MonitoringListener {
   address: string;
@@ -1529,14 +1650,16 @@ export interface SearchResponse {
 }
 
 export interface SearchResult {
-  path: string;
+  inode: number;
+  isDir: boolean;
+  mod_time: string;
   name: string;
-  type?: string;
-  isDir?: boolean;
+  path: string;
   size: number;
-  mod_time?: string;
-  modTime?: string;
-  modified?: string;
+  total_dirs?: number;
+  total_files?: number;
+  total_size?: number;
+  type: string;
 }
 
 export interface SensorGroup {
@@ -1574,6 +1697,11 @@ export interface Service {
   name: string;
   sub_state: string;
   unit_file_state: string;
+}
+
+export interface ServiceLogsFollowRequest {
+  serviceName: string;
+  lines?: string;
 }
 
 export interface ServiceNameRequest {
@@ -1708,6 +1836,11 @@ export interface SystemLastLogin {
 
 export type TableCardViewMode = "card" | "table";
 
+export interface TerminalOpenRequest {
+  cols: number;
+  rows: number;
+}
+
 export interface TerminateSessionRequest {
   sessionId: string;
   pid: string;
@@ -1776,6 +1909,7 @@ export interface UnitNameRequest {
 export interface Update {
   changelog: string;
   cve: string[];
+  info_enum: number;
   issued: string;
   package_id: string;
   restart: number;
@@ -1867,7 +2001,10 @@ export interface VMDisk {
 }
 
 export type VMImagePresetID =
-  "home-assistant-os" | "debian-server" | "ubuntu-server" | "fedora-cloud";
+  | "home-assistant-os"
+  | "debian-server"
+  | "ubuntu-server"
+  | "fedora-cloud";
 
 export interface VMManagedPaths {
   root: string;
@@ -2111,7 +2248,8 @@ export interface LinuxIOSchema {
     compose: {
       input: [request: DockerComposeRequest];
       request: DockerComposeRequest;
-      result: JobSnapshot;
+      result: ComposeJobResult;
+      progress: ComposeJobMessage;
     };
     compose_down: {
       input: [projectName: string];
@@ -2203,7 +2341,6 @@ export interface LinuxIOSchema {
       request: IdentifierRequest;
       result: DockerIconURIResponse;
     };
-    indexer: { input: []; request: void; result: JobSnapshot };
     list_compose_projects: {
       input: [];
       request: void;
@@ -2277,9 +2414,9 @@ export interface LinuxIOSchema {
       request: FileArchiveRequest;
       result: JobSnapshot;
     };
-    chmod: {
-      input: [request: FileChmodRequest];
-      request: FileChmodRequest;
+    chmod_batch: {
+      input: [request: FileChmodBatchRequest];
+      request: FileChmodBatchRequest;
       result: JobSnapshot;
     };
     compress: {
@@ -2405,6 +2542,19 @@ export interface LinuxIOSchema {
       input: [request: JobListRequest];
       request: JobListRequest;
       result: JobSnapshot[];
+    };
+  };
+
+  logs: {
+    general_entry: {
+      input: [cursor: string];
+      request: GeneralLogEntryRequest;
+      result: Record<string, unknown>;
+    };
+    general_page: {
+      input: [request: GeneralLogsPageRequest];
+      request: GeneralLogsPageRequest;
+      result: GeneralLogsPageResponse;
     };
   };
 
@@ -2861,3 +3011,33 @@ export type CommandResult<
   H extends HandlerName,
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;
+
+/** Extract a declared job progress type, or never when the route has none */
+export type CommandProgress<
+  H extends HandlerName,
+  C extends CommandName<H>,
+> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;
+
+/**
+ * Wire request contracts for stream-consumed routes: duplex opens and job
+ * routes attached via job data streams (routes with no query/job endpoint).
+ * `void` marks routes opened without a request payload.
+ */
+export interface LinuxIOStreamSchema {
+  "container.open": ContainerOpenRequest;
+  "control.app_update": AppUpdateRequest;
+  "docker.delete_compose_stack": ProjectNameRequest;
+  "docker.logs.follow": DockerLogsFollowRequest;
+  "docker.normalize_compose": ContentRequest;
+  "jobs.attach": JobIDRequest;
+  "jobs.data": JobDataRequest;
+  "jobs.events": void;
+  "logs.general.follow": GeneralLogsFollowRequest;
+  "logs.service.follow": ServiceLogsFollowRequest;
+  "system.get_services": void;
+  "terminal.open": TerminalOpenRequest;
+  "virt.console_open": NameRequest;
+}
+
+/** Route names opened as streams rather than called as endpoints */
+export type StreamRouteName = keyof LinuxIOStreamSchema;

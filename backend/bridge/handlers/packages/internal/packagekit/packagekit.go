@@ -52,7 +52,7 @@ func Run(ctx context.Context, opts OperationOptions, fn func(ClientSession) erro
 		return err
 	}
 
-	return WithGate(ctx, func() error {
+	return withOperationGate(ctx, func() error {
 		return dbusclient.PackageKit.UseSessionWithOptions(ctx, dbusclient.SystemBusOptions{
 			Subsystem: "packagekit",
 			NoRetry:   opts.NoRetry,
@@ -65,7 +65,7 @@ func Run(ctx context.Context, opts OperationOptions, fn func(ClientSession) erro
 	})
 }
 
-func WithGate(ctx context.Context, fn func() error) error {
+func withOperationGate(ctx context.Context, fn func() error) error {
 	if ctx == nil {
 		return fmt.Errorf("nil context")
 	}

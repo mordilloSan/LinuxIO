@@ -1,4 +1,4 @@
-import React from "react";
+import { useRef, type RefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
@@ -26,11 +26,11 @@ function Harness({
   onRename?: () => void;
   onSelectionChange?: (paths: Set<string>) => void;
 }) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useFileListKeyboardNavigation({
     allItems: items,
-    containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    containerRef: containerRef as RefObject<HTMLDivElement>,
     focusedIndex,
     global,
     onDelete,
@@ -127,6 +127,43 @@ describe("useFileListKeyboardNavigation", () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
+  it("selects all with Ctrl+A when CapsLock uppercases the key", () => {
+    const onSelectionChange = vi.fn();
+
+    render(<Harness onSelectionChange={onSelectionChange} />);
+    fireEvent.keyDown(screen.getByTestId("files"), {
+      key: "A",
+      ctrlKey: true,
+    });
+
+    expect(onSelectionChange.mock.calls[0][0].size).toBe(items.length);
+  });
+
+  it("stays inert while a dialog or fullscreen overlay is open", () => {
+    const onDelete = vi.fn();
+    const onSelectionChange = vi.fn();
+    const overlay = document.createElement("div");
+    overlay.className = "app-dialog-root";
+    document.body.appendChild(overlay);
+
+    try {
+      render(
+        <Harness onDelete={onDelete} onSelectionChange={onSelectionChange} />,
+      );
+      const container = screen.getByTestId("files");
+
+      const escape = fireEvent.keyDown(container, { key: "Escape" });
+      fireEvent.keyDown(container, { key: "Delete" });
+
+      // Not calling preventDefault leaves Escape for the dialog's own handler.
+      expect(escape).toBe(true);
+      expect(onSelectionChange).not.toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
+    } finally {
+      overlay.remove();
+    }
+  });
+
   it("can listen globally on document keydown", () => {
     const onFocusChange = vi.fn();
     const onSelectionChange = vi.fn();
@@ -147,13 +184,9 @@ describe("useFileListKeyboardNavigation", () => {
     ]);
   });
 
-  it("scrolls focused cards into view", () => {
+  it("does not scroll on focus changes (the virtualizer owns reveal)", () => {
     render(<Harness focusedIndex={1} />);
 
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 });

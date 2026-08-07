@@ -4,26 +4,12 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
-  useRef,
+  useMemo,
 } from "react";
-import { toast } from "sonner";
-
-import type {
-  ActiveIndexer,
-  BackgroundJob,
-  Compression,
-  Copy,
-  Extraction,
-  Indexer,
-  Move,
-} from "@/types/backgroundJobs";
 
 import {
   bindStreamHandlers,
-  CAPABILITIES,
-  type CapabilityDef,
-  type InstallCapabilityResult,
-  isJobLocallyHandled,
+  isJobCancellationError,
   isTerminalJobState,
   type JobEvent,
   type JobSnapshot,
@@ -33,54 +19,42 @@ import {
   type Stream,
   useStreamMux,
 } from "@/api";
-import { INVALIDATIONS_BY_JOB_TYPE } from "@/constants/backgroundJobQueryInvalidations";
+import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import * as JobTypes from "@/constants/backgroundJobTypes";
 import useAuth from "@/hooks/useAuth";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import type {
+  ActiveIndexer,
+  BackgroundJob,
+  Indexer,
+} from "@/types/backgroundJobs";
 import {
-  createProgressSpeedCalculator,
   jobIdentityKey,
+  jobMetadataIdentity,
+  jobMetadataObject,
+  requestString,
 } from "@/utils/backgroundJobs";
 
+import {
+  indexerResultFromFrame,
+  mergeIndexerProgress,
+  type IndexerProgressFrame,
+  type IndexerResultFrame,
+} from "./indexerProgress";
+import {
+  emitTerminalJobFeedback,
+  GENERIC_JOB_FEEDBACK,
+  TERMINAL_JOB_FEEDBACK,
+  terminalSnapshotOutcome,
+} from "./terminalJobFeedback";
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
 
-function requestObject(request: unknown): Record<string, unknown> {
-  return request && typeof request === "object"
-    ? (request as Record<string, unknown>)
-    : {};
-}
-
-function requestString(
-  request: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = request[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function requestStringArray(
-  request: Record<string, unknown>,
-  key: string,
-): string[] {
-  const value = request[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 interface RecoveredJobControls {
-  archives: {
-    setCompressions: Dispatch<SetStateAction<Compression[]>>;
-    setExtractions: Dispatch<SetStateAction<Extraction[]>>;
-    removeCompression: (id: string) => void;
-    removeExtraction: (id: string) => void;
-  };
-  copyMove: {
-    setCopies: Dispatch<SetStateAction<Copy[]>>;
-    setMoves: Dispatch<SetStateAction<Move[]>>;
-    removeCopy: (id: string) => void;
-    removeMove: (id: string) => void;
-  };
+  /**
+   * Adopt a running transfer job (compress/extract/copy/move) into the
+   * navbar via the transfer engine; returns false for other job types.
+   */
+  recoverTransfer: (job: JobSnapshot) => boolean;
   genericJobs: {
     setBackgroundJobs: Dispatch<SetStateAction<BackgroundJob[]>>;
     removeBackgroundJob: (id: string) => void;
@@ -103,70 +77,22 @@ export function useRecoveredJobs(
   const { run: runStreamResult } = useStreamResult();
   const { refreshCapabilities } = useAuth();
 
-  // De-dupes capability-install completion toasts so the attach path and the
-  // terminal fallback (events stream) can never both fire for one job.
-  const installToastedRef = useRef(new Set<string>());
-
-  // Single source of truth for capability-install completion feedback. Owned by
-  // this global handler (not CapabilityManagerSection) so the toast still fires
-  // when the Settings dialog has been closed mid-install.
-  const emitCapabilityCompletion = useCallback(
-    (
-      jobId: string,
-      wire: string,
-      result?: InstallCapabilityResult,
-      errorMessage?: string,
-    ) => {
-      if (installToastedRef.current.has(jobId)) return;
-      installToastedRef.current.add(jobId);
-
-      const def = CAPABILITIES.find((c) => c.wire === wire) as
-        CapabilityDef | undefined;
-      const label = def?.label ?? wire;
-      // Surface an "Open …" action link on the notification for capabilities
-      // that have a dedicated page (omitted for ones that don't).
-      const opts = def?.route ? { meta: def.route } : undefined;
-
-      if (errorMessage !== undefined) {
-        toast.error(errorMessage || `Failed to install ${label}`, opts);
-        return;
-      }
-
-      // Any successful job result (available or not) refreshes app-wide state.
-      void refreshCapabilities();
-      if (result?.available) {
-        toast.success(`${label} installed`, opts);
-      } else {
-        const reason = result?.error ? `: ${result.error}` : ".";
-        toast.warning(
-          `${label} installed but is still unavailable${reason}`,
-          opts,
-        );
-      }
-    },
+  // Per-type feedback (which terminal states toast, and how) lives in the
+  // terminalJobFeedback registry; this hook only reports outcomes to it.
+  const feedbackDeps = useMemo(
+    () => ({ refreshCapabilities }),
     [refreshCapabilities],
   );
   const {
-    activeCompressionIdsRef,
-    activeExtractionIdsRef,
     activeIndexerIdsRef,
-    activeCopyIdsRef,
-    activeMoveIdsRef,
     activeBackgroundJobIdsRef,
     activeFileTransferJobIdsRef,
     recoveringJobIdsRef,
     pendingLocalJobKeysRef,
     streamRefsRef,
-    allocateDownloadLabelBase,
   } = runtime;
   const {
-    archives: {
-      setCompressions,
-      setExtractions,
-      removeCompression,
-      removeExtraction,
-    },
-    copyMove: { setCopies, setMoves, removeCopy, removeMove },
+    recoverTransfer,
     indexers: {
       setIndexers,
       setIsIndexerDialogOpen,
@@ -187,22 +113,19 @@ export function useRecoveredJobs(
       }
       if (
         pendingLocalJobKeysRef.current.has(
-          jobIdentityKey(job.type, job.request),
+          jobIdentityKey(job.type, jobMetadataIdentity(job.metadata)),
         )
       ) {
         return;
       }
 
-      const request = requestObject(job.request);
-      const progress = job.progress as ProgressFrame | undefined;
-      const initialPct = Math.min(99, progress?.pct ?? 0);
+      const metadata = jobMetadataObject(job.metadata);
       const getName = (path: string | undefined, fallback: string) => {
         const trimmed = (path ?? "").replace(/\/+$/, "");
         if (!trimmed) return fallback;
         const parts = trimmed.split("/");
         return parts[parts.length - 1] || fallback;
       };
-      const getSpeed = createProgressSpeedCalculator();
       const abortController = new AbortController();
       const genericProgressPct = (value: unknown) => {
         const data = value as
@@ -221,7 +144,8 @@ export function useRecoveredJobs(
       };
       const genericProgressMeta = (value: unknown) => {
         const data = value as
-          { indeterminate?: boolean; processed?: number } | undefined;
+          | { indeterminate?: boolean; processed?: number }
+          | undefined;
         return {
           indeterminate: data?.indeterminate,
           processed: data?.processed,
@@ -246,7 +170,11 @@ export function useRecoveredJobs(
           | undefined;
         switch (job.type) {
           case JobTypes.JOB_TYPE_FILE_UPLOAD: {
-            const name = getName(requestString(request, "targetPath"), "file");
+            const name = getName(
+              requestString(metadata, "path") ??
+                requestString(metadata, "label"),
+              "file",
+            );
             return data?.phase === "waiting_for_client"
               ? `Upload waiting: ${name}`
               : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
@@ -258,7 +186,11 @@ export function useRecoveredJobs(
               : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
           }
           case JobTypes.JOB_TYPE_FILE_DOWNLOAD: {
-            const name = getName(requestString(request, "path"), "file");
+            const name = getName(
+              requestString(metadata, "path") ??
+                requestString(metadata, "label"),
+              "file",
+            );
             return data?.phase === "waiting_for_client"
               ? `Download waiting: ${name}`
               : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
@@ -267,8 +199,10 @@ export function useRecoveredJobs(
             return data?.phase === "waiting_for_client"
               ? "Archive download waiting"
               : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
-          case JobTypes.JOB_TYPE_FILE_CHMOD:
-            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+          case JobTypes.JOB_TYPE_FILE_CHMOD_BATCH: {
+            const processed = data?.processed ?? 0;
+            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}: ${processed} item${processed === 1 ? "" : "s"}`;
+          }
           case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
             const processed = data?.processed ?? 0;
             return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
@@ -276,13 +210,8 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
             return (
               data?.message ??
-              `Docker compose ${requestString(request, "action") ?? "operation"}`
+              `Docker compose ${requestString(metadata, "action") ?? "operation"}`
             );
-          case JobTypes.JOB_TYPE_DOCKER_INDEXER:
-            return data?.files_indexed !== undefined ||
-              data?.dirs_indexed !== undefined
-              ? `Indexing Docker folders: ${data.files_indexed ?? 0} files, ${data.dirs_indexed ?? 0} dirs`
-              : "Indexing Docker folders";
           case JobTypes.JOB_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${String(data.package_id).split(";")[0]}`
@@ -292,7 +221,7 @@ export function useRecoveredJobs(
           case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
             return data?.message ?? "Running SMART self-test";
           case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY: {
-            const cap = requestString(request, "capability") ?? "capability";
+            const cap = requestString(metadata, "capability") ?? "capability";
             return data?.message ?? `Installing ${cap}`;
           }
           default:
@@ -333,196 +262,13 @@ export function useRecoveredJobs(
       };
 
       switch (job.type) {
-        case JobTypes.JOB_TYPE_FILE_COMPRESS: {
-          if (activeCompressionIdsRef.current.has(job.id)) return;
-          const destination = requestString(request, "targetPath") ?? "";
-          const labelBase = allocateDownloadLabelBase(
-            getName(destination, "archive"),
-            job.id,
-          );
-          activeCompressionIdsRef.current.add(job.id);
-          setCompressions((prev) => [
-            ...prev,
-            {
-              id: job.id,
-              type: "compression",
-              archiveName: labelBase,
-              destination,
-              paths: requestStringArray(request, "paths"),
-              progress: initialPct,
-              label: `Compressing ${labelBase} (${initialPct}%)`,
-              bytes: progress?.bytes,
-              total: progress?.total,
-              abortController,
-            },
-          ]);
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              setCompressions((prev) =>
-                prev.map((item) =>
-                  item.id === job.id
-                    ? {
-                        ...item,
-                        progress: Math.max(item.progress, pct),
-                        label: `Compressing ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                        bytes: nextProgress.bytes,
-                        total: nextProgress.total,
-                        ...(speed !== undefined && { speed }),
-                      }
-                    : item,
-                ),
-              );
-            },
-            onSuccess: () => toast.success(`Created ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error ? error.message : "Compression failed",
-                );
-              }
-            },
-            onFinally: () => removeCompression(job.id),
-          });
-          break;
-        }
-        case JobTypes.JOB_TYPE_FILE_EXTRACT: {
-          if (activeExtractionIdsRef.current.has(job.id)) return;
-          const archivePath = requestString(request, "archivePath") ?? "";
-          const labelBase = allocateDownloadLabelBase(
-            getName(archivePath, "archive"),
-            job.id,
-          );
-          activeExtractionIdsRef.current.add(job.id);
-          setExtractions((prev) => [
-            ...prev,
-            {
-              id: job.id,
-              type: "extraction",
-              archivePath,
-              destination: requestString(request, "destination") ?? "",
-              progress: initialPct,
-              label: `Extracting ${labelBase} (${initialPct}%)`,
-              bytes: progress?.bytes,
-              total: progress?.total,
-              abortController,
-            },
-          ]);
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              setExtractions((prev) =>
-                prev.map((item) =>
-                  item.id === job.id
-                    ? {
-                        ...item,
-                        progress: Math.max(item.progress, pct),
-                        label: `Extracting ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                        bytes: nextProgress.bytes,
-                        total: nextProgress.total,
-                        ...(speed !== undefined && { speed }),
-                      }
-                    : item,
-                ),
-              );
-            },
-            onSuccess: () => toast.success(`Extracted ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error ? error.message : "Extraction failed",
-                );
-              }
-            },
-            onFinally: () => removeExtraction(job.id),
-          });
-          break;
-        }
+        case JobTypes.JOB_TYPE_FILE_COMPRESS:
+        case JobTypes.JOB_TYPE_FILE_EXTRACT:
         case JobTypes.JOB_TYPE_FILE_COPY_BATCH:
         case JobTypes.JOB_TYPE_FILE_MOVE_BATCH: {
-          const isMove = job.type === JobTypes.JOB_TYPE_FILE_MOVE_BATCH;
-          const activeIds = isMove ? activeMoveIdsRef : activeCopyIdsRef;
-          if (activeIds.current.has(job.id)) return;
-          const batchSources = requestStringArray(request, "sources");
-          const source = batchSources[0] ?? "";
-          const destination = requestString(request, "destination") ?? "";
-          const labelBase =
-            batchSources.length > 1
-              ? `${batchSources.length} items`
-              : getName(source, "item");
-          activeIds.current.add(job.id);
-          if (isMove) {
-            setMoves((prev) => [
-              ...prev,
-              {
-                id: job.id,
-                type: "move",
-                source,
-                destination,
-                progress: initialPct,
-                label: `Moving ${labelBase} (${initialPct}%)`,
-                bytes: progress?.bytes,
-                total: progress?.total,
-                abortController,
-              },
-            ]);
-          } else {
-            setCopies((prev) => [
-              ...prev,
-              {
-                id: job.id,
-                type: "copy",
-                source,
-                destination,
-                progress: initialPct,
-                label: `Copying ${labelBase} (${initialPct}%)`,
-                bytes: progress?.bytes,
-                total: progress?.total,
-                abortController,
-              },
-            ]);
-          }
-          attach({
-            onProgress: (nextProgress) => {
-              const speed = getSpeed(nextProgress.bytes);
-              const pct = Math.min(99, nextProgress.pct);
-              const update = (item: Copy | Move) => ({
-                ...item,
-                progress: Math.max(item.progress, pct),
-                label: `${isMove ? "Moving" : "Copying"} ${labelBase} (${Math.max(item.progress, pct)}%)`,
-                bytes: nextProgress.bytes,
-                total: nextProgress.total,
-                ...(speed !== undefined && { speed }),
-              });
-              if (isMove) {
-                setMoves((prev) =>
-                  prev.map((item) =>
-                    item.id === job.id ? (update(item) as Move) : item,
-                  ),
-                );
-              } else {
-                setCopies((prev) =>
-                  prev.map((item) =>
-                    item.id === job.id ? (update(item) as Copy) : item,
-                  ),
-                );
-              }
-            },
-            onSuccess: () =>
-              toast.success(`${isMove ? "Moved" : "Copied"} ${labelBase}`),
-            onError: (error) => {
-              if (!abortController.signal.aborted) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : `${isMove ? "Move" : "Copy"} failed`,
-                );
-              }
-            },
-            onFinally: () => (isMove ? removeMove(job.id) : removeCopy(job.id)),
-          });
+          // The transfer engine rebuilds the navbar item and re-attaches with
+          // the same lifecycle used for fresh starts.
+          recoverTransfer(job);
           break;
         }
         case JobTypes.JOB_TYPE_FILE_INDEXER: {
@@ -533,8 +279,10 @@ export function useRecoveredJobs(
             ...prev,
             {
               id: job.id,
+              jobId: job.id,
               type: "indexer",
-              path: requestString(request, "path") ?? "/",
+              path: requestString(metadata, "path") ?? "/",
+              bytesIndexed: 0,
               filesIndexed: 0,
               dirsIndexed: 0,
               totalSize: 0,
@@ -542,56 +290,31 @@ export function useRecoveredJobs(
               currentPath: "",
               phase: "connecting",
               progress: 0,
-              label: "Indexing in progress...",
+              label: "Connecting to indexer...",
+              state: "connecting",
               abortController,
             },
           ]);
           attach({
             onProgress: (nextProgress) => {
-              const indexProgress = nextProgress as ProgressFrame & {
-                files_indexed?: number;
-                dirs_indexed?: number;
-                current_path?: string;
-                phase?: string;
-              };
               setIndexers((prev) =>
-                prev.map((item) => {
-                  if (item.id !== job.id) return item;
-                  const filesIndexed =
-                    indexProgress.files_indexed ?? item.filesIndexed;
-                  const dirsIndexed =
-                    indexProgress.dirs_indexed ?? item.dirsIndexed;
-                  const phase = indexProgress.phase ?? item.phase;
-                  return {
-                    ...item,
-                    filesIndexed,
-                    dirsIndexed,
-                    currentPath: indexProgress.current_path ?? item.currentPath,
-                    phase,
-                    label:
-                      phase === "connecting"
-                        ? "Connecting to indexer..."
-                        : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
-                  };
-                }),
+                prev.map((item) =>
+                  item.id === job.id
+                    ? mergeIndexerProgress(
+                        item,
+                        nextProgress as IndexerProgressFrame,
+                      )
+                    : item,
+                ),
               );
             },
             onSuccess: (result) => {
-              const summaryResult = result as
-                | {
-                    files_indexed?: number;
-                    dirs_indexed?: number;
-                    total_size?: number;
-                    duration_ms?: number;
-                  }
-                | undefined;
-              setLastIndexerResult({
-                path: requestString(request, "path") ?? "/",
-                filesIndexed: summaryResult?.files_indexed ?? 0,
-                dirsIndexed: summaryResult?.dirs_indexed ?? 0,
-                totalSize: summaryResult?.total_size ?? 0,
-                durationMs: summaryResult?.duration_ms ?? 0,
-              });
+              setLastIndexerResult(
+                indexerResultFromFrame(
+                  requestString(metadata, "path") ?? "/",
+                  result as IndexerResultFrame | undefined,
+                ),
+              );
               setLastIndexerError(null);
             },
             onError: (error) => {
@@ -606,7 +329,6 @@ export function useRecoveredJobs(
           break;
         }
         case JobTypes.JOB_TYPE_DOCKER_COMPOSE:
-        case JobTypes.JOB_TYPE_DOCKER_INDEXER:
         case JobTypes.JOB_TYPE_PACKAGE_UPDATE:
         case JobTypes.JOB_TYPE_STORAGE_SMART_TEST:
         case JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY:
@@ -614,12 +336,15 @@ export function useRecoveredJobs(
         case JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH:
         case JobTypes.JOB_TYPE_FILE_DOWNLOAD:
         case JobTypes.JOB_TYPE_FILE_ARCHIVE:
-        case JobTypes.JOB_TYPE_FILE_CHMOD:
+        case JobTypes.JOB_TYPE_FILE_CHMOD_BATCH:
         case JobTypes.JOB_TYPE_FILE_DELETE_BATCH: {
           if (activeFileTransferJobIdsRef.current.has(job.id)) {
             return;
           }
           if (activeBackgroundJobIdsRef.current.has(job.id)) return;
+          const feedbackJob = { id: job.id, type: job.type, metadata };
+          const feedbackEntry =
+            TERMINAL_JOB_FEEDBACK[job.type] ?? GENERIC_JOB_FEEDBACK;
           const initialProgress = genericProgressPct(job.progress);
           const initialMeta = genericProgressMeta(job.progress);
           activeBackgroundJobIdsRef.current.add(job.id);
@@ -627,6 +352,7 @@ export function useRecoveredJobs(
             ...prev,
             {
               id: job.id,
+              jobId: job.id,
               type: "job",
               jobType: job.type,
               progress: initialProgress,
@@ -660,38 +386,27 @@ export function useRecoveredJobs(
                   item.id === job.id ? { ...item, progress: 100 } : item,
                 ),
               );
-              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-                const cap =
-                  requestString(request, "capability") ?? "capability";
-                emitCapabilityCompletion(
-                  job.id,
-                  cap,
-                  result as InstallCapabilityResult,
-                );
-              }
+              emitTerminalJobFeedback(
+                feedbackJob,
+                { kind: "completed", result },
+                feedbackDeps,
+                feedbackEntry,
+              );
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
-              // Capability install is now surfaced here (survives the Settings
-              // dialog closing). storage.run_smart_test is still owned by a
-              // specific page (DiskOverview) that fires its own scoped toast, so
-              // skip the generic one to avoid duplicates.
-              if (job.type === JobTypes.JOB_TYPE_STORAGE_SMART_TEST) {
-                return;
-              }
-              if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-                const cap =
-                  requestString(request, "capability") ?? "capability";
-                emitCapabilityCompletion(
-                  job.id,
-                  cap,
-                  undefined,
-                  error instanceof Error ? error.message : "",
-                );
-                return;
-              }
-              toast.error(
-                error instanceof Error ? error.message : "Job failed",
+              // Only the navbar cancel aborts the controller above; a cancel
+              // from an owning page or another session arrives here as an
+              // ordinary 499 stream error and must be classified so the
+              // registry can tell it apart from a failure.
+              emitTerminalJobFeedback(
+                feedbackJob,
+                {
+                  kind: isJobCancellationError(error) ? "canceled" : "failed",
+                  error,
+                },
+                feedbackDeps,
+                feedbackEntry,
               );
             },
             onFinally: () => removeBackgroundJob(job.id),
@@ -701,15 +416,25 @@ export function useRecoveredJobs(
       }
     },
     [
-      allocateDownloadLabelBase,
-      removeCompression,
-      removeExtraction,
-      removeCopy,
-      removeMove,
+      recoverTransfer,
       removeIndexer,
       removeBackgroundJob,
       runStreamResult,
-      emitCapabilityCompletion,
+      feedbackDeps,
+      // Stable runtime refs and setters: they arrive as plain function
+      // params, so neither the compiler nor the lint rule can prove them
+      // stable without listing them.
+      activeBackgroundJobIdsRef,
+      activeFileTransferJobIdsRef,
+      activeIndexerIdsRef,
+      pendingLocalJobKeysRef,
+      recoveringJobIdsRef,
+      streamRefsRef,
+      setBackgroundJobs,
+      setIndexers,
+      setIsIndexerDialogOpen,
+      setLastIndexerError,
+      setLastIndexerResult,
     ],
   );
 
@@ -732,40 +457,33 @@ export function useRecoveredJobs(
           // 1) Attach progress trackers to jobs that don't have a local handler.
           attachRecoveredJob(job);
 
-          // 2) On terminal events, invalidate query caches for jobs whose type
-          //    has a mapping above and that aren't being tracked by a local
-          //    handler (those handlers are responsible for their own
-          //    invalidations).
+          // 2) On terminal events, always invalidate mapped query caches. A
+          //    local handler may already have done the same, but a duplicate
+          //    invalidation is safe; suppressing this fallback can leave stale
+          //    data when that handler detaches before completion.
           if (!isTerminalJobState(job.state)) return;
 
-          // Airtight fallback: attachRecoveredJob() bails on already-terminal
-          // jobs, so a capability install first observed in a terminal state
-          // would never toast via the attach path. emitCapabilityCompletion is
-          // de-duped, so this is a no-op when the attach path already fired.
-          if (job.type === JobTypes.JOB_TYPE_SYSTEM_INSTALL_CAPABILITY) {
-            const cap =
-              requestString(requestObject(job.request), "capability") ??
-              "capability";
-            if (job.state === "failed" || job.state === "canceled") {
-              emitCapabilityCompletion(
-                job.id,
-                cap,
-                undefined,
-                job.error?.message ?? "",
-              );
-            } else {
-              emitCapabilityCompletion(
-                job.id,
-                cap,
-                job.result as InstallCapabilityResult,
-              );
-            }
+          // Airtight feedback fallback: attachRecoveredJob() bails on
+          // already-terminal jobs, so a job first observed in a terminal state
+          // would never report via the attach path. The emit is de-duped by
+          // job id and registry-only here (no generic fallback), so it is a
+          // no-op when the attach path or an owning page already fired.
+          const outcome = terminalSnapshotOutcome(job);
+          if (outcome) {
+            emitTerminalJobFeedback(
+              {
+                id: job.id,
+                type: job.type,
+                metadata: jobMetadataObject(job.metadata),
+              },
+              outcome,
+              feedbackDeps,
+            );
           }
 
-          if (isJobLocallyHandled(job.id)) return;
-          const keysFn = INVALIDATIONS_BY_JOB_TYPE[job.type];
-          if (!keysFn) return;
-          for (const queryKey of keysFn()) {
+          const keys = OPERATION_QUERY_INVALIDATIONS[job.type];
+          if (!keys) return;
+          for (const queryKey of keys) {
             void queryClient.invalidateQueries({ queryKey });
           }
         },
@@ -784,10 +502,5 @@ export function useRecoveredJobs(
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [
-    attachRecoveredJob,
-    emitCapabilityCompletion,
-    queryClient,
-    streamMuxStatus,
-  ]);
+  }, [attachRecoveredJob, feedbackDeps, queryClient, streamMuxStatus]);
 }

@@ -1,155 +1,111 @@
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  useCallback,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback } from "react";
 
-import {
-  isConnected,
-  linuxio,
-  openJobDataStream,
-  STREAM_MULTIPLEXER_CONFIG,
-} from "@/api";
-import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
-import { useConfig } from "@/hooks/useConfig";
+import { linuxio, uploadContent } from "@/api";
+import { markTerminalFeedbackEmitted } from "@/hooks/backgroundJobs/terminalJobFeedback";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useStreamResult } from "@/hooks/useStreamResult";
+import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
+
+import type { EditorSlice } from "./useFileEditor";
 
 interface UseFileBrowserEditorActionsParams {
-  editingPath: string | null;
-  editorRef: RefObject<FileEditorHandle | null>;
-  isEditorDirty: boolean;
-  setCloseEditorDialog: Dispatch<SetStateAction<boolean>>;
-  setEditingPath: Dispatch<SetStateAction<string | null>>;
-  setIsEditorDirty: Dispatch<SetStateAction<boolean>>;
-  setIsSavingFile: Dispatch<SetStateAction<boolean>>;
+  editor: EditorSlice;
 }
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 export const useFileBrowserEditorActions = ({
-  editingPath,
-  editorRef,
-  isEditorDirty,
-  setCloseEditorDialog,
-  setEditingPath,
-  setIsEditorDirty,
-  setIsSavingFile,
+  editor,
 }: UseFileBrowserEditorActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
-  const { config } = useConfig();
-  const queryClient = useQueryClient();
-  const { runChunked: runChunkedStreamResult } = useStreamResult();
-  const chunkSize =
-    (config.appSettings.chunkSizeMB ?? 0) > 0
-      ? (config.appSettings.chunkSizeMB as number) * 1024 * 1024
-      : STREAM_MULTIPLEXER_CONFIG.uploadChunkSize;
+  const { actions, editingPath, editorRef, isEditorDirty } = editor;
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
+  const resourceCache = linuxio.filebrowser.resource_get.useCache();
+  const chunkSize = useUploadChunkSize();
 
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
       // Saving replaces the file being edited by design; uploads otherwise
       // never overwrite unless told to.
-      const job = await linuxio.filebrowser.upload({
-        targetPath: path,
-        size: String(contentBytes.length),
+      await uploadContent(path, contentBytes, {
+        chunkSize,
+        // handleSaveContent owns the save outcome (toasts), so the global
+        // background-jobs watcher must not also report this job's failure.
+        onJobStart: (job) => markTerminalFeedbackEmitted(job.id),
         overwrite: true,
       });
-      await runChunkedStreamResult<void>({
-        open: () => openJobDataStream(job.id, 0),
-        openErrorMessage: "Failed to open save stream",
-        data: contentBytes,
-        chunkSize,
-        yieldMs: 0,
-        closeMessage: "Stream closed unexpectedly",
-      });
     },
-    [chunkSize, runChunkedStreamResult],
+    [chunkSize],
   );
 
   const invalidateEditedFile = useCallback(
     (path: string) => {
-      queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get.queryKey({
-          path,
-          unused: "",
-          getContent: "true",
-        }),
+      void resourceCache.invalidate({
+        path,
+        unused: "",
+        getContent: "true",
       });
     },
-    [queryClient],
+    [resourceCache],
   );
 
-  const saveCurrentEditor = useCallback(async () => {
-    if (!editorRef.current || !editingPath) return false;
-    if (!isConnected()) {
-      toast.error("Stream connection not ready");
-      return false;
-    }
+  const handleSaveContent = useCallback(
+    async (content: string): Promise<boolean> => {
+      if (!editingPath) return false;
 
-    setIsSavingFile(true);
-    try {
-      const content = editorRef.current.getContent();
-      const contentBytes = new TextEncoder().encode(content);
-      await saveContentViaStream(editingPath, contentBytes);
-      toast.success("File saved successfully!");
-      setIsEditorDirty(false);
-      invalidateEditedFile(editingPath);
-      return true;
-    } catch (error) {
-      console.error("Save error:", error);
-      toast.error(getErrorMessage(error, "Failed to save file"));
-      return false;
-    } finally {
-      setIsSavingFile(false);
-    }
-  }, [
-    editingPath,
-    editorRef,
-    invalidateEditedFile,
-    saveContentViaStream,
-    setIsEditorDirty,
-    setIsSavingFile,
-    toast,
-  ]);
+      actions.setSaving(true);
+      try {
+        const contentBytes = new TextEncoder().encode(content);
+        await saveContentViaStream(editingPath, contentBytes);
+        toast.success("File saved successfully!");
+        invalidateEditedFile(editingPath);
+        return true;
+      } catch (error) {
+        console.error("Save error:", error);
+        toast.error(getErrorMessage(error, "Failed to save file"));
+        return false;
+      } finally {
+        actions.setSaving(false);
+      }
+    },
+    [actions, editingPath, invalidateEditedFile, saveContentViaStream, toast],
+  );
 
   const handleSaveFile = useCallback(async () => {
-    await saveCurrentEditor();
-  }, [saveCurrentEditor]);
+    await editorRef.current?.save();
+  }, [editorRef]);
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
-      setCloseEditorDialog(true);
+      actions.promptClose();
     } else {
-      setEditingPath(null);
-      setIsEditorDirty(false);
+      actions.close();
     }
-  }, [isEditorDirty, setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
+  }, [actions, isEditorDirty]);
 
   const handleKeepEditing = useCallback(() => {
-    setCloseEditorDialog(false);
-  }, [setCloseEditorDialog]);
+    actions.dismissClosePrompt();
+  }, [actions]);
 
   const handleDiscardAndExit = useCallback(() => {
-    setEditingPath(null);
-    setIsEditorDirty(false);
-    setCloseEditorDialog(false);
-  }, [setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
+    actions.close();
+  }, [actions]);
 
   const handleSaveAndExit = useCallback(async () => {
-    const saved = await saveCurrentEditor();
+    const saved = await editorRef.current?.save();
     if (!saved) return;
-    setEditingPath(null);
-    setCloseEditorDialog(false);
-  }, [saveCurrentEditor, setCloseEditorDialog, setEditingPath]);
+    actions.close();
+  }, [actions, editorRef]);
 
   return {
     handleCloseEditor,
     handleDiscardAndExit,
     handleKeepEditing,
     handleSaveAndExit,
+    handleSaveContent,
     handleSaveFile,
   };
 };

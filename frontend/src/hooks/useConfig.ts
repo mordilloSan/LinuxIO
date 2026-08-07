@@ -3,7 +3,7 @@ import { useCallback, useContext } from "react";
 
 import type { AppConfig, AppSettings } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { ConfigValueKey, ConfigValueMap } from "@/types/config";
+import type { ConfigValueKey, ConfigValueMap } from "@/types/config";
 
 export const useConfig = () => {
   const ctx = useContext(ConfigContext);
@@ -24,7 +24,8 @@ export function useConfigValue<K extends ConfigValueKey>(key: K) {
   const set = useCallback(
     (
       next:
-        ConfigValueMap[K] | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
+        | ConfigValueMap[K]
+        | ((prev: ConfigValueMap[K]) => ConfigValueMap[K]),
     ) => {
       setKey(key, next);
     },
@@ -32,9 +33,4 @@ export function useConfigValue<K extends ConfigValueKey>(key: K) {
   );
 
   return [readConfigValue(config, key), set] as const;
-}
-
-export function useConfigReady(): boolean {
-  const { isLoaded } = useConfig();
-  return isLoaded;
 }

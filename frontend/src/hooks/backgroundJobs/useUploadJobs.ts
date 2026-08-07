@@ -1,8 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { Upload } from "@/types/backgroundJobs";
-
 import {
   bindStreamHandlers,
   type FileUploadBatchRequest,
@@ -11,8 +9,11 @@ import {
   linuxio,
   openJobDataStream,
   type ProgressFrame,
+  STREAM_MULTIPLEXER_CONFIG,
 } from "@/api";
 import * as JobTypes from "@/constants/backgroundJobTypes";
+import { useLatestRef } from "@/hooks/useLatestRef";
+import type { Upload } from "@/types/backgroundJobs";
 import { jobIdentityKey } from "@/utils/backgroundJobs";
 
 import type { BackgroundJobRuntime } from "./useBackgroundJobRuntime";
@@ -45,12 +46,13 @@ interface UploadFileEntry {
 
 export function useUploadJobs(
   runtime: BackgroundJobRuntime,
-  {
-    chunkSize,
-    uploadWindowSize,
-  }: { chunkSize: number; uploadWindowSize: number },
+  // Getter, not a value: reading the chunk size at upload start keeps
+  // BackgroundJobsProvider (and the actions context identity) decoupled from
+  // config changes.
+  getChunkSize: () => number,
 ) {
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const uploadsRef = useLatestRef(uploads);
   const {
     activeFileTransferJobIdsRef,
     pendingLocalJobKeysRef,
@@ -102,6 +104,10 @@ export function useUploadJobs(
         return { success: false, error: "Stream connection not ready" };
       }
 
+      const chunkSize = getChunkSize();
+      const uploadWindowSize =
+        chunkSize * STREAM_MULTIPLEXER_CONFIG.uploadWindowChunks;
+
       const request: FileUploadBatchRequest = {
         destination,
         files: files.map(({ file, relativePath }) => ({
@@ -116,7 +122,21 @@ export function useUploadJobs(
 
       const pendingUploadKey = jobIdentityKey(
         JobTypes.JOB_TYPE_FILE_UPLOAD_BATCH,
-        request,
+        [
+          request.destination,
+          ...request.files.flatMap((file) => [
+            "file",
+            file.path,
+            "size",
+            file.size,
+          ]),
+          ...(request.directories ?? []).flatMap((directory) => [
+            "directory",
+            directory,
+          ]),
+          "overwrite",
+          request.overwrite ? "true" : "false",
+        ],
       );
       pendingLocalJobKeysRef.current.add(pendingUploadKey);
 
@@ -132,6 +152,11 @@ export function useUploadJobs(
         };
       }
 
+      // False positive in the pinned React Compiler port (oxc-transform
+      // 0.136.0): the dep array below is complete, but the compiler still
+      // reports a missing dependency here and skips the file. Manual
+      // memoization in this hook remains fully in effect.
+      // oxlint-disable-next-line react/react-compiler
       updateUpload(uploadId, { jobId: job.id });
       activeFileTransferJobIdsRef.current.add(job.id);
       pendingLocalJobKeysRef.current.delete(pendingUploadKey);
@@ -233,7 +258,8 @@ export function useUploadJobs(
               resolveSafe({
                 success: true,
                 result: (result.data ?? undefined) as
-                  BatchUploadResult | undefined,
+                  | BatchUploadResult
+                  | undefined,
               });
             } else {
               resolveSafe({
@@ -297,11 +323,10 @@ export function useUploadJobs(
     [
       activeFileTransferJobIdsRef,
       cancelBridgeJob,
-      chunkSize,
+      getChunkSize,
       pendingLocalJobKeysRef,
       streamRefsRef,
       updateUpload,
-      uploadWindowSize,
     ],
   );
 
@@ -476,7 +501,7 @@ export function useUploadJobs(
 
   const cancelUpload = useCallback(
     (id: string) => {
-      const upload = uploads.find((u) => u.id === id);
+      const upload = uploadsRef.current.find((u) => u.id === id);
       if (upload) {
         // Abort stream if using stream-based upload (RST for immediate cancel)
         // Use ref first (synchronous) then fallback to state
@@ -499,7 +524,7 @@ export function useUploadJobs(
       cancelBridgeJob,
       removeUpload,
       streamRefsRef,
-      uploads,
+      uploadsRef,
     ],
   );
 

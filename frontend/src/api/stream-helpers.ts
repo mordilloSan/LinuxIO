@@ -1,6 +1,5 @@
-import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
-
 import { LinuxIOError } from "./linuxio-core";
+import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
 
 export interface StreamEventHandlers<TProgress = ProgressFrame> {
   onClose?: () => void;

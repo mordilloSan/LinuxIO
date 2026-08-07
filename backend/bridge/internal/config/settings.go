@@ -147,8 +147,3 @@ func DefaultSettings(base string) *Settings {
 }
 
 func cssColor(s string) *CSSColor { c := CSSColor(s); return &c }
-
-// ExampleDefaults returns stable, user-agnostic config for docs/examples.
-func ExampleDefaults() Settings {
-	return *DefaultSettings("/var/lib/linuxio")
-}

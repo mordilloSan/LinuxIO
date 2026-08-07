@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -420,4 +421,26 @@ func (s *managedMountStore) remove(mountpoint string) error {
 
 	delete(entries, mountpoint)
 	return s.save(entries)
+}
+
+// Mount and unmount results used to be built as map[string]any and threaded
+// through the helpers below, which appended a "warning" key. The routes always
+// declared a struct, so nothing checked that the keys matched. The helpers now
+// take a *string warning instead, and these constructors assemble the declared
+// type once, at the return.
+
+func mountResult(mountpoint, warning string) apischema.StorageMountResult {
+	result := apischema.StorageMountResult{Success: true, Mountpoint: &mountpoint}
+	if warning != "" {
+		result.Warning = &warning
+	}
+	return result
+}
+
+func warningResult(warning string) apischema.StorageWarningResult {
+	result := apischema.StorageWarningResult{Success: true}
+	if warning != "" {
+		result.Warning = &warning
+	}
+	return result
 }

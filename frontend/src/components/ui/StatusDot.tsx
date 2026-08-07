@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 
@@ -6,17 +6,17 @@ interface StatusDotProps {
   absolute?: boolean;
   color: string;
   size?: number;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   tooltip?: string;
 }
 
-const StatusDot: React.FC<StatusDotProps> = ({
+const StatusDot = ({
   color,
   size = 10,
   absolute = false,
   tooltip,
   style,
-}) => {
+}: StatusDotProps) => {
   const dot = (
     <span
       style={{

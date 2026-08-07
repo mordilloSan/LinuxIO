@@ -116,25 +116,31 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		doneChan: make(chan struct{}),
 	}
 	go func() {
-		<-ctx.Done()
-		sts.cleanup()
+		select {
+		case <-ctx.Done():
+			sts.cleanup()
+		case <-sts.doneChan:
+		}
 	}()
 
-	// Start bidirectional relay
+	// Start bidirectional relay. Either relay exiting tears the session down,
+	// which unblocks the other side (a dead stream must not leave the PTY
+	// relay stuck in an idle read, and vice versa).
 	var wg sync.WaitGroup
 
 	// PTY → Stream (output)
 	wg.Go(func() {
+		defer sts.cleanup()
 		sts.relayPTYToStream()
 	})
 
 	// Stream → PTY (input)
 	wg.Go(func() {
+		defer sts.cleanup()
 		sts.relayStreamToPTY()
 	})
 
 	wg.Wait()
-	sts.cleanup()
 	return nil
 }
 
@@ -207,6 +213,7 @@ func (sts *TerminalSession) cleanup() {
 	}
 	sts.closed = true
 	sts.mu.Unlock()
+	close(sts.doneChan)
 
 	// Signal PTY process to terminate
 	if sts.Cmd != nil && sts.Cmd.Process != nil {

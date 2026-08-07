@@ -2,10 +2,9 @@
 
 [![Release](https://img.shields.io/github/v/release/mordilloSan/LinuxIO)](https://github.com/mordilloSan/LinuxIO/releases/latest)
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 [![Go](https://img.shields.io/github/go-mod/go-version/mordilloSan/LinuxIO?filename=backend/go.mod)](backend/go.mod)
-[![React](https://img.shields.io/badge/react-19.2.4-61dafb?logo=react&logoColor=white)](frontend/package.json)
+[![React](https://img.shields.io/badge/react-19.2.8-61dafb?logo=react&logoColor=white)](frontend/package.json)
 [![Platform](https://img.shields.io/badge/platform-linux-fcc624?logo=linux&logoColor=black)](README.md)
 
 <h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
@@ -104,16 +103,16 @@ Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools clang-tidy bear
+sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck clang-tools clang-tidy bear libpam-wrapper libnss-wrapper libuid-wrapper
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra clang-tidy bear
+sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra clang-tidy bear pam_wrapper nss_wrapper uid_wrapper
 ```
 
-> `cppcheck`, `clang-tools`/`clang-tools-extra`, `clang-tidy`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build.
+> `cppcheck`, `clang-tools`/`clang-tools-extra`, `clang-tidy`, and `bear` are optional — only needed for `make analyze-auth`. `libsystemd-dev`/`systemd-devel` is required for the auth worker build. `libpam-wrapper`/`pam_wrapper`, `libnss-wrapper`/`nss_wrapper`, and `libuid-wrapper`/`uid_wrapper` are needed for the hermetic PAM integration tests (`make test-auth-pam`, part of `make test-backend`); without them that suite skips with a warning.
 
 ### Initial Setup
 
@@ -181,12 +180,12 @@ make dev-prep          # Create placeholder assets for dev server
 **Quality Checks:**
 
 ```bash
-make lint              # Run ESLint on frontend
+make lint              # Run ESLint + Oxfmt on frontend
 make tsc               # TypeScript type checking
 make test-frontend     # Run frontend unit tests
 make golint            # Run Go formatters + golangci-lint on backend
 make test              # Run all linters (lint + tsc + golint)
-make test-backend      # Run Go unit tests in backend
+make test-backend      # Run Go unit tests in backend (with race detector)
 ```
 
 **Building:**

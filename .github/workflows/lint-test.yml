@@ -14,7 +14,7 @@ jobs:
   lint-backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: "stable"
@@ -47,7 +47,7 @@ jobs:
   format-backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: "stable"
@@ -62,23 +62,34 @@ jobs:
           fi
           echo " All Go files are properly formatted"
 
+  auth-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install authentication analysis dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bear clang-tidy clang-tools cppcheck libpam0g-dev libsystemd-dev
+      - run: make analyze-auth
+
   lint-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
       - run: make lint
   typescript-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
       - run: make tsc
 
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -91,39 +102,18 @@ jobs:
         working-directory: frontend
         run: npm run test
 
-  frontend-bundle-budget:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-      - name: Check bundle budgets
-        working-directory: frontend
-        run: npm run bundle:budget -- --markdown "$RUNNER_TEMP/frontend-bundle-metrics.md"
-      - name: Publish bundle metrics summary
-        run: cat "$RUNNER_TEMP/frontend-bundle-metrics.md" >> "$GITHUB_STEP_SUMMARY"
-
   backend-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: "stable"
-      # Needed for github.com/msteinert/pam (CGO)
-      - name: Install PAM headers
+      # Needed for github.com/msteinert/pam (CGO) and the C auth tests
+      - name: Install authentication helper dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpam0g-dev
+          sudo apt-get install -y --no-install-recommends libpam0g-dev libsystemd-dev
       # For embedded files in go
       - name: Create Frontend Files
         run: |

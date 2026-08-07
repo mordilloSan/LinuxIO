@@ -41,6 +41,8 @@ export interface AuthContextType extends CapabilityState {
   method: "session";
   privileged: boolean;
   refreshCapabilities: () => Promise<CapabilitiesResponse>;
+  /** Tear down locally after an involuntary session loss, preserving the path. */
+  sessionExpired: () => void;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   user: AuthUser | null;
@@ -85,7 +87,7 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
-  } & Partial<CapabilityState>;
+  };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 }
 
@@ -98,10 +100,9 @@ export interface UpdateInfo {
   release_url?: string;
 }
 
-export interface LoginResponse extends CapabilitiesResponse {
+export interface LoginResponse {
   privileged: boolean;
   success: boolean;
-  update?: UpdateInfo;
 }
 
 export type LoginErrorCode =

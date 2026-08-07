@@ -70,17 +70,18 @@ func writeFile(path string, content string) error {
 }
 
 func formatGeneratedFiles(repoRoot string, paths []string) error {
-	prettier := filepath.Join(repoRoot, "frontend", "node_modules", ".bin", "prettier")
-	if _, err := os.Stat(prettier); err != nil {
+	oxfmt := filepath.Join(repoRoot, "frontend", "node_modules", ".bin", "oxfmt")
+	if _, err := os.Stat(oxfmt); err != nil {
 		return nil
 	}
 
-	args := append([]string{"--log-level=error", "--write"}, paths...)
-	cmd := exec.Command(prettier, args...)
+	config := filepath.Join(repoRoot, "frontend", "config", ".oxfmtrc.json")
+	args := append([]string{"-c", config, "--write"}, paths...)
+	cmd := exec.Command(oxfmt, args...)
 	cmd.Dir = filepath.Join(repoRoot, "frontend")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("prettier failed: %w\n%s", err, out)
+		return fmt.Errorf("oxfmt failed: %w\n%s", err, out)
 	}
 	return nil
 }
@@ -102,6 +103,9 @@ func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(route.Mode))
 	}
 	b.WriteString("} as const satisfies Record<string, RouteMode>;\n\n")
+	b.WriteString("export type RouteName = keyof typeof ROUTE_MODES;\n\n")
+	b.WriteString("export type RouteModeFor<R extends string> =\n")
+	b.WriteString("  R extends RouteName ? (typeof ROUTE_MODES)[R] : never;\n\n")
 	b.WriteString("export function routeName(handler: string, command: string): string {\n")
 	b.WriteString("  return `${handler}.${command}`;\n")
 	b.WriteString("}\n\n")
@@ -133,12 +137,16 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 			}
 			fmt.Fprintf(
 				&schema,
-				"    %s: { input: %s; request: %s; result: %s };\n",
+				"    %s: { input: %s; request: %s; result: %s",
 				route.Command(),
 				renderer.inputTupleRef(route.RequestSpec()),
 				renderer.requestRef(route.RequestSpec()),
 				renderer.typeRef(route.ResultSpec()),
 			)
+			if progress, ok := route.ProgressSpec(); ok {
+				fmt.Fprintf(&schema, "; progress: %s", renderer.typeRef(progress))
+			}
+			schema.WriteString(" };\n")
 		}
 		schema.WriteString("  };\n\n")
 	}
@@ -163,7 +171,35 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	schema.WriteString("export type CommandResult<\n")
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
-	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n")
+	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n\n")
+	schema.WriteString("/** Extract a declared job progress type, or never when the route has none */\n")
+	schema.WriteString("export type CommandProgress<\n")
+	schema.WriteString("  H extends HandlerName,\n")
+	schema.WriteString("  C extends CommandName<H>,\n")
+	schema.WriteString("> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;\n\n")
+
+	schema.WriteString("/**\n")
+	schema.WriteString(" * Wire request contracts for stream-consumed routes: duplex opens and job\n")
+	schema.WriteString(" * routes attached via job data streams (routes with no query/job endpoint).\n")
+	schema.WriteString(" * `void` marks routes opened without a request payload.\n")
+	schema.WriteString(" */\n")
+	schema.WriteString("export interface LinuxIOStreamSchema {\n")
+	streamRoutes := make([]apischema.RouteSpec, 0, len(routes))
+	for _, route := range routes {
+		if route.Endpoint() {
+			continue
+		}
+		streamRoutes = append(streamRoutes, route)
+	}
+	sort.Slice(streamRoutes, func(i, j int) bool {
+		return streamRoutes[i].Route < streamRoutes[j].Route
+	})
+	for _, route := range streamRoutes {
+		fmt.Fprintf(&schema, "  %q: %s;\n", route.Route, renderer.requestRef(route.RequestSpec()))
+	}
+	schema.WriteString("}\n\n")
+	schema.WriteString("/** Route names opened as streams rather than called as endpoints */\n")
+	schema.WriteString("export type StreamRouteName = keyof LinuxIOStreamSchema;\n")
 
 	for _, spec := range apischema.ExtraTypes {
 		renderer.typeRef(spec)
@@ -217,7 +253,7 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func requestShape(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return `{ kind: "none" }`
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -267,14 +303,14 @@ func newTSRenderer() *tsRenderer {
 }
 
 func (r *tsRenderer) requestRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return "void"
 	}
 	return r.typeRef(request)
 }
 
 func (r *tsRenderer) inputTupleRef(request apischema.TypeSpec) string {
-	if sameType(request.GoType, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(request.GoType) {
 		return "[]"
 	}
 	if field, ok := scalarInputField(request.GoType); ok {
@@ -293,10 +329,10 @@ func (r *tsRenderer) reflectType(t reflect.Type) string {
 	if t == nil {
 		return "unknown"
 	}
-	if sameType(t, reflect.TypeFor[apischema.NoResponse]()) {
+	if apischema.IsVoidType(t) {
 		return "void"
 	}
-	if sameType(t, reflect.TypeFor[apischema.NoRequest]()) {
+	if apischema.IsEmptyRequestType(t) {
 		return "{}"
 	}
 	if t.PkgPath() == "time" && t.Name() == "Time" {
@@ -500,10 +536,6 @@ func deref(t reflect.Type) reflect.Type {
 		t = t.Elem()
 	}
 	return t
-}
-
-func sameType(a, b reflect.Type) bool {
-	return a == deref(b)
 }
 
 var tsIdentifierRE = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)

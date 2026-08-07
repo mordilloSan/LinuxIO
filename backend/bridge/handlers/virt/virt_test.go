@@ -22,6 +22,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
+func createVMForTest(ctx context.Context, req apischema.VMCreateRequest) (apischema.VirtualMachine, error) {
+	return CreateVMWithProgress(ctx, req, nil)
+}
+
 func TestBuildDomainXML(t *testing.T) {
 	req := apischema.VMCreateRequest{
 		Name:     "test-vm",
@@ -298,7 +302,7 @@ func TestCreateVMRejectsDirectoryInstallMediaBeforeLibvirt(t *testing.T) {
 	fake := newFakeConn()
 	withFakeLibvirt(t, fake)
 
-	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "bad-media",
 		VCPUs:    2,
 		MemoryMB: 2048,
@@ -356,7 +360,7 @@ func TestCreateVMRollsBackVolumeWhenDefineFails(t *testing.T) {
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
 
-	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "rollback",
 		VCPUs:    1,
 		MemoryMB: 1024,
@@ -378,7 +382,7 @@ func TestCreateVMStartsInactiveDefaultsAndDomain(t *testing.T) {
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
 
-	vm, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	vm, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "install-me",
 		VCPUs:    2,
 		MemoryMB: 2048,
@@ -418,7 +422,7 @@ func TestCreateVMImportsImagePresetDisk(t *testing.T) {
 		return nil
 	})
 
-	vm, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	vm, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:          "haos",
 		VCPUs:         2,
 		MemoryMB:      4096,
@@ -463,7 +467,7 @@ func TestCreateVMImportsCloudImagePresetAndCreatesSeedISO(t *testing.T) {
 		return nil
 	})
 
-	vm, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	vm, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:              "debian",
 		VCPUs:             2,
 		MemoryMB:          2048,
@@ -543,7 +547,7 @@ func TestCreateVMRollsBackDomainAndVolumeWhenStartFails(t *testing.T) {
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
 
-	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "start-fail",
 		VCPUs:    2,
 		MemoryMB: 2048,
@@ -572,7 +576,7 @@ func TestCreateVMReportsDefaultNetworkAddressConflict(t *testing.T) {
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
 
-	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "network-conflict",
 		VCPUs:    2,
 		MemoryMB: 2048,
@@ -637,7 +641,7 @@ func TestCreateVMDefinesMissingDefaultPool(t *testing.T) {
 	withReadyPreflight(t)
 	withFakeMkdirAll(t)
 
-	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+	_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 		Name:     "new-pool",
 		VCPUs:    2,
 		MemoryMB: 2048,
@@ -739,7 +743,7 @@ func TestCreateVMRejectsExistingDomainAndVolume(t *testing.T) {
 		withFakeLibvirt(t, fake)
 		withReadyPreflight(t)
 
-		_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+		_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 			Name:     "existing",
 			VCPUs:    1,
 			MemoryMB: 1024,
@@ -764,7 +768,7 @@ func TestCreateVMRejectsExistingDomainAndVolume(t *testing.T) {
 		withFakeLibvirt(t, fake)
 		withReadyPreflight(t)
 
-		_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+		_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 			Name:     "existing-vol",
 			VCPUs:    1,
 			MemoryMB: 1024,
@@ -787,7 +791,7 @@ func TestCreateVMPropagatesLookupErrors(t *testing.T) {
 		withFakeLibvirt(t, fake)
 		withReadyPreflight(t)
 
-		_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+		_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 			Name:     "lookup-fail",
 			VCPUs:    1,
 			MemoryMB: 1024,
@@ -808,7 +812,7 @@ func TestCreateVMPropagatesLookupErrors(t *testing.T) {
 		withFakeLibvirt(t, fake)
 		withReadyPreflight(t)
 
-		_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+		_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 			Name:     "volume-lookup-fail",
 			VCPUs:    1,
 			MemoryMB: 1024,
@@ -829,7 +833,7 @@ func TestCreateVMPropagatesLookupErrors(t *testing.T) {
 		withFakeLibvirt(t, fake)
 		withReadyPreflight(t)
 
-		_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
+		_, err := createVMForTest(context.Background(), apischema.VMCreateRequest{
 			Name:     "pool-lookup-fail",
 			VCPUs:    1,
 			MemoryMB: 1024,

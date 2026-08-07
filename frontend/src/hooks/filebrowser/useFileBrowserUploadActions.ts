@@ -1,60 +1,50 @@
-import {
-  useCallback,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback, type ChangeEvent } from "react";
 
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
-import {
-  buildEntriesFromFileList,
-  mergeDroppedEntries,
-} from "@/utils/fileUpload";
+import { buildEntriesFromFileList } from "@/utils/fileUpload";
 import { joinPath } from "@/utils/path";
 
 import type { ResolveCollisionsFn } from "./useFileConflicts";
-import type { DroppedEntry } from "./useFileDroppedEntries";
+import type { UploadSlice } from "./useFileUpload";
 import { useScopedToast } from "../useScopedToast";
 
 interface UseFileBrowserUploadActionsParams {
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  folderInputRef: RefObject<HTMLInputElement | null>;
   invalidateListing: () => void;
-  isUploadProcessing: boolean;
   normalizedPath: string;
   onContextMenuClose: () => void;
   resolveCollisions: ResolveCollisionsFn;
-  setIsUploadProcessing: Dispatch<SetStateAction<boolean>>;
-  setUploadDialogOpen: Dispatch<SetStateAction<boolean>>;
-  setUploadEntries: Dispatch<SetStateAction<DroppedEntry[]>>;
   startUpload: BackgroundJobsContextValue["startUpload"];
-  uploadEntries: DroppedEntry[];
+  upload: UploadSlice;
 }
 
 export const useFileBrowserUploadActions = ({
-  fileInputRef,
-  folderInputRef,
   invalidateListing,
-  isUploadProcessing,
   normalizedPath,
   onContextMenuClose,
   resolveCollisions,
-  setIsUploadProcessing,
-  setUploadDialogOpen,
-  setUploadEntries,
   startUpload,
-  uploadEntries,
+  upload,
 }: UseFileBrowserUploadActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
+  const {
+    actions: uploadActions,
+    fileInputRef,
+    folderInputRef,
+    isUploadProcessing,
+    uploadEntries,
+  } = upload;
 
   const handleUpload = useCallback(() => {
     onContextMenuClose();
-    setUploadEntries([]);
-    setUploadDialogOpen(true);
-  }, [onContextMenuClose, setUploadDialogOpen, setUploadEntries]);
+    uploadActions.openDialog();
+  }, [onContextMenuClose, uploadActions]);
 
   const handleUploadInputChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files?.length) {
         event.target.value = "";
@@ -68,22 +58,21 @@ export const useFileBrowserUploadActions = ({
         return;
       }
 
-      setUploadEntries((prev) => mergeDroppedEntries(prev, entries));
+      uploadActions.mergeEntries(entries);
       event.target.value = "";
     },
-    [setUploadEntries, toast],
+    [toast, uploadActions],
   );
 
   const handleCloseUploadDialog = useCallback(() => {
     if (isUploadProcessing) return;
-    setUploadDialogOpen(false);
-    setUploadEntries([]);
-  }, [isUploadProcessing, setUploadDialogOpen, setUploadEntries]);
+    uploadActions.closeDialog();
+  }, [isUploadProcessing, uploadActions]);
 
   const handleClearUploadSelection = useCallback(() => {
     if (isUploadProcessing) return;
-    setUploadEntries([]);
-  }, [isUploadProcessing, setUploadEntries]);
+    uploadActions.clearEntries();
+  }, [isUploadProcessing, uploadActions]);
 
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
@@ -99,7 +88,7 @@ export const useFileBrowserUploadActions = ({
       return;
     }
 
-    setIsUploadProcessing(true);
+    uploadActions.setProcessing(true);
     try {
       // Uploads never overwrite silently: check the landing paths and ask the
       // user per collision before any bytes move.
@@ -128,23 +117,20 @@ export const useFileBrowserUploadActions = ({
       if (result.uploaded > 0) {
         invalidateListing();
       }
-      setUploadDialogOpen(false);
-      setUploadEntries([]);
+      uploadActions.closeDialog();
     } catch (error) {
       console.error("Upload failed", error);
       toast.error("Upload failed");
     } finally {
-      setIsUploadProcessing(false);
+      uploadActions.setProcessing(false);
     }
   }, [
     invalidateListing,
     normalizedPath,
     resolveCollisions,
-    setIsUploadProcessing,
-    setUploadDialogOpen,
-    setUploadEntries,
     startUpload,
     toast,
+    uploadActions,
     uploadEntries,
   ]);
 

@@ -266,6 +266,9 @@ func readCredentialsMeta(path string) (username, domain string) {
 			domain = strings.TrimSpace(val)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Debug("failed to read CIFS credentials metadata", "path", path, "error", err)
+	}
 	return username, domain
 }
 
@@ -287,13 +290,13 @@ func displayCIFSOptions(opts []string) []string {
 // via credentials=; guest mounts use -o guest. If the mountpoint is already in
 // fstab, it is simply (re)mounted using the existing entry — no credentials are
 // needed, so this also covers re-activating an inactive row.
-func MountCIFS(ctx context.Context, p cifsMountParams) (map[string]any, error) {
+func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountResult, error) {
 	if err := validateCIFSMountRequest(p.server, p.share, p.mountpoint); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 	// Preflight before any mkdir so an uninstalled client never leaves an orphan dir.
 	if err := requireCIFSClientAvailability(); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	source := fmt.Sprintf("//%s/%s", p.server, p.share)
@@ -304,28 +307,28 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (map[string]any, error) {
 	// is already there.
 	if fe, ok := getFstabEntries()[p.mountpoint]; ok {
 		if !isCIFSFSType(fe.fstype) || fe.source != source {
-			return nil, fmt.Errorf("mountpoint %s is already in use by a different mount", p.mountpoint)
+			return apischema.StorageMountResult{}, fmt.Errorf("mountpoint %s is already in use by a different mount", p.mountpoint)
 		}
 		if isCIFSMounted(p.mountpoint) {
-			return map[string]any{"success": true, "mountpoint": p.mountpoint}, nil
+			return mountResult(p.mountpoint, ""), nil
 		}
 		if err := os.MkdirAll(p.mountpoint, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create mountpoint: %w", err)
+			return apischema.StorageMountResult{}, fmt.Errorf("failed to create mountpoint: %w", err)
 		}
 		if out, err := cifsMountRunner(ctx, cifsMountCommandTimeout, "mount", p.mountpoint); err != nil {
-			return nil, fmt.Errorf("mount failed: %s", commandFailureMessage(out, err))
+			return apischema.StorageMountResult{}, fmt.Errorf("mount failed: %s", commandFailureMessage(out, err))
 		}
 		slog.Info("CIFS share mounted", "source", source, "mountpoint", p.mountpoint)
-		return map[string]any{"success": true, "mountpoint": p.mountpoint}, nil
+		return mountResult(p.mountpoint, ""), nil
 	}
 
 	options := cleanMountOptions(p.options)
 	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	if err := os.MkdirAll(p.mountpoint, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create mountpoint: %w", err)
+		return apischema.StorageMountResult{}, fmt.Errorf("failed to create mountpoint: %w", err)
 	}
 
 	fstabOpts := []string{"_netdev", "nofail"}
@@ -335,14 +338,14 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (map[string]any, error) {
 	} else {
 		credPath, err := writeCredentialsFile(p.mountpoint, p.username, p.password, p.domain)
 		if err != nil {
-			return nil, err
+			return apischema.StorageMountResult{}, err
 		}
 		fstabOpts = append([]string{"credentials=" + credPath}, fstabOpts...)
 	}
 
 	if err := addToFstab(source, p.mountpoint, "cifs", fstabOpts); err != nil {
 		_ = deleteCredentialsFile(p.mountpoint)
-		return nil, fmt.Errorf("failed to update fstab: %w", err)
+		return apischema.StorageMountResult{}, fmt.Errorf("failed to update fstab: %w", err)
 	}
 
 	// Password safety: log a fixed summary only — never the options/credentials.
@@ -354,10 +357,10 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (map[string]any, error) {
 		_ = deleteCredentialsFile(p.mountpoint)
 		message := commandFailureMessage(out, err)
 		slog.Error("CIFS mount failed", "source", source, "mountpoint", p.mountpoint, "message", message)
-		return nil, fmt.Errorf("mount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("mount failed: %s", message)
 	}
 	slog.Info("CIFS share mounted", "source", source, "mountpoint", p.mountpoint)
-	return map[string]any{"success": true, "mountpoint": p.mountpoint}, nil
+	return mountResult(p.mountpoint, ""), nil
 }
 
 func validateCIFSMountRequest(server, share, mountpoint string) error {
@@ -379,38 +382,38 @@ func validateCIFSMountRequest(server, share, mountpoint string) error {
 // RemountCIFS unmounts and remounts an fstab-configured share with new options,
 // preserving the existing auth (guest or credentials=<file>). No password is
 // collected. Signature matches RemountNFS.
-func RemountCIFS(ctx context.Context, mountpoint string, newOptions []string, updateFstab bool) (map[string]any, error) {
+func RemountCIFS(ctx context.Context, mountpoint string, newOptions []string, updateFstab bool) (apischema.StorageMountResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
 	options := cleanMountOptions(newOptions)
 	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 	if err := requireCIFSClientAvailability(); err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 
 	fe, ok := getFstabEntries()[mountpoint]
 	if !ok || !isCIFSFSType(fe.fstype) {
-		return nil, fmt.Errorf("CIFS mount not found at %s", mountpoint)
+		return apischema.StorageMountResult{}, fmt.Errorf("CIFS mount not found at %s", mountpoint)
 	}
 
 	fstabOpts := cifsRemountOptions(fe.options, options)
 	wasMounted, err := unmountCIFSIfMounted(ctx, mountpoint)
 	if err != nil {
-		return nil, err
+		return apischema.StorageMountResult{}, err
 	}
 	if updateFstab {
 		if err := updateFstabEntry(mountpoint, fe.source, "cifs", fstabOpts); err != nil {
-			return nil, fmt.Errorf("failed to update fstab: %w", err)
+			return apischema.StorageMountResult{}, fmt.Errorf("failed to update fstab: %w", err)
 		}
 	}
 	if out, err := cifsMountRunner(ctx, cifsMountCommandTimeout, "mount", mountpoint); err != nil {
-		return nil, rollbackFailedCIFSRemount(ctx, mountpoint, fe, updateFstab, wasMounted, out, err)
+		return apischema.StorageMountResult{}, rollbackFailedCIFSRemount(ctx, mountpoint, fe, updateFstab, wasMounted, out, err)
 	}
 	slog.Info("CIFS share remounted", "mountpoint", mountpoint)
-	return map[string]any{"success": true, "mountpoint": mountpoint}, nil
+	return mountResult(mountpoint, ""), nil
 }
 
 func cifsRemountOptions(existingOptions string, options []string) []string {
@@ -472,15 +475,15 @@ func preserveCIFSAuthOption(optionsCSV string) string {
 
 // UnmountCIFS unmounts a share. When removeFstab is set it also removes the
 // fstab line and deletes the root-only credentials file.
-func UnmountCIFS(ctx context.Context, mountpoint string, removeFstab bool) (map[string]any, error) {
+func UnmountCIFS(ctx context.Context, mountpoint string, removeFstab bool) (apischema.StorageWarningResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return nil, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageWarningResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
-	result := map[string]any{"success": true}
+	var warning string
 	if isCIFSMounted(mountpoint) {
 		if out, err := cifsMountRunner(ctx, cifsUnmountCommandTimeout, "umount", mountpoint); err != nil {
-			return nil, fmt.Errorf("umount failed: %s", commandFailureMessage(out, err))
+			return apischema.StorageWarningResult{}, fmt.Errorf("umount failed: %s", commandFailureMessage(out, err))
 		}
 		slog.Info("CIFS share unmounted", "mountpoint", mountpoint)
 	}
@@ -489,14 +492,14 @@ func UnmountCIFS(ctx context.Context, mountpoint string, removeFstab bool) (map[
 		if fe, ok := getFstabEntries()[mountpoint]; ok && isCIFSFSType(fe.fstype) {
 			if err := removeFromFstab(mountpoint); err != nil {
 				slog.Warn("unmount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
-				result["warning"] = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
+				warning = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
 			}
 		}
 		if err := deleteCredentialsFile(mountpoint); err != nil {
 			slog.Warn("failed to delete CIFS credentials file", "mountpoint", mountpoint, "error", err)
 		}
 	}
-	return result, nil
+	return warningResult(warning), nil
 }
 
 // writeCredentialsFile writes a root-only (0600) credentials file in a 0700

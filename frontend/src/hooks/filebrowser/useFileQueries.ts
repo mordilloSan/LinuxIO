@@ -1,16 +1,10 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import {
-  CACHE_TTL_MS,
-  linuxio,
-  LinuxIOError,
-  useIsUpdating,
-  useStreamMux,
-} from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
+import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
-import { FileResource } from "@/types/filebrowser";
 
 interface useFileQueriesParams {
   detailTarget: string[] | null;
@@ -27,18 +21,11 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
-  const { isOpen } = useStreamMux();
-  const isUpdating = useIsUpdating();
-  const {
-    data: resourceData,
-    isPending,
-    isError,
-    error,
-  } = linuxio.filebrowser.resource_get.useQuery(
-    { path: normalizedPath },
-    {
-      staleTime: CACHE_TTL_MS.NONE,
-    },
+  const { data: resourceData } = useSuspenseQuery(
+    linuxio.filebrowser.resource_get.queryOptions(
+      { path: normalizedPath },
+      fileBrowserListingQueryOptions,
+    ),
   );
 
   const resource = useMemo(
@@ -46,46 +33,29 @@ export const useFileQueries = ({
     [resourceData],
   );
 
-  const errorMessage = useMemo(() => {
-    if (!isError || error === null || error === undefined) return null;
-
-    const err = error as Error | LinuxIOError | null | undefined;
-    if (err instanceof LinuxIOError) {
-      if (err.code === 403) {
-        return `Permission denied: You don't have access to "${normalizedPath}".`;
-      }
-      if (err.code === 404 || err.code === 500) {
-        return `Path not found: "${normalizedPath}" does not exist.`;
-      }
-      return err.message;
-    }
-    if (err instanceof Error) {
-      return err.message;
-    }
-    return "Failed to load file information.";
-  }, [error, isError, normalizedPath]);
-
   // Detail resource query with content flag
   const {
     data: detailResource,
-    isPending: isDetailPending,
+    isLoading: isDetailLoading,
     error: detailError,
-  } = linuxio.filebrowser.resource_get.useQuery(
-    {
-      path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
-      unused: "",
-      getContent: "true",
-    },
-    {
-      enabled:
-        hasSingleDetailTarget &&
-        detailTarget !== null &&
-        detailTarget.length === 1,
-    },
+  } = useQuery(
+    linuxio.filebrowser.resource_get.queryOptions(
+      {
+        path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
+        unused: "",
+        getContent: "true",
+      },
+      {
+        enabled:
+          hasSingleDetailTarget &&
+          detailTarget !== null &&
+          detailTarget.length === 1,
+      },
+    ),
   );
 
-  const { data: statData, isPending: isStatPending } =
-    linuxio.filebrowser.resource_stat.useQuery(
+  const { data: statData, isLoading: isStatLoading } = useQuery(
+    linuxio.filebrowser.resource_stat.queryOptions(
       detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
       {
         enabled:
@@ -93,66 +63,55 @@ export const useFileQueries = ({
           detailTarget !== null &&
           detailTarget.length === 1,
       },
-    );
+    ),
+  );
 
   const multipleDetailTargets =
     hasMultipleDetailTargets && detailTarget !== null && detailTarget.length > 1
       ? detailTarget
       : [];
-  const areMultipleResourcesEnabled =
-    isOpen && !isUpdating && multipleDetailTargets.length > 1;
 
   const multipleResourceQueries = useQueries({
-    queries: multipleDetailTargets.map((path) => ({
-      ...linuxio.filebrowser.resource_get.queryOptions(
+    queries: multipleDetailTargets.map((path) =>
+      linuxio.filebrowser.resource_get.queryOptions(
         { path },
         {
           staleTime: CACHE_TTL_MS.NONE,
+          enabled: multipleDetailTargets.length > 1,
         },
       ),
-      enabled: areMultipleResourcesEnabled,
-    })),
+    ),
   });
 
-  const multipleResourceData = multipleResourceQueries.map((q) => q.data);
-
-  const multipleFileResources = useMemo(() => {
-    if (multipleDetailTargets.length <= 1) return undefined;
-    if (multipleResourceData.some((data) => data === undefined)) {
-      return undefined;
-    }
-
-    return multipleDetailTargets.reduce(
-      (acc, path, index) => {
-        const queryData = multipleResourceData[index];
-        if (queryData === undefined) {
-          return acc;
-        }
-        acc[path] = normalizeResource(queryData);
-        return acc;
-      },
-      {} as Record<string, FileResource>,
-    );
-  }, [multipleDetailTargets, ...multipleResourceData]);
-
-  const isMultipleFilesPending =
+  // Plain guarded derivation, not useMemo: memoizing would need a
+  // variable-length dep array (hooks-contract violation) and the query
+  // result array is fresh every render anyway. The map's identity churn is
+  // safe downstream — useFileMultipleDirectoryDetails keys its queries by
+  // path string, so it cannot cause refetch loops.
+  const hasAllMultipleResources =
     multipleDetailTargets.length > 1 &&
-    multipleResourceQueries.some((query) => query.isPending);
+    multipleResourceQueries.every((query) => query.data !== undefined);
 
-  const fileResourceMap = useMemo(() => {
-    if (!multipleFileResources) return {};
-    return Object.entries(multipleFileResources).reduce(
-      (acc, [path, resource]) => {
-        acc[path] = {
-          name: resource.name,
-          type: resource.type,
-          size: resource.size ?? 0,
-        };
-        return acc;
-      },
-      {} as Record<string, { name: string; type: string; size: number }>,
-    );
-  }, [multipleFileResources]);
+  const fileResourceMap: Record<
+    string,
+    { name: string; type: string; size: number }
+  > = {};
+  if (hasAllMultipleResources) {
+    multipleDetailTargets.forEach((path, index) => {
+      const data = multipleResourceQueries[index]?.data;
+      if (data === undefined) return;
+      const resource = normalizeResource(data);
+      fileResourceMap[path] = {
+        name: resource.name,
+        type: resource.type,
+        size: resource.size ?? 0,
+      };
+    });
+  }
+
+  const isMultipleFilesLoading =
+    multipleDetailTargets.length > 1 &&
+    multipleResourceQueries.some((query) => query.isLoading);
 
   const multiItemsStats = useFileMultipleDirectoryDetails(
     detailTarget || [],
@@ -160,27 +119,26 @@ export const useFileQueries = ({
   );
 
   // Editing file resource with content flag
-  const { data: editingFileResource, isPending: isEditingFileLoading } =
-    linuxio.filebrowser.resource_get.useQuery(
-      { path: editingPath || "", unused: "", getContent: "true" },
-      {
-        enabled: !!editingPath,
-      },
+  const { data: editingFileResource, isLoading: isEditingFileLoading } =
+    useQuery(
+      linuxio.filebrowser.resource_get.queryOptions(
+        { path: editingPath || "", unused: "", getContent: "true" },
+        {
+          enabled: !!editingPath,
+        },
+      ),
     );
 
   const shouldShowDetailLoader =
-    (hasSingleDetailTarget && isDetailPending) ||
-    (hasMultipleDetailTargets && isMultipleFilesPending);
+    (hasSingleDetailTarget && isDetailLoading) ||
+    (hasMultipleDetailTargets && isMultipleFilesLoading);
 
   return {
     resource,
-    isPending,
-    errorMessage,
     detailResource,
-    isDetailPending,
     detailError,
     statData,
-    isStatPending,
+    isStatLoading,
     multiItemsStats,
     editingFileResource,
     isEditingFileLoading,

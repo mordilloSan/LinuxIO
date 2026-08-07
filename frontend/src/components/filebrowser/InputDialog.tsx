@@ -1,6 +1,4 @@
-import React, { useCallback, useState } from "react";
-
-import FileBrowserDialog from "../dialog/GeneralDialog";
+import { useCallback, useState, type KeyboardEvent } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -9,6 +7,8 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
+
+import FileBrowserDialog from "../dialog/GeneralDialog";
 
 interface InputDialogProps {
   confirmText?: string;
@@ -20,7 +20,7 @@ interface InputDialogProps {
   title: string;
 }
 
-const InputDialog: React.FC<InputDialogProps> = ({
+const InputDialog = ({
   open,
   title,
   label,
@@ -28,7 +28,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
   onClose,
   onConfirm,
   confirmText = "Create",
-}) => {
+}: InputDialogProps) => {
   const [dialogState, setDialogState] = useState({
     open,
     defaultValue,
@@ -63,7 +63,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === "Enter" && value.trim()) {
       handleConfirm();
     }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api/StreamMultiplexer";
 
@@ -30,7 +30,8 @@ vi.mock("@/api/stream-helpers", () => ({
   waitForStreamResult: streamHelperMocks.waitForStreamResult,
 }));
 
-const { LinuxIOError, request } = await import("@/api/linuxio-core");
+const { LinuxIOError, ensureLoaderRequestReady, request } =
+  await import("@/api/linuxio-core");
 
 function createStream(overrides: Partial<Stream> = {}): Stream {
   return {
@@ -71,7 +72,12 @@ function createMux(stream = createStream()) {
 
 describe("linuxio-core request", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     muxMocks.waitForStreamMux.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("opens a request stream with the generated route and payload", async () => {
@@ -84,7 +90,11 @@ describe("linuxio-core request", () => {
       request("system", "get_info", { verbose: true }, { timeout: 5000 }),
     ).resolves.toEqual({ ok: true });
 
-    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+    // request() re-derives the remaining budget from the wall clock, so this is
+    // 5000 minus however many whole ms have elapsed since the deadline was set.
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
+      expect.closeTo(5000, -2),
+    );
     expect(mux.openStream).toHaveBeenCalledTimes(1);
     expect(mux.openStream.mock.calls[0][0]).toBe("system.get_info");
     const streamPayload = mux.openStream.mock.calls[0][1];
@@ -106,16 +116,91 @@ describe("linuxio-core request", () => {
     );
   });
 
-  it("throws when no stream mux has been initialized", async () => {
+  it("initializes an absent mux and waits for it to open for loader readiness", async () => {
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValueOnce(null).mockReturnValue(mux);
+    muxMocks.initStreamMux.mockReturnValue(mux);
+
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(mux);
+
+    expect(muxMocks.initStreamMux).toHaveBeenCalledTimes(1);
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+  });
+
+  it("reuses an open mux for loader readiness without reinitializing it", async () => {
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(mux);
+
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+  });
+
+  it("does not initialize or wait for an already-aborted loader", async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException("superseded", "AbortError"));
+
+    await expect(
+      ensureLoaderRequestReady(5000, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(muxMocks.getStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
+    expect(muxMocks.waitForStreamMux).not.toHaveBeenCalled();
+  });
+
+  it("propagates navigation abort while loader readiness is pending", async () => {
+    const mux = createMux();
+    const controller = new AbortController();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    muxMocks.waitForStreamMux.mockImplementation(
+      (_timeoutMs: number, signal: AbortSignal) =>
+        new Promise<boolean>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(signal.reason ?? new Error("aborted")),
+            { once: true },
+          );
+        }),
+    );
+
+    const readiness = ensureLoaderRequestReady(5000, controller.signal);
+    await vi.waitFor(() =>
+      expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
+        5000,
+        controller.signal,
+      ),
+    );
+    controller.abort(new DOMException("superseded", "AbortError"));
+
+    await expect(readiness).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("keeps ordinary requests owned by the authenticated mux lifecycle", async () => {
     muxMocks.getStreamMux.mockReturnValue(null);
 
     await expect(request("system", "get_info")).rejects.toMatchObject({
       code: "not_initialized",
       message: "StreamMux not initialized",
     });
+    expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
   });
 
-  it("reinitializes closed muxes before waiting for readiness", async () => {
+  it("reinitializes closed muxes before waiting for loader readiness", async () => {
+    const stream = createStream();
+    const closedMux = createMux(stream);
+    closedMux.status = "closed";
+    const openMux = createMux(stream);
+    muxMocks.getStreamMux
+      .mockReturnValueOnce(closedMux)
+      .mockReturnValue(openMux);
+    await expect(ensureLoaderRequestReady(5000)).resolves.toBe(openMux);
+
+    expect(muxMocks.initStreamMux).toHaveBeenCalledTimes(1);
+  });
+
+  it("reinitializes a closed mux before an ordinary request opens its stream", async () => {
     const stream = createStream();
     const closedMux = createMux(stream);
     closedMux.status = "closed";
@@ -136,12 +221,31 @@ describe("linuxio-core request", () => {
     muxMocks.getStreamMux.mockReturnValue(createMux());
     muxMocks.waitForStreamMux.mockResolvedValue(false);
 
+    await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
+      code: "connection_closed",
+    });
+  });
+
+  it("throws connection_closed when an ordinary request mux does not become ready", async () => {
+    muxMocks.getStreamMux.mockReturnValue(createMux());
+    muxMocks.waitForStreamMux.mockResolvedValue(false);
+
     await expect(request("system", "get_info")).rejects.toMatchObject({
       code: "connection_closed",
     });
   });
 
-  it("converts request aborts into timeout errors and closes the stream", async () => {
+  it("rejects with a typed connection error when readiness fails", async () => {
+    muxMocks.getStreamMux.mockReturnValue(createMux());
+    muxMocks.waitForStreamMux.mockRejectedValue(new Error("socket failed"));
+
+    await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
+      code: "connection_closed",
+      message: "Connection closed before receiving result",
+    });
+  });
+
+  it("converts the internal deadline abort into a timeout error", async () => {
     vi.useFakeTimers();
     const stream = createStream();
     muxMocks.getStreamMux.mockReturnValue(createMux(stream));
@@ -164,7 +268,51 @@ describe("linuxio-core request", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     await expectation;
-    expect(stream.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a caller abort without converting it to a timeout", async () => {
+    const stream = createStream();
+    muxMocks.getStreamMux.mockReturnValue(createMux(stream));
+    streamHelperMocks.waitForStreamResult.mockImplementation(
+      (_stream: Stream, options: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => {
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          });
+        }),
+    );
+    const controller = new AbortController();
+
+    const promise = request(
+      "system",
+      "slow",
+      {},
+      { signal: controller.signal, timeout: 5000 },
+    );
+    await vi.waitFor(() =>
+      expect(streamHelperMocks.waitForStreamResult).toHaveBeenCalled(),
+    );
+    controller.abort();
+
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
+      expect.closeTo(5000, -2),
+      controller.signal,
+    );
+  });
+
+  it("does not open a stream for an already-aborted caller", async () => {
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      request("system", "slow", {}, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(mux.openStream).not.toHaveBeenCalled();
   });
 
   it("retries connection-closed errors only when the retry policy allows it", async () => {

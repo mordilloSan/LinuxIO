@@ -31,11 +31,11 @@ func ListFailedLoginEventsForRuntime(ctx context.Context, rt runtime.Runtime, re
 	return FetchFailedLoginEvents(ctx, session.User.Username, session.Timing.CreatedAt, limit)
 }
 
-func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.BootIDRequest) (map[string]any, error) {
+func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.BootIDRequest) (apischema.MessageResponse, error) {
 	username := rt.Username()
 	bootID := strings.TrimSpace(req.BootID)
 	if !isValidBootID(bootID) {
-		return nil, bridgeipc.ErrInvalidArgs
+		return apischema.MessageResponse{}, bridgeipc.ErrInvalidArgs
 	}
 
 	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
@@ -45,17 +45,17 @@ func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, r
 		cfg.Dismissals.UncleanShutdownBootID = bootID
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("update config: %w", err)
+		return apischema.MessageResponse{}, fmt.Errorf("update config: %w", err)
 	}
 	slog.Info("dismissed unclean shutdown", "user", username, "bootId", bootID)
-	return map[string]any{"message": "dismissed"}, nil
+	return apischema.MessageResponse{Message: "dismissed"}, nil
 }
 
-func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.AlertIDRequest) (map[string]any, error) {
+func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, req apischema.AlertIDRequest) (apischema.MessageResponse, error) {
 	username := rt.Username()
 	alertID := strings.TrimSpace(req.AlertID)
 	if !isValidFailedLoginAlertID(alertID) {
-		return nil, bridgeipc.ErrInvalidArgs
+		return apischema.MessageResponse{}, bridgeipc.ErrInvalidArgs
 	}
 
 	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
@@ -65,10 +65,10 @@ func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, 
 		cfg.Dismissals.FailedLoginAlertID = alertID
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("update config: %w", err)
+		return apischema.MessageResponse{}, fmt.Errorf("update config: %w", err)
 	}
 	slog.Info("dismissed failed login alert", "user", username, "alertId", alertID)
-	return map[string]any{"message": "dismissed"}, nil
+	return apischema.MessageResponse{Message: "dismissed"}, nil
 }
 
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any

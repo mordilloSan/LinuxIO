@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   TRANSITION_DURATION_SLOW_MS,
@@ -8,16 +8,16 @@ import {
 import "./app-collapse.css";
 
 interface AppCollapseProps {
-  children: React.ReactNode;
+  children: ReactNode;
   in: boolean;
   unmountOnExit?: boolean;
 }
 
-const AppCollapse: React.FC<AppCollapseProps> = ({
+const AppCollapse = ({
   in: isOpen,
   unmountOnExit = false,
   children,
-}) => {
+}: AppCollapseProps) => {
   const [mounted, setMounted] = useState(isOpen);
 
   useEffect(() => {

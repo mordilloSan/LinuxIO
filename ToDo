@@ -1,87 +1,147 @@
-1 - Notifications!!!! See notifications.md
+# TODO
 
-2 - Revisit React Compiler backend once Rolldown/Vite exposes a native OXC integration: when `@vitejs/plugin-react`/Vite can run React Compiler through the OXC pass, drop the `@rolldown/plugin-babel` shim in `frontend/vite.config.ts`. Checked 2026-07-05: React Rust port PR facebook/react #36173 merged on 2026-06-09 and Oxc documents experimental standalone support, but Vite 8 / `@vitejs/plugin-react` 6.0.3 still exposes React Compiler via `reactCompilerPreset()` + `@rolldown/plugin-babel`, so keep the shim for now.
+### Notifications
 
-3 - Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
-- Checked 2026-07-05: `eslint-plugin-react` still needs the override. Latest 7.37.5 peers `eslint` through `^9.7`, not ESLint 10.
+Implement the notifications plan in [`docs/notifications.md`](docs/notifications.md).
 
-4 - values fixed in router.go should be set in global settings file?
+### React Compiler dependency pin
 
-5 - Session Activity And Job-Safe Idle Cleanup
-beware of ctx in handlers and if session dies bridge is orpahned doing work? Right now bridge dies and all work is canceled.
+Revisit the exact `"oxc-transform": "0.136.0"` pin in
+`frontend/package.json`. Versions 0.135.0–0.136.0 were the only npm releases
+shipping `reactCompiler`; Rolldown/Vite withdrew it in 0.137.0 because of the
+N-API binary-size increase while a leaner implementation was upstreamed.
 
-6 - Total review of jobs code. feels dirty. Vibe Coded this part.
+Unpin only when a current `oxc-transform` release documents `reactCompiler`, or
+when `@vitejs/plugin-react` exposes it natively. Versions 0.137+ silently ignore
+the option, so verify that `memo_cache_sentinel` remains in build output after
+any upgrade. The custom plugin in `frontend/vite.config.ts` relies on
+`enforce: "pre"` and the empty-code fallback. Pinned 2026-07-09.
 
-7 - Higher-level mutation API: implement `useJobAction` on CommandEndpoint (typed args/result, `invalidates`/`success`/`error` config, mode guard for job-only routes), then migrate existing `.useMutation()` job-route call sites (~80) to `.useJobAction()`.
+### Router policy settings
 
-8 - For go api generator we have 2 main files. Lets change this for better DX
+Decide whether the fixed values in `router.go` belong in the global settings
+file.
 
-9 - Vitest and playwright
+### Session activity and bridge-survivable jobs
 
-10 - Generated JSON request decoders from Go API contracts:
+- Classify every Job/Runner route as session-bound or bridge-survivable.
+- Keep session-bound work cancelable when its bridge/session ends.
+- Run the justified survivable subset under systemd transient units, with
+  owner-scoped discovery, reattachment, progress/result recovery, cancellation,
+  and runtime limits.
+- Ensure idle session cleanup does not terminate accepted survivable work.
+- Start with subprocess-backed operations; add a worker subcommand only where
+  an in-process job demonstrably needs survivability.
+- Follow [`docs/transient-units-plan.md`](docs/transient-units-plan.md), updating
+  its assumptions against the current implementation before execution.
+
+### Frontend test coverage
+
+Define and complete the intended division of coverage between Vitest and
+Playwright.
+
+### Generated JSON request decoders
+
 - Keep JSON envelopes and Go structs as the source of truth.
-- Extend `linuxio-api-gen` to emit backend request decoders plus frontend TS.
-- Reject unknown fields, duplicate fields, missing required fields, and wrong scalar types.
-- Do not hand-write per-route decoders; `make generate` should update them.
-- Keep response encoding on `encoding/json` unless profiling proves it matters.
-- See `docs/api-contract.md` Generated Request Decoder Plan.
+- Extend `linuxio-api-gen` to emit backend request decoders alongside frontend
+  TypeScript.
+- Reject unknown fields, duplicate fields, missing required fields, and invalid
+  scalar types.
+- Do not hand-write per-route decoders; `make generate` must update them.
+- Keep response encoding on `encoding/json` unless profiling proves otherwise.
+- Follow the Generated Request Decoder Plan in `docs/api-contract.md`.
 
-11 - Docker update status persistence:
-- Bridge-side reader/store is only half of the feature; the missing piece is the scheduled producer.
-- Timer already starts `linuxio-watchtower.service`, but that service runs Watchtower directly and does not currently publish per-container JSON status.
-- Preferred direction: ask upstream/fork Watchtower for stable JSON update-check report output (for example `--porcelain json` or `/v1/status`), then systemd can write/publish `/var/lib/linuxio/docker-update-status.json`.
-- Avoid embedded shell parsers or bridge CLI commands for scheduled runs.
-- Bridge should mostly read the JSON artifact and display update status.
+### Docker update-status persistence
 
-filebrowser copy function ignores symlinks? - DONE
-Filebrowser batch operations follow-ups (see docs/filebrowser-batch-operations.md) - DONE
-Batch uploads: copy/move/delete now run as one batch job, but upload is still one-job-per-file - DONE
-Implement monitoring - DONE
-Implement virtual on logs and filebrowser.... DONE
-Fix [DEBUG] bridge package has invalid PackageKit InfoEnum - DONE
-Migrate to tanstackrouter? Not Worth it
-Initial bundle: split the Iconify registry so auth/shell/sidebar icons are separate from route-specific icons.DONE
-Authenticated runtime: split `AuthGuard` into a lightweight gate plus lazy authenticated providers. DONE
-Dashboard network card: remove render-time state updates and derive or effect-sync selected interface state. DONE
-Global fonts/icons: remove Space Grotesk and Material Icons; use the local breadcrumb home icon. DONE
-Route preload: keep intent-based preload only, with no all-route background preload - DONE
-Ccnsolidate small helper functions in utils - DONE
-Bridge Handler Pattern - See docs DONE
-Shared API betewen go/react via generator. DONE
-Remove binary protocol. Lets just use json for all... DONE
-Config should not be loaded on every page load. go template? - DONE
-user config to match config in UI - DONE
-Fix NFS distro dependency - DONE
-Implement power management - DONE
-Review bridge and server logging - Done
-Remove func StartSimpleNetInfoSampler() - Done
-ChunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts - DONE
-Different view modes on cards/tables with user config (migrate all tables to cards) - DONE
-Docker auto update - DONE
-Docker compose UI - DONE
-Right now hash can be reproduced if build from same code base. - DONE
-fix indexer status check and calls. DONE
-for service logs we could use real streaming????? DONE
-for docker logs we could use real streaming????? DONE
-Improve the app update feature to give more feedback (like unraid) -DONE
-Remove gin - DONE
-use quantum filebrowser as our main navigator - DONE
-when we login we must also add the user to filebrowser - DONE
-filebrowser header should contain sessionid - DONE
-destroy the filebrowser config file after we create the container - DONE
-when the bridge does cleanup we also must kill the PTY session - check when is needed - DONE
-websocket should be persistent - DONE
-For main programa startup no config file should be needed... DONE
-bridge socket and bridge binary should not have the sessionid written - DONE
-Sync theme between filebrowser and global app2. - DONE
-Update user config files locations for theme (after login) - We should only have 1 config file. that file should only exist after login... - DONE
-Separate the bridge and server code - DONE
-Optimize number of api calls when changing theme - DONE
-Implement a Global API for GET methods only with general info - DONE
-Bridge upon receiving exit command should cancel ongoing works - DONE
-Wireguard Testing and lasthandshake - DONE
-If session is garbage colected the bridge must exist as well - DONE
-Test Multiple Users - DONE
-Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable. - Done
-Multiplex over Single Connection - DONE
-Updates - Make it more responsive. Use d-bus streaming with websocket? - DONE
+Complete the missing scheduled producer for the existing bridge-side
+reader/store:
+
+- Keep Watchtower as a one-shot process: `--run-once --porcelain v1`.
+- Reuse `backend/bridge/internal/watchtower/porcelain.go` to parse the structured
+  output and write `/var/lib/linuxio/docker-update-status.json`.
+- Have the systemd timer/service run that producer and exit; do not require a
+  resident Watchtower HTTP API.
+- Keep the bridge primarily responsible for reading and displaying the JSON
+  artifact.
+- Treat a Watchtower upgrade as separate work; it is not required to complete
+  this producer.
+
+### Connection-loss and recovery semantics
+
+Implement explicit semantics for self-severing actions such as reboot,
+power-off, logout, and selected network changes:
+
+- Add `native_handoff` / `expected_loss` route metadata only when it drives
+  concrete generated-client behavior.
+- Never automatically retry an ambiguous connection loss for these mutations.
+- Distinguish confirmed failure, native acceptance, and an unknown outcome after
+  disconnection.
+- Reconnect and query the route-specific convergence condition before reporting
+  confirmed success; otherwise report a clear timeout/unknown outcome.
+- Add backend contract tests and frontend recovery/feedback tests for every
+  classified route.
+
+## Completed or closed
+
+- [x] **6. Total jobs review:** migrated bounded mutations to direct actions,
+  retained only real progress/recovery jobs, added typed handler bindings and
+  compile-time route-mode endpoint safety, and eliminated contract drift. See
+  [`jobs-review-handoff.md`](jobs-review-handoff.md).
+- [x] Moved the React Compiler backend from Babel to the custom
+  `oxc-transform` plugin (2026-07-09).
+- [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
+- [x] Completed the post-migration frontend UI architecture cleanup.
+- [x] Fixed file-browser progress updates rerendering the entire browser.
+- [x] Replaced per-item chmod with `filebrowser.chmod_batch`.
+- [x] Added `useJobAction` / `useJobStreamAction` and attach-based recovery.
+- [x] Fixed file-browser copy behavior for symlinks.
+- [x] Completed the file-browser batch-operation follow-ups.
+- [x] Implemented batch jobs for copy, move, delete, and uploads.
+- [x] Implemented monitoring.
+- [x] Added virtualized rendering for logs and the file browser.
+- [x] Fixed invalid PackageKit `InfoEnum` debug output.
+- [x] Closed the TanStack Router migration proposal as not worthwhile.
+- [x] Split the Iconify registry into shell and route-specific chunks.
+- [x] Split `AuthGuard` into a lightweight gate and lazy authenticated
+  providers.
+- [x] Removed render-time state updates from the dashboard network card.
+- [x] Removed Space Grotesk and Material Icons in favor of local assets.
+- [x] Kept route preloading intent-based rather than preloading every route.
+- [x] Consolidated small utility helpers.
+- [x] Documented and enforced the bridge handler pattern.
+- [x] Generated the shared Go/React API contracts.
+- [x] Removed the binary protocol in favor of JSON.
+- [x] Stopped loading configuration on every page load.
+- [x] Aligned user configuration with the UI.
+- [x] Fixed the NFS distribution dependency.
+- [x] Implemented power management.
+- [x] Reviewed bridge and server logging.
+- [x] Removed `StartSimpleNetInfoSampler`.
+- [x] Moved chunk size into user configuration.
+- [x] Added configurable card/table view modes.
+- [x] Implemented Docker auto-update and the Docker Compose UI.
+- [x] Made builds reproducible from the same source tree.
+- [x] Fixed indexer status checks and calls.
+- [x] Added real streaming for service and Docker logs.
+- [x] Improved application-update progress feedback.
+- [x] Removed Gin.
+- [x] Adopted Quantum Filebrowser as the main navigator.
+- [x] Added login-time file-browser user provisioning.
+- [x] Added the session ID to file-browser headers.
+- [x] Removed the generated file-browser configuration after container creation.
+- [x] Ensured bridge cleanup terminates owned PTY sessions where required.
+- [x] Made the WebSocket persistent.
+- [x] Removed the main program's startup configuration-file requirement.
+- [x] Removed session IDs from the bridge socket and binary paths.
+- [x] Synchronized the global and file-browser themes.
+- [x] Consolidated post-login theme settings into one user configuration file.
+- [x] Separated bridge and server code.
+- [x] Reduced API calls when changing themes.
+- [x] Added a global read-only API for general information.
+- [x] Cancelled session-bound work when the bridge receives an exit command.
+- [x] Added WireGuard testing and latest-handshake reporting.
+- [x] Ensured session garbage collection also terminates its bridge.
+- [x] Tested multiple users.
+- [x] Added bridge-binary integrity validation.
+- [x] Multiplexed traffic over a single connection.
+- [x] Made update reporting more responsive with D-Bus/WebSocket events.

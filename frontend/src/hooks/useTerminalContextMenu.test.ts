@@ -1,5 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
-
+import type { MouseEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
@@ -29,7 +29,7 @@ function contextMenuEvent(x = 10, y = 20) {
     clientY: y,
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
-  } as unknown as React.MouseEvent;
+  } as unknown as MouseEvent;
 }
 
 describe("useTerminalContextMenu", () => {

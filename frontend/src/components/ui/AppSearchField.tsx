@@ -1,9 +1,9 @@
-import React from "react";
+import { forwardRef } from "react";
 
 import "./app-search-field.css";
 import AppTextField, { type AppTextFieldProps } from "./AppTextField";
 
-const AppSearchField = React.forwardRef<
+const AppSearchField = forwardRef<
   HTMLInputElement | HTMLTextAreaElement,
   AppTextFieldProps
 >((props, ref) => {

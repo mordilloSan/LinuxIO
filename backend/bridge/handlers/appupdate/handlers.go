@@ -30,7 +30,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func handleVersion(ctx context.Context, _ apischema.NoRequest, emit bridgeipc.Events) error {
-	info, err := getVersionInfo(ctx)
-	return bridgeipc.EmitResult(emit, info, err)
+func handleVersion(ctx context.Context, _ apischema.NoRequest) (apischema.VersionResponse, error) {
+	return getVersionInfo(ctx)
 }

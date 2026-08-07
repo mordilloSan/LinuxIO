@@ -1,13 +1,13 @@
-import React from "react";
+import { forwardRef, HTMLAttributes } from "react";
 
 import "./app-circular-progress.css";
 
-export interface AppCircularProgressProps extends React.HTMLAttributes<HTMLSpanElement> {
+export interface AppCircularProgressProps extends HTMLAttributes<HTMLSpanElement> {
   color?: "primary" | "inherit";
   size?: number;
 }
 
-const AppCircularProgress = React.forwardRef<
+const AppCircularProgress = forwardRef<
   HTMLSpanElement,
   AppCircularProgressProps
 >(({ size = 40, color = "primary", className, style, ...rest }, ref) => {

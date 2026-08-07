@@ -1,17 +1,13 @@
 import "sonner";
 
+import type { ToastMeta } from "@/types/navigation";
+
 declare module "sonner" {
   interface ToastT {
-    meta?: {
-      href?: string;
-      label?: string;
-    };
+    meta?: ToastMeta;
   }
 
   interface ExternalToast {
-    meta?: {
-      href?: string;
-      label?: string;
-    };
+    meta?: ToastMeta;
   }
 }

@@ -1,6 +1,9 @@
 import { useContext, useMemo } from "react";
 
-import { ToastHistoryContext, ToastHistoryItem } from "@/contexts/ToastContext";
+import {
+  ToastHistoryContext,
+  type ToastHistoryItem,
+} from "@/contexts/ToastContext";
 
 export const useToastHistory = (limit = 5): ToastHistoryItem[] => {
   const context = useContext(ToastHistoryContext);
@@ -14,7 +17,6 @@ export const useToastHistory = (limit = 5): ToastHistoryItem[] => {
     [context.history, limit],
   );
 };
-
 export const useClearToastHistory = (): (() => void) => {
   const context = useContext(ToastHistoryContext);
 

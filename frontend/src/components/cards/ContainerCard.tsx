@@ -1,10 +1,7 @@
 import { Icon } from "@iconify/react";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
-import AppCircularProgress from "../ui/AppCircularProgress";
-
-import { jobSnapshotResult, linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -18,14 +15,13 @@ import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
-const LogsDialog = React.lazy(() => import("@/components/docker/LogsDialog"));
-const TerminalDialog = React.lazy(
-  () => import("@/components/docker/TerminalDialog"),
-);
+import AppCircularProgress from "../ui/AppCircularProgress";
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
+const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
+
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
@@ -65,7 +61,7 @@ interface ContainerCardProps {
   selected?: boolean;
 }
 
-const ContainerCard: React.FC<ContainerCardProps> = ({
+const ContainerCard = ({
   actionPending = false,
   autoUpdateDisabled = false,
   autoUpdatePending = false,
@@ -75,10 +71,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   onSelect,
   onToggleAutoUpdate,
   selected = false,
-}) => {
+}: ContainerCardProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const queryClient = useQueryClient();
 
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
@@ -95,93 +90,44 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 
   // ---- actions (start/stop/restart/remove) ----
   const { mutate: startContainer, isPending: isStartPending } =
-    linuxio.docker.start_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} started successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to start container ${name}`),
-        );
-      },
+    linuxio.docker.start_container.useAction({
+      success: `Container ${name} started successfully`,
+      error: `Failed to start container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: stopContainer, isPending: isStopPending } =
-    linuxio.docker.stop_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} stopped successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to stop container ${name}`),
-        );
-      },
+    linuxio.docker.stop_container.useAction({
+      success: `Container ${name} stopped successfully`,
+      error: `Failed to stop container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: restartContainer, isPending: isRestartPending } =
-    linuxio.docker.restart_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} restarted successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to restart container ${name}`),
-        );
-      },
+    linuxio.docker.restart_container.useAction({
+      success: `Container ${name} restarted successfully`,
+      error: `Failed to restart container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
-    linuxio.docker.remove_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${name} removed successfully`);
-        queryClient.invalidateQueries({
-          queryKey: linuxio.docker.list_containers.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to remove container ${name}`),
-        );
-      },
+    linuxio.docker.remove_container.useAction({
+      success: `Container ${name} removed successfully`,
+      error: `Failed to remove container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
-
-  const invalidateDockerUpdateViews = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_containers.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_compose_projects.queryKey(),
-    });
-    queryClient.invalidateQueries({
-      queryKey: linuxio.docker.list_images.queryKey(),
-    });
-  }, [queryClient]);
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useMutation({
-      onSuccess: (data) => {
-        const result = jobSnapshotResult<{ updated: boolean }>(data);
+    linuxio.docker.update_container.useAction({
+      success: (result) => {
         toast.success(
           result.updated
             ? `Container ${name} updated successfully`
             : `Container ${name} is already up to date`,
         );
-        invalidateDockerUpdateViews();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to update container ${name}`),
-        );
-      },
+      error: `Failed to update container ${name}`,
+      toast: DOCKER_TOAST_META,
     });
 
   const isActionPending =
@@ -257,8 +203,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
       style={{
         display: "flex",
         alignItems: "center",
@@ -369,7 +313,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
   return (
     <FrostedCard
       hoverLift={!selected}
-      onClick={onSelect}
       style={{
         padding: 12,
         display: "flex",
@@ -378,7 +321,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
         width: "100%",
         minWidth: 0,
         position: "relative",
-        cursor: onSelect ? "pointer" : "default",
         border: "none",
         transition: "transform 0.2s, box-shadow 0.2s",
       }}
@@ -423,103 +365,107 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
 
       {selected ? (
         <>
-          {/* Header: icon + title/subtitle + status dot (matches service card) */}
-          <div
+          <AppButton
+            aria-controls={`container-card-${container.Id}`}
+            aria-expanded={selected}
+            aria-label={`Collapse ${name}`}
+            color="inherit"
+            fullWidth
+            onClick={onSelect}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              marginBottom: 12,
-              gap: 8,
+              alignItems: "stretch",
+              color: "inherit",
+              flexDirection: "column",
+              justifyContent: "flex-start",
+              padding: 0,
+              textAlign: "left",
             }}
           >
+            {/* Header: icon + title/subtitle + status dot (matches service card) */}
             <div
               style={{
-                flex: 1,
-                minWidth: 0,
                 display: "flex",
-                alignItems: "center",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: 12,
                 gap: 8,
               }}
             >
-              <div style={{ width: 36, height: 36, flexShrink: 0 }}>
-                <DockerIcon alt={name} identifier={container.icon} size={36} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <AppTypography
-                  component="div"
-                  fontSize="0.875rem"
-                  fontWeight="bold"
-                  noWrap
-                  title={name}
-                  toastMeta={DOCKER_TOAST_META}
-                  variant="body2"
-                >
-                  {name}
-                </AppTypography>
-                <AppTypography
-                  color="text.secondary"
-                  component="div"
-                  fontSize="0.7rem"
-                  noWrap
-                  style={{ marginTop: 2 }}
-                  title={container.Image}
-                  variant="caption"
-                >
-                  {container.Image}
-                </AppTypography>
-                {container.updateAvailable && (
-                  <Chip
-                    color="warning"
-                    label="Update available"
-                    size="small"
-                    style={{ fontSize: "0.68rem", marginTop: 4 }}
-                    variant="soft"
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <div style={{ width: 36, height: 36, flexShrink: 0 }}>
+                  <DockerIcon
+                    alt={name}
+                    identifier={container.icon}
+                    size={36}
                   />
-                )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <AppTypography
+                    component="div"
+                    fontSize="0.875rem"
+                    fontWeight="bold"
+                    noWrap
+                    title={name}
+                    toastMeta={DOCKER_TOAST_META}
+                    variant="body2"
+                  >
+                    {name}
+                  </AppTypography>
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    fontSize="0.7rem"
+                    noWrap
+                    style={{ marginTop: 2 }}
+                    title={container.Image}
+                    variant="caption"
+                  >
+                    {container.Image}
+                  </AppTypography>
+                  {container.updateAvailable && (
+                    <Chip
+                      color="warning"
+                      label="Update available"
+                      size="small"
+                      style={{ fontSize: "0.68rem", marginTop: 4 }}
+                      variant="soft"
+                    />
+                  )}
+                </div>
               </div>
+              <StatusDot
+                color={statusColor}
+                size={8}
+                style={{ marginTop: 4 }}
+              />
             </div>
-            <span
-              style={{
-                display: "inline-block",
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: statusColor,
-                flexShrink: 0,
-                marginTop: 4,
-              }}
-            />
-          </div>
+          </AppButton>
 
           {/* Body: config sections (fills) + actions pinned to the bottom */}
           <div
+            id={`container-card-${container.Id}`}
             style={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
+              gap: theme.spacing(1.25),
               minWidth: 0,
             }}
           >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: theme.spacing(1.25),
-                minWidth: 0,
-                cursor: "default",
-              }}
-            >
-              <ContainerInfoSections
-                container={container}
-                sections={["overview", "networks"]}
-              />
-            </div>
-            {selectedActions}
+            <ContainerInfoSections
+              container={container}
+              sections={["overview", "networks"]}
+            />
           </div>
+          {selectedActions}
         </>
       ) : (
         <>
@@ -553,25 +499,40 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
               <DockerIcon alt={name} identifier={container.icon} size={48} />
             </div>
             <div style={{ flex: 0.95, minWidth: 0 }}>
-              <AppTypography
-                fontWeight={600}
-                noWrap
+              <AppButton
+                aria-label={`Select ${name}`}
+                color="inherit"
+                fullWidth
+                onClick={onSelect}
                 style={{
-                  marginLeft: 4,
-                  marginRight: 0.4,
-                  marginBottom: 2,
-                  fontSize: "1.05rem",
+                  alignItems: "flex-start",
+                  color: "inherit",
+                  justifyContent: "flex-start",
+                  minWidth: 0,
+                  padding: 0,
+                  textAlign: "left",
                 }}
-                title={name}
-                toastMeta={DOCKER_TOAST_META}
-                variant="subtitle1"
               >
-                {name}
-              </AppTypography>
+                <AppTypography
+                  fontWeight={600}
+                  noWrap
+                  style={{
+                    marginLeft: 4,
+                    marginRight: 0.4,
+                    marginBottom: 2,
+                    fontSize: "1.05rem",
+                  }}
+                  title={name}
+                  toastMeta={DOCKER_TOAST_META}
+                  variant="subtitle1"
+                >
+                  {name}
+                </AppTypography>
+              </AppButton>
               <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                 {container.State !== "running" && (
                   <AppTooltip arrow title="Start Container">
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span>
                       <AppActionIconButton
                         icon="mdi:play"
                         iconSize={16}
@@ -584,7 +545,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 )}
                 {container.State === "running" && (
                   <AppTooltip arrow title="Stop Container">
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span>
                       <AppActionIconButton
                         icon="mdi:stop"
                         iconSize={16}
@@ -596,7 +557,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   </AppTooltip>
                 )}
                 <AppTooltip arrow title="Restart Container">
-                  <span onClick={(e) => e.stopPropagation()}>
+                  <span>
                     <AppActionIconButton
                       icon="mdi:restart"
                       iconSize={16}
@@ -612,7 +573,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                     key={`compact-${autoTooltipKey}`}
                     title={autoUpdateTooltip}
                   >
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span>
                       <AppActionIconButton
                         color={
                           autoUpdateSelected
@@ -632,7 +593,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 )}
                 {container.updateAvailable && (
                   <AppTooltip arrow title="Update Container">
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span>
                       <AppActionIconButton
                         icon="mdi:update"
                         iconSize={16}
@@ -644,7 +605,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   </AppTooltip>
                 )}
                 <AppTooltip arrow title="Remove Container">
-                  <span onClick={(e) => e.stopPropagation()}>
+                  <span>
                     <AppActionIconButton
                       icon="mdi:delete"
                       iconSize={16}
@@ -655,7 +616,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   </span>
                 </AppTooltip>
                 <AppTooltip arrow title="View Logs">
-                  <span onClick={(e) => e.stopPropagation()}>
+                  <span>
                     <AppActionIconButton
                       icon="mdi:file-document-outline"
                       iconSize={16}
@@ -666,7 +627,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                   </span>
                 </AppTooltip>
                 <AppTooltip arrow title="Open Terminal">
-                  <span onClick={(e) => e.stopPropagation()}>
+                  <span>
                     <AppActionIconButton
                       icon="mdi:console"
                       iconSize={16}
@@ -678,7 +639,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({
                 </AppTooltip>
                 {container.url && (
                   <AppTooltip arrow title="Open App">
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span>
                       <AppActionIconButton
                         icon="mdi:open-in-new"
                         iconSize={16}

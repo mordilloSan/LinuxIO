@@ -1,0 +1,928 @@
+// Shorten the TERM-to-KILL grace so the stubborn-child regression completes
+// in about a second instead of the production five.
+#define CHILD_TERM_GRACE_SEC 1
+
+#define main linuxio_auth_entrypoint
+#include "linuxio-auth.c"
+#undef main
+
+struct test_case
+{
+  const char *name;
+  int (*run)(void);
+};
+
+#define CHECK(condition)                                                                    \
+  do                                                                                        \
+  {                                                                                         \
+    if (!(condition))                                                                       \
+    {                                                                                       \
+      fprintf(stderr, "%s:%d: check failed: %s\n", __func__, __LINE__, #condition);         \
+      return 1;                                                                             \
+    }                                                                                       \
+  } while (0)
+
+static int write_pipe_bytes(const uint8_t *data, size_t len, int *read_fd)
+{
+  int pipefd[2];
+
+  if (!data || !read_fd || pipe2(pipefd, O_CLOEXEC) != 0)
+    return -1;
+  if (write_all(pipefd[1], data, len) != 0)
+  {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return -1;
+  }
+  close(pipefd[1]);
+  *read_fd = pipefd[0];
+  return 0;
+}
+
+static int read_pipe_to_end(int fd, uint8_t *buf, size_t bufsz, size_t *out_len)
+{
+  size_t total = 0;
+
+  while (total < bufsz)
+  {
+    ssize_t n = read(fd, buf + total, bufsz - total);
+    if (n < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return -1;
+    }
+    if (n == 0)
+    {
+      *out_len = total;
+      return 0;
+    }
+    total += (size_t)n;
+  }
+
+  return -1;
+}
+
+static int test_identity_validation(void)
+{
+  char longest_username[PROTO_MAX_USERNAME];
+  char oversized_username[PROTO_MAX_USERNAME + 1];
+  const char unicode_username[] = "m\xc3\xADguel";
+  const char malformed_utf8[] = {(char)0xc0, (char)0xaf, '\0'};
+  const char c1_control[] = {'h', 'o', 's', 't', (char)0xc2, (char)0x9b, '\0'};
+
+  memset(longest_username, 'a', sizeof(longest_username) - 1);
+  longest_username[sizeof(longest_username) - 1] = '\0';
+  memset(oversized_username, 'a', sizeof(oversized_username) - 1);
+  oversized_username[sizeof(oversized_username) - 1] = '\0';
+
+  CHECK(valid_username("miguel"));
+  CHECK(valid_username(unicode_username));
+  CHECK(valid_username(longest_username));
+  CHECK(!valid_username(NULL));
+  CHECK(!valid_username(""));
+  CHECK(!valid_username("two words"));
+  CHECK(!valid_username("line\nbreak"));
+  CHECK(!valid_username("delete\x7f"));
+  CHECK(!valid_username(malformed_utf8));
+  CHECK(!valid_username(oversized_username));
+
+  CHECK(valid_remote_host("192.0.2.10"));
+  CHECK(valid_remote_host("2001:db8::1"));
+  CHECK(!valid_remote_host(c1_control));
+  return 0;
+}
+
+static int test_lenstr_rejects_ambiguous_input(void)
+{
+  const uint8_t valid[] = {0, 3, 'a', 'b', 'c'};
+  const uint8_t embedded_nul[] = {0, 3, 'a', 0, 'b'};
+  const uint8_t truncated[] = {0, 4, 'a', 'b'};
+  char buf[8];
+  int fd = -1;
+  int64_t deadline_ns;
+
+  CHECK(write_pipe_bytes(valid, sizeof(valid), &fd) == 0);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == 0);
+  CHECK(strcmp(buf, "abc") == 0);
+  CHECK(close(fd) == 0);
+
+  memset(buf, 'x', sizeof(buf));
+  CHECK(write_pipe_bytes(embedded_nul, sizeof(embedded_nul), &fd) == 0);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == -1);
+  CHECK(close(fd) == 0);
+  for (size_t i = 0; i < sizeof(buf); i++)
+    CHECK(buf[i] == '\0');
+
+  memset(buf, 'x', sizeof(buf));
+  CHECK(write_pipe_bytes(truncated, sizeof(truncated), &fd) == 0);
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(1000000000);
+  CHECK(read_lenstr_until(fd, buf, sizeof(buf), deadline_ns) == -1);
+  CHECK(close(fd) == 0);
+  for (size_t i = 0; i < sizeof(buf); i++)
+    CHECK(buf[i] == '\0');
+
+  return 0;
+}
+
+static int test_lenstr_honors_absolute_deadline(void)
+{
+  const uint8_t len_only[] = {0, 4};
+  char buf[8];
+  int pipefd[2];
+  int64_t deadline_ns;
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  CHECK(write(pipefd[1], len_only, sizeof(len_only)) == (ssize_t)sizeof(len_only));
+  CHECK(monotonic_now_ns(&deadline_ns) == 0);
+  deadline_ns += INT64_C(50000000);
+  errno = 0;
+  CHECK(read_lenstr_until(pipefd[0], buf, sizeof(buf), deadline_ns) == -1);
+  CHECK(errno == ETIMEDOUT);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(close(pipefd[1]) == 0);
+  return 0;
+}
+
+static int test_stderr_parking_clears_cloexec(void)
+{
+  int pipefd[2];
+  int status = 0;
+  int flags = -1;
+  uint8_t extra = 0;
+  pid_t pid;
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    close(pipefd[0]);
+    if (replace_stderr_with_devnull() != 0)
+      _exit(1);
+    flags = fcntl(STDERR_FILENO, F_GETFD);
+    (void)write_all(pipefd[1], &flags, sizeof(flags));
+    close(pipefd[1]);
+    _exit(0);
+  }
+
+  CHECK(close(pipefd[1]) == 0);
+  CHECK(read(pipefd[0], &flags, sizeof(flags)) == (ssize_t)sizeof(flags));
+  CHECK(read(pipefd[0], &extra, sizeof(extra)) == 0);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(waitpid_nointr(pid, &status, 0) == pid);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  CHECK(flags >= 0);
+  CHECK((flags & FD_CLOEXEC) == 0);
+  return 0;
+}
+
+static int test_pam_conversation(void)
+{
+  const struct pam_message messages[] = {
+      {.msg_style = PAM_PROMPT_ECHO_OFF, .msg = "Password:"},
+      {.msg_style = PAM_PROMPT_ECHO_ON, .msg = "Login:"},
+      {.msg_style = PAM_TEXT_INFO, .msg = "Info"},
+      {.msg_style = PAM_ERROR_MSG, .msg = "Error"},
+  };
+  const struct pam_message *message_ptrs[] = {
+      &messages[0], &messages[1], &messages[2], &messages[3]};
+  struct pam_appdata appdata = {
+      .username = "miguel",
+      .password = "secret",
+  };
+  struct pam_response *responses = NULL;
+
+  CHECK(pam_conv_func(4, message_ptrs, &responses, &appdata) == PAM_SUCCESS);
+  CHECK(responses != NULL);
+  CHECK(responses[0].resp != NULL && strcmp(responses[0].resp, "secret") == 0);
+  CHECK(responses[1].resp != NULL && strcmp(responses[1].resp, "miguel") == 0);
+  CHECK(responses[2].resp == NULL);
+  CHECK(responses[3].resp == NULL);
+  for (int i = 0; i < 4; i++)
+    CHECK(responses[i].resp_retcode == 0);
+  free_pam_responses(responses, 4);
+
+  responses = NULL;
+  CHECK(pam_conv_func(0, message_ptrs, &responses, &appdata) == PAM_CONV_ERR);
+  CHECK(responses == NULL);
+  CHECK(pam_conv_func(33, message_ptrs, &responses, &appdata) == PAM_CONV_ERR);
+  CHECK(responses == NULL);
+  return 0;
+}
+
+static int test_bridge_policy(void)
+{
+  const uid_t owner = (uid_t)1234;
+  struct stat bridge = {
+      .st_mode = S_IFREG | 0755,
+      .st_uid = owner,
+  };
+  struct stat parent = {
+      .st_mode = S_IFDIR | 0755,
+      .st_uid = owner,
+  };
+
+  CHECK(validate_bridge_policy(&bridge, owner) == 0);
+  bridge.st_mode = S_IFREG | 0775;
+  CHECK(validate_bridge_policy(&bridge, owner) == -1);
+  bridge.st_mode = S_IFREG | 0644;
+  CHECK(validate_bridge_policy(&bridge, owner) == -1);
+  bridge.st_mode = S_IFREG | S_ISUID | 0755;
+  CHECK(validate_bridge_policy(&bridge, owner) == -1);
+  bridge.st_mode = S_IFDIR | 0755;
+  CHECK(validate_bridge_policy(&bridge, owner) == -1);
+  bridge.st_mode = S_IFREG | 0755;
+  CHECK(validate_bridge_policy(&bridge, owner + 1) == -1);
+
+  CHECK(validate_parent_dir_policy(&parent, owner) == 0);
+  parent.st_mode = S_IFDIR | 0777;
+  CHECK(validate_parent_dir_policy(&parent, owner) == -1);
+  parent.st_mode = S_IFREG | 0755;
+  CHECK(validate_parent_dir_policy(&parent, owner) == -1);
+  parent.st_mode = S_IFDIR | 0755;
+  CHECK(validate_parent_dir_policy(&parent, owner + 1) == -1);
+  return 0;
+}
+
+static int test_sudo_policy_argv(void)
+{
+  const char *argv[10] = {0};
+  const char *canonical = "alice";
+
+  CHECK(build_sudo_policy_argv(canonical, argv, 10) == 0);
+  CHECK(strcmp(argv[0], "/usr/bin/sudo") == 0);
+  CHECK(strcmp(argv[1], "-n") == 0);
+  CHECK(strcmp(argv[2], "-l") == 0);
+  CHECK(strcmp(argv[3], "-U") == 0);
+  CHECK(argv[4] == canonical);
+  CHECK(strcmp(argv[5], "-u") == 0);
+  CHECK(strcmp(argv[6], "root") == 0);
+  CHECK(strcmp(argv[7], "--") == 0);
+  CHECK(strcmp(argv[8], BRIDGE_PATH) == 0);
+  CHECK(argv[9] == NULL);
+  CHECK(build_sudo_policy_argv(NULL, argv, 10) == -1);
+  CHECK(build_sudo_policy_argv("", argv, 10) == -1);
+  CHECK(build_sudo_policy_argv(canonical, NULL, 10) == -1);
+  CHECK(build_sudo_policy_argv(canonical, argv, 9) == -1);
+  CHECK(user_can_run_bridge_as_root(NULL, 0) == 0);
+  CHECK(user_can_run_bridge_as_root("", 0) == 0);
+  return 0;
+}
+
+static int test_bootstrap_encoding(void)
+{
+  const uint8_t expected[] = {
+      PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
+      0x01, 0x02, 0x03, 0x04,
+      0xa0, 0xb0, 0xc0, 0xd0,
+      PROTO_FLAG_VERBOSE | PROTO_FLAG_PRIVILEGED | PROTO_FLAG_READY_ACK,
+      0, 3, 's', 'i', 'd',
+      0, 4, 'u', 's', 'e', 'r',
+  };
+  uint8_t actual[sizeof(expected) + 1];
+  size_t actual_len = 0;
+  int pipefd[2];
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  CHECK(write_bootstrap_binary(pipefd[1], "sid", "user",
+                               (uid_t)0x01020304U, (gid_t)0xa0b0c0d0U, 1, 1) == 0);
+  CHECK(close(pipefd[1]) == 0);
+  CHECK(read_pipe_to_end(pipefd[0], actual, sizeof(actual), &actual_len) == 0);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(actual_len == sizeof(expected));
+  CHECK(memcmp(actual, expected, sizeof(expected)) == 0);
+  return 0;
+}
+
+static int test_child_status_reporting(void)
+{
+  uint8_t reported = 0;
+  uint8_t extra = 0;
+  int pipefd[2];
+  int status = 0;
+  pid_t pid;
+
+  CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    int devnull;
+
+    close(pipefd[0]);
+    devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
+    if (devnull >= 0)
+    {
+      (void)dup2(devnull, STDERR_FILENO);
+      if (devnull != STDERR_FILENO)
+        close(devnull);
+    }
+    errno = ENOENT;
+    child_die(pipefd[1], "test failure");
+  }
+
+  CHECK(close(pipefd[1]) == 0);
+  CHECK(read(pipefd[0], &reported, sizeof(reported)) == (ssize_t)sizeof(reported));
+  CHECK(read(pipefd[0], &extra, sizeof(extra)) == 0);
+  CHECK(close(pipefd[0]) == 0);
+  CHECK(waitpid_nointr(pid, &status, 0) == pid);
+  CHECK(WIFEXITED(status));
+  CHECK(WEXITSTATUS(status) == 127);
+  CHECK(reported == 1);
+  return 0;
+}
+
+static int test_elapsed_microseconds(void)
+{
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1000000999)) == 0);
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1000001000)) == 1);
+  CHECK(elapsed_us(INT64_C(1000000000), INT64_C(1001234567)) == 1234);
+  CHECK(elapsed_us(0, INT64_C(1000000000)) == -1);
+  CHECK(elapsed_us(INT64_C(2000000000), INT64_C(1000000000)) == -1);
+  return 0;
+}
+
+static int test_socket_response_writes(void)
+{
+  const uint8_t expected[] = {
+      PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
+      PROTO_STATUS_OK, PROTO_MODE_PRIVILEGED, PROTO_RESULT_OK, 0,
+      0x01, 0x02, 0x03, 0x04,
+      0xa0, 0xb0, 0xc0, 0xd0,
+      0, 4, 'u', 's', 'e', 'r',
+  };
+  uint8_t actual[sizeof(expected) + 1];
+  size_t actual_len = 0;
+  char fill[4096] = {0};
+  int sockets[2];
+  int duplicate;
+  int flags;
+  int64_t now_ns;
+  ssize_t fill_result;
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) == 0);
+  duplicate = dup(sockets[0]);
+  CHECK(duplicate >= 0);
+  flags = fcntl(duplicate, F_GETFL);
+  CHECK(flags >= 0);
+  CHECK(fcntl(duplicate, F_SETFL, flags | O_NONBLOCK) == 0);
+  CHECK(close(duplicate) == 0);
+
+  int response_rc = send_ok_response(sockets[0], PROTO_MODE_PRIVILEGED, "user",
+                                     (uid_t)0x01020304U, (gid_t)0xa0b0c0d0U);
+  if (response_rc != 0)
+    fprintf(stderr, "send_ok_response failed: %s\n", strerror(errno));
+  CHECK(response_rc == 0);
+  CHECK(close(sockets[0]) == 0);
+  CHECK(read_pipe_to_end(sockets[1], actual, sizeof(actual), &actual_len) == 0);
+  CHECK(close(sockets[1]) == 0);
+  CHECK(actual_len == sizeof(expected));
+  CHECK(memcmp(actual, expected, sizeof(expected)) == 0);
+
+  // Error frames always include the length prefix, including a NULL message.
+  {
+    const uint8_t expected_error[] = {
+        PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION,
+        PROTO_STATUS_ERROR, 0, PROTO_RESULT_INTERNAL_ERROR, 0, 0, 0};
+
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) == 0);
+    CHECK(send_response(sockets[0], PROTO_STATUS_ERROR, 0,
+                        PROTO_RESULT_INTERNAL_ERROR, NULL, NULL, 0, 0) == 0);
+    CHECK(close(sockets[0]) == 0);
+    CHECK(read_pipe_to_end(sockets[1], actual, sizeof(actual), &actual_len) == 0);
+    CHECK(close(sockets[1]) == 0);
+    CHECK(actual_len == sizeof(expected_error));
+    CHECK(memcmp(actual, expected_error, sizeof(expected_error)) == 0);
+  }
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, sockets) == 0);
+  for (;;)
+  {
+    fill_result = write(sockets[0], fill, sizeof(fill));
+    if (fill_result > 0)
+      continue;
+    if (fill_result < 0 && errno == EINTR)
+      continue;
+    break;
+  }
+  CHECK(fill_result == -1);
+  CHECK(errno == EAGAIN);
+  CHECK(monotonic_now_ns(&now_ns) == 0);
+  errno = 0;
+  CHECK(socket_write_all_until(sockets[0], "x", 1,
+                               now_ns + INT64_C(20000000)) == -1);
+  CHECK(errno == ETIMEDOUT);
+  CHECK(close(sockets[0]) == 0);
+  CHECK(close(sockets[1]) == 0);
+  return 0;
+}
+
+static int test_child_wait_and_timeout(void)
+{
+  struct timespec started;
+  struct timespec finished;
+  int64_t elapsed_ns;
+  int status = 0;
+  pid_t pid;
+
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+    _exit(23);
+  CHECK(wait_for_child_with_timeout(pid, 2, 0) == 23);
+
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    (void)raise(SIGTERM);
+    _exit(127);
+  }
+  CHECK(wait_for_child_with_timeout(pid, 2, 0) == 128 + SIGTERM);
+
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+
+  int64_t outer_deadline_ns;
+  CHECK(monotonic_now_ns(&outer_deadline_ns) == 0);
+  outer_deadline_ns += INT64_C(50000000);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  CHECK(wait_for_child_with_timeout(pid, 1, outer_deadline_ns) == -1);
+  CHECK(errno == ETIMEDOUT);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
+               (int64_t)(finished.tv_nsec - started.tv_nsec);
+  CHECK(elapsed_ns >= INT64_C(40000000));
+  CHECK(elapsed_ns < INT64_C(10000000000));
+
+  errno = 0;
+  CHECK(waitpid(pid, &status, WNOHANG) == -1);
+  CHECK(errno == ECHILD);
+  return 0;
+}
+
+static int64_t elapsed_between(const struct timespec *started,
+                               const struct timespec *finished)
+{
+  return (int64_t)(finished->tv_sec - started->tv_sec) * INT64_C(1000000000) +
+         (int64_t)(finished->tv_nsec - started->tv_nsec);
+}
+
+static int test_bounded_child_termination(void)
+{
+  struct timespec started, finished;
+  int sync_pipe[2];
+  uint8_t sync_byte = 0;
+  pid_t pid;
+
+  // A child that honors SIGTERM is reaped well before the grace deadline.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  terminate_and_reap_child(pid, SIGTERM);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  CHECK(elapsed_between(&started, &finished) < INT64_C(900000000));
+  errno = 0;
+  CHECK(waitpid(pid, NULL, WNOHANG) == -1);
+  CHECK(errno == ECHILD);
+
+  // A child that ignores SIGTERM must be escalated to SIGKILL once the grace
+  // period expires instead of pinning the worker in an unbounded wait. The
+  // sync byte guarantees SIG_IGN is installed before the signal is sent.
+  CHECK(pipe2(sync_pipe, O_CLOEXEC) == 0);
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    uint8_t ignoring = 1;
+    if (signal(SIGTERM, SIG_IGN) == SIG_ERR)
+      _exit(1);
+    (void)write_all(sync_pipe[1], &ignoring, sizeof(ignoring));
+    for (;;)
+      pause();
+  }
+  CHECK(close(sync_pipe[1]) == 0);
+  CHECK(read(sync_pipe[0], &sync_byte, sizeof(sync_byte)) == 1);
+  CHECK(close(sync_pipe[0]) == 0);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+  terminate_and_reap_child(pid, SIGTERM);
+  CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+  CHECK(elapsed_between(&started, &finished) >= INT64_C(900000000));
+  CHECK(elapsed_between(&started, &finished) < INT64_C(10000000000));
+  errno = 0;
+  CHECK(waitpid(pid, NULL, WNOHANG) == -1);
+  CHECK(errno == ECHILD);
+  return 0;
+}
+
+static int test_session_wait_shutdown(void)
+{
+  struct sigaction dfl;
+  sigset_t term_set;
+  int status = 0;
+  pid_t pid;
+  pid_t killer;
+
+  CHECK(install_shutdown_handling() == 0);
+
+  // Normal exit: the wait reports the child's status.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+    _exit(23);
+  CHECK(wait_for_session_child(pid, &status) == 1);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 23);
+
+  // SIGTERM already pending when the wait starts: the (blocked) signal is
+  // delivered inside the wait's ppoll, the shutdown request wins, and the
+  // child is left alive for the caller's termination path.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  CHECK(raise(SIGTERM) == 0);
+  CHECK(wait_for_session_child(pid, &status) == 0);
+  CHECK(kill(pid, 0) == 0);
+  g_shutdown_requested = 0;
+  terminate_and_reap_child(pid, SIGKILL);
+
+  // SIGTERM delivered mid-wait interrupts the blocking wait.
+  pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    for (;;)
+      pause();
+  }
+  killer = fork();
+  CHECK(killer >= 0);
+  if (killer == 0)
+  {
+    struct timespec delay = {.tv_sec = 0, .tv_nsec = 100000000L};
+    (void)nanosleep(&delay, NULL);
+    (void)kill(getppid(), SIGTERM);
+    _exit(0);
+  }
+  CHECK(wait_for_session_child(pid, &status) == 0);
+  g_shutdown_requested = 0;
+  terminate_and_reap_child(pid, SIGKILL);
+  CHECK(waitpid_nointr(killer, &status, 0) == killer);
+
+  // Restore stock SIGTERM behavior for any later scenario.
+  memset(&dfl, 0, sizeof(dfl));
+  dfl.sa_handler = SIG_DFL;
+  CHECK(sigemptyset(&dfl.sa_mask) == 0);
+  CHECK(sigaction(SIGTERM, &dfl, NULL) == 0);
+  CHECK(sigemptyset(&term_set) == 0);
+  CHECK(sigaddset(&term_set, SIGTERM) == 0);
+  CHECK(sigprocmask(SIG_UNBLOCK, &term_set, NULL) == 0);
+  g_shutdown_requested = 0;
+  return 0;
+}
+
+static int test_bridge_startup_wait(void)
+{
+  char msg[PROTO_MAX_ERROR];
+  uint8_t bad = 0;
+  int rfd;
+
+  // READY byte -> success
+  const uint8_t ready_byte = PROTO_STARTUP_READY;
+  CHECK(write_pipe_bytes(&ready_byte, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_READY);
+  CHECK(close(rfd) == 0);
+
+  // Pre-exec failure byte
+  const uint8_t exec_failed = PROTO_STARTUP_EXEC_FAILED;
+  CHECK(write_pipe_bytes(&exec_failed, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_EXEC_FAILED);
+  CHECK(close(rfd) == 0);
+
+  // ERROR byte with message; control bytes must be blanked
+  const uint8_t err_frame[] = {PROTO_STARTUP_ERROR, 'b', 'o', 'o', 'm',
+                               0x1b, '!', 0x07};
+  CHECK(write_pipe_bytes(err_frame, sizeof(err_frame), &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_REPORTED_ERROR);
+  CHECK(strcmp(msg, "boom ! ") == 0);
+  CHECK(close(rfd) == 0);
+
+  // ERROR byte without message -> empty string, still an error outcome
+  const uint8_t err_only = PROTO_STARTUP_ERROR;
+  CHECK(write_pipe_bytes(&err_only, 1, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_REPORTED_ERROR);
+  CHECK(msg[0] == '\0');
+  CHECK(close(rfd) == 0);
+
+  // ERROR message longer than the buffer is truncated, not an error
+  {
+    uint8_t big[1 + PROTO_MAX_ERROR + 64];
+    big[0] = PROTO_STARTUP_ERROR;
+    memset(big + 1, 'A', sizeof(big) - 1);
+    CHECK(write_pipe_bytes(big, sizeof(big), &rfd) == 0);
+    CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_REPORTED_ERROR);
+    CHECK(strlen(msg) == PROTO_MAX_ERROR - 1);
+    CHECK(msg[0] == 'A' && msg[PROTO_MAX_ERROR - 2] == 'A');
+    CHECK(close(rfd) == 0);
+  }
+
+  // EOF before any byte -> died/closed without ack
+  const uint8_t none[1] = {0};
+  CHECK(write_pipe_bytes(none, 0, &rfd) == 0);
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_EOF);
+  CHECK(close(rfd) == 0);
+
+  // Unknown status byte -> protocol error, byte reported
+  const uint8_t weird = 0x7f;
+  CHECK(write_pipe_bytes(&weird, 1, &rfd) == 0);
+  bad = 0;
+  CHECK(wait_for_bridge_startup(rfd, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_PROTOCOL_ERROR);
+  CHECK(bad == 0x7f);
+  CHECK(close(rfd) == 0);
+
+  // No byte within the deadline -> timeout, and the wait actually blocks
+  {
+    int pipefd[2];
+    struct timespec started, finished;
+    int64_t elapsed_ns;
+
+    CHECK(pipe2(pipefd, O_CLOEXEC) == 0);
+    int64_t outer_deadline_ns;
+    CHECK(monotonic_now_ns(&outer_deadline_ns) == 0);
+    outer_deadline_ns += INT64_C(50000000);
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+    CHECK(wait_for_bridge_startup(pipefd[0], 1000, outer_deadline_ns,
+                                  msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_TIMEOUT);
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
+    elapsed_ns = (int64_t)(finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
+                 (int64_t)(finished.tv_nsec - started.tv_nsec);
+    CHECK(elapsed_ns >= INT64_C(40000000));
+    CHECK(elapsed_ns < INT64_C(10000000000));
+    CHECK(close(pipefd[0]) == 0);
+    CHECK(close(pipefd[1]) == 0);
+  }
+
+  // Invalid inputs fail closed
+  CHECK(wait_for_bridge_startup(-1, 1000, 0, msg, sizeof(msg), &bad) ==
+        BRIDGE_STARTUP_WAIT_ERROR);
+
+  // READY keeps the bidirectional channel open until the launcher sends GO.
+  // This barrier prevents the bridge from writing Yamux bytes before the
+  // launcher has completed the authentication response.
+  {
+    int status_channel[2];
+    uint8_t got = 0;
+
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0,
+                     status_channel) == 0);
+    CHECK(write_all(status_channel[1], &ready_byte, sizeof(ready_byte)) == 0);
+    CHECK(wait_for_bridge_startup(status_channel[0], 1000, 0,
+                                  msg, sizeof(msg), &bad) ==
+          BRIDGE_STARTUP_READY);
+    CHECK(release_bridge_startup(status_channel[0]) == 0);
+    CHECK(read(status_channel[1], &got, sizeof(got)) == (ssize_t)sizeof(got));
+    CHECK(got == PROTO_STARTUP_GO);
+    CHECK(close(status_channel[0]) == 0);
+    CHECK(close(status_channel[1]) == 0);
+  }
+
+  return 0;
+}
+
+// -------- request parsing (handle_client, pre-PAM only) --------
+//
+// Only inputs that fail before pam_start() is reached are exercised here:
+// header -> magic/version -> four length-prefixed fields -> user/session_id
+// present -> password present -> valid_username -> valid_session_id ->
+// valid_remote_host -> (PAM, never reached by these cases).
+
+static size_t append_u16be(uint8_t *buf, size_t pos, uint16_t v)
+{
+  buf[pos] = (uint8_t)(v >> 8);
+  buf[pos + 1] = (uint8_t)v;
+  return pos + 2;
+}
+
+static size_t append_bytes(uint8_t *buf, size_t pos, const void *data, size_t n)
+{
+  memcpy(buf + pos, data, n);
+  return pos + n;
+}
+
+static size_t append_lenstr(uint8_t *buf, size_t pos, const char *s)
+{
+  size_t n = strlen(s);
+  pos = append_u16be(buf, pos, (uint16_t)n);
+  return append_bytes(buf, pos, s, n);
+}
+
+static size_t append_header(uint8_t *buf, size_t pos, uint8_t magic0, uint8_t magic1,
+                            uint8_t magic2, uint8_t version)
+{
+  buf[pos++] = magic0;
+  buf[pos++] = magic1;
+  buf[pos++] = magic2;
+  buf[pos++] = version;
+  buf[pos++] = 0; // flags
+  buf[pos++] = 0; // reserved
+  buf[pos++] = 0;
+  buf[pos++] = 0;
+  return pos;
+}
+
+// Sends req on a fresh socketpair, runs the real handle_client(), and checks
+// the response against the exact golden error frame:
+//   [magic:4][PROTO_STATUS_ERROR][mode=0][want_result][reserved=0][len:2][want_msg]
+static int run_request_case(const uint8_t *req, size_t len, int shut_wr,
+                            uint8_t want_result, const char *want_msg)
+{
+  uint8_t response[512];
+  size_t response_len = 0;
+  size_t msg_len = strlen(want_msg);
+  size_t expected_len = PROTO_AUTH_RESP_HEADER_SIZE + 2 + msg_len;
+  int sv[2];
+
+  CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sv) == 0);
+  CHECK(write_all(sv[1], req, len) == 0);
+  if (shut_wr)
+    CHECK(shutdown(sv[1], SHUT_WR) == 0);
+  CHECK(handle_client(sv[0], sv[0]) == 1);
+  CHECK(close(sv[0]) == 0);
+  CHECK(read_pipe_to_end(sv[1], response, sizeof(response), &response_len) == 0);
+  CHECK(close(sv[1]) == 0);
+
+  CHECK(response_len == expected_len);
+  CHECK(response[0] == PROTO_MAGIC_0);
+  CHECK(response[1] == PROTO_MAGIC_1);
+  CHECK(response[2] == PROTO_MAGIC_2);
+  CHECK(response[3] == PROTO_VERSION);
+  CHECK(response[4] == PROTO_STATUS_ERROR);
+  CHECK(response[5] == 0);
+  CHECK(response[6] == want_result);
+  CHECK(response[7] == 0);
+  CHECK(read_u16_be(response + 8) == (uint16_t)msg_len);
+  CHECK(memcmp(response + 10, want_msg, msg_len) == 0);
+  return 0;
+}
+
+static int test_request_parsing(void)
+{
+  uint8_t req[600] = {0};
+  size_t pos;
+
+  // 1. Immediate EOF: no bytes at all, not even the header.
+  CHECK(run_request_case(req, 0, 1,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request header") == 0);
+
+  // 2. Bad magic byte.
+  pos = append_header(req, 0, 'X', 'I', 'O', PROTO_VERSION);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid request magic") == 0);
+
+  // 3. Wrong version byte (magic/version are checked together).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2,
+                      (uint8_t)(PROTO_VERSION + 1));
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid request magic") == 0);
+
+  // 4. Truncated field stream: user length announces 5 bytes, only 2 arrive,
+  //    then the peer closes its write side.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_u16be(req, pos, 5);
+  pos = append_bytes(req, pos, "ab", 2);
+  CHECK(run_request_case(req, pos, 1,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request fields") == 0);
+
+  // 5. Oversized session_id: length prefix equals PROTO_MAX_SESSION_ID, which
+  //    read_lenstr_until rejects before reading any body bytes.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_u16be(req, pos, PROTO_MAX_SESSION_ID);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "failed to read request fields") == 0);
+
+  // 6. Empty user (all four fields well-formed and fully read).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "missing required fields") == 0);
+
+  // 7. Empty session_id.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "missing required fields") == 0);
+
+  // 8. Empty password with an otherwise-valid username: handle_client checks
+  //    password[0] before valid_username(), so this proves that ordering
+  //    (empty password -> AUTH_FAILED, never BAD_REQUEST "invalid username").
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_AUTH_FAILED, "authentication failed") == 0);
+
+  // 9. Username with a space.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "two words");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid username format") == 0);
+
+  // 10. session_id containing '/'.
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "a/b");
+  pos = append_lenstr(req, pos, "host");
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid session_id format") == 0);
+
+  // 11. remote_host containing a C1 control character (0xc2 0x9b).
+  pos = append_header(req, 0, PROTO_MAGIC_0, PROTO_MAGIC_1, PROTO_MAGIC_2, PROTO_VERSION);
+  pos = append_lenstr(req, pos, "alice");
+  pos = append_lenstr(req, pos, "pw");
+  pos = append_lenstr(req, pos, "sid1");
+  pos = append_u16be(req, pos, 6);
+  pos = append_bytes(req, pos, "host", 4);
+  pos = append_bytes(req, pos, "\xc2\x9b", 2);
+  CHECK(run_request_case(req, pos, 0,
+                         PROTO_RESULT_BAD_REQUEST, "invalid remote_host format") == 0);
+
+  return 0;
+}
+
+int main(void)
+{
+  const struct test_case tests[] = {
+      {"identity validation", test_identity_validation},
+      {"length-prefixed input", test_lenstr_rejects_ambiguous_input},
+      {"length-prefixed deadline", test_lenstr_honors_absolute_deadline},
+      {"stderr parking CLOEXEC", test_stderr_parking_clears_cloexec},
+      {"PAM conversation", test_pam_conversation},
+      {"bridge policy", test_bridge_policy},
+      {"sudo policy argv", test_sudo_policy_argv},
+      {"bootstrap encoding", test_bootstrap_encoding},
+      {"child status reporting", test_child_status_reporting},
+      {"elapsed microseconds", test_elapsed_microseconds},
+      {"socket response writes", test_socket_response_writes},
+      {"child wait and timeout", test_child_wait_and_timeout},
+      {"bounded child termination", test_bounded_child_termination},
+      {"session wait shutdown", test_session_wait_shutdown},
+      {"bridge startup wait", test_bridge_startup_wait},
+      {"request parsing", test_request_parsing},
+  };
+  int failures = 0;
+
+  for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++)
+  {
+    int result = tests[i].run();
+    printf("   %s %s\n", result == 0 ? "✓" : "✗", tests[i].name);
+    failures += result != 0;
+  }
+
+  if (failures != 0)
+  {
+    fprintf(stderr, "%d auth test group(s) failed\n", failures);
+    return 1;
+  }
+
+  return 0;
+}

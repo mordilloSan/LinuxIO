@@ -30,7 +30,7 @@ type UpdateDetail struct {
 	CVEs      []string `json:"cve"`
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
-	InfoEnum  uint32   `json:"info_enum,omitempty"` // PackageKit info enum (severity/type): 0=Unknown, 1-30=various types
+	InfoEnum  uint32   `json:"info_enum"` // PackageKit info enum (severity/type): 0=Unknown, 1-30=various types
 }
 
 // —— use type ALIASES, not new structs —— //
@@ -83,15 +83,15 @@ func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateStat
 	return b.Read()
 }
 
-func applyOfflineUpdates(ctx context.Context) (any, error) {
+func applyOfflineUpdates(ctx context.Context) (apischema.OfflineUpdatesResponse, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("nil context")
+		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("nil context")
 	}
 	b := autoupdate.NewPkgKitBackendIfAvailable(ctx)
 	if b == nil {
-		return nil, fmt.Errorf("PackageKit not available")
+		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("PackageKit not available")
 	}
-	return nil, b.ApplyOfflineNow(ctx)
+	return apischema.OfflineUpdatesResponse{}, b.ApplyOfflineNow(ctx)
 }
 
 // --- Helpers ---

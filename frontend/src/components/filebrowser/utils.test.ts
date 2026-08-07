@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { ExtendedFileInfo } from "@/api";
-
 import {
   ensureTarGzExtension,
   ensureZipExtension,

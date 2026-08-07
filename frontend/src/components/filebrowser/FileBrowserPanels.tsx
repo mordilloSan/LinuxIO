@@ -1,11 +1,18 @@
 import { Icon } from "@iconify/react";
-import React, { Suspense } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type ChangeEvent,
+  type RefObject,
+} from "react";
 
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -31,17 +38,15 @@ import type {
   ViewMode,
 } from "@/types/filebrowser";
 
-const FileEditor = React.lazy(
-  () => import("@/components/filebrowser/FileEditor"),
-);
+const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 
 interface IndexerUnavailableAlertProps {
   status: string;
 }
 
-export const IndexerUnavailableAlert: React.FC<
-  IndexerUnavailableAlertProps
-> = ({ status }) => (
+export const IndexerUnavailableAlert = ({
+  status,
+}: IndexerUnavailableAlertProps) => (
   <AppAlert
     severity="info"
     style={{
@@ -74,9 +79,7 @@ interface FileDropOverlayProps {
   normalizedPath: string;
 }
 
-export const FileDropOverlay: React.FC<FileDropOverlayProps> = ({
-  normalizedPath,
-}) => {
+export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
   const theme = useAppTheme();
 
   return (
@@ -106,12 +109,13 @@ export const FileDropOverlay: React.FC<FileDropOverlayProps> = ({
 interface FileBrowserEditorDialogProps {
   editingFileResource?: FileResource;
   editingPath: string | null;
-  editorRef: React.RefObject<FileEditorHandle | null>;
+  editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
   isEditingFileLoading: boolean;
   isSaving: boolean;
   onCloseEditor: () => void;
   onDirtyChange: (isDirty: boolean) => void;
+  onSaveContent: (content: string) => Promise<boolean>;
   onSaveFile: () => Promise<void>;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
@@ -119,13 +123,10 @@ interface FileBrowserEditorDialogProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   showQuickSave: boolean;
-  viewIcon: React.ReactNode;
   viewMode: ViewMode;
 }
 
-export const FileBrowserEditorDialog: React.FC<
-  FileBrowserEditorDialogProps
-> = ({
+export const FileBrowserEditorDialog = ({
   editingFileResource,
   editingPath,
   editorRef,
@@ -134,6 +135,7 @@ export const FileBrowserEditorDialog: React.FC<
   isSaving,
   onCloseEditor,
   onDirtyChange,
+  onSaveContent,
   onSaveFile,
   onSearchChange,
   onSwitchView,
@@ -141,9 +143,8 @@ export const FileBrowserEditorDialog: React.FC<
   searchQuery,
   showHiddenFiles,
   showQuickSave,
-  viewIcon,
   viewMode,
-}) => {
+}: FileBrowserEditorDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -165,7 +166,6 @@ export const FileBrowserEditorDialog: React.FC<
         searchQuery={searchQuery}
         showHiddenFiles={showHiddenFiles}
         showQuickSave={showQuickSave}
-        viewIcon={viewIcon}
         viewMode={viewMode}
       />
       <div
@@ -198,7 +198,7 @@ export const FileBrowserEditorDialog: React.FC<
               initialContent={editingFileResource.content || ""}
               isSaving={isSaving}
               onDirtyChange={onDirtyChange}
-              onSave={onSaveFile}
+              onSave={onSaveContent}
               ref={editorRef}
             />
           </Suspense>
@@ -226,7 +226,7 @@ interface FileBrowserDetailsDialogProps {
   detailTarget: string[] | null;
   hasMultipleDetailTargets: boolean;
   hasSingleDetailTarget: boolean;
-  isStatPending: boolean;
+  isStatLoading: boolean;
   multiItemsStats: MultiItemsStats;
   onClose: () => void;
   onDownload: (path: string) => void;
@@ -235,22 +235,20 @@ interface FileBrowserDetailsDialogProps {
   statData?: ResourceStatData | null;
 }
 
-export const FileBrowserDetailsDialog: React.FC<
-  FileBrowserDetailsDialogProps
-> = ({
+export const FileBrowserDetailsDialog = ({
   detailError,
   detailResource,
   detailTarget,
   hasMultipleDetailTargets,
   hasSingleDetailTarget,
-  isStatPending,
+  isStatLoading,
   multiItemsStats,
   onClose,
   onDownload,
   onEdit,
   shouldShowDetailLoader,
   statData,
-}) => {
+}: FileBrowserDetailsDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -271,7 +269,7 @@ export const FileBrowserDetailsDialog: React.FC<
         {detailTarget && detailTarget.length > 1
           ? "Multiple Items Details"
           : "File Details"}
-        <AppIconButton onClick={onClose} size="small">
+        <AppIconButton aria-label="Close dialog" onClick={onClose} size="small">
           <Icon height={18} icon="mdi:close" width={18} />
         </AppIconButton>
       </AppDialogTitle>
@@ -281,7 +279,7 @@ export const FileBrowserDetailsDialog: React.FC<
           borderTop: `1px solid ${theme.palette.divider}`,
         }}
       >
-        {shouldShowDetailLoader && <PageLoader />}
+        {shouldShowDetailLoader && <ComponentLoader />}
         {!shouldShowDetailLoader &&
           hasSingleDetailTarget &&
           Boolean(detailError) && (
@@ -293,7 +291,7 @@ export const FileBrowserDetailsDialog: React.FC<
           )}
         {detailResource && (
           <FileDetail
-            isLoadingStat={isStatPending}
+            isLoadingStat={isStatLoading}
             onDownload={onDownload}
             onEdit={onEdit}
             resource={detailResource}
@@ -314,11 +312,11 @@ export const FileBrowserDetailsDialog: React.FC<
 };
 
 interface FileBrowserUploadDialogProps {
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   isUploadProcessing: boolean;
   normalizedPath: string;
-  onChangeUploadInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChangeUploadInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearUploadSelection: () => void;
   onClose: () => void;
   onPickFiles: () => void;
@@ -329,9 +327,7 @@ interface FileBrowserUploadDialogProps {
   uploadSummary: UploadSummary;
 }
 
-export const FileBrowserUploadDialog: React.FC<
-  FileBrowserUploadDialogProps
-> = ({
+export const FileBrowserUploadDialog = ({
   fileInputRef,
   folderInputRef,
   isUploadProcessing,
@@ -345,7 +341,7 @@ export const FileBrowserUploadDialog: React.FC<
   open,
   uploadEntries,
   uploadSummary,
-}) => {
+}: FileBrowserUploadDialogProps) => {
   const theme = useAppTheme();
 
   return (
@@ -456,14 +452,16 @@ interface FileBrowserConflictDialogProps {
   prompt: ConflictPrompt | null;
 }
 
-export const FileBrowserConflictDialog: React.FC<
-  FileBrowserConflictDialogProps
-> = ({ onCancel, onResolve, prompt }) => {
+export const FileBrowserConflictDialog = ({
+  onCancel,
+  onResolve,
+  prompt,
+}: FileBrowserConflictDialogProps) => {
   const theme = useAppTheme();
   // Decisions are stored together with the prompt they belong to, so a new
   // prompt implicitly starts from the safe default (skip everything) — no
   // effect-based state reset needed.
-  const [decisionState, setDecisionState] = React.useState<{
+  const [decisionState, setDecisionState] = useState<{
     decisions: Record<string, ConflictDecision>;
     prompt: ConflictPrompt | null;
   }>({ decisions: {}, prompt: null });

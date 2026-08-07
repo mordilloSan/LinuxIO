@@ -21,4 +21,3 @@ tsconfig.tsbuildinfo
 .vscode
 .claude
 .script-server.pid
-frontend/.eslintcache*

@@ -4,11 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
+
+func TestCanceledQueuedJobCannotStart(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("test.canceled.queued", nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	job.Cancel()
+	ran := make(chan struct{}, 1)
+	if job.Start(func(context.Context, *Job, any) (any, error) {
+		ran <- struct{}{}
+		return nil, nil
+	}) {
+		t.Fatal("Start accepted a canceled queued job")
+	}
+	select {
+	case <-ran:
+		t.Fatal("canceled queued job ran")
+	default:
+	}
+	if !job.IsTerminal() {
+		t.Fatal("canceled job is not terminal")
+	}
+}
 
 func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 	registry := NewRegistry()
@@ -31,6 +56,203 @@ func TestJobCompletesAndSnapshotsResult(t *testing.T) {
 	if snapshot.Progress == nil {
 		t.Fatal("expected progress to be stored")
 	}
+}
+
+func TestSnapshotNeverPublishesRequestAndClearsTerminalReference(t *testing.T) {
+	registry := NewRegistry()
+	secret := map[string]string{"password": "sentinel-secret"}
+	metadata := &JobMetadata{Identity: []string{"safe"}, Label: "safe label"}
+	job, err := registry.CreateForOwner("test.secret", secret, Owner{}, metadata)
+	if err != nil {
+		t.Fatalf("CreateForOwner: %v", err)
+	}
+	if got := string(mustJSON(t, job.Snapshot())); strings.Contains(got, "request") || strings.Contains(got, "sentinel-secret") {
+		t.Fatalf("queued snapshot leaked request: %s", got)
+	}
+	if !job.Start(func(_ context.Context, _ *Job, request any) (any, error) {
+		got, ok := request.(map[string]string)
+		if !ok || got["password"] != secret["password"] {
+			t.Fatal("runner did not receive private request")
+		}
+		return nil, nil
+	}) {
+		t.Fatal("Start returned false")
+	}
+	<-job.Done()
+	if got := string(mustJSON(t, job.Snapshot())); strings.Contains(got, "request") || strings.Contains(got, "sentinel-secret") {
+		t.Fatalf("terminal snapshot leaked request: %s", got)
+	}
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	if job.request != nil {
+		t.Fatal("terminal job retained decoded request")
+	}
+}
+
+// Exercise jobs.get, jobs.list, and jobs.cancel relay payloads with a sentinel
+// credential. Start/events/attach have dedicated transport tests below.
+func TestPublicJobSnapshotsNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	owner := Owner{Username: "alice", UID: 1000}
+	secret := map[string]string{"password": "sentinel-secret"}
+	job, err := registry.CreateForOwner("test.public.secret", secret, owner, &JobMetadata{Label: "safe"})
+	if err != nil {
+		t.Fatalf("CreateForOwner: %v", err)
+	}
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobGet(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+	}))
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobList(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{}`)})
+	}))
+	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
+		return router.handleJobCancel(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"jobId":"` + job.ID() + `"}`)})
+	}))
+	job.mu.RLock()
+	if job.request != nil {
+		t.Fatal("queued cancellation retained decoded request")
+	}
+	job.mu.RUnlock()
+}
+
+func TestJobStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	router := NewRouter(registry)
+	owner := Owner{Username: "alice", UID: 1000}
+	secret := map[string]string{"password": "sentinel-secret"}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	router.JobRunner("test.start.secret", func(_ context.Context, _ *Job, _ any) (any, error) {
+		close(started)
+		<-release
+		return nil, nil
+	}, StreamDefault, WithJobMetadata(func(any) JobMetadata { return JobMetadata{Label: "safe"} }))
+
+	server, client := net.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- router.dispatchJob(context.Background(), server, router.routes["test.start.secret"], Request{Route: "test.start.secret", Owner: owner, DecodedValue: secret})
+	}()
+	frame, readErr := relay.ReadRelayFrame(client)
+	if readErr != nil {
+		t.Fatalf("start ReadRelayFrame: %v", readErr)
+	}
+	var start relay.ResultFrame
+	if decodeErr := json.Unmarshal(frame.Payload, &start); decodeErr != nil {
+		t.Fatalf("decode start: %v", decodeErr)
+	}
+	assertNoRequestLeak(t, start.Data)
+	if _, closeErr := relay.ReadRelayFrame(client); closeErr != nil {
+		t.Fatalf("start close: %v", closeErr)
+	}
+	_ = client.Close()
+	if dispatchErr := <-errCh; dispatchErr != nil {
+		t.Fatalf("dispatch job: %v", dispatchErr)
+	}
+	<-started
+
+	job, ok := registry.Get(registry.ListForOwner(owner)[0].ID)
+	if !ok {
+		t.Fatal("started job missing from registry")
+	}
+	eventServer, eventClient := net.Pipe()
+	eventErr := make(chan error, 1)
+	go func() {
+		defer eventServer.Close()
+		eventErr <- router.handleJobEvents(eventServer, Request{Owner: owner})
+	}()
+	initial, err := relay.ReadRelayFrame(eventClient)
+	if err != nil {
+		t.Fatalf("initial event: %v", err)
+	}
+	assertNoRequestLeak(t, initial.Payload)
+	job.ReportProgress(map[string]any{"pct": 1})
+	live, err := relay.ReadRelayFrame(eventClient)
+	if err != nil {
+		t.Fatalf("live event: %v", err)
+	}
+	assertNoRequestLeak(t, live.Payload)
+	_ = eventClient.Close()
+	if err := <-eventErr; err != nil {
+		t.Fatalf("events: %v", err)
+	}
+	close(release)
+	<-job.Done()
+}
+
+func TestAttachReplayAndTerminalNeverExposeDecodedRequest(t *testing.T) {
+	registry := NewRegistry()
+	secret := map[string]string{"password": "sentinel-secret"}
+	job, err := registry.Create("test.attach.secret", secret)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !job.Start(func(_ context.Context, job *Job, _ any) (any, error) {
+		job.ReportProgress(map[string]any{"phase": "safe"})
+		return map[string]any{"ok": true}, nil
+	}) {
+		t.Fatal("Start returned false")
+	}
+	<-job.Done()
+	server, client := net.Pipe()
+	errCh := make(chan error, 1)
+	go func() { defer server.Close(); errCh <- AttachJobStream(server, job) }()
+	for i := range 2 {
+		frame, err := relay.ReadRelayFrame(client)
+		if err != nil {
+			t.Fatalf("attach frame %d: %v", i, err)
+		}
+		assertNoRequestLeak(t, frame.Payload)
+	}
+	_ = client.Close()
+	if err := <-errCh; err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+}
+
+func relayResultData(t *testing.T, write func(net.Conn) error) []byte {
+	t.Helper()
+	server, client := net.Pipe()
+	defer client.Close()
+	errCh := make(chan error, 1)
+	go func() { defer server.Close(); errCh <- write(server) }()
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame: %v", err)
+	}
+	var result relay.ResultFrame
+	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("result status = %q", result.Status)
+	}
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	return result.Data
+}
+
+func assertNoRequestLeak(t *testing.T, data []byte) {
+	t.Helper()
+	value := string(data)
+	if strings.Contains(value, `"request"`) || strings.Contains(value, "sentinel-secret") {
+		t.Fatalf("public payload leaked decoded request: %s", value)
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	return encoded
 }
 
 func TestJobDoneClosesAfterTerminalSnapshotCommitted(t *testing.T) {
@@ -347,6 +569,47 @@ func TestTransientProgressDoesNotReachRegistryEvents(t *testing.T) {
 	}
 }
 
+func TestProgressReplayShrinksByBytesAfterFirstSubscriber(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("logs.general.follow", nil)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	chunk := strings.Repeat(
+		"x",
+		DefaultSubscribedJobProgressReplayBytes/2+1,
+	)
+	job.ReportData(chunk)
+	job.ReportData(chunk)
+	job.ReportData(chunk)
+
+	_, replay, unsubscribe := job.SubscribeWithReplay(8)
+	defer unsubscribe()
+	if len(replay) != 3 {
+		t.Fatalf("initial replay length = %d, want all 3 pre-attach events", len(replay))
+	}
+
+	job.mu.RLock()
+	retainedBytes := job.progressLogBytes
+	retainedEvents := len(job.progressLog)
+	job.mu.RUnlock()
+	if retainedBytes > DefaultSubscribedJobProgressReplayBytes {
+		t.Fatalf(
+			"post-subscribe replay bytes = %d, limit %d",
+			retainedBytes,
+			DefaultSubscribedJobProgressReplayBytes,
+		)
+	}
+	if retainedEvents >= len(replay) {
+		t.Fatalf(
+			"post-subscribe replay retained %d events, want fewer than initial %d",
+			retainedEvents,
+			len(replay),
+		)
+	}
+}
+
 func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	registry := NewRegistry()
 	job, err := startTestJob(registry, "test.attach.replay", nil, Owner{}, func(ctx context.Context, job *Job, _ any) (any, error) {
@@ -390,6 +653,75 @@ func TestAttachJobStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
+	frame, err = relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamClose {
+		t.Fatalf("opcode = 0x%02x, want OpStreamClose", frame.Opcode)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("AttachJobStream returned error: %v", err)
+	}
+}
+
+func TestAttachJobStreamReportsLagInsteadOfSilentlyDroppingData(t *testing.T) {
+	registry := NewRegistry()
+	job, err := registry.Create("test.attach.lag", nil)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	job.ReportData("replay\n")
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- AttachJobStream(server, job)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		job.mu.RLock()
+		subscribers := len(job.subscribers)
+		job.mu.RUnlock()
+		if subscribers == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for attach subscriber")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// AttachJobStream is blocked writing the replay to net.Pipe while the
+	// client is not reading. Overflow its bounded live channel during that
+	// window and then let the writer continue.
+	for index := 0; index <= DefaultJobProgressReplayLimit; index++ {
+		job.ReportData("live\n")
+	}
+
+	if got := readProgressData(t, client); got != "replay\n" {
+		t.Fatalf("replay progress = %q, want replay line", got)
+	}
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(lag result): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamResult {
+		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
+	}
+	var result relay.ResultFrame
+	if err = json.Unmarshal(frame.Payload, &result); err != nil {
+		t.Fatalf("json.Unmarshal(lag result): %v", err)
+	}
+	if result.Status != "error" || result.Code != 503 {
+		t.Fatalf("lag result = %#v, want status error and code 503", result)
+	}
+
 	frame, err = relay.ReadRelayFrame(client)
 	if err != nil {
 		t.Fatalf("ReadRelayFrame(close): %v", err)

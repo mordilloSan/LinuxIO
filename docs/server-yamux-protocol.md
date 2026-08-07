@@ -115,17 +115,53 @@ Server just reads/writes bytes from/to streams.
 The bridge is **not** a long-running server that the webserver dials. Instead:
 
 1. On login, `bridge.StartBridge()` dials the auth daemon over a Unix socket.
-2. The auth daemon validates PAM credentials, checks sudo, then forks `linuxio-bridge`.
-3. No new socketpair is created. The auth daemon **reuses the accepted connection**: it `dup2`s the webserver↔auth-daemon socket onto the bridge's `FD 3`, then execs the bridge.
-4. The webserver keeps its end of the connection it dialed. That `net.Conn` now reaches the forked bridge directly — the auth daemon is no longer in the data path.
-5. `relay.NewYamuxClient(conn)` wraps that connection into a yamux client session.
-6. The session is stored in `yamuxSessions` keyed by `SessionID` for subsequent WebSocket connections.
+2. PAM authenticates the user once. The root auth daemon then runs
+   `sudo -n -l -U <user> -u root -- /usr/local/bin/linuxio-bridge` as a
+   non-interactive policy query and forks `linuxio-bridge`; sudo does not
+   execute the bridge.
+3. No new data-path socketpair is created. The auth daemon **reuses the accepted
+   connection**: it `dup2`s the webserver↔auth-daemon socket onto the bridge's
+   FD 3, then execs the bridge. The separate FD 4 socketpair described below is
+   only a startup control channel.
+4. The bridge inherits one endpoint of a **bidirectional Unix socketpair at FD
+   4** (the launcher sets `PROTO_FLAG_READY_ACK` in the bootstrap to advertise
+   it). The bridge parses its bootstrap and completes initialization that does
+   not create Yamux, writes `PROTO_STARTUP_READY`, and blocks reading FD 4 for
+   `PROTO_STARTUP_GO`. On a fatal error before READY it instead writes
+   `PROTO_STARTUP_ERROR` plus a short message and exits.
+5. After READY, the auth daemon records login accounting and writes the
+   **complete** authentication OK response on FD 3. Only if that write succeeds
+   does it send GO back to the bridge on FD 4. The bridge validates GO, closes
+   FD 4, and only then calls `relay.NewYamuxServer` on FD 3 and starts accepting
+   streams. A successful authentication response therefore means the bridge
+   reached the pre-Yamux rendezvous; after the response write, the launcher
+   attempts to release it. The response does not by itself prove that GO was
+   delivered or that subsequent Yamux creation succeeded.
+6. This READY/GO barrier protects response framing. Before GO, the launcher is
+   the only process allowed to write FD 3; the bridge cannot create Yamux, which
+   may emit control traffic immediately. After the complete OK frame is written,
+   GO transfers transport ownership to the bridge. If the OK write fails, the
+   launcher does not send GO and terminates the bridge, so Yamux bytes cannot
+   precede, overlap, or corrupt the authentication response.
+7. Death before READY (EOF), silence, an invalid status byte, EOF while waiting
+   for GO, or an invalid GO byte fails closed. From request receipt, the launcher
+   gives authentication and startup work one absolute 20-second budget,
+   targeting a 10-second error-delivery margin inside the webserver's 30-second
+   read deadline. Within that budget, the READY phase defaults to 10 seconds;
+   `LINUXIO_BRIDGE_READY_TIMEOUT` accepts 1–20 seconds and is clipped to the
+   remaining request budget. The sudo policy-query child wait uses that same
+   remaining budget. The launcher does not interrupt synchronous PAM calls; if
+   PAM returns after the deadline, it fails before bridge launch. See
+   `backend/auth/linuxio_protocol.h`.
+8. The webserver keeps its end of the connection it dialed. That `net.Conn` now reaches the forked bridge directly — the auth daemon is no longer in the data path.
+9. `relay.NewYamuxClient(conn)` wraps that connection into a yamux client session.
+10. The session is stored in `yamuxSessions` keyed by `SessionID` for subsequent WebSocket connections.
 
 ```go
 // bridge/bridge.go — called at login
-func StartBridge(ctx context.Context, sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
     result, _ := Authenticate(req) // dials auth daemon; conn now reaches the forked bridge
-    sess, _ := sm.CreateSessionWithID(sessionID, result.User, result.Privileged)
+    sess, _ := sm.CreateSession(sessionID, result.User, result.Privileged)
     attachBridgeSession(sess, result.Conn)
     return sess, nil
 }
@@ -140,11 +176,12 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 On the bridge side:
 
 ```go
-// backend/bridge/cmd — bridge process entry point (lifecycle.go + yamux.go)
+// backend/bridge/cmd — bridge process entry point (ready.go + yamux.go)
 const clientConnFD = 3
 clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
 clientConn, _ := net.FileConn(clientFile)  // openClientConnection()
-handleYamuxSession(clientConn)             // relay.NewYamuxServer(conn) — bridge = yamux server
+handleYamuxSession(..., clientConn, ..., startup.ready)
+// startup.ready writes READY and blocks for GO before NewYamuxServer(conn).
 ```
 
 ## Server Implementation

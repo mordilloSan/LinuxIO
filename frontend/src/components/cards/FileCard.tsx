@@ -1,10 +1,12 @@
-import React, {
+import {
+  memo,
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -51,9 +53,9 @@ export interface FileCardProps {
   modTime?: string;
   name: string;
   onCancelRename?: () => void;
-  onClick: (event: React.MouseEvent) => void;
+  onClick: (event: MouseEvent) => void;
   onConfirmRename?: (newName: string) => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
   selected?: boolean;
@@ -62,7 +64,7 @@ export interface FileCardProps {
   type: string;
 }
 
-const FileCard: React.FC<FileCardProps> = React.memo(
+const FileCard = memo<FileCardProps>(
   ({
     name,
     path,
@@ -88,9 +90,16 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const syncRenameValue = useEffectEvent(() => {
-      setRenameValue(name);
-    });
+    // Reset the draft to the current name when entering rename mode — the
+    // render-time adjustment pattern (react.dev "adjusting state when a prop
+    // changes"), not a setState-in-effect.
+    const [wasRenaming, setWasRenaming] = useState(isRenaming);
+    if (isRenaming !== wasRenaming) {
+      setWasRenaming(isRenaming);
+      if (isRenaming) {
+        setRenameValue(name);
+      }
+    }
 
     // Auto-focus and select text when entering rename mode
     useEffect(() => {
@@ -104,13 +113,10 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           inputRef.current.select();
         }
       }
-      if (isRenaming) {
-        syncRenameValue();
-      }
     }, [isRenaming, name, isDirectory]);
 
     const handleRenameKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
+      (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -140,14 +146,14 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
     const {
       size: fetchedSize,
-      isLoading: isFetchingSize,
+      isLoading: isSizeLoading,
       error: fetchError,
     } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
     const effectiveSizeLoading = needsIndividualDirSize
-      ? isFetchingSize
+      ? isSizeLoading
       : directorySizeLoading;
     const effectiveSizeError = needsIndividualDirSize
       ? fetchError
@@ -192,7 +198,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const metadataOpacity = isDirectory ? 0.85 : 0.65;
 
     const handleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onClick(e);
       },
@@ -200,7 +206,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     );
 
     const handleDoubleClick = useCallback(
-      (e: React.MouseEvent) => {
+      (e: MouseEvent) => {
         e.stopPropagation();
         onDoubleClick?.();
       },
@@ -223,7 +229,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           alignItems: "center",
           gap: theme.spacing(1.5),
           padding: theme.spacing(1.5),
-          border: selected ? "2px solid" : "3px solid",
+          border: "3px solid",
           borderColor: borderColor,
           borderRadius: 20,
           backgroundColor: baseBg,

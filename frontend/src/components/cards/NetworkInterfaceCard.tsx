@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { useId } from "react";
 
 import { type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
-import AppTooltip from "@/components/ui/AppTooltip";
+import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 
 const getStatusTooltip = (state: number) => {
@@ -30,57 +31,61 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 export interface NetworkInterfaceCardProps {
-  editForm: Record<string, any>;
   expanded: boolean;
   iface: NetworkInterface;
   onClose: () => void;
-  onSave: (iface: NetworkInterface) => void;
   onToggle: () => void;
-  setEditForm: (form: Record<string, any>) => void;
 }
 
-const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
+const NetworkInterfaceCard = ({
   iface,
   expanded,
-  editForm,
-  setEditForm,
   onToggle,
   onClose,
-  onSave,
-}) => {
+}: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const primaryColor = theme.palette.primary.main;
+  const editorId = useId();
 
   return (
     <FrostedCard
       hoverLift={!expanded}
-      style={{ padding: 8, position: "relative", cursor: "pointer" }}
+      style={{ padding: 8, position: "relative" }}
     >
-      <AppTooltip arrow title={getStatusTooltip(iface.state)}>
-        <span
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 8,
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            display: "inline-block",
-            backgroundColor:
-              iface.state === 100
-                ? theme.palette.success.main
-                : iface.state >= 40 && iface.state <= 90
-                  ? theme.palette.warning.main
-                  : iface.state === 30 || iface.state === 120
-                    ? theme.palette.error.main
-                    : theme.palette.text.disabled,
-          }}
-        />
-      </AppTooltip>
+      <StatusDot
+        absolute
+        color={
+          iface.state === 100
+            ? theme.palette.success.main
+            : iface.state >= 40 && iface.state <= 90
+              ? theme.palette.warning.main
+              : iface.state === 30 || iface.state === 120
+                ? theme.palette.error.main
+                : theme.palette.text.disabled
+        }
+        size={10}
+        style={{ top: 16, right: 8 }}
+        tooltip={getStatusTooltip(iface.state)}
+      />
 
-      <div
+      <AppButton
+        aria-controls={editorId}
+        aria-expanded={expanded}
+        color="inherit"
         onClick={onToggle}
-        style={{ display: "flex", alignItems: "flex-start" }}
+        style={{
+          appearance: "none",
+          background: "none",
+          border: 0,
+          color: "inherit",
+          cursor: "pointer",
+          display: "flex",
+          font: "inherit",
+          padding: 0,
+          textAlign: "left",
+          alignItems: "flex-start",
+          width: "100%",
+        }}
       >
         <div
           style={{
@@ -119,15 +124,14 @@ const NetworkInterfaceCard: React.FC<NetworkInterfaceCardProps> = ({
             {formatBps(iface.tx_speed)}
           </AppTypography>
         </div>
+      </AppButton>
+      <div id={editorId}>
+        <NetworkInterfaceEditor
+          expanded={expanded}
+          iface={iface}
+          onClose={onClose}
+        />
       </div>
-      <NetworkInterfaceEditor
-        editForm={editForm}
-        expanded={expanded}
-        iface={iface}
-        onClose={onClose}
-        onSave={onSave}
-        setEditForm={setEditForm}
-      />
     </FrostedCard>
   );
 };

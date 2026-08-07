@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import type { ReactNode } from "react";
 
 import { type Peer } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -55,16 +55,16 @@ function formatAgo(unix?: number): string {
 interface PeerCardRowProps {
   label: string;
   noDivider?: boolean;
-  value: React.ReactNode;
+  value: ReactNode;
   wrap?: boolean;
 }
 
-const PeerCardRow: React.FC<PeerCardRowProps> = ({
+const PeerCardRow = ({
   label,
   value,
   wrap = false,
   noDivider = false,
-}) => (
+}: PeerCardRowProps) => (
   <div
     style={{
       display: "flex",
@@ -114,13 +114,13 @@ export interface WireguardPeerCardProps {
   peer: Peer;
 }
 
-const WireguardPeerCard: React.FC<WireguardPeerCardProps> = ({
+const WireguardPeerCard = ({
   peer,
   isOnline,
   onDelete,
   onDownloadConfig,
   onViewQrCode,
-}) => (
+}: WireguardPeerCardProps) => (
   <FrostedCard>
     <AppCardContent>
       {/* Header: name + status + actions */}

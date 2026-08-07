@@ -1,5 +1,3 @@
-import React from "react";
-
 import { type DockerNetwork } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -17,13 +15,9 @@ export interface NetworkCardProps {
   selected: boolean;
 }
 
-const DOCKER_TOAST_META = { href: "/docker", label: "Open Docker" };
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
-const NetworkCard: React.FC<NetworkCardProps> = ({
-  network,
-  selected,
-  onSelect,
-}) => (
+const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
   <FrostedCard style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div
@@ -80,6 +74,28 @@ const NetworkCard: React.FC<NetworkCardProps> = ({
         size="small"
         variant="soft"
       />
+      <Chip
+        label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
+      <Chip
+        label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
+      <Chip
+        label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
+        size="small"
+        variant="soft"
+      />
+      {network.Created && (
+        <Chip
+          label={`Created: ${new Date(network.Created).toLocaleDateString()}`}
+          size="small"
+          variant="soft"
+        />
+      )}
     </div>
 
     {/* ID */}

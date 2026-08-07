@@ -599,38 +599,6 @@ func previousSuccessfulLoginUnixBefore(logins []Login, sessionStartedAt time.Tim
 	return 0
 }
 
-func countBtmpFailuresSince(username string, data []byte, since int64) int {
-	return countBtmpFailuresBetween(username, data, since, 0)
-}
-
-func countBtmpFailuresBetween(username string, data []byte, since, until int64) int {
-	username = strings.TrimSpace(username)
-
-	count := 0
-	for len(data) >= btmpRecordSize {
-		record := data[:btmpRecordSize]
-		data = data[btmpRecordSize:]
-
-		recordType := utmpRecordType(record)
-		if recordType != utmpLoginProcess && recordType != utmpUserProcess {
-			continue
-		}
-		recordUser := strings.TrimSpace(fixedCString(record[btmpUserOffset : btmpUserOffset+btmpUserSize]))
-		if !matchesLoginUser(recordUser, username) {
-			continue
-		}
-		recordTime := utmpRecordTime(record)
-		if recordTime <= since {
-			continue
-		}
-		if until > 0 && recordTime > until {
-			continue
-		}
-		count++
-	}
-	return count
-}
-
 func matchesLoginUser(recordUser, username string) bool {
 	recordUser = strings.TrimSpace(recordUser)
 	if !isLoginUser(recordUser) {

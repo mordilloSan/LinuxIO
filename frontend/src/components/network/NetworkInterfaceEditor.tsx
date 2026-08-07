@@ -1,5 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { linuxio, type NetworkInterface as BaseNI } from "@/api";
 import AppButton from "@/components/ui/AppButton";
@@ -11,7 +10,11 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
+
+const NETWORK_TOAST_META = {
+  label: "Open network",
+  to: "/network",
+} as const;
 
 /* ================= helpers ================= */
 
@@ -72,104 +75,126 @@ function getDNSv4List(i: any): string[] {
 /* ============================================ */
 
 interface Props {
-  editForm: Record<string, any>;
   expanded: boolean;
   iface: BaseNI;
   onClose: () => void;
-  onSave: (iface: BaseNI) => void;
-  setEditForm: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
-const NetworkInterfaceEditor: React.FC<Props> = ({
-  iface,
+
+type IPv4Mode = "auto" | "manual";
+
+interface ManualIPv4Form {
+  dns: string;
+  gateway: string;
+  ipv4: string;
+}
+
+interface EditorSession {
+  draft: ManualIPv4Form | null;
+  expanded: boolean;
+  ifaceName: string;
+  mode: IPv4Mode;
+  sourceIpv4Method: string | undefined;
+}
+
+const modeFromInterface = (iface: BaseNI): IPv4Mode =>
+  iface.ipv4_method === "manual" ? "manual" : "auto";
+
+const createEditorSession = (
+  iface: BaseNI,
+  expanded: boolean,
+): EditorSession => ({
+  draft: null,
   expanded,
-  editForm,
-  setEditForm,
-  onClose,
-  onSave,
-}) => {
+  ifaceName: iface.name,
+  mode: modeFromInterface(iface),
+  sourceIpv4Method: iface.ipv4_method,
+});
+
+const isCurrentSession = (
+  session: EditorSession,
+  iface: BaseNI,
+  expanded: boolean,
+) =>
+  session.expanded === expanded &&
+  session.ifaceName === iface.name &&
+  session.sourceIpv4Method === iface.ipv4_method;
+
+const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   const theme = useAppTheme();
-  const toast = useScopedToast({ href: "/network", label: "Open network" });
-  const [mode, setMode] = useState<"auto" | "manual">("auto");
-  const [dirty, setDirty] = useState(false);
-  const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
-  const [prevIfaceName, setPrevIfaceName] = useState(iface.name);
-  const queryClient = useQueryClient();
+  const toast = useScopedToast(NETWORK_TOAST_META);
 
-  // Keep mode in sync with iface (render-time state adjustment)
-  if (iface.ipv4_method !== prevIpv4Method) {
-    setPrevIpv4Method(iface.ipv4_method);
-    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+  // Compute sane defaults from iface — stabilised on the actual values,
+  // NOT the iface object reference (which changes every refetch).
+  const defaultIpv4 = getIPv4FromIface(iface);
+  const defaultGateway = getGatewayV4(iface);
+  const defaultDns = getDNSv4List(iface).join(", ");
+  const defaults = useMemo<ManualIPv4Form>(
+    () => ({
+      ipv4: defaultIpv4,
+      gateway: defaultGateway,
+      dns: defaultDns,
+    }),
+    [defaultIpv4, defaultGateway, defaultDns],
+  );
+
+  const [storedSession, setStoredSession] = useState<EditorSession>(() =>
+    createEditorSession(iface, expanded),
+  );
+  const sessionIsCurrent = isCurrentSession(storedSession, iface, expanded);
+  const session = sessionIsCurrent
+    ? storedSession
+    : createEditorSession(iface, expanded);
+
+  // Reset synchronously for a new open/close session, another interface, or a
+  // backend method change. Polling updates to values still flow through
+  // `defaults` until the user creates a draft.
+  if (!sessionIsCurrent) {
+    setStoredSession(session);
   }
 
-  // Reset dirty when switching to another interface (render-time state adjustment)
-  if (iface.name !== prevIfaceName) {
-    setPrevIfaceName(iface.name);
-    setDirty(false);
-  }
+  const { mode } = session;
+  const editForm = session.draft ?? defaults;
+
+  const updateSession = (update: (current: EditorSession) => EditorSession) => {
+    setStoredSession((current) =>
+      update(
+        isCurrentSession(current, iface, expanded)
+          ? current
+          : createEditorSession(iface, expanded),
+      ),
+    );
+  };
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.network.set_ipv4.useMutation({
-      onSuccess: () => {
+    linuxio.network.set_ipv4.useAction({
+      success: () => {
         toast.success("Switched to DHCP mode");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-        onSave(iface);
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to set DHCP configuration"),
-        );
-      },
+      error: "Failed to set DHCP configuration",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.network.set_ipv4_manual.useMutation({
-      onSuccess: () => {
+    linuxio.network.set_ipv4_manual.useAction({
+      success: () => {
         toast.success("Manual configuration saved");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-        onSave(iface);
         onClose();
       },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(
-            error,
-            "Failed to save network configuration",
-          ),
-        );
-      },
+      error: "Failed to save network configuration",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.network.enable_connection.useMutation({
-      onSuccess: () => {
-        toast.success("Connection enabled");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to enable connection"),
-        );
-      },
+    linuxio.network.enable_connection.useAction({
+      success: "Connection enabled",
+      error: "Failed to enable connection",
+      toast: NETWORK_TOAST_META,
     });
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.network.disable_connection.useMutation({
-      onSuccess: () => {
-        toast.success("Connection disabled");
-        queryClient.invalidateQueries({
-          queryKey: linuxio.network.get_network_info.queryKey(),
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to disable connection"),
-        );
-      },
+    linuxio.network.disable_connection.useAction({
+      success: "Connection disabled",
+      error: "Failed to disable connection",
+      toast: NETWORK_TOAST_META,
     });
   const saving = isSettingIPv4 || isSettingIPv4Manual;
   const toggling = isEnabling || isDisabling;
@@ -183,64 +208,24 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     }
   };
 
-  // Compute sane defaults from iface — stabilised on the actual values,
-  // NOT the iface object reference (which changes every refetch).
-  const defaultIpv4 = getIPv4FromIface(iface);
-  const defaultGateway = getGatewayV4(iface);
-  const defaultDns = getDNSv4List(iface).join(", ");
-  const defaults = useMemo(
-    () => ({
-      ipv4: defaultIpv4,
-      gateway: defaultGateway,
-      dns: defaultDns,
-    }),
-    [defaultIpv4, defaultGateway, defaultDns],
-  );
-
-  // Prefill when expanded + manual (without clobbering user input).
-  // Deliberately omits editForm from deps to avoid a set→trigger→set loop.
-  useEffect(() => {
-    if (!expanded) return;
-    if (mode === "manual") {
-      if (!dirty) {
-        setEditForm({
-          ipv4: defaults.ipv4 || "",
-          gateway: defaults.gateway || "",
-          dns: defaults.dns || "",
-        });
-      }
-    } else {
-      // Auto mode: clear manual-only inputs
-      setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-    }
-  }, [expanded, mode, defaults, dirty, setEditForm]);
-  const handleModeChange = (newMode: "auto" | "manual") => {
-    setMode(newMode);
-    if (newMode === "auto") {
-      setEditForm({});
-    } else {
-      // Prefill immediately when switching to manual
-      setEditForm({
-        ipv4: defaults.ipv4 || "",
-        gateway: defaults.gateway || "",
-        dns: defaults.dns || "",
-      });
-      setDirty(false);
-    }
+  const handleModeChange = (newMode: IPv4Mode) => {
+    updateSession((current) => ({
+      ...current,
+      draft: null,
+      mode: newMode,
+    }));
   };
-  const handleChange = (field: string, value: string) => {
-    setDirty(true);
-    setEditForm((prev) => ({
-      ...prev,
-      [field]: value,
+  const handleChange = (field: keyof ManualIPv4Form, value: string) => {
+    updateSession((current) => ({
+      ...current,
+      draft: {
+        ...(current.draft ?? defaults),
+        [field]: value,
+      },
     }));
   };
   const handleDNSChange = (value: string) => {
-    setDirty(true);
-    setEditForm((prev) => ({
-      ...prev,
-      dns: value,
-    }));
+    handleChange("dns", value);
   };
   const validateIPv4CIDR = (cidr: string): boolean => {
     if (!cidr.includes("/")) return false;
@@ -268,9 +253,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       // SetIPv4 with method "dhcp"
       setIPv4({ iface: iface.name, method: "dhcp" });
     } else {
-      const ipv4 = (editForm.ipv4 || "").trim();
-      const gateway = (editForm.gateway || "").trim();
-      const dnsInput = (editForm.dns || "").trim();
+      const ipv4 = editForm.ipv4.trim();
+      const gateway = editForm.gateway.trim();
+      const dnsInput = editForm.dns.trim();
       if (!ipv4) {
         toast.error("IP address is required");
         return;

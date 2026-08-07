@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React, { useState } from "react";
+import { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -21,7 +21,7 @@ interface DeleteStackDialogProps {
   projectName: string;
   workingDir: string;
 }
-const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
+const DeleteStackDialog = ({
   open,
   onClose,
   onConfirm,
@@ -29,7 +29,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
   configFiles,
   workingDir,
   isLoading = false,
-}) => {
+}: DeleteStackDialogProps) => {
   const theme = useAppTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
 
@@ -126,9 +126,11 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                 : theme.palette.primary.main;
 
             return (
-              <button
+              <AppButton
                 aria-pressed={isSelected}
+                color="inherit"
                 disabled={isLoading}
+                fullWidth
                 key={option.value}
                 onClick={() => setDeleteOption(option.value)}
                 style={{
@@ -180,7 +182,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
                     width={20}
                   />
                 )}
-              </button>
+              </AppButton>
             );
           })}
         </div>

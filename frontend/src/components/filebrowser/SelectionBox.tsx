@@ -1,5 +1,3 @@
-import React from "react";
-
 import { useAppTheme } from "@/theme";
 
 interface SelectionBoxProps {
@@ -12,12 +10,7 @@ interface SelectionBoxProps {
 /**
  * Visual overlay for marquee selection box
  */
-const SelectionBox: React.FC<SelectionBoxProps> = ({
-  left,
-  top,
-  width,
-  height,
-}) => {
+const SelectionBox = ({ left, top, width, height }: SelectionBoxProps) => {
   const theme = useAppTheme();
 
   return (

@@ -13,11 +13,18 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | The four binaries (CLI, webserver, auth, bridge), systemd socket activation, `linuxio.target`, and privilege separation. |
 | [Server Yamux Protocol](./server-yamux-protocol.md) | Lower-level WebSocket/yamux byte relay and mux framing. |
 
+## Frontend
+
+| Doc | Use |
+|-----|-----|
+| [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
+| [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
+| [Card Query Render Boundaries Plan](./card-query-render-boundaries-plan.md) | Plan for keeping polled query updates inside live card slots, sharing the production React Compiler with Vitest, and guarding component ownership. |
+
 ## Product Areas
 
 | Doc | Use |
 |-----|-----|
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |
 | [Notifications](./notifications.md) | Planned notification system design. |
-| [Session Activity Timeout Plan](./session-activity-timeout-plan.md) | Planned session idle and job-safe cleanup design. |
 | [Transient Units Plan](./transient-units-plan.md) | Planned bridge-survivable jobs via systemd transient units. |

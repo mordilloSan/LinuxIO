@@ -1,37 +1,36 @@
+import { Icon } from "@iconify/react";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { useState } from "react";
 
+import { DevtoolsModal } from "@/components/dev-tools/DevtoolsModal";
 import AppButton from "@/components/ui/AppButton";
+import AppIconButton from "@/components/ui/AppIconButton";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
+  isWebVitalsVisible: boolean;
   onClose: () => void;
+  onToggleWebVitals: () => void;
 }
 
 /**
  * Dev-only tool panel for testing and debugging.
  * Only rendered when import.meta.env.DEV is true.
  */
-export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
+export const DevToolsPanel = ({
+  isOpen,
+  isWebVitalsVisible,
+  onClose,
+  onToggleWebVitals,
+}: DevToolsPanelProps) => {
   const theme = useAppTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
-
-  // Draggable state for devtools - initialize to center of screen
-  const [position, setPosition] = useState(() => ({
-    x: Math.max(20, (window.innerWidth - 600) / 2),
-    y: Math.max(20, (window.innerHeight - 500) / 2),
-  }));
-  const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    initialX: number;
-    initialY: number;
-  } | null>(null);
+  const [isRouterDevtoolsOpen, setIsRouterDevtoolsOpen] = useState(false);
 
   const forceUpdateNotification = () => {
     const fakeUpdateInfo = {
@@ -51,55 +50,6 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     sessionStorage.removeItem("dev_update_forced");
     window.location.reload();
   };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest(".drag-handle")) {
-      setIsDragging(true);
-      dragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        initialX: position.x,
-        initialY: position.y,
-      };
-      e.preventDefault();
-    }
-  };
-
-  const handleMouseMove = useEffectEvent((e: MouseEvent) => {
-    if (isDragging && dragRef.current) {
-      const deltaX = e.clientX - dragRef.current.startX;
-      const deltaY = e.clientY - dragRef.current.startY;
-
-      const newX = dragRef.current.initialX + deltaX;
-      const newY = dragRef.current.initialY + deltaY;
-
-      // Constrain to viewport - keep at least 50px of the panel visible
-      const minVisible = 50;
-      const maxX = window.innerWidth - minVisible;
-      const maxY = window.innerHeight - minVisible;
-
-      const constrainedX = Math.max(-550, Math.min(maxX, newX));
-      const constrainedY = Math.max(0, Math.min(maxY, newY));
-
-      setPosition({ x: constrainedX, y: constrainedY });
-    }
-  });
-
-  const handleDragMouseUp = useEffectEvent(() => {
-    setIsDragging(false);
-    dragRef.current = null;
-  });
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleDragMouseUp);
-      return () => {
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleDragMouseUp);
-      };
-    }
-  }, [isDragging]);
 
   if (!import.meta.env.DEV || !isOpen) {
     return null;
@@ -136,7 +86,8 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           }}
         >
           <span> Dev Tools</span>
-          <button
+          <AppIconButton
+            aria-label="Close developer tools"
             onClick={onClose}
             style={{
               background: "transparent",
@@ -148,17 +99,41 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               marginLeft: 8,
             }}
           >
-            ×
-          </button>
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
         </div>
         <AppButton
           color="primary"
           fullWidth
-          onClick={() => setIsDevtoolsOpen(!isDevtoolsOpen)}
+          onClick={() => {
+            setIsDevtoolsOpen(!isDevtoolsOpen);
+            setIsRouterDevtoolsOpen(false);
+          }}
           size="small"
           variant="contained"
         >
-          {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
+          {isDevtoolsOpen ? "Close" : "Open"} Tanstack Query Devtools
+        </AppButton>
+        <AppButton
+          color="primary"
+          fullWidth
+          onClick={() => {
+            setIsRouterDevtoolsOpen(!isRouterDevtoolsOpen);
+            setIsDevtoolsOpen(false);
+          }}
+          size="small"
+          variant="contained"
+        >
+          {isRouterDevtoolsOpen ? "Close" : "Open"} TanStack Router Devtools
+        </AppButton>
+        <AppButton
+          color="primary"
+          fullWidth
+          onClick={onToggleWebVitals}
+          size="small"
+          variant="contained"
+        >
+          {isWebVitalsVisible ? "Hide" : "Show"} Web Vitals in Footer
         </AppButton>
         {!shown ? (
           <AppButton
@@ -183,78 +158,23 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
         )}
       </div>
 
-      {/* Draggable Devtools Panel */}
       {isDevtoolsOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            onClick={() => setIsDevtoolsOpen(false)}
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              backgroundColor: alpha(theme.palette.common.black, 0.5),
-              zIndex: 9997,
-            }}
+        <DevtoolsModal onClose={() => setIsDevtoolsOpen(false)}>
+          <ReactQueryDevtoolsPanel
+            onClose={() => setIsDevtoolsOpen(false)}
+            style={{ height: "100%", width: "100%" }}
           />
-          {/* Draggable Devtools Panel */}
-          <div
-            onMouseDown={handleMouseDown}
-            style={{
-              position: "fixed",
-              top: `${position.y}px`,
-              left: `${position.x}px`,
-              width: "600px",
-              height: "500px",
-              zIndex: 9998,
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: `0 25px 50px -12px ${alpha(theme.palette.common.black, 0.5)}`,
-              display: "flex",
-              flexDirection: "column",
-              cursor: isDragging ? "grabbing" : "default",
-            }}
-          >
-            {/* Drag Handle */}
-            <div
-              className="drag-handle"
-              style={{
-                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                padding: "8px 12px",
-                color: theme.palette.common.white,
-                fontWeight: "bold",
-                cursor: "grab",
-                userSelect: "none",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span>React Query Devtools (Drag to move)</span>
-              <button
-                onClick={() => setIsDevtoolsOpen(false)}
-                style={{
-                  background: alpha(theme.palette.common.white, 0.2),
-                  border: "none",
-                  borderRadius: "4px",
-                  color: theme.palette.common.white,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  padding: "2px 8px",
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div style={{ flex: 1, overflow: "hidden" }}>
-              <ReactQueryDevtoolsPanel
-                onClose={() => setIsDevtoolsOpen(false)}
-              />
-            </div>
-          </div>
-        </>
+        </DevtoolsModal>
+      )}
+
+      {isRouterDevtoolsOpen && (
+        <DevtoolsModal onClose={() => setIsRouterDevtoolsOpen(false)}>
+          <TanStackRouterDevtoolsPanel
+            isOpen={isRouterDevtoolsOpen}
+            setIsOpen={setIsRouterDevtoolsOpen}
+            style={{ height: "100%", width: "100%" }}
+          />
+        </DevtoolsModal>
       )}
     </>
   );

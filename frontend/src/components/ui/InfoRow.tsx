@@ -1,21 +1,21 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
 import "@/theme/section.css";
 
 interface InfoRowProps {
-  children: React.ReactNode;
+  children: ReactNode;
   label: string;
   noBorder?: boolean;
   wrap?: boolean;
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({
+const InfoRow = ({
   label,
   children,
   noBorder = false,
   wrap = false,
-}) => (
+}: InfoRowProps) => (
   <div
     className="info-row"
     style={{

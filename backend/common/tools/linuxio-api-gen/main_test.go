@@ -58,6 +58,8 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	out := renderRouteMetadata()
 	for _, expected := range []string{
+		"export type RouteName = keyof typeof ROUTE_MODES;",
+		"export type RouteModeFor<R extends string> =",
 		`"terminal.open": "duplex"`,
 		`"jobs.attach": "duplex"`,
 		`"logs.general.follow": "job"`,
@@ -76,7 +78,7 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"list_containers: { input: []; request: void; result: ContainerInfo[] };",
 		"jobs: {",
 		"list: { input: [request: JobListRequest]; request: JobListRequest; result: JobSnapshot[] };",
-		"compose: { input: [request: DockerComposeRequest]; request: DockerComposeRequest; result: JobSnapshot };",
+		"compose: { input: [request: DockerComposeRequest]; request: DockerComposeRequest; result: ComposeJobResult; progress: ComposeJobMessage };",
 		"create_samba_share: {",
 		"input: [request: ShareSambaRequest]; request: ShareSambaRequest;",
 		"archive: { input: [request: FileArchiveRequest]; request: FileArchiveRequest; result: JobSnapshot };",
@@ -92,6 +94,10 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"input: [content: string]; request: ContentRequest;",
 		"export interface InstallCapabilityResult",
 		"export interface JobEvent",
+		"export interface ComposeJobMessage",
+		"export interface ComposeJobResult",
+		"export interface ComposeProgress",
+		"export type CommandProgress<",
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated types missing %s", expected)
@@ -131,6 +137,10 @@ type GoldenResponse struct {
 	Items []string `json:"items"`
 }
 
+type GoldenProgress struct {
+	Message string `json:"message"`
+}
+
 func TestRenderTypesFromGoContracts(t *testing.T) {
 	routes := []apischema.RouteSpec{
 		{
@@ -155,11 +165,12 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
 		{
-			Kind:    apischema.KindRunner,
-			Route:   "golden.runner",
-			Mode:    bridgeipc.ModeJob,
-			Request: apischema.TypeOf[apischema.NTPServersRequest](),
-			Result:  apischema.TypeOf[apischema.JobSnapshot](),
+			Kind:     apischema.KindRunner,
+			Route:    "golden.runner",
+			Mode:     bridgeipc.ModeJob,
+			Request:  apischema.TypeOf[apischema.NTPServersRequest](),
+			Result:   apischema.TypeOf[apischema.JobSnapshot](),
+			Progress: apischema.TypeOf[GoldenProgress](),
 		},
 		{
 			Kind:       apischema.KindDuplex,
@@ -180,7 +191,11 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 		"noop: { input: []; request: void; result: void };",
 		"scalar: { input: [request: GoldenScalarRequest]; request: GoldenScalarRequest; result: GoldenResponse };",
 		"nested: { input: [request: GoldenNestedRequest]; request: GoldenNestedRequest; result: GoldenResponse };",
-		"runner: { input: [servers: string[]]; request: NTPServersRequest; result: JobSnapshot };",
+		"runner: { input: [servers: string[]]; request: NTPServersRequest; result: JobSnapshot; progress: GoldenProgress };",
+		"export interface GoldenProgress",
+		"export interface LinuxIOStreamSchema",
+		"\"golden.stream\": void;",
+		"export type StreamRouteName = keyof LinuxIOStreamSchema;",
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated Go-contract types missing %s\n%s", expected, out)

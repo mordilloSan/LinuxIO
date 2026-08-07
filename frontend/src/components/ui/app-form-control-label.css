@@ -4,7 +4,6 @@
   align-items: center;
   cursor: pointer;
   vertical-align: middle;
-  -webkit-tap-highlight-color: transparent;
   margin-left: -11px;
   margin-right: 16px;
 }

@@ -33,10 +33,10 @@ const (
 )
 
 // GetCaddyStatus returns the current Caddy proxy status.
-func GetCaddyStatus(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func GetCaddyStatus(ctx context.Context, username string, store *config.UserStore) (apischema.CaddyStatusResponse, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
-		return nil, err
+		return apischema.CaddyStatusResponse{}, err
 	}
 
 	running := isCaddyRunning(ctx)
@@ -51,13 +51,13 @@ func GetCaddyStatus(ctx context.Context, username string, store *config.UserStor
 }
 
 // EnableCaddy deploys the Caddy container and generates the initial Caddyfile.
-func EnableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func EnableCaddy(ctx context.Context, username string, store *config.UserStore) (apischema.MessageResponse, error) {
 	if err := ensureCaddyDirs(); err != nil {
-		return nil, fmt.Errorf("failed to create caddy config dirs: %w", err)
+		return apischema.MessageResponse{}, fmt.Errorf("failed to create caddy config dirs: %w", err)
 	}
 
 	if err := deployCaddyContainer(ctx); err != nil {
-		return nil, fmt.Errorf("failed to deploy caddy: %w", err)
+		return apischema.MessageResponse{}, fmt.Errorf("failed to deploy caddy: %w", err)
 	}
 
 	cfg, _, err := config.UpdateForUser(ctx, username, store, func(cfg *config.Settings) error {
@@ -65,7 +65,7 @@ func EnableCaddy(ctx context.Context, username string, store *config.UserStore) 
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return apischema.MessageResponse{}, err
 	}
 
 	// Give Caddy a moment to start before attempting first reload
@@ -74,15 +74,15 @@ func EnableCaddy(ctx context.Context, username string, store *config.UserStore) 
 	select {
 	case <-timer.C:
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return apischema.MessageResponse{}, ctx.Err()
 	}
 	_ = reloadCaddyfile(ctx, cfg.Docker.Proxy)
 
-	return map[string]any{"message": "Caddy deployed"}, nil
+	return apischema.MessageResponse{Message: "Caddy deployed"}, nil
 }
 
 // DisableCaddy stops and removes the Caddy container.
-func DisableCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func DisableCaddy(ctx context.Context, username string, store *config.UserStore) (apischema.MessageResponse, error) {
 	if err := removeCaddyContainer(ctx); err != nil {
 		slog.Warn("failed to remove caddy container", "component", "docker", "subsystem", "caddy", "error", err)
 	}
@@ -91,28 +91,28 @@ func DisableCaddy(ctx context.Context, username string, store *config.UserStore)
 		cfg.Docker.Proxy.CaddyEnabled = false
 		return nil
 	}); err != nil {
-		return nil, err
+		return apischema.MessageResponse{}, err
 	}
 
-	return map[string]any{"message": "Caddy removed"}, nil
+	return apischema.MessageResponse{Message: "Caddy removed"}, nil
 }
 
 // ReloadCaddy regenerates the Caddyfile from current containers and reloads Caddy.
-func ReloadCaddy(ctx context.Context, username string, store *config.UserStore) (any, error) {
+func ReloadCaddy(ctx context.Context, username string, store *config.UserStore) (apischema.MessageResponse, error) {
 	cfg, _, err := config.SnapshotForUser(ctx, username, store)
 	if err != nil {
-		return nil, err
+		return apischema.MessageResponse{}, err
 	}
 	if err := reloadCaddyfile(ctx, cfg.Docker.Proxy); err != nil {
-		return nil, err
+		return apischema.MessageResponse{}, err
 	}
-	return map[string]any{"message": "Caddy reloaded"}, nil
+	return apischema.MessageResponse{Message: "Caddy reloaded"}, nil
 }
 
 // ConnectToProxy attaches a container to linuxio-docker so Caddy can reach it.
-func ConnectToProxy(ctx context.Context, containerID string) (any, error) {
+func ConnectToProxy(ctx context.Context, containerID string) (apischema.MessageResponse, error) {
 	connectToProxyNetwork(ctx, containerID)
-	return map[string]any{"message": "connected"}, nil
+	return apischema.MessageResponse{Message: "connected"}, nil
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────

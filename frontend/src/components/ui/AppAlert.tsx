@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import React from "react";
+import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 
 import "./app-alert.css";
 
@@ -13,19 +13,19 @@ const SEVERITY_ICONS: Record<AlertSeverity, string> = {
 };
 
 export interface AppAlertProps extends Omit<
-  React.HTMLAttributes<HTMLDivElement>,
+  HTMLAttributes<HTMLDivElement>,
   "action"
 > {
-  action?: React.ReactNode;
+  action?: ReactNode;
   onClose?: () => void;
   severity?: AlertSeverity;
 }
 
-export const AppAlertTitle: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => <div className="app-alert__title">{children}</div>;
+export const AppAlertTitle = ({ children }: { children: ReactNode }) => (
+  <div className="app-alert__title">{children}</div>
+);
 
-const AppAlert = React.forwardRef<HTMLDivElement, AppAlertProps>(
+const AppAlert = forwardRef<HTMLDivElement, AppAlertProps>(
   (
     { severity = "info", onClose, action, children, className, ...rest },
     ref,

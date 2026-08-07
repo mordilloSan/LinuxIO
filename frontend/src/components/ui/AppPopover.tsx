@@ -1,4 +1,4 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useEffectEvent,
@@ -6,9 +6,13 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { targetAllowsContextMenu } from "@/utils/contextMenu";
 import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-popover.css";
@@ -25,15 +29,16 @@ export interface AppPopoverProps {
   anchorEl?: HTMLElement | null;
   anchorOrigin?: AppPopoverOrigin;
   anchorPosition?: { top: number; left: number } | null;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
+  keepMounted?: boolean;
   matchAnchorWidth?: boolean;
   onClose?: () => void;
   open: boolean;
   paperClassName?: string;
-  paperRef?: React.Ref<HTMLDivElement>;
-  paperStyle?: React.CSSProperties;
-  style?: React.CSSProperties;
+  paperRef?: Ref<HTMLDivElement>;
+  paperStyle?: CSSProperties;
+  style?: CSSProperties;
   transformOrigin?: AppPopoverOrigin;
   zIndex?: number;
 }
@@ -67,7 +72,7 @@ const getVerticalOffset = (origin: VerticalOrigin, height: number) => {
   }
 };
 
-const AppPopover: React.FC<AppPopoverProps> = ({
+const AppPopover = ({
   open,
   onClose,
   anchorEl,
@@ -75,6 +80,7 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   anchorOrigin = DEFAULT_ORIGIN,
   transformOrigin = DEFAULT_ORIGIN,
   matchAnchorWidth = false,
+  keepMounted = false,
   children,
   className,
   paperClassName,
@@ -82,7 +88,7 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   paperStyle,
   paperRef,
   zIndex = 1400,
-}) => {
+}: AppPopoverProps) => {
   const internalPaperRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: -9999, left: -9999 });
 
@@ -185,7 +191,7 @@ const AppPopover: React.FC<AppPopoverProps> = ({
       return;
     }
 
-    if ((target as HTMLElement).closest?.("[data-allow-context-menu='true']")) {
+    if (targetAllowsContextMenu(target)) {
       return;
     }
 
@@ -244,7 +250,7 @@ const AppPopover: React.FC<AppPopoverProps> = ({
     };
   }, [open]);
 
-  if (!open) {
+  if (!open && !keepMounted) {
     return null;
   }
 
@@ -256,7 +262,11 @@ const AppPopover: React.FC<AppPopoverProps> = ({
   return createPortal(
     <div
       className={`app-popover-root ${className || ""}`.trim()}
-      style={{ zIndex, ...style }}
+      style={{
+        zIndex,
+        ...style,
+        display: open ? style?.display : "none",
+      }}
     >
       <div
         className={`app-popover__paper ${paperClassName || ""}`.trim()}

@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "@/api";
@@ -7,15 +8,15 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({
-  configGetQueryOptions: vi.fn(),
-  configSetUseMutation: vi.fn(),
+  configGetFetch: vi.fn(),
+  configSetUseJobAction: vi.fn(),
   dockerListComposeProjectsQueryKey: vi.fn(() => [
     "linuxio",
     "docker",
     "list_compose_projects",
   ]),
   setConfigRemote: vi.fn(),
-  waitForStreamMux: vi.fn(),
+  useStreamMux: vi.fn(),
 }));
 
 const toastMocks = vi.hoisted(() => ({
@@ -31,15 +32,15 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
-    waitForStreamMux: apiMocks.waitForStreamMux,
+    useStreamMux: apiMocks.useStreamMux,
     linuxio: {
       ...actual.linuxio,
       config: {
         get: {
-          queryOptions: apiMocks.configGetQueryOptions,
+          useFetcher: () => apiMocks.configGetFetch,
         },
         set: {
-          useMutation: apiMocks.configSetUseMutation,
+          useAction: apiMocks.configSetUseJobAction,
         },
       },
       docker: {
@@ -51,9 +52,8 @@ vi.mock("@/api", async () => {
     },
   };
 });
-
 const { LinuxIOError } = await import("@/api");
-const { ConfigProvider } = await import("@/contexts/ConfigContext");
+const { ConfigProvider } = await import("@/contexts/ConfigProvider");
 const { useConfig } = await import("@/hooks/useConfig");
 const { act, createAuthContextValue, createTestQueryClient, render } =
   await import("@/test/render");
@@ -94,6 +94,8 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
+const onSavedSpy = vi.fn();
+
 function Probe() {
   const { config, isLoaded, setKey, updateConfig } = useConfig();
   return (
@@ -113,50 +115,100 @@ function Probe() {
       >
         set folders
       </button>
+      <button
+        onClick={() =>
+          updateConfig(
+            { docker: { requireMountsForFolders: true } },
+            onSavedSpy,
+          )
+        }
+      >
+        set mounts
+      </button>
     </div>
   );
 }
 
+interface CapturedJobActionConfig {
+  invalidates?:
+    | readonly (readonly unknown[])[]
+    | ((
+        result: unknown,
+        variables: unknown,
+      ) => readonly (readonly unknown[])[]);
+  success?: string | ((result: unknown, variables: unknown) => void);
+}
+
 function renderProvider({
   configQueryFn = async () => remoteConfig(),
-  signOut = vi.fn(),
+  sessionExpired = vi.fn(),
+  strictMode = false,
 }: {
   configQueryFn?: () => Promise<AppConfig>;
-  signOut?: () => Promise<void>;
+  sessionExpired?: () => void;
+  strictMode?: boolean;
 } = {}) {
-  const mutationOptions: Array<{
-    onSuccess?: (_result: unknown, patch: unknown) => void;
-  }> = [];
+  const jobActionConfigs: CapturedJobActionConfig[] = [];
   const queryClient = createTestQueryClient();
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
-  apiMocks.waitForStreamMux.mockResolvedValue(true);
-  apiMocks.configGetQueryOptions.mockReturnValue({
-    queryKey: ["linuxio", "config", "get"],
-    queryFn: configQueryFn,
+  apiMocks.useStreamMux.mockReturnValue({
+    status: "open",
+    isOpen: true,
+    getStream: () => null,
   });
-  apiMocks.configSetUseMutation.mockImplementation((options) => {
-    mutationOptions.push(options);
+  apiMocks.configGetFetch.mockImplementation(() => configQueryFn());
+  apiMocks.configSetUseJobAction.mockImplementation((config) => {
+    jobActionConfigs.push(config);
     return { mutate: apiMocks.setConfigRemote };
   });
+
+  // Emulates useAction's success path: invalidates -> success, with the
+  // unwrapped job result (not a JobSnapshot).
+  const fireJobActionSuccess = (result: unknown, variables: unknown) => {
+    const config = jobActionConfigs.at(-1);
+    if (!config) return;
+    const keys =
+      typeof config.invalidates === "function"
+        ? config.invalidates(result, variables)
+        : config.invalidates;
+    for (const queryKey of keys ?? []) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+    if (typeof config.success === "function") {
+      config.success(result, variables);
+    } else if (config.success !== undefined) {
+      toastMocks.success(config.success);
+    }
+  };
+
+  const provider = (
+    <ConfigProvider>
+      <Probe />
+    </ConfigProvider>
+  );
 
   render(
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider
         value={createAuthContextValue({
           isAuthenticated: true,
-          signOut,
+          sessionExpired,
           user: { id: "miguel", name: "Miguel" },
         })}
       >
-        <ConfigProvider>
-          <Probe />
-        </ConfigProvider>
+        {strictMode ? <StrictMode>{provider}</StrictMode> : provider}
       </AuthContext.Provider>
     </QueryClientProvider>,
   );
 
-  return { invalidateQueries, mutationOptions, queryClient, signOut };
+  return {
+    fireJobActionSuccess,
+    invalidateQueries,
+    jobActionConfigs,
+    queryClient,
+    sessionExpired,
+  };
 }
 
 describe("ConfigProvider", () => {
@@ -169,8 +221,7 @@ describe("ConfigProvider", () => {
       "/srv/docker",
     );
 
-    expect(apiMocks.waitForStreamMux).toHaveBeenCalledWith(250);
-    expect(apiMocks.configGetQueryOptions).toHaveBeenCalledWith({
+    expect(apiMocks.configGetFetch).toHaveBeenCalledWith({
       staleTime: 0,
     });
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
@@ -190,11 +241,11 @@ describe("ConfigProvider", () => {
     expect(await screen.findByTestId("docker-folders")).toHaveTextContent(
       "/cached",
     );
-    expect(apiMocks.configGetQueryOptions).not.toHaveBeenCalled();
+    expect(apiMocks.configGetFetch).not.toHaveBeenCalled();
   });
 
   it("saves user changes only after a successful backend load", async () => {
-    const { mutationOptions } = renderProvider();
+    const { jobActionConfigs } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
@@ -206,20 +257,36 @@ describe("ConfigProvider", () => {
         theme: "DARK",
       },
     });
-    expect(mutationOptions.length).toBeGreaterThan(0);
+    expect(jobActionConfigs.length).toBeGreaterThan(0);
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
       '"theme":"DARK"',
     );
   });
 
+  it("persists a StrictMode-replayed update only once", async () => {
+    renderProvider({ strictMode: true });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set theme" }).click();
+    });
+
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(1);
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+      appSettings: {
+        theme: "DARK",
+      },
+    });
+  });
+
   it("invalidates compose projects after persisted Docker folder changes", async () => {
-    const { invalidateQueries, mutationOptions } = renderProvider();
+    const { fireJobActionSuccess, invalidateQueries } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
       screen.getByRole("button", { name: "set folders" }).click();
     });
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
+    fireJobActionSuccess(undefined, {
       docker: {
         folders: ["/opt/compose"],
       },
@@ -235,45 +302,36 @@ describe("ConfigProvider", () => {
     });
   });
 
-  it("shows a toast after Docker mount ordering changes are persisted", async () => {
-    const { mutationOptions } = renderProvider();
+  it("invokes onSaved only after the backend confirms the save", async () => {
+    renderProvider();
 
     await screen.findByTestId("loaded");
-
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
-      docker: {
-        requireMountsForFolders: true,
-      },
+    await act(async () => {
+      screen.getByRole("button", { name: "set mounts" }).click();
     });
-    expect(toastMocks.success).toHaveBeenCalledWith(
-      "Docker will wait for configured folder mounts.",
-    );
 
-    mutationOptions.at(-1)?.onSuccess?.(undefined, {
-      docker: {
-        requireMountsForFolders: false,
-      },
-    });
-    expect(toastMocks.success).toHaveBeenCalledWith(
-      "Docker folder mount ordering disabled.",
-    );
+    // The per-save callback is forwarded as the mutate call's onSuccess and
+    // must not fire before the mutation succeeds.
+    expect(onSavedSpy).not.toHaveBeenCalled();
+    const [patch, mutateOptions] = apiMocks.setConfigRemote.mock.lastCall ?? [];
+    expect(patch).toEqual({ docker: { requireMountsForFolders: true } });
+    (mutateOptions as { onSuccess: () => void }).onSuccess();
+    expect(onSavedSpy).toHaveBeenCalledTimes(1);
   });
 
   it("signs out and does not render children on auth failures", async () => {
-    const signOut = vi.fn(async () => undefined);
+    const sessionExpired = vi.fn();
 
     renderProvider({
       configQueryFn: async () => {
         throw new LinuxIOError("expired", 401);
       },
-      signOut,
+      sessionExpired,
     });
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
-
-    expect(toastMocks.error).toHaveBeenCalledWith(
-      "Session expired. Please sign in again.",
-    );
+    // The notice + redirect are sessionExpired's contract (covered in the
+    // AuthContext suite); here we only assert ConfigProvider delegates to it.
+    await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("loaded")).not.toBeInTheDocument();
   });
 

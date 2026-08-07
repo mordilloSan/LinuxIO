@@ -65,6 +65,7 @@ type Route struct {
 	Privileged bool
 	Policy     JobPolicy
 	Decode     RequestDecoder
+	Metadata   JobMetadataBuilder
 }
 
 type RouteOption func(*Route)
@@ -79,6 +80,14 @@ func WithRequestDecoder(decode RequestDecoder) RouteOption {
 	}
 }
 
+// WithJobMetadata declares the only request-derived data that may be exposed
+// through public job snapshots. Routes without this option expose no metadata.
+func WithJobMetadata(build JobMetadataBuilder) RouteOption {
+	return func(r *Route) {
+		r.Metadata = build
+	}
+}
+
 type JobPolicy struct {
 	Name                    string
 	MaxActivePerRoute       int
@@ -89,6 +98,11 @@ type JobPolicy struct {
 	// When it expires, bridgeipc cancels the runner context and fails the job with 504.
 	Timeout               time.Duration
 	DuplicateActiveReject bool
+	// SkipInitialSettle skips the InitialJobSettleTimeout wait before returning
+	// the start snapshot. The wait lets short jobs return a terminal snapshot in
+	// one round trip; follow-style streams never finish that fast, so for them
+	// it is pure added latency before the client can attach.
+	SkipInitialSettle bool
 }
 
 var (
@@ -124,16 +138,31 @@ var (
 		// bounded by MaxActivePerRoute / MaxActivePerOwnerRoute.
 		StartRatePerMinuteOwner: 0,
 	}
+	// StreamFollow is StreamDefault for follow-style streams (log tails) that
+	// by design never settle: the initial 25ms settle wait is skipped so the
+	// client gets the snapshot — and can attach — immediately.
+	StreamFollow = JobPolicy{
+		Name:                    "stream_follow",
+		MaxActivePerRoute:       64,
+		MaxActivePerOwnerRoute:  8,
+		QueueLimit:              0,
+		StartRatePerMinuteOwner: 0,
+		SkipInitialSettle:       true,
+	}
 )
 
 type Router struct {
-	mu                 sync.RWMutex
-	routes             map[string]Route
-	registry           *Registry
-	activeByRoute      map[string]int
-	activeByOwnerRoute map[string]int
-	queuedByRoute      map[string][]queuedJob
-	startsByOwnerRoute map[string][]time.Time
+	mu                   sync.RWMutex
+	routes               map[string]Route
+	registry             *Registry
+	activeByRoute        map[string]int
+	activeByOwnerRoute   map[string]int
+	queuedByRoute        map[string][]queuedJob
+	pendingQueuedByRoute map[string]int
+	startsByOwnerRoute   map[string][]time.Time
+	// beforeStartHook is a narrow test seam for the promotion/cancel race.
+	// Production never sets it.
+	beforeStartHook func(*Job)
 }
 
 type queuedJob struct {
@@ -152,12 +181,13 @@ func NewRouter(registry *Registry) *Router {
 		registry = DefaultRegistry
 	}
 	return &Router{
-		routes:             make(map[string]Route),
-		registry:           registry,
-		activeByRoute:      make(map[string]int),
-		activeByOwnerRoute: make(map[string]int),
-		queuedByRoute:      make(map[string][]queuedJob),
-		startsByOwnerRoute: make(map[string][]time.Time),
+		routes:               make(map[string]Route),
+		registry:             registry,
+		activeByRoute:        make(map[string]int),
+		activeByOwnerRoute:   make(map[string]int),
+		queuedByRoute:        make(map[string][]queuedJob),
+		pendingQueuedByRoute: make(map[string]int),
+		startsByOwnerRoute:   make(map[string][]time.Time),
 	}
 }
 
@@ -295,6 +325,9 @@ func (r *Router) lookup(route string) (Route, bool) {
 }
 
 func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, request any) error {
+	ctx, cleanup := queryAbortContext(ctx, stream)
+	defer cleanup()
+
 	emit := newStreamEmitter(stream)
 	err := route.Handler(ctx, request, emit)
 	if err != nil {
@@ -310,7 +343,7 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
 		return err
 	}
-	if started {
+	if started && !route.Policy.SkipInitialSettle {
 		select {
 		case <-job.Done():
 		case <-time.After(InitialJobSettleTimeout):
@@ -320,10 +353,15 @@ func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, 
 	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
 }
 
-func (r *Router) routeRunner(route Route) Runner {
+// routeRunner reports physical completion through executionDone. A job can
+// become terminal before its handler returns when a timed or canceled handler
+// ignores its context, so admission accounting must wait for this signal rather
+// than relying on Job.Done alone.
+func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner {
 	return func(ctx context.Context, job *Job, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
+			defer close(executionDone)
 			return r.runRoute(ctx, job, request, route)
 		}
 
@@ -332,6 +370,7 @@ func (r *Router) routeRunner(route Route) Runner {
 
 		done := make(chan runnerResult, 1)
 		go func() {
+			defer close(executionDone)
 			result, err := r.runRoute(runCtx, job, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
@@ -380,27 +419,65 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 		r.mu.Unlock()
 		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
 	}
-	if !canStart && len(r.queuedByRoute[req.Route]) >= policy.QueueLimit {
+	if !canStart && len(r.queuedByRoute[req.Route])+r.pendingQueuedByRoute[req.Route] >= policy.QueueLimit {
 		r.mu.Unlock()
 		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
 	}
-	r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
+	// checkRateLocked prunes this history, but only when the owner rate limit
+	// is enabled — with it disabled the append would grow unbounded, so skip it.
+	if policy.StartRatePerMinuteOwner > 0 {
+		r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
+	}
+	// Reserve an active slot before creating the job. CreateForOwner can take
+	// long enough for another request to otherwise observe stale capacity.
+	if canStart {
+		r.markActiveLocked(req.Route, ownerRouteKey)
+	} else {
+		// Queue capacity is also reserved before CreateForOwner so concurrent
+		// admission cannot overfill a bounded queue.
+		r.pendingQueuedByRoute[req.Route]++
+	}
 	r.mu.Unlock()
 
-	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner)
+	var metadata *JobMetadata
+	if route.Metadata != nil {
+		value := route.Metadata(req.DecodedValue)
+		metadata = &value
+	}
+	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
 	if err != nil {
+		if canStart {
+			// Releasing the reserved slot and promoting the next queued job is
+			// exactly the finished-job path.
+			r.finishJob(req.Route, ownerRouteKey)
+		} else {
+			r.mu.Lock()
+			if r.pendingQueuedByRoute[req.Route] > 0 {
+				r.pendingQueuedByRoute[req.Route]--
+			}
+			r.mu.Unlock()
+		}
 		return nil, false, err
 	}
 
 	r.mu.Lock()
 	if canStart {
-		r.markActiveLocked(req.Route, ownerRouteKey)
 		r.mu.Unlock()
 		r.startTrackedJob(route, job, req.Owner)
 		return job, true, nil
 	}
 	r.queuedByRoute[req.Route] = append(r.queuedByRoute[req.Route], queuedJob{route: route, job: job, owner: req.Owner})
+	if r.pendingQueuedByRoute[req.Route] > 0 {
+		r.pendingQueuedByRoute[req.Route]--
+	}
+	// An active job may have finished while CreateForOwner was running. Promote
+	// from the real FIFO queue now so this reservation cannot strand the job.
+	next := r.dequeueStartLocked(req.Route)
 	r.mu.Unlock()
+	if next != nil {
+		r.startTrackedJob(next.route, next.job, next.owner)
+		return job, next.job == job, nil
+	}
 	return job, false, nil
 }
 
@@ -445,24 +522,47 @@ func (r *Router) markActiveLocked(routeName, ownerRouteKey string) {
 	r.activeByOwnerRoute[ownerRouteKey]++
 }
 
-func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
-	ownerRouteKey := route.Name + "\x00" + owner.key()
-	job.Start(r.routeRunner(route))
-	go func() {
-		<-job.Done()
-		r.finishJob(route.Name, ownerRouteKey)
-	}()
-}
-
-func (r *Router) finishJob(routeName, ownerRouteKey string) {
-	var next *queuedJob
-	r.mu.Lock()
+func (r *Router) unmarkActiveLocked(routeName, ownerRouteKey string) {
 	if r.activeByRoute[routeName] > 0 {
 		r.activeByRoute[routeName]--
 	}
 	if r.activeByOwnerRoute[ownerRouteKey] > 0 {
 		r.activeByOwnerRoute[ownerRouteKey]--
 	}
+}
+
+func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
+	ownerRouteKey := route.Name + "\x00" + owner.key()
+	if r.beforeStartHook != nil {
+		r.beforeStartHook(job)
+	}
+	executionDone := make(chan struct{})
+	if !job.Start(r.routeRunner(route, executionDone)) {
+		r.finishJob(route.Name, ownerRouteKey)
+		return
+	}
+	go func() {
+		<-job.Done()
+		<-executionDone
+		r.finishJob(route.Name, ownerRouteKey)
+	}()
+}
+
+func (r *Router) finishJob(routeName, ownerRouteKey string) {
+	r.mu.Lock()
+	r.unmarkActiveLocked(routeName, ownerRouteKey)
+	next := r.dequeueStartLocked(routeName)
+	r.mu.Unlock()
+
+	if next != nil {
+		r.startTrackedJob(next.route, next.job, next.owner)
+	}
+}
+
+// dequeueStartLocked promotes the oldest runnable queued job for a route.
+// The caller starts it after releasing r.mu to avoid lock-order surprises.
+func (r *Router) dequeueStartLocked(routeName string) *queuedJob {
+	var next *queuedJob
 	queue := r.queuedByRoute[routeName]
 	for len(queue) > 0 {
 		candidate := queue[0]
@@ -480,11 +580,7 @@ func (r *Router) finishJob(routeName, ownerRouteKey string) {
 		break
 	}
 	r.queuedByRoute[routeName] = queue
-	r.mu.Unlock()
-
-	if next != nil {
-		r.startTrackedJob(next.route, next.job, next.owner)
-	}
+	return next
 }
 
 type streamEmitter struct {

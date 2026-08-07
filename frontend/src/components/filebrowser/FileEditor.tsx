@@ -24,14 +24,14 @@ interface FileEditorProps {
   initialContent: string;
   isSaving?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
-  onSave: (content: string) => Promise<void>;
+  onSave: (content: string) => Promise<boolean | void>;
   readOnly?: boolean;
 }
 
 export interface FileEditorHandle {
   getContent: () => string;
   isDirty: () => boolean;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
 }
 
 const getLanguageMode = (fileName: string): string => {
@@ -103,6 +103,22 @@ const createEditorState = (
   isDirty: false,
 });
 
+const stateForSource = (
+  state: EditorState,
+  filePath: string,
+  initialContent: string,
+): EditorState => {
+  if (state.filePath !== filePath) {
+    return createEditorState(filePath, initialContent);
+  }
+  // Background refetches may update the source while the user is editing.
+  // Preserve that draft; a clean editor can safely adopt the new source.
+  if (!state.isDirty && state.baseContent !== initialContent) {
+    return createEditorState(filePath, initialContent);
+  }
+  return state;
+};
+
 const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
   (
     {
@@ -119,11 +135,11 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     const [editorState, setEditorState] = useState<EditorState>(() =>
       createEditorState(filePath, initialContent),
     );
-    const normalizedState =
-      editorState.filePath === filePath &&
-      editorState.baseContent === initialContent
-        ? editorState
-        : createEditorState(filePath, initialContent);
+    const normalizedState = stateForSource(
+      editorState,
+      filePath,
+      initialContent,
+    );
     const { content, isDirty } = normalizedState;
     const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
     const theme = useAppTheme();
@@ -142,10 +158,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     const updateEditorState = useCallback(
       (updater: (state: EditorState) => EditorState) => {
         setEditorState((prev) => {
-          const current =
-            prev.filePath === filePath && prev.baseContent === initialContent
-              ? prev
-              : createEditorState(filePath, initialContent);
+          const current = stateForSource(prev, filePath, initialContent);
           return updater(current);
         });
       },
@@ -154,31 +167,30 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
 
     const handleSave = useCallback(async () => {
       try {
-        await onSave(content);
+        const saved = await onSave(content);
+        if (saved === false) return false;
+
         updateEditorState((state) => ({
           ...state,
           baseContent: state.content,
           isDirty: false,
         }));
+        if (isDirty) {
+          onDirtyChange?.(false);
+        }
+        return true;
       } catch {
         // Error is handled by parent component
+        return false;
       }
-    }, [onSave, content, updateEditorState]);
-
-    const notifyDirtyChange = useEffectEvent((dirty: boolean) => {
-      onDirtyChange?.(dirty);
-    });
-
-    useEffect(() => {
-      notifyDirtyChange(isDirty);
-    }, [isDirty]);
+    }, [onSave, content, isDirty, onDirtyChange, updateEditorState]);
 
     // Add Ctrl+S keyboard shortcut
     const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
-        if (!isSaving) {
-          handleSave();
+        if (!isSaving && !readOnly) {
+          void handleSave();
         }
       }
     });
@@ -264,10 +276,14 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     }, [language, aceTheme]);
 
     const handleContentChange = (newValue: string) => {
+      const nextDirty = newValue !== normalizedState.baseContent;
+      if (nextDirty !== isDirty) {
+        onDirtyChange?.(nextDirty);
+      }
       updateEditorState((state) => ({
         ...state,
         content: newValue,
-        isDirty: newValue !== state.baseContent,
+        isDirty: nextDirty,
       }));
     };
 

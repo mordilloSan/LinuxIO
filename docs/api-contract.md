@@ -62,13 +62,14 @@ For request routes:
 | File | Role |
 |------|------|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
-| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, React Query hooks, query keys/options, route mode checks, retry policy, request shaping. |
+| `frontend/src/api/react-query.ts` | Endpoint factory: direct Promise call, centralized React Query keys/options, action hooks (`useAction`, `useJobAction`, `useJobStreamAction`), route mode checks, retry policy, request shaping. |
 | `frontend/src/api/linuxio-core.ts` | Low-level JSON request path over the stream multiplexer. API internals only. |
 | `frontend/src/api/linuxio.ts` | Stream utilities, connection hooks, stream openers, and job-backed stream wrappers. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
 | `frontend/src/api/stream-helpers.ts` | Helpers for binding stream callbacks, awaiting result frames, and writing byte chunks. |
 | `frontend/src/api/jobs.ts` | Job snapshot guards, local job-handling tracking, and `waitForJobCompletion()`. |
 | `frontend/src/api/job-state.ts` | Shared terminal job-state predicate. |
+| `frontend/src/api/operation-query-invalidations.ts` | Default query invalidations shared by direct actions and jobs. |
 | `frontend/src/api/capabilities.ts` | Frontend capability manifest and state helpers. |
 
 ## Route Modes And Kinds
@@ -77,15 +78,15 @@ Every route has one mode:
 
 | Mode | Use |
 |------|-----|
-| `bridgeipc.ModeQuery` | Read-only, bounded request/response work. |
-| `bridgeipc.ModeJob` | Mutations, cancellable work, long-running reads, logs, subscriptions. |
+| `bridgeipc.ModeQuery` | Bounded request/response work, including direct mutations used with `useAction`. |
+| `bridgeipc.ModeJob` | Progress-tracked/background work and live job streams. |
 | `bridgeipc.ModeDuplex` | Interactive bidirectional sessions such as terminals. |
 
 Every route has one schema kind:
 
-| Kind | Go signature |
-|------|--------------|
-| `KindHandler` | `func(context.Context, TRequest, bridgeipc.Events) error` |
+| Kind | Go binding |
+|------|------------|
+| `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`; `.HandleEvents(...)` is reserved for raw progress/data emitters. |
 | `KindRunner` | `func(context.Context, *bridgeipc.Job, TRequest) (any, error)` |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
 
@@ -94,17 +95,33 @@ Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for 
 ## Frontend Shape
 
 ```typescript
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 
-const cpu = await linuxio.system.get_cpu_info();
-const size = await linuxio.filebrowser.dir_size("/srv/data");
-const job = await linuxio.jobs.cancel("job-123");
+const { data: unit } = useQuery(
+  linuxio.systemd.get_unit_info.queryOptions("ssh.service", {
+    refetchInterval: 2000,
+  }),
+);
 
-const { data: unit } = linuxio.systemd.get_unit_info.useQuery("ssh.service", {
-  refetchInterval: 2000,
+// Loader/effect reads go through a cache-backed fetcher, not bare endpoint
+// calls or the query client:
+const fetchDirSize = linuxio.filebrowser.dir_size.useFetcher();
+const size = await fetchDirSize("/srv/data");
+
+// Query routes used as event-driven commands get mutation ergonomics:
+const validateCompose = linuxio.docker.validate_compose.useAction({
+  error: "Validation failed",
 });
+const result = await validateCompose.mutateAsync({ content });
 
-const startContainer = linuxio.docker.start_container.useMutation();
+const startContainer = linuxio.docker.start_container.useAction({
+  invalidates: [linuxio.docker.list_containers.queryKey()],
+  success: "Container started",
+  error: "Failed to start container",
+  toast: { href: "/docker", label: "Open Docker" },
+});
 startContainer.mutate({ containerId });
 ```
 
@@ -112,13 +129,48 @@ Every generated endpoint exposes:
 
 | Member | Use |
 |--------|-----|
-| `endpoint(...input)` | Framework-agnostic Promise call. |
-| `endpoint.useQuery(...input, options?)` | React Query hook for query routes. |
-| `endpoint.useMutation(options?)` | React Query hook for job routes. |
-| `endpoint.queryKey(...input)` | Stable React Query key. |
-| `endpoint.queryOptions(...input, options?)` | Options for `queryClient.fetchQuery()` / `ensureQueryData()`. |
+| `endpoint(...input)` | Framework-agnostic Promise call. API/jobs infrastructure only — feature code uses the hooks. |
+| `endpoint.queryOptions(...input, options?)` | The single definition of the query key, query function, request shaping, retry policy, and caller overrides. Pass it to `useQuery`, `useQueries`, route loaders, or the query client. |
+| `endpoint.queryKey(...input)` | Stable React Query key for invalidation and cache operations that only need the key. It uses exactly the same request shaping as `queryOptions`. |
+| `endpoint.useAction(config?)` | Mutation-style hook for direct query/action routes: `mutate`/`mutateAsync` with pending state, declarative invalidation/toasts, and no query caching. |
+| `endpoint.useJobAction(config?)` | React Query hook for job routes: awaits job completion, unwraps the job result, declarative invalidation/toasts. |
+| `endpoint.useJobStreamAction(config?)` | Job-route hook with live progress: starts the job, attaches to its stream, and surfaces `onJobStart`/`onOpen`/`onProgress` plus the `useJobAction` config. The returned mutation also exposes `attach(job, variables)`, which adopts an already-running job (page-reload recovery via `useActiveJobRecovery`) into the same config lifecycle — progress, toasts, invalidation, and pending state behave exactly as if `mutate(variables)` had started it. |
+| `endpoint.useFetcher()` | Hook returning a stable imperative fetch through the query cache — for loaders and effects that need data at call time (chart backfill, lazy tree loads, workflow pre-checks). Same input shape and options as `useQuery`. |
+| `endpoint.useCache()` | Hook returning a stable typed cache handle: `get`/`set` for one request's entry (optimistic updates, seeding an action's result), `invalidate`/`remove`/`cancel` for one entry or — with no input — the whole endpoint. |
 
-`useQuery` and `queryOptions` both accept normal React Query options, including `select` for transformed output data.
+Feature code imports TanStack Query's read primitives directly and combines
+them with the generated endpoint options:
+`useQuery(endpoint.queryOptions(...))` or
+`useQueries({ queries: inputs.map((input) => endpoint.queryOptions(input)) })`.
+Event-driven commands and ordinary writes go through `useAction`; progress work
+uses `useJobAction`/`useJobStreamAction` or the background-jobs layer,
+imperative loader/effect reads through `useFetcher`, and cache manipulation
+through `useCache`. Feature code does not define query keys/functions or use
+raw mutations. Guard tests (`frontend/src/constants/apiLayering.test.ts`)
+enforce that boundary.
+
+Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for the request transport and return typed `endpoint.queryOptions(...)` results from the shared browser QueryClient. It requires a live `isUpdateBlocked` getter from router context rather than the mux, rechecks it after readiness, and rejects without querying while an update is active. Loader failures propagate to TanStack Router; intent preloads are marked speculative so QueryCache suppresses their global error toast.
+
+The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code consumes streams through the `open*Stream` factories and the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`), and only a short, shrink-only allowlist of low-level consumers may import the primitives from `@/api`.
+
+`queryOptions` accepts normal React Query options, including `select` for transformed output data. `useAction` and `useJobAction` instead take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast meta `{ href, label }` for notification-history links), and `options` as a raw React Query options escape hatch.
+
+### Choosing a member (decision table)
+
+| Situation | Use |
+|-----------|-----|
+| Data rendered by this component | `useQuery(endpoint.queryOptions(...))` (list of inputs: `useQueries` with one endpoint options object per input) — even for on-demand panels: gate with `enabled` and state instead of fetching imperatively. |
+| Data needed inside an effect, loader, or event handler, then handed to something else (chart backfill, editor content, lazy tree loads) | `useFetcher` — add `staleTime/gcTime: CACHE_TTL_MS.NONE` when the read must not be cached. |
+| Query route invoked as a command (validate, generate download, resolve path) where the result is consumed by the flow, not displayed | `useAction` — declarative toasts + `isPending`; omit the config when a surrounding workflow owns error handling (say so in a comment). |
+| Single bounded mutation triggered by one user action | `useAction` with declarative config (`success`/`warning`/`error` strings; side effects via a `success` callback or `options.onSettled`). Fire with `mutate`. |
+| Mutation whose live progress the UI renders, or that must survive page reload via re-attach | `useJobStreamAction` (+ `attach` with `useActiveJobRecovery` for recovery). Don't pick it just to customize an error string. |
+| Several mutations sequenced or looped in one flow (batch delete, multi-step save) | Create the actions **configless** with a comment, `await mutateAsync` per step/item inside `try/catch`, and aggregate the outcome into one toast. The catch owns flow control only — never re-toast an error a config already toasted. |
+| Long-running transfer that must outlive the page and show in the navbar | The background-jobs layer (`useBackgroundJobActions`), not a job action. |
+| Optimistic updates / seeding cache from a result | `useCache` handles; pair `cancel` before an optimistic `set`. |
+
+Refreshes after mutations come from the invalidation manifest by default — do not add `refetch()` calls or `onSuccess` refresh props on top of it; if a list does not refresh, fix the manifest entry instead.
+
+Query invalidation is manifest-driven: `frontend/src/api/operation-query-invalidations.ts` maps each direct action or job route to the query caches it makes stale, using the same centralized key factory as endpoint `queryOptions`. It is the single source of truth for both lifecycles — `useAction`/`useJobAction`/`useJobStreamAction` use it as the default `invalidates` for locally awaited work, and the recovered-jobs stream applies it to jobs that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). Its adjacent guard test keeps ad-hoc `queryClient.invalidateQueries` calls out of feature code.
 
 Input is generated from the Go request contract:
 
@@ -128,11 +180,11 @@ Input is generated from the Go request contract:
 | one required JSON field | `linuxio.filebrowser.dir_size(path)` | `{ "path": path }` |
 | multi-field or optional object | `linuxio.docker.system_prune(request)` | `request` |
 
-React Query mutations use the full generated request object as their mutation variable:
+Mutation actions use the full generated request object as their mutation variable:
 
 ```typescript
-linuxio.jobs.cancel.useMutation().mutate({ jobId });
-linuxio.docker.start_container.useMutation().mutate({ containerId });
+linuxio.jobs.cancel.useAction().mutate({ jobId });
+linuxio.docker.start_container.useAction().mutate({ containerId });
 ```
 
 ## Backend Handler Shapes
@@ -152,9 +204,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
     api.Register(router)
 }
 
-func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest, emit bridgeipc.Events) error {
-    result, err := GetUnitInfo(ctx, req.UnitName)
-    return bridgeipc.EmitResult(emit, result, err)
+func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apischema.UnitInfo, error) {
+    return GetUnitInfo(ctx, req.UnitName)
 }
 ```
 
@@ -201,7 +252,9 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 ## Jobs
 
-All actions are jobs, including fast atomic mutations. If a job completes before the initial response is written, the initial `JobSnapshot` is already terminal. Otherwise the frontend can attach to shared job lifecycle streams.
+Jobs are reserved for work that emits progress or needs the job lifecycle. Bounded mutations complete through a single direct `useAction` request/response.
+
+On the frontend, `useJobAction` awaits the terminal state via `waitForJobCompletion()`: a failed job rejects with a `LinuxIOError` carrying the job's error message/code, and `useJobAction` resolves with the unwrapped `JobSnapshot.result`. If the attach stream cannot be opened (mux dropped between job start and attach), `waitForJobCompletion` falls back to polling `jobs.get` until the job is terminal — it never resolves mid-job; `useJobStreamAction` instead fails fast in that situation because it promises live progress, and the recovered-jobs stream picks the job up. Jobs awaited this way are marked locally handled so the background-jobs toasts do not duplicate them; `useJobStreamAction` accepts `markHandled: false` when the recovered-jobs stream should keep ownership of completion (progress rendered locally, toasts owned globally).
 
 Built-in job routes:
 
@@ -277,9 +330,8 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
     api.Register(router)
 }
 
-func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest, emit bridgeipc.Events) error {
-    result, err := SearchPackages(ctx, req.Query)
-    return bridgeipc.EmitResult(emit, result, err)
+func handlePackageSearch(ctx context.Context, req apischema.PackageSearchRequest) (apischema.PackageSearchResult, error) {
+    return SearchPackages(ctx, req.Query)
 }
 ```
 
@@ -310,7 +362,7 @@ The dispatcher checks the authenticated session before running the route. Handle
 
 ## Remaining Plan
 
-The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. The remaining cleanup is about making that boundary easier to reason about, not changing the public frontend API again.
+The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. The remaining cleanup is about making that boundary easier to reason about; frontend hook-surface refinements (like `useJobAction`) live in `react-query.ts` and do not touch the generated contract.
 
 ### 1. Keep Reflection Generator-Only
 
@@ -519,14 +571,14 @@ Current shape:
 ```typescript
 await linuxio.system.get_cpu_info();
 await linuxio.jobs.cancel(jobId);
-linuxio.system.get_cpu_info.useQuery();
-linuxio.docker.start_container.useMutation();
+useQuery(linuxio.system.get_cpu_info.queryOptions());
+linuxio.docker.start_container.useAction({ invalidates, success, error });
 ```
 
 Remaining cleanup:
 
 1. Keep `frontend/src/api/generated/*` generated only.
-2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for direct calls and React Query hooks.
+2. Keep `frontend/src/api/react-query.ts` as the small runtime factory for centralized query options and endpoint action/cache hooks.
 3. Keep stream helpers in `frontend/src/api/linuxio.ts` because streams are not normal request/response endpoints.
 4. Avoid adding another hand-written typed API layer.
 

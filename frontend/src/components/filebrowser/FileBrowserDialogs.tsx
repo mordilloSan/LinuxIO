@@ -1,12 +1,4 @@
-import React, { ReactNode } from "react";
-
-import {
-  FileBrowserConflictDialog,
-  FileBrowserDetailsDialog,
-  FileBrowserEditorDialog,
-  FileBrowserUploadDialog,
-  type MultiItemsStats,
-} from "./FileBrowserPanels";
+import { memo, type ChangeEvent, type RefObject } from "react";
 
 import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
@@ -28,6 +20,14 @@ import type {
   ViewMode,
 } from "@/types/filebrowser";
 
+import {
+  FileBrowserConflictDialog,
+  FileBrowserDetailsDialog,
+  FileBrowserEditorDialog,
+  FileBrowserUploadDialog,
+  type MultiItemsStats,
+} from "./FileBrowserPanels";
+
 interface CompressFormatDialogState {
   baseName: string;
   paths: string[];
@@ -37,7 +37,7 @@ export interface FileBrowserEditorDialogsProps {
   closeEditorDialog: boolean;
   editingFileResource?: FileResource;
   editingPath: string | null;
-  editorRef: React.RefObject<FileEditorHandle | null>;
+  editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
   isEditingFileLoading: boolean;
   isSaving: boolean;
@@ -45,7 +45,8 @@ export interface FileBrowserEditorDialogsProps {
   onDirtyChange: (isDirty: boolean) => void;
   onDiscardAndExit: () => void;
   onKeepEditing: () => void;
-  onSave: () => Promise<void>;
+  onRequestSave: () => Promise<void>;
+  onSaveContent: (content: string) => Promise<boolean>;
   onSaveAndExit: () => Promise<void> | void;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
@@ -53,7 +54,6 @@ export interface FileBrowserEditorDialogsProps {
   searchQuery: string;
   showHiddenFiles: boolean;
   showQuickSave: boolean;
-  viewIcon: ReactNode;
   viewMode: ViewMode;
 }
 
@@ -89,7 +89,7 @@ export interface FileBrowserDetailsDialogsProps {
   detailTarget: string[] | null;
   hasMultipleTargets: boolean;
   hasSingleTarget: boolean;
-  isStatPending: boolean;
+  isStatLoading: boolean;
   multiItemsStats: MultiItemsStats;
   onClose: () => void;
   onDownload: (path: string) => void;
@@ -127,11 +127,11 @@ export interface FileBrowserPermissionsDialogProps {
 
 export interface FileBrowserUploadDialogProps {
   entries: DroppedEntry[];
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
   isProcessing: boolean;
   normalizedPath: string;
-  onChangeInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
   onClose: () => void;
   onPickFiles: () => void;
@@ -168,7 +168,7 @@ export interface FileBrowserDialogsProps {
   upload: FileBrowserUploadDialogProps;
 }
 
-const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
+const FileBrowserDialogs = ({
   archive,
   conflict,
   contextMenu,
@@ -178,7 +178,7 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
   editor,
   permissions,
   upload,
-}) => (
+}: FileBrowserDialogsProps) => (
   <>
     <FileBrowserEditorDialog
       editingFileResource={editor.editingFileResource}
@@ -189,14 +189,14 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
       isSaving={editor.isSaving}
       onCloseEditor={editor.onClose}
       onDirtyChange={editor.onDirtyChange}
-      onSaveFile={editor.onSave}
+      onSaveContent={editor.onSaveContent}
+      onSaveFile={editor.onRequestSave}
       onSearchChange={editor.onSearchChange}
       onSwitchView={editor.onSwitchView}
       onToggleHiddenFiles={editor.onToggleHiddenFiles}
       searchQuery={editor.searchQuery}
       showHiddenFiles={editor.showHiddenFiles}
       showQuickSave={editor.showQuickSave}
-      viewIcon={editor.viewIcon}
       viewMode={editor.viewMode}
     />
 
@@ -238,7 +238,7 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
       detailTarget={details.detailTarget}
       hasMultipleDetailTargets={details.hasMultipleTargets}
       hasSingleDetailTarget={details.hasSingleTarget}
-      isStatPending={details.isStatPending}
+      isStatLoading={details.isStatLoading}
       multiItemsStats={details.multiItemsStats}
       onClose={details.onClose}
       onDownload={details.onDownload}
@@ -327,4 +327,4 @@ const FileBrowserDialogs: React.FC<FileBrowserDialogsProps> = ({
   </>
 );
 
-export default React.memo(FileBrowserDialogs);
+export default memo(FileBrowserDialogs);

@@ -1,26 +1,22 @@
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  useCallback,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useCallback, useState } from "react";
 
-import { CACHE_TTL_MS, type FileChmodRequest, linuxio } from "@/api";
+import { CACHE_TTL_MS, type FileChmodBatchRequest, linuxio } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
 import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
-import type { PermissionsDialogState } from "./useFileDialogs";
+import type { DialogsSlice } from "./useFileDialogs";
+import type { EditorSlice } from "./useFileEditor";
 import { useFilePathUtilities } from "./useFilePathUtilities";
+import type { ViewSlice } from "./useFileViewState";
 import { useScopedToast } from "../useScopedToast";
 
 type ChangePermissionsPayload = Pick<
-  FileChmodRequest,
-  "mode" | "path" | "recursive"
+  FileChmodBatchRequest,
+  "mode" | "paths" | "recursive"
 > &
-  Partial<Pick<FileChmodRequest, "group" | "owner">>;
+  Partial<Pick<FileChmodBatchRequest, "group" | "owner">>;
 
 interface RenamePayload {
   destination: string;
@@ -32,23 +28,15 @@ interface UseFileBrowserItemActionsParams {
   createFile: (fileName: string) => void;
   createFolder: (folderName: string) => void;
   deleteItems: (paths: string[]) => void;
+  dialogs: DialogsSlice;
+  editor: EditorSlice;
   handleOpenDirectory: (path: string) => void;
-  onContextMenuClose: () => void;
-  pendingDeletePaths: string[];
-  permissionsDialog: PermissionsDialogState | null;
   renameItem: (payload: RenamePayload) => Promise<void>;
   resource?: FileResource;
   selectedItems: FileItem[];
   selectedPaths: Set<string>;
-  setCreateFileDialog: Dispatch<SetStateAction<boolean>>;
-  setCreateFolderDialog: Dispatch<SetStateAction<boolean>>;
-  setDeleteDialog: Dispatch<SetStateAction<boolean>>;
-  setDetailTarget: Dispatch<SetStateAction<string[] | null>>;
-  setEditingPath: Dispatch<SetStateAction<string | null>>;
-  setPendingDeletePaths: Dispatch<SetStateAction<string[]>>;
-  setPermissionsDialog: Dispatch<SetStateAction<PermissionsDialogState | null>>;
-  setSearchQuery: Dispatch<SetStateAction<string>>;
   startDownload: BackgroundJobsContextValue["startDownload"];
+  view: ViewSlice;
 }
 
 export const useFileBrowserItemActions = ({
@@ -56,26 +44,29 @@ export const useFileBrowserItemActions = ({
   createFile,
   createFolder,
   deleteItems,
+  dialogs,
+  editor,
   handleOpenDirectory,
-  onContextMenuClose,
-  pendingDeletePaths,
-  permissionsDialog,
   renameItem,
   resource,
   selectedItems,
   selectedPaths,
-  setCreateFileDialog,
-  setCreateFolderDialog,
-  setDeleteDialog,
-  setDetailTarget,
-  setEditingPath,
-  setPendingDeletePaths,
-  setPermissionsDialog,
-  setSearchQuery,
   startDownload,
+  view,
 }: UseFileBrowserItemActionsParams) => {
-  const toast = useScopedToast({ href: "/filebrowser", label: "Open files" });
-  const queryClient = useQueryClient();
+  const toast = useScopedToast({
+    label: "Open files",
+    params: { _splat: "" },
+    to: "/filebrowser/$",
+  });
+  const {
+    actions: dialogActions,
+    pendingDeletePaths,
+    permissionsDialog,
+  } = dialogs;
+  const { actions: editorActions } = editor;
+  const { clearSearch, closeContextMenu } = view.actions;
+  const fetchResourceStat = linuxio.filebrowser.resource_stat.useFetcher();
   const { joinPath, getParentPath } = useFilePathUtilities();
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
@@ -90,8 +81,8 @@ export const useFileBrowserItemActions = ({
   );
 
   const handleCloseDetailDialog = useCallback(() => {
-    setDetailTarget(null);
-  }, [setDetailTarget]);
+    dialogActions.closeDetails();
+  }, [dialogActions]);
 
   const handleCloseUnsupportedEditDialog = useCallback(() => {
     setUnsupportedEditPath(null);
@@ -99,21 +90,21 @@ export const useFileBrowserItemActions = ({
 
   const handleConfirmUnsupportedEdit = useCallback(() => {
     if (unsupportedEditPath) {
-      setEditingPath(unsupportedEditPath);
+      editorActions.openFile(unsupportedEditPath);
     }
     setUnsupportedEditPath(null);
-    setDetailTarget(null);
-  }, [setDetailTarget, setEditingPath, unsupportedEditPath]);
+    dialogActions.closeDetails();
+  }, [dialogActions, editorActions, unsupportedEditPath]);
 
   const handleDoubleClickFile = useCallback(
     (item: FileItem) => {
       if (isEditableFile(item.name)) {
-        setEditingPath(item.path);
+        editorActions.openFile(item.path);
       } else {
         setUnsupportedEditPath(item.path);
       }
     },
-    [setEditingPath],
+    [editorActions],
   );
 
   const handleDownloadCurrent = useCallback(
@@ -124,10 +115,10 @@ export const useFileBrowserItemActions = ({
   );
 
   const handleShowDetails = useCallback(() => {
-    onContextMenuClose();
+    closeContextMenu();
     if (selectedPaths.size === 0) return;
-    setDetailTarget(Array.from(selectedPaths));
-  }, [onContextMenuClose, selectedPaths, setDetailTarget]);
+    dialogActions.showDetails(Array.from(selectedPaths));
+  }, [dialogActions, closeContextMenu, selectedPaths]);
 
   const handleDownloadDetail = useCallback(
     (path: string) => {
@@ -137,22 +128,22 @@ export const useFileBrowserItemActions = ({
   );
 
   const handleCreateFile = useCallback(() => {
-    onContextMenuClose();
-    setCreateFileDialog(true);
-  }, [onContextMenuClose, setCreateFileDialog]);
+    closeContextMenu();
+    dialogActions.openCreateFile();
+  }, [dialogActions, closeContextMenu]);
 
   const handleCreateFolder = useCallback(() => {
-    onContextMenuClose();
-    setCreateFolderDialog(true);
-  }, [onContextMenuClose, setCreateFolderDialog]);
+    closeContextMenu();
+    dialogActions.openCreateFolder();
+  }, [dialogActions, closeContextMenu]);
 
   const handleCloseCreateFileDialog = useCallback(() => {
-    setCreateFileDialog(false);
-  }, [setCreateFileDialog]);
+    dialogActions.closeCreateFile();
+  }, [dialogActions]);
 
   const handleCloseCreateFolderDialog = useCallback(() => {
-    setCreateFolderDialog(false);
-  }, [setCreateFolderDialog]);
+    dialogActions.closeCreateFolder();
+  }, [dialogActions]);
 
   const handleConfirmCreateFile = useCallback(
     (fileName: string) => {
@@ -169,7 +160,7 @@ export const useFileBrowserItemActions = ({
   );
 
   const handleChangePermissions = useCallback(async () => {
-    onContextMenuClose();
+    closeContextMenu();
     if (selectedPaths.size === 0) return;
     const selectedPathList = Array.from(selectedPaths);
     const selectedPath = selectedPathList[0];
@@ -178,16 +169,14 @@ export const useFileBrowserItemActions = ({
       (item) => item.type === "directory",
     );
     try {
-      const stat = await queryClient.fetchQuery(
-        linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
-          staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-        }),
-      );
+      const stat = await fetchResourceStat(selectedPath, {
+        staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+      });
       const mode = stat.mode || "0644";
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
       const owner = stat.owner || undefined;
       const group = stat.group || undefined;
-      setPermissionsDialog({
+      dialogActions.openPermissions({
         paths: selectedPathList,
         pathLabel:
           selectionCount > 1 ? `${selectionCount} items` : selectedPath,
@@ -202,22 +191,22 @@ export const useFileBrowserItemActions = ({
       toast.error("Failed to fetch file permissions");
     }
   }, [
-    onContextMenuClose,
-    queryClient,
+    dialogActions,
+    fetchResourceStat,
+    closeContextMenu,
     selectedItems,
     selectedPaths,
-    setPermissionsDialog,
     toast,
   ]);
 
   const handleStartInlineRename = useCallback(() => {
-    onContextMenuClose();
+    closeContextMenu();
     if (selectedPaths.size !== 1) {
       return;
     }
     const selectedPath = Array.from(selectedPaths)[0];
     setRenamingPath(selectedPath);
-  }, [onContextMenuClose, selectedPaths]);
+  }, [closeContextMenu, selectedPaths]);
 
   const handleConfirmInlineRename = useCallback(
     async (path: string, newName: string) => {
@@ -255,55 +244,47 @@ export const useFileBrowserItemActions = ({
   }, [handleStartInlineRename]);
 
   const handleDelete = useCallback(() => {
-    onContextMenuClose();
+    closeContextMenu();
     const paths = Array.from(selectedPaths);
     if (paths.length > 0) {
-      setPendingDeletePaths(paths);
-      setDeleteDialog(true);
+      dialogActions.requestDelete(paths);
     } else {
       toast.error("No items selected");
     }
-  }, [
-    onContextMenuClose,
-    selectedPaths,
-    setDeleteDialog,
-    setPendingDeletePaths,
-    toast,
-  ]);
+  }, [dialogActions, closeContextMenu, selectedPaths, toast]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!pendingDeletePaths.length) {
       return;
     }
     deleteItems(pendingDeletePaths);
-    setPendingDeletePaths([]);
-  }, [deleteItems, pendingDeletePaths, setPendingDeletePaths]);
+    dialogActions.clearPendingDelete();
+  }, [deleteItems, dialogActions, pendingDeletePaths]);
 
   const handleCloseDeleteDialog = useCallback(() => {
-    setDeleteDialog(false);
-    setPendingDeletePaths([]);
-  }, [setDeleteDialog, setPendingDeletePaths]);
+    dialogActions.closeDelete();
+  }, [dialogActions]);
 
   const handleDownloadSelected = useCallback(() => {
-    onContextMenuClose();
+    closeContextMenu();
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
     downloadPaths(paths);
-  }, [downloadPaths, onContextMenuClose, selectedPaths]);
+  }, [downloadPaths, closeContextMenu, selectedPaths]);
 
   const handleOpenContainingFolder = useCallback(() => {
-    onContextMenuClose();
+    closeContextMenu();
     const [selectedPath] = Array.from(selectedPaths);
     if (!selectedPath) return;
     const parentDir =
       selectedPath.substring(0, selectedPath.lastIndexOf("/")) || "/";
-    setSearchQuery("");
+    clearSearch();
     handleOpenDirectory(parentDir);
-  }, [handleOpenDirectory, onContextMenuClose, selectedPaths, setSearchQuery]);
+  }, [clearSearch, handleOpenDirectory, closeContextMenu, selectedPaths]);
 
   const handleClosePermissionsDialog = useCallback(() => {
-    setPermissionsDialog(null);
-  }, [setPermissionsDialog]);
+    dialogActions.closePermissions();
+  }, [dialogActions]);
 
   const handleConfirmPermissions = useCallback(
     async (
@@ -314,36 +295,32 @@ export const useFileBrowserItemActions = ({
     ) => {
       if (!permissionsDialog) return;
       try {
-        await Promise.all(
-          permissionsDialog.paths.map((path) =>
-            changePermissions({
-              path,
-              mode,
-              recursive,
-              owner,
-              group,
-            }),
-          ),
-        );
-        setPermissionsDialog(null);
+        await changePermissions({
+          paths: permissionsDialog.paths,
+          mode,
+          recursive,
+          owner,
+          group,
+        });
+        dialogActions.closePermissions();
       } catch {
         // Errors are surfaced via toast in the mutation.
       }
     },
-    [changePermissions, permissionsDialog, setPermissionsDialog],
+    [changePermissions, dialogActions, permissionsDialog],
   );
 
   const handleEditFile = useCallback(
     (filePath: string) => {
       const fileName = filePath.split("/").pop() ?? filePath;
       if (isEditableFile(fileName)) {
-        setEditingPath(filePath);
-        setDetailTarget(null);
+        editorActions.openFile(filePath);
+        dialogActions.closeDetails();
       } else {
         setUnsupportedEditPath(filePath);
       }
     },
-    [setDetailTarget, setEditingPath],
+    [dialogActions, editorActions],
   );
 
   return {

@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { linuxio } from "@/api";
 
 import {
@@ -38,12 +40,11 @@ export const useFileDirectorySize = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = linuxio.filebrowser.dir_size.useQuery(
-    path,
-    {
+  const { data, isLoading, error } = useQuery(
+    linuxio.filebrowser.dir_size.queryOptions(path, {
       enabled: queryEnabled,
       ...getDirectorySizeQueryOptions(),
-    },
+    }),
   );
 
   const derivedError = getDirectorySizeError(
