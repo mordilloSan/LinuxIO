@@ -1,12 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useState,
-  type MouseEvent,
-} from "react";
+import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 
 import { type ContainerInfo, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";

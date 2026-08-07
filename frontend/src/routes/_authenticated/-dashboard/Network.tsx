@@ -92,7 +92,9 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
   );
 
   if (!details) {
-    return <AppTypography variant="body2">No interface selected.</AppTypography>;
+    return (
+      <AppTypography variant="body2">No interface selected.</AppTypography>
+    );
   }
 
   return (
@@ -148,7 +150,9 @@ const NetworkInterfacesCard = () => {
   return (
     <DashboardCard
       avatarIcon="mdi:ethernet"
-      headerExtras={<NetworkHeader onSelect={setSelected} selected={selected} />}
+      headerExtras={
+        <NetworkHeader onSelect={setSelected} selected={selected} />
+      }
       stats={<NetworkStats selected={selected} />}
       stats2={<NetworkGraphPane selected={selected} />}
       title="Network"
