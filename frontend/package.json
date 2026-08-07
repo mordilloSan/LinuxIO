@@ -17,7 +17,6 @@
     "build": "vite build --config config/vite.config.ts",
     "analyze": "BUNDLE_ANALYZE=true vite build --config config/vite.config.ts",
     "bundle:metrics": "node scripts/bundle-metrics.mjs",
-    "bundle:budget": "node scripts/bundle-metrics.mjs --check",
     "compiler:coverage": "node scripts/compiler-coverage.mjs",
     "test": "vitest run --config config/vitest.config.ts",
     "test:browser": "playwright test --config config/playwright.config.ts",

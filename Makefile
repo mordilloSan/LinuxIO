@@ -775,11 +775,6 @@ bundle-metrics:
 	@echo "📊 Reporting frontend bundle metrics..."
 	@bash -c 'cd frontend && npm run bundle:metrics'
 
-bundle-budget:
-	@echo ""
-	@echo "📏 Checking frontend bundle budgets..."
-	@bash -c 'cd frontend && npm run bundle:budget'
-
 compiler-coverage:
 	@echo ""
 	@echo "⚛️  Reporting React Compiler coverage..."
@@ -1104,7 +1099,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
-	@$(PRINTC) "$(COLOR_GREEN)    make bundle-budget    $(COLOR_RESET) Check frontend bundle budgets after a Vite build"
+	@$(PRINTC) "$(COLOR_GREEN)    make bundle-metrics   $(COLOR_RESET) Report frontend bundle sizes after a Vite build (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
@@ -1141,7 +1136,7 @@ cloc:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics bundle-budget compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \

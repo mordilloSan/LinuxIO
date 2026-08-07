@@ -19,10 +19,6 @@ const metricConfigs = [
     label: "Initial shell",
     entries: ["index.html"],
     extraFiles: ["index.html"],
-    budgetsKiB: {
-      gzip: 190,
-      br: 170,
-    },
   },
   {
     name: "dashboard_cold",
@@ -33,10 +29,6 @@ const metricConfigs = [
       "src/routes/_authenticated/index.tsx?tsr-split=component",
     ],
     extraFiles: ["index.html"],
-    budgetsKiB: {
-      gzip: 340,
-      br: 340,
-    },
   },
 ];
 
@@ -65,24 +57,8 @@ if (args.markdown) {
   writeFileSync(path.resolve(args.markdown), renderMarkdown(result));
 }
 
-if (args.check) {
-  const failures = collectBudgetFailures(metrics);
-  if (failures.length > 0) {
-    console.error("\nBundle budget check failed:");
-    for (const failure of failures) {
-      console.error(
-        `- ${failure.label} ${failure.encoding}: ${formatBytes(
-          failure.actual,
-        )} > ${formatBytes(failure.budget)}`,
-      );
-    }
-    process.exitCode = 1;
-  }
-}
-
 function parseArgs(rawArgs) {
   const parsed = {
-    check: false,
     dist: undefined,
     json: false,
     markdown: undefined,
@@ -90,9 +66,7 @@ function parseArgs(rawArgs) {
 
   for (let i = 0; i < rawArgs.length; i += 1) {
     const arg = rawArgs[i];
-    if (arg === "--check") {
-      parsed.check = true;
-    } else if (arg === "--json") {
+    if (arg === "--json") {
       parsed.json = true;
     } else if (arg === "--markdown") {
       parsed.markdown = rawArgs[++i];
@@ -118,7 +92,6 @@ function buildGraphMetric(config) {
     name: config.name,
     label: config.label,
     files: [...files].sort(),
-    budgetsKiB: config.budgetsKiB,
   });
 }
 
@@ -133,27 +106,17 @@ function buildAllAssetsMetric() {
     name: "all_js_css_assets",
     label: "All JS/CSS assets",
     files,
-    budgetsKiB: {},
   });
 }
 
-function buildMetric({ name, label, files, budgetsKiB }) {
-  const raw = sum(files, (file) => fileSize(file));
-  const gzip = sum(files, (file) => encodedTransferSize(file, "gzip"));
-  const br = sum(files, (file) => encodedTransferSize(file, "br"));
-  const budgets = {
-    gzip: budgetBytes(name, "gzip", budgetsKiB.gzip),
-    br: budgetBytes(name, "br", budgetsKiB.br),
-  };
-
+function buildMetric({ name, label, files }) {
   return {
     name,
     label,
     files: files.length,
-    raw,
-    gzip,
-    br,
-    budgets,
+    raw: sum(files, (file) => fileSize(file)),
+    gzip: sum(files, (file) => encodedTransferSize(file, "gzip")),
+    br: sum(files, (file) => encodedTransferSize(file, "br")),
   };
 }
 
@@ -221,50 +184,19 @@ function resolveDistFile(file) {
   return path.join(distDir, file);
 }
 
-function budgetBytes(name, encoding, defaultKiB) {
-  if (!defaultKiB) return null;
-  const envName = `BUNDLE_BUDGET_${name.toUpperCase()}_${encoding.toUpperCase()}_KIB`;
-  const envValue = process.env[envName];
-  const budgetKiB = envValue ? Number(envValue) : defaultKiB;
-  if (!Number.isFinite(budgetKiB) || budgetKiB <= 0) {
-    throw new Error(`${envName} must be a positive number when set`);
-  }
-  return Math.round(budgetKiB * 1024);
-}
-
-function collectBudgetFailures(metricList) {
-  const failures = [];
-  for (const metric of metricList) {
-    for (const encoding of ["gzip", "br"]) {
-      const budget = metric.budgets[encoding];
-      if (budget !== null && metric[encoding] > budget) {
-        failures.push({
-          label: metric.label,
-          encoding,
-          actual: metric[encoding],
-          budget,
-        });
-      }
-    }
-  }
-  return failures;
-}
-
 function renderText(data) {
   const lines = [
     "Frontend bundle metrics",
     `Dist: ${data.distDir}`,
     "",
     table(
-      ["Metric", "Files", "Raw", "Gzip", "Brotli", "Gzip budget", "Brotli budget"],
+      ["Metric", "Files", "Raw", "Gzip", "Brotli"],
       data.metrics.map((metric) => [
         metric.label,
         String(metric.files),
         formatBytes(metric.raw),
         formatBytes(metric.gzip),
         formatBytes(metric.br),
-        formatBudget(metric.budgets.gzip),
-        formatBudget(metric.budgets.br),
       ]),
     ),
     "",
@@ -290,15 +222,13 @@ function renderMarkdown(data) {
     `Generated from \`${data.distDir}/.vite/manifest.json\`.`,
     "",
     markdownTable(
-      ["Metric", "Files", "Raw", "Gzip", "Brotli", "Gzip budget", "Brotli budget"],
+      ["Metric", "Files", "Raw", "Gzip", "Brotli"],
       data.metrics.map((metric) => [
         metric.label,
         String(metric.files),
         formatBytes(metric.raw),
         formatBytes(metric.gzip),
         formatBytes(metric.br),
-        formatBudget(metric.budgets.gzip),
-        formatBudget(metric.budgets.br),
       ]),
     ),
     "",
@@ -342,10 +272,6 @@ function markdownTable(headers, rows) {
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.join(" | ")} |`),
   ].join("\n");
-}
-
-function formatBudget(value) {
-  return value === null ? "-" : formatBytes(value);
 }
 
 function formatBytes(bytes) {

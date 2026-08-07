@@ -90,7 +90,11 @@ describe("linuxio-core request", () => {
       request("system", "get_info", { verbose: true }, { timeout: 5000 }),
     ).resolves.toEqual({ ok: true });
 
-    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(5000);
+    // request() re-derives the remaining budget from the wall clock, so this is
+    // 5000 minus however many whole ms have elapsed since the deadline was set.
+    expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
+      expect.closeTo(5000, -2),
+    );
     expect(mux.openStream).toHaveBeenCalledTimes(1);
     expect(mux.openStream.mock.calls[0][0]).toBe("system.get_info");
     const streamPayload = mux.openStream.mock.calls[0][1];
@@ -294,7 +298,7 @@ describe("linuxio-core request", () => {
 
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
     expect(muxMocks.waitForStreamMux).toHaveBeenCalledWith(
-      5000,
+      expect.closeTo(5000, -2),
       controller.signal,
     );
   });
