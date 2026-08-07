@@ -400,6 +400,10 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         console.error("Failed to load config:", error);
         setLoaded(true);
         // canSave stays false
+      } finally {
+        // The load settled one way or another; the give-up fallback must not
+        // fire later and warn about a mux that is actually up.
+        clearTimeout(giveUp);
       }
     };
 
