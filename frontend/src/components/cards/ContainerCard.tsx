@@ -245,37 +245,49 @@ const ContainerCardBody = ({
       }}
     >
       {container.State === "running" ? (
-        <AppButton
-          color="error"
-          disabled={isActionPending}
-          onClick={() => handleAction("stop")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
-          variant="outlined"
-        >
-          Stop
-        </AppButton>
+        <AppTooltip arrow title="Stop Container">
+          <span>
+            <AppButton
+              color="error"
+              disabled={isActionPending}
+              onClick={() => handleAction("stop")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
+              variant="outlined"
+            >
+              Stop
+            </AppButton>
+          </span>
+        </AppTooltip>
       ) : (
-        <AppButton
-          color="success"
-          disabled={isActionPending}
-          onClick={() => handleAction("start")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:play" width={16} />}
-          variant="outlined"
-        >
-          Start
-        </AppButton>
+        <AppTooltip arrow title="Start Container">
+          <span>
+            <AppButton
+              color="success"
+              disabled={isActionPending}
+              onClick={() => handleAction("start")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:play" width={16} />}
+              variant="outlined"
+            >
+              Start
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
-      <AppButton
-        disabled={isActionPending}
-        onClick={() => handleAction("restart")}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
-        variant="outlined"
-      >
-        Restart
-      </AppButton>
+      <AppTooltip arrow title="Restart Container">
+        <span>
+          <AppButton
+            disabled={isActionPending}
+            onClick={() => handleAction("restart")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
+            variant="outlined"
+          >
+            Restart
+          </AppButton>
+        </span>
+      </AppTooltip>
       {onToggleAutoUpdate && (
         <AppTooltip
           arrow
@@ -299,45 +311,61 @@ const ContainerCardBody = ({
         </AppTooltip>
       )}
       {container.updateAvailable && (
-        <AppButton
-          color="warning"
-          disabled={isActionPending}
-          onClick={handleUpdateClick}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:update" width={16} />}
-          variant="outlined"
-        >
-          Update
-        </AppButton>
+        <AppTooltip arrow title="Update Container">
+          <span>
+            <AppButton
+              color="warning"
+              disabled={isActionPending}
+              onClick={handleUpdateClick}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:update" width={16} />}
+              variant="outlined"
+            >
+              Update
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
-      <AppButton
-        color="error"
-        disabled={isActionPending}
-        onClick={() => handleAction("remove")}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
-        variant="outlined"
-      >
-        Remove
-      </AppButton>
-      <AppButton
-        disabled={isActionPending}
-        onClick={handleTerminalClick}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:console" width={16} />}
-        variant="outlined"
-      >
-        Terminal
-      </AppButton>
+      <AppTooltip arrow title="Remove Container">
+        <span>
+          <AppButton
+            color="error"
+            disabled={isActionPending}
+            onClick={() => handleAction("remove")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
+            variant="outlined"
+          >
+            Remove
+          </AppButton>
+        </span>
+      </AppTooltip>
+      <AppTooltip arrow title="Open Terminal">
+        <span>
+          <AppButton
+            disabled={isActionPending}
+            onClick={handleTerminalClick}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:console" width={16} />}
+            variant="outlined"
+          >
+            Terminal
+          </AppButton>
+        </span>
+      </AppTooltip>
       {container.url && (
-        <AppButton
-          onClick={() => window.open(container.url, "_blank", "noopener")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:open-in-new" width={16} />}
-          variant="outlined"
-        >
-          Open
-        </AppButton>
+        <AppTooltip arrow title="Open App">
+          <span>
+            <AppButton
+              onClick={() => window.open(container.url, "_blank", "noopener")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:open-in-new" width={16} />}
+              variant="outlined"
+            >
+              Open
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
     </div>
   );

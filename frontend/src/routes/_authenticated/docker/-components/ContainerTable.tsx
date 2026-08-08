@@ -1227,7 +1227,7 @@ const ContainerTable = ({
         id: "ports",
         header: () => (
           <AppTooltip placement="top" title="Container -> Host">
-            <span className="container-table__header-label">Ports</span>
+            <span>Ports</span>
           </AppTooltip>
         ),
         cell: ({ row }) => (
@@ -1259,7 +1259,7 @@ const ContainerTable = ({
         id: "volumes",
         header: () => (
           <AppTooltip placement="top" title="App -> Host">
-            <span className="container-table__header-label">Volumes</span>
+            <span>Volumes</span>
           </AppTooltip>
         ),
         cell: ({ row }) => (

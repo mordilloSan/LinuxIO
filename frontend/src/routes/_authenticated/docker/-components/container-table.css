@@ -107,11 +107,3 @@
   height: 10px;
   border-radius: 50%;
 }
-
-/* Tooltip triggers opt out of text selection app-wide, since they are usually
-   truncated hover-to-read / click-to-copy affordances. This one is a plain
-   untruncated header label, so it stays selectable. */
-.app-tooltip-trigger > .container-table__header-label {
-  -webkit-user-select: text;
-  user-select: text;
-}
