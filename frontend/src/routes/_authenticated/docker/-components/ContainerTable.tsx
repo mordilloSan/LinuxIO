@@ -1013,27 +1013,24 @@ const ContainerTable = ({
       },
       {
         id: "version",
-        header: "Version",
-        cell: ({ row }) => <VersionCell image={row.original.Image} />,
-        meta: {
-          hideBelow: "md",
-          width: "160px",
-        },
-      },
-      {
-        id: "update",
-        header: "Update",
+        header: "Version / Update",
+        // Version and update status share one column: the row is already three
+        // lines tall for the ports/volumes stacks, so stacking them costs no
+        // height and gives the wider columns the space two columns wasted.
         cell: ({ row }) => {
           const container = row.original;
           return (
-            <UpdateCell
-              checkingUpdates={checkingUpdates}
-              containerId={container.Id}
-              name={getContainerName(container)}
-              updateAvailable={container.updateAvailable}
-              updateCheckedAt={container.updateCheckedAt}
-              updateError={container.updateError}
-            />
+            <div className="container-table__version-stack">
+              <VersionCell image={container.Image} />
+              <UpdateCell
+                checkingUpdates={checkingUpdates}
+                containerId={container.Id}
+                name={getContainerName(container)}
+                updateAvailable={container.updateAvailable}
+                updateCheckedAt={container.updateCheckedAt}
+                updateError={container.updateError}
+              />
+            </div>
           );
         },
         meta: {
@@ -1041,6 +1038,7 @@ const ContainerTable = ({
             const container = asContainer(row);
             return [
               container.Id,
+              container.Image,
               getContainerName(container),
               container.updateAvailable,
               container.updateCheckedAt,
@@ -1049,7 +1047,7 @@ const ContainerTable = ({
             ];
           },
           hideBelow: "md",
-          width: "140px",
+          width: "170px",
         },
       },
       {
@@ -1202,6 +1200,9 @@ const ContainerTable = ({
         },
         meta: {
           align: "right",
+          // The buttons fill the column, so a right-aligned label reads as
+          // hanging off the end of the strip rather than titling it.
+          headerStyle: { justifyContent: "center" },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             const ports = getDedupedPorts(container);

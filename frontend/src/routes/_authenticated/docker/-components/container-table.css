@@ -15,6 +15,23 @@
   );
 }
 
+/* Version sits above the update chip in a single column — see the "version"
+   column definition. */
+.container-table__version-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Stretch, not flex-start: the version line needs the column's full width for
+   its ellipsis to kick in on long tags. */
+.container-table__version-stack > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .container-table__stack-group {
   display: flex;
   flex-direction: column;
