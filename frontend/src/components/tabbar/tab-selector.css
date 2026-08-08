@@ -55,11 +55,12 @@
   color: var(--tab-selector-active-color);
 }
 
+/* Route actions are icon buttons whose own padding provides the separation,
+   matching the dashboard action row. Adding a gap on top reads as too loose. */
 .tab-selector__actions {
   display: flex;
   align-items: center;
   align-self: flex-start;
-  gap: 4px;
   margin-top: 2px;
   flex-shrink: 0;
 }
@@ -71,5 +72,4 @@
 .tab-selector__mobile-actions {
   display: flex;
   flex-direction: row;
-  gap: 4px;
 }

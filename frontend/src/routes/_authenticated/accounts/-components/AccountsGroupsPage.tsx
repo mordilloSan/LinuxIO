@@ -1,8 +1,7 @@
-import { Icon } from "@iconify/react";
 import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
-import AppButton from "@/components/ui/AppButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -22,14 +21,13 @@ const AccountsGroupsPage = () => {
         viewMode={groupsView}
       />
       {createGroupHandler && (
-        <AppButton
+        <AppActionIconButton
+          ariaLabel="Add Group"
+          icon="mdi:plus"
+          iconSize={20}
+          label="Add Group"
           onClick={createGroupHandler}
-          size="small"
-          startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-          variant="contained"
-        >
-          Add Group
-        </AppButton>
+        />
       )}
     </>
   );

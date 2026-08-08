@@ -1,9 +1,7 @@
-import { Icon } from "@iconify/react";
 import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
-import AppButton from "@/components/ui/AppButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -35,36 +33,24 @@ const MountsPage = () => {
         viewMode={nfsView}
       />
       {mountNFSHandler && (
-        <AppTooltip title={nfsUnavailable ? nfsReason : "Mount NFS"}>
-          <span>
-            <AppButton
-              disabled={nfsUnavailable}
-              onClick={mountNFSHandler}
-              size="small"
-              startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-              variant="contained"
-            >
-              Mount NFS
-            </AppButton>
-          </span>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel="Mount NFS"
+          disabled={nfsUnavailable}
+          icon="mdi:plus-network-outline"
+          iconSize={20}
+          label={nfsUnavailable ? nfsReason : "Mount NFS"}
+          onClick={mountNFSHandler}
+        />
       )}
       {mountSMBHandler && (
-        <AppTooltip
-          title={sambaClientUnavailable ? sambaClientReason : "Mount SMB"}
-        >
-          <span>
-            <AppButton
-              disabled={sambaClientUnavailable}
-              onClick={mountSMBHandler}
-              size="small"
-              startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-              variant="contained"
-            >
-              Mount SMB
-            </AppButton>
-          </span>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel="Mount SMB"
+          disabled={sambaClientUnavailable}
+          icon="mdi:plus-box-outline"
+          iconSize={20}
+          label={sambaClientUnavailable ? sambaClientReason : "Mount SMB"}
+          onClick={mountSMBHandler}
+        />
       )}
     </>
   );

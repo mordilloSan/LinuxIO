@@ -1,13 +1,10 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
@@ -79,45 +76,34 @@ const AvailableUpdatesPage = () => {
   const packageOperationPending =
     recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
-    <div style={{ display: "flex", alignItems: "center" }}>
-      <AppTooltip title={isRefreshingCache ? "Refreshing" : "Refresh Sources"}>
-        <AppIconButton
-          aria-label="Refresh Sources"
-          disabled={packageOperationPending}
-          onClick={() => refreshCache()}
-          size="small"
-        >
-          {isRefreshingCache ? (
-            <AppCircularProgress color="inherit" size={20} />
-          ) : (
-            <Icon height={20} icon="mdi:database-refresh" width={20} />
-          )}
-        </AppIconButton>
-      </AppTooltip>
-      <AppTooltip title="Update settings">
-        <AppIconButton
-          aria-label="Open update settings"
-          onClick={() => setSettingsOpen(true)}
-          size="small"
-        >
-          <Icon height={20} icon="mdi:cog" width={20} />
-        </AppIconButton>
-      </AppTooltip>
+    <>
+      <AppActionIconButton
+        ariaLabel="Refresh Sources"
+        disabled={packageOperationPending}
+        icon="mdi:database-refresh"
+        iconSize={20}
+        label={isRefreshingCache ? "Refreshing" : "Refresh Sources"}
+        loading={isRefreshingCache}
+        onClick={() => refreshCache()}
+      />
+      <AppActionIconButton
+        ariaLabel="Open update settings"
+        icon="mdi:cog"
+        iconSize={20}
+        label="Update settings"
+        onClick={() => setSettingsOpen(true)}
+      />
       {actionableUpdates.length > 0 ? (
-        <AppTooltip title={`Update All (${actionableUpdates.length})`}>
-          <AppIconButton
-            aria-label={`Update All (${actionableUpdates.length})`}
-            disabled={packageOperationPending}
-            onClick={() =>
-              updateAll(actionableUpdates.map((u) => u.package_id))
-            }
-            size="small"
-          >
-            <Icon height={20} icon="mdi:refresh" width={20} />
-          </AppIconButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Update All (${actionableUpdates.length})`}
+          disabled={packageOperationPending}
+          icon="mdi:refresh"
+          iconSize={20}
+          label={`Update All (${actionableUpdates.length})`}
+          onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
+        />
       ) : null}
-    </div>
+    </>
   );
 
   return (

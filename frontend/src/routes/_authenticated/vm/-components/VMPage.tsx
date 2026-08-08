@@ -1,17 +1,15 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
 import { linuxio, type VMCreateProgress, type VirtualMachine } from "@/api";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateVMDialog from "./CreateVMDialog";
@@ -26,7 +24,6 @@ interface VMPageProps {
 
 const VMPage = ({ children }: VMPageProps) => {
   const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const navigate = vmRouteApi.useNavigate();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
@@ -91,40 +88,28 @@ const VMPage = ({ children }: VMPageProps) => {
   });
 
   const tabActions = (
-    <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        flexWrap: isMobile ? "wrap" : "nowrap",
-        gap: theme.spacing(1.5),
-      }}
-    >
-      <AppButton
+    <>
+      <AppActionIconButton
+        ariaLabel="Refresh"
         disabled={listQuery.isFetching}
+        icon="mdi:refresh"
+        iconSize={20}
+        label="Refresh"
+        loading={listQuery.isFetching}
         onClick={() => listQuery.refetch()}
-        startIcon={
-          listQuery.isFetching ? (
-            <AppCircularProgress color="inherit" size={16} />
-          ) : (
-            <Icon height={18} icon="mdi:refresh" width={18} />
-          )
-        }
-        variant="outlined"
-      >
-        Refresh
-      </AppButton>
-      <AppButton
+      />
+      <AppActionIconButton
+        ariaLabel="Create VM"
         disabled={!preflightReady(preflightQuery.data)}
+        icon="mdi:plus"
+        iconSize={20}
+        label="Create VM"
         onClick={() => {
           setCreateProgress(null);
           setCreateOpen(true);
         }}
-        startIcon={<Icon height={18} icon="mdi:plus" width={18} />}
-        variant="contained"
-      >
-        Create VM
-      </AppButton>
-    </div>
+      />
+    </>
   );
 
   if (libvirtStatus !== "available") {

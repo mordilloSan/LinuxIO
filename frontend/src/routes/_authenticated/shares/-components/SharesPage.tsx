@@ -1194,28 +1194,20 @@ const SharesPage = () => {
   );
 
   const sharesActions = (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-        flexWrap: "wrap",
-      }}
-    >
+    <>
       <ViewModeToggle
         alternateMode="table"
         onViewModeChange={setViewMode}
         viewMode={viewMode}
       />
-      <AppButton
+      <AppActionIconButton
+        ariaLabel="Add Share"
+        icon="mdi:plus"
+        iconSize={20}
+        label="Add Share"
         onClick={() => setCreateDialogOpen(true)}
-        size="small"
-        startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-        variant="contained"
-      >
-        Add Share
-      </AppButton>
-    </div>
+      />
+    </>
   );
 
   const content = (

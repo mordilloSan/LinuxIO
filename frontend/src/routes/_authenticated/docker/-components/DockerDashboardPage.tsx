@@ -91,7 +91,7 @@ const DockerDashboardPage = () => {
     });
 
   const actions = (
-    <div style={{ display: "flex", alignItems: "center" }}>
+    <>
       {checkUpdatesButton}
       <AppActionIconButton
         ariaLabel="Start All"
@@ -124,7 +124,7 @@ const DockerDashboardPage = () => {
         loading={isPruning}
         onClick={() => setPruneDialogOpen(true)}
       />
-    </div>
+    </>
   );
 
   return (

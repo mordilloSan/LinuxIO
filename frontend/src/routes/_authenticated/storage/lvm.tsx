@@ -1,10 +1,9 @@
-import { Icon } from "@iconify/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
-import AppButton from "@/components/ui/AppButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { loadRouteQueries } from "@/routes/-loader";
 
 import LVMManagement from "./-components/LVMManagement";
@@ -24,14 +23,13 @@ function StorageLVMRoute() {
     null,
   );
   const actions = createLVHandler ? (
-    <AppButton
+    <AppActionIconButton
+      ariaLabel="Create LV"
+      icon="mdi:plus"
+      iconSize={20}
+      label="Create LV"
       onClick={createLVHandler}
-      size="small"
-      startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-      variant="contained"
-    >
-      Create LV
-    </AppButton>
+    />
   ) : undefined;
 
   return (

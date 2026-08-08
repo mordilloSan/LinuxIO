@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { linuxio, type NetworkInterface, type WireGuardInterface } from "@/api";
-import AppButton from "@/components/ui/AppButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -190,9 +190,13 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
 
   return (
     <>
-      <AppButton color="primary" onClick={handleOpenDialog} variant="contained">
-        Create New Interface
-      </AppButton>
+      <AppActionIconButton
+        ariaLabel="Create New Interface"
+        icon="mdi:plus"
+        iconSize={20}
+        label="Create New Interface"
+        onClick={handleOpenDialog}
+      />
       <CreateInterfaceDialog
         availableNICs={availableNICs}
         CIDR={CIDR}
