@@ -26,6 +26,11 @@ export const getComposeStatusColor = (status: string): string => {
   }
 };
 
+export const getWireguardStatusColor = (isConnected: string): string =>
+  isConnected === "Active"
+    ? SEMANTIC_STATUS_COLORS.success
+    : SEMANTIC_STATUS_COLORS.neutral;
+
 export const getServiceStatusColor = (activeState: string): string => {
   switch (activeState) {
     case "active":
