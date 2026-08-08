@@ -89,3 +89,8 @@
   height: 10px;
   border-radius: 50%;
 }
+
+/* Second tooltip line: what the dot does, subordinate to the status above it. */
+.container-table__update-hint {
+  opacity: 0.7;
+}

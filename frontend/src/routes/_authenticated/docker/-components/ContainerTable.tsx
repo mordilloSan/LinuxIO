@@ -37,7 +37,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import "./container-table.css";
 
@@ -108,34 +108,36 @@ type ContainerUpdateStatusInput = Pick<
   "updateAvailable" | "updateCheckedAt" | "updateError"
 >;
 
+// The verdict plus how old it is: an exact clock time reads as precision the
+// answer does not have, since it is only as current as the last check.
 const getUpdateStatus = ({
   updateAvailable,
   updateCheckedAt,
   updateError,
 }: ContainerUpdateStatusInput) => {
+  const age = updateCheckedAt ? ` (${formatRelativeAge(updateCheckedAt)})` : "";
+
   if (updateError) {
     return {
       dotColor: "var(--app-palette-error-main)",
-      title: updateError,
+      headline: updateError,
     };
   }
   if (updateAvailable === true) {
     return {
       dotColor: "var(--app-palette-warning-main)",
-      title: "Update available",
+      headline: `Update available${age}`,
     };
   }
   if (updateAvailable === false || updateCheckedAt) {
     return {
       dotColor: "var(--app-palette-success-main)",
-      title: updateCheckedAt
-        ? `Up to date — checked ${new Date(updateCheckedAt).toLocaleString()}`
-        : "Up to date",
+      headline: `Up to date${age}`,
     };
   }
   return {
     dotColor: "var(--app-palette-text-disabled)",
-    title: "Not checked yet",
+    headline: "Never checked",
   };
 };
 
@@ -385,9 +387,12 @@ const UpdateCell = memo(function UpdateCell({
   return (
     <AppTooltip
       title={
-        checking
-          ? "Checking for updates"
-          : `${updateStatus.title} — click to check for updates`
+        <>
+          <div>{updateStatus.headline}</div>
+          <div className="container-table__update-hint">
+            {checking ? "Checking for updates…" : "Click to check for updates"}
+          </div>
+        </>
       }
     >
       <AppIconButton
