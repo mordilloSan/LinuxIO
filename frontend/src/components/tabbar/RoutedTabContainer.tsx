@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useLayoutEffect,
@@ -44,10 +45,13 @@ interface RoutedTabContainerProps {
   tabs: readonly RoutedTab[];
 }
 
-interface TabLayoutProps extends RoutedTabContainerProps {
+interface TabSelectorProps {
   actionHostMountRef?: (element: HTMLDivElement | null) => void;
   hasSlotActions?: boolean;
+  tabs: readonly RoutedTab[];
 }
+
+const EMPTY_CONTAINER_STYLE: CSSProperties = {};
 
 const TabActionSlotContext = createContext<{
   host: HTMLElement;
@@ -82,7 +86,7 @@ export const RoutedTabActions = ({ children }: { children: ReactNode }) => {
 
 export const RoutedTabLayout = ({
   children,
-  containerStyle = {},
+  containerStyle = EMPTY_CONTAINER_STYLE,
   tabs,
 }: RoutedTabContainerProps) => {
   // Keep one portal target for the layout's lifetime. Moving this element
@@ -110,26 +114,49 @@ export const RoutedTabLayout = ({
     [actionHost, registerActions],
   );
   return (
-    <TabActionSlotContext value={actionSlot}>
-      <TabLayout
+    <div className="tab-container" style={containerStyle}>
+      <TabSelector
         actionHostMountRef={mountActionHost}
-        containerStyle={containerStyle}
         hasSlotActions={slotActionCount > 0}
         tabs={tabs}
-      >
-        {children}
-      </TabLayout>
-    </TabActionSlotContext>
+      />
+      <TabActionSlotContext value={actionSlot}>
+        <TabPanel>{children}</TabPanel>
+      </TabActionSlotContext>
+    </div>
   );
 };
 
-const TabLayout = ({
-  children,
-  containerStyle = {},
+const RoutedTabLink = memo(function RoutedTabLink({
+  label,
+  matchChildren,
+  to,
+}: RoutedTab) {
+  return (
+    <Link
+      activeOptions={{
+        exact: !matchChildren,
+        includeSearch: false,
+      }}
+      activeProps={{
+        "aria-selected": true,
+        className: "tab-selector__pill--active",
+      }}
+      className="tab-selector__pill"
+      inactiveProps={{ "aria-selected": false }}
+      role="tab"
+      to={to}
+    >
+      {label}
+    </Link>
+  );
+});
+
+const TabSelector = memo(function TabSelector({
   tabs,
   actionHostMountRef,
   hasSlotActions = false,
-}: TabLayoutProps) => {
+}: TabSelectorProps) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -143,82 +170,66 @@ const TabLayout = ({
   );
 
   return (
-    <div className="tab-container" style={containerStyle}>
-      <div
-        className="tab-selector tab-container__selector"
-        style={
-          {
-            "--tab-selector-active-bg": theme.palette.primary.main,
-            "--tab-selector-active-color": theme.palette.primary.contrastText,
-            "--tab-selector-border": theme.palette.divider,
-            "--tab-selector-hover": theme.palette.action.hover,
-            "--tab-selector-text": theme.palette.text.secondary,
-          } as CSSProperties
-        }
-      >
-        <div className="tab-selector__scroller custom-scrollbar">
-          <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
-            {tabs.map((tab) => (
-              <Link
-                activeOptions={{
-                  exact: !tab.matchChildren,
-                  includeSearch: false,
-                }}
-                activeProps={{
-                  "aria-selected": true,
-                  className: "tab-selector__pill--active",
-                }}
-                className="tab-selector__pill"
-                inactiveProps={{ "aria-selected": false }}
-                key={tab.to}
-                role="tab"
-                to={tab.to}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {actionHostMountRef && hasSlotActions ? (
-          isMobile ? (
-            <>
-              <AppIconButton
-                aria-expanded={Boolean(anchorEl)}
-                aria-label="Actions"
-                onClick={(event) => setAnchorEl(event.currentTarget)}
-                ref={handleMenuTriggerRef}
-                size="small"
-                style={{ marginTop: 2, flexShrink: 0 }}
-              >
-                <Icon height={20} icon="mdi:tune" width={20} />
-              </AppIconButton>
-              <AppMenu
-                anchorEl={anchorEl}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                keepMounted
-                minWidth="unset"
-                onClose={() => setAnchorEl(null)}
-                open={Boolean(anchorEl)}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-              >
-                <div
-                  className="tab-selector__mobile-actions"
-                  ref={actionHostMountRef}
-                />
-              </AppMenu>
-            </>
-          ) : (
-            <div className="tab-selector__actions" ref={actionHostMountRef} />
-          )
-        ) : null}
-      </div>
-
-      <div className="tab-container__panels">
-        <div className="tab-panel">
-          <div className="tab-panel__content">{children}</div>
+    <div
+      className="tab-selector tab-container__selector"
+      style={
+        {
+          "--tab-selector-active-bg": theme.palette.primary.main,
+          "--tab-selector-active-color": theme.palette.primary.contrastText,
+          "--tab-selector-border": theme.palette.divider,
+          "--tab-selector-hover": theme.palette.action.hover,
+          "--tab-selector-text": theme.palette.text.secondary,
+        } as CSSProperties
+      }
+    >
+      <div className="tab-selector__scroller custom-scrollbar">
+        <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
+          {tabs.map((tab) => (
+            <RoutedTabLink key={tab.to} {...tab} />
+          ))}
         </div>
       </div>
+
+      {actionHostMountRef && hasSlotActions ? (
+        isMobile ? (
+          <>
+            <AppIconButton
+              aria-expanded={Boolean(anchorEl)}
+              aria-label="Actions"
+              onClick={(event) => setAnchorEl(event.currentTarget)}
+              ref={handleMenuTriggerRef}
+              size="small"
+              style={{ marginTop: 2, flexShrink: 0 }}
+            >
+              <Icon height={20} icon="mdi:tune" width={20} />
+            </AppIconButton>
+            <AppMenu
+              anchorEl={anchorEl}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              keepMounted
+              minWidth="unset"
+              onClose={() => setAnchorEl(null)}
+              open={Boolean(anchorEl)}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <div
+                className="tab-selector__mobile-actions"
+                ref={actionHostMountRef}
+              />
+            </AppMenu>
+          </>
+        ) : (
+          <div className="tab-selector__actions" ref={actionHostMountRef} />
+        )
+      ) : null}
     </div>
   );
-};
+});
+
+const TabPanel = ({ children }: { children: ReactNode }) => (
+  <div className="tab-container__panels">
+    <div className="tab-panel">
+      <div className="tab-panel__content">{children}</div>
+    </div>
+  </div>
+);

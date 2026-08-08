@@ -740,6 +740,12 @@ The pieces live in `components/tabbar/RoutedTabContainer.tsx`:
 | `RoutedTabActions` | Lets a child route portal toolbar buttons into the parent's tab strip. |
 | `RoutedTab` | The tab manifest type. |
 
+The tab selector is a memoized sibling of the routed panel. Polling or local
+state updates inside the active child route therefore do not rebuild the tab
+links, while each TanStack `Link` still observes location changes so real
+navigation updates the selected pill. Portaled route actions can update inside
+the persistent selector without invalidating its links.
+
 Tab manifests live at `<group>/-components/<group>Tabs.ts`:
 
 ```ts
