@@ -37,6 +37,8 @@ import { useAppTheme } from "@/theme";
 import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
+import "./container-table.css";
+
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
@@ -528,16 +530,18 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
 
   if (ports.length === 0) {
     return (
-      <AppTypography color="text.disabled" variant="body2">
-        -
-      </AppTypography>
+      <div className="container-table__stack">
+        <AppTypography color="text.disabled" variant="body2">
+          -
+        </AppTypography>
+      </div>
     );
   }
 
   const visible = getVisibleEntries(ports.length);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    <div className="container-table__stack">
       {ports.slice(0, visible).map((port) => {
         const text = `${port.PrivatePort}/${port.Type} -> ${
           port.PublicPort ?? "-"
@@ -572,7 +576,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
         );
       })}
       <AppCollapse in={expanded}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <div className="container-table__stack-group">
           {ports.slice(visible).map((port) => {
             const text = `${port.PrivatePort}/${port.Type} -> ${
               port.PublicPort ?? "-"
@@ -637,16 +641,18 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
 
   if (mounts.length === 0) {
     return (
-      <AppTypography color="text.disabled" variant="body2">
-        -
-      </AppTypography>
+      <div className="container-table__stack">
+        <AppTypography color="text.disabled" variant="body2">
+          -
+        </AppTypography>
+      </div>
     );
   }
 
   const visible = getVisibleEntries(mounts.length);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    <div className="container-table__stack">
       {mounts.slice(0, visible).map((mount) => {
         const text = `${mount.Destination} -> ${mount.Source}`;
         return (
@@ -679,7 +685,7 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
         );
       })}
       <AppCollapse in={expanded}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <div className="container-table__stack-group">
           {mounts.slice(visible).map((mount) => {
             const text = `${mount.Destination} -> ${mount.Source}`;
             return (
