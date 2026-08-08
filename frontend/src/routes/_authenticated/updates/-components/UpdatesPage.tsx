@@ -10,7 +10,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
 
 import { usePackageUpdateController } from "./PackageUpdateController";
@@ -41,7 +40,6 @@ const UpdatesPage = () => {
 };
 
 const AvailableUpdatesPage = () => {
-  const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { data: rawUpdates, refetch } = useSuspenseQuery(
     linuxio.updates.get_updates_basic.queryOptions({
@@ -81,13 +79,7 @@ const AvailableUpdatesPage = () => {
   const packageOperationPending =
     recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(1),
-      }}
-    >
+    <div style={{ display: "flex", alignItems: "center" }}>
       <AppTooltip title={isRefreshingCache ? "Refreshing" : "Refresh Sources"}>
         <AppIconButton
           aria-label="Refresh Sources"
@@ -116,7 +108,9 @@ const AvailableUpdatesPage = () => {
           <AppIconButton
             aria-label={`Update All (${actionableUpdates.length})`}
             disabled={packageOperationPending}
-            onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
+            onClick={() =>
+              updateAll(actionableUpdates.map((u) => u.package_id))
+            }
             size="small"
           >
             <Icon height={20} icon="mdi:refresh" width={20} />
