@@ -69,8 +69,11 @@ const StateChip = ({
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 const RESOURCE_TABLE_MAX_HEIGHT = 201;
+const RESOURCE_TABLE_STYLE = { boxShadow: "none" } as const;
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 const dockerRouteApi = getRouteApi("/_authenticated/docker/");
+
+const getDockerResourceId = (resource: { Id: string }) => resource.Id;
 
 const getContainerDisplayName = (names?: string[]) =>
   names?.[0]?.replace(/^\//, "") || "Unnamed";
@@ -244,97 +247,125 @@ const DockerDashboard = ({
     return list;
   }, [images, imageSort]);
 
-  const containerColumns: AppDataTableColumnDef<
-    (typeof previewContainers)[number]
-  >[] = [
-    {
-      id: "name",
-      header: "NAME",
-      cell: ({ row }) => {
-        const container = row.original;
-        const name = getContainerDisplayName(container.Names);
-        return (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              minWidth: 0,
-            }}
-          >
-            <DockerIcon alt={name} identifier={container.icon} size={22} />
-            <AppTypography
-              fontWeight={500}
-              noWrap
-              title={name}
-              toastMeta={DOCKER_TOAST_META}
-              variant="body2"
+  const containerColumns = useMemo<
+    AppDataTableColumnDef<(typeof previewContainers)[number]>[]
+  >(
+    () => [
+      {
+        id: "name",
+        header: "NAME",
+        cell: ({ row }) => {
+          const container = row.original;
+          const name = getContainerDisplayName(container.Names);
+          return (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                minWidth: 0,
+              }}
             >
-              {name}
-            </AppTypography>
-          </div>
-        );
+              <DockerIcon alt={name} identifier={container.icon} size={22} />
+              <AppTypography
+                fontWeight={500}
+                noWrap
+                title={name}
+                toastMeta={DOCKER_TOAST_META}
+                variant="body2"
+              >
+                {name}
+              </AppTypography>
+            </div>
+          );
+        },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as (typeof previewContainers)[number];
+            return [container.Id, container.Names?.[0], container.icon];
+          },
+        },
       },
-    },
-    {
-      accessorKey: "Image",
-      header: "IMAGE",
-      cell: ({ row }) => (
-        <AppTypography
-          color="text.secondary"
-          noWrap
-          title={row.original.Image}
-          toastMeta={DOCKER_TOAST_META}
-          variant="caption"
-        >
-          {row.original.Image}
-        </AppTypography>
-      ),
-      meta: {
-        hideBelow: "md",
-        width: "220px",
-      },
-    },
-    {
-      id: "state",
-      header: "STATE",
-      cell: ({ row }) => (
-        <StateChip
-          state={row.original.State}
-          status={row.original.Status}
-          stopping={stoppingContainerIds.has(row.original.Id)}
-        />
-      ),
-      meta: {
-        width: "96px",
-      },
-    },
-    {
-      id: "status",
-      header: "STATUS",
-      cell: ({ row }) => {
-        const status = stripStatusDetail(row.original.Status);
-        return (
+      {
+        accessorKey: "Image",
+        header: "IMAGE",
+        cell: ({ row }) => (
           <AppTypography
             color="text.secondary"
-            copyText={row.original.Status}
             noWrap
-            title={row.original.Status}
+            title={row.original.Image}
             toastMeta={DOCKER_TOAST_META}
             variant="caption"
           >
-            {status}
+            {row.original.Image}
           </AppTypography>
-        );
+        ),
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as (typeof previewContainers)[number];
+            return [container.Id, container.Image];
+          },
+          hideBelow: "md",
+          width: "220px",
+        },
       },
-      meta: {
-        hideBelow: "md",
-        width: "100px",
+      {
+        id: "state",
+        header: "STATE",
+        cell: ({ row }) => (
+          <StateChip
+            state={row.original.State}
+            status={row.original.Status}
+            stopping={stoppingContainerIds.has(row.original.Id)}
+          />
+        ),
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as (typeof previewContainers)[number];
+            return [
+              container.Id,
+              container.State,
+              container.Status,
+              stoppingContainerIds.has(container.Id),
+            ];
+          },
+          width: "96px",
+        },
       },
-    },
-  ];
-  const imageColumns: AppDataTableColumnDef<(typeof previewImages)[number]>[] =
-    [
+      {
+        id: "status",
+        header: "STATUS",
+        cell: ({ row }) => {
+          const status = stripStatusDetail(row.original.Status);
+          return (
+            <AppTypography
+              color="text.secondary"
+              copyText={row.original.Status}
+              noWrap
+              title={row.original.Status}
+              toastMeta={DOCKER_TOAST_META}
+              variant="caption"
+            >
+              {status}
+            </AppTypography>
+          );
+        },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as (typeof previewContainers)[number];
+            return [container.Id, container.Status];
+          },
+          hideBelow: "md",
+          width: "100px",
+        },
+      },
+    ],
+    [stoppingContainerIds],
+  );
+  const imageColumns = useMemo<
+    AppDataTableColumnDef<(typeof previewImages)[number]>[]
+  >(
+    () => [
       {
         id: "repository",
         header: "REPOSITORY",
@@ -352,6 +383,12 @@ const DockerDashboard = ({
               {repo}
             </AppTypography>
           );
+        },
+        meta: {
+          getCellRenderKey: (row) => {
+            const image = row as (typeof previewImages)[number];
+            return [image.Id, image.RepoTags?.join("|")];
+          },
         },
       },
       {
@@ -373,6 +410,10 @@ const DockerDashboard = ({
           );
         },
         meta: {
+          getCellRenderKey: (row) => {
+            const image = row as (typeof previewImages)[number];
+            return [image.Id, image.RepoTags?.join("|")];
+          },
           hideBelow: "md",
           width: "90px",
         },
@@ -385,6 +426,10 @@ const DockerDashboard = ({
             <Chip color="success" label="In Use" size="small" variant="soft" />
           ) : null,
         meta: {
+          getCellRenderKey: (row) => {
+            const image = row as (typeof previewImages)[number];
+            return [image.Id, image.Containers ?? 0];
+          },
           width: "96px",
         },
       },
@@ -398,11 +443,17 @@ const DockerDashboard = ({
           </AppTypography>
         ),
         meta: {
+          getCellRenderKey: (row) => {
+            const image = row as (typeof previewImages)[number];
+            return [image.Id, image.Size];
+          },
           hideBelow: "md",
           width: "90px",
         },
       },
-    ];
+    ],
+    [],
+  );
   return (
     <div>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
@@ -743,9 +794,9 @@ const DockerDashboard = ({
                   data={previewContainers}
                   emptyMessage="No containers found"
                   fillAvailable={false}
-                  getRowId={(container) => container.Id}
+                  getRowId={getDockerResourceId}
                   maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
-                  style={{ boxShadow: "none" }}
+                  style={RESOURCE_TABLE_STYLE}
                 />
               </DockerResourceListCard>
             </AppGrid>
@@ -796,9 +847,9 @@ const DockerDashboard = ({
                   data={previewImages}
                   emptyMessage="No images found"
                   fillAvailable={false}
-                  getRowId={(image) => image.Id}
+                  getRowId={getDockerResourceId}
                   maxHeight={RESOURCE_TABLE_MAX_HEIGHT}
-                  style={{ boxShadow: "none" }}
+                  style={RESOURCE_TABLE_STYLE}
                 />
               </DockerResourceListCard>
             </AppGrid>

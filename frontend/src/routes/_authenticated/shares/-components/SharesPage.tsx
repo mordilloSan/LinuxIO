@@ -1,6 +1,13 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
   linuxio,
@@ -12,7 +19,10 @@ import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type {
+  AppDataTableColumnDef,
+  AppDataTableProps,
+} from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -108,7 +118,13 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
         {row.original.name}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.name];
+      },
+    },
   },
   {
     accessorKey: "comment",
@@ -118,7 +134,13 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
         {row.original.comment || "-"}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.comment];
+      },
+    },
   },
   {
     id: "smb",
@@ -131,6 +153,10 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     ),
     meta: {
       align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, getSambaAccessLabel(group.samba)];
+      },
       width: "110px",
     },
   },
@@ -145,6 +171,10 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     ),
     meta: {
       align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, getNFSAccessLabel(group.nfs)];
+      },
       width: "110px",
     },
   },
@@ -156,9 +186,17 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
         {row.original.path}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.path];
+      },
+    },
   },
 ];
+
+const getShareGroupId = (group: ShareGroup) => group.id;
 
 function normalizeSharePath(path: string): string {
   if (!path || path === "/") {
@@ -1131,9 +1169,25 @@ const SharesPage = () => {
     }),
   );
 
-  const shareGroups = buildShareGroups(
-    Array.isArray(sambaShares) ? sambaShares : [],
-    Array.isArray(nfsShares) ? nfsShares : [],
+  const shareGroups = useMemo(
+    () =>
+      buildShareGroups(
+        Array.isArray(sambaShares) ? sambaShares : [],
+        Array.isArray(nfsShares) ? nfsShares : [],
+      ),
+    [nfsShares, sambaShares],
+  );
+  const renderShareExpandedContent = useCallback<
+    NonNullable<AppDataTableProps<ShareGroup>["renderExpandedContent"]>
+  >(
+    ({ original: group }) =>
+      renderExpandedContent(
+        group,
+        setEditingShare,
+        setDeletingSamba,
+        setDeletingNFS,
+      ),
+    [],
   );
 
   const sharesActions = (
@@ -1207,15 +1261,8 @@ const SharesPage = () => {
           data={shareGroups}
           emptyMessage="No shares configured. Add a folder share to get started."
           fillAvailable
-          getRowId={(group) => group.id}
-          renderExpandedContent={({ original: group }) =>
-            renderExpandedContent(
-              group,
-              setEditingShare,
-              setDeletingSamba,
-              setDeletingNFS,
-            )
-          }
+          getRowId={getShareGroupId}
+          renderExpandedContent={renderShareExpandedContent}
         />
       )}
     </div>

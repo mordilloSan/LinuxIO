@@ -1,5 +1,5 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -465,167 +465,226 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
 
   // Re-activate an inactive fstab entry — the backend mounts it from fstab
   // using the stored credentials, so no password is needed.
-  const handleMountExisting = (mount: CIFSMount) => {
-    if (cifsUnavailable) {
-      toast.error(cifsReason);
-      return;
-    }
-    mountExisting({
-      server: mount.server,
-      share: mount.share,
-      mountpoint: mount.mountpoint,
-      username: "",
-      password: "",
-      domain: "",
-      options: [],
-    });
-  };
+  const handleMountExisting = useCallback(
+    (mount: CIFSMount) => {
+      if (cifsUnavailable) {
+        toast.error(cifsReason);
+        return;
+      }
+      mountExisting({
+        server: mount.server,
+        share: mount.share,
+        mountpoint: mount.mountpoint,
+        username: "",
+        password: "",
+        domain: "",
+        options: [],
+      });
+    },
+    [cifsReason, cifsUnavailable, mountExisting, toast],
+  );
 
   const mountsList = Array.isArray(mounts) ? mounts : [];
 
-  const columns: AppDataTableColumnDef<CIFSMount>[] = [
-    {
-      accessorKey: "source",
-      header: "SMB Share",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.source}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "mountpoint",
-      header: "Mount Point",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.mountpoint}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "auth",
-      header: "Auth",
-      accessorFn: (mount) => getAuthLabel(mount),
-      cell: ({ row }) => (
-        <Chip label={getAuthLabel(row.original)} size="small" variant="soft" />
-      ),
-      meta: { align: "left", width: "140px" },
-    },
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: (mount) => getStatusLabel(mount),
-      cell: ({ row }) => (
-        <Chip
-          label={getStatusLabel(row.original)}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: { align: "left", width: "120px" },
-    },
-    {
-      accessorKey: "usedPct",
-      header: "Usage",
-      cell: ({ row }) => {
-        const mount = row.original;
-        return mount.mounted ? (
-          <div style={{ width: "100%" }}>
-            <AppLinearProgress
-              color={
-                mount.usedPct > 90
-                  ? "error"
-                  : mount.usedPct > 70
-                    ? "warning"
-                    : "primary"
-              }
-              style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
-              value={mount.usedPct}
-              variant="determinate"
-            />
-            <AppTypography color="text.secondary" variant="caption">
-              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-            </AppTypography>
-          </div>
-        ) : (
-          <AppTypography color="text.secondary" variant="caption">
-            Not mounted
+  const columns = useMemo<AppDataTableColumnDef<CIFSMount>[]>(
+    () => [
+      {
+        accessorKey: "source",
+        header: "SMB Share",
+        cell: ({ row }) => (
+          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+            {row.original.source}
           </AppTypography>
-        );
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, mount.source];
+          },
+        },
       },
-      meta: { align: "left", hideBelow: "sm", width: "200px" },
-    },
-    {
-      id: "actions",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const mount = row.original;
-        return (
-          <div
-            style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {!mount.mounted && (
-              <AppTooltip title={cifsUnavailable ? cifsReason : "Mount"}>
+      {
+        accessorKey: "mountpoint",
+        header: "Mount Point",
+        cell: ({ row }) => (
+          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+            {row.original.mountpoint}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => (row as CIFSMount).mountpoint,
+        },
+      },
+      {
+        id: "auth",
+        header: "Auth",
+        accessorFn: (mount) => getAuthLabel(mount),
+        cell: ({ row }) => (
+          <Chip
+            label={getAuthLabel(row.original)}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, getAuthLabel(mount)];
+          },
+          width: "140px",
+        },
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessorFn: (mount) => getStatusLabel(mount),
+        cell: ({ row }) => (
+          <Chip
+            label={getStatusLabel(row.original)}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, getStatusLabel(mount)];
+          },
+          width: "120px",
+        },
+      },
+      {
+        accessorKey: "usedPct",
+        header: "Usage",
+        cell: ({ row }) => {
+          const mount = row.original;
+          return mount.mounted ? (
+            <div style={{ width: "100%" }}>
+              <AppLinearProgress
+                color={
+                  mount.usedPct > 90
+                    ? "error"
+                    : mount.usedPct > 70
+                      ? "warning"
+                      : "primary"
+                }
+                style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
+                value={mount.usedPct}
+                variant="determinate"
+              />
+              <AppTypography color="text.secondary" variant="caption">
+                {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+              </AppTypography>
+            </div>
+          ) : (
+            <AppTypography color="text.secondary" variant="caption">
+              Not mounted
+            </AppTypography>
+          );
+        },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              mount.usedPct,
+              mount.used,
+              mount.size,
+            ];
+          },
+          hideBelow: "sm",
+          width: "200px",
+        },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const mount = row.original;
+          return (
+            <div
+              style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {!mount.mounted && (
+                <AppTooltip title={cifsUnavailable ? cifsReason : "Mount"}>
+                  <span>
+                    <AppActionIconButton
+                      ariaLabel="Mount"
+                      disabled={cifsUnavailable}
+                      icon="mdi:play"
+                      onClick={() => handleMountExisting(mount)}
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              {mount.mounted && (
+                <AppTooltip title="Unmount">
+                  <span>
+                    <AppActionIconButton
+                      ariaLabel="Unmount"
+                      icon="mdi:eject"
+                      onClick={() =>
+                        unmountEntry({
+                          mountpoint: mount.mountpoint,
+                          removeFstab: "false",
+                        })
+                      }
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              <AppTooltip title="Edit options">
                 <span>
                   <AppActionIconButton
-                    ariaLabel="Mount"
-                    disabled={cifsUnavailable}
-                    icon="mdi:play"
-                    onClick={() => handleMountExisting(mount)}
+                    ariaLabel="Edit options"
+                    icon="mdi:pencil"
+                    onClick={() => {
+                      setSelectedMount(mount);
+                      setEditDialogOpen(true);
+                    }}
                   />
                 </span>
               </AppTooltip>
-            )}
-            {mount.mounted && (
-              <AppTooltip title="Unmount">
+              <AppTooltip title="Remove">
                 <span>
                   <AppActionIconButton
-                    ariaLabel="Unmount"
-                    icon="mdi:eject"
-                    onClick={() =>
-                      unmountEntry({
-                        mountpoint: mount.mountpoint,
-                        removeFstab: "false",
-                      })
-                    }
+                    ariaLabel="Remove"
+                    icon="mdi:delete"
+                    onClick={() => {
+                      setSelectedMount(mount);
+                      setRemoveDialogOpen(true);
+                    }}
                   />
                 </span>
               </AppTooltip>
-            )}
-            <AppTooltip title="Edit options">
-              <span>
-                <AppActionIconButton
-                  ariaLabel="Edit options"
-                  icon="mdi:pencil"
-                  onClick={() => {
-                    setSelectedMount(mount);
-                    setEditDialogOpen(true);
-                  }}
-                />
-              </span>
-            </AppTooltip>
-            <AppTooltip title="Remove">
-              <span>
-                <AppActionIconButton
-                  ariaLabel="Remove"
-                  icon="mdi:delete"
-                  onClick={() => {
-                    setSelectedMount(mount);
-                    setRemoveDialogOpen(true);
-                  }}
-                />
-              </span>
-            </AppTooltip>
-          </div>
-        );
+            </div>
+          );
+        },
+        meta: {
+          align: "right",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              cifsUnavailable,
+              cifsReason,
+            ];
+          },
+          width: "180px",
+        },
       },
-      meta: { align: "right", width: "180px" },
-    },
-  ];
+    ],
+    [cifsReason, cifsUnavailable, handleMountExisting, unmountEntry],
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>

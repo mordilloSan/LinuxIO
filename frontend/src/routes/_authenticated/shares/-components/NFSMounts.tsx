@@ -1,5 +1,5 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
@@ -911,102 +911,160 @@ const NFSMountTable = ({
       mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
       getMountStatusLabel(mount).toLowerCase().includes(normalizedSearch),
   );
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      accessorKey: "source",
-      header: "NFS Share",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.source}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "mountpoint",
-      header: "Mount Point",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.mountpoint}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: (mount) =>
-        `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
-      cell: ({ row }) => {
-        const mount = row.original;
-        return (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            <Chip
-              label={getMountStatusLabel(mount)}
-              size="small"
-              variant="soft"
-            />
-            <Chip
-              label={getPersistenceLabel(mount)}
-              size="small"
-              variant="soft"
-            />
-          </div>
-        );
-      },
-      meta: { align: "left", width: "160px" },
-    },
-    {
-      accessorKey: "usedPct",
-      header: "Usage",
-      cell: ({ row }) => {
-        const mount = row.original;
-        return mount.mounted ? (
-          <div style={{ width: "100%" }}>
-            <AppLinearProgress
-              color={
-                mount.usedPct > 90
-                  ? "error"
-                  : mount.usedPct > 70
-                    ? "warning"
-                    : "primary"
-              }
-              style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
-              value={mount.usedPct}
-              variant="determinate"
-            />
-            <AppTypography color="text.secondary" variant="caption">
-              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-            </AppTypography>
-          </div>
-        ) : (
-          <AppTypography color="text.secondary" variant="caption">
-            Not mounted
+  const columns = useMemo<AppDataTableColumnDef<NFSMount>[]>(
+    () => [
+      {
+        accessorKey: "source",
+        header: "NFS Share",
+        cell: ({ row }) => (
+          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+            {row.original.source}
           </AppTypography>
-        );
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as NFSMount;
+            return [mount.mountpoint, mount.source];
+          },
+        },
       },
-      meta: { align: "left", hideBelow: "sm", width: "200px" },
-    },
-    {
-      id: "actions",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <MountEntryActions
-          mount={row.original}
-          mountingMountpoint={mountingMountpoint}
-          nfsClientAvailable={nfsClientAvailable}
-          nfsReason={nfsReason}
-          onEdit={onEdit}
-          onMount={onMount}
-          onRemove={onRemove}
-          onUnmount={onUnmount}
-          stopPropagation
-        />
-      ),
-      meta: { align: "right", width: "160px" },
-    },
-  ];
+      {
+        accessorKey: "mountpoint",
+        header: "Mount Point",
+        cell: ({ row }) => (
+          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+            {row.original.mountpoint}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => (row as NFSMount).mountpoint,
+        },
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessorFn: (mount) =>
+          `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
+        cell: ({ row }) => {
+          const mount = row.original;
+          return (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <Chip
+                label={getMountStatusLabel(mount)}
+                size="small"
+                variant="soft"
+              />
+              <Chip
+                label={getPersistenceLabel(mount)}
+                size="small"
+                variant="soft"
+              />
+            </div>
+          );
+        },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as NFSMount;
+            return [
+              mount.mountpoint,
+              getMountStatusLabel(mount),
+              getPersistenceLabel(mount),
+            ];
+          },
+          width: "160px",
+        },
+      },
+      {
+        accessorKey: "usedPct",
+        header: "Usage",
+        cell: ({ row }) => {
+          const mount = row.original;
+          return mount.mounted ? (
+            <div style={{ width: "100%" }}>
+              <AppLinearProgress
+                color={
+                  mount.usedPct > 90
+                    ? "error"
+                    : mount.usedPct > 70
+                      ? "warning"
+                      : "primary"
+                }
+                style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
+                value={mount.usedPct}
+                variant="determinate"
+              />
+              <AppTypography color="text.secondary" variant="caption">
+                {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+              </AppTypography>
+            </div>
+          ) : (
+            <AppTypography color="text.secondary" variant="caption">
+              Not mounted
+            </AppTypography>
+          );
+        },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as NFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              mount.usedPct,
+              mount.used,
+              mount.size,
+            ];
+          },
+          hideBelow: "sm",
+          width: "200px",
+        },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <MountEntryActions
+            mount={row.original}
+            mountingMountpoint={mountingMountpoint}
+            nfsClientAvailable={nfsClientAvailable}
+            nfsReason={nfsReason}
+            onEdit={onEdit}
+            onMount={onMount}
+            onRemove={onRemove}
+            onUnmount={onUnmount}
+            stopPropagation
+          />
+        ),
+        meta: {
+          align: "right",
+          getCellRenderKey: (row) => {
+            const mount = row as NFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              mountingMountpoint === mount.mountpoint,
+              nfsClientAvailable,
+              nfsReason,
+            ];
+          },
+          width: "160px",
+        },
+      },
+    ],
+    [
+      mountingMountpoint,
+      nfsClientAvailable,
+      nfsReason,
+      onEdit,
+      onMount,
+      onRemove,
+      onUnmount,
+    ],
+  );
 
   return (
     <AppDataTable

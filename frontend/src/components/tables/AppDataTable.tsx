@@ -8,6 +8,7 @@ import type {
   Column,
   ColumnVisibilityState,
   ExpandedState,
+  HeaderGroup,
   OnChangeFn,
   Row,
   RowData,
@@ -162,6 +163,14 @@ function areCellRenderKeysEqual(
   return previous.every((value, index) => Object.is(value, next[index]));
 }
 
+function areVersionArraysEqual(
+  previous: readonly unknown[],
+  next: readonly unknown[],
+) {
+  if (previous.length !== next.length) return false;
+  return previous.every((value, index) => Object.is(value, next[index]));
+}
+
 function getCellRenderKey<TData extends RowData>(
   cell: Cell<AppTableFeatures, TData, unknown>,
   rowIndex: number,
@@ -176,13 +185,35 @@ function getCellRenderKey<TData extends RowData>(
 
 interface AppDataTableCellProps<TData extends RowData> {
   cell: Cell<AppTableFeatures, TData, unknown>;
+  columnDef: AppDataTableColumnDef<TData, unknown>;
   renderKey: AppDataTableCellRenderKey;
+  rowIndex: number;
+}
+
+type AppDataTableCellModel<TData extends RowData> =
+  AppDataTableCellProps<TData>;
+
+function areCellModelsEqual<TData extends RowData>(
+  previous: AppDataTableCellModel<TData>[],
+  next: AppDataTableCellModel<TData>[],
+) {
+  if (previous.length !== next.length) return false;
+  return previous.every((cell, index) => {
+    const nextCell = next[index];
+    return (
+      cell.cell.id === nextCell.cell.id &&
+      cell.columnDef === nextCell.columnDef &&
+      cell.rowIndex === nextCell.rowIndex &&
+      areCellRenderKeysEqual(cell.renderKey, nextCell.renderKey)
+    );
+  });
 }
 
 function AppDataTableCell<TData extends RowData>({
   cell,
+  columnDef,
 }: AppDataTableCellProps<TData>) {
-  const meta = cell.column.columnDef.meta;
+  const meta = columnDef.meta;
 
   return (
     <div
@@ -197,7 +228,7 @@ function AppDataTableCell<TData extends RowData>({
         ...meta?.cellStyle,
       }}
     >
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      {flexRender(columnDef.cell, cell.getContext())}
     </div>
   );
 }
@@ -206,29 +237,137 @@ const MemoizedAppDataTableCell = memo(
   AppDataTableCell,
   (previous, next) =>
     previous.cell.id === next.cell.id &&
+    previous.columnDef === next.columnDef &&
+    previous.rowIndex === next.rowIndex &&
     areCellRenderKeysEqual(previous.renderKey, next.renderKey),
 ) as typeof AppDataTableCell;
 
 interface AppDataTableBodyRowProps<TData extends RowData> {
-  cells: ReactNode;
+  canExpand: boolean;
+  cells: AppDataTableCellModel<TData>[];
+  dragHandle?: ReactNode;
+  getRowAttributes?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => AppDataTableRowAttributes;
+  hasDragColumn: boolean;
+  hasExpandColumn: boolean;
+  isExpanded: boolean;
+  isInteractive: boolean;
   isSelected: boolean;
+  onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  onRowDoubleClick?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   row: Row<AppTableFeatures, TData>;
+  rowAttributes?: AppDataTableRowAttributes;
   rowIndex: number;
-  rowProps: AppDataTableRowAttributes;
 }
 
 function AppDataTableBodyRow<TData extends RowData>({
+  canExpand,
   cells,
+  dragHandle,
+  getRowAttributes,
+  hasDragColumn,
+  hasExpandColumn,
+  isExpanded,
+  isInteractive,
   isSelected,
+  onRowClick,
+  onRowContextMenu,
+  onRowDoubleClick,
   renderRow,
   row,
+  rowAttributes: providedRowAttributes,
   rowIndex,
-  rowProps,
 }: AppDataTableBodyRowProps<TData>) {
+  const rowAttributes =
+    providedRowAttributes ?? getRowAttributes?.(row) ?? undefined;
+  const rowAttributeOnClick = rowAttributes?.onClick;
+  const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
+  const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
+  const renderedCells = (
+    <>
+      {hasDragColumn && (
+        <div className="app-vdt__cell app-vdt__cell--drag" role="cell">
+          {dragHandle}
+        </div>
+      )}
+      {cells.map((cell) => (
+        <MemoizedAppDataTableCell
+          cell={cell.cell}
+          columnDef={cell.columnDef}
+          key={cell.cell.id}
+          renderKey={cell.renderKey}
+          rowIndex={cell.rowIndex}
+        />
+      ))}
+      {hasExpandColumn && (
+        <div className="app-vdt__cell app-vdt__cell--expand" role="cell">
+          {canExpand && (
+            <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
+              <AppIconButton
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  row.toggleExpanded();
+                }}
+                size="small"
+              >
+                <Icon
+                  height={22}
+                  icon="mdi:chevron-down"
+                  style={{
+                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: `transform ${DETAIL_ANIMATION_CSS}`,
+                  }}
+                  width={22}
+                />
+              </AppIconButton>
+            </AppTooltip>
+          )}
+        </div>
+      )}
+    </>
+  );
+  const rowProps: AppDataTableRowAttributes = {
+    ...rowAttributes,
+    className: [
+      "app-vdt__row",
+      "app-vdt__row--body",
+      isInteractive && "app-vdt__row--interactive",
+      isSelected && "app-vdt__row--selected",
+      rowIndex % 2 === 1 && "app-vdt__row--alt",
+      rowAttributes?.className,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    onClick: (event) => {
+      rowAttributeOnClick?.(event);
+      if (!event.defaultPrevented) onRowClick?.(row, event);
+    },
+    onContextMenu: (event) => {
+      rowAttributeOnContextMenu?.(event);
+      if (!event.defaultPrevented) onRowContextMenu?.(row, event);
+    },
+    onDoubleClick: (event) => {
+      rowAttributeOnDoubleClick?.(event);
+      if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+    },
+    role: "row",
+    style: rowAttributes?.style,
+  };
+
   if (renderRow) {
     return renderRow({
-      cells,
+      cells: renderedCells,
       isSelected,
       row,
       rowIndex,
@@ -236,25 +375,52 @@ function AppDataTableBodyRow<TData extends RowData>({
     });
   }
 
-  return <div {...rowProps}>{cells}</div>;
+  return <div {...rowProps}>{renderedCells}</div>;
 }
+
+const MemoizedAppDataTableBodyRow = memo(
+  AppDataTableBodyRow,
+  (previous, next) =>
+    previous.canExpand === next.canExpand &&
+    areCellModelsEqual(previous.cells, next.cells) &&
+    previous.dragHandle === next.dragHandle &&
+    previous.getRowAttributes === next.getRowAttributes &&
+    previous.hasDragColumn === next.hasDragColumn &&
+    previous.hasExpandColumn === next.hasExpandColumn &&
+    previous.isExpanded === next.isExpanded &&
+    previous.isInteractive === next.isInteractive &&
+    previous.isSelected === next.isSelected &&
+    previous.onRowClick === next.onRowClick &&
+    previous.onRowContextMenu === next.onRowContextMenu &&
+    previous.onRowDoubleClick === next.onRowDoubleClick &&
+    previous.renderRow === next.renderRow &&
+    previous.row === next.row &&
+    previous.rowAttributes === next.rowAttributes &&
+    previous.rowIndex === next.rowIndex,
+) as typeof AppDataTableBodyRow;
 
 interface AppDataTableSortableBodyRowProps<TData extends RowData> extends Omit<
   AppDataTableBodyRowProps<TData>,
-  "cells"
+  "dragHandle" | "hasDragColumn" | "rowAttributes"
 > {
   dnd: AppDataTableDndOptions<TData>;
-  renderCells: (handle: ReactNode) => ReactNode;
 }
 
 function AppDataTableSortableBodyRow<TData extends RowData>({
+  canExpand,
+  cells,
   dnd,
+  getRowAttributes,
+  hasExpandColumn,
+  isExpanded,
+  isInteractive,
   isSelected,
-  renderCells,
+  onRowClick,
+  onRowContextMenu,
+  onRowDoubleClick,
   renderRow,
   row,
   rowIndex,
-  rowProps,
 }: AppDataTableSortableBodyRowProps<TData>) {
   const {
     attributes,
@@ -268,7 +434,8 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
     disabled: dnd.enabled === false,
   });
   const transformValue = CSS.Transform.toString(transform);
-  const rowTransition = [rowProps.style?.transition, transition]
+  const rowAttributes = getRowAttributes?.(row);
+  const rowTransition = [rowAttributes?.style?.transition, transition]
     .filter(Boolean)
     .join(", ");
   const dragHandle = (
@@ -284,24 +451,192 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
 
   return (
     <AppDataTableBodyRow
-      cells={renderCells(dragHandle)}
+      canExpand={canExpand}
+      cells={cells}
+      dragHandle={dragHandle}
+      hasDragColumn
+      hasExpandColumn={hasExpandColumn}
+      isExpanded={isExpanded}
+      isInteractive={isInteractive}
       isSelected={isSelected}
+      onRowClick={onRowClick}
+      onRowContextMenu={onRowContextMenu}
+      onRowDoubleClick={onRowDoubleClick}
       renderRow={renderRow}
       row={row}
       rowIndex={rowIndex}
-      rowProps={{
-        ...rowProps,
-        ref: mergeRefs(rowProps.ref, setNodeRef),
+      rowAttributes={{
+        ...rowAttributes,
+        ref: mergeRefs(rowAttributes?.ref, setNodeRef),
         style: {
-          ...rowProps.style,
-          opacity: isDragging ? 0.45 : rowProps.style?.opacity,
-          transform: transformValue || rowProps.style?.transform,
+          ...rowAttributes?.style,
+          opacity: isDragging ? 0.45 : rowAttributes?.style?.opacity,
+          transform: transformValue || rowAttributes?.style?.transform,
           transition: rowTransition || undefined,
         },
       }}
     />
   );
 }
+
+interface AppDataTableHeaderProps<TData extends RowData> {
+  // These version props keep same-ID renderer and sorting changes visible to a
+  // memoized header even when TanStack can reuse its header-group objects.
+  columnVersion: AppDataTableColumnDef<TData, unknown>[];
+  hasDragColumn: boolean;
+  hasExpandColumn: boolean;
+  headerGroups: HeaderGroup<AppTableFeatures, TData>[];
+  sortingVersion: SortingState;
+}
+
+function AppDataTableHeader<TData extends RowData>({
+  hasDragColumn,
+  hasExpandColumn,
+  headerGroups,
+}: AppDataTableHeaderProps<TData>) {
+  return (
+    <div className="app-vdt__head" role="rowgroup">
+      {headerGroups.map((headerGroup) => (
+        <div
+          className="app-vdt__row app-vdt__row--head"
+          key={headerGroup.id}
+          role="row"
+        >
+          {hasDragColumn && (
+            <div
+              aria-hidden="true"
+              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--drag"
+              role="columnheader"
+            />
+          )}
+          {headerGroup.headers.map((header) => {
+            const meta = header.column.columnDef.meta;
+            const sortState = header.column.getIsSorted();
+            const canSort = header.column.getCanSort();
+
+            return (
+              <div
+                className={[
+                  "app-vdt__cell",
+                  "app-vdt__cell--head",
+                  meta?.className,
+                  meta?.headerClassName,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                key={header.id}
+                role="columnheader"
+                style={{
+                  justifyContent: alignToJustify(meta?.align),
+                  textAlign: meta?.align,
+                  ...meta?.style,
+                  ...meta?.headerStyle,
+                }}
+              >
+                {header.isPlaceholder ? null : canSort ? (
+                  <button
+                    className="app-vdt__sort-button"
+                    onClick={header.column.getToggleSortingHandler()}
+                    type="button"
+                  >
+                    <span className="app-vdt__sort-label">
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                    </span>
+                    <Icon
+                      height={16}
+                      icon={getSortIcon(sortState)}
+                      width={16}
+                    />
+                  </button>
+                ) : (
+                  flexRender(
+                    header.column.columnDef.header,
+                    header.getContext(),
+                  )
+                )}
+              </div>
+            );
+          })}
+          {hasExpandColumn && (
+            <div
+              aria-hidden="true"
+              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
+              role="columnheader"
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MemoizedAppDataTableHeader = memo(
+  AppDataTableHeader,
+  (previous, next) =>
+    areVersionArraysEqual(previous.columnVersion, next.columnVersion) &&
+    previous.hasDragColumn === next.hasDragColumn &&
+    previous.hasExpandColumn === next.hasExpandColumn &&
+    previous.headerGroups === next.headerGroups &&
+    previous.sortingVersion === next.sortingVersion,
+) as typeof AppDataTableHeader;
+
+interface AppDataTableExpandedContentProps<TData extends RowData> {
+  columnCount: number;
+  renderExpandedContent: (row: Row<AppTableFeatures, TData>) => ReactNode;
+  row: Row<AppTableFeatures, TData>;
+}
+
+function AppDataTableExpandedContent<TData extends RowData>({
+  columnCount,
+  renderExpandedContent,
+  row,
+}: AppDataTableExpandedContentProps<TData>) {
+  return (
+    <div className="app-vdt__detail" role="row">
+      <div
+        aria-colspan={columnCount}
+        className="app-vdt__detail-cell"
+        role="cell"
+      >
+        {renderExpandedContent(row)}
+      </div>
+    </div>
+  );
+}
+
+const MemoizedAppDataTableExpandedContent = memo(
+  AppDataTableExpandedContent,
+) as typeof AppDataTableExpandedContent;
+
+interface AppDataTableExpandedRowProps<
+  TData extends RowData,
+> extends AppDataTableExpandedContentProps<TData> {
+  isExpanded: boolean;
+}
+
+function AppDataTableExpandedRow<TData extends RowData>({
+  columnCount,
+  isExpanded,
+  renderExpandedContent,
+  row,
+}: AppDataTableExpandedRowProps<TData>) {
+  return (
+    <AppCollapse in={isExpanded} unmountOnExit>
+      <MemoizedAppDataTableExpandedContent
+        columnCount={columnCount}
+        renderExpandedContent={renderExpandedContent}
+        row={row}
+      />
+    </AppCollapse>
+  );
+}
+
+const MemoizedAppDataTableExpandedRow = memo(
+  AppDataTableExpandedRow,
+) as typeof AppDataTableExpandedRow;
 
 function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
@@ -409,7 +744,14 @@ function AppDataTable<TData extends RowData>({
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
   const hasDragColumn = Boolean(dnd);
+  const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
+  // TanStack can preserve Column objects while swapping their definitions.
+  // Snapshot the definitions so memo comparators observe that version change
+  // without invalidating rows merely because this array itself is new.
+  const visibleColumnDefinitions = visibleColumns.map(
+    (column) => column.columnDef,
+  );
   const gridTemplate = [
     ...(hasDragColumn
       ? [
@@ -452,81 +794,13 @@ function AppDataTable<TData extends RowData>({
       }
     >
       {showHeader && (
-        <div className="app-vdt__head" role="rowgroup">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <div
-              className="app-vdt__row app-vdt__row--head"
-              key={headerGroup.id}
-              role="row"
-            >
-              {hasDragColumn && (
-                <div
-                  aria-hidden="true"
-                  className="app-vdt__cell app-vdt__cell--head app-vdt__cell--drag"
-                  role="columnheader"
-                />
-              )}
-              {headerGroup.headers.map((header) => {
-                const meta = header.column.columnDef.meta;
-                const sortState = header.column.getIsSorted();
-                const canSort = header.column.getCanSort();
-
-                return (
-                  <div
-                    className={[
-                      "app-vdt__cell",
-                      "app-vdt__cell--head",
-                      meta?.className,
-                      meta?.headerClassName,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    key={header.id}
-                    role="columnheader"
-                    style={{
-                      justifyContent: alignToJustify(meta?.align),
-                      textAlign: meta?.align,
-                      ...meta?.style,
-                      ...meta?.headerStyle,
-                    }}
-                  >
-                    {header.isPlaceholder ? null : canSort ? (
-                      <button
-                        className="app-vdt__sort-button"
-                        onClick={header.column.getToggleSortingHandler()}
-                        type="button"
-                      >
-                        <span className="app-vdt__sort-label">
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </span>
-                        <Icon
-                          height={16}
-                          icon={getSortIcon(sortState)}
-                          width={16}
-                        />
-                      </button>
-                    ) : (
-                      flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )
-                    )}
-                  </div>
-                );
-              })}
-              {hasExpandColumn && (
-                <div
-                  aria-hidden="true"
-                  className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
-                  role="columnheader"
-                />
-              )}
-            </div>
-          ))}
-        </div>
+        <MemoizedAppDataTableHeader
+          columnVersion={visibleColumnDefinitions}
+          hasDragColumn={hasDragColumn}
+          hasExpandColumn={hasExpandColumn}
+          headerGroups={headerGroups}
+          sortingVersion={resolvedSorting}
+        />
       )}
 
       <div className="app-vdt__scroll custom-scrollbar" role="presentation">
@@ -535,131 +809,59 @@ function AppDataTable<TData extends RowData>({
             const isExpanded = row.getIsExpanded();
             const isSelected = row.id === selectedRowId;
             const canExpand = row.getCanExpand();
-            const rowAttributes = getRowAttributes?.(row);
-            const rowAttributeOnClick = rowAttributes?.onClick;
-            const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
-            const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
-            const renderCells = (dragHandle?: ReactNode) => (
-              <>
-                {hasDragColumn && (
-                  <div
-                    className="app-vdt__cell app-vdt__cell--drag"
-                    role="cell"
-                  >
-                    {dragHandle}
-                  </div>
-                )}
-                {row.getVisibleCells().map((cell) => (
-                  <MemoizedAppDataTableCell
-                    cell={cell}
-                    key={cell.id}
-                    renderKey={getCellRenderKey(cell, rowIndex)}
-                  />
-                ))}
-                {hasExpandColumn && (
-                  <div
-                    className="app-vdt__cell app-vdt__cell--expand"
-                    role="cell"
-                  >
-                    {canExpand && (
-                      <AppTooltip
-                        title={isExpanded ? "Collapse row" : "Expand row"}
-                      >
-                        <AppIconButton
-                          aria-expanded={isExpanded}
-                          aria-label={
-                            isExpanded ? "Collapse row" : "Expand row"
-                          }
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            row.toggleExpanded();
-                          }}
-                          size="small"
-                        >
-                          <Icon
-                            height={22}
-                            icon="mdi:chevron-down"
-                            style={{
-                              transform: isExpanded
-                                ? "rotate(180deg)"
-                                : "rotate(0deg)",
-                              transition: `transform ${DETAIL_ANIMATION_CSS}`,
-                            }}
-                            width={22}
-                          />
-                        </AppIconButton>
-                      </AppTooltip>
-                    )}
-                  </div>
-                )}
-              </>
-            );
-            const rowProps: AppDataTableRowAttributes = {
-              ...rowAttributes,
-              className: [
-                "app-vdt__row",
-                "app-vdt__row--body",
-                isInteractive && "app-vdt__row--interactive",
-                isSelected && "app-vdt__row--selected",
-                rowIndex % 2 === 1 && "app-vdt__row--alt",
-                rowAttributes?.className,
-              ]
-                .filter(Boolean)
-                .join(" "),
-              onClick: (event) => {
-                rowAttributeOnClick?.(event);
-                if (!event.defaultPrevented) onRowClick?.(row, event);
-              },
-              onContextMenu: (event) => {
-                rowAttributeOnContextMenu?.(event);
-                if (!event.defaultPrevented) onRowContextMenu?.(row, event);
-              },
-              onDoubleClick: (event) => {
-                rowAttributeOnDoubleClick?.(event);
-                if (!event.defaultPrevented) {
-                  onRowDoubleClick?.(row, event);
-                }
-              },
-              role: "row",
-              style: rowAttributes?.style,
-            };
+            const cells = row.getVisibleCells().map((cell) => ({
+              cell,
+              columnDef: cell.column.columnDef,
+              renderKey: getCellRenderKey(cell, rowIndex),
+              rowIndex,
+            }));
 
             return (
               <Fragment key={row.id}>
                 {dnd ? (
                   <AppDataTableSortableBodyRow
+                    canExpand={canExpand}
+                    cells={cells}
                     dnd={dnd}
+                    getRowAttributes={getRowAttributes}
+                    hasExpandColumn={hasExpandColumn}
+                    isExpanded={isExpanded}
+                    isInteractive={isInteractive}
                     isSelected={isSelected}
-                    renderCells={renderCells}
+                    onRowClick={onRowClick}
+                    onRowContextMenu={onRowContextMenu}
+                    onRowDoubleClick={onRowDoubleClick}
                     renderRow={renderRow}
                     row={row}
                     rowIndex={rowIndex}
-                    rowProps={rowProps}
                   />
                 ) : (
-                  <AppDataTableBodyRow
-                    cells={renderCells()}
+                  <MemoizedAppDataTableBodyRow
+                    canExpand={canExpand}
+                    cells={cells}
+                    getRowAttributes={getRowAttributes}
+                    hasDragColumn={false}
+                    hasExpandColumn={hasExpandColumn}
+                    isExpanded={isExpanded}
+                    isInteractive={isInteractive}
                     isSelected={isSelected}
+                    onRowClick={onRowClick}
+                    onRowContextMenu={onRowContextMenu}
+                    onRowDoubleClick={onRowDoubleClick}
                     renderRow={renderRow}
                     row={row}
                     rowIndex={rowIndex}
-                    rowProps={rowProps}
                   />
                 )}
                 {renderExpandedContent && (
-                  <AppCollapse in={isExpanded} unmountOnExit>
-                    <div className="app-vdt__detail" role="row">
-                      <div
-                        aria-colspan={
-                          visibleColumns.length + (hasExpandColumn ? 1 : 0)
-                        }
-                        className="app-vdt__detail-cell"
-                        role="cell"
-                      >
-                        {renderExpandedContent(row)}
-                      </div>
-                    </div>
-                  </AppCollapse>
+                  <MemoizedAppDataTableExpandedRow
+                    columnCount={
+                      visibleColumns.length + (hasExpandColumn ? 1 : 0)
+                    }
+                    isExpanded={isExpanded}
+                    renderExpandedContent={renderExpandedContent}
+                    row={row}
+                  />
                 )}
               </Fragment>
             );
@@ -678,4 +880,6 @@ function AppDataTable<TData extends RowData>({
   );
 }
 
-export default AppDataTable;
+const MemoizedAppDataTable = memo(AppDataTable) as typeof AppDataTable;
+
+export default MemoizedAppDataTable;
