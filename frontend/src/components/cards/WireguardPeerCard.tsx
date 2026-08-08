@@ -1,14 +1,29 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppCardContent from "@/components/ui/AppCardContent";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppIconButton from "@/components/ui/AppIconButton";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
+import { getWireguardStatusColor } from "@/constants/statusColors";
+import { GAP_SM } from "@/theme/constants";
+
+const CARD_STYLE: CSSProperties = {
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+};
+
+const THROUGHPUT_STYLE: CSSProperties = {
+  color: "var(--app-palette-text-secondary)",
+  fontWeight: 400,
+};
 
 // ── Local format helpers ──────────────────────────────────────────────────────
 
@@ -105,60 +120,6 @@ const isPeerOnline = (peer: Peer, now: number) => {
   return lastHandshake > 0 && now - lastHandshake < 180;
 };
 
-// ── PeerCardRow ───────────────────────────────────────────────────────────────
-
-interface PeerCardRowProps {
-  label: string;
-  noDivider?: boolean;
-  value: ReactNode;
-  wrap?: boolean;
-}
-
-const PeerCardRow = ({
-  label,
-  value,
-  wrap = false,
-  noDivider = false,
-}: PeerCardRowProps) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: wrap ? "flex-start" : "baseline",
-      justifyContent: "space-between",
-      gap: 8,
-      padding: "4px 0",
-      borderBottom: noDivider ? "none" : "1px solid var(--app-palette-divider)",
-    }}
-  >
-    <AppTypography
-      color="text.secondary"
-      style={{
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        fontSize: "0.62rem",
-        flexShrink: 0,
-        paddingTop: wrap ? 2 : 0,
-      }}
-      variant="caption"
-    >
-      {label}
-    </AppTypography>
-    <AppTypography
-      fontWeight={500}
-      noWrap={!wrap}
-      style={{
-        marginLeft: "auto",
-        minWidth: 0,
-        textAlign: "right",
-        ...(wrap ? { whiteSpace: "normal", overflowWrap: "anywhere" } : {}),
-      }}
-      variant="body2"
-    >
-      {value}
-    </AppTypography>
-  </div>
-);
-
 // ── WireguardPeerCard ─────────────────────────────────────────────────────────
 
 interface WireguardPeerLiveProps {
@@ -181,9 +142,11 @@ const WireguardPeerStatus = ({
       title={isOnline ? "Handshake < 3 minutes" : "No recent handshake"}
     >
       <Chip
-        color={isOnline ? "success" : "default"}
+        color={getWireguardStatusColor(isOnline ? "Active" : "Inactive")}
         label={isOnline ? "Online" : "Offline"}
+        labelStyle={{ paddingInline: 6 }}
         size="small"
+        style={{ fontSize: "0.65rem" }}
         variant="soft"
       />
     </AppTooltip>
@@ -199,61 +162,47 @@ const WireguardPeerStats = ({
 
   if (!peer) return null;
 
+  const allowedIps = peer.allowed_ips?.join(", ") || "-";
+
   return (
-    <div style={{ marginTop: 6 }}>
-      <PeerCardRow
-        label="Handshake"
-        value={formatAgo(peer.last_handshake_unix, now)}
-      />
-      <PeerCardRow
-        label="Rx"
-        value={
-          <>
-            {formatFileSize(peer.rx_bytes)}{" "}
-            <span
-              style={{
-                color: "var(--app-palette-text-secondary)",
-                fontWeight: 400,
-              }}
-            >
-              ({formatBps(peer.rx_bps)})
-            </span>
-          </>
-        }
-      />
-      <PeerCardRow
-        label="Tx"
-        value={
-          <>
-            {formatFileSize(peer.tx_bytes)}{" "}
-            <span
-              style={{
-                color: "var(--app-palette-text-secondary)",
-                fontWeight: 400,
-              }}
-            >
-              ({formatBps(peer.tx_bps)})
-            </span>
-          </>
-        }
-      />
-      <PeerCardRow
-        label="Allowed IPs"
-        value={(peer.allowed_ips && peer.allowed_ips.join(", ")) || "-"}
-        wrap
-      />
-      <PeerCardRow label="Endpoint" value={peer.endpoint || "-"} wrap />
-      <PeerCardRow
-        label="Preshared Key"
-        value={peer.preshared_key || "-"}
-        wrap
-      />
-      <PeerCardRow
-        label="Keep Alive"
-        noDivider
-        value={peer.persistent_keepalive ?? "-"}
-      />
-    </div>
+    <>
+      {/* Allowed IPs read as the peer's address, mirroring the interface card */}
+      <AppTypography
+        color="text.secondary"
+        noWrap
+        style={{
+          display: "block",
+          fontFamily: "var(--app-font-mono)",
+          fontSize: "0.8rem",
+          marginTop: 2,
+        }}
+        title={allowedIps}
+        variant="body2"
+      >
+        {allowedIps}
+      </AppTypography>
+
+      <div style={{ marginTop: GAP_SM }}>
+        <InfoRow label="Handshake">
+          {formatAgo(peer.last_handshake_unix, now)}
+        </InfoRow>
+        <InfoRow label="Rx">
+          {formatFileSize(peer.rx_bytes)}{" "}
+          <span style={THROUGHPUT_STYLE}>({formatBps(peer.rx_bps)})</span>
+        </InfoRow>
+        <InfoRow label="Tx">
+          {formatFileSize(peer.tx_bytes)}{" "}
+          <span style={THROUGHPUT_STYLE}>({formatBps(peer.tx_bps)})</span>
+        </InfoRow>
+        <InfoRow label="Endpoint" wrap>
+          {peer.endpoint || "-"}
+        </InfoRow>
+        <InfoRow label="Preshared Key" wrap>
+          {peer.preshared_key || "-"}
+        </InfoRow>
+        <InfoRow label="Keep Alive">{peer.persistent_keepalive ?? "-"}</InfoRow>
+      </div>
+    </>
   );
 };
 
@@ -272,50 +221,60 @@ const WireguardPeerCard = ({
   onDownloadConfig,
   onViewQrCode,
 }: WireguardPeerCardProps) => (
-  <FrostedCard>
-    <AppCardContent>
-      {/* Header: name + status + actions */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+  <FrostedCard hoverLift style={CARD_STYLE}>
+    {/* Header: icon + name + live status chip */}
+    <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
+      <Icon
+        color="var(--app-palette-primary-main)"
+        height={32}
+        icon="mdi:account-network-outline"
+        width={32}
+      />
+      <AppTypography
+        fontWeight={600}
+        noWrap
+        title={peerName}
+        variant="subtitle1"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AppTypography style={{ fontSize: "1.1rem" }} variant="h6">
-            {peerName || "Peer"}
-          </AppTypography>
-          <WireguardPeerStatus
-            interfaceName={interfaceName}
-            peerName={peerName}
-          />
-        </div>
-        <div style={{ display: "flex" }}>
-          <AppIconButton
-            aria-label="Delete"
-            color="error"
-            onClick={() => onDelete(peerName)}
-          >
-            <Icon height={22} icon="mdi:delete" width={22} />
-          </AppIconButton>
-          <AppIconButton
-            aria-label="Download Config"
-            onClick={() => onDownloadConfig(peerName)}
-          >
-            <Icon height={22} icon="mdi:download" width={22} />
-          </AppIconButton>
-          <AppIconButton
-            aria-label="View QR Code"
-            onClick={() => onViewQrCode(peerName)}
-          >
-            <Icon height={22} icon="mdi:qrcode" width={22} />
-          </AppIconButton>
-        </div>
+        {peerName || "Peer"}
+      </AppTypography>
+      <div style={{ marginLeft: "auto" }}>
+        <WireguardPeerStatus
+          interfaceName={interfaceName}
+          peerName={peerName}
+        />
       </div>
+    </div>
 
-      <WireguardPeerStats interfaceName={interfaceName} peerName={peerName} />
-    </AppCardContent>
+    <WireguardPeerStats interfaceName={interfaceName} peerName={peerName} />
+
+    <AppDivider style={{ marginBlock: 12 }} />
+
+    {/* Actions */}
+    <div style={{ display: "flex", gap: 2, marginTop: "auto" }}>
+      <AppActionIconButton
+        ariaLabel="Download Config"
+        icon="mdi:download"
+        iconSize={20}
+        label="Download Config"
+        onClick={() => onDownloadConfig(peerName)}
+      />
+      <AppActionIconButton
+        ariaLabel="View QR Code"
+        icon="mdi:qrcode"
+        iconSize={20}
+        label="View QR Code"
+        onClick={() => onViewQrCode(peerName)}
+      />
+      <AppActionIconButton
+        ariaLabel="Delete"
+        color="var(--app-palette-error-main)"
+        icon="mdi:delete"
+        iconSize={20}
+        label="Delete Peer"
+        onClick={() => onDelete(peerName)}
+      />
+    </div>
   </FrostedCard>
 );
 
