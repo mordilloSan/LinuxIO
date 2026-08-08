@@ -70,6 +70,35 @@ const getImageVersion = (image: string) => {
   return parts[parts.length - 1] || "-";
 };
 
+// Docker merges the image's labels into the container's, so a well-behaved
+// image tells us what "latest" currently resolves to.
+const VERSION_LABEL_KEYS = [
+  "org.opencontainers.image.version",
+  "org.label-schema.version",
+  "version",
+];
+
+const getLabelVersion = (labels?: Record<string, string>) => {
+  if (!labels) return undefined;
+  for (const key of VERSION_LABEL_KEYS) {
+    const value = labels[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+};
+
+// A floating tag says nothing about what is actually running, so pair it with
+// the labelled version when the image publishes one.
+const getVersionDisplay = (container: ContainerInfo) => {
+  const tag = getImageVersion(container.Image);
+  const labelVersion = getLabelVersion(container.Labels);
+
+  if (!labelVersion || labelVersion === tag) return tag;
+  if (tag === "-") return labelVersion;
+  if (tag === "latest") return `${tag} (${labelVersion})`;
+  return tag;
+};
+
 type ContainerUpdateStatusInput = Pick<
   ContainerInfo,
   "updateAvailable" | "updateCheckedAt" | "updateError"
@@ -82,31 +111,27 @@ const getUpdateStatus = ({
 }: ContainerUpdateStatusInput) => {
   if (updateError) {
     return {
-      color: "error",
-      label: "Error",
+      dotColor: "var(--app-palette-error-main)",
       title: updateError,
     };
   }
   if (updateAvailable === true) {
     return {
-      color: "warning",
-      label: "Update",
+      dotColor: "var(--app-palette-warning-main)",
       title: "Update available",
     };
   }
   if (updateAvailable === false || updateCheckedAt) {
     return {
-      color: "success",
-      label: "Current",
+      dotColor: "var(--app-palette-success-main)",
       title: updateCheckedAt
-        ? `Checked ${new Date(updateCheckedAt).toLocaleString()}`
-        : "No update available",
+        ? `Up to date — checked ${new Date(updateCheckedAt).toLocaleString()}`
+        : "Up to date",
     };
   }
   return {
-    color: "default",
-    label: "Unknown",
-    title: "Not checked",
+    dotColor: "var(--app-palette-text-disabled)",
+    title: "Not checked yet",
   };
 };
 
@@ -251,11 +276,10 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
   );
 }
 
-function VersionCell({ image }: { image: string }) {
-  const version = getImageVersion(image);
-
+function VersionCell({ version }: { version: string }) {
   return (
     <AppTypography
+      className="container-table__version-text"
       color="text.secondary"
       noWrap
       style={{
@@ -320,17 +344,15 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
 
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        gap: 4,
-        minWidth: 0,
-      }}
-    >
+  const checking = isCheckingUpdate || checkingUpdates;
+
+  // An actionable row gets the chip instead of a dot: it is both the amber
+  // state and the way to apply the update, and re-checking a container that
+  // already has one pending buys nothing.
+  if (updateAvailable === true) {
+    return (
       <Chip
-        color={updateStatus.color}
+        color="warning"
         disabled={isUpdatePending}
         label={
           isUpdatePending ? (
@@ -345,29 +367,42 @@ const UpdateCell = memo(function UpdateCell({
               Updating
             </span>
           ) : (
-            updateStatus.label
+            "Update"
           )
         }
-        onClick={
-          updateAvailable ? () => updateContainer({ containerId }) : undefined
-        }
+        onClick={() => updateContainer({ containerId })}
         size="small"
-        title={updateAvailable ? "Apply update" : updateStatus.title}
+        title="Apply update"
         variant="soft"
       />
-      <AppTooltip title="Check for updates">
-        <span>
-          <AppActionIconButton
-            icon="mdi:magnify"
-            iconSize={16}
-            label="Check for updates"
-            loading={isCheckingUpdate || checkingUpdates}
-            onClick={() => checkContainerUpdate({ containerId })}
-            tooltip={false}
+    );
+  }
+
+  return (
+    <AppTooltip
+      title={
+        checking
+          ? "Checking for updates"
+          : `${updateStatus.title} — click to check for updates`
+      }
+    >
+      <button
+        aria-label={`Check ${name} for updates`}
+        className="container-table__update-dot"
+        disabled={checking}
+        onClick={() => checkContainerUpdate({ containerId })}
+        type="button"
+      >
+        {checking ? (
+          <AppCircularProgress color="inherit" size={10} />
+        ) : (
+          <span
+            className="container-table__update-dot-mark"
+            style={{ backgroundColor: updateStatus.dotColor }}
           />
-        </span>
-      </AppTooltip>
-    </div>
+        )}
+      </button>
+    </AppTooltip>
   );
 });
 
@@ -1008,15 +1043,12 @@ const ContainerTable = ({
       },
       {
         id: "version",
-        header: "Version / Update",
-        // Version and update status share one column: the row is already three
-        // lines tall for the ports/volumes stacks, so stacking them costs no
-        // height and gives the wider columns the space two columns wasted.
+        header: "Version",
         cell: ({ row }) => {
           const container = row.original;
           return (
-            <div className="container-table__version-stack">
-              <VersionCell image={container.Image} />
+            <div className="container-table__version-row">
+              <VersionCell version={getVersionDisplay(container)} />
               <UpdateCell
                 checkingUpdates={checkingUpdates}
                 containerId={container.Id}
@@ -1033,7 +1065,7 @@ const ContainerTable = ({
             const container = asContainer(row);
             return [
               container.Id,
-              container.Image,
+              getVersionDisplay(container),
               getContainerName(container),
               container.updateAvailable,
               container.updateCheckedAt,

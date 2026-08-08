@@ -59,21 +59,53 @@
   transform: rotate(180deg);
 }
 
-/* Version sits above the update chip in a single column — see the "version"
-   column definition. */
-.container-table__version-stack {
+/* Version, then the update state pinned to the right edge so the dots line up
+   into a scannable column regardless of how long each tag is. */
+.container-table__version-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
 }
 
-/* Stretch, not flex-start: the version line needs the column's full width for
-   its ellipsis to kick in on long tags. */
-.container-table__version-stack > * {
+.container-table__version-text {
+  flex: 1;
   min-width: 0;
-  max-width: 100%;
+}
+
+/* The dot is the per-container "check for updates" control: a 10px mark needs a
+   bigger hit area than its own size. */
+.container-table__update-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--app-palette-text-secondary);
+  cursor: pointer;
+}
+
+.container-table__update-dot:disabled {
+  cursor: default;
+}
+
+/* Not the row hover colour — the row is already hovered by the time the pointer
+   reaches the dot, so it would read as no feedback at all. */
+.container-table__update-dot:hover:not(:disabled),
+.container-table__update-dot:focus-visible {
+  background-color: var(--app-palette-action-hover);
+}
+
+.container-table__update-dot-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 
 /* Tooltip triggers opt out of text selection app-wide, since they are usually
