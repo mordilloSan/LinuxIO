@@ -1120,6 +1120,7 @@ const ContainerTable = ({
           );
         },
         meta: {
+          align: "center",
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [

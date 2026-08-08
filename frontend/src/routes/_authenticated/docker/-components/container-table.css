@@ -64,7 +64,7 @@
 .container-table__version-stack {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 1px;
   width: 100%;
   min-width: 0;
@@ -81,9 +81,11 @@
 .container-table__update-label {
   min-width: 0;
   padding: 0 3px;
-  margin-inline-start: -3px;
   font-size: 0.6964rem;
   line-height: 1.5;
+  /* Paler than the palette's status colour: this is a subtitle under the tag,
+     not an alert, and full-strength success green on every row shouts. */
+  opacity: 0.75;
 }
 
 .container-table__update-label--muted {
