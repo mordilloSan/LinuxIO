@@ -171,18 +171,15 @@ function getCellRenderKey<TData extends RowData>(
   cell: Cell<AppTableFeatures, TData, unknown>,
   rowIndex: number,
 ) {
-  return (
-    cell.column.columnDef.meta?.getCellRenderKey?.(
-      cell.row.original,
-      rowIndex,
-    ) ?? cell.row.original
-  );
+  const getExplicitRenderKey = cell.column.columnDef.meta?.getCellRenderKey;
+  return getExplicitRenderKey
+    ? getExplicitRenderKey(cell.row.original, rowIndex)
+    : [cell.row.original, rowIndex];
 }
 
 interface AppVirtualDataTableCellProps<TData extends RowData> {
   cell: Cell<AppTableFeatures, TData, unknown>;
   renderKey: AppDataTableCellRenderKey;
-  rowIndex: number;
 }
 
 function AppVirtualDataTableCell<TData extends RowData>({
@@ -213,7 +210,6 @@ const MemoizedAppVirtualDataTableCell = memo(
   (previous, next) =>
     previous.cell.id === next.cell.id &&
     previous.cell.column.columnDef === next.cell.column.columnDef &&
-    previous.rowIndex === next.rowIndex &&
     areCellRenderKeysEqual(previous.renderKey, next.renderKey),
 ) as typeof AppVirtualDataTableCell;
 
@@ -307,7 +303,6 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
             cell={cell}
             key={cell.id}
             renderKey={getCellRenderKey(cell, rowIndex)}
-            rowIndex={rowIndex}
           />
         ))}
         {hasExpandColumn && (

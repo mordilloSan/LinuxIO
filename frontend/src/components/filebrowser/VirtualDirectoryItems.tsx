@@ -17,6 +17,7 @@ import {
 import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { FileItem, ViewMode } from "@/types/filebrowser";
+import { stripTrailingSlash } from "@/utils/path";
 
 const CARD_MIN_WIDTH = 260;
 const CARD_GAP = 12;
@@ -294,9 +295,10 @@ const VirtualDirectoryItems = ({
                 >
                   {row.items.map(({ item }) => (
                     <DirectoryItem
-                      cutPaths={cutPaths}
                       disableHover={isMarqueeSelecting}
+                      isCut={cutPaths.has(item.path)}
                       isLoadingSubfolders={isLoadingSubfolders}
+                      isRenaming={renamingPath === item.path}
                       item={item}
                       itemKind={row.itemKind}
                       key={`${item.path}-${item.name}`}
@@ -308,9 +310,12 @@ const VirtualDirectoryItems = ({
                       onFolderClick={onFolderClick}
                       onFolderContextMenu={onFolderContextMenu}
                       onOpenDirectory={onOpenDirectory}
-                      renamingPath={renamingPath}
-                      selectedPaths={selectedPaths}
-                      subfoldersMap={subfoldersMap}
+                      selected={selectedPaths.has(item.path)}
+                      subfolderData={
+                        row.itemKind === "folder" && !item.symlink
+                          ? subfoldersMap.get(stripTrailingSlash(item.path))
+                          : undefined
+                      }
                       viewMode={viewMode}
                     />
                   ))}

@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  memo,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -35,6 +36,26 @@ export interface AppVirtualGridProps<TItem> {
   scrollToIndex?: number | null;
   style?: CSSProperties;
 }
+
+interface AppVirtualGridItemProps<TItem> {
+  index: number;
+  item: TItem;
+  renderItem: (item: TItem, index: number) => ReactNode;
+}
+
+function AppVirtualGridItem<TItem>({
+  index,
+  item,
+  renderItem,
+}: AppVirtualGridItemProps<TItem>) {
+  return <div role="gridcell">{renderItem(item, index)}</div>;
+}
+
+// TanStack Virtual updates the grid for scroll and measurement changes. Keep
+// those updates at the row-positioning layer when an item's inputs are stable.
+const MemoizedAppVirtualGridItem = memo(
+  AppVirtualGridItem,
+) as typeof AppVirtualGridItem;
 
 // React Compiler skips this component: TanStack Virtual's API returns
 // unstable functions it cannot memoize. Manual memoization stays load-bearing.
@@ -181,9 +202,12 @@ function AppVirtualGrid<TItem>({
                   if (!item) return <div key={`empty-${itemIndex}`} />;
 
                   return (
-                    <div key={getItemKey(item, itemIndex)} role="gridcell">
-                      {renderItem(item, itemIndex)}
-                    </div>
+                    <MemoizedAppVirtualGridItem
+                      index={itemIndex}
+                      item={item}
+                      key={getItemKey(item, itemIndex)}
+                      renderItem={renderItem}
+                    />
                   );
                 })}
               </div>

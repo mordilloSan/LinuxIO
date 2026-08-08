@@ -241,7 +241,13 @@ const ComposeList = ({
             </div>
           );
         },
-        meta: { width: isSmallUp ? "106px" : "40px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [project.name, project.status];
+          },
+          width: isSmallUp ? "106px" : "40px",
+        },
       },
       {
         accessorKey: "name",
@@ -282,7 +288,13 @@ const ComposeList = ({
             </div>
           );
         },
-        meta: { align: "left" },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [project.name, project.icon, project.update_available];
+          },
+        },
       },
       {
         id: "containers",
@@ -291,6 +303,10 @@ const ComposeList = ({
         cell: ({ row }) => getTotalContainers(row.original),
         meta: {
           align: "center",
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [project.name, getTotalContainers(project)];
+          },
           hideBelow: "sm",
           width: "100px",
         },
@@ -336,6 +352,10 @@ const ComposeList = ({
         },
         meta: {
           align: "left",
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [project.name, project.config_files.join("\u0000")];
+          },
           hideBelow: "sm",
         },
       },
@@ -363,6 +383,10 @@ const ComposeList = ({
         },
         meta: {
           align: "left",
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [project.name, project.working_dir];
+          },
           hideBelow: "lg",
         },
       },
@@ -427,6 +451,15 @@ const ComposeList = ({
         },
         meta: {
           align: "right",
+          getCellRenderKey: (row) => {
+            const project = row as ComposeProject;
+            return [
+              project.name,
+              project.status,
+              project.config_files.join("\u0000"),
+              project.working_dir,
+            ];
+          },
           width: "200px",
         },
       },
@@ -483,6 +516,17 @@ const ComposeList = ({
             </div>
           );
         },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [
+              container.Id,
+              getContainerName(container),
+              container.icon,
+              container.updateAvailable,
+            ];
+          },
+        },
       },
       {
         id: "service",
@@ -501,7 +545,13 @@ const ComposeList = ({
             </AppTypography>
           );
         },
-        meta: { hideBelow: "md" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [container.Id, getContainerServiceName(container)];
+          },
+          hideBelow: "md",
+        },
       },
       {
         accessorKey: "Image",
@@ -519,7 +569,13 @@ const ComposeList = ({
             {row.original.Image}
           </AppTypography>
         ),
-        meta: { hideBelow: "sm" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [container.Id, container.Image];
+          },
+          hideBelow: "sm",
+        },
       },
       {
         id: "state",
@@ -538,6 +594,16 @@ const ComposeList = ({
               variant="soft"
             />
           );
+        },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [
+              container.Id,
+              container.State,
+              getContainerDisplayState(container),
+            ];
+          },
         },
       },
       {
@@ -559,7 +625,18 @@ const ComposeList = ({
             </AppTypography>
           );
         },
-        meta: { hideBelow: "md" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [
+              container.Id,
+              getDedupedContainerPorts(container)
+                .map(formatContainerPort)
+                .join("\u0000"),
+            ];
+          },
+          hideBelow: "md",
+        },
       },
       {
         id: "actions",
@@ -643,6 +720,16 @@ const ComposeList = ({
         },
         meta: {
           align: "right",
+          getCellRenderKey: (row) => {
+            const container = row as ContainerInfo;
+            return [
+              container.Id,
+              container.Names.join("\u0000"),
+              container.State,
+              container.updateAvailable,
+              container.url,
+            ];
+          },
           width: "180px",
         },
       },

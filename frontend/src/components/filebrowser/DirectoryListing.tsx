@@ -12,6 +12,7 @@ import {
 import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
 import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
+import { useLatestRef } from "@/hooks/useLatestRef";
 
 import EmptyState from "./EmptyState";
 import VirtualDirectoryItems from "./VirtualDirectoryItems";
@@ -99,6 +100,7 @@ const DirectoryListing = ({
   );
   const lastSelectedIndexRef = useRef(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectedPathsRef = useLatestRef(selectedPaths);
 
   // Fetch all subfolder sizes in one request
   const { subfoldersMap, isLoading: isLoadingSubfolders } = useFileSubfolders(
@@ -218,7 +220,7 @@ const DirectoryListing = ({
         // Shift+click: select range from lastSelectedIndex to currentIndex
         const start = Math.min(lastSelectedIndexRef.current, currentIndex);
         const end = Math.max(lastSelectedIndexRef.current, currentIndex);
-        const next = new Set(selectedPaths);
+        const next = new Set(selectedPathsRef.current);
 
         for (let i = start; i <= end; i++) {
           next.add(allItems[i].path);
@@ -227,7 +229,7 @@ const DirectoryListing = ({
         lastSelectedIndexRef.current = currentIndex;
       } else if (event.ctrlKey || event.metaKey) {
         // Ctrl/Cmd+click: toggle selection
-        const next = new Set(selectedPaths);
+        const next = new Set(selectedPathsRef.current);
         if (next.has(path)) {
           next.delete(path);
         } else {
@@ -241,7 +243,7 @@ const DirectoryListing = ({
         lastSelectedIndexRef.current = currentIndex;
       }
     },
-    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
+    [focusItemByPath, onSelectedPathsChange, allItems, selectedPathsRef],
   );
 
   const handleItemContextMenu = useCallback(
@@ -251,12 +253,12 @@ const DirectoryListing = ({
       if (currentIndex === -1) return;
 
       focusItemByPath(path);
-      if (!selectedPaths.has(path)) {
+      if (!selectedPathsRef.current.has(path)) {
         onSelectedPathsChange(new Set([path]));
       }
       lastSelectedIndexRef.current = currentIndex;
     },
-    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
+    [focusItemByPath, onSelectedPathsChange, allItems, selectedPathsRef],
   );
 
   const handleContainerMouseDown = useCallback(

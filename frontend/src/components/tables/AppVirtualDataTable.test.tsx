@@ -5,13 +5,19 @@ import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtua
 import { render, screen } from "@/test/render";
 
 vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
+  useVirtualizer: ({
+    count,
+    getItemKey,
+  }: {
+    count: number;
+    getItemKey: (index: number) => string | number;
+  }) => ({
     getTotalSize: () => count * 48,
     getVirtualItems: () =>
       Array.from({ length: count }, (_, index) => ({
         end: (index + 1) * 48,
         index,
-        key: index,
+        key: getItemKey(index),
         lane: 0,
         size: 48,
         start: index * 48,
@@ -127,5 +133,25 @@ describe("AppVirtualDataTable", () => {
 
     expect(screen.getByText("renamed:Alpha")).toBeInTheDocument();
     expect(screen.getByText("renamed:Beta")).toBeInTheDocument();
+  });
+
+  it("does not rerender stable explicit-key cells when live rows prepend", () => {
+    const view = render(<TestTable />);
+
+    expect(renderName).toHaveBeenCalledTimes(2);
+    expect(renderStatus).toHaveBeenCalledTimes(2);
+
+    view.rerender(
+      <TestTable
+        data={[
+          { id: "new", name: "Newest", status: "running" },
+          ...initialRows,
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Newest")).toBeInTheDocument();
+    expect(renderName).toHaveBeenCalledTimes(3);
+    expect(renderStatus).toHaveBeenCalledTimes(3);
   });
 });

@@ -21,6 +21,11 @@ export interface AppDataTableColumnMeta {
   cellClassName?: string;
   cellStyle?: CSSProperties;
   className?: string;
+  /**
+   * Narrows cell invalidation to the values the renderer reads. In the virtual
+   * table this is the complete render key, so include `rowIndex` when the cell
+   * renderer depends on its position.
+   */
   getCellRenderKey?: (
     row: unknown,
     rowIndex: number,

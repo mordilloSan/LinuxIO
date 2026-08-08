@@ -4,12 +4,12 @@ import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
 import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import { FileItem, ViewMode } from "@/types/filebrowser";
-import { stripTrailingSlash } from "@/utils/path";
 
 export interface DirectoryItemProps {
-  cutPaths: Set<string>;
   disableHover: boolean;
+  isCut: boolean;
   isLoadingSubfolders: boolean;
+  isRenaming: boolean;
   item: FileItem;
   itemKind: "file" | "folder";
   onCancelRename: () => void;
@@ -20,9 +20,8 @@ export interface DirectoryItemProps {
   onFolderClick: (event: MouseEvent, path: string) => void;
   onFolderContextMenu: (event: MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
-  renamingPath: string | null;
-  selectedPaths: Set<string>;
-  subfoldersMap: Map<string, SubfolderData>;
+  selected: boolean;
+  subfolderData?: SubfolderData;
   viewMode: ViewMode;
 }
 
@@ -49,8 +48,9 @@ export const DirectoryItem = memo<DirectoryItemProps>(
   ({
     item,
     itemKind,
-    selectedPaths,
-    cutPaths,
+    selected,
+    isCut,
+    isRenaming,
     viewMode,
     onFileClick,
     onDownloadFile,
@@ -58,11 +58,10 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
-    renamingPath,
     onConfirmRename,
     onCancelRename,
     disableHover,
-    subfoldersMap,
+    subfolderData,
     isLoadingSubfolders,
   }) => {
     const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
@@ -72,9 +71,9 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         <ItemComponent
           disableHover={disableHover}
           hidden={item.hidden}
-          isCut={cutPaths.has(item.path)}
+          isCut={isCut}
           isDirectory={false}
-          isRenaming={renamingPath === item.path}
+          isRenaming={isRenaming}
           isSymlink={item.symlink}
           modTime={item.modTime}
           name={item.name}
@@ -84,7 +83,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
           onContextMenu={(event) => onFileContextMenu(event, item.path)}
           onDoubleClick={() => onDownloadFile(item)}
           path={item.path}
-          selected={selectedPaths.has(item.path)}
+          selected={selected}
           showFullPath={item.showFullPath}
           size={item.size}
           type={item.type}
@@ -93,10 +92,6 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     }
 
     const isSearchResult = item.showFullPath === true;
-    const normalizedPath = stripTrailingSlash(item.path);
-    const subfolderData = item.symlink
-      ? null
-      : subfoldersMap.get(normalizedPath);
     const size = isSearchResult
       ? typeof item.size === "number"
         ? item.size
@@ -116,9 +111,9 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         directorySizeUnavailable={sizeIsUnavailable}
         disableHover={disableHover}
         hidden={item.hidden}
-        isCut={cutPaths.has(item.path)}
+        isCut={isCut}
         isDirectory={true}
-        isRenaming={renamingPath === item.path}
+        isRenaming={isRenaming}
         isSymlink={item.symlink}
         modTime={item.modTime}
         name={item.name}
@@ -128,7 +123,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         onContextMenu={(event) => onFolderContextMenu(event, item.path)}
         onDoubleClick={() => onOpenDirectory(item.path)}
         path={item.path}
-        selected={selectedPaths.has(item.path)}
+        selected={selected}
         showFullPath={item.showFullPath}
         size={item.symlink ? undefined : size === null ? undefined : size}
         type={item.type}

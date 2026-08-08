@@ -1175,7 +1175,13 @@ const GeneralLogsPage = () => {
         header: "",
         enableSorting: false,
         cell: ({ row }) => renderIcon(row.original),
-        meta: { width: "40px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.priority];
+          },
+          width: "40px",
+        },
       },
       {
         accessorKey: "priority",
@@ -1190,6 +1196,10 @@ const GeneralLogsPage = () => {
           />
         ),
         meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.priority];
+          },
           hideBelow: "sm",
           width: "120px",
         },
@@ -1230,7 +1240,13 @@ const GeneralLogsPage = () => {
             </AppTypography>
           );
         },
-        meta: { width: "minmax(120px, 180px)" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.identifier, log.rawJson];
+          },
+          width: "minmax(120px, 180px)",
+        },
       },
       {
         accessorKey: "timestamp",
@@ -1245,7 +1261,13 @@ const GeneralLogsPage = () => {
             {row.original.timestamp}
           </AppTypography>
         ),
-        meta: { width: "120px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.timestamp];
+          },
+          width: "120px",
+        },
       },
       {
         accessorKey: "message",
@@ -1260,7 +1282,13 @@ const GeneralLogsPage = () => {
             {row.original.message}
           </AppTypography>
         ),
-        meta: { align: "left" },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.message];
+          },
+        },
       },
     ],
     [renderIcon, handleIdentifierClick],

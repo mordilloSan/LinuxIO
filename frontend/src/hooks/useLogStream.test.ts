@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
 
@@ -13,6 +13,11 @@ const liveStreamMocks = vi.hoisted(() => ({
     streamRef.current = null;
   }),
   openStream: vi.fn(),
+}));
+
+const animationFrameMocks = vi.hoisted(() => ({
+  callbacks: new Map<number, FrameRequestCallback>(),
+  nextId: 1,
 }));
 
 vi.mock("@/api", async () => {
@@ -69,6 +74,12 @@ function setupOpenStream() {
   };
 }
 
+function flushAnimationFrames() {
+  const callbacks = [...animationFrameMocks.callbacks.values()];
+  animationFrameMocks.callbacks.clear();
+  callbacks.forEach((callback) => callback(performance.now()));
+}
+
 describe("useLogStream", () => {
   beforeEach(() => {
     apiMocks.muxIsOpen = true;
@@ -77,6 +88,27 @@ describe("useLogStream", () => {
       streamRef.current = null;
     });
     liveStreamMocks.openStream.mockReset();
+    animationFrameMocks.callbacks.clear();
+    animationFrameMocks.nextId = 1;
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = animationFrameMocks.nextId++;
+        animationFrameMocks.callbacks.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((id: number) => {
+        animationFrameMocks.callbacks.delete(id);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("does not open a stream when closed or when the mux is unavailable", () => {
@@ -111,10 +143,15 @@ describe("useLogStream", () => {
     expect(createStreamFn).toHaveBeenCalledWith("500");
     expect(result.current.isLoading).toBe(true);
 
-    await act(async () => {
+    act(() => {
       harness.handlers.onText?.("line 1\n");
       harness.handlers.onText?.("line 2\n");
     });
+
+    expect(result.current.logs).toBe("");
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+    act(flushAnimationFrames);
 
     expect(result.current.logs).toBe("line 1\nline 2\n");
     expect(result.current.isLoading).toBe(false);
@@ -128,11 +165,12 @@ describe("useLogStream", () => {
 
     const cap = 512 * 1024;
     const bigLine = `${"x".repeat(cap - 10)}\n`;
-    await act(async () => {
+    act(() => {
       harness.handlers.onText?.(bigLine);
       harness.handlers.onText?.("older line\n");
       harness.handlers.onText?.("newest line\n");
     });
+    act(flushAnimationFrames);
 
     expect(result.current.logs.length).toBeLessThanOrEqual(cap);
     expect(result.current.logs.startsWith("older line\n")).toBe(true);

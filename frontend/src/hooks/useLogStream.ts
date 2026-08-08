@@ -67,6 +67,8 @@ export function useLogStream({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
+  const pendingLogsRef = useRef<string[]>([]);
+  const logFlushFrameRef = useRef<number | null>(null);
   const hasReceivedData = useRef(false);
   const initialLoadTimeoutRef = useRef<number | null>(null);
 
@@ -89,6 +91,27 @@ export function useLogStream({
     }, INITIAL_LOG_SILENCE_TIMEOUT_MS);
   }, [clearInitialLoadTimeout]);
 
+  const flushPendingLogs = useCallback(() => {
+    if (logFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(logFlushFrameRef.current);
+      logFlushFrameRef.current = null;
+    }
+    const pendingLogs = pendingLogsRef.current;
+    pendingLogsRef.current = [];
+    if (pendingLogs.length > 0) {
+      const nextLogs = pendingLogs.join("");
+      setLogs((previous) => appendLogs(previous, nextLogs));
+    }
+  }, []);
+
+  const discardPendingLogs = useCallback(() => {
+    if (logFlushFrameRef.current !== null) {
+      window.cancelAnimationFrame(logFlushFrameRef.current);
+      logFlushFrameRef.current = null;
+    }
+    pendingLogsRef.current = [];
+  }, []);
+
   const handleStreamOpenError = useEffectEvent(() => {
     clearInitialLoadTimeout();
     queueMicrotask(() => {
@@ -103,12 +126,16 @@ export function useLogStream({
       clearInitialLoadTimeout();
       setIsLoading(false);
     }
-    setLogs((prev) => appendLogs(prev, text));
+    pendingLogsRef.current.push(text);
+    if (logFlushFrameRef.current === null) {
+      logFlushFrameRef.current = window.requestAnimationFrame(flushPendingLogs);
+    }
   });
 
   const handleStreamResult = useEffectEvent(
     (result: { status: "ok" | "error"; error?: string }) => {
       clearInitialLoadTimeout();
+      flushPendingLogs();
       if (result.status === "error") {
         setError(result.error || "Failed to load logs");
         setIsLoading(false);
@@ -118,6 +145,7 @@ export function useLogStream({
 
   const handleStreamClose = useEffectEvent(() => {
     clearInitialLoadTimeout();
+    flushPendingLogs();
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
@@ -145,13 +173,14 @@ export function useLogStream({
 
   const resetState = useCallback(() => {
     clearInitialLoadTimeout();
+    discardPendingLogs();
     closeStream();
     setLogs("");
     setError(null);
     setLiveMode(true);
     setIsLoading(true);
     hasReceivedData.current = false;
-  }, [clearInitialLoadTimeout, closeStream]);
+  }, [clearInitialLoadTimeout, closeStream, discardPendingLogs]);
 
   // Open stream when the dialog opens and the mux is ready.
   useEffect(() => {
@@ -189,7 +218,13 @@ export function useLogStream({
     if (!open) closeStream();
   }, [open, closeStream]);
 
-  useEffect(() => clearInitialLoadTimeout, [clearInitialLoadTimeout]);
+  useEffect(
+    () => () => {
+      clearInitialLoadTimeout();
+      discardPendingLogs();
+    },
+    [clearInitialLoadTimeout, discardPendingLogs],
+  );
 
   return {
     logs,
