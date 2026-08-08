@@ -28,6 +28,10 @@
 .app-tooltip {
   position: fixed;
   z-index: 1500;
+  /* max-content keeps a short tooltip hugging its text — the reason this rule
+     used to say nowrap — while max-width still caps a long one. nowrap plus a
+     max-width cannot both hold: the text simply overflowed the painted box. */
+  width: max-content;
   max-width: 300px;
   padding: 4px 8px;
   border-radius: 4px;
@@ -39,7 +43,9 @@
   font-weight: 500;
   line-height: 1.4;
   letter-spacing: 0.01071em;
-  white-space: nowrap;
+  /* anywhere, so an unbroken value (a long path, a container id) breaks rather
+     than spilling past the background. */
+  overflow-wrap: anywhere;
   pointer-events: none;
   /* Grow-like entrance: fade + subtle scale, matching MUI's Grow transition */
   animation: app-tooltip-in var(--app-transition-duration-medium)
