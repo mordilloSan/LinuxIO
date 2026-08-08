@@ -59,38 +59,38 @@
   transform: rotate(180deg);
 }
 
-/* Version, then the update state pinned to the right edge so the dots line up
-   into a scannable column regardless of how long each tag is. */
-.container-table__version-row {
+/* Tag on top, update verdict under it. The row is three lines tall for the
+   ports/volumes stacks anyway, so the second line costs no height. */
+.container-table__version-stack {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   width: 100%;
   min-width: 0;
 }
 
 .container-table__version-text {
-  flex: 1;
+  align-self: stretch;
   min-width: 0;
 }
 
-/* The dot is the per-container "check for updates" control. AppIconButton
-   supplies the circle, hover and disabled treatment; it only needs shrinking
-   around a 10px mark so the hit area stays comfortably larger than the dot. */
-.container-table__update-dot {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  color: var(--app-palette-text-secondary);
+/* AppButton supplies the semantic colour, hover tint, focus ring and disabled
+   handling; this only strips the chrome a 64px-wide form button brings so the
+   verdict reads as the caption it sits next to. */
+.container-table__update-label {
+  min-width: 0;
+  padding: 0 3px;
+  margin-inline-start: -3px;
+  font-size: 0.6964rem;
+  line-height: 1.5;
 }
 
-.container-table__update-dot-mark {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+.container-table__update-label--muted {
+  color: var(--app-palette-text-disabled);
 }
 
-/* Second tooltip line: what the dot does, subordinate to the status above it. */
+/* Second tooltip line: the action, subordinate to the status above it. */
 .container-table__update-hint {
   opacity: 0.7;
 }

@@ -25,11 +25,11 @@ import type {
   AppDataTableDndOptions,
 } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -108,37 +108,32 @@ type ContainerUpdateStatusInput = Pick<
   "updateAvailable" | "updateCheckedAt" | "updateError"
 >;
 
-// The verdict plus how old it is: an exact clock time reads as precision the
-// answer does not have, since it is only as current as the last check.
+// `label` is the visible second line of the Version cell; `detail` is the
+// tooltip's first line — how old the verdict is, which the label deliberately
+// does not claim, since a scan is only as current as when it last ran.
 const getUpdateStatus = ({
   updateAvailable,
   updateCheckedAt,
   updateError,
 }: ContainerUpdateStatusInput) => {
-  const age = updateCheckedAt ? ` (${formatRelativeAge(updateCheckedAt)})` : "";
+  const detail = updateCheckedAt
+    ? `Scanned ${formatRelativeAge(updateCheckedAt)}`
+    : "Never scanned";
 
   if (updateError) {
     return {
-      dotColor: "var(--app-palette-error-main)",
-      headline: updateError,
+      color: "error" as const,
+      detail: updateError,
+      label: "Scan failed",
     };
   }
   if (updateAvailable === true) {
-    return {
-      dotColor: "var(--app-palette-warning-main)",
-      headline: `Update available${age}`,
-    };
+    return { color: "warning" as const, detail, label: "Update available" };
   }
   if (updateAvailable === false || updateCheckedAt) {
-    return {
-      dotColor: "var(--app-palette-success-main)",
-      headline: `Up to date${age}`,
-    };
+    return { color: "success" as const, detail, label: "Up to date" };
   }
-  return {
-    dotColor: "var(--app-palette-text-disabled)",
-    headline: "Never checked",
-  };
+  return { color: "inherit" as const, detail, label: "Not scanned" };
 };
 
 const formatUptime = (createdUnix: number) => {
@@ -388,29 +383,30 @@ const UpdateCell = memo(function UpdateCell({
     <AppTooltip
       title={
         <>
-          <div>{updateStatus.headline}</div>
+          <div>{updateStatus.detail}</div>
           <div className="container-table__update-hint">
-            {checking ? "Checking for updates…" : "Click to check for updates"}
+            {checking ? "Scanning…" : "Click to re-scan"}
           </div>
         </>
       }
     >
-      <AppIconButton
-        aria-label={`Check ${name} for updates`}
-        className="container-table__update-dot"
-        disabled={checking}
-        onClick={() => checkContainerUpdate({ containerId })}
-        size="small"
-      >
-        {checking ? (
-          <AppCircularProgress color="inherit" size={10} />
-        ) : (
-          <span
-            className="container-table__update-dot-mark"
-            style={{ backgroundColor: updateStatus.dotColor }}
-          />
-        )}
-      </AppIconButton>
+      <span>
+        <AppButton
+          aria-label={`Re-scan ${name} for updates`}
+          className={[
+            "container-table__update-label",
+            updateStatus.color === "inherit" &&
+              "container-table__update-label--muted",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          color={updateStatus.color}
+          disabled={checking}
+          onClick={() => checkContainerUpdate({ containerId })}
+        >
+          {checking ? "Scanning…" : updateStatus.label}
+        </AppButton>
+      </span>
     </AppTooltip>
   );
 });
@@ -1110,7 +1106,7 @@ const ContainerTable = ({
         cell: ({ row }) => {
           const container = row.original;
           return (
-            <div className="container-table__version-row">
+            <div className="container-table__version-stack">
               <VersionCell version={getVersionDisplay(container)} />
               <UpdateCell
                 checkingUpdates={checkingUpdates}
