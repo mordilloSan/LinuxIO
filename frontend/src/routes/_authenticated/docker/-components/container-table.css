@@ -2,17 +2,61 @@
    row expander. Pinning the stack to those three lines — and every line inside
    it to one shared line box, since the "+N more" caption is taller than an
    entry — keeps a container with one port exactly as tall as one with three
-   instead of rendering a visibly shorter row. Expanded stacks grow past it. */
+   instead of rendering a visibly shorter row. Expanded stacks grow past it.
+
+   No row gap on purpose: the collapsed AppCollapse wrappers are still flex
+   children at zero height, so a gap would count between them and make a
+   three-entry stack a couple of pixels taller than a one-entry one. The 18px
+   line box over a 12px font already provides the leading. */
 .container-table__stack {
   --container-table-line: 18px;
-  --container-table-stack-gap: 1px;
 
   display: flex;
   flex-direction: column;
-  gap: var(--container-table-stack-gap);
-  min-height: calc(
-    3 * var(--container-table-line) + 2 * var(--container-table-stack-gap)
-  );
+  /* Fewer than three lines sit centred in the reserved height, so they line up
+     with the single-line cells (IP, uptime) either side of them. */
+  justify-content: center;
+  min-height: calc(3 * var(--container-table-line));
+}
+
+.container-table__stack-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.container-table__stack .app-typo,
+.container-table__stack-toggle {
+  line-height: var(--container-table-line);
+}
+
+/* The row expander, styled as the caption it replaced rather than as a button. */
+.container-table__stack-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-palette-text-disabled);
+  font: inherit;
+  font-size: 0.6964rem;
+  cursor: pointer;
+}
+
+.container-table__stack-toggle:hover,
+.container-table__stack-toggle:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.container-table__stack-chevron {
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-standard);
+}
+
+.container-table__stack-toggle[aria-expanded="true"]
+  .container-table__stack-chevron {
+  transform: rotate(180deg);
 }
 
 /* Version sits above the update chip in a single column — see the "version"
@@ -32,12 +76,10 @@
   max-width: 100%;
 }
 
-.container-table__stack-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--container-table-stack-gap);
-}
-
-.container-table__stack .app-typo {
-  line-height: var(--container-table-line);
+/* Tooltip triggers opt out of text selection app-wide, since they are usually
+   truncated hover-to-read / click-to-copy affordances. This one is a plain
+   untruncated header label, so it stays selectable. */
+.app-tooltip-trigger > .container-table__header-label {
+  -webkit-user-select: text;
+  user-select: text;
 }

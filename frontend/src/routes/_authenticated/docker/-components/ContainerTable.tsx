@@ -27,14 +27,12 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 import "./container-table.css";
@@ -519,12 +517,46 @@ function NetworkAddressCell({
   );
 }
 
+interface StackToggleProps {
+  containerId: string;
+  expanded: boolean;
+  hiddenCount: number;
+  onToggleExpanded: (containerId: string) => void;
+}
+
+// The "+N more" line is the row's expander: it only exists on rows that have
+// something to reveal, and it sits next to the entries it is counting.
+function StackToggle({
+  containerId,
+  expanded,
+  hiddenCount,
+  onToggleExpanded,
+}: StackToggleProps) {
+  return (
+    <button
+      aria-expanded={expanded}
+      className="container-table__stack-toggle"
+      onClick={() => onToggleExpanded(containerId)}
+      type="button"
+    >
+      {expanded ? "Show less" : `+${hiddenCount} more`}
+      <Icon
+        className="container-table__stack-chevron"
+        height={14}
+        icon="mdi:chevron-down"
+        width={14}
+      />
+    </button>
+  );
+}
+
 interface PortsCellProps {
   containerId: string;
+  onToggleExpanded: (containerId: string) => void;
   ports: ContainerPort[];
 }
 
-function PortsCell({ containerId, ports }: PortsCellProps) {
+function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
   const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
@@ -613,18 +645,12 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
         </div>
       </AppCollapse>
       {isCollapsible(ports.length) && (
-        <AppCollapse in={!expanded}>
-          <AppTypography
-            color="text.disabled"
-            style={{
-              opacity: expanded ? 0 : 1,
-              transition: `opacity ${TRANSITION_SLOW_CSS}`,
-            }}
-            variant="caption"
-          >
-            +{ports.length - visible} more
-          </AppTypography>
-        </AppCollapse>
+        <StackToggle
+          containerId={containerId}
+          expanded={expanded}
+          hiddenCount={ports.length - visible}
+          onToggleExpanded={onToggleExpanded}
+        />
       )}
     </div>
   );
@@ -633,9 +659,14 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
 interface VolumesCellProps {
   containerId: string;
   mounts: ContainerMount[];
+  onToggleExpanded: (containerId: string) => void;
 }
 
-function VolumesCell({ containerId, mounts }: VolumesCellProps) {
+function VolumesCell({
+  containerId,
+  mounts,
+  onToggleExpanded,
+}: VolumesCellProps) {
   const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
@@ -720,18 +751,12 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
         </div>
       </AppCollapse>
       {isCollapsible(mounts.length) && (
-        <AppCollapse in={!expanded}>
-          <AppTypography
-            color="text.disabled"
-            style={{
-              opacity: expanded ? 0 : 1,
-              transition: `opacity ${TRANSITION_SLOW_CSS}`,
-            }}
-            variant="caption"
-          >
-            +{mounts.length - visible} more
-          </AppTypography>
-        </AppCollapse>
+        <StackToggle
+          containerId={containerId}
+          expanded={expanded}
+          hiddenCount={mounts.length - visible}
+          onToggleExpanded={onToggleExpanded}
+        />
       )}
     </div>
   );
@@ -773,11 +798,9 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
 
 interface ActionsCellProps {
   containerId: string;
-  hasExpandableDetails: boolean;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
-  onToggleExpanded: (containerId: string) => void;
   pending?: boolean;
   state: string;
   url?: string;
@@ -785,16 +808,13 @@ interface ActionsCellProps {
 
 const ActionsCell = memo(function ActionsCell({
   containerId,
-  hasExpandableDetails,
   name,
   onOpenLogs,
   onOpenTerminal,
-  onToggleExpanded,
   pending = false,
   state,
   url,
 }: ActionsCellProps) {
-  const expanded = useContext(ExpandedContainersContext).has(containerId);
   const { mutate: startContainer } = linuxio.docker.start_container.useAction({
     success: `Container ${name} started`,
     error: `Failed to start ${name}`,
@@ -820,130 +840,105 @@ const ActionsCell = memo(function ActionsCell({
   );
 
   return (
-    <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: 2,
-        }}
-      >
-        {state !== "running" && (
-          <AppTooltip title="Start">
-            <span>
-              <AppActionIconButton
-                disabled={pending}
-                icon="mdi:play"
-                iconSize={16}
-                label="Start"
-                onClick={() => startContainer({ containerId })}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        {state === "running" && (
-          <AppTooltip title="Stop">
-            <span>
-              <AppActionIconButton
-                icon="mdi:stop"
-                iconSize={16}
-                label="Stop"
-                loading={pending}
-                onClick={() => stopContainer({ containerId })}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        <AppTooltip title="Restart">
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap: 2,
+      }}
+    >
+      {state !== "running" && (
+        <AppTooltip title="Start">
           <span>
             <AppActionIconButton
               disabled={pending}
-              icon="mdi:restart"
+              icon="mdi:play"
               iconSize={16}
-              label="Restart"
-              onClick={() => restartContainer({ containerId })}
+              label="Start"
+              onClick={() => startContainer({ containerId })}
               tooltip={false}
             />
           </span>
         </AppTooltip>
-        <AppTooltip title="Remove">
+      )}
+      {state === "running" && (
+        <AppTooltip title="Stop">
           <span>
             <AppActionIconButton
-              disabled={pending}
-              icon="mdi:delete"
+              icon="mdi:stop"
               iconSize={16}
-              label="Remove"
-              onClick={() => removeContainer({ containerId })}
+              label="Stop"
+              loading={pending}
+              onClick={() => stopContainer({ containerId })}
               tooltip={false}
             />
           </span>
         </AppTooltip>
-        <AppTooltip title="Logs">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:file-document-outline"
-              iconSize={16}
-              label="Logs"
-              onClick={() => onOpenLogs(containerId, name)}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-        <AppTooltip title="Terminal">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:console"
-              iconSize={16}
-              label="Terminal"
-              onClick={() => onOpenTerminal(containerId, name)}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-        {url && (
-          <AppTooltip title="Open App">
-            <span>
-              <AppActionIconButton
-                disabled={pending}
-                icon="mdi:open-in-new"
-                iconSize={16}
-                label="Open App"
-                onClick={() => window.open(url, "_blank", "noopener")}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        <AppIconButton
-          aria-label={
-            expanded ? "Collapse container details" : "Expand container details"
-          }
-          aria-expanded={expanded}
-          className="container-expand-toggle"
-          onClick={() => onToggleExpanded(containerId)}
-          size="small"
-          style={{
-            marginLeft: 2,
-            visibility: hasExpandableDetails ? "visible" : "hidden",
-          }}
-        >
-          <Icon
-            height={20}
-            icon="mdi:chevron-down"
-            style={{
-              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-              transition: `transform ${TRANSITION_SLOW_CSS}`,
-            }}
-            width={20}
+      )}
+      <AppTooltip title="Restart">
+        <span>
+          <AppActionIconButton
+            disabled={pending}
+            icon="mdi:restart"
+            iconSize={16}
+            label="Restart"
+            onClick={() => restartContainer({ containerId })}
+            tooltip={false}
           />
-        </AppIconButton>
-      </div>
-    </>
+        </span>
+      </AppTooltip>
+      <AppTooltip title="Remove">
+        <span>
+          <AppActionIconButton
+            disabled={pending}
+            icon="mdi:delete"
+            iconSize={16}
+            label="Remove"
+            onClick={() => removeContainer({ containerId })}
+            tooltip={false}
+          />
+        </span>
+      </AppTooltip>
+      <AppTooltip title="Logs">
+        <span>
+          <AppActionIconButton
+            disabled={pending}
+            icon="mdi:file-document-outline"
+            iconSize={16}
+            label="Logs"
+            onClick={() => onOpenLogs(containerId, name)}
+            tooltip={false}
+          />
+        </span>
+      </AppTooltip>
+      <AppTooltip title="Terminal">
+        <span>
+          <AppActionIconButton
+            disabled={pending}
+            icon="mdi:console"
+            iconSize={16}
+            label="Terminal"
+            onClick={() => onOpenTerminal(containerId, name)}
+            tooltip={false}
+          />
+        </span>
+      </AppTooltip>
+      {url && (
+        <AppTooltip title="Open App">
+          <span>
+            <AppActionIconButton
+              disabled={pending}
+              icon="mdi:open-in-new"
+              iconSize={16}
+              label="Open App"
+              onClick={() => window.open(url, "_blank", "noopener")}
+              tooltip={false}
+            />
+          </span>
+        </AppTooltip>
+      )}
+    </div>
   );
 });
 
@@ -1009,7 +1004,7 @@ const ContainerTable = ({
         id: "name",
         header: "Name",
         cell: ({ row }) => <ContainerNameCell container={row.original} />,
-        meta: { align: "left" },
+        meta: { align: "left", width: "minmax(0, 1.6fr)" },
       },
       {
         id: "version",
@@ -1051,37 +1046,6 @@ const ContainerTable = ({
         },
       },
       {
-        id: "auto",
-        header: "Auto",
-        cell: ({ row }) => {
-          const name = getContainerName(row.original);
-          return (
-            <AutoUpdateCell
-              autoUpdateDisabled={autoUpdateDisabled}
-              autoUpdatePending={autoUpdatePendingNames.has(name)}
-              autoUpdateReason={autoUpdateReason}
-              autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-              name={name}
-              onToggleAutoUpdate={onToggleAutoUpdate}
-            />
-          );
-        },
-        meta: {
-          align: "center",
-          getCellRenderKey: (row) => {
-            const name = getContainerName(asContainer(row));
-            return [
-              name,
-              autoUpdateDisabled,
-              autoUpdatePendingNames.has(name),
-              autoUpdateReason,
-              autoUpdateSelectedNames.has(name),
-            ];
-          },
-          width: "60px",
-        },
-      },
-      {
         id: "uptime",
         header: "Uptime",
         cell: ({ row }) => <UptimeCell created={row.original.Created} />,
@@ -1109,20 +1073,25 @@ const ContainerTable = ({
             )}
           />
         ),
-        meta: { hideBelow: "lg" },
+        meta: { hideBelow: "lg", width: "130px" },
       },
       {
         id: "ports",
-        header: "Ports (Container->Host)",
+        header: () => (
+          <AppTooltip placement="top" title="Container -> Host">
+            <span className="container-table__header-label">Ports</span>
+          </AppTooltip>
+        ),
         cell: ({ row }) => (
           <PortsCell
             containerId={row.original.Id}
+            onToggleExpanded={toggleExpanded}
             ports={getDedupedPorts(row.original)}
           />
         ),
         meta: {
           hideBelow: "xl",
-          width: "160px",
+          width: "minmax(130px, 155px)",
           cellStyle: { alignItems: "flex-start" },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
@@ -1140,16 +1109,22 @@ const ContainerTable = ({
       },
       {
         id: "volumes",
-        header: "Volumes (App->Host)",
+        header: () => (
+          <AppTooltip placement="top" title="App -> Host">
+            <span className="container-table__header-label">Volumes</span>
+          </AppTooltip>
+        ),
         cell: ({ row }) => (
           <VolumesCell
             containerId={row.original.Id}
             mounts={getMounts(row.original)}
+            onToggleExpanded={toggleExpanded}
           />
         ),
         meta: {
           hideBelow: "xl",
-          cellStyle: { maxWidth: 280, alignItems: "flex-start" },
+          width: "minmax(0, 2.2fr)",
+          cellStyle: { alignItems: "flex-start" },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
@@ -1180,22 +1155,27 @@ const ContainerTable = ({
         enableSorting: false,
         cell: ({ row }) => {
           const container = row.original;
-          const ports = getDedupedPorts(row.original);
-          const mounts = getMounts(row.original);
+          const name = getContainerName(container);
           return (
-            <ActionsCell
-              containerId={container.Id}
-              hasExpandableDetails={
-                isCollapsible(ports.length) || isCollapsible(mounts.length)
-              }
-              name={getContainerName(container)}
-              onOpenLogs={openLogs}
-              onOpenTerminal={openTerminal}
-              onToggleExpanded={toggleExpanded}
-              pending={stoppingContainerIds.has(container.Id)}
-              state={container.State}
-              url={container.url}
-            />
+            <>
+              <AutoUpdateCell
+                autoUpdateDisabled={autoUpdateDisabled}
+                autoUpdatePending={autoUpdatePendingNames.has(name)}
+                autoUpdateReason={autoUpdateReason}
+                autoUpdateSelected={autoUpdateSelectedNames.has(name)}
+                name={name}
+                onToggleAutoUpdate={onToggleAutoUpdate}
+              />
+              <ActionsCell
+                containerId={container.Id}
+                name={name}
+                onOpenLogs={openLogs}
+                onOpenTerminal={openTerminal}
+                pending={stoppingContainerIds.has(container.Id)}
+                state={container.State}
+                url={container.url}
+              />
+            </>
           );
         },
         meta: {
@@ -1203,20 +1183,26 @@ const ContainerTable = ({
           // The buttons fill the column, so a right-aligned label reads as
           // hanging off the end of the strip rather than titling it.
           headerStyle: { justifyContent: "center" },
+          // Tighter than the default 16px so the seven-button strip fits the
+          // track without clipping, and gap: 2 matches the strip's own spacing
+          // across the auto-update toggle sitting beside it.
+          cellStyle: { gap: 2, paddingInline: 8 },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
-            const ports = getDedupedPorts(container);
-            const mounts = getMounts(container);
+            const name = getContainerName(container);
             return [
               container.Id,
-              getContainerName(container),
+              name,
               container.State,
               container.url,
-              isCollapsible(ports.length) || isCollapsible(mounts.length),
               stoppingContainerIds.has(container.Id),
+              autoUpdateDisabled,
+              autoUpdatePendingNames.has(name),
+              autoUpdateReason,
+              autoUpdateSelectedNames.has(name),
             ];
           },
-          width: "200px",
+          width: "215px",
         },
       },
     ],
