@@ -4,7 +4,15 @@ import {
   useSuspenseQueries,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 
 import type { GpuDevice } from "@/api";
 import { linuxio } from "@/api";
@@ -33,6 +41,72 @@ import {
   hardwareGpuQueryOptions,
   hardwareStableQueryOptions,
 } from "./hardwareQueryOptions";
+
+type HistoryHoverListener = () => void;
+
+/** Scoped external store for the four history charts' synchronized crosshair. */
+export class HistoryHoverStore {
+  private hoverTime: number | null = null;
+  private readonly listeners = new Set<HistoryHoverListener>();
+
+  getSnapshot = (): number | null => this.hoverTime;
+
+  setHoverTime = (hoverTime: number | null): void => {
+    if (this.hoverTime === hoverTime) return;
+    this.hoverTime = hoverTime;
+    for (const listener of this.listeners) listener();
+  };
+
+  subscribe = (listener: HistoryHoverListener): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+}
+
+const HistoryHoverContext = createContext<HistoryHoverStore | null>(null);
+
+export const HistoryHoverProvider = ({ children }: { children: ReactNode }) => {
+  const [store] = useState(() => new HistoryHoverStore());
+  return (
+    <HistoryHoverContext.Provider value={store}>
+      {children}
+    </HistoryHoverContext.Provider>
+  );
+};
+
+const useHistoryHover = (): [number | null, (time: number | null) => void] => {
+  const store = useContext(HistoryHoverContext);
+  if (!store) {
+    throw new Error(
+      "History charts must be rendered inside HistoryHoverProvider",
+    );
+  }
+  const hoverTime = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
+  return [hoverTime, store.setHoverTime];
+};
+
+type SynchronizedHistoryAreaChartProps = Omit<
+  ComponentProps<typeof HistoryAreaChart>,
+  "hoverTime" | "onHoverTimeChange"
+>;
+
+/** Only this chart leaf subscribes to crosshair movement. */
+const SynchronizedHistoryAreaChart = (
+  props: SynchronizedHistoryAreaChartProps,
+) => {
+  const [hoverTime, onHoverTimeChange] = useHistoryHover();
+  return (
+    <HistoryAreaChart
+      {...props}
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+    />
+  );
+};
 
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
@@ -426,12 +500,9 @@ interface HistoryCardProps {
   /** Shared time range so the four cards stay synchronized. */
   rangeId: HardwareHistoryRangeId;
   onRangeChange: (id: HardwareHistoryRangeId) => void;
-  /** Shared crosshair timestamp so the four cards stay synchronized. */
-  hoverTime: number | null;
-  onHoverTimeChange: (t: number | null) => void;
 }
 
-type HistoryLiveProps = Omit<HistoryCardProps, "onRangeChange">;
+type HistoryLiveProps = Pick<HistoryCardProps, "rangeId">;
 
 const historyCardMessage = (
   points: readonly unknown[] | undefined,
@@ -455,11 +526,7 @@ const historyCardMessage = (
   return null;
 };
 
-const CPUHistoryLive = ({
-  rangeId,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryLiveProps) => {
+const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -524,12 +591,10 @@ const CPUHistoryLive = ({
 
   return (
     <HistoryCardBody message={message}>
-      <HistoryAreaChart
+      <SynchronizedHistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
         formatValue={formatCoreValue}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         stacked={coreCount > 1}
         windowMs={range.windowMs}
         series={series}
@@ -539,11 +604,7 @@ const CPUHistoryLive = ({
   );
 };
 
-const MemoryHistoryLive = ({
-  rangeId,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryLiveProps) => {
+const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -612,12 +673,10 @@ const MemoryHistoryLive = ({
 
   return (
     <HistoryCardBody message={message}>
-      <HistoryAreaChart
+      <SynchronizedHistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
         formatValue={formatPercent}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         stacked
         windowMs={range.windowMs}
         series={series}
@@ -627,11 +686,7 @@ const MemoryHistoryLive = ({
   );
 };
 
-const DiskIOLive = ({
-  rangeId,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryLiveProps) => {
+const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -674,11 +729,9 @@ const DiskIOLive = ({
 
   return (
     <HistoryCardBody message={message}>
-      <HistoryAreaChart
+      <SynchronizedHistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         windowMs={range.windowMs}
         series={series}
       />
@@ -686,11 +739,7 @@ const DiskIOLive = ({
   );
 };
 
-const NetworkHistoryLive = ({
-  rangeId,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryLiveProps) => {
+const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -733,11 +782,9 @@ const NetworkHistoryLive = ({
 
   return (
     <HistoryCardBody message={message}>
-      <HistoryAreaChart
+      <SynchronizedHistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         windowMs={range.windowMs}
         series={series}
       />
@@ -748,75 +795,51 @@ const NetworkHistoryLive = ({
 export const CPUHistoryCard = ({
   rangeId,
   onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
 }: HistoryCardProps) => (
   <HistoryCardShell
     avatarIcon="ph:cpu"
     headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
     title="Processor"
   >
-    <CPUHistoryLive
-      hoverTime={hoverTime}
-      onHoverTimeChange={onHoverTimeChange}
-      rangeId={rangeId}
-    />
+    <CPUHistoryLive rangeId={rangeId} />
   </HistoryCardShell>
 );
 
 export const MemoryHistoryCard = ({
   rangeId,
   onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
 }: HistoryCardProps) => (
   <HistoryCardShell
     avatarIcon="la:memory"
     headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
     title="Memory"
   >
-    <MemoryHistoryLive
-      hoverTime={hoverTime}
-      onHoverTimeChange={onHoverTimeChange}
-      rangeId={rangeId}
-    />
+    <MemoryHistoryLive rangeId={rangeId} />
   </HistoryCardShell>
 );
 
 export const DiskIOHistoryCard = ({
   rangeId,
   onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
 }: HistoryCardProps) => (
   <HistoryCardShell
     avatarIcon="mdi:harddisk"
     headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
     title="Disk I/O"
   >
-    <DiskIOLive
-      hoverTime={hoverTime}
-      onHoverTimeChange={onHoverTimeChange}
-      rangeId={rangeId}
-    />
+    <DiskIOLive rangeId={rangeId} />
   </HistoryCardShell>
 );
 
 export const NetworkHistoryCard = ({
   rangeId,
   onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
 }: HistoryCardProps) => (
   <HistoryCardShell
     avatarIcon="mdi:ethernet"
     headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
     title="Network"
   >
-    <NetworkHistoryLive
-      hoverTime={hoverTime}
-      onHoverTimeChange={onHoverTimeChange}
-      rangeId={rangeId}
-    />
+    <NetworkHistoryLive rangeId={rangeId} />
   </HistoryCardShell>
 );

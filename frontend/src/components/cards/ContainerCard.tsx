@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
 import { linuxio, type ContainerInfo } from "@/api";
@@ -55,13 +56,44 @@ interface ContainerCardProps {
   autoUpdatePending?: boolean;
   autoUpdateReason?: string;
   autoUpdateSelected?: boolean;
-  container: ContainerInfo;
+  containerId: string;
   onSelect?: () => void;
   onToggleAutoUpdate?: (name: string) => void;
   selected?: boolean;
 }
 
-const ContainerCard = ({
+type ContainerCardLiveProps = Omit<ContainerCardProps, "selected"> & {
+  selected: boolean;
+};
+
+const ContainerCardLive = ({
+  containerId,
+  ...props
+}: ContainerCardLiveProps) => {
+  const selectContainer = useCallback(
+    (containers: ContainerInfo[]) =>
+      containers.find((item) => item.Id === containerId),
+    [containerId],
+  );
+  // Cards consume the list cache by identity. The page owns the sole polling
+  // observer; this observer only receives fresh values from that shared cache.
+  const { data: container } = useQuery(
+    linuxio.docker.list_containers.queryOptions({
+      refetchOnMount: false,
+      select: selectContainer,
+    }),
+  );
+
+  if (!container) return null;
+
+  return <ContainerCardBody {...props} container={container} />;
+};
+
+type ContainerCardBodyProps = Omit<ContainerCardLiveProps, "containerId"> & {
+  container: ContainerInfo;
+};
+
+const ContainerCardBody = ({
   actionPending = false,
   autoUpdateDisabled = false,
   autoUpdatePending = false,
@@ -70,8 +102,8 @@ const ContainerCard = ({
   container,
   onSelect,
   onToggleAutoUpdate,
-  selected = false,
-}: ContainerCardProps) => {
+  selected,
+}: ContainerCardBodyProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
@@ -311,20 +343,7 @@ const ContainerCard = ({
   );
 
   return (
-    <FrostedCard
-      hoverLift={!selected}
-      style={{
-        padding: 12,
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        width: "100%",
-        minWidth: 0,
-        position: "relative",
-        border: "none",
-        transition: "transform 0.2s, box-shadow 0.2s",
-      }}
-    >
+    <>
       {/* Loading overlay */}
       {isActionPending && (
         <div
@@ -675,8 +694,27 @@ const ContainerCard = ({
           </div>
         </>
       )}
-    </FrostedCard>
+    </>
   );
 };
+
+const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
+  <FrostedCard
+    hoverLift={!selected}
+    style={{
+      padding: 12,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      width: "100%",
+      minWidth: 0,
+      position: "relative",
+      border: "none",
+      transition: "transform 0.2s, box-shadow 0.2s",
+    }}
+  >
+    <ContainerCardLive {...props} selected={selected} />
+  </FrostedCard>
+);
 
 export default ContainerCard;

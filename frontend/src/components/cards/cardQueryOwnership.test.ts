@@ -200,6 +200,9 @@ const renderedJsxValues = (component: FunctionSource): Set<string> => {
 const dashboardCardFile = "components/cards/DashboardCard.tsx";
 const dashboardRoute = (file: string) =>
   `routes/_authenticated/-dashboard/${file}.tsx`;
+const dockerContainerCardFile = "components/cards/ContainerCard.tsx";
+const dockerContainerListFile =
+  "routes/_authenticated/docker/-components/ContainerList.tsx";
 
 const hookContracts: HookContract[] = [
   // Shared dashboard shell and its query-free owners.
@@ -247,6 +250,20 @@ const hookContracts: HookContract[] = [
     name,
     hooks: { useSuspenseQuery: 1 },
   })),
+
+  // Docker card identities, query-free shell, and live cache body.
+  {
+    file: dockerContainerListFile,
+    name: "ContainerList",
+    hooks: { useSuspenseQuery: 1 },
+  },
+  { file: dockerContainerCardFile, name: "ContainerCard" },
+  {
+    file: dockerContainerCardFile,
+    name: "ContainerCardLive",
+    hooks: { useQuery: 1 },
+  },
+  { file: dockerContainerCardFile, name: "ContainerCardBody" },
 
   // Network interface identities, stable card shell, and live cache slots.
   {
@@ -436,6 +453,19 @@ const selectContracts: SelectContract[] = [
     select: "selectPlatform",
   },
   {
+    file: dockerContainerListFile,
+    name: "ContainerList",
+    hook: "useSuspenseQuery",
+    select: "selectContainers",
+  },
+  {
+    file: dockerContainerCardFile,
+    name: "ContainerCardLive",
+    hook: "useQuery",
+    memoized: true,
+    select: "selectContainer",
+  },
+  {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
     name: "NetworkInterfaceList",
     hook: "useSuspenseQuery",
@@ -509,6 +539,21 @@ const edgeContracts: EdgeContract[] = [
     name,
     renders: ["DashboardCard"],
   })),
+  {
+    file: dockerContainerListFile,
+    name: "ContainerList",
+    renders: ["ContainerCard"],
+  },
+  {
+    file: dockerContainerCardFile,
+    name: "ContainerCard",
+    renders: ["FrostedCard", "ContainerCardLive"],
+  },
+  {
+    file: dockerContainerCardFile,
+    name: "ContainerCardLive",
+    renders: ["ContainerCardBody"],
+  },
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
     name: "NetworkInterfaceList",
@@ -665,6 +710,10 @@ describe("card query ownership", () => {
         file: "components/cards/NFSMountCard.tsx",
         name: "NFSMountCardLiveContent",
       },
+      {
+        file: dockerContainerCardFile,
+        name: "ContainerCardLive",
+      },
     ];
 
     for (const contract of cacheOnly) {
@@ -682,6 +731,10 @@ describe("card query ownership", () => {
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
         name: "NetworkInterfaceList",
+      },
+      {
+        file: dockerContainerListFile,
+        name: "ContainerList",
       },
       {
         file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
@@ -725,6 +778,19 @@ describe("card query ownership", () => {
 
   it("keeps stable identity selectors narrow", () => {
     const selectors = [
+      {
+        file: dockerContainerListFile,
+        name: "selectCardContainers",
+        includes: [
+          "Created: container.Created",
+          "Id: container.Id",
+          "Image: container.Image",
+          "Names: container.Names",
+          "State: container.State",
+          "Status: selectContainerSearchStatus(container)",
+        ],
+        excludes: ["...container", "metrics", "Status: container.Status"],
+      },
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
         name: "selectNetworkInterfaceIdentities",
@@ -799,6 +865,44 @@ describe("card query ownership", () => {
       expect(
         renderedJsxValues(component).has("children"),
         `${historyFile}:${name} must render its children slot`,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps hardware hover updates below the history live-query owners", () => {
+    const hardwareFile =
+      "routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx";
+    const page = parseSource(
+      "routes/_authenticated/hardware/-components/HardwarePage.tsx",
+    );
+    expect(page.sourceFile.getText()).not.toContain("historyHoverTime");
+
+    const synchronizedChart = findNamedFunction({
+      file: hardwareFile,
+      name: "SynchronizedHistoryAreaChart",
+    });
+    expect(
+      directCalls(synchronizedChart, new Set(["useHistoryHover"])),
+      `${hardwareFile}:SynchronizedHistoryAreaChart`,
+    ).toHaveLength(1);
+    expect(renderedJsxNames(synchronizedChart).has("HistoryAreaChart")).toBe(
+      true,
+    );
+
+    for (const name of [
+      "CPUHistoryLive",
+      "MemoryHistoryLive",
+      "DiskIOLive",
+      "NetworkHistoryLive",
+    ]) {
+      const live = findNamedFunction({ file: hardwareFile, name });
+      expect(
+        directCalls(live, new Set(["useHistoryHover"])),
+        `${hardwareFile}:${name}`,
+      ).toHaveLength(0);
+      expect(
+        renderedJsxNames(live).has("SynchronizedHistoryAreaChart"),
+        `${hardwareFile}:${name}`,
       ).toBe(true);
     }
   });

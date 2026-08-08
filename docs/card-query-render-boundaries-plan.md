@@ -3,8 +3,9 @@
 ## Status
 
 Implemented on 2026-08-07 from a clean checkout. Automated source, compiler,
-unit, production-build, and browser verification is complete. The final live
-React Scan check remains a manual release-environment step.
+unit, production-build, and browser verification is complete. React DevTools
+profiling on 2026-08-08 confirmed the intended polling boundaries and exposed
+two follow-up ownership gaps, now covered by the same structural guard.
 
 The dashboard baseline is commit `7ae83016` (`performance: - reduced cards
 re-renders on data pull`). That commit established the desired pattern for the
@@ -292,6 +293,29 @@ The existing keyboard test in
 Network live slot is introduced. This keeps the existing accessibility test; it
 must not become the rejected behavioral QueryClient/render-count test.
 
+## Runtime profiling follow-up (2026-08-08)
+
+React DevTools Profiler exports confirmed that value-only Network, WireGuard,
+NFS, sensor, and history-query commits stayed below their protected card
+shells. The captures also identified two separate high-fan-out updates:
+
+- Moving the synchronized hardware-history crosshair updated state owned by
+  `HardwarePage`, producing four 79.4–106.1 ms development commits that
+  included all 12 `FrostedCard` instances. The crosshair now uses a store scoped
+  to the four history cards, and only a leaf chart subscriber observes it.
+- A Docker container-list poll updated all 11 `ContainerCard`/`FrostedCard`
+  instances in 156–180 ms development commits. Collapsed card mode now selects
+  only stable identity/display fields in the sole five-second polling owner;
+  each card's nested live body observes its own full cached container without
+  polling or refetching on mount. Selected-card and table layouts retain full
+  row data.
+
+Profiler exports report committed component work, not every function
+invocation. The runtime evidence is therefore paired with the TypeScript-AST
+ownership guard, which requires query-free shells, one polling owner, narrow
+selectors, and cache-only live observers. React Scan was not used for this
+follow-up.
+
 ## Verification
 
 After implementation is quiescent, use a fresh Luna medium/Fast test worker and
@@ -331,12 +355,21 @@ Final automated verification on 2026-08-07 produced this evidence:
   temporary user-local font/shared-library runtime; no repository files were
   changed for that environment setup.
 
-Finally, use React Scan in both development and production against live polling:
+Follow-up verification after the 2026-08-08 profiling fixes also passed:
 
-- RX/TX, peer statistics, sensor values, history charts, NFS usage, and unit
-  information continue updating.
-- The corresponding `FrostedCard`/`DashboardCard` shell is not invoked on a
-  value-only poll.
+- `make check-frontend`: TypeScript and lint/format passed; 670/670 tests
+  passed across 135 files.
+- `make compiler-coverage`: 326 production files memoized, 153 with nothing to
+  memoize, and 3 unrelated virtualized-component skips.
+- `make test-frontend-browser`: production build passed and all 11 Chromium
+  tests passed.
+
+The existing React DevTools captures verified that:
+
+- Network throughput, peer statistics, sensor values, history queries, and NFS
+  usage continue updating.
+- Their corresponding protected card shells do not participate in value-only
+  polling commits.
 - Identity, visibility, selection, range, or layout changes still update the
   shell when appropriate.
 
@@ -356,5 +389,7 @@ Finally, use React Scan in both development and production against live polling:
 - [x] `make check-frontend` passes.
 - [x] `make compiler-coverage` passes after the final source change.
 - [x] `make test-frontend-browser` passes with an explicit Playwright result.
-- [ ] React Scan confirms the live values update without invoking the shell in
-      both development and production.
+- [ ] A post-follow-up React DevTools capture confirms that hardware crosshair
+      movement stays within the four chart leaves and metrics-only Docker polls
+      stay within the nested live card bodies. The AST guard covers source
+      ownership that profiler exports cannot observe.

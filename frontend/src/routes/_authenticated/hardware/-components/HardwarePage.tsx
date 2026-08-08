@@ -23,6 +23,7 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
+  HistoryHoverProvider,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
@@ -231,7 +232,6 @@ const HardwarePage = () => {
   // ── history range & synchronized crosshair ──
   const [historyRange, setHistoryRange] =
     useState<HardwareHistoryRangeId>("1h");
-  const [historyHoverTime, setHistoryHoverTime] = useState<number | null>(null);
 
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
@@ -298,53 +298,47 @@ const HardwarePage = () => {
       />
       <div id="hardware-hardware-panel">
         <AppCollapse in={sections.hardware} unmountOnExit>
-          <AppGrid
-            alignItems="stretch"
-            container
-            spacing={4}
-            style={{ marginBottom: 16 }}
-          >
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <CPUHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
+          <HistoryHoverProvider>
+            <AppGrid
+              alignItems="stretch"
+              container
+              spacing={4}
+              style={{ marginBottom: 16 }}
+            >
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <CPUHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <MemoryHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <DiskIOHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <NetworkHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
             </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <MemoryHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <DiskIOHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <NetworkHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-          </AppGrid>
+          </HistoryHoverProvider>
         </AppCollapse>
       </div>
 

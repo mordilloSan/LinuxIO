@@ -26,7 +26,7 @@ import {
   useState,
 } from "react";
 
-import { linuxio, openDockerLogsStream } from "@/api";
+import { linuxio, openDockerLogsStream, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
 import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
@@ -43,6 +43,30 @@ import {
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
 import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
+
+// Card mode only needs identity/display fields in this parent.  Keeping the
+// volatile metrics out of the selected result means a metrics-only poll can
+// update the per-card observers without rebuilding the grid shells.
+const selectContainerSearchStatus = (container: ContainerInfo): string => {
+  const status = container.Status.toLowerCase();
+  if (status.includes("unhealthy")) return "unhealthy";
+  if (status.includes("healthy")) return "healthy";
+  return container.State;
+};
+
+const selectCardContainers = (
+  containers: readonly ContainerInfo[],
+): ContainerInfo[] =>
+  containers.map((container) => ({
+    Created: container.Created,
+    Id: container.Id,
+    Image: container.Image,
+    Names: container.Names,
+    State: container.State,
+    Status: selectContainerSearchStatus(container),
+  }));
+
+const selectAllContainers = (containers: ContainerInfo[]) => containers;
 
 interface ContainerListProps {
   checkingUpdates?: boolean;
@@ -71,16 +95,24 @@ const ContainerList = ({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
-  const { data: rawContainers } = useSuspenseQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchInterval: 5000,
-    }),
-  );
-  const containers = rawContainers;
   const selectedContainerId =
     typeof searchParams.container === "string"
       ? searchParams.container
       : undefined;
+  // The selected layout and table need the complete row. The collapsed card
+  // grid needs only stable identity/display fields; each card reads its live
+  // values from the same cache below the query-free shell.
+  const selectContainers =
+    viewMode === "card" && !selectedContainerId
+      ? selectCardContainers
+      : selectAllContainers;
+  const { data: rawContainers } = useSuspenseQuery(
+    linuxio.docker.list_containers.queryOptions({
+      select: selectContainers,
+      refetchInterval: 5000,
+    }),
+  );
+  const containers = rawContainers;
   const [search, setSearch] = useState("");
 
   const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
@@ -268,7 +300,7 @@ const ContainerList = ({
                         )}
                         autoUpdateReason={containerAutoUpdate.reason}
                         autoUpdateSelected={isAutoUpdateSelected(container)}
-                        container={container}
+                        containerId={container.Id}
                         onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                       />
                     </SortableCard>
@@ -358,7 +390,7 @@ const ContainerList = ({
                   )}
                   autoUpdateReason={containerAutoUpdate.reason}
                   autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
-                  container={selectedContainer}
+                  containerId={selectedContainer.Id}
                   onSelect={() => handleSelectContainer(selectedContainer.Id)}
                   onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                   selected
@@ -453,7 +485,7 @@ const ContainerList = ({
                       )}
                       autoUpdateReason={containerAutoUpdate.reason}
                       autoUpdateSelected={isAutoUpdateSelected(container)}
-                      container={container}
+                      containerId={container.Id}
                       onSelect={() => handleSelectContainer(container.Id)}
                       onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                     />
