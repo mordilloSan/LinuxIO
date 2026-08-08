@@ -245,7 +245,7 @@ const ContainerCardBody = ({
       }}
     >
       {container.State === "running" ? (
-        <AppTooltip arrow title="Stop Container">
+        <AppTooltip arrow placement="top" title="Stop Container">
           <span>
             <AppButton
               color="error"
@@ -260,7 +260,7 @@ const ContainerCardBody = ({
           </span>
         </AppTooltip>
       ) : (
-        <AppTooltip arrow title="Start Container">
+        <AppTooltip arrow placement="top" title="Start Container">
           <span>
             <AppButton
               color="success"
@@ -275,7 +275,7 @@ const ContainerCardBody = ({
           </span>
         </AppTooltip>
       )}
-      <AppTooltip arrow title="Restart Container">
+      <AppTooltip arrow placement="top" title="Restart Container">
         <span>
           <AppButton
             disabled={isActionPending}
@@ -292,6 +292,7 @@ const ContainerCardBody = ({
         <AppTooltip
           arrow
           key={`selected-${autoTooltipKey}`}
+          placement="top"
           title={autoUpdateTooltip}
         >
           <span>
@@ -311,7 +312,7 @@ const ContainerCardBody = ({
         </AppTooltip>
       )}
       {container.updateAvailable && (
-        <AppTooltip arrow title="Update Container">
+        <AppTooltip arrow placement="top" title="Update Container">
           <span>
             <AppButton
               color="warning"
@@ -326,7 +327,7 @@ const ContainerCardBody = ({
           </span>
         </AppTooltip>
       )}
-      <AppTooltip arrow title="Remove Container">
+      <AppTooltip arrow placement="top" title="Remove Container">
         <span>
           <AppButton
             color="error"
@@ -340,7 +341,7 @@ const ContainerCardBody = ({
           </AppButton>
         </span>
       </AppTooltip>
-      <AppTooltip arrow title="Open Terminal">
+      <AppTooltip arrow placement="top" title="Open Terminal">
         <span>
           <AppButton
             disabled={isActionPending}
@@ -354,7 +355,7 @@ const ContainerCardBody = ({
         </span>
       </AppTooltip>
       {container.url && (
-        <AppTooltip arrow title="Open App">
+        <AppTooltip arrow placement="top" title="Open App">
           <span>
             <AppButton
               onClick={() => window.open(container.url, "_blank", "noopener")}
