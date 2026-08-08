@@ -1,9 +1,5 @@
-import { Icon } from "@iconify/react";
-
 import { linuxio } from "@/api";
-import AppButton from "@/components/ui/AppButton";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppTooltip from "@/components/ui/AppTooltip";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
@@ -26,31 +22,17 @@ export function useDockerUpdateCheck() {
       toast: DOCKER_TOAST_META,
     });
 
-  const button = (
-    <AppButton
-      disabled={isCheckingUpdates || !watchtowerEnabled}
-      onClick={() => checkUpdates()}
-      size="small"
-      startIcon={
-        isCheckingUpdates ? (
-          <AppCircularProgress color="inherit" size={18} />
-        ) : (
-          <Icon height={20} icon="mdi:update" width={20} />
-        )
-      }
-      variant="outlined"
-    >
-      Check Updates
-    </AppButton>
-  );
-
   return {
-    button: watchtowerEnabled ? (
-      button
-    ) : (
-      <AppTooltip title={watchtowerReason}>
-        <span>{button}</span>
-      </AppTooltip>
+    button: (
+      <AppActionIconButton
+        ariaLabel="Check container updates"
+        disabled={!watchtowerEnabled}
+        icon="mdi:refresh"
+        iconSize={20}
+        label={watchtowerEnabled ? "Check Updates" : watchtowerReason}
+        loading={isCheckingUpdates}
+        onClick={() => checkUpdates()}
+      />
     ),
     isCheckingUpdates,
   };

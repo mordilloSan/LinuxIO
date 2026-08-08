@@ -51,7 +51,7 @@ const DockerContainersPage = () => {
       <AppActionIconButton
         ariaLabel="Container auto-update settings"
         disabled={!watchtowerEnabled}
-        icon="mdi:timer-cog-outline"
+        icon="mdi:cog"
         iconSize={20}
         label={
           watchtowerEnabled
