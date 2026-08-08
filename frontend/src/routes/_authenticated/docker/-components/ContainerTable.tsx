@@ -138,6 +138,17 @@ const getDedupedPorts = (container: ContainerInfo) => {
     );
 };
 
+// A collapsed ports/volumes cell renders two entries plus a "+N more" caption,
+// which is exactly the height an untruncated three-entry list takes. Collapsing
+// only buys space from the fourth entry on, so three entries stay fully visible
+// and the row offers no expander.
+const COLLAPSED_ENTRIES = 2;
+
+const isCollapsible = (total: number) => total > COLLAPSED_ENTRIES + 1;
+
+const getVisibleEntries = (total: number) =>
+  isCollapsible(total) ? COLLAPSED_ENTRIES : total;
+
 const getMounts = (container: ContainerInfo) =>
   (container.Mounts ?? []).filter(
     (mount) => mount.Type === "bind" || mount.Type === "volume",
@@ -523,9 +534,11 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
     );
   }
 
+  const visible = getVisibleEntries(ports.length);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {ports.slice(0, 2).map((port) => {
+      {ports.slice(0, visible).map((port) => {
         const text = `${port.PrivatePort}/${port.Type} -> ${
           port.PublicPort ?? "-"
         }`;
@@ -560,7 +573,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
       })}
       <AppCollapse in={expanded}>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {ports.slice(2).map((port) => {
+          {ports.slice(visible).map((port) => {
             const text = `${port.PrivatePort}/${port.Type} -> ${
               port.PublicPort ?? "-"
             }`;
@@ -595,7 +608,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
           })}
         </div>
       </AppCollapse>
-      {ports.length > 2 && (
+      {isCollapsible(ports.length) && (
         <AppCollapse in={!expanded}>
           <AppTypography
             color="text.disabled"
@@ -605,7 +618,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
             }}
             variant="caption"
           >
-            +{ports.length - 2} more
+            +{ports.length - visible} more
           </AppTypography>
         </AppCollapse>
       )}
@@ -630,9 +643,11 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
     );
   }
 
+  const visible = getVisibleEntries(mounts.length);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {mounts.slice(0, 2).map((mount) => {
+      {mounts.slice(0, visible).map((mount) => {
         const text = `${mount.Destination} -> ${mount.Source}`;
         return (
           <AppTypography
@@ -665,7 +680,7 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
       })}
       <AppCollapse in={expanded}>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {mounts.slice(2).map((mount) => {
+          {mounts.slice(visible).map((mount) => {
             const text = `${mount.Destination} -> ${mount.Source}`;
             return (
               <AppTypography
@@ -698,7 +713,7 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
           })}
         </div>
       </AppCollapse>
-      {mounts.length > 2 && (
+      {isCollapsible(mounts.length) && (
         <AppCollapse in={!expanded}>
           <AppTypography
             color="text.disabled"
@@ -708,7 +723,7 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
             }}
             variant="caption"
           >
-            +{mounts.length - 2} more
+            +{mounts.length - visible} more
           </AppTypography>
         </AppCollapse>
       )}
@@ -1166,7 +1181,9 @@ const ContainerTable = ({
           return (
             <ActionsCell
               containerId={container.Id}
-              hasExpandableDetails={ports.length > 2 || mounts.length > 2}
+              hasExpandableDetails={
+                isCollapsible(ports.length) || isCollapsible(mounts.length)
+              }
               name={getContainerName(container)}
               onOpenLogs={openLogs}
               onOpenTerminal={openTerminal}
@@ -1188,7 +1205,7 @@ const ContainerTable = ({
               getContainerName(container),
               container.State,
               container.url,
-              ports.length > 2 || mounts.length > 2,
+              isCollapsible(ports.length) || isCollapsible(mounts.length),
               stoppingContainerIds.has(container.Id),
             ];
           },
