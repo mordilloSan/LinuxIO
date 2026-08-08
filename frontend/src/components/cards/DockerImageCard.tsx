@@ -104,7 +104,10 @@ const DockerImageCard = ({
           Size: {image.size} MB
         </AppTypography>
         <AppTypography
-          style={{ fontFamily: "monospace", ...responsiveTextStyles }}
+          style={{
+            fontFamily: "var(--app-font-mono)",
+            ...responsiveTextStyles,
+          }}
           variant="body2"
         >
           ID: {image.shortId}
@@ -145,7 +148,7 @@ const DockerImageCard = ({
       </AppTypography>
       <AppTypography
         style={{
-          fontFamily: "monospace",
+          fontFamily: "var(--app-font-mono)",
           fontSize: "0.75rem",
           marginBottom: 4,
           ...longTextStyles,

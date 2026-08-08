@@ -67,8 +67,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -82,8 +81,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -97,8 +95,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"
@@ -113,8 +110,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"
@@ -129,8 +125,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -591,8 +586,7 @@ const NetworkList = ({
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...responsiveTextStyles,
           }}
           variant="body2"

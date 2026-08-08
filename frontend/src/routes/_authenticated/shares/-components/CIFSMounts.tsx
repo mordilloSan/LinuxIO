@@ -492,7 +492,10 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         accessorKey: "source",
         header: "SMB Share",
         cell: ({ row }) => (
-          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          <AppTypography
+            style={{ fontFamily: "var(--app-font-mono)" }}
+            variant="body2"
+          >
             {row.original.source}
           </AppTypography>
         ),
@@ -508,7 +511,10 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         accessorKey: "mountpoint",
         header: "Mount Point",
         cell: ({ row }) => (
-          <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+          <AppTypography
+            style={{ fontFamily: "var(--app-font-mono)" }}
+            variant="body2"
+          >
             {row.original.mountpoint}
           </AppTypography>
         ),

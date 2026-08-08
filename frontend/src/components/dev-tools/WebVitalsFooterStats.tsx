@@ -26,7 +26,7 @@ export function WebVitalsFooterStats() {
       style={{
         alignItems: "center",
         display: "flex",
-        fontFamily: "monospace",
+        fontFamily: "var(--app-font-mono)",
         fontSize: 12,
         gap: 8,
         whiteSpace: "nowrap",

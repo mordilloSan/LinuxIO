@@ -7,7 +7,7 @@
    No row gap on purpose: the collapsed AppCollapse wrappers are still flex
    children at zero height, so a gap would count between them and make a
    three-entry stack a couple of pixels taller than a one-entry one. The 18px
-   line box over a 12px font already provides the leading. */
+   line box over body2's 13px already provides the leading. */
 .container-table__stack {
   --container-table-line: 18px;
 
@@ -74,32 +74,14 @@
   min-width: 0;
 }
 
-/* The dot is the per-container "check for updates" control: a 10px mark needs a
-   bigger hit area than its own size. */
+/* The dot is the per-container "check for updates" control. AppIconButton
+   supplies the circle, hover and disabled treatment; it only needs shrinking
+   around a 10px mark so the hit area stays comfortably larger than the dot. */
 .container-table__update-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   width: 18px;
   height: 18px;
   padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: none;
   color: var(--app-palette-text-secondary);
-  cursor: pointer;
-}
-
-.container-table__update-dot:disabled {
-  cursor: default;
-}
-
-/* Not the row hover colour — the row is already hovered by the time the pointer
-   reaches the dot, so it would read as no feedback at all. */
-.container-table__update-dot:hover:not(:disabled),
-.container-table__update-dot:focus-visible {
-  background-color: var(--app-palette-action-hover);
 }
 
 .container-table__update-dot-mark {

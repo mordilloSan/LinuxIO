@@ -406,8 +406,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         style={{
           width: 78,
           padding: "3px 6px",
-          fontFamily:
-            'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+          fontFamily: "var(--app-font-mono)",
           fontSize: "0.7rem",
           letterSpacing: "0.01em",
           color: focused

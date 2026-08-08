@@ -203,7 +203,7 @@ function PciDevicesTable() {
       cell: ({ row }) => row.original.slot || "—",
       meta: {
         cellStyle: {
-          fontFamily: "monospace",
+          fontFamily: "var(--app-font-mono)",
           fontSize: "0.8rem",
         },
       },

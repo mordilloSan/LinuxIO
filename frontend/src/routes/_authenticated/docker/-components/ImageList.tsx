@@ -359,8 +359,7 @@ const ImageList = ({
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...responsiveTextStyles,
           }}
           variant="body2"

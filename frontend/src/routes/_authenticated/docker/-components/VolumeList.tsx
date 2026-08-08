@@ -293,8 +293,7 @@ const VolumeList = ({
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"

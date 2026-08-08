@@ -46,7 +46,7 @@ const LayerRow = ({ task }: { task: ComposeTask }) => {
         style={{
           width: 96,
           flexShrink: 0,
-          fontFamily: "monospace",
+          fontFamily: "var(--app-font-mono)",
           fontSize: "0.75rem",
         }}
         title={task.id}

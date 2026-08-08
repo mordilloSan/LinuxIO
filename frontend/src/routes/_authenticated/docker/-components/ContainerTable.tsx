@@ -29,6 +29,7 @@ import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -271,7 +272,7 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
       />
       <DockerIcon alt={name} identifier={container.icon} size={24} />
       <AppTypography
-        fontWeight={700}
+        fontWeight={600}
         noWrap
         title={name}
         toastMeta={DOCKER_TOAST_META}
@@ -289,10 +290,6 @@ function VersionCell({ version }: { version: string }) {
       className="container-table__version-text"
       color="text.secondary"
       noWrap
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-      }}
       title={version}
       toastMeta={DOCKER_TOAST_META}
       variant="body2"
@@ -393,12 +390,12 @@ const UpdateCell = memo(function UpdateCell({
           : `${updateStatus.title} — click to check for updates`
       }
     >
-      <button
+      <AppIconButton
         aria-label={`Check ${name} for updates`}
         className="container-table__update-dot"
         disabled={checking}
         onClick={() => checkContainerUpdate({ containerId })}
-        type="button"
+        size="small"
       >
         {checking ? (
           <AppCircularProgress color="inherit" size={10} />
@@ -408,7 +405,7 @@ const UpdateCell = memo(function UpdateCell({
             style={{ backgroundColor: updateStatus.dotColor }}
           />
         )}
-      </button>
+      </AppIconButton>
     </AppTooltip>
   );
 });
@@ -465,11 +462,7 @@ function UptimeCell({ created }: { created: number }) {
   return (
     <AppTypography
       color="text.secondary"
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-        fontVariantNumeric: "tabular-nums",
-      }}
+      style={{ fontVariantNumeric: "tabular-nums" }}
       variant="body2"
     >
       {formatUptime(created)}
@@ -500,10 +493,6 @@ function NetworkCell({
       color="text.secondary"
       copyText={networkNamesText}
       noWrap
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-      }}
       title={networkNamesText}
       toastMeta={DOCKER_TOAST_META}
       tooltipOnlyWhenTruncated={networks.length === 1}
@@ -548,7 +537,7 @@ function NetworkAddressCell({
     <AppTypography
       copyText={networkAddressesText}
       noWrap
-      style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+      style={{ fontFamily: "var(--app-font-mono)" }}
       title={networkAddressesText}
       toastMeta={DOCKER_TOAST_META}
       tooltipOnlyWhenTruncated={networks.length === 1}
@@ -624,10 +613,7 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
           <AppTypography
             key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
             noWrap
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-            }}
+            style={{ fontFamily: "var(--app-font-mono)" }}
             title={text}
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
@@ -659,10 +645,7 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
               <AppTypography
                 key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
                 noWrap
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                }}
+                style={{ fontFamily: "var(--app-font-mono)" }}
                 title={text}
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
@@ -732,10 +715,7 @@ function VolumesCell({
           <AppTypography
             key={`${mount.Destination}-${mount.Source}`}
             noWrap
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-            }}
+            style={{ fontFamily: "var(--app-font-mono)" }}
             title={text}
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
@@ -765,10 +745,7 @@ function VolumesCell({
               <AppTypography
                 key={`${mount.Destination}-${mount.Source}`}
                 noWrap
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                }}
+                style={{ fontFamily: "var(--app-font-mono)" }}
                 title={text}
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
@@ -813,11 +790,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
       <AppTypography
         color="text.secondary"
         noWrap
-        style={{
-          fontFamily: "monospace",
-          fontSize: "0.78rem",
-          fontVariantNumeric: "tabular-nums",
-        }}
+        style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
         {cpuPercent.toFixed(1)}%
@@ -825,11 +798,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
       <AppTypography
         color="text.secondary"
         noWrap
-        style={{
-          fontFamily: "monospace",
-          fontSize: "0.78rem",
-          fontVariantNumeric: "tabular-nums",
-        }}
+        style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
         {formatFileSize(memUsage)}

@@ -414,7 +414,7 @@ const LogEntryDetails = ({
           style={{
             padding: 8,
             backgroundColor: theme.codeBlock.background,
-            fontFamily: "monospace",
+            fontFamily: "var(--app-font-mono)",
             fontSize: "0.85rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
@@ -445,7 +445,7 @@ const LogEntryDetails = ({
             style={{
               padding: 8,
               backgroundColor: theme.codeBlock.background,
-              fontFamily: "monospace",
+              fontFamily: "var(--app-font-mono)",
               fontSize: "0.75rem",
               maxHeight: 300,
               overflowY: "auto",

@@ -182,7 +182,10 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     accessorKey: "path",
     header: "Path",
     cell: ({ row }) => (
-      <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+      <AppTypography
+        style={{ fontFamily: "var(--app-font-mono)" }}
+        variant="body2"
+      >
         {row.original.path}
       </AppTypography>
     ),

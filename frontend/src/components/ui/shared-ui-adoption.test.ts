@@ -60,6 +60,14 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "column sorting and table header semantics",
   },
   {
+    file: "routes/_authenticated/docker/-components/ContainerTable.tsx",
+    pattern:
+      /<button\s+aria-expanded=\{expanded\}\s+className="container-table__stack-toggle"/,
+    reason: 'the ports/volumes "+N more" count line is itself the row expander',
+    protects:
+      "caption-sized inline text and chevron that must sit in the stack's line box, which no shared button offers",
+  },
+  {
     file: "routes/_authenticated/-components/navbar/ThemeColorsSection.tsx",
     pattern: /<input\s+aria-label=\{`Hex color for \$\{label\}`\}/,
     reason: "compact hexadecimal color editor",

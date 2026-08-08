@@ -26,7 +26,7 @@ const NFSMountTitle = memo(function NFSMountTitle({
       fontWeight={700}
       noWrap
       style={{
-        fontFamily: "monospace",
+        fontFamily: "var(--app-font-mono)",
         flex: 1,
         minWidth: 0,
         lineHeight: 1.25,
@@ -49,7 +49,7 @@ const NFSMountSource = memo(function NFSMountSource({
       noWrap
       style={{
         marginBottom: 4,
-        fontFamily: "monospace",
+        fontFamily: "var(--app-font-mono)",
         fontSize: "0.8rem",
         lineHeight: 1.3,
       }}

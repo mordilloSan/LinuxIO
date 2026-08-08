@@ -298,7 +298,7 @@ const StatusMetric = ({
         noWrap
         style={{
           display: "block",
-          fontFamily: "monospace",
+          fontFamily: "var(--app-font-mono)",
         }}
         title={detail}
         variant="caption"

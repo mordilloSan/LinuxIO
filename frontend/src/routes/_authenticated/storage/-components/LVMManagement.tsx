@@ -74,7 +74,7 @@ const dialogStackStyle: CSSProperties = {
 };
 
 const monospaceStyle: CSSProperties = {
-  fontFamily: "monospace",
+  fontFamily: "var(--app-font-mono)",
 };
 
 const getUsageColor = (usedPct: number): "primary" | "warning" | "error" => {

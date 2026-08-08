@@ -209,7 +209,7 @@ const UpdateDialog = ({
                       backgroundColor: "var(--app-palette-grey-900)",
                       color: "var(--app-palette-grey-100)",
                       padding: 8,
-                      fontFamily: "monospace",
+                      fontFamily: "var(--app-font-mono)",
                       fontSize: "0.875rem",
                     }}
                     variant="outlined"
