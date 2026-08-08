@@ -235,116 +235,18 @@ const ContainerList = ({
     );
   };
 
-  if (viewMode === "table") {
-    const table = (
-      <ContainerTable
-        autoUpdateDisabled={containerAutoUpdate.disabled}
-        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
-        autoUpdateReason={containerAutoUpdate.reason}
-        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
-        checkingUpdates={checkingUpdates}
-        containers={orderedContainers}
-        editMode={editMode}
-        stoppingContainerIds={stoppingContainerIds}
-        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-      />
-    );
-
+  // Selecting a container replaces whichever list you came from with the same
+  // detail layout, so the table gets the card view's detail for free.
+  if (selectedContainer) {
     return (
       <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        {editMode ? (
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            sensors={sensors}
-          >
-            <SortableContext
-              items={containerIds}
-              strategy={verticalListSortingStrategy}
-            >
-              {table}
-            </SortableContext>
-          </DndContext>
-        ) : (
-          table
-        )}
-      </Suspense>
-    );
-  }
-
-  if (editMode) {
-    return (
-      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        <div>
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            sensors={sensors}
-          >
-            <SortableContext
-              items={containerIds}
-              strategy={rectSortingStrategy}
-            >
-              <AppGrid container spacing={2}>
-                {orderedContainers.map((container) => (
-                  <AppGrid
-                    key={container.Id}
-                    size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
-                  >
-                    <SortableCard editMode id={container.Id}>
-                      <ContainerCard
-                        actionPending={stoppingContainerIds.has(container.Id)}
-                        autoUpdateDisabled={containerAutoUpdate.disabled}
-                        autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                          container.Names?.[0]?.replace("/", "") ?? "",
-                        )}
-                        autoUpdateReason={containerAutoUpdate.reason}
-                        autoUpdateSelected={isAutoUpdateSelected(container)}
-                        containerId={container.Id}
-                        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-                      />
-                    </SortableCard>
-                  </AppGrid>
-                ))}
-              </AppGrid>
-            </SortableContext>
-          </DndContext>
-        </div>
-      </Suspense>
-    );
-  }
-
-  return (
-    <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-      {!selectedContainer && (
-        <div
-          style={{
-            marginBottom: theme.spacing(2),
-            display: "flex",
-            alignItems: "center",
-            gap: theme.spacing(2),
+        <motion.div
+          layout="position"
+          transition={{
+            duration: detailTransitionDurationSeconds,
+            ease: EASING_EMPHASIZED,
           }}
         >
-          <AppSearchField
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search containers…"
-            style={{ width: 320 }}
-            value={search}
-          />
-          <AppTypography fontWeight={700}>
-            {filteredContainers.length} shown
-          </AppTypography>
-        </div>
-      )}
-
-      <motion.div
-        layout="position"
-        transition={{
-          duration: detailTransitionDurationSeconds,
-          ease: EASING_EMPHASIZED,
-        }}
-      >
-        {selectedContainer ? (
           <div
             style={{
               display: "flex",
@@ -462,39 +364,150 @@ const ContainerList = ({
               />
             </motion.div>
           </div>
+        </motion.div>
+      </Suspense>
+    );
+  }
+
+  if (viewMode === "table") {
+    const table = (
+      <ContainerTable
+        autoUpdateDisabled={containerAutoUpdate.disabled}
+        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
+        autoUpdateReason={containerAutoUpdate.reason}
+        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
+        checkingUpdates={checkingUpdates}
+        containers={orderedContainers}
+        editMode={editMode}
+        onSelectContainer={updateSelectedContainer}
+        stoppingContainerIds={stoppingContainerIds}
+        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+      />
+    );
+
+    return (
+      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+        {editMode ? (
+          <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            sensors={sensors}
+          >
+            <SortableContext
+              items={containerIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {table}
+            </SortableContext>
+          </DndContext>
         ) : (
-          <div>
-            {filteredContainers.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 0" }}>
-                <AppTypography color="text.secondary" variant="body2">
-                  No containers found.
-                </AppTypography>
-              </div>
-            ) : (
+          table
+        )}
+      </Suspense>
+    );
+  }
+
+  if (editMode) {
+    return (
+      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+        <div>
+          <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+            sensors={sensors}
+          >
+            <SortableContext
+              items={containerIds}
+              strategy={rectSortingStrategy}
+            >
               <AppGrid container spacing={2}>
-                {filteredContainers.map((container) => (
+                {orderedContainers.map((container) => (
                   <AppGrid
                     key={container.Id}
                     size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
                   >
-                    <ContainerCard
-                      actionPending={stoppingContainerIds.has(container.Id)}
-                      autoUpdateDisabled={containerAutoUpdate.disabled}
-                      autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                        container.Names?.[0]?.replace("/", "") ?? "",
-                      )}
-                      autoUpdateReason={containerAutoUpdate.reason}
-                      autoUpdateSelected={isAutoUpdateSelected(container)}
-                      containerId={container.Id}
-                      onSelect={() => handleSelectContainer(container.Id)}
-                      onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-                    />
+                    <SortableCard editMode id={container.Id}>
+                      <ContainerCard
+                        actionPending={stoppingContainerIds.has(container.Id)}
+                        autoUpdateDisabled={containerAutoUpdate.disabled}
+                        autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                          container.Names?.[0]?.replace("/", "") ?? "",
+                        )}
+                        autoUpdateReason={containerAutoUpdate.reason}
+                        autoUpdateSelected={isAutoUpdateSelected(container)}
+                        containerId={container.Id}
+                        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                      />
+                    </SortableCard>
                   </AppGrid>
                 ))}
               </AppGrid>
-            )}
-          </div>
-        )}
+            </SortableContext>
+          </DndContext>
+        </div>
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+      <div
+        style={{
+          marginBottom: theme.spacing(2),
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+        }}
+      >
+        <AppSearchField
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search containers…"
+          style={{ width: 320 }}
+          value={search}
+        />
+        <AppTypography fontWeight={700}>
+          {filteredContainers.length} shown
+        </AppTypography>
+      </div>
+
+      <motion.div
+        layout="position"
+        transition={{
+          duration: detailTransitionDurationSeconds,
+          ease: EASING_EMPHASIZED,
+        }}
+      >
+        <div>
+          {filteredContainers.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <AppTypography color="text.secondary" variant="body2">
+                No containers found.
+              </AppTypography>
+            </div>
+          ) : (
+            <AppGrid container spacing={2}>
+              {filteredContainers.map((container) => (
+                <AppGrid
+                  key={container.Id}
+                  size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+                >
+                  <ContainerCard
+                    actionPending={stoppingContainerIds.has(container.Id)}
+                    autoUpdateDisabled={containerAutoUpdate.disabled}
+                    autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                      container.Names?.[0]?.replace("/", "") ?? "",
+                    )}
+                    autoUpdateReason={containerAutoUpdate.reason}
+                    autoUpdateSelected={isAutoUpdateSelected(container)}
+                    containerId={container.Id}
+                    onSelect={() => handleSelectContainer(container.Id)}
+                    onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                  />
+                </AppGrid>
+              ))}
+            </AppGrid>
+          )}
+        </div>
       </motion.div>
     </Suspense>
   );

@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useState,
+  type MouseEvent,
 } from "react";
 
 import {
@@ -221,6 +222,10 @@ const getContainerTableSignature = (container: ContainerInfo) => {
 };
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
+
+// AppTooltip marks its click-to-copy triggers with this class; a click on one
+// copies a value and must not double as a row selection.
+const INTERACTIVE_CELL_SELECTOR = ".app-tooltip-trigger--copy";
 
 const areStringSetsEqual = (
   left: ReadonlySet<string>,
@@ -1035,6 +1040,7 @@ interface ContainerTableProps {
   checkingUpdates?: boolean;
   containers: ContainerInfo[];
   editMode?: boolean;
+  onSelectContainer?: (containerId: string) => void;
   onToggleAutoUpdate: (name: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
 }
@@ -1052,6 +1058,7 @@ const ContainerTable = ({
   checkingUpdates = false,
   containers,
   editMode = false,
+  onSelectContainer,
   onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
@@ -1086,6 +1093,22 @@ const ContainerTable = ({
       setTerminalTarget({ id: containerId, name: containerName });
     },
     [],
+  );
+  const handleRowClick = useCallback(
+    (row: { original: ContainerInfo }, event: MouseEvent) => {
+      // A row is a container of controls before it is a link: the action
+      // buttons, the "+N more" expander, the update dot and the copy-on-click
+      // cells all bubble up to here and must not navigate.
+      if (
+        (event.target as HTMLElement).closest(
+          `button, a, input, ${INTERACTIVE_CELL_SELECTOR}`,
+        )
+      ) {
+        return;
+      }
+      onSelectContainer?.(row.original.Id);
+    },
+    [onSelectContainer],
   );
   const columns = useMemo<AppDataTableColumnDef<ContainerInfo>[]>(
     () => [
@@ -1386,6 +1409,11 @@ const ContainerTable = ({
           emptyMessage="No containers found."
           enableSorting={false}
           getRowId={(container) => container.Id}
+          // Dragging rows is the point of edit mode; selecting one there would
+          // fight the drag and immediately swap the table for a detail view.
+          onRowClick={
+            onSelectContainer && !editMode ? handleRowClick : undefined
+          }
         />
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
@@ -1418,6 +1446,7 @@ const areContainerTablePropsEqual = (
   previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&
   previous.editMode === next.editMode &&
+  previous.onSelectContainer === next.onSelectContainer &&
   previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
   areStringSetsEqual(
     previous.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
