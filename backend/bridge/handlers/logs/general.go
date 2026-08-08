@@ -127,7 +127,14 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 		var err error
 		newestCursor, count, truncated, err = streamGeneralLogsBacklog(ctx, job, req)
 		if err != nil {
-			slog.Error("general log backlog failed",
+			// A canceled context is the routine end of a client-closed stream
+			// (filter change, live toggle, navigating away) landing mid-backlog,
+			// not a failure — the job machinery marks it canceled either way.
+			level, message := slog.LevelError, "general log backlog failed"
+			if errors.Is(err, context.Canceled) {
+				level, message = slog.LevelDebug, "general log backlog canceled"
+			}
+			slog.Log(ctx, level, message,
 				"component", "logs",
 				"route", streamTypeGeneralLogs,
 				"job_id", job.ID(),
