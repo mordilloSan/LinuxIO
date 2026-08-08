@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -89,21 +88,20 @@ const AvailableUpdatesPage = () => {
         gap: theme.spacing(1),
       }}
     >
-      <AppButton
-        disabled={packageOperationPending}
-        onClick={() => refreshCache()}
-        size="small"
-        startIcon={
-          isRefreshingCache ? (
-            <AppCircularProgress color="inherit" size={16} />
+      <AppTooltip title={isRefreshingCache ? "Refreshing" : "Refresh Sources"}>
+        <AppIconButton
+          aria-label="Refresh Sources"
+          disabled={packageOperationPending}
+          onClick={() => refreshCache()}
+          size="small"
+        >
+          {isRefreshingCache ? (
+            <AppCircularProgress color="inherit" size={20} />
           ) : (
             <Icon height={20} icon="mdi:database-refresh" width={20} />
-          )
-        }
-        variant="outlined"
-      >
-        {isRefreshingCache ? "Refreshing" : "Refresh Sources"}
-      </AppButton>
+          )}
+        </AppIconButton>
+      </AppTooltip>
       <AppTooltip title="Update settings">
         <AppIconButton
           aria-label="Open update settings"
@@ -114,15 +112,16 @@ const AvailableUpdatesPage = () => {
         </AppIconButton>
       </AppTooltip>
       {actionableUpdates.length > 0 ? (
-        <AppButton
-          disabled={packageOperationPending}
-          onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
-          size="small"
-          startIcon={<Icon height={20} icon="mdi:refresh" width={20} />}
-          variant="contained"
-        >
-          Update All ({actionableUpdates.length})
-        </AppButton>
+        <AppTooltip title={`Update All (${actionableUpdates.length})`}>
+          <AppIconButton
+            aria-label={`Update All (${actionableUpdates.length})`}
+            disabled={packageOperationPending}
+            onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
+            size="small"
+          >
+            <Icon height={20} icon="mdi:refresh" width={20} />
+          </AppIconButton>
+        </AppTooltip>
       ) : null}
     </div>
   );
