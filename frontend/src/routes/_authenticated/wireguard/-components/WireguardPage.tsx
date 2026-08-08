@@ -21,7 +21,6 @@ const WireguardPage = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           marginBottom: theme.spacing(2),
         }}
       >
