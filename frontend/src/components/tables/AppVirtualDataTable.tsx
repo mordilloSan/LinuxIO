@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { flexRender, useTable } from "@tanstack/react-table";
 import type {
+  Cell,
   Column,
   ColumnVisibilityState,
   ExpandedState,
@@ -14,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -28,6 +30,7 @@ import {
 import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
   AppDataTableBreakpoint,
+  AppDataTableCellRenderKey,
   AppDataTableColumnDef,
   AppDataTableColumnMeta,
   AppTableFeatures,
@@ -153,6 +156,195 @@ function getSortIcon(sortState: false | "asc" | "desc") {
   if (sortState === "desc") return "mdi:chevron-down";
   return "mdi:unfold-more-horizontal";
 }
+
+function areCellRenderKeysEqual(
+  previous: AppDataTableCellRenderKey,
+  next: AppDataTableCellRenderKey,
+) {
+  if (Object.is(previous, next)) return true;
+  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
+  if (previous.length !== next.length) return false;
+  return previous.every((value, index) => Object.is(value, next[index]));
+}
+
+function getCellRenderKey<TData extends RowData>(
+  cell: Cell<AppTableFeatures, TData, unknown>,
+  rowIndex: number,
+) {
+  return (
+    cell.column.columnDef.meta?.getCellRenderKey?.(
+      cell.row.original,
+      rowIndex,
+    ) ?? cell.row.original
+  );
+}
+
+interface AppVirtualDataTableCellProps<TData extends RowData> {
+  cell: Cell<AppTableFeatures, TData, unknown>;
+  renderKey: AppDataTableCellRenderKey;
+  rowIndex: number;
+}
+
+function AppVirtualDataTableCell<TData extends RowData>({
+  cell,
+}: AppVirtualDataTableCellProps<TData>) {
+  const meta = cell.column.columnDef.meta;
+
+  return (
+    <div
+      className={["app-vdt__cell", meta?.className, meta?.cellClassName]
+        .filter(Boolean)
+        .join(" ")}
+      role="cell"
+      style={{
+        justifyContent: alignToJustify(meta?.align),
+        textAlign: meta?.align,
+        ...meta?.style,
+        ...meta?.cellStyle,
+      }}
+    >
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </div>
+  );
+}
+
+const MemoizedAppVirtualDataTableCell = memo(
+  AppVirtualDataTableCell,
+  (previous, next) =>
+    previous.cell.id === next.cell.id &&
+    previous.cell.column.columnDef === next.cell.column.columnDef &&
+    previous.rowIndex === next.rowIndex &&
+    areCellRenderKeysEqual(previous.renderKey, next.renderKey),
+) as typeof AppVirtualDataTableCell;
+
+interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
+  canExpand: boolean;
+  // Invalidate a memoized row when same-ID columns replace their renderer or
+  // metadata; the row reads the actual visible cells from TanStack Table.
+  columnVersion: AppVirtualDataTableColumnDef<TData, unknown>[];
+  getRowAttributes?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => HTMLAttributes<HTMLDivElement>;
+  hasExpandColumn: boolean;
+  isExpanded: boolean;
+  isInteractive: boolean;
+  isSelected: boolean;
+  measureElement: (node: HTMLDivElement | null) => void;
+  onExpand: (row: Row<AppTableFeatures, TData>) => void;
+  onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  onRowDoubleClick?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  row: Row<AppTableFeatures, TData>;
+  rowIndex: number;
+  start: number;
+  virtualIndex: number;
+}
+
+function AppVirtualDataTableBodyRow<TData extends RowData>({
+  canExpand,
+  getRowAttributes,
+  hasExpandColumn,
+  isExpanded,
+  isInteractive,
+  isSelected,
+  measureElement,
+  onExpand,
+  onRowClick,
+  onRowContextMenu,
+  onRowDoubleClick,
+  row,
+  rowIndex,
+  start,
+  virtualIndex,
+}: AppVirtualDataTableBodyRowProps<TData>) {
+  const rowAttributes = getRowAttributes?.(row);
+  const rowAttributeOnClick = rowAttributes?.onClick;
+  const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
+  const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
+
+  return (
+    <div
+      className="app-vdt__virtual-row"
+      data-index={virtualIndex}
+      ref={measureElement}
+      style={{ transform: `translateY(${start}px)` }}
+    >
+      <div
+        {...rowAttributes}
+        className={[
+          "app-vdt__row",
+          "app-vdt__row--body",
+          isInteractive && "app-vdt__row--interactive",
+          isSelected && "app-vdt__row--selected",
+          rowIndex % 2 === 1 && "app-vdt__row--alt",
+          rowAttributes?.className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={(event) => {
+          rowAttributeOnClick?.(event);
+          if (!event.defaultPrevented) onRowClick?.(row, event);
+        }}
+        onContextMenu={(event) => {
+          rowAttributeOnContextMenu?.(event);
+          if (!event.defaultPrevented) onRowContextMenu?.(row, event);
+        }}
+        onDoubleClick={(event) => {
+          rowAttributeOnDoubleClick?.(event);
+          if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+        }}
+        role="row"
+        style={rowAttributes?.style}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <MemoizedAppVirtualDataTableCell
+            cell={cell}
+            key={cell.id}
+            renderKey={getCellRenderKey(cell, rowIndex)}
+            rowIndex={rowIndex}
+          />
+        ))}
+        {hasExpandColumn && (
+          <div className="app-vdt__cell app-vdt__cell--expand" role="cell">
+            {canExpand && (
+              <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
+                <AppIconButton
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onExpand(row);
+                  }}
+                  size="small"
+                >
+                  <Icon
+                    height={22}
+                    icon="mdi:chevron-down"
+                    style={{
+                      transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: `transform ${DETAIL_ANIMATION_CSS}`,
+                    }}
+                    width={22}
+                  />
+                </AppIconButton>
+              </AppTooltip>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MemoizedAppVirtualDataTableBodyRow = memo(
+  AppVirtualDataTableBodyRow,
+) as typeof AppVirtualDataTableBodyRow;
 
 function easeStandard(progress: number) {
   return progress < 0.5
@@ -553,6 +745,16 @@ function AppVirtualDataTable<TData extends RowData>({
   ].join(" ");
   const virtualItems = virtualizer.getVirtualItems();
 
+  const handleExpandRow = useCallback((row: Row<AppTableFeatures, TData>) => {
+    setMountedDetailRowIds((current) => {
+      if (current.has(row.id)) return current;
+      const next = new Set(current);
+      next.add(row.id);
+      return next;
+    });
+    row.toggleExpanded();
+  }, []);
+
   useEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
     if (scrollToIndex < 0 || scrollToIndex >= rows.length) return;
@@ -712,123 +914,26 @@ function AppVirtualDataTable<TData extends RowData>({
               );
             }
 
-            const isSelected = row.id === selectedRowId;
-            const canExpand = row.getCanExpand();
-            const rowAttributes = getRowAttributes?.(row);
-            const rowAttributeOnClick = rowAttributes?.onClick;
-            const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
-            const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
-
             return (
-              <div
-                className="app-vdt__virtual-row"
-                data-index={virtualRow.index}
+              <MemoizedAppVirtualDataTableBodyRow
+                canExpand={row.getCanExpand()}
+                columnVersion={columns}
+                getRowAttributes={getRowAttributes}
+                hasExpandColumn={hasExpandColumn}
+                isExpanded={isExpanded}
+                isInteractive={isInteractive}
+                isSelected={row.id === selectedRowId}
                 key={entry.key}
-                ref={virtualizer.measureElement}
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
-              >
-                <div
-                  {...rowAttributes}
-                  className={[
-                    "app-vdt__row",
-                    "app-vdt__row--body",
-                    isInteractive && "app-vdt__row--interactive",
-                    isSelected && "app-vdt__row--selected",
-                    entry.rowIndex % 2 === 1 && "app-vdt__row--alt",
-                    rowAttributes?.className,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={(event) => {
-                    rowAttributeOnClick?.(event);
-                    if (!event.defaultPrevented) onRowClick?.(row, event);
-                  }}
-                  onContextMenu={(event) => {
-                    rowAttributeOnContextMenu?.(event);
-                    if (!event.defaultPrevented) {
-                      onRowContextMenu?.(row, event);
-                    }
-                  }}
-                  onDoubleClick={(event) => {
-                    rowAttributeOnDoubleClick?.(event);
-                    if (!event.defaultPrevented) {
-                      onRowDoubleClick?.(row, event);
-                    }
-                  }}
-                  role="row"
-                  style={rowAttributes?.style}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta;
-                    return (
-                      <div
-                        className={[
-                          "app-vdt__cell",
-                          meta?.className,
-                          meta?.cellClassName,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        key={cell.id}
-                        role="cell"
-                        style={{
-                          justifyContent: alignToJustify(meta?.align),
-                          textAlign: meta?.align,
-                          ...meta?.style,
-                          ...meta?.cellStyle,
-                        }}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </div>
-                    );
-                  })}
-                  {hasExpandColumn && (
-                    <div
-                      className="app-vdt__cell app-vdt__cell--expand"
-                      role="cell"
-                    >
-                      {canExpand && (
-                        <AppTooltip
-                          title={isExpanded ? "Collapse row" : "Expand row"}
-                        >
-                          <AppIconButton
-                            aria-expanded={isExpanded}
-                            aria-label={
-                              isExpanded ? "Collapse row" : "Expand row"
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMountedDetailRowIds((current) => {
-                                if (current.has(row.id)) return current;
-                                const next = new Set(current);
-                                next.add(row.id);
-                                return next;
-                              });
-                              row.toggleExpanded();
-                            }}
-                            size="small"
-                          >
-                            <Icon
-                              height={22}
-                              icon="mdi:chevron-down"
-                              style={{
-                                transform: isExpanded
-                                  ? "rotate(180deg)"
-                                  : "rotate(0deg)",
-                                transition: `transform ${DETAIL_ANIMATION_CSS}`,
-                              }}
-                              width={22}
-                            />
-                          </AppIconButton>
-                        </AppTooltip>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+                measureElement={virtualizer.measureElement}
+                onExpand={handleExpandRow}
+                onRowClick={onRowClick}
+                onRowContextMenu={onRowContextMenu}
+                onRowDoubleClick={onRowDoubleClick}
+                row={row}
+                rowIndex={entry.rowIndex}
+                start={virtualRow.start}
+                virtualIndex={virtualRow.index}
+              />
             );
           })}
         </div>
@@ -845,4 +950,8 @@ function AppVirtualDataTable<TData extends RowData>({
   );
 }
 
-export default AppVirtualDataTable;
+const MemoizedAppVirtualDataTable = memo(
+  AppVirtualDataTable,
+) as typeof AppVirtualDataTable;
+
+export default MemoizedAppVirtualDataTable;

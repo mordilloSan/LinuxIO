@@ -5,6 +5,8 @@ import {
   Children,
   Fragment,
   isValidElement,
+  useCallback,
+  useMemo,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -464,21 +466,33 @@ export function UnitTableView<T extends RowData>({
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
-  const renderedCellCache = new Map<string, ReactNode[]>();
-  const columns: AppVirtualDataTableColumnDef<T>[] = activeColumns.map(
-    (column, columnIndex) => ({
+  const columns = useMemo<AppVirtualDataTableColumnDef<T>[]>(() => {
+    const renderedCellCache = new Map<
+      string,
+      { cells: ReactNode[]; original: T; rowIndex: number }
+    >();
+
+    return activeColumns.map((column, columnIndex) => ({
       id: column.field,
       header: column.headerName,
       cell: ({ row }) => {
         const rowKey = String(getRowKey(row.original, row.index));
-        let cells = renderedCellCache.get(rowKey);
-        if (!cells) {
-          cells = flattenRenderedCells(
-            renderMainRow(row.original, isMobile, row.index),
-          );
-          renderedCellCache.set(rowKey, cells);
+        let cached = renderedCellCache.get(rowKey);
+        if (
+          !cached ||
+          cached.original !== row.original ||
+          cached.rowIndex !== row.index
+        ) {
+          cached = {
+            cells: flattenRenderedCells(
+              renderMainRow(row.original, isMobile, row.index),
+            ),
+            original: row.original,
+            rowIndex: row.index,
+          };
+          renderedCellCache.set(rowKey, cached);
         }
-        return getRenderedCellContent(cells[columnIndex]);
+        return getRenderedCellContent(cached.cells[columnIndex]);
       },
       meta: {
         align: column.align,
@@ -488,7 +502,29 @@ export function UnitTableView<T extends RowData>({
         hideBelow: getHideBelow(column.className),
         width: column.width,
       },
-    }),
+    }));
+  }, [activeColumns, getRowKey, isMobile, renderMainRow]);
+  const getTableRowId = useCallback(
+    (row: T, index: number) => String(getRowKey(row, index)),
+    [getRowKey],
+  );
+  const handleRowClick = useCallback(
+    ({ original, index }: { original: T; index: number }) => {
+      const rowKey = getRowKey(original, index);
+      onSelect?.(selected === rowKey ? null : rowKey);
+    },
+    [getRowKey, onSelect, selected],
+  );
+  const handleRowDoubleClick = useCallback(
+    ({ original, index }: { original: T; index: number }) => {
+      onDoubleClick?.(getRowKey(original, index));
+    },
+    [getRowKey, onDoubleClick],
+  );
+  const renderExpandedContent = useCallback(
+    ({ original, index }: { original: T; index: number }) =>
+      renderMobileExpandedContent?.(original, index),
+    [renderMobileExpandedContent],
   );
 
   return (
@@ -498,22 +534,12 @@ export function UnitTableView<T extends RowData>({
       data={data}
       emptyMessage={emptyMessage}
       fillAvailable
-      getRowId={(row, index) => String(getRowKey(row, index))}
-      onRowClick={
-        isMobile
-          ? undefined
-          : ({ original, index }) => {
-              const rowKey = getRowKey(original, index);
-              onSelect?.(selected === rowKey ? null : rowKey);
-            }
-      }
-      onRowDoubleClick={({ original, index }) =>
-        onDoubleClick?.(getRowKey(original, index))
-      }
+      getRowId={getTableRowId}
+      onRowClick={isMobile ? undefined : handleRowClick}
+      onRowDoubleClick={handleRowDoubleClick}
       renderExpandedContent={
         isMobile && renderMobileExpandedContent
-          ? ({ original, index }) =>
-              renderMobileExpandedContent(original, index)
+          ? renderExpandedContent
           : undefined
       }
       selectedRowId={

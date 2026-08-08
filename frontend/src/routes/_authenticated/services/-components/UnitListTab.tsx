@@ -95,19 +95,25 @@ function UnitListTab<T extends UnitListItem>({
       .sort(compareItems);
   }, [compareItems, data, matchesSearch, search]);
 
-  const handleCardExpand = (name: string | null) => {
-    setExpanded(name);
-    if (name === null && returnToTable) {
-      setViewMode("table");
-      setReturnToTable(false);
-    }
-  };
+  const handleCardExpand = useCallback(
+    (name: string | null) => {
+      setExpanded(name);
+      if (name === null && returnToTable) {
+        setViewMode("table");
+        setReturnToTable(false);
+      }
+    },
+    [returnToTable, setExpanded, setViewMode],
+  );
 
-  const handleOpenCardView = (name: string) => {
-    setViewMode("card");
-    setExpanded(name);
-    setReturnToTable(true);
-  };
+  const handleOpenCardView = useCallback(
+    (name: string) => {
+      setViewMode("card");
+      setExpanded(name);
+      setReturnToTable(true);
+    },
+    [setExpanded, setViewMode],
+  );
 
   const selectedItem = expanded
     ? (filtered.find((item) => item.name === expanded) ?? null)
