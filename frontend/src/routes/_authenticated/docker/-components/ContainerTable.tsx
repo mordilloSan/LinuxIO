@@ -27,12 +27,14 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
+import AppDivider from "@/components/ui/AppDivider";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 import "./container-table.css";
@@ -831,25 +833,48 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
   );
 }
 
+interface ContainerAction {
+  icon: string;
+  label: string;
+  loading?: boolean;
+  onClick: () => void;
+}
+
 interface ActionsCellProps {
+  autoUpdateDisabled: boolean;
+  autoUpdatePending: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelected: boolean;
+  // Below md only Name and Actions remain, and a seven-icon strip leaves the
+  // name barely legible — so the same actions collapse into one menu, which
+  // also swallows the auto-update toggle that sits beside the strip.
+  compact: boolean;
   containerId: string;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
+  onToggleAutoUpdate: (name: string) => void;
   pending?: boolean;
   state: string;
   url?: string;
 }
 
 const ActionsCell = memo(function ActionsCell({
+  autoUpdateDisabled,
+  autoUpdatePending,
+  autoUpdateReason,
+  autoUpdateSelected,
+  compact,
   containerId,
   name,
   onOpenLogs,
   onOpenTerminal,
+  onToggleAutoUpdate,
   pending = false,
   state,
   url,
 }: ActionsCellProps) {
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const { mutate: startContainer } = linuxio.docker.start_container.useAction({
     success: `Container ${name} started`,
     error: `Failed to start ${name}`,
@@ -874,6 +899,104 @@ const ActionsCell = memo(function ActionsCell({
     },
   );
 
+  const actions: ContainerAction[] = [
+    state === "running"
+      ? {
+          icon: "mdi:stop",
+          label: "Stop",
+          loading: pending,
+          onClick: () => stopContainer({ containerId }),
+        }
+      : {
+          icon: "mdi:play",
+          label: "Start",
+          onClick: () => startContainer({ containerId }),
+        },
+    {
+      icon: "mdi:restart",
+      label: "Restart",
+      onClick: () => restartContainer({ containerId }),
+    },
+    {
+      icon: "mdi:delete",
+      label: "Remove",
+      onClick: () => removeContainer({ containerId }),
+    },
+    {
+      icon: "mdi:file-document-outline",
+      label: "Logs",
+      onClick: () => onOpenLogs(containerId, name),
+    },
+    {
+      icon: "mdi:console",
+      label: "Terminal",
+      onClick: () => onOpenTerminal(containerId, name),
+    },
+    ...(url
+      ? [
+          {
+            icon: "mdi:open-in-new",
+            label: "Open App",
+            onClick: () => window.open(url, "_blank", "noopener"),
+          },
+        ]
+      : []),
+  ];
+
+  if (compact) {
+    return (
+      <>
+        <AppActionIconButton
+          ariaLabel={`Actions for ${name}`}
+          icon="mdi:dots-vertical"
+          iconSize={20}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          tooltip={false}
+        />
+        <AppMenu
+          anchorEl={menuAnchor}
+          minWidth={160}
+          onClose={() => setMenuAnchor(null)}
+          open={Boolean(menuAnchor)}
+        >
+          {actions.map((action) => (
+            <AppMenuItem
+              disabled={pending}
+              key={action.label}
+              onClick={() => {
+                setMenuAnchor(null);
+                action.onClick();
+              }}
+              startAdornment={<Icon icon={action.icon} width={18} />}
+            >
+              {action.label}
+            </AppMenuItem>
+          ))}
+          <AppDivider />
+          <AppMenuItem
+            disabled={autoUpdateDisabled || autoUpdatePending}
+            endAdornment={
+              autoUpdateSelected ? <Icon icon="mdi:check" width={16} /> : null
+            }
+            onClick={() => {
+              setMenuAnchor(null);
+              onToggleAutoUpdate(name);
+            }}
+            selected={autoUpdateSelected}
+            startAdornment={<Icon icon="mdi:timer-cog-outline" width={18} />}
+            title={
+              autoUpdateDisabled
+                ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
+                : undefined
+            }
+          >
+            Auto-update
+          </AppMenuItem>
+        </AppMenu>
+      </>
+    );
+  }
+
   return (
     <div
       style={{
@@ -883,96 +1006,23 @@ const ActionsCell = memo(function ActionsCell({
         gap: 2,
       }}
     >
-      {state !== "running" && (
-        <AppTooltip title="Start">
+      {actions.map((action) => (
+        // The outer tooltip wraps a span because a disabled button emits no
+        // hover events of its own.
+        <AppTooltip key={action.label} title={action.label}>
           <span>
             <AppActionIconButton
-              disabled={pending}
-              icon="mdi:play"
+              disabled={pending && !action.loading}
+              icon={action.icon}
               iconSize={16}
-              label="Start"
-              onClick={() => startContainer({ containerId })}
+              label={action.label}
+              loading={action.loading}
+              onClick={action.onClick}
               tooltip={false}
             />
           </span>
         </AppTooltip>
-      )}
-      {state === "running" && (
-        <AppTooltip title="Stop">
-          <span>
-            <AppActionIconButton
-              icon="mdi:stop"
-              iconSize={16}
-              label="Stop"
-              loading={pending}
-              onClick={() => stopContainer({ containerId })}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-      )}
-      <AppTooltip title="Restart">
-        <span>
-          <AppActionIconButton
-            disabled={pending}
-            icon="mdi:restart"
-            iconSize={16}
-            label="Restart"
-            onClick={() => restartContainer({ containerId })}
-            tooltip={false}
-          />
-        </span>
-      </AppTooltip>
-      <AppTooltip title="Remove">
-        <span>
-          <AppActionIconButton
-            disabled={pending}
-            icon="mdi:delete"
-            iconSize={16}
-            label="Remove"
-            onClick={() => removeContainer({ containerId })}
-            tooltip={false}
-          />
-        </span>
-      </AppTooltip>
-      <AppTooltip title="Logs">
-        <span>
-          <AppActionIconButton
-            disabled={pending}
-            icon="mdi:file-document-outline"
-            iconSize={16}
-            label="Logs"
-            onClick={() => onOpenLogs(containerId, name)}
-            tooltip={false}
-          />
-        </span>
-      </AppTooltip>
-      <AppTooltip title="Terminal">
-        <span>
-          <AppActionIconButton
-            disabled={pending}
-            icon="mdi:console"
-            iconSize={16}
-            label="Terminal"
-            onClick={() => onOpenTerminal(containerId, name)}
-            tooltip={false}
-          />
-        </span>
-      </AppTooltip>
-      {url && (
-        <AppTooltip title="Open App">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:open-in-new"
-              iconSize={16}
-              label="Open App"
-              onClick={() => window.open(url, "_blank", "noopener")}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-      )}
+      ))}
     </div>
   );
 });
@@ -1005,6 +1055,10 @@ const ContainerTable = ({
   onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
+  const theme = useAppTheme();
+  // Same breakpoint the Version and Uptime columns hide at, so the strip
+  // collapses exactly when Actions starts crowding the name.
+  const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1039,7 +1093,19 @@ const ContainerTable = ({
         id: "name",
         header: "Name",
         cell: ({ row }) => <ContainerNameCell container={row.original} />,
-        meta: { align: "left", width: "minmax(0, 1.6fr)" },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              getContainerName(container),
+              getDisplayState(container),
+              container.icon,
+            ];
+          },
+          width: "minmax(0, 1.6fr)",
+        },
       },
       {
         id: "version",
@@ -1093,7 +1159,18 @@ const ContainerTable = ({
             )}
           />
         ),
-        meta: { hideBelow: "lg" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              Object.keys(container.NetworkSettings?.Networks ?? {})
+                .sort()
+                .join("|"),
+            ];
+          },
+          hideBelow: "lg",
+        },
       },
       {
         id: "ip",
@@ -1105,7 +1182,23 @@ const ContainerTable = ({
             )}
           />
         ),
-        meta: { hideBelow: "lg", width: "130px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              Object.entries(container.NetworkSettings?.Networks ?? {})
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(
+                  ([networkName, endpoint]) =>
+                    `${networkName}:${endpoint.IPAddress || "-"}`,
+                )
+                .join("|"),
+            ];
+          },
+          hideBelow: "lg",
+          width: "130px",
+        },
       },
       {
         id: "ports",
@@ -1177,6 +1270,14 @@ const ContainerTable = ({
         cell: ({ row }) => <MetricsCell container={row.original} />,
         meta: {
           align: "center",
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              (container.metrics?.cpu_percent ?? 0).toFixed(1),
+              formatFileSize(container.metrics?.mem_usage ?? 0),
+            ];
+          },
           hideBelow: "xl",
           width: "110px",
         },
@@ -1190,19 +1291,27 @@ const ContainerTable = ({
           const name = getContainerName(container);
           return (
             <>
-              <AutoUpdateCell
+              {!compactActions && (
+                <AutoUpdateCell
+                  autoUpdateDisabled={autoUpdateDisabled}
+                  autoUpdatePending={autoUpdatePendingNames.has(name)}
+                  autoUpdateReason={autoUpdateReason}
+                  autoUpdateSelected={autoUpdateSelectedNames.has(name)}
+                  name={name}
+                  onToggleAutoUpdate={onToggleAutoUpdate}
+                />
+              )}
+              <ActionsCell
                 autoUpdateDisabled={autoUpdateDisabled}
                 autoUpdatePending={autoUpdatePendingNames.has(name)}
                 autoUpdateReason={autoUpdateReason}
                 autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-                name={name}
-                onToggleAutoUpdate={onToggleAutoUpdate}
-              />
-              <ActionsCell
+                compact={compactActions}
                 containerId={container.Id}
                 name={name}
                 onOpenLogs={openLogs}
                 onOpenTerminal={openTerminal}
+                onToggleAutoUpdate={onToggleAutoUpdate}
                 pending={stoppingContainerIds.has(container.Id)}
                 state={container.State}
                 url={container.url}
@@ -1219,6 +1328,9 @@ const ContainerTable = ({
           // track without clipping, and gap: 2 matches the strip's own spacing
           // across the auto-update toggle sitting beside it.
           cellStyle: { gap: 2, paddingInline: 8 },
+          // A compact row holds nothing but the menu button, so the rest of the
+          // track goes back to the name.
+          width: compactActions ? "56px" : "215px",
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             const name = getContainerName(container);
@@ -1234,7 +1346,6 @@ const ContainerTable = ({
               autoUpdateSelectedNames.has(name),
             ];
           },
-          width: "215px",
         },
       },
     ],
@@ -1244,6 +1355,7 @@ const ContainerTable = ({
       autoUpdateReason,
       autoUpdateSelectedNames,
       checkingUpdates,
+      compactActions,
       openLogs,
       openTerminal,
       onToggleAutoUpdate,
