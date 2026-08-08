@@ -714,6 +714,7 @@ function AppDataTable<TData extends RowData>({
 
   const table = useTable({
     features: appTableFeatures,
+    autoResetExpanded: false,
     columns,
     data,
     enableSorting,

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import { render, screen } from "@/test/render";
+import { act, render, screen } from "@/test/render";
 
 interface SelectableRow {
   id: string;
@@ -248,5 +248,34 @@ describe("AppDataTable", () => {
     );
 
     expect(renderExpandedContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps rows expanded when polled data is replaced", async () => {
+    const renderExpandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(<TestTable expandedContent={renderExpandedContent} />);
+
+    await view.user.click(
+      screen.getAllByRole("button", { name: "Expand row" })[0],
+    );
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+
+    // What a refetch looks like: same row ids, new array and row objects, one
+    // drifting field (Docker's "Up 4 minutes" status). TanStack's auto-reset
+    // runs in a queueMicrotask, so the collapse this guards against only shows
+    // up after the flush that the async act below performs.
+    await act(async () => {
+      view.rerender(
+        <TestTable
+          data={tableRows.map((row) =>
+            row.id === "one" ? { ...row, status: "running (2m)" } : { ...row },
+          )}
+          expandedContent={renderExpandedContent}
+        />,
+      );
+    });
+
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
   });
 });
