@@ -243,7 +243,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       onComplete?: () => void,
     ) => {
       const getSpeed = createProgressSpeedCalculator();
-      return runStreamResult<void, ProgressFrame>({
+      return runStreamResult<void>({
         open: () => openTaskWatchStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",

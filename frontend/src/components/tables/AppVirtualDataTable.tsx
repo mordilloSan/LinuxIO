@@ -81,7 +81,7 @@ export interface AppVirtualDataTableDndOptions<TData extends RowData> {
 export interface AppVirtualDataTableProps<TData extends RowData> {
   ariaLabel?: string;
   className?: string;
-  columns: AppVirtualDataTableColumnDef<TData, unknown>[];
+  columns: AppVirtualDataTableColumnDef<TData>[];
   data: TData[];
   density?: "comfortable" | "compact";
   /**
@@ -150,7 +150,7 @@ type VirtualTableEntry<TData extends RowData> =
     };
 
 function columnTrack<TData extends RowData>(
-  column: Column<AppTableFeatures, TData, unknown>,
+  column: Column<AppTableFeatures, TData>,
 ) {
   const width = column.columnDef.meta?.width;
   if (typeof width === "number") return `${width}px`;
@@ -165,7 +165,7 @@ function alignToJustify(align?: "left" | "center" | "right") {
 }
 
 function getColumnDefId<TData extends RowData>(
-  column: AppVirtualDataTableColumnDef<TData, unknown>,
+  column: AppVirtualDataTableColumnDef<TData>,
   index: number,
 ) {
   const candidate = column as {
@@ -195,7 +195,7 @@ function areCellRenderKeysEqual(
 }
 
 function getCellRenderKey<TData extends RowData>(
-  cell: Cell<AppTableFeatures, TData, unknown>,
+  cell: Cell<AppTableFeatures, TData>,
   rowIndex: number,
 ) {
   const getExplicitRenderKey = cell.column.columnDef.meta?.getCellRenderKey;
@@ -205,7 +205,7 @@ function getCellRenderKey<TData extends RowData>(
 }
 
 interface AppVirtualDataTableCellProps<TData extends RowData> {
-  cell: Cell<AppTableFeatures, TData, unknown>;
+  cell: Cell<AppTableFeatures, TData>;
   renderKey: AppDataTableCellRenderKey;
 }
 
@@ -286,7 +286,7 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
   dnd?: AppVirtualDataTableDndOptions<TData>;
   // Invalidate a memoized row when same-ID columns replace their renderer or
   // metadata; the row reads the actual visible cells from TanStack Table.
-  columnVersion: AppVirtualDataTableColumnDef<TData, unknown>[];
+  columnVersion: AppVirtualDataTableColumnDef<TData>[];
   getRowAttributes?: (
     row: Row<AppTableFeatures, TData>,
   ) => HTMLAttributes<HTMLDivElement>;

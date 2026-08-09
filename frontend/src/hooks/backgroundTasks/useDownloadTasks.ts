@@ -215,7 +215,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         // waiting_for_client).
         let dataStreamHasProgress = false;
         const getTaskSpeed = createProgressSpeedCalculator();
-        void runStreamResult<unknown, ProgressFrame>({
+        void runStreamResult<unknown>({
           open: () => openTaskWatchStream(activeDownloadTask.id),
           signal: abortController.signal,
           closeOnAbort: "none",

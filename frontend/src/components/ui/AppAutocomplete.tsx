@@ -217,7 +217,7 @@ const AppAutocomplete = (props: AppAutocompleteProps) => {
     });
   };
 
-  const handleInputKeyDown = (event: KeyboardEvent<Element>) => {
+  const handleInputKeyDown = (event: KeyboardEvent) => {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();

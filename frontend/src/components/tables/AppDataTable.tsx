@@ -102,7 +102,7 @@ export interface AppDataTableDndOptions<TData extends RowData> {
 export interface AppDataTableProps<TData extends RowData> {
   ariaLabel?: string;
   className?: string;
-  columns: AppDataTableColumnDef<TData, unknown>[];
+  columns: AppDataTableColumnDef<TData>[];
   data: TData[];
   density?: "comfortable" | "compact";
   dnd?: AppDataTableDndOptions<TData>;
@@ -143,7 +143,7 @@ export interface AppDataTableProps<TData extends RowData> {
 }
 
 function columnTrack<TData extends RowData>(
-  column: Column<AppTableFeatures, TData, unknown>,
+  column: Column<AppTableFeatures, TData>,
 ) {
   const width = column.columnDef.meta?.width;
   if (typeof width === "number") return `${width}px`;
@@ -158,7 +158,7 @@ function alignToJustify(align?: "left" | "center" | "right") {
 }
 
 function getColumnDefId<TData extends RowData>(
-  column: AppDataTableColumnDef<TData, unknown>,
+  column: AppDataTableColumnDef<TData>,
   index: number,
 ) {
   const candidate = column as {
@@ -196,7 +196,7 @@ function areVersionArraysEqual(
 }
 
 function getCellRenderKey<TData extends RowData>(
-  cell: Cell<AppTableFeatures, TData, unknown>,
+  cell: Cell<AppTableFeatures, TData>,
   rowIndex: number,
 ) {
   return (
@@ -208,8 +208,8 @@ function getCellRenderKey<TData extends RowData>(
 }
 
 interface AppDataTableCellProps<TData extends RowData> {
-  cell: Cell<AppTableFeatures, TData, unknown>;
-  columnDef: AppDataTableColumnDef<TData, unknown>;
+  cell: Cell<AppTableFeatures, TData>;
+  columnDef: AppDataTableColumnDef<TData>;
   renderKey: AppDataTableCellRenderKey;
   rowIndex: number;
 }
@@ -521,7 +521,7 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
 interface AppDataTableHeaderProps<TData extends RowData> {
   // These version props keep same-ID renderer and sorting changes visible to a
   // memoized header even when TanStack can reuse its header-group objects.
-  columnVersion: AppDataTableColumnDef<TData, unknown>[];
+  columnVersion: AppDataTableColumnDef<TData>[];
   hasDragColumn: boolean;
   hasExpandColumn: boolean;
   headerGroups: HeaderGroup<AppTableFeatures, TData>[];

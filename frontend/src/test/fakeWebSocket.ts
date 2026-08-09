@@ -1,5 +1,5 @@
 export type FakeCloseEvent = Pick<CloseEvent, "code" | "reason">;
-type Bytes = Uint8Array<ArrayBufferLike>;
+type Bytes = Uint8Array;
 
 export class FakeWebSocket {
   static readonly CONNECTING = 0;

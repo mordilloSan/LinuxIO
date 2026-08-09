@@ -44,7 +44,7 @@ export type CallDescriptor<
   R extends CallRoute,
   TData = CallResult<R>,
 > = UseQueryOptions<CallResult<R>, LinuxIOError, TData> & {
-  queryFn: QueryFunction<CallResult<R>, QueryKey>;
+  queryFn: QueryFunction<CallResult<R>>;
   queryKey: QueryKey;
   readonly route: R;
 };
@@ -67,7 +67,7 @@ export function defineCall<R extends NoRequestCallRoute>(
   route: R,
 ): CallDescriptor<R> {
   const [handler, command] = splitCallRoute(route);
-  const queryFn: QueryFunction<CallResult<R>, QueryKey> = ({ signal }) =>
+  const queryFn: QueryFunction<CallResult<R>> = ({ signal }) =>
     call(route, undefined, { signal });
   return {
     queryFn,
@@ -83,7 +83,7 @@ export function defineCallWithRequest<R extends RequestCallRoute>(
   const [handler, command] = splitCallRoute(route);
   return Object.assign(
     (request: CallRequest<R>): CallDescriptor<R> => {
-      const queryFn: QueryFunction<CallResult<R>, QueryKey> = ({ signal }) =>
+      const queryFn: QueryFunction<CallResult<R>> = ({ signal }) =>
         call(route, request, { signal });
       return {
         queryFn,
