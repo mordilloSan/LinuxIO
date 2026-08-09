@@ -2633,17 +2633,6 @@ static int handle_client(int input_fd, int output_fd)
   close(bootstrap_pipe[1]);
   bootstrap_pipe[1] = -1;
 
-  if (rc_bootstrap != 0)
-  {
-    const struct journal_field fields[] = {
-        {"LINUXIO_USER", auth_user.name},
-    };
-    journal_error_fieldsf(fields, 1, "failed to write bootstrap to pipe");
-    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
-    child_signal = SIGTERM;
-    goto out;
-  }
-
   // Close bridge_fd - child has it via fork
   close(bridge_fd);
   bridge_fd = -1;
@@ -2660,6 +2649,21 @@ static int handle_client(int input_fd, int output_fd)
       startup_status_channel[0], ready_timeout_ms, request_deadline_ns,
       bridge_err, sizeof(bridge_err), &bad_status);
   int startup_errno = errno;
+
+  // A pre-exec child failure closes the bootstrap reader and reports its
+  // status on the startup channel. Either event can reach the parent first,
+  // so consume the status before classifying an EPIPE from the bootstrap
+  // write. Preserve the existing bootstrap error for every other outcome.
+  if (rc_bootstrap != 0 && startup != BRIDGE_STARTUP_EXEC_FAILED)
+  {
+    const struct journal_field fields[] = {
+        {"LINUXIO_USER", auth_user.name},
+    };
+    journal_error_fieldsf(fields, 1, "failed to write bootstrap to pipe");
+    send_error_response(output_fd, PROTO_RESULT_BRIDGE_ERROR, "bootstrap communication failed");
+    child_signal = SIGTERM;
+    goto out;
+  }
 
   switch (startup)
   {
