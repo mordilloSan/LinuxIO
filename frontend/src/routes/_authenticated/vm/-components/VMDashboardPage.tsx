@@ -7,15 +7,8 @@ import { VMDashboardTab } from "./VMTabs";
 const VMDashboardPage = () => {
   const [{ data: vms }, { data: preflight }] = useSuspenseQueries({
     queries: [
-      linuxio.virt.list.queryOptions({
-        refetchOnMount: false,
-      }),
-      linuxio.virt.preflight.queryOptions(
-        {},
-        {
-          refetchOnMount: false,
-        },
-      ),
+      { ...linuxio.virt.list, refetchOnMount: false },
+      { ...linuxio.virt.preflight({}), refetchOnMount: false },
     ],
   });
 

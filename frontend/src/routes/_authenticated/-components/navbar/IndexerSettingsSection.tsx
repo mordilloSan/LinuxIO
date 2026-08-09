@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import {
   type IndexerIntegrityCheck,
   linuxio,
   type UnitInfo,
+  useCallMutation,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -285,7 +286,7 @@ const getStatusColor = (
 
 const IndexerSettingsSection = () => {
   const theme = useAppTheme();
-  const indexerConfigCache = linuxio.indexer.get_config.useCache();
+  const queryClient = useQueryClient();
   const {
     isEnabled: indexerEnabled,
     status: indexerStatus,
@@ -298,41 +299,40 @@ const IndexerSettingsSection = () => {
     error,
     refetch,
     isFetching,
-  } = useQuery(
-    linuxio.indexer.get_config.queryOptions({
-      enabled: indexerEnabled,
-      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.indexer.get_config,
+    enabled: indexerEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+  });
   const {
     data: daemonStatus,
     error: statusError,
     refetch: refetchStatus,
     isFetching: isStatusFetching,
-  } = useQuery(
-    linuxio.indexer.get_status.queryOptions({
-      enabled: indexerEnabled,
-      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.indexer.get_status,
+    enabled: indexerEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+  });
   const {
     data: timerInfo,
     error: timerError,
     refetch: refetchTimer,
     isFetching: isTimerFetching,
-  } = useQuery(
-    linuxio.systemd.get_unit_info.queryOptions(INDEXER_TIMER_UNIT, {
-      enabled: indexerEnabled,
-      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: INDEXER_TIMER_UNIT }),
+    enabled: indexerEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+  });
 
-  const setConfigMutation = linuxio.indexer.set_config.useAction({
+  const setConfigMutation = useCallMutation(linuxio.indexer.set_config, {
     error: "Failed to save indexer settings",
   });
-  const setTimerMutation = linuxio.indexer.set_timer_interval.useAction({
+  const setTimerMutation = useCallMutation(linuxio.indexer.set_timer_interval, {
     error: "Failed to save indexer timer",
-    invalidates: [linuxio.systemd.get_unit_info.queryKey(INDEXER_TIMER_UNIT)],
+    invalidates: [
+      linuxio.systemd.get_unit_info({ unitName: INDEXER_TIMER_UNIT }).queryKey,
+    ],
   });
 
   const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
@@ -398,7 +398,10 @@ const IndexerSettingsSection = () => {
       }
 
       if (nextConfig) {
-        indexerConfigCache.set(nextConfig);
+        queryClient.setQueryData(
+          linuxio.indexer.get_config.queryKey,
+          nextConfig,
+        );
       }
       setDraftPatch({});
       setErrors({});

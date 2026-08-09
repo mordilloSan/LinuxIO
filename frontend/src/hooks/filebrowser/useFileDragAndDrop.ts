@@ -2,7 +2,7 @@ import { useCallback, useState, type DragEvent } from "react";
 
 import type { ResolveCollisionsFn } from "@/hooks/filebrowser/useFileConflicts";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
+import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import { FileResource } from "@/types/filebrowser";
 import { joinPath } from "@/utils/path";
 
@@ -14,7 +14,7 @@ interface UseDragAndDropUploadParams {
   onUploadComplete: () => void;
   resolveCollisions: ResolveCollisionsFn;
   resource?: FileResource | null;
-  startUpload: BackgroundJobsContextValue["startUpload"];
+  startUpload: BackgroundTasksContextValue["startUpload"];
 }
 
 interface UseDragAndDropUploadResult {

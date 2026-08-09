@@ -90,12 +90,11 @@ const ContainerList = ({
     viewMode === "card" && !selectedContainerId
       ? selectCardContainers
       : selectAllContainers;
-  const { data: rawContainers } = useSuspenseQuery(
-    linuxio.docker.list_containers.queryOptions({
-      select: selectContainers,
-      refetchInterval: 5000,
-    }),
-  );
+  const { data: rawContainers } = useSuspenseQuery({
+    ...linuxio.docker.list_containers,
+    select: selectContainers,
+    refetchInterval: 5000,
+  });
   const containers = rawContainers;
   const [search, setSearch] = useState("");
 

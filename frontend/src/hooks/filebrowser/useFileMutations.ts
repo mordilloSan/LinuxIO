@@ -5,6 +5,7 @@ import {
   type FileChmodBatchRequest,
   type FileExtractRequest,
   linuxio,
+  useCallMutation,
 } from "@/api";
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -15,7 +16,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 import { joinPath } from "@/utils/path";
 
-import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
+import { useBackgroundTaskActions } from "../backgroundTasks/useBackgroundTaskActions";
 
 const FILES_TOAST_META = {
   label: "Open files",
@@ -53,8 +54,8 @@ interface RenamePayload {
   from: string;
 }
 
-// Result returned by the batch copy/move/delete/chmod bridge jobs.
-interface BatchJobResult {
+// Result returned by the batch copy/move/delete/chmod bridge tasks.
+interface BatchTaskResult {
   total?: number;
   succeeded?: number;
   failed?: { path: string; error: string }[];
@@ -67,18 +68,21 @@ export const useFileMutations = ({
 }: UseFileMutationsParams) => {
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
-    useBackgroundJobActions();
+    useBackgroundTaskActions();
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
-  const createFileMutation = linuxio.filebrowser.resource_post.useAction({
-    success: () => {
-      invalidateListing();
-      toast.success("File created successfully");
+  const createFileMutation = useCallMutation(
+    linuxio.filebrowser.resource_post,
+    {
+      success: () => {
+        invalidateListing();
+        toast.success("File created successfully");
+      },
+      error: "Failed to create file",
+      toast: FILES_TOAST_META,
     },
-    error: "Failed to create file",
-    toast: FILES_TOAST_META,
-  });
+  );
 
   const createFile = useCallback(
     (fileName: string) => {
@@ -88,14 +92,17 @@ export const useFileMutations = ({
     [createFileMutation, normalizedPath],
   );
 
-  const createFolderMutation = linuxio.filebrowser.resource_post.useAction({
-    success: () => {
-      invalidateListing();
-      toast.success("Folder created successfully");
+  const createFolderMutation = useCallMutation(
+    linuxio.filebrowser.resource_post,
+    {
+      success: () => {
+        invalidateListing();
+        toast.success("Folder created successfully");
+      },
+      error: "Failed to create folder",
+      toast: FILES_TOAST_META,
     },
-    error: "Failed to create folder",
-    toast: FILES_TOAST_META,
-  });
+  );
 
   const createFolder = useCallback(
     (folderName: string) => {
@@ -105,11 +112,11 @@ export const useFileMutations = ({
     [createFolderMutation, normalizedPath],
   );
 
-  // One batch job deletes the whole selection; the bridge loops server-side
+  // One batch task deletes the whole selection; the bridge loops server-side
   // and reports per-item failures in the result.
   const deleteBatchAction =
-    linuxio.filebrowser.delete_batch.useJobStreamAction<BatchJobResult>({
-      closeMessage: "Delete job stream closed before completion",
+    linuxio.filebrowser.delete_batch.useTaskStreamAction<BatchTaskResult>({
+      closeMessage: "Delete task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
       success: (result) => {
@@ -166,7 +173,7 @@ export const useFileMutations = ({
           onComplete: invalidateListing,
         });
       } catch (error) {
-        // Note: errors are also handled by BackgroundJobsContext
+        // Note: errors are also handled by BackgroundTasksContext
         toast.error(
           getMutationErrorMessage(error, "Failed to extract archive"),
         );
@@ -176,11 +183,11 @@ export const useFileMutations = ({
     [invalidateListing, startExtraction, toast],
   );
 
-  // One batch job changes permissions of the whole selection; the bridge
+  // One batch task changes permissions of the whole selection; the bridge
   // loops server-side and reports per-item failures in the result.
   const changePermissionsAction =
-    linuxio.filebrowser.chmod_batch.useJobStreamAction<BatchJobResult>({
-      closeMessage: "Permissions job stream closed before completion",
+    linuxio.filebrowser.chmod_batch.useTaskStreamAction<BatchTaskResult>({
+      closeMessage: "Permissions task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
       success: (result) => {
@@ -221,7 +228,7 @@ export const useFileMutations = ({
     [changePermissionsAction],
   );
 
-  const renameMutation = linuxio.filebrowser.resource_patch.useJobAction({
+  const renameMutation = linuxio.filebrowser.resource_patch.useTaskAction({
     success: () => {
       invalidateListing();
       toast.success("Item renamed successfully");
@@ -287,7 +294,7 @@ export const useFileMutations = ({
         if (!plan) {
           return;
         }
-        // One batch job copies the whole selection into destinationDir; the
+        // One batch task copies the whole selection into destinationDir; the
         // bridge loops server-side and reports one aggregate progress bar.
         await startCopy({
           sources: plan.sources,
@@ -315,7 +322,7 @@ export const useFileMutations = ({
         if (!plan) {
           return;
         }
-        // One batch job moves the whole selection into destinationDir.
+        // One batch task moves the whole selection into destinationDir.
         await startMove({
           sources: plan.sources,
           destination: destinationDir,

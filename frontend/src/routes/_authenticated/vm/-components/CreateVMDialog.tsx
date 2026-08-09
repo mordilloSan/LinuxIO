@@ -7,7 +7,7 @@ import {
   type SyntheticEvent,
 } from "react";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { call, linuxio, useCallMutation } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -168,7 +168,6 @@ export default function CreateVMDialog({
 }) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const fetchResourceStat = linuxio.filebrowser.resource_stat.useFetcher();
   const toast = useScopedToast(VM_TOAST);
   const [name, setName] = useState("");
   const [vcpus, setVCPUs] = useState("2");
@@ -189,24 +188,26 @@ export default function CreateVMDialog({
   const usesCloudInit = Boolean(
     imagePresetId && CLOUD_INIT_IMAGE_PRESETS.has(imagePresetId),
   );
-  const preflight = useQuery(
-    linuxio.virt.preflight.queryOptions(
-      {
-        imagePresetId,
-        isoPath: usesISO ? isoPath || undefined : undefined,
-        sourceType,
-      },
-      { enabled: open, refetchInterval: open ? 5000 : false },
-    ),
-  );
-  const { refetch: refetchPreflight } = preflight;
-  const createISOFolderMutation = linuxio.filebrowser.resource_post.useAction({
-    invalidates: (_result, variables) => [
-      linuxio.filebrowser.resource_get.queryKey({
-        path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
-      }),
-    ],
+  const preflight = useQuery({
+    ...linuxio.virt.preflight({
+      imagePresetId,
+      isoPath: usesISO ? isoPath || undefined : undefined,
+      sourceType,
+    }),
+    enabled: open,
+    refetchInterval: open ? 5000 : false,
   });
+  const { refetch: refetchPreflight } = preflight;
+  const createISOFolderMutation = useCallMutation(
+    linuxio.filebrowser.resource_post,
+    {
+      invalidates: (_result, variables) => [
+        linuxio.filebrowser.resource_get({
+          path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
+        }).queryKey,
+      ],
+    },
+  );
   const managedISOPath =
     preflight.data?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
   const managedCloudPath =
@@ -278,9 +279,8 @@ export default function CreateVMDialog({
     if (!folder || folder === "/") return;
 
     try {
-      const stat = await fetchResourceStat(folder, {
-        staleTime: CACHE_TTL_MS.NONE,
-        gcTime: CACHE_TTL_MS.NONE,
+      const stat = await call(linuxio.filebrowser.resource_stat.route, {
+        path: folder,
       });
       if (stat.mode && !stat.mode.startsWith("d")) {
         toast.error(`${folder} exists but is not a directory.`);
@@ -306,14 +306,7 @@ export default function CreateVMDialog({
         getMutationErrorMessage(error, "Failed to create ISO folder"),
       );
     }
-  }, [
-    createISOFolderMutation,
-    fetchResourceStat,
-    isoPath,
-    refetchPreflight,
-    toast,
-    usesISO,
-  ]);
+  }, [createISOFolderMutation, isoPath, refetchPreflight, toast, usesISO]);
 
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -594,7 +587,7 @@ export default function CreateVMDialog({
             >
               <div style={createProgressHeaderStyle(theme)}>
                 <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                  {createProgress.message || "Starting VM create job"}
+                  {createProgress.message || "Starting VM create task"}
                 </span>
                 {createProgress.percent !== undefined ? (
                   <strong>{createProgress.percent}%</strong>

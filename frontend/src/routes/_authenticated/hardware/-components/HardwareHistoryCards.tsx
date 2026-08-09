@@ -142,10 +142,8 @@ export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions(
-        hardwareStableQueryOptions,
-      ),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -188,8 +186,8 @@ export const CPUDetailsCard = () => {
   const theme = useAppTheme();
   const [{ data: cpuInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_cpu_info.queryOptions(hardwareStableQueryOptions),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -229,10 +227,8 @@ export const BIOSInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions(
-        hardwareStableQueryOptions,
-      ),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -272,12 +268,11 @@ export const BIOSInfoCard = () => {
 export const GPUInfoCard = () => {
   const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
-  const { data: gpus } = useSuspenseQuery(
-    linuxio.system.get_gpu_info.queryOptions({
-      ...hardwareGpuQueryOptions,
-      refetchInterval: 15_000,
-    }),
-  );
+  const { data: gpus } = useSuspenseQuery({
+    ...linuxio.system.get_gpu_info,
+    ...hardwareGpuQueryOptions,
+    refetchInterval: 15_000,
+  });
 
   const primaryGpu = useMemo(
     () =>
@@ -531,16 +526,15 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_cpu_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_cpu_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
 
@@ -609,16 +603,15 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_memory_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_memory_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const zfsColor = theme.palette.success.main;
   const dockerColor = theme.chart.rx;
@@ -691,16 +684,15 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_diskio_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_diskio_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const readColor = theme.chart.rx;
@@ -744,16 +736,15 @@ const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_network_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_network_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const rxColor = theme.chart.rx;

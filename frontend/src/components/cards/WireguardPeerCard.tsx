@@ -108,12 +108,11 @@ export const selectPeer = (peerName: string) => (peers: Peer[]) =>
   peers.find((peer) => peer.name === peerName);
 
 const usePeer = (interfaceName: string, peerName: string) =>
-  useQuery(
-    linuxio.wireguard.list_peers.queryOptions(interfaceName, {
-      refetchOnMount: false,
-      select: selectPeer(peerName),
-    }),
-  );
+  useQuery({
+    ...linuxio.wireguard.list_peers({ interfaceName }),
+    refetchOnMount: false,
+    select: selectPeer(peerName),
+  });
 
 const isPeerOnline = (peer: Peer, now: number) => {
   const lastHandshake = peer.last_handshake_unix ?? 0;

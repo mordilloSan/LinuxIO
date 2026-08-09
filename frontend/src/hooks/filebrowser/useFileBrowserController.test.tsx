@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
     handleCompressSelection: vi.fn(),
     handleExtractSelection: vi.fn(),
   },
-  backgroundJobs: {
+  backgroundTasks: {
     startDownload: vi.fn(),
     startUpload: vi.fn(),
   },
@@ -231,8 +231,8 @@ vi.mock("@/api", () => ({
   },
 }));
 
-vi.mock("@/hooks/backgroundJobs/useBackgroundJobActions", () => ({
-  useBackgroundJobActions: () => mocks.backgroundJobs,
+vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
+  useBackgroundTaskActions: () => mocks.backgroundTasks,
 }));
 
 vi.mock("@/hooks/filebrowser/useFileBrowserArchiveActions", () => ({

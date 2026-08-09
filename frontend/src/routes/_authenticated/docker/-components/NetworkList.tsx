@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio, type DockerNetworkContainer } from "@/api";
+import { linuxio, type DockerNetworkContainer, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -154,15 +154,17 @@ const CreateNetworkDialog = ({
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
 
-  const { mutate: createNetwork, isPending: isCreating } =
-    linuxio.docker.create_network.useAction({
+  const { mutate: createNetwork, isPending: isCreating } = useCallMutation(
+    linuxio.docker.create_network,
+    {
       success: () => {
         toast.success(`Network "${networkName}" created successfully`);
         handleClose();
       },
       error: "Failed to create network",
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   const nameTaken = networkName && existingNames.includes(networkName);
   const isValidName = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(networkName);
@@ -266,8 +268,9 @@ const DeleteNetworkDialog = ({
   const toast = useScopedToast(DOCKER_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork, isPending: isDeleting } =
-    linuxio.docker.delete_network.useAction();
+  const { mutateAsync: deleteNetwork, isPending: isDeleting } = useCallMutation(
+    linuxio.docker.delete_network,
+  );
 
   const handleDelete = async () => {
     // Delete networks sequentially
@@ -357,11 +360,12 @@ const NetworkList = ({
   viewMode = "table",
 }: NetworkListProps) => {
   const theme = useAppTheme();
-  const { data: rawNetworks } = useSuspenseQuery(
-    linuxio.docker.list_networks.queryOptions({
+  const { data: rawNetworks } = useSuspenseQuery({
+    ...linuxio.docker.list_networks,
+    ...{
       refetchInterval: 10000,
-    }),
-  );
+    },
+  });
   const networks = rawNetworks;
 
   const [search, setSearch] = useState("");

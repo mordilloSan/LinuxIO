@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { JobSnapshot } from "@/api/generated/linuxio-types";
+import type { TaskSnapshot } from "@/api/generated/linuxio-types";
 
 const mocks = vi.hoisted(() => ({
-  openJobAttachStream: vi.fn(),
-  openJobDataStream: vi.fn(),
+  openTaskWatchStream: vi.fn(),
+  openTaskDataStream: vi.fn(),
   request: vi.fn(),
   streamWriteChunks: vi.fn(),
   upload: vi.fn(),
@@ -16,8 +16,8 @@ vi.mock("@/api/generated/client", () => ({
 }));
 
 vi.mock("@/api/linuxio", () => ({
-  openJobAttachStream: mocks.openJobAttachStream,
-  openJobDataStream: mocks.openJobDataStream,
+  openTaskWatchStream: mocks.openTaskWatchStream,
+  openTaskDataStream: mocks.openTaskDataStream,
 }));
 
 vi.mock("@/api/linuxio-core", () => ({
@@ -40,10 +40,10 @@ vi.mock("@/api/stream-helpers", () => ({
 
 const { uploadContent } = await import("@/api/uploads");
 
-function snapshot(overrides: Partial<JobSnapshot> = {}): JobSnapshot {
+function snapshot(overrides: Partial<TaskSnapshot> = {}): TaskSnapshot {
   return {
     created_at: "2026-01-01T00:00:00.000Z",
-    id: "job-1",
+    id: "task-1",
     state: "running",
     type: "filebrowser.upload",
     updated_at: "2026-01-01T00:00:00.000Z",
@@ -56,35 +56,35 @@ describe("uploadContent", () => {
     vi.clearAllMocks();
   });
 
-  it("throws the job's structured error when the start snapshot is terminal", async () => {
+  it("throws the task's structured error when the start snapshot is terminal", async () => {
     // The bridge fails a no-overwrite save onto an existing file before any
     // transfer state exists, so the start reply already carries the 409.
     // Callers (the compose editor's overwrite dialog) depend on that code.
-    const job = snapshot({
+    const task = snapshot({
       error: { code: 409, message: "destination already exists" },
       state: "failed",
     });
-    mocks.upload.mockResolvedValue(job);
-    const onJobStart = vi.fn();
+    mocks.upload.mockResolvedValue(task);
+    const onTaskStart = vi.fn();
 
     await expect(
       uploadContent("/srv/docker-compose.yml", new Uint8Array(4), {
-        onJobStart,
+        onTaskStart,
       }),
     ).rejects.toMatchObject({
       code: 409,
       message: "destination already exists",
     });
 
-    expect(onJobStart).toHaveBeenCalledWith(job);
-    expect(mocks.openJobDataStream).not.toHaveBeenCalled();
+    expect(onTaskStart).toHaveBeenCalledWith(task);
+    expect(mocks.openTaskDataStream).not.toHaveBeenCalled();
     expect(mocks.streamWriteChunks).not.toHaveBeenCalled();
   });
 
-  it("streams the content over the job data stream when the job is live", async () => {
+  it("streams the content over the task data stream when the task is live", async () => {
     mocks.upload.mockResolvedValue(snapshot());
     const stream = { status: "open" };
-    mocks.openJobDataStream.mockReturnValue(stream);
+    mocks.openTaskDataStream.mockReturnValue(stream);
     mocks.waitForStreamResult.mockResolvedValue(undefined);
     mocks.streamWriteChunks.mockResolvedValue(undefined);
 
@@ -97,7 +97,7 @@ describe("uploadContent", () => {
       size: "4",
       overwrite: true,
     });
-    expect(mocks.openJobDataStream).toHaveBeenCalledWith("job-1", 0);
+    expect(mocks.openTaskDataStream).toHaveBeenCalledWith("task-1", 0);
     expect(mocks.streamWriteChunks).toHaveBeenCalledTimes(1);
   });
 });

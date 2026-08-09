@@ -45,7 +45,7 @@ describe("StreamMultiplexer", () => {
 
   it("encodes stream open frames with odd stream ids", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("jobs.attach", encodeString("payload"));
+    const stream = mux.openStream("tasks.watch", encodeString("payload"));
 
     expect(stream.id).toBe(1);
     expect(stream.status).toBe("open");
@@ -68,8 +68,8 @@ describe("StreamMultiplexer", () => {
 
     const terminalA = mux.openStream("terminal.open");
     const terminalB = mux.openStream("terminal.open");
-    const requestA = mux.openStream("jobs.attach");
-    const requestB = mux.openStream("jobs.attach");
+    const requestA = mux.openStream("tasks.watch");
+    const requestB = mux.openStream("tasks.watch");
 
     expect(terminalB).toBe(terminalA);
     expect(requestB).not.toBe(requestA);
@@ -78,7 +78,7 @@ describe("StreamMultiplexer", () => {
 
   it("routes split inbound bridge data, progress, result, and close frames", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("jobs.attach");
+    const stream = mux.openStream("tasks.watch");
     const onData = vi.fn();
     const onProgress = vi.fn();
     const onResult = vi.fn();

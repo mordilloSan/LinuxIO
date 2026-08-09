@@ -9,9 +9,7 @@ export const Route = createFileRoute("/_authenticated/updates/")({
   loader: (loaderArgs) => {
     const { context } = loaderArgs;
     if (context.access.packageKitAvailable !== true) return;
-    return loadRouteQueries(loaderArgs, [
-      linuxio.updates.get_updates_basic.queryOptions(),
-    ]);
+    return loadRouteQueries(loaderArgs, [linuxio.updates.get_updates_basic]);
   },
   component: UpdatesPage,
 });

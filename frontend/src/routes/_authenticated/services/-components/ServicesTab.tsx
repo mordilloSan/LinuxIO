@@ -23,11 +23,10 @@ function matchesServiceSearch(service: Service, search: string): boolean {
 }
 
 function useServicesQuery(viewMode: TableCardViewMode) {
-  return useSuspenseQuery(
-    linuxio.systemd.list_services.queryOptions({
-      refetchInterval: viewMode === "card" ? false : 2000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.systemd.list_services,
+    refetchInterval: viewMode === "card" ? false : 2000,
+  });
 }
 
 interface ServicesTabProps {

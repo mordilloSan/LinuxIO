@@ -2,16 +2,22 @@
 
 ## Status
 
-Proposed.
+In progress as of 2026-08-09. The legacy Job API has been replaced in place by
+Task (no dual runtime or compatibility facade), the three log-follow routes are
+direct Channels, and every bounded route has moved from Query to Call. The
+current route inventory is 203 Call, 18 Task, and 9 Channel/Duplex routes.
+`ModeQuery`, `apischema.Query`, `createQueryEndpoint`, the legacy React Query
+endpoint module, and all `.queryOptions`/`.useAction`/`.useFetcher`/`.useCache`
+consumers are removed.
 
-This plan replaces the current Query/Job/Runner/Duplex API framework with two
+This plan replaces the original Query/Job/Runner/Duplex API framework with two
 transport primitives, Call and Channel, while modeling Task as an application
 service built on top of them.
 
-The migration is deliberately additive. LinuxIO will keep its existing
-WebSocket, yamux, relay framing, route names, and wire envelopes while the new
-API is introduced and measured. Legacy abstractions are removed only after all
-callers have migrated and equivalent behavior has been verified.
+LinuxIO keeps its existing WebSocket, yamux, relay framing, route names, and wire
+envelopes. Each route is cut over vertically after equivalent behavior is
+verified; source control is the rollback path, not a parallel compatibility
+runtime.
 
 This plan assumes that the browser-to-bridge API is internal to LinuxIO. If
 LinuxIO later needs a supported external API, that should be designed as a
@@ -26,10 +32,12 @@ durable-task semantics into one contract.
 - Keep long-lived byte and message streams on one multiplexed Channel model.
 - Reserve Task for work that genuinely needs detachment, tracking, recovery, or
   durability.
-- Remove generated runtime endpoint objects and route-mode checks.
+- Reduce generated runtime values to typed Call descriptors and the separate
+  Task lifecycle surface.
 - Improve or preserve latency, throughput, cancellation, reconnect behavior,
   authorization, and owner isolation.
-- Migrate incrementally with route-level compatibility and rollback points.
+- Migrate one complete route slice at a time, replacing the old path instead of
+  running parallel compatibility paths.
 
 ## Non-goals
 
@@ -40,7 +48,7 @@ The initial migration will not:
 - Make every Task survive bridge termination.
 - Expose arbitrary command execution or D-Bus access to the browser.
 - Generate custom backend JSON request decoders.
-- Redesign every background-job presentation component at once.
+- Redesign every background-Task presentation component at once.
 - Introduce a separate SSE transport.
 
 ## Target architecture
@@ -131,14 +139,14 @@ independent dimensions:
 - Reconnect and resume requirements
 - Query invalidations and other application-side completion behavior
 
-All current Job and Runner routes must be explicitly classified. Log-follow
-routes and transfer routes should not remain Tasks merely because they currently
-use job infrastructure.
+All former Job and Runner routes must be explicitly classified. Log-follow
+routes and transfer routes must not remain Tasks merely because they once used
+the Job infrastructure.
 
 Freeze new uses of the following during the migration:
 
 - Mode and Kind additions
-- Handler-form Job routes
+- Handler-form Task routes
 - HandleEvents
 - Raw Events emitters
 - New generated endpoint capabilities
@@ -165,15 +173,15 @@ overhead.
 ### Phase 0 exit criteria
 
 - Every route is classified.
-- Every current Job has an explicit lifetime and recovery requirement.
+- Every former Job route has an explicit lifetime and recovery requirement.
 - Representative measurements are reproducible.
 - The intended Call, Channel, and Task semantics are documented.
 - No new code expands the legacy abstractions.
 
-## Phase 1: Add the new foundation
+## Phase 1: Establish the final primitives
 
-Introduce the new primitives beside the existing API without migrating feature
-callers.
+Introduce each final primitive with its first complete route migration. Do not
+add an unused facade or a forwarding layer over the legacy framework.
 
 ### Backend
 
@@ -184,9 +192,11 @@ callers.
 - Put task lifecycle behind a focused TaskService.
 - Preserve privilege checks, request decoding, owner checks, cancellation,
   deadlines, and error codes.
-- Keep the current Query and Duplex registration methods as temporary adapters
-  to Call and Channel.
-- Keep current Job runners working through the Task compatibility path.
+- Change a route's registration only when its handler and frontend consumers
+  move to the final primitive in the same slice.
+- Do not forward Query, Job, or Duplex through Call, Channel, or Task. Legacy
+  registrations remain only for routes that have not migrated and shrink with
+  every slice.
 - Preserve route names and the existing stream-open JSON envelope.
 
 The initial implementation should use the existing relay opcodes and yamux
@@ -207,8 +217,8 @@ interface Calls {
 interface Tasks {
   "docker.compose": {
     request: DockerComposeRequest;
-    progress: ComposeJobMessage;
-    result: ComposeJobResult;
+    progress: ComposeTaskMessage;
+    result: ComposeTaskResult;
   };
 }
 
@@ -219,7 +229,7 @@ interface Channels {
 }
 ~~~
 
-The generated contract should expose helpers such as:
+The generated contract exposes helpers such as:
 
 - RouteRequest
 - RouteResult
@@ -228,11 +238,11 @@ The generated contract should expose helpers such as:
 - TaskRoute
 - ChannelRoute
 
-It must not construct endpoint objects or React hooks.
+It must not generate React hooks or mix Task lifecycle into Call descriptors.
 
 ### Frontend
 
-Add small handwritten modules:
+The final frontend API is split by responsibility:
 
 - calls.ts
 - call-react-query.ts
@@ -240,8 +250,14 @@ Add small handwritten modules:
 - tasks.ts
 - task-react-query.ts
 
-Initially keep the existing generated client and endpoint factory unchanged as a
-compatibility surface.
+Do not add a second frontend facade. The generated `linuxio` namespace now
+contains plain Call descriptors/factories and separate Task endpoints; it no
+longer exposes the legacy Query endpoint capabilities.
+
+Call descriptors and Task endpoints use separate runtime factories, so React
+Query fetching does not own Task completion, watching, or progress-stream
+behavior. `task-react-query.ts` may reuse the shared mutation lifecycle in
+`call-react-query.ts`; the dependency never points from Call fetching to Task.
 
 ### Phase 1 exit criteria
 
@@ -250,18 +266,23 @@ compatibility surface.
 - Wrong primitive use fails during TypeScript compilation.
 - No route names or wire envelopes change.
 - Authorization, owner isolation, cancellation, and deadlines remain covered.
+- No migrated route has parallel legacy and final runtime paths.
 
 ## Phase 2: Vertical-slice pilots
 
 Migrate a small set of representative routes before broad conversion:
 
-| Route | Shape | What it proves |
-|---|---|---|
-| system.get_cpu_info | Call | Cached request/response read |
-| docker.start_container | Call | Side-effectful bounded action |
-| logs.general.follow | Channel | Server-producing stream without a backing Job |
-| terminal.open | Channel | Bidirectional interactive stream |
-| docker.compose | Task | Progress, result, cancellation, attachment, and recovery |
+| Route | Shape | Status | What it proves |
+|---|---|---|---|
+| system.get_cpu_info | Call | Migrated | Cached request/response read as a direct TanStack descriptor |
+| docker.start_container | Call | Migrated | Side-effectful bounded action through `useCallMutation` |
+| logs.general.follow | Channel | Migrated | Server-producing stream without a backing Task |
+| terminal.open | Channel | Final primitive already in use | Bidirectional interactive stream |
+| docker.compose | Task | Migrated | Progress, result, cancellation, watching, and recovery |
+
+Each pilot is a direct cutover. Establish parity with focused tests, then remove
+the old backend registration and frontend call path in the same slice; do not
+ship dual dispatch or fallback behavior.
 
 Add an upload or download pilot after the first slices prove the basic design.
 That pilot must cover binary throughput, slow readers, cancellation, and resume
@@ -274,7 +295,8 @@ For each pilot:
 - Preserve toasts and feature-specific UI behavior.
 - Compare legacy and candidate frame traces.
 - Compare old and new latency, allocations, round trips, and code size.
-- Keep the old path available until the candidate passes its acceptance gate.
+- Cut over only after the candidate passes its acceptance gate; source control
+  is the rollback path.
 
 ### Phase 2 performance gates
 
@@ -293,6 +315,11 @@ stop before broad migration and revise the design.
 
 Convert every bounded Query route to Call, one handler family at a time.
 
+Completed: all 203 bounded routes now use direct Call registration. Reads use
+plain TanStack descriptors or request-bound descriptor factories; bounded
+writes use `useCallMutation`. No route retains Query registration or a legacy
+endpoint factory.
+
 Backend Query and Action are no longer different transport concepts. Whether a
 Call is cached or treated as a mutation is decided at the frontend callsite.
 
@@ -302,19 +329,42 @@ Replace legacy endpoint usage incrementally:
 
 ~~~text
 endpoint.queryOptions(...)
-    -> callQueryOptions("route", request, options)
+    -> useQuery(callDescriptor)
 
 endpoint.useAction(...)
-    -> useCallMutation("route", config)
+    -> useCallMutation(callDescriptor, config)
 
 endpoint.useFetcher()
-    -> useCallFetcher("route")
+    -> queryClient.fetchQuery(callDescriptor) or call("route", request)
 
 endpoint.useCache()
-    -> useCallCache("route")
+    -> queryClient operations using callDescriptor.queryKey
 
 endpoint(...)
     -> call("route", request)
+~~~
+
+No-request reads are descriptors themselves, so the intended cached-read syntax
+is:
+
+~~~ts
+useSuspenseQuery(linuxio.system.get_cpu_info);
+~~~
+
+Routes with request data are descriptor factories:
+
+~~~ts
+useQuery(linuxio.example.read_item({ id }));
+~~~
+
+TanStack options are composed directly rather than hidden behind another
+wrapper:
+
+~~~ts
+useSuspenseQuery({
+  ...linuxio.system.get_cpu_info,
+  refetchInterval: 5000,
+});
 ~~~
 
 Standardize request arguments:
@@ -331,7 +381,7 @@ logic.
 Query keys remain deterministic and include the route and request:
 
 ~~~text
-[route, request]
+["linuxio", handler, command, request?]
 ~~~
 
 Keep operation-query-invalidations as application metadata. Invalidation is not
@@ -339,8 +389,8 @@ part of the wire contract and should not be generated into transport code.
 
 ### Phase 3 exit criteria
 
-- Every bounded route uses Call.
-- No new code uses the legacy Query registration or endpoint API.
+- [x] Every bounded route uses Call.
+- [x] No code uses the legacy Query registration or endpoint API.
 - Query and mutation behavior remains covered.
 - Route count and request/result contract parity are maintained.
 - Domain-by-domain migrations pass the combined repository checks.
@@ -355,15 +405,21 @@ Move all long-lived streaming behavior to Channel:
 - Upload and download streams
 - Task data attachment
 
-Reclassify log-follow routes from Job-backed streams to direct server-producing
+Reclassify the former Job-backed log-follow routes as direct server-producing
 Channels unless they have a separately justified detached lifetime.
+
+The first Channel slice moves `logs.general.follow`, `logs.service.follow`, and
+`docker.logs.follow` directly to Channel registration and typed `openChannel()`
+callers. Their former Job registrations and route-specific forwarding functions are
+removed in the same cutover.
 
 Keep StreamMultiplexer and the existing framing helpers. They own real transport
 complexity: framing, reconnect, authentication close handling, buffering,
 scrollback, cancellation, flow control, resize, and binary data.
 
-Route-specific wrappers remain appropriate when they provide an actual payload
-protocol, such as terminal resize controls or resumable transfer offsets.
+Route-specific payload code remains appropriate when it implements real Channel
+semantics, such as terminal resize controls or resumable transfer offsets. It
+must not forward to a Task watch or data stream.
 
 ### Phase 4 exit criteria
 
@@ -397,16 +453,19 @@ Separate its internal responsibilities:
 - Optional binary data attachment
 - Execution substrate
 
-Convert filebrowser.resource_patch and virt.create from emitter-form Jobs to the
-single Task runner shape. After their migration, remove:
+The Job-to-Task runtime and public namespace cutover is complete. It preserved
+execution, ownership, recovery, queueing, replay, and transfer-data semantics
+while deleting the old Job names and paths. The remaining Task simplification
+is to convert `filebrowser.resource_patch` and `virt.create` from emitter-form
+Tasks to the single Task runner shape. After that migration, remove:
 
-- Handler-form Jobs
+- Handler-form Tasks
 - HandleEvents
-- jobEmitter
+- taskEmitter
 - Progress and data capabilities from ordinary Calls
-- Hard-coded job primitive dispatch from the general Router
+- Hard-coded Task primitive dispatch from the general Router
 
-Reclassify the existing Job routes:
+The former Job routes were reclassified as follows:
 
 - Bounded work becomes Call.
 - Session streaming becomes Channel.
@@ -421,7 +480,7 @@ large universal Task configuration object.
 
 - There is one Task runner shape.
 - Task lifecycle is isolated from general Call and Channel routing.
-- The Router does not contain a special jobs route switch.
+- The Router does not contain a special `tasks.*` route switch.
 - Ownership, queueing, rate limits, cancellation, timeout, result replay, and
   progress replay remain covered.
 - In-memory Tasks are not described as bridge-survivable.
@@ -453,7 +512,7 @@ Define loss semantics per primitive.
 - Do not apply a universal automatic retry policy.
 
 For the classified durable subset, implement
-[Bridge-Survivable Jobs via systemd Transient Units](./transient-units-plan.md).
+[Bridge-Survivable Tasks via systemd Transient Units](./transient-units-plan.md).
 Keep ordinary session-bound Tasks in memory.
 
 ### Phase 6 exit criteria
@@ -465,25 +524,23 @@ Keep ordinary session-bound Tasks in memory.
   once from the client's perspective.
 - Nothing claims durability unless an external executor owns the work.
 
-## Phase 7: Remove the legacy framework
+## Phase 7: Remove the remaining legacy framework
 
-Delete compatibility layers only after repository searches show no consumers.
+Delete each remaining legacy surface as its last route moves. Repository
+searches must show no consumers before the shared definition itself is removed.
 
 Expected removals include:
 
-- frontend/src/api/generated/client.ts
-- frontend/src/api/generated/route-metadata.ts
-- createEndpoint
-- Runtime route-mode assertions
-- QueryEndpoint, JobEndpoint, and related capability types
+- createTaskEndpoint after the remaining Task transport cleanup
+- Runtime route-mode assertions used only by Task endpoints
+- TaskEndpoint and related Task capability types
 - Mode and Kind
 - Universal Events
-- streamEmitter and jobEmitter
-- Old Query, Job, JobRunner, and Duplex registration adapters
+- taskEmitter after the remaining handler-form Tasks move to the final Task service
+- Old Query, Task-handler, Task-runner, and Duplex registration adapters
 - HandleEvents
 - RequestShape
-- Job-backed log-stream wrappers
-- Legacy jobs route aliases, if wire compatibility is no longer required
+- Any remaining Task-backed stream facade without payload-specific behavior
 
 Keep generated domain models, the flat type maps, StreamMultiplexer, relay
 framing, and feature-specific stream presentation.
@@ -492,7 +549,7 @@ Update:
 
 - [API Contract](./api-contract.md)
 - [Server Yamux Protocol](./server-yamux-protocol.md)
-- [Bridge-Survivable Jobs](./transient-units-plan.md)
+- [Bridge-Survivable Tasks](./transient-units-plan.md)
 - ToDo
 - Source guards and architecture tests
 
@@ -594,25 +651,25 @@ invocation. Inspect the complete worktree after generation and verification.
 ## Rollout and rollback
 
 - Keep existing route names and wire framing throughout the migration.
-- Introduce new primitives before migrating callers.
-- Keep the legacy frontend facade for unmigrated domains.
-- Migrate one domain or vertical slice per change.
-- Preserve old registration adapters until repository searches show zero
-  consumers.
+- Introduce a final primitive with a complete consumer migration, not as an
+  unused compatibility layer.
+- Delete a legacy frontend surface as soon as its final consumer moves.
+- Migrate one domain or vertical slice per change, deleting that slice's old
+  registration and call path at cutover.
 - Keep each phase independently revertible.
-- Delete compatibility code only after contract parity and runtime behavior have
-  been demonstrated.
+- Demonstrate contract parity and runtime behavior before cutover; rollback is
+  source control, not a second production path.
 
 ## Expected reduction
 
 The predictable deletions are:
 
-- Approximately 884 lines of generated client and route metadata
-- Most of the current 763-line React Query endpoint factory
+- The former React Query endpoint factory (deleted after the final Call moved)
+- Generated Query factory calls and Query route metadata
 - Several hundred backend lines involving Mode, Kind, emitters, bindings, and
-  special job dispatch
-- Job-backed log-stream adapters
-- Additional background-job glue after Task consolidation
+  special Task dispatch
+- Former Job-backed log-stream adapters (already removed)
+- Additional background-Task glue after Task consolidation
 
 Generated model definitions and most of StreamMultiplexer should remain. A
 realistic initial target is approximately 1,500 to 2,500 lines of
@@ -623,7 +680,7 @@ The more important reduction is conceptual:
 
 ~~~text
 Current:
-    Query / Action / Job handler / Job runner / Duplex / SSE-like events /
+    Query / Action / Task handler / Task runner / Duplex /
     generated endpoint capabilities
 
 Target:
@@ -644,7 +701,7 @@ The migration is complete when:
 - The compiler rejects using a Call route as a Task or Channel.
 - No generated endpoint objects or runtime route-mode checks remain.
 - No universal Events interface remains.
-- No handler-form Job remains.
+- No handler-form Task remains.
 - The general Router does not own Task registry, scheduling, or replay details.
 - Connection-loss behavior is explicit and tested.
 - Durable Tasks have an external execution owner.

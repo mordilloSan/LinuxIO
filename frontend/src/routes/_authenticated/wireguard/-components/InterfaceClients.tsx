@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
+import { CACHE_TTL_MS, linuxio, type Peer, useCallMutation } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -43,28 +43,31 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
     data: peerIdentities,
     isLoading,
     isError,
-  } = useQuery(
-    linuxio.wireguard.list_peers.queryOptions(interfaceName, {
-      enabled: !!interfaceName,
-      // poll so bps updates
-      refetchInterval: 3000,
-      select: selectPeerIdentities,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.wireguard.list_peers({ interfaceName }),
+    enabled: !!interfaceName,
+    // poll so bps updates
+    refetchInterval: 3000,
+    select: selectPeerIdentities,
+  });
 
   // Mutations
-  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useAction({
-    success: (_result, variables) =>
-      toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
-    error: "Failed to delete peer",
-    toast: WIREGUARD_TOAST_META,
-  });
+  const { mutate: deletePeer } = useCallMutation(
+    linuxio.wireguard.remove_peer,
+    {
+      success: (_result, variables) =>
+        toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
+      error: "Failed to delete peer",
+      toast: WIREGUARD_TOAST_META,
+    },
+  );
   const handleDeletePeer = (peerName: string) => {
     deletePeer({ interfaceName, peerName });
   };
 
-  const { mutate: downloadConfig } =
-    linuxio.wireguard.peer_config_download.useAction({
+  const { mutate: downloadConfig } = useCallMutation(
+    linuxio.wireguard.peer_config_download,
+    {
       success: (result, { peerName }) => {
         const blob = new Blob([result.content], {
           type: "text/plain",
@@ -81,18 +84,15 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
       },
       error: "Failed to download config",
       toast: WIREGUARD_TOAST_META,
-    });
-
-  const qrQuery = useQuery(
-    linuxio.wireguard.peer_qrcode.queryOptions(
-      { interfaceName, peerName: qrPeer ?? "" },
-      {
-        enabled: qrPeer !== null,
-        staleTime: CACHE_TTL_MS.NONE,
-        gcTime: CACHE_TTL_MS.NONE,
-      },
-    ),
+    },
   );
+
+  const qrQuery = useQuery({
+    ...linuxio.wireguard.peer_qrcode({ interfaceName, peerName: qrPeer ?? "" }),
+    enabled: qrPeer !== null,
+    staleTime: CACHE_TTL_MS.NONE,
+    gcTime: CACHE_TTL_MS.NONE,
+  });
   // Peers are per interface, so the saved order is too.
   const surface = useReorderableSurface({
     getId: getPeerId,

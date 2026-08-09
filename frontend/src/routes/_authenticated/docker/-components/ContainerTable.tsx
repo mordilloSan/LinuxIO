@@ -17,6 +17,7 @@ import {
   type ContainerInfo,
   type ContainerMount,
   type ContainerPort,
+  useCallMutation,
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -320,7 +321,7 @@ const UpdateCell = memo(function UpdateCell({
     updateError,
   });
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
-    linuxio.docker.check_container_update.useAction({
+    useCallMutation(linuxio.docker.check_container_update, {
       success: (result) => {
         const updates = result?.updates ?? 0;
         toast.success(
@@ -333,7 +334,7 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useAction({
+    useCallMutation(linuxio.docker.update_container, {
       success: (result) => {
         toast.success(
           result.updated
@@ -850,23 +851,32 @@ const ActionsCell = memo(function ActionsCell({
   url,
 }: ActionsCellProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { mutate: startContainer } = linuxio.docker.start_container.useAction({
-    success: `Container ${name} started`,
-    error: `Failed to start ${name}`,
-    toast: DOCKER_TOAST_META,
-  });
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction({
-    success: `Container ${name} stopped`,
-    error: `Failed to stop ${name}`,
-    toast: DOCKER_TOAST_META,
-  });
-  const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useAction({
+  const { mutate: startContainer } = useCallMutation(
+    linuxio.docker.start_container,
+    {
+      success: `Container ${name} started`,
+      error: `Failed to start ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: stopContainer } = useCallMutation(
+    linuxio.docker.stop_container,
+    {
+      success: `Container ${name} stopped`,
+      error: `Failed to stop ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: restartContainer } = useCallMutation(
+    linuxio.docker.restart_container,
+    {
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
-    });
-  const { mutate: removeContainer } = linuxio.docker.remove_container.useAction(
+    },
+  );
+  const { mutate: removeContainer } = useCallMutation(
+    linuxio.docker.remove_container,
     {
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,

@@ -7,6 +7,6 @@ import AccountsGroupsPage from "./-components/AccountsGroupsPage";
 
 export const Route = createFileRoute("/_authenticated/accounts/groups")({
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [linuxio.accounts.list_groups.queryOptions()]),
+    loadRouteQueries(loaderArgs, [linuxio.accounts.list_groups]),
   component: AccountsGroupsPage,
 });

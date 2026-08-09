@@ -141,7 +141,7 @@ export const useFileListKeyboardNavigation = ({
     }
   }, [global, containerRef]);
 
-  // Revealing the focused item is the virtualizer's job (VirtualDirectoryItems
+  // Revealing the focused item is the virtualizer's task (VirtualDirectoryItems
   // scrolls by row index). Doing it here by indexing the rendered cards would
   // resolve to the wrong element, since only the virtual window is in the DOM.
 };

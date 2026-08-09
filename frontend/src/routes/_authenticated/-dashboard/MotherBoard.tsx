@@ -41,12 +41,11 @@ const MotherboardTempBadge = () => {
     [selectedSensor],
   );
 
-  const { data: badge } = useSuspenseQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectBadge,
-    }),
-  );
+  const { data: badge } = useSuspenseQuery({
+    ...linuxio.system.get_motherboard_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectBadge,
+  });
 
   if (!lmSensorsAvailable) {
     return <CardBadge icon="mdi:thermometer" text="N/A" />;
@@ -67,11 +66,10 @@ const MotherboardTempBadge = () => {
 };
 
 const MotherboardStats = () => {
-  const { data: motherboardInfo } = useSuspenseQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-    }),
-  );
+  const { data: motherboardInfo } = useSuspenseQuery({
+    ...linuxio.system.get_motherboard_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  });
 
   if (!motherboardInfo) {
     return (

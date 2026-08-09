@@ -189,14 +189,14 @@ type PathRequest struct {
 }
 
 // BatchTransferRequest copies or moves many sources into a single destination
-// directory within one job. Each source's final name is its basename.
+// directory within one Task. Each source's final name is its basename.
 type BatchTransferRequest struct {
 	Sources     []string `json:"sources"`
 	Destination string   `json:"destination"`
 	Overwrite   *bool    `json:"overwrite,omitempty"`
 }
 
-// BatchPathRequest deletes many paths within one job.
+// BatchPathRequest deletes many paths within one Task.
 type BatchPathRequest struct {
 	Paths []string `json:"paths"`
 }
@@ -227,12 +227,12 @@ type IntervalRequest struct {
 	Interval string `json:"interval"`
 }
 
-type JobIDRequest struct {
-	JobID string `json:"jobId"`
+type TaskIDRequest struct {
+	TaskID string `json:"taskId"`
 }
 
-type JobDataRequest struct {
-	JobID  string  `json:"jobId"`
+type TaskDataRequest struct {
+	TaskID string  `json:"taskId"`
 	Offset *string `json:"offset,omitempty"`
 }
 
@@ -554,7 +554,7 @@ type GeneralLogsFollowRequest struct {
 	Priority     *string  `json:"priority,omitempty"`
 	Identifier   *string  `json:"identifier,omitempty"`
 	FieldFilters []string `json:"fieldFilters,omitempty"`
-	// Follow controls whether the job keeps streaming new entries after the
+	// Follow controls whether the Task keeps streaming new entries after the
 	// backlog. nil defaults to true (live mode).
 	Follow *bool `json:"follow,omitempty"`
 	// AfterCursor resumes a live stream strictly after an entry already held by
@@ -604,7 +604,7 @@ type FileArchiveRequest struct {
 }
 
 // FileChmodBatchRequest changes permissions (and optionally ownership) of
-// many paths within one job.
+// many paths within one Task.
 type FileChmodBatchRequest struct {
 	Paths     []string `json:"paths"`
 	Mode      string   `json:"mode"`
@@ -659,7 +659,7 @@ type FileUploadBatchEntry struct {
 }
 
 // FileUploadBatchRequest uploads many files into one destination directory as
-// a single job. The client streams every file's bytes back-to-back in manifest
+// a single Task. The client streams every file's bytes back-to-back in manifest
 // order over one data stream; the bridge derives file boundaries from the
 // manifest sizes, so the stream needs no in-band framing. Directories lists
 // folders to create relative to the destination (for empty directories —
@@ -705,7 +705,7 @@ type MonitoringConfigPatch struct {
 	Listeners            []MonitoringListener `json:"listeners,omitempty"`
 }
 
-type JobListRequest struct {
+type TaskListRequest struct {
 	Status *string `json:"status,omitempty"`
 }
 

@@ -5,11 +5,10 @@ import { linuxio } from "@/api";
 import { VMNetworksTab } from "./VMTabs";
 
 const VMNetworksPage = () => {
-  const { data: vms } = useSuspenseQuery(
-    linuxio.virt.list.queryOptions({
-      refetchOnMount: false,
-    }),
-  );
+  const { data: vms } = useSuspenseQuery({
+    ...linuxio.virt.list,
+    refetchOnMount: false,
+  });
 
   return <VMNetworksTab vms={vms} />;
 };

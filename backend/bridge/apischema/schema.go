@@ -23,7 +23,7 @@ type RouteSpec struct {
 	Progress TypeSpec
 
 	Decode   bridgeipc.RequestDecoder
-	Metadata bridgeipc.JobMetadataBuilder
+	Metadata bridgeipc.TaskMetadataBuilder
 }
 
 type RouteSpecOption func(*RouteSpec)
@@ -40,9 +40,9 @@ func NoEndpoint() RouteSpecOption {
 	}
 }
 
-// WithJobProgress declares the payload emitted by a job's progress frames.
-// The result contract remains the job's terminal payload.
-func WithJobProgress[Progress any]() RouteSpecOption {
+// WithTaskProgress declares the payload emitted by a task's progress frames.
+// The result contract remains the task's terminal payload.
+func WithTaskProgress[Progress any]() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.Progress = TypeOf[Progress]()
 	}
@@ -63,15 +63,15 @@ type VoidHandlerFunc[Request any] func(ctx context.Context, req Request) error
 // HandlerFunc is the raw emitter shape, needed only by handlers that emit
 // progress or data frames. Prefer TypedHandlerFunc.
 type HandlerFunc[Request any] func(ctx context.Context, req Request, emit bridgeipc.Events) error
-type RunnerFunc[Request any] func(ctx context.Context, job *bridgeipc.Job, req Request) (any, error)
+type TaskRunnerFunc[Request any] func(ctx context.Context, task *bridgeipc.Task, req Request) (any, error)
 type DuplexFunc[Request any] func(ctx context.Context, stream net.Conn, req Request) error
 
-// WithJobMetadata declares a typed, safe request projection for a Runner job.
+// WithTaskMetadata declares a typed, safe request projection for a Task runner.
 // Its generic request parameter prevents a route from accidentally reading an
 // unrelated request model, while bridge snapshots remain free of raw requests.
-func WithJobMetadata[Request any](build func(Request) bridgeipc.JobMetadata) RouteSpecOption {
+func WithTaskMetadata[Request any](build func(Request) bridgeipc.TaskMetadata) RouteSpecOption {
 	return func(spec *RouteSpec) {
-		spec.Metadata = func(value any) bridgeipc.JobMetadata {
+		spec.Metadata = func(value any) bridgeipc.TaskMetadata {
 			req, ok := value.(Request)
 			if !ok {
 				var zero Request
@@ -82,16 +82,16 @@ func WithJobMetadata[Request any](build func(Request) bridgeipc.JobMetadata) Rou
 	}
 }
 
-func Query[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return newRoute[Request, Result](KindHandler, bridgeipc.ModeQuery, name, opts...)
+func Call[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindHandler, bridgeipc.ModeCall, name, opts...)
 }
 
-func Job[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return newRoute[Request, Result](KindHandler, bridgeipc.ModeJob, name, opts...)
+func Task[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindHandler, bridgeipc.ModeTask, name, opts...)
 }
 
-func Runner[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return newRoute[Request, Result](KindRunner, bridgeipc.ModeJob, name, opts...)
+func TaskRunner[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
+	return newRoute[Request, Result](KindTaskRunner, bridgeipc.ModeTask, name, opts...)
 }
 
 func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
@@ -100,11 +100,11 @@ func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Rout
 
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
 	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), requestDecoder[Request](), opts...)
-	if spec.Metadata != nil && (spec.Kind != KindRunner || spec.Mode != bridgeipc.ModeJob) {
-		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on job runners", spec.Route))
+	if spec.Metadata != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
+		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task runners", spec.Route))
 	}
-	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeJob {
-		panic(fmt.Sprintf("apischema: route %s progress is allowed only on job routes", spec.Route))
+	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask {
+		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task routes", spec.Route))
 	}
 	return Route[Request, Result]{spec: spec}
 }
@@ -127,9 +127,9 @@ func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, r
 type Kind string
 
 const (
-	KindHandler Kind = "handler"
-	KindRunner  Kind = "runner"
-	KindDuplex  Kind = "duplex"
+	KindHandler    Kind = "handler"
+	KindTaskRunner Kind = "task_runner"
+	KindDuplex     Kind = "duplex"
 )
 
 func (r RouteSpec) Handler() string {
@@ -160,12 +160,17 @@ func (r RouteSpec) ProgressSpec() (TypeSpec, bool) {
 
 // Handle binds the ordinary request-in/result-out handler for this route.
 func (r Route[Request, Result]) Handle(handle TypedHandlerFunc[Request, Result], options ...bridgeipc.RouteOption) HandlerBinding {
-	return HandlerBinding{
+	binding := HandlerBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
-		Handle:  wrapTypedHandler(r.spec, handle),
 		Options: options,
 	}
+	if r.spec.Mode == bridgeipc.ModeCall {
+		binding.Call = wrapTypedCall(r.spec, handle)
+	} else {
+		binding.Handle = wrapTypedHandler(r.spec, handle)
+	}
+	return binding
 }
 
 // HandleVoid binds a handler for a route declared with a NoResponse result.
@@ -175,17 +180,25 @@ func (r Route[Request, Result]) HandleVoid(handle VoidHandlerFunc[Request], opti
 	if !r.spec.Result.Void() {
 		panic(fmt.Sprintf("apischema: route %s returns %s, so it cannot use HandleVoid", r.spec.Route, r.spec.Result.GoType))
 	}
-	return HandlerBinding{
+	binding := HandlerBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
-		Handle:  wrapVoidHandler(r.spec.Route, handle),
 		Options: options,
 	}
+	if r.spec.Mode == bridgeipc.ModeCall {
+		binding.Call = wrapVoidCall(r.spec.Route, handle)
+	} else {
+		binding.Handle = wrapVoidHandler(r.spec.Route, handle)
+	}
+	return binding
 }
 
 // HandleEvents binds a handler that needs the raw emitter — progress or data
 // frames. Every other route should use Handle or HandleVoid.
 func (r Route[Request, Result]) HandleEvents(handle HandlerFunc[Request], options ...bridgeipc.RouteOption) HandlerBinding {
+	if r.spec.Mode == bridgeipc.ModeCall {
+		panic(fmt.Sprintf("apischema: call route %s cannot use HandleEvents; calls return one result directly", r.spec.Route))
+	}
 	return HandlerBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
@@ -194,11 +207,11 @@ func (r Route[Request, Result]) HandleEvents(handle HandlerFunc[Request], option
 	}
 }
 
-func (r Route[Request, Result]) Run(runner RunnerFunc[Request], policy bridgeipc.JobPolicy, options ...bridgeipc.RouteOption) RunnerBinding {
-	return RunnerBinding{
+func (r Route[Request, Result]) Run(runner TaskRunnerFunc[Request], policy bridgeipc.TaskPolicy, options ...bridgeipc.RouteOption) TaskBinding {
+	return TaskBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
-		Runner:  wrapRunner(r.spec.Route, runner),
+		Runner:  wrapTaskRunner(r.spec.Route, runner),
 		Policy:  policy,
 		Options: options,
 	}
@@ -213,23 +226,24 @@ func (r Route[Request, Result]) Duplex(handle DuplexFunc[Request], options ...br
 	}
 }
 
-// HandlerBinding carries no JobPolicy: HandleWithPolicy was its only setter and
-// had zero call sites, so every handler-form job route has always run under
-// ActionDefault. Only .Run (RunnerBinding) chooses a policy. If a handler-form
-// route ever needs one, the question to ask first is whether it should be a job
+// HandlerBinding carries no TaskPolicy: HandleWithPolicy was its only setter and
+// had zero call sites, so every handler-form task route has always run under
+// TaskDefault. Only .Run (TaskBinding) chooses a policy. If a handler-form
+// route ever needs one, the question to ask first is whether it should be a task
 // at all.
 type HandlerBinding struct {
 	Route   RouteSpec
 	Handle  bridgeipc.HandlerFunc
+	Call    bridgeipc.CallFunc
 	Decode  bridgeipc.RequestDecoder
 	Options []bridgeipc.RouteOption
 }
 
-type RunnerBinding struct {
+type TaskBinding struct {
 	Route   RouteSpec
-	Runner  bridgeipc.Runner
+	Runner  bridgeipc.TaskRunner
 	Decode  bridgeipc.RequestDecoder
-	Policy  bridgeipc.JobPolicy
+	Policy  bridgeipc.TaskPolicy
 	Options []bridgeipc.RouteOption
 }
 
@@ -246,7 +260,7 @@ type Binding interface {
 
 type BindingSet struct {
 	handlers []HandlerBinding
-	runners  []RunnerBinding
+	tasks    []TaskBinding
 	duplexes []DuplexBinding
 	routes   []RouteSpec
 }
@@ -279,8 +293,8 @@ func (s BindingSet) Register(router *bridgeipc.Router) {
 	for _, binding := range s.handlers {
 		AttachHandler(router, binding)
 	}
-	for _, binding := range s.runners {
-		AttachRunner(router, binding)
+	for _, binding := range s.tasks {
+		AttachTask(router, binding)
 	}
 	for _, binding := range s.duplexes {
 		AttachDuplex(router, binding)
@@ -296,8 +310,8 @@ func (b HandlerBinding) addTo(set *BindingSet) {
 	set.routes = append(set.routes, requireRouteSpec(b.Route))
 }
 
-func (b RunnerBinding) addTo(set *BindingSet) {
-	set.runners = append(set.runners, b)
+func (b TaskBinding) addTo(set *BindingSet) {
+	set.tasks = append(set.tasks, b)
 	set.routes = append(set.routes, requireRouteSpec(b.Route))
 }
 
@@ -314,26 +328,26 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
 	switch spec.Mode {
-	case bridgeipc.ModeQuery:
-		router.Query(spec.Route, binding.Handle, opts...)
-	case bridgeipc.ModeJob:
-		router.Job(spec.Route, binding.Handle, bridgeipc.ActionDefault, opts...)
+	case bridgeipc.ModeCall:
+		router.Call(spec.Route, binding.Call, opts...)
+	case bridgeipc.ModeTask:
+		router.Task(spec.Route, binding.Handle, bridgeipc.TaskDefault, opts...)
 	default:
-		panic(fmt.Sprintf("apischema: route %s is %s, not query/job", spec.Route, spec.Mode))
+		panic(fmt.Sprintf("apischema: route %s is %s, not call/task", spec.Route, spec.Mode))
 	}
 }
 
-func AttachRunner(router *bridgeipc.Router, binding RunnerBinding) {
+func AttachTask(router *bridgeipc.Router, binding TaskBinding) {
 	spec := requireRouteSpec(binding.Route)
-	if spec.Kind != KindRunner {
-		panic(fmt.Sprintf("apischema: route %s is %s, not runner", spec.Route, spec.Kind))
+	if spec.Kind != KindTaskRunner {
+		panic(fmt.Sprintf("apischema: route %s is %s, not task runner", spec.Route, spec.Kind))
 	}
-	if spec.Mode != bridgeipc.ModeJob {
-		panic(fmt.Sprintf("apischema: route %s is %s, not job", spec.Route, spec.Mode))
+	if spec.Mode != bridgeipc.ModeTask {
+		panic(fmt.Sprintf("apischema: route %s is %s, not task", spec.Route, spec.Mode))
 	}
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
-	router.JobRunner(spec.Route, binding.Runner, jobPolicy(binding.Policy), opts...)
+	router.TaskRunner(spec.Route, binding.Runner, taskPolicy(binding.Policy), opts...)
 }
 
 func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
@@ -372,7 +386,7 @@ func requestDecoder[Request any]() bridgeipc.RequestDecoder {
 func wrapTypedHandler[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.HandlerFunc {
 	// NoResponse generates TypeScript `void`, so it must stay off the wire:
 	// emitting the zero struct would send `{}` to a `void` consumer and stop
-	// job snapshots from omitting `result`. Read once per binding off the spec's
+	// task snapshots from omitting `result`. Read once per binding off the spec's
 	// already-materialized result type — the same predicate the generator uses
 	// to decide `void`.
 	voidResult := spec.Result.Void()
@@ -393,6 +407,25 @@ func wrapTypedHandler[Request, Result any](spec RouteSpec, handle TypedHandlerFu
 	}
 }
 
+func wrapTypedCall[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.CallFunc {
+	voidResult := spec.Result.Void()
+	route := spec.Route
+	return func(ctx context.Context, request any) (any, error) {
+		req, err := typedRequest[Request](route, request)
+		if err != nil {
+			return nil, err
+		}
+		result, err := handle(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if voidResult {
+			return nil, nil
+		}
+		return result, nil
+	}
+}
+
 func wrapVoidHandler[Request any](route string, handle VoidHandlerFunc[Request]) bridgeipc.HandlerFunc {
 	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
 		req, err := typedRequest[Request](route, request)
@@ -406,6 +439,16 @@ func wrapVoidHandler[Request any](route string, handle VoidHandlerFunc[Request])
 	}
 }
 
+func wrapVoidCall[Request any](route string, handle VoidHandlerFunc[Request]) bridgeipc.CallFunc {
+	return func(ctx context.Context, request any) (any, error) {
+		req, err := typedRequest[Request](route, request)
+		if err != nil {
+			return nil, err
+		}
+		return nil, handle(ctx, req)
+	}
+}
+
 func wrapHandler[Request any](route string, handle HandlerFunc[Request]) bridgeipc.HandlerFunc {
 	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
 		req, err := typedRequest[Request](route, request)
@@ -416,13 +459,13 @@ func wrapHandler[Request any](route string, handle HandlerFunc[Request]) bridgei
 	}
 }
 
-func wrapRunner[Request any](route string, runner RunnerFunc[Request]) bridgeipc.Runner {
-	return func(ctx context.Context, job *bridgeipc.Job, request any) (any, error) {
+func wrapTaskRunner[Request any](route string, runner TaskRunnerFunc[Request]) bridgeipc.TaskRunner {
+	return func(ctx context.Context, task *bridgeipc.Task, request any) (any, error) {
 		req, err := typedRequest[Request](route, request)
 		if err != nil {
 			return nil, err
 		}
-		return runner(ctx, job, req)
+		return runner(ctx, task, req)
 	}
 }
 
@@ -458,14 +501,14 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 		opts = append(opts, bridgeipc.Privileged)
 	}
 	if spec.Metadata != nil {
-		opts = append(opts, bridgeipc.WithJobMetadata(spec.Metadata))
+		opts = append(opts, bridgeipc.WithTaskMetadata(spec.Metadata))
 	}
 	return opts
 }
 
-func jobPolicy(explicit bridgeipc.JobPolicy) bridgeipc.JobPolicy {
+func taskPolicy(explicit bridgeipc.TaskPolicy) bridgeipc.TaskPolicy {
 	if explicit.Name != "" {
 		return explicit
 	}
-	return bridgeipc.ActionDefault
+	return bridgeipc.TaskDefault
 }

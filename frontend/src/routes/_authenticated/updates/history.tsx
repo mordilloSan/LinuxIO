@@ -11,9 +11,7 @@ export const Route = createFileRoute("/_authenticated/updates/history")({
   loader: (loaderArgs) => {
     const { context } = loaderArgs;
     if (context.access.packageKitAvailable !== true) return;
-    return loadRouteQueries(loaderArgs, [
-      linuxio.updates.get_update_history.queryOptions(),
-    ]);
+    return loadRouteQueries(loaderArgs, [linuxio.updates.get_update_history]);
   },
   component: UpdateHistoryRoute,
 });

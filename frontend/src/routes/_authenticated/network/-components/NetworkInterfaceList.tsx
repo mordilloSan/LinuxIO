@@ -50,12 +50,11 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   const theme = useAppTheme();
   const rxCanvasRef = useRef<HTMLCanvasElement>(null);
   const txCanvasRef = useRef<HTMLCanvasElement>(null);
-  const { data: iface } = useQuery(
-    linuxio.network.get_network_info.queryOptions({
-      refetchOnMount: false,
-      select: selectNetworkInterface(name),
-    }),
-  );
+  const { data: iface } = useQuery({
+    ...linuxio.network.get_network_info,
+    refetchOnMount: false,
+    select: selectNetworkInterface(name),
+  });
 
   const dispatchToCanvas = useCallback(
     (
@@ -187,12 +186,11 @@ const NetworkInterfaceList = () => {
   const navigate = networkRouteApi.useNavigate();
   const expanded = typeof search.iface === "string" ? search.iface : undefined;
 
-  const { data: interfaces } = useSuspenseQuery(
-    linuxio.network.get_network_info.queryOptions({
-      refetchInterval: 1000,
-      select: selectNetworkInterfaceIdentities,
-    }),
-  );
+  const { data: interfaces } = useSuspenseQuery({
+    ...linuxio.network.get_network_info,
+    refetchInterval: 1000,
+    select: selectNetworkInterfaceIdentities,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -43,13 +43,12 @@ const OverviewStats = () => {
   const [{ data: hostInfo }, { data: uptime }, { data: serverTime }] =
     useSuspenseQueries({
       queries: [
-        linuxio.system.get_host_info.queryOptions({
+        {
+          ...linuxio.system.get_host_info,
           refetchInterval: HOST_INFO_REFETCH_MS,
-        }),
-        linuxio.system.get_uptime.queryOptions({ refetchInterval: 30000 }),
-        linuxio.system.get_server_time.queryOptions({
-          refetchInterval: 60000,
-        }),
+        },
+        { ...linuxio.system.get_uptime, refetchInterval: 30000 },
+        { ...linuxio.system.get_server_time, refetchInterval: 60000 },
       ],
     });
 
@@ -96,12 +95,11 @@ const OverviewStats = () => {
 };
 
 const SystemOverview = () => {
-  const { data: platform } = useSuspenseQuery(
-    linuxio.system.get_host_info.queryOptions({
-      refetchInterval: HOST_INFO_REFETCH_MS,
-      select: selectPlatform,
-    }),
-  );
+  const { data: platform } = useSuspenseQuery({
+    ...linuxio.system.get_host_info,
+    refetchInterval: HOST_INFO_REFETCH_MS,
+    select: selectPlatform,
+  });
 
   return (
     <DashboardCard

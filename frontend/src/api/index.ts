@@ -2,9 +2,9 @@
  * LinuxIO API - Unified Entry Point
  *
  * JSON API (generated, Go-owned request/response contracts):
- *   useQuery(linuxio.system.get_cpu_info.queryOptions())
- *   linuxio.docker.start_container.useAction({ invalidates, success, error })
- *   linuxio.docker.compose.useJobStreamAction({ onProgress })
+ *   useQuery(linuxio.system.get_cpu_info)
+ *   useCallMutation(linuxio.docker.start_container, { success, error })
+ *   linuxio.docker.compose.useTaskStreamAction({ onProgress })
  *
  * Streaming API (persistent/long-lived streams):
  *   const stream = openTerminalStream(cols, rows);
@@ -13,13 +13,20 @@
 
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
-export { CACHE_TTL_MS } from "./react-query";
+export {
+  CACHE_TTL_MS,
+  useCallMutation,
+  type ActionConfig,
+  type CallDefinition,
+  type CallDescriptor,
+  type CallFactory,
+  type CallQueryOptions,
+} from "./call-react-query";
+export { call } from "./calls";
 export type {
-  ActionConfig,
-  EndpointCache,
-  JobStreamActionConfig,
-  JobStreamActionResult,
-} from "./react-query";
+  TaskStreamActionConfig,
+  TaskStreamActionResult,
+} from "./task-react-query";
 export {
   ROUTE_MODES,
   getRouteMode,
@@ -27,12 +34,12 @@ export {
 } from "./generated/route-metadata";
 export type { RouteMode } from "./generated/route-metadata";
 export {
-  isJobCancellationError,
-  isJobSnapshot,
-  isTerminalJobState,
-  jobSnapshotResult,
-  JOB_CANCELED_CODE,
-} from "./jobs";
+  isTaskCancellationError,
+  isTaskSnapshot,
+  isTerminalTaskState,
+  taskSnapshotResult,
+  TASK_CANCELED_CODE,
+} from "./tasks";
 
 // === API Error Type ===
 export { LinuxIOError, ensureLoaderRequestReady } from "./linuxio-core";
@@ -46,16 +53,14 @@ export { isConnected, getStatus } from "./linuxio";
 
 // === Stream Openers ===
 export {
+  openChannel,
   openTerminalStream,
   openContainerStream,
-  openDockerLogsStream,
-  openServiceLogsStream,
-  openGeneralLogsStream,
   openAppUpdateStream,
   openVMConsoleStream,
-  openJobAttachStream,
-  openJobDataStream,
-  openJobEventsStream,
+  openTaskDataStream,
+  openTaskEventsStream,
+  openTaskWatchStream,
 } from "./linuxio";
 
 // === Connection Management ===

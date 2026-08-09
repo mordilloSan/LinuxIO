@@ -12,8 +12,8 @@ export const Route = createFileRoute("/_authenticated/docker/containers")({
   }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.docker.list_containers.queryOptions(),
-      linuxio.docker.get_container_auto_update.queryOptions(),
+      linuxio.docker.list_containers,
+      linuxio.docker.get_container_auto_update,
     ]),
   component: DockerContainersPage,
 });

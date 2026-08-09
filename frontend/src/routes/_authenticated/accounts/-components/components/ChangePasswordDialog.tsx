@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -31,15 +31,17 @@ const ChangePasswordDialog = ({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const { mutate: changePassword, isPending } =
-    linuxio.accounts.change_password.useAction({
+  const { mutate: changePassword, isPending } = useCallMutation(
+    linuxio.accounts.change_password,
+    {
       success: () => {
         toast.success(`Password changed for "${username}"`);
         handleClose();
       },
       error: "Failed to change password",
       toast: ACCOUNTS_TOAST_META,
-    });
+    },
+  );
 
   const handleClose = () => {
     setPassword("");

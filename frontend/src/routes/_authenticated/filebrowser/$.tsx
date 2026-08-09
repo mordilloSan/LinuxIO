@@ -24,10 +24,10 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     return loadRouteQueries(
       loaderArgs,
       [
-        linuxio.filebrowser.resource_get.queryOptions(
-          { path },
-          fileBrowserListingQueryOptions,
-        ),
+        {
+          ...linuxio.filebrowser.resource_get({ path }),
+          ...fileBrowserListingQueryOptions,
+        },
       ],
       LOADER_FRESHNESS.BACKGROUND,
     );

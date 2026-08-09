@@ -17,8 +17,8 @@ export const Route = createFileRoute("/_authenticated/vm")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.virt.list.queryOptions(),
-      linuxio.virt.preflight.queryOptions({}),
+      linuxio.virt.list,
+      linuxio.virt.preflight({}),
     ]),
   component: VMPage,
   staticData: {

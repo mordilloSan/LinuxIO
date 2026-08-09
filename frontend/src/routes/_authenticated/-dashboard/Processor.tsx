@@ -56,12 +56,11 @@ const CpuTempBadge = () => {
     [selectedSensor],
   );
 
-  const { data: badge } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectBadge,
-    }),
-  );
+  const { data: badge } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectBadge,
+  });
 
   if (!lmSensorsAvailable) {
     return <CardBadge icon="mdi:thermometer" text="N/A" />;
@@ -82,11 +81,10 @@ const CpuTempBadge = () => {
 };
 
 const CpuStats = () => {
-  const { data: CPUInfo } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-    }),
-  );
+  const { data: CPUInfo } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  });
 
   const averageCpuUsage = selectAverageUsage(CPUInfo);
   const peakCpuUsage = Math.max(...(CPUInfo?.perCoreUsage || [0]));
@@ -113,12 +111,11 @@ const CpuStats = () => {
 };
 
 const CpuUsageGraph = () => {
-  const { data: usage } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectAverageUsage,
-    }),
-  );
+  const { data: usage } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectAverageUsage,
+  });
 
   return <ProcessorGraph usage={usage} />;
 };

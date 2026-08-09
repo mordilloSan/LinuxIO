@@ -15,16 +15,16 @@ import (
 )
 
 func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := SingletonSystem
+	policy := TaskSingletonSystem
 	policy.Name = "atomic-singleton"
 	release := make(chan struct{})
 	route := Route{
 		Name:   "test.atomic.singleton",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(context.Context, *Job, any) (any, error) {
+		Runner: func(context.Context, *Task, any) (any, error) {
 			<-release
 			return nil, nil
 		},
@@ -37,7 +37,7 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 	for range callers {
 		wg.Go(func() {
 			<-start
-			_, _, err := router.startOrQueueJob(route, Request{Route: route.Name})
+			_, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
 			results <- err
 		})
 	}
@@ -52,19 +52,19 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 			continue
 		}
 		if !errors.Is(err, ErrDuplicateActive) {
-			t.Fatalf("startOrQueueJob error = %v, want ErrDuplicateActive", err)
+			t.Fatalf("startOrQueueTask error = %v, want ErrDuplicateActive", err)
 		}
 	}
 	if successes != 1 {
-		t.Fatalf("accepted %d singleton jobs, want 1", successes)
+		t.Fatalf("accepted %d singleton tasks, want 1", successes)
 	}
 	close(release)
 }
 
 func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := JobPolicy{
+	policy := TaskPolicy{
 		Name:                    "rate-limited",
 		MaxActivePerRoute:       8,
 		MaxActivePerOwnerRoute:  8,
@@ -72,46 +72,46 @@ func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {
 	}
 	route := Route{
 		Name:   "test.rate.limited",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(context.Context, *Job, any) (any, error) { return nil, nil },
+		Runner: func(context.Context, *Task, any) (any, error) { return nil, nil },
 	}
 
 	for i := range 2 {
-		job, _, err := router.startOrQueueJob(route, Request{Route: route.Name})
+		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
 		if err != nil {
 			t.Fatalf("start %d: %v", i, err)
 		}
-		<-job.Done()
+		<-task.Done()
 	}
-	if _, _, err := router.startOrQueueJob(route, Request{Route: route.Name}); !errors.Is(err, ErrRateLimited) {
+	if _, _, err := router.startOrQueueTask(route, Request{Route: route.Name}); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("third start error = %v, want ErrRateLimited", err)
 	}
 }
 
 func TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault // StartRatePerMinuteOwner: 0
+	policy := TaskDefault // StartRatePerMinuteOwner: 0
 	policy.Name = "rate-disabled"
 	route := Route{
 		Name:   "test.rate.disabled",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(context.Context, *Job, any) (any, error) { return nil, nil },
+		Runner: func(context.Context, *Task, any) (any, error) { return nil, nil },
 	}
 
 	for i := range 3 {
-		job, _, err := router.startOrQueueJob(route, Request{Route: route.Name})
+		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
 		if err != nil {
 			t.Fatalf("start %d: %v", i, err)
 		}
-		<-job.Done()
+		<-task.Done()
 	}
 
 	// checkRateLocked never prunes for a disabled limit, so admission must not
 	// record start history at all — it would grow for the bridge lifetime.
-	ownerRouteKey := route.Name + "\x00" + Owner{}.key()
+	ownerRouteKey := route.Name + "\x00" + TaskOwner{}.key()
 	router.mu.RLock()
 	tracked := len(router.startsByOwnerRoute[ownerRouteKey])
 	router.mu.RUnlock()
@@ -120,10 +120,10 @@ func TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled(t *testing.T) {
 	}
 }
 
-func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
-	registry := NewRegistry()
+func TestRouterCanceledQueuedTaskIsSkippedDuringPromotion(t *testing.T) {
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "cancel-promotion"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
@@ -135,9 +135,9 @@ func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
 	var nextRuns atomic.Int32
 	route := Route{
 		Name:   "test.cancel.promotion",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
 			requestName, _ := request.(string)
 			switch requestName {
 			case "active":
@@ -152,38 +152,38 @@ func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
 		},
 	}
 
-	active, started, err := router.startOrQueueJob(route, Request{
+	active, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "active",
 	})
 	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, started, err)
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
 	}
-	canceled, started, err := router.startOrQueueJob(route, Request{
+	canceled, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "canceled",
 	})
 	if err != nil || started {
-		t.Fatalf("queue canceled = (%v, %t, %v), want queued job", canceled, started, err)
+		t.Fatalf("queue canceled = (%v, %t, %v), want queued task", canceled, started, err)
 	}
-	next, started, err := router.startOrQueueJob(route, Request{
+	next, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "next",
 	})
 	if err != nil || started {
-		t.Fatalf("queue next = (%v, %t, %v), want queued job", next, started, err)
+		t.Fatalf("queue next = (%v, %t, %v), want queued task", next, started, err)
 	}
 
-	// Cancellation is deliberately issued while the first job still owns the
+	// Cancellation is deliberately issued while the first task still owns the
 	// only active slot. Its completion immediately promotes the queue, which
-	// must skip this terminal entry and run the next eligible job exactly once.
+	// must skip this terminal entry and run the next eligible task exactly once.
 	canceled.Cancel()
 	close(activeRelease)
 
 	select {
 	case <-nextRan:
 	case <-time.After(time.Second):
-		t.Fatal("next queued job was not promoted")
+		t.Fatal("next queued task was not promoted")
 	}
 	<-active.Done()
 	<-canceled.Done()
@@ -195,17 +195,17 @@ func TestRouterCanceledQueuedJobIsSkippedDuringPromotion(t *testing.T) {
 	if got := nextRuns.Load(); got != 1 {
 		t.Fatalf("next queued handler ran %d times, want 1", got)
 	}
-	if state := canceled.Snapshot().State; state != StateCanceled {
-		t.Fatalf("canceled job state = %q, want canceled", state)
+	if state := canceled.Snapshot().State; state != TaskStateCanceled {
+		t.Fatalf("canceled task state = %q, want canceled", state)
 	}
 
 	waitForRouterSettle(t, router, route.Name)
 }
 
-func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
-	registry := NewRegistry()
+func TestRouterPromotionCancellationRefusesReservedTaskStart(t *testing.T) {
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "cancel-after-promotion"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
@@ -219,9 +219,9 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	var nextRuns atomic.Int32
 	route := Route{
 		Name:   "test.cancel.after.promotion",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
 			requestName, _ := request.(string)
 			switch requestName {
 			case "active":
@@ -236,30 +236,30 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 		},
 	}
 
-	active, started, err := router.startOrQueueJob(route, Request{
+	active, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "active",
 	})
 	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, started, err)
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
 	}
-	candidate, started, err := router.startOrQueueJob(route, Request{
+	candidate, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "candidate",
 	})
 	if err != nil || started {
-		t.Fatalf("queue candidate = (%v, %t, %v), want queued job", candidate, started, err)
+		t.Fatalf("queue candidate = (%v, %t, %v), want queued task", candidate, started, err)
 	}
-	next, started, err := router.startOrQueueJob(route, Request{
+	next, started, err := router.startOrQueueTask(route, Request{
 		Route:        route.Name,
 		DecodedValue: "next",
 	})
 	if err != nil || started {
-		t.Fatalf("queue next = (%v, %t, %v), want queued job", next, started, err)
+		t.Fatalf("queue next = (%v, %t, %v), want queued task", next, started, err)
 	}
 
-	router.beforeStartHook = func(job *Job) {
-		if job != candidate {
+	router.beforeStartHook = func(task *Task) {
+		if task != candidate {
 			return
 		}
 		close(promotionPaused)
@@ -273,13 +273,13 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	}
 
 	// The router has reserved candidate's active slot but has not called Start.
-	// Cancel wins Job.mu, so Start must refuse and release this reservation once.
+	// Cancel wins Task.mu, so Start must refuse and release this reservation once.
 	candidate.Cancel()
 	close(resumePromotion)
 	select {
 	case <-nextRan:
 	case <-time.After(time.Second):
-		t.Fatal("next queued job was not promoted after canceled reservation")
+		t.Fatal("next queued task was not promoted after canceled reservation")
 	}
 	<-active.Done()
 	<-candidate.Done()
@@ -291,7 +291,7 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 	if got := nextRuns.Load(); got != 1 {
 		t.Fatalf("next queued handler ran %d times, want 1", got)
 	}
-	if state := candidate.Snapshot().State; state != StateCanceled {
+	if state := candidate.Snapshot().State; state != TaskStateCanceled {
 		t.Fatalf("candidate state = %q, want canceled", state)
 	}
 
@@ -299,9 +299,9 @@ func TestRouterPromotionCancellationRefusesReservedJobStart(t *testing.T) {
 }
 
 func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "cancel-detached-runner"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
@@ -323,9 +323,9 @@ func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 	}
 	route := Route{
 		Name:   "test.cancel.detached-runner",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
 			current := running.Add(1)
 			updateMax(current)
 			defer running.Add(-1)
@@ -339,27 +339,27 @@ func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 		},
 	}
 
-	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
 	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
 	}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("active handler did not start")
 	}
-	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
 	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
+		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
 	}
 
 	active.Cancel()
 	select {
 	case <-active.Done():
 	case <-time.After(time.Second):
-		t.Fatal("canceled job did not publish terminal state")
+		t.Fatal("canceled task did not publish terminal state")
 	}
-	if state := active.Snapshot().State; state != StateCanceled {
+	if state := active.Snapshot().State; state != TaskStateCanceled {
 		t.Fatalf("active state = %q, want canceled", state)
 	}
 	assertChannelOpen(t, successorStarted, "successor started while canceled handler still ran")
@@ -381,9 +381,9 @@ func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 }
 
 func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "timeout-detached-runner"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
@@ -405,9 +405,9 @@ func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 	}
 	route := Route{
 		Name:   "test.timeout.detached-runner",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
 			current := running.Add(1)
 			updateMax(current)
 			defer running.Add(-1)
@@ -421,26 +421,26 @@ func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 		},
 	}
 
-	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
 	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
 	}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("active handler did not start")
 	}
-	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
 	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
+		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
 	}
 
 	select {
 	case <-active.Done():
 	case <-time.After(time.Second):
-		t.Fatal("timed-out job did not publish terminal state")
+		t.Fatal("timed-out task did not publish terminal state")
 	}
-	if snapshot := active.Snapshot(); snapshot.State != StateFailed || snapshot.Error == nil || snapshot.Error.Code != 504 {
+	if snapshot := active.Snapshot(); snapshot.State != TaskStateFailed || snapshot.Error == nil || snapshot.Error.Code != 504 {
 		t.Fatalf("timeout snapshot = %+v, want failed 504", snapshot)
 	}
 	assertChannelOpen(t, successorStarted, "successor started while timed-out handler still ran")
@@ -462,9 +462,9 @@ func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 }
 
 func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "direct-runner"
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
@@ -476,9 +476,9 @@ func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
 	successorStarted := make(chan struct{})
 	route := Route{
 		Name:   "test.direct-runner",
-		Mode:   ModeJob,
+		Mode:   ModeTask,
 		Policy: policy,
-		Runner: func(_ context.Context, _ *Job, request any) (any, error) {
+		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
 			if request == "active" {
 				close(started)
 				<-release
@@ -489,18 +489,18 @@ func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
 		},
 	}
 
-	active, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "active"})
+	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
 	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started job", active, startedNow, err)
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
 	}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("active handler did not start")
 	}
-	successor, startedNow, err := router.startOrQueueJob(route, Request{Route: route.Name, DecodedValue: "successor"})
+	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
 	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued job", successor, startedNow, err)
+		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
 	}
 
 	assertChannelOpen(t, successorStarted, "successor started before direct handler returned")
@@ -545,12 +545,12 @@ func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
 	}
 }
 
-func TestRouterJobFastCompleteReturnsTerminalSnapshot(t *testing.T) {
-	registry := NewRegistry()
+func TestRouterTaskFastCompleteReturnsTerminalSnapshot(t *testing.T) {
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	router.JobRunner("test.fast", func(ctx context.Context, job *Job, _ any) (any, error) {
+	router.TaskRunner("test.fast", func(ctx context.Context, task *Task, _ any) (any, error) {
 		return map[string]any{"ok": true}, nil
-	}, ActionDefault)
+	}, TaskDefault)
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -576,11 +576,11 @@ func TestRouterJobFastCompleteReturnsTerminalSnapshot(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
-	var snapshot Snapshot
+	var snapshot TaskSnapshot
 	if unmarshalErr := json.Unmarshal(result.Data, &snapshot); unmarshalErr != nil {
 		t.Fatalf("json.Unmarshal(snapshot): %v", unmarshalErr)
 	}
-	if snapshot.State != StateCompleted {
+	if snapshot.State != TaskStateCompleted {
 		t.Fatalf("state = %q, want completed", snapshot.State)
 	}
 	if snapshot.Result == nil {
@@ -599,13 +599,59 @@ func TestRouterJobFastCompleteReturnsTerminalSnapshot(t *testing.T) {
 	}
 }
 
-func TestRouterJobTimeoutReturnsFailedSnapshot(t *testing.T) {
-	registry := NewRegistry()
+func TestRouterCallWritesOneResultAndClose(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	router.Call("test.call", func(_ context.Context, request any) (any, error) {
+		if request != "decoded" {
+			t.Fatalf("request = %#v, want decoded", request)
+		}
+		return map[string]any{"ok": true}, nil
+	})
+
+	server, client := net.Pipe()
+	defer client.Close()
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- router.Dispatch(context.Background(), server, Request{
+			Route:        "test.call",
+			DecodedValue: "decoded",
+		})
+	}()
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(result): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamResult {
+		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
+	}
+	var result relay.ResultFrame
+	if unmarshalErr := json.Unmarshal(frame.Payload, &result); unmarshalErr != nil {
+		t.Fatalf("json.Unmarshal(result): %v", unmarshalErr)
+	}
+	if result.Status != "ok" || string(result.Data) != `{"ok":true}` {
+		t.Fatalf("result = %#v, want ok payload", result)
+	}
+	closeFrame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if closeFrame.Opcode != relay.OpStreamClose {
+		t.Fatalf("close opcode = 0x%02x, want OpStreamClose", closeFrame.Opcode)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("Dispatch returned error: %v", err)
+	}
+}
+
+func TestRouterTaskTimeoutReturnsFailedSnapshot(t *testing.T) {
+	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := ActionDefault
+	policy := TaskDefault
 	policy.Name = "timeout_test"
 	policy.Timeout = 10 * time.Millisecond
-	router.JobRunner("test.timeout", func(ctx context.Context, job *Job, _ any) (any, error) {
+	router.TaskRunner("test.timeout", func(ctx context.Context, task *Task, _ any) (any, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}, policy)
@@ -634,11 +680,11 @@ func TestRouterJobTimeoutReturnsFailedSnapshot(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
-	var snapshot Snapshot
+	var snapshot TaskSnapshot
 	if unmarshalErr := json.Unmarshal(result.Data, &snapshot); unmarshalErr != nil {
 		t.Fatalf("json.Unmarshal(snapshot): %v", unmarshalErr)
 	}
-	if snapshot.State != StateFailed {
+	if snapshot.State != TaskStateFailed {
 		t.Fatalf("state = %q, want failed", snapshot.State)
 	}
 	if snapshot.Error == nil {
@@ -664,14 +710,14 @@ func TestRouterJobTimeoutReturnsFailedSnapshot(t *testing.T) {
 	}
 }
 
-func TestRouterRejectsRegisteredJobsNamespace(t *testing.T) {
-	router := NewRouter(NewRegistry())
+func TestRouterRejectsRegisteredTasksNamespace(t *testing.T) {
+	router := NewRouter(NewTaskService())
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected reserved jobs.* registration to panic")
+			t.Fatal("expected reserved tasks.* registration to panic")
 		}
 	}()
-	router.Query("jobs.get", func(ctx context.Context, _ any, emit Events) error {
-		return emit.Result(nil)
+	router.Call("tasks.get", func(context.Context, any) (any, error) {
+		return nil, nil
 	})
 }

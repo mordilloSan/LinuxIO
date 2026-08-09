@@ -14,6 +14,7 @@ import {
   type NFSClient,
   type NFSExport,
   type SambaShare,
+  useCallMutation,
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -480,8 +481,8 @@ const CreateFolderShareDialog = ({
   });
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
+  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
+  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
 
   const isPending = sambaCreate.isPending || nfsCreate.isPending;
   const resolvedName = sambaName.trim() || inferShareName(path);
@@ -740,12 +741,12 @@ const EditFolderShareDialog = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useAction();
-  const sambaUpdate = linuxio.shares.update_samba_share.useAction();
-  const sambaDelete = linuxio.shares.delete_samba_share.useAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
-  const nfsUpdate = linuxio.shares.update_nfs_share.useAction();
-  const nfsDelete = linuxio.shares.delete_nfs_share.useAction();
+  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
+  const sambaUpdate = useCallMutation(linuxio.shares.update_samba_share);
+  const sambaDelete = useCallMutation(linuxio.shares.delete_samba_share);
+  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
+  const nfsUpdate = useCallMutation(linuxio.shares.update_nfs_share);
+  const nfsDelete = useCallMutation(linuxio.shares.delete_nfs_share);
 
   const isPending =
     sambaCreate.isPending ||
@@ -1163,16 +1164,14 @@ const SharesPage = () => {
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
 
-  const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery(
-    linuxio.shares.list_nfs_shares.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
-  const { data: sambaShares, refetch: refetchSamba } = useSuspenseQuery(
-    linuxio.shares.list_samba_shares.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery({
+    ...linuxio.shares.list_nfs_shares,
+    refetchInterval: 10000,
+  });
+  const { data: sambaShares, refetch: refetchSamba } = useSuspenseQuery({
+    ...linuxio.shares.list_samba_shares,
+    refetchInterval: 10000,
+  });
 
   const shareGroups = useMemo(
     () =>

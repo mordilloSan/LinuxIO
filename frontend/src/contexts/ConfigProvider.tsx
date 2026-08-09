@@ -1,4 +1,5 @@
 // src/contexts/ConfigProvider.tsx
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -21,6 +22,7 @@ import {
   LinuxIOError,
   type TableCardViewMode,
   useStreamMux,
+  useCallMutation,
 } from "@/api";
 import {
   ConfigAccessorContext,
@@ -316,6 +318,7 @@ const patchConfigValue = <K extends ConfigValueKey>(
 // failed persist surfaces via the action's error toast.
 export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const { sessionExpired, user } = useAuth();
+  const queryClient = useQueryClient();
   const username = user?.id;
   const [config, setConfig] = useState<AppConfig>(() =>
     applyDefaults(readConfigCache(username)),
@@ -330,12 +333,11 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     configDraftRef.current = config;
   }, [config]);
   const { isOpen: isMuxOpen } = useStreamMux();
-  const fetchConfigSettings = linuxio.config.get.useFetcher();
-  const { mutate: setConfigRemote } = linuxio.config.set.useAction({
+  const { mutate: setConfigRemote } = useCallMutation(linuxio.config.set, {
     error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
-        ? [linuxio.docker.list_compose_projects.queryKey()]
+        ? [linuxio.docker.list_compose_projects.queryKey]
         : [],
   });
 
@@ -363,7 +365,8 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
           return;
         }
 
-        const settings = await fetchConfigSettings({
+        const settings = await queryClient.fetchQuery({
+          ...linuxio.config.get,
           staleTime: CACHE_TTL_MS.NONE,
         });
 
@@ -415,7 +418,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       cancelled = true;
       clearTimeout(giveUp);
     };
-  }, [fetchConfigSettings, isMuxOpen, sessionExpired, username]);
+  }, [isMuxOpen, queryClient, sessionExpired, username]);
 
   // Warn once per unreachable period, not on every discarded change.
   const warnedUnsavedRef = useRef(false);

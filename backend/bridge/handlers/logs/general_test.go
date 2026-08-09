@@ -3,7 +3,7 @@ package logs
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"net"
 	"os/exec"
 	"slices"
 	"strings"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestParseGeneralLogsRequestDefaults(t *testing.T) {
@@ -43,21 +43,18 @@ func TestParseGeneralLogsRequestAfterCursor(t *testing.T) {
 	}
 }
 
-func TestRunGeneralLogsJobRejectsInvalidAfterCursor(t *testing.T) {
-	registry := bridgeipc.NewRegistry()
-	job, err := registry.Create(streamTypeGeneralLogs, nil)
-	if err != nil {
-		t.Fatalf("create job: %v", err)
+func TestGeneralLogsChannelRejectsInvalidAfterCursor(t *testing.T) {
+	frames, done, closeClient := openGeneralLogsChannel(context.Background(), apischema.GeneralLogsFollowRequest{AfterCursor: new("bad\ncursor")})
+	defer closeClient()
+	capture := collectChannelFrames(t, frames)
+	if capture.result == nil || capture.result.Status != "error" {
+		t.Fatalf("result = %#v, want error", capture.result)
 	}
-
-	_, err = runGeneralLogsJob(
-		context.Background(),
-		runtime.Runtime{},
-		job,
-		apischema.GeneralLogsFollowRequest{AfterCursor: new("bad\ncursor")},
-	)
-	if err == nil {
-		t.Fatal("expected invalid resume cursor to fail")
+	if !capture.closed {
+		t.Fatal("channel did not send a close frame")
+	}
+	if err := <-done; err != nil {
+		t.Logf("channel returned after error frame: %v", err)
 	}
 }
 
@@ -68,19 +65,6 @@ func TestParseGeneralLogsRequestRejectsInvalidFieldFilters(t *testing.T) {
 	want := []string{"PRIORITY=3", "_SYSTEMD_UNIT=ssh.service"}
 	if !slices.Equal(req.fieldFilters, want) {
 		t.Errorf("fieldFilters = %v, want %v", req.fieldFilters, want)
-	}
-}
-
-func TestBacklogReplayBudgetFitsJobReplayWindow(t *testing.T) {
-	// Sequential next-fit packing can leave frames only half full. One extra
-	// frame covers an oversized first entry and one covers backlog_complete.
-	maxReplayEvents := 2*maxBacklogBytes/flushChunkBytes + 2
-	if maxReplayEvents >= bridgeipc.DefaultJobProgressReplayLimit {
-		t.Fatalf(
-			"backlog may emit %d replay events, generic window only holds %d",
-			maxReplayEvents,
-			bridgeipc.DefaultJobProgressReplayLimit,
-		)
 	}
 }
 
@@ -236,31 +220,6 @@ func TestTrimJournalLinePassesThroughInvalidJSON(t *testing.T) {
 	}
 }
 
-// collectJobEvents drains a completed job's replay log into data lines and
-// progress payloads.
-func collectJobEvents(t *testing.T, job *bridgeipc.Job) (lines []string, progress []map[string]any) {
-	t.Helper()
-	_, replay, unsubscribe := job.SubscribeWithReplay(8)
-	defer unsubscribe()
-	for _, event := range replay {
-		payload, ok := event.Progress.(map[string]any)
-		if !ok {
-			continue
-		}
-		if payload["type"] == "data" {
-			chunk, _ := payload["data"].(string)
-			for line := range strings.SplitSeq(chunk, "\n") {
-				if line != "" {
-					lines = append(lines, line)
-				}
-			}
-			continue
-		}
-		progress = append(progress, payload)
-	}
-	return lines, progress
-}
-
 func requireExecutables(t *testing.T, names ...string) {
 	t.Helper()
 	for _, name := range names {
@@ -278,21 +237,80 @@ func requireReadableJournal(t *testing.T) {
 	}
 }
 
-func newGeneralLogsTestJob(t *testing.T) *bridgeipc.Job {
-	t.Helper()
-	job, err := bridgeipc.NewRegistry().Create(streamTypeGeneralLogs, nil)
-	if err != nil {
-		t.Fatalf("create job: %v", err)
-	}
-	return job
+func openGeneralLogsChannel(ctx context.Context, req apischema.GeneralLogsFollowRequest) (<-chan *relay.StreamFrame, <-chan error, func()) {
+	server, client := net.Pipe()
+	frames := make(chan *relay.StreamFrame, 32)
+	done := make(chan error, 1)
+	go func() {
+		err := streamGeneralLogsChannel(ctx, server, runtime.Runtime{}, req)
+		_ = server.Close()
+		done <- err
+	}()
+	go func() {
+		defer close(frames)
+		for {
+			frame, err := relay.ReadRelayFrame(client)
+			if err != nil {
+				return
+			}
+			frames <- frame
+			if frame.Opcode == relay.OpStreamClose {
+				return
+			}
+		}
+	}()
+	return frames, done, func() { _ = client.Close() }
 }
 
-func requireCompletedJobResult(t *testing.T, result any) {
+type channelCapture struct {
+	lines    []string
+	progress []map[string]any
+	data     map[string]any
+	result   *relay.ResultFrame
+	closed   bool
+}
+
+func collectChannelFrames(t *testing.T, frames <-chan *relay.StreamFrame) channelCapture {
 	t.Helper()
-	resultMap, ok := result.(map[string]any)
-	if !ok || resultMap["status"] != "completed" {
-		t.Fatalf("result = %v, want status completed", result)
+	var capture channelCapture
+	for frame := range frames {
+		if frame.StreamID != 0 {
+			t.Errorf("frame stream ID = %d, want 0", frame.StreamID)
+		}
+		capture.add(t, frame)
 	}
+	return capture
+}
+
+func (capture *channelCapture) add(t *testing.T, frame *relay.StreamFrame) {
+	t.Helper()
+	switch frame.Opcode {
+	case relay.OpStreamData:
+		for line := range strings.SplitSeq(string(frame.Payload), "\n") {
+			if line != "" {
+				capture.lines = append(capture.lines, line)
+			}
+		}
+	case relay.OpStreamProgress:
+		capture.progress = append(capture.progress, decodeChannelJSON[map[string]any](t, frame.Payload))
+	case relay.OpStreamResult:
+		result := decodeChannelJSON[relay.ResultFrame](t, frame.Payload)
+		capture.result = &result
+		if len(result.Data) > 0 {
+			capture.data = decodeChannelJSON[map[string]any](t, result.Data)
+		}
+	case relay.OpStreamClose:
+		capture.closed = true
+	}
+}
+
+func decodeChannelJSON[T any](t *testing.T, payload []byte) T {
+	t.Helper()
+	var value T
+	if err := json.Unmarshal(payload, &value); err != nil {
+		t.Fatalf("decode Channel frame: %v", err)
+	}
+	return value
 }
 
 func assertBacklogLines(t *testing.T, lines []string, maxLines int) {
@@ -336,106 +354,73 @@ func assertBacklogComplete(t *testing.T, progress []map[string]any, wantTruncate
 	t.Error("backlog_complete progress marker not emitted")
 }
 
-func waitForJobLine(t *testing.T, job *bridgeipc.Job, marker string, timeout time.Duration) bool {
-	t.Helper()
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		lines, _ := collectJobEvents(t, job)
-		if slices.ContainsFunc(lines, func(line string) bool {
-			return strings.Contains(line, marker)
-		}) {
-			return true
-		}
-		select {
-		case <-deadline.C:
-			return false
-		case <-ticker.C:
-		}
-	}
-}
-
-func cancelAndWaitForFollow(t *testing.T, cancel context.CancelFunc, done <-chan error) {
-	t.Helper()
-	cancel()
-	select {
-	case runErr := <-done:
-		if runErr != nil && !errors.Is(runErr, context.Canceled) {
-			t.Fatalf("follow phase exited with unexpected error: %v", runErr)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("follow phase did not exit after cancellation")
-	}
-}
-
-// TestRunGeneralLogsJobBacklogOnly runs the real journalctl backlog phase
+// TestGeneralLogsChannelBacklogOnly runs the real journalctl backlog phase
 // end-to-end: chronological order, field trimming, cap respected, and the
 // backlog_complete marker present.
-func TestRunGeneralLogsJobBacklogOnly(t *testing.T) {
+func TestGeneralLogsChannelBacklogOnly(t *testing.T) {
 	requireReadableJournal(t)
-	job := newGeneralLogsTestJob(t)
-	result, err := runGeneralLogsJob(context.Background(), runtime.Runtime{}, job, apischema.GeneralLogsFollowRequest{
+	frames, done, closeClient := openGeneralLogsChannel(context.Background(), apischema.GeneralLogsFollowRequest{
 		Lines:  new("5"),
 		Follow: new(false),
 	})
+	defer closeClient()
+	capture := collectChannelFrames(t, frames)
+	err := <-done
 	if err != nil {
-		t.Fatalf("runGeneralLogsJob: %v", err)
+		t.Fatalf("channel: %v", err)
 	}
-	requireCompletedJobResult(t, result)
-
-	lines, progress := collectJobEvents(t, job)
-	assertBacklogLines(t, lines, 5)
-	assertBacklogComplete(t, progress, false)
+	if capture.result == nil || capture.result.Status != "ok" || capture.data["status"] != "completed" {
+		t.Fatalf("result = %#v data = %v, want completed success", capture.result, capture.data)
+	}
+	if !capture.closed {
+		t.Fatal("channel did not send a close frame")
+	}
+	assertBacklogLines(t, capture.lines, 5)
+	assertBacklogComplete(t, capture.progress, false)
 }
 
-// TestRunGeneralLogsJobZeroMatches: an over-narrow filter must complete
+// TestGeneralLogsChannelZeroMatches: an over-narrow filter must complete
 // cleanly with zero entries and still emit backlog_complete — this is the
 // backend half of the "no more infinite spinner" fix.
-func TestRunGeneralLogsJobZeroMatches(t *testing.T) {
+func TestGeneralLogsChannelZeroMatches(t *testing.T) {
 	requireReadableJournal(t)
-	job := newGeneralLogsTestJob(t)
-	result, err := runGeneralLogsJob(context.Background(), runtime.Runtime{}, job, apischema.GeneralLogsFollowRequest{
+	frames, done, closeClient := openGeneralLogsChannel(context.Background(), apischema.GeneralLogsFollowRequest{
 		Identifier: new("linuxio-test-nonexistent-identifier"),
 		TimePeriod: new("1h"),
 		Follow:     new(false),
 	})
+	defer closeClient()
+	capture := collectChannelFrames(t, frames)
+	err := <-done
 	if err != nil {
 		t.Fatalf("zero matches must not fail: %v", err)
 	}
-	requireCompletedJobResult(t, result)
-
-	lines, progress := collectJobEvents(t, job)
-	if len(lines) != 0 {
-		t.Errorf("got %d lines, want 0", len(lines))
+	if capture.result == nil || capture.result.Status != "ok" || capture.data["status"] != "completed" {
+		t.Fatalf("result = %#v data = %v, want completed success", capture.result, capture.data)
 	}
-	assertBacklogComplete(t, progress, false)
+	if !capture.closed {
+		t.Fatal("channel did not send a close frame")
+	}
+	if len(capture.lines) != 0 {
+		t.Errorf("got %d lines, want 0", len(capture.lines))
+	}
+	assertBacklogComplete(t, capture.progress, false)
 }
 
-// TestRunGeneralLogsJobFollowReceivesNewEntries exercises the live phase:
-// entries logged after the job starts must flow through --after-cursor and
-// the frame batcher, and ctx cancellation must end the job cleanly.
-func TestRunGeneralLogsJobFollowReceivesNewEntries(t *testing.T) {
+// TestGeneralLogsChannelFollowReceivesNewEntries exercises the live phase:
+// entries logged after the channel starts must flow through --after-cursor and
+// the frame batcher, and ctx cancellation must end the Channel cleanly.
+func TestGeneralLogsChannelFollowReceivesNewEntries(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short mode")
 	}
 	requireExecutables(t, "logger")
 	requireReadableJournal(t)
-	job := newGeneralLogsTestJob(t)
-
 	marker := "linuxio-follow-test-" + t.Name()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		_, runErr := runGeneralLogsJob(ctx, runtime.Runtime{}, job, apischema.GeneralLogsFollowRequest{
-			Lines: new("5"),
-		})
-		done <- runErr
-	}()
+	frames, done, closeClient := openGeneralLogsChannel(ctx, apischema.GeneralLogsFollowRequest{Lines: new("5")})
+	defer closeClient()
 
 	// Give the follow process a moment to start, then emit a marker entry.
 	time.Sleep(500 * time.Millisecond)
@@ -445,11 +430,28 @@ func TestRunGeneralLogsJobFollowReceivesNewEntries(t *testing.T) {
 		t.Skipf("logger failed: %v", err)
 	}
 
-	if !waitForJobLine(t, job, marker, 10*time.Second) {
-		cancelAndWaitForFollow(t, cancel, done)
-		t.Fatal("marker entry never arrived on the follow stream")
+	found := false
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for !found {
+		select {
+		case frame := <-frames:
+			if frame == nil {
+				t.Fatal("channel closed before marker arrived")
+			}
+			if frame.Opcode == relay.OpStreamData && strings.Contains(string(frame.Payload), marker) {
+				found = true
+			}
+		case <-deadline.C:
+			t.Fatal("marker entry never arrived on the follow stream")
+		}
 	}
-	cancelAndWaitForFollow(t, cancel, done)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("follow phase did not exit after cancellation")
+	}
 }
 
 // TestGetGeneralLogsPage pages backwards from the 1st-newest cursor and

@@ -58,7 +58,7 @@ func (g *transferProgressGate) record(bytes int64, at time.Time) {
 	g.lastAt = at
 }
 
-// FileProgress represents progress for file transfer and file job operations.
+// FileProgress represents progress for file transfer and file task operations.
 type FileProgress struct {
 	Bytes int64  `json:"bytes"`           // Bytes transferred so far
 	Total int64  `json:"total"`           // Total bytes (0 if unknown)
@@ -79,7 +79,7 @@ type BatchUploadProgress struct {
 	FilesTotal int    `json:"filesTotal"`
 }
 
-// DeleteProgress represents item-count progress for delete jobs.
+// DeleteProgress represents item-count progress for delete tasks.
 type DeleteProgress struct {
 	Processed     int64  `json:"processed"`
 	Total         int64  `json:"total"`
@@ -88,7 +88,7 @@ type DeleteProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
-// ChmodProgress represents entry-count progress for chmod batch jobs. The
+// ChmodProgress represents entry-count progress for chmod batch tasks. The
 // per-entry total is unknown up front, so the count is indeterminate.
 type ChmodProgress struct {
 	Processed     int64  `json:"processed"`

@@ -22,9 +22,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 const UpdateHistory = () => {
   const theme = useAppTheme();
-  const { data: rows } = useSuspenseQuery(
-    linuxio.updates.get_update_history.queryOptions(),
-  );
+  const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
 
   const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
     {

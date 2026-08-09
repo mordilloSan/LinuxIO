@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import type { ReactNode } from "react";
 
-import { openServiceLogsStream, type Stream } from "@/api";
+import { openChannel, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
@@ -122,7 +122,12 @@ const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
   <FrostedCard style={{ padding: 12 }}>
     <UnitLogsLiveContent
       createStream={
-        createStream ?? ((tail) => openServiceLogsStream(unitName ?? "", tail))
+        createStream ??
+        ((tail) =>
+          openChannel("logs.service.follow", {
+            serviceName: unitName ?? "",
+            lines: tail,
+          }))
       }
       titleContent={
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

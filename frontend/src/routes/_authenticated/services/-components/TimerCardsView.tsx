@@ -33,11 +33,10 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
 );
 
 const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
+    refetchInterval: 2000,
+  });
 
   return (
     <>
@@ -66,11 +65,10 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
 };
 
 const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
+    refetchInterval: 2000,
+  });
   return (
     <UnitCardActions
       activeState={timer.active_state}

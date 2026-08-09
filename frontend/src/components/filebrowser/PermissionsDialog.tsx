@@ -157,11 +157,10 @@ const PermissionsDialog = ({
     }
   }
   // Fetch users and groups when dialog opens
-  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } = useQuery(
-    linuxio.filebrowser.users_groups.queryOptions({
-      enabled: open,
-    }),
-  );
+  const { data: usersGroupsData, isLoading: isLoadingUsersGroups } = useQuery({
+    ...linuxio.filebrowser.users_groups,
+    enabled: open,
+  });
 
   // Derive available users and groups directly from query data
   const availableUsers = usersGroupsData?.users || [];

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   type AccountGroup,
   linuxio,
+  useCallMutation,
   type ModifyGroupMembersRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -38,21 +39,24 @@ const EditGroupMembersDialog = ({
     group.members,
   );
 
-  const { data: users = [], isLoading: usersLoading } = useQuery(
-    linuxio.accounts.list_users.queryOptions({ enabled: open }),
-  );
+  const { data: users = [], isLoading: usersLoading } = useQuery({
+    ...linuxio.accounts.list_users,
+    enabled: open,
+  });
 
   const usersList = Array.isArray(users) ? users : [];
 
-  const { mutate: modifyGroupMembers, isPending } =
-    linuxio.accounts.modify_group_members.useAction({
+  const { mutate: modifyGroupMembers, isPending } = useCallMutation(
+    linuxio.accounts.modify_group_members,
+    {
       success: () => {
         toast.success(`Group "${group.name}" members updated`);
         onClose();
       },
       error: "Failed to update group members",
       toast: ACCOUNTS_TOAST_META,
-    });
+    },
+  );
 
   const handleSubmit = () => {
     // Check if anything changed

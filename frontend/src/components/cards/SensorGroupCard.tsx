@@ -118,12 +118,11 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
     () => selectSensorGroup({ adapter, sourceIndex }),
     [adapter, sourceIndex],
   );
-  const { data: group } = useQuery(
-    linuxio.system.get_sensor_info.queryOptions({
-      refetchOnMount: false,
-      select: selectGroup,
-    }),
-  );
+  const { data: group } = useQuery({
+    ...linuxio.system.get_sensor_info,
+    refetchOnMount: false,
+    select: selectGroup,
+  });
 
   if (!group) return null;
 

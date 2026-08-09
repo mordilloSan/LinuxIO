@@ -38,7 +38,7 @@ type appUpdateRequest struct {
 	version string
 }
 
-func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job, payload apischema.AppUpdateRequest) (any, error) {
+func runAppUpdateTask(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, payload apischema.AppUpdateRequest) (any, error) {
 	req, err := parseAppUpdateRequest(payload)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func runAppUpdateJob(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job
 		return nil, err
 	}
 
-	return executeAppUpdate(ctx, rt, job, req.runID, version)
+	return executeAppUpdate(ctx, rt, task, req.runID, version)
 }
 
 func parseAppUpdateRequest(payload apischema.AppUpdateRequest) (appUpdateRequest, error) {
@@ -82,12 +82,12 @@ func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string,
 	return latest, nil
 }
 
-func executeAppUpdate(ctx context.Context, rt runtime.Runtime, job *bridgeipc.Job, runID, version string) (any, error) {
-	slog.Info("app update job starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
+func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (any, error) {
+	slog.Info("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
 
 	startedAt := time.Now().Unix()
 	writeUpdateStatusWithLog(runID, "running", nil, "", startedAt, 0, "initial")
-	relay := &jobOutputWriter{job: job}
+	relay := &taskOutputWriter{task: task}
 
 	_, _ = fmt.Fprintf(relay, "Downloading and verifying install script for %s...\n", version)
 	err := runInstallScript(ctx, version, relay)
@@ -116,7 +116,7 @@ func finishCanceledUpdate(runID string, startedAt, finishedAt int64) error {
 	return context.Canceled
 }
 
-func finishFailedUpdate(runID, version string, relay *jobOutputWriter, startedAt, finishedAt int64, err error) error {
+func finishFailedUpdate(runID, version string, relay *taskOutputWriter, startedAt, finishedAt int64, err error) error {
 	exitCode := 1
 	errMsg := err.Error()
 	// Embed the error in the MESSAGE field so it shows up under `journalctl -o cat`,
@@ -127,7 +127,7 @@ func finishFailedUpdate(runID, version string, relay *jobOutputWriter, startedAt
 	return bridgeipc.NewError(fmt.Sprintf("update failed: %s", errMsg), exitCode)
 }
 
-func finishSuccessfulUpdate(runID string, relay *jobOutputWriter, startedAt, finishedAt int64) {
+func finishSuccessfulUpdate(runID string, relay *taskOutputWriter, startedAt, finishedAt int64) {
 	exitCode := 0
 	writeUpdateStatusWithLog(runID, "ok", &exitCode, "", startedAt, finishedAt, "final")
 	_, _ = fmt.Fprintf(relay, "Installation complete\n")
@@ -157,7 +157,7 @@ func reloadAndRestartAfterUpdate(runID string) {
 }
 
 // detachedPostUpdateContext bounds the intentionally detached restart path:
-// after a successful update the current job can finish before the service restarts.
+// after a successful update the current Task can finish before the service restarts.
 func detachedPostUpdateContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 30*time.Second)
 }
@@ -168,17 +168,17 @@ func writeUpdateStatusWithLog(runID, status string, exitCode *int, errMsg string
 	}
 }
 
-// jobOutputWriter writes process output as transient job data events.
+// taskOutputWriter writes process output as transient Task data events.
 // Safe for concurrent use by multiple goroutines (stdout + stderr).
-type jobOutputWriter struct {
-	mu  sync.Mutex
-	job *bridgeipc.Job
+type taskOutputWriter struct {
+	mu   sync.Mutex
+	task *bridgeipc.Task
 }
 
-func (r *jobOutputWriter) Write(p []byte) (int, error) {
+func (r *taskOutputWriter) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.job.ReportData(string(p))
+	r.task.ReportData(string(p))
 	return len(p), nil
 }
 

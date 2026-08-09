@@ -40,12 +40,11 @@ export const useFileDirectorySize = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = useQuery(
-    linuxio.filebrowser.dir_size.queryOptions(path, {
-      enabled: queryEnabled,
-      ...getDirectorySizeQueryOptions(),
-    }),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.filebrowser.dir_size({ path }),
+    enabled: queryEnabled,
+    ...getDirectorySizeQueryOptions(),
+  });
 
   const derivedError = getDirectorySizeError(
     error,

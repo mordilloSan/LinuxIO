@@ -2,7 +2,7 @@ import { useCallback, useMemo, type MouseEvent } from "react";
 
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
-import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
+import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useFileBrowserArchiveActions } from "@/hooks/filebrowser/useFileBrowserArchiveActions";
 import { useFileBrowserClipboardShortcuts } from "@/hooks/filebrowser/useFileBrowserClipboardShortcuts";
 import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserEditorActions";
@@ -88,7 +88,7 @@ export function useFileBrowserController(): FileBrowserController {
     cutPaths,
     selectedPaths,
   } = selection;
-  const { startDownload, startUpload } = useBackgroundJobActions();
+  const { startDownload, startUpload } = useBackgroundTaskActions();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
 

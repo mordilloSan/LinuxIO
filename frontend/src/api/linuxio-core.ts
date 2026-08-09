@@ -1,7 +1,7 @@
 /**
  * LinuxIO Core API - internal JSON request bridge.
  *
- * App code should use the generated endpoint queryOptions with TanStack Query,
+ * App code should use generated Call descriptors with TanStack Query,
  * or the endpoint action/fetch/cache hooks; see docs/api-contract.md.
  */
 

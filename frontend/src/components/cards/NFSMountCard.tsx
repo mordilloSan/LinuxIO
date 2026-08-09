@@ -64,12 +64,11 @@ const NFSMountCardLiveContent = ({
   mountpoint,
   actions,
 }: NFSMountCardProps) => {
-  const { data: mount } = useQuery(
-    linuxio.storage.list_nfs_mounts.queryOptions({
-      refetchOnMount: false,
-      select: selectNFSMount(mountpoint),
-    }),
-  );
+  const { data: mount } = useQuery({
+    ...linuxio.storage.list_nfs_mounts,
+    refetchOnMount: false,
+    select: selectNFSMount(mountpoint),
+  });
 
   if (!mount) return null;
 

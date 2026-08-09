@@ -109,21 +109,11 @@ const DockerDashboard = ({
     { data: dockerInfo },
   ] = useSuspenseQueries({
     queries: [
-      linuxio.docker.list_containers.queryOptions({
-        refetchInterval: 5000,
-      }),
-      linuxio.docker.list_images.queryOptions({
-        refetchInterval: 30000,
-      }),
-      linuxio.docker.list_networks.queryOptions({
-        refetchInterval: 30000,
-      }),
-      linuxio.docker.list_volumes.queryOptions({
-        refetchInterval: 30000,
-      }),
-      linuxio.docker.get_docker_info.queryOptions({
-        refetchInterval: 60000,
-      }),
+      { ...linuxio.docker.list_containers, refetchInterval: 5000 },
+      { ...linuxio.docker.list_images, refetchInterval: 30000 },
+      { ...linuxio.docker.list_networks, refetchInterval: 30000 },
+      { ...linuxio.docker.list_volumes, refetchInterval: 30000 },
+      { ...linuxio.docker.get_docker_info, refetchInterval: 60000 },
     ],
   });
   const containers = rawContainers;

@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -38,11 +38,10 @@ const UpdatesPage = () => {
 
 const AvailableUpdatesPage = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { data: rawUpdates, refetch } = useSuspenseQuery(
-    linuxio.updates.get_updates_basic.queryOptions({
-      refetchInterval: 50000,
-    }),
-  );
+  const { data: rawUpdates, refetch } = useSuspenseQuery({
+    ...linuxio.updates.get_updates_basic,
+    refetchInterval: 50000,
+  });
   const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
@@ -65,7 +64,7 @@ const AvailableUpdatesPage = () => {
     recoveryPending,
   } = usePackageUpdateController();
   const { mutate: refreshCache, isPending: isRefreshingCache } =
-    linuxio.updates.refresh_cache.useAction({
+    useCallMutation(linuxio.updates.refresh_cache, {
       success: async () => {
         await refetch();
         toast.success("Update sources refreshed");

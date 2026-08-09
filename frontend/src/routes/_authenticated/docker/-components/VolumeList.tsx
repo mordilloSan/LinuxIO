@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -73,8 +73,9 @@ const DeleteVolumeDialog = ({
   const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useAction();
+  const { mutateAsync: deleteVolume, isPending: isDeleting } = useCallMutation(
+    linuxio.docker.delete_volume,
+  );
   const handleDelete = async () => {
     // Delete volumes sequentially
     const failures: string[] = [];
@@ -166,11 +167,12 @@ const VolumeList = ({
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
-  const { data: rawVolumes } = useSuspenseQuery(
-    linuxio.docker.list_volumes.queryOptions({
+  const { data: rawVolumes } = useSuspenseQuery({
+    ...linuxio.docker.list_volumes,
+    ...{
       refetchInterval: 10000,
-    }),
-  );
+    },
+  });
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

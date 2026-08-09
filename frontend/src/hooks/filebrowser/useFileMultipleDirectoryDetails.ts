@@ -38,12 +38,11 @@ export const useFileMultipleDirectoryDetails = (
 
   // One dir_size query per directory - shares cache with useDirectorySize!
   const queries = useQueries({
-    queries: directoryPaths.map((path) =>
-      linuxio.filebrowser.dir_size.queryOptions(path, {
-        ...getDirectorySizeQueryOptions(),
-        enabled: !indexerDisabled,
-      }),
-    ),
+    queries: directoryPaths.map((path) => ({
+      ...linuxio.filebrowser.dir_size({ path }),
+      ...getDirectorySizeQueryOptions(),
+      enabled: !indexerDisabled,
+    })),
   });
 
   // Create a map of path -> query result for easy lookup

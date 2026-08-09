@@ -27,19 +27,18 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
-  const resourceStat = actual.linuxio.filebrowser.resource_stat;
-  const mockedResourceStat = Object.assign(
-    (...args: Parameters<typeof resourceStat>) => resourceStat(...args),
-    resourceStat,
-    { useFetcher: () => (path: string) => statMock(path) },
-  );
   return {
     ...actual,
+    call: vi.fn((route: string, request: { path: string }) => {
+      if (route === actual.linuxio.filebrowser.resource_stat.route) {
+        return statMock(request.path);
+      }
+      return actual.call(route as never, request as never);
+    }),
     linuxio: {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        resource_stat: mockedResourceStat,
       },
     },
   };

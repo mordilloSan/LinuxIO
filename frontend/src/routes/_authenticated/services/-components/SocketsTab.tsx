@@ -24,11 +24,10 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
 }
 
 function useSocketsQuery(viewMode: TableCardViewMode) {
-  return useSuspenseQuery(
-    linuxio.systemd.list_sockets.queryOptions({
-      refetchInterval: viewMode === "card" ? false : 5000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.systemd.list_sockets,
+    refetchInterval: viewMode === "card" ? false : 5000,
+  });
 }
 
 function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {

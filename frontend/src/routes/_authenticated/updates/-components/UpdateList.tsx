@@ -34,13 +34,14 @@ const UpdateList = ({
     items: updates,
     surface: "updates.list",
   });
-  const changelogQuery = useQuery(
-    linuxio.updates.get_update_detail.queryOptions(changelogPackageId ?? "", {
-      enabled: changelogPackageId !== null,
-      staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-      select: (detail) => detail.changelog || "No changelog available",
+  const changelogQuery = useQuery({
+    ...linuxio.updates.get_update_detail({
+      packageId: changelogPackageId ?? "",
     }),
-  );
+    enabled: changelogPackageId !== null,
+    staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+    select: (detail) => detail.changelog || "No changelog available",
+  });
   const changelog = changelogQuery.isError
     ? "Failed to load changelog"
     : changelogQuery.data;

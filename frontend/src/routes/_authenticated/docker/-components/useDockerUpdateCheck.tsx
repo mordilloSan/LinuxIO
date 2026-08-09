@@ -1,4 +1,4 @@
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -10,7 +10,7 @@ export function useDockerUpdateCheck() {
   const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
     useCapability("watchtowerAvailable");
   const { mutate: checkUpdates, isPending: isCheckingUpdates } =
-    linuxio.docker.check_updates.useAction({
+    useCallMutation(linuxio.docker.check_updates, {
       success: (result) => {
         const checked = result?.checked ?? 0;
         const updates = result?.updates ?? 0;

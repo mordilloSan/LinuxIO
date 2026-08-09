@@ -36,30 +36,35 @@ export const Route = createFileRoute("/_authenticated/hardware")({
     );
     const queries: LoaderQueryOptions[] = [];
     if (sections.sensors) {
-      queries.push(
-        linuxio.system.get_sensor_info.queryOptions(hardwareSensorQueryOptions),
-      );
+      queries.push({
+        ...linuxio.system.get_sensor_info,
+        ...hardwareSensorQueryOptions,
+      });
     }
     if (sections.pciDevices) {
-      queries.push(
-        linuxio.system.get_pci_devices.queryOptions(hardwareStableQueryOptions),
-      );
+      queries.push({
+        ...linuxio.system.get_pci_devices,
+        ...hardwareStableQueryOptions,
+      });
     }
     if (sections.memoryModules) {
-      queries.push(
-        linuxio.system.get_memory_modules.queryOptions(
-          hardwareStableQueryOptions,
-        ),
-      );
+      queries.push({
+        ...linuxio.system.get_memory_modules,
+        ...hardwareStableQueryOptions,
+      });
     }
     if (sections.systemInfo) {
       queries.push(
-        linuxio.system.get_motherboard_info.queryOptions(
-          hardwareStableQueryOptions,
-        ),
-        linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
-        linuxio.system.get_cpu_info.queryOptions(hardwareStableQueryOptions),
-        linuxio.system.get_gpu_info.queryOptions(hardwareGpuQueryOptions),
+        {
+          ...linuxio.system.get_motherboard_info,
+          ...hardwareStableQueryOptions,
+        },
+        {
+          ...linuxio.system.get_system_info,
+          ...hardwareStableQueryOptions,
+        },
+        { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
+        { ...linuxio.system.get_gpu_info, ...hardwareGpuQueryOptions },
       );
     }
 

@@ -18,13 +18,24 @@ const mocks = vi.hoisted(() => {
   };
   return {
     cacheState: initialState,
-    cacheSet: vi.fn((state: typeof initialState) => {
-      mocks.cacheState = state;
-    }),
     mutateAsync: vi.fn(),
     toastError: vi.fn(),
     toastSuccess: vi.fn(),
+    queryClient: {
+      cancelQueries: vi.fn().mockResolvedValue(undefined),
+      getQueryData: vi.fn(() => mocks.cacheState),
+      setQueryData: vi.fn((_: unknown, state: typeof initialState) => {
+        mocks.cacheState = state;
+      }),
+    },
   };
+});
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
+    "@tanstack/react-query",
+  );
+  return { ...actual, useQueryClient: () => mocks.queryClient };
 });
 
 vi.mock("@/api", async () => {
@@ -33,11 +44,6 @@ vi.mock("@/api", async () => {
     await vi.importActual<typeof import("@/api/capabilities")>(
       "@/api/capabilities",
     );
-  const cache = {
-    cancel: vi.fn().mockResolvedValue(undefined),
-    get: () => mocks.cacheState,
-    set: mocks.cacheSet,
-  };
   return {
     ...actual,
     emptyCapabilityState,
@@ -47,17 +53,19 @@ vi.mock("@/api", async () => {
         ...actual.linuxio.docker,
         get_container_auto_update: {
           ...actual.linuxio.docker.get_container_auto_update,
-          queryOptions: () => ({
-            queryKey: ["docker.get_container_auto_update"],
-            queryFn: async () => mocks.cacheState,
-          }),
-          useCache: () => cache,
+          queryKey: ["docker.get_container_auto_update"],
+          queryFn: async () => mocks.cacheState,
         },
         set_container_auto_update: {
           ...actual.linuxio.docker.set_container_auto_update,
-          useAction: () => ({ mutateAsync: mocks.mutateAsync }),
         },
       },
+    },
+    useCallMutation: (endpoint: { route: string }) => {
+      if (endpoint.route.endsWith("set_container_auto_update")) {
+        return { mutateAsync: mocks.mutateAsync };
+      }
+      throw new Error(`Unexpected mutation route: ${endpoint.route}`);
     },
   };
 });
@@ -107,12 +115,14 @@ describe("useContainerAutoUpdateState", () => {
     act(() => result.current.saveOptions(secondOptions));
     expect(mocks.mutateAsync).toHaveBeenCalledTimes(1);
 
-    const setsBeforeUnmount = mocks.cacheSet.mock.calls.length;
+    const setsBeforeUnmount = mocks.queryClient.setQueryData.mock.calls.length;
     unmount();
     await act(async () => resolveSave(mocks.cacheState));
 
     expect(mocks.mutateAsync).toHaveBeenCalledTimes(1);
-    expect(mocks.cacheSet).toHaveBeenCalledTimes(setsBeforeUnmount);
+    expect(mocks.queryClient.setQueryData).toHaveBeenCalledTimes(
+      setsBeforeUnmount,
+    );
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(mocks.toastError).not.toHaveBeenCalled();
   });

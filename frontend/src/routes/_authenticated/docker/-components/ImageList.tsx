@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -70,8 +70,9 @@ const DeleteImageDialog = ({
   const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteImage, isPending: isDeleting } =
-    linuxio.docker.delete_image.useAction();
+  const { mutateAsync: deleteImage, isPending: isDeleting } = useCallMutation(
+    linuxio.docker.delete_image,
+  );
   const handleDelete = async () => {
     // Delete images sequentially
     const failures: string[] = [];
@@ -169,11 +170,12 @@ const ImageList = ({
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
-  const { data: rawImages } = useSuspenseQuery(
-    linuxio.docker.list_images.queryOptions({
+  const { data: rawImages } = useSuspenseQuery({
+    ...linuxio.docker.list_images,
+    ...{
       refetchInterval: 10000,
-    }),
-  );
+    },
+  });
   const images = rawImages;
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());

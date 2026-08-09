@@ -11,7 +11,7 @@ type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
 type IndexerIntegrityCheck string
-type JobState string
+type TaskState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
@@ -24,7 +24,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
-	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
+	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
@@ -41,7 +41,7 @@ const (
 
 var ExtraTypes = []TypeSpec{
 	TypeOf[InstallCapabilityResult](),
-	TypeOf[JobEvent](),
+	TypeOf[TaskEvent](),
 	TypeOf[VMCreateProgress](),
 }
 
@@ -1146,18 +1146,18 @@ type DirectoryValidationResult struct {
 	Valid       bool   `json:"valid"`
 }
 
-type JobError struct {
+type TaskError struct {
 	Code    *int   `json:"code,omitempty"`
 	Message string `json:"message"`
 }
 
-type JobOwner struct {
+type TaskOwner struct {
 	SessionID *string `json:"session_id,omitempty"`
 	Username  *string `json:"username,omitempty"`
 	UID       *int    `json:"uid,omitempty"`
 }
 
-type JobMetadata struct {
+type TaskMetadata struct {
 	Action      *string  `json:"action,omitempty"`
 	Capability  *string  `json:"capability,omitempty"`
 	Device      *string  `json:"device,omitempty"`
@@ -1169,27 +1169,27 @@ type JobMetadata struct {
 	TestType    *string  `json:"testType,omitempty"`
 }
 
-type JobSnapshot struct {
-	CreatedAt  string       `json:"created_at"`
-	Error      *JobError    `json:"error,omitempty"`
-	FinishedAt *string      `json:"finished_at,omitempty"`
-	ID         string       `json:"id"`
-	Owner      *JobOwner    `json:"owner,omitempty"`
-	Metadata   *JobMetadata `json:"metadata,omitempty"`
-	Progress   any          `json:"progress,omitempty"`
-	Result     any          `json:"result,omitempty"`
-	StartedAt  *string      `json:"started_at,omitempty"`
-	State      JobState     `json:"state"`
-	Type       string       `json:"type"`
-	UpdatedAt  string       `json:"updated_at"`
+type TaskSnapshot struct {
+	CreatedAt  string        `json:"created_at"`
+	Error      *TaskError    `json:"error,omitempty"`
+	FinishedAt *string       `json:"finished_at,omitempty"`
+	ID         string        `json:"id"`
+	Owner      *TaskOwner    `json:"owner,omitempty"`
+	Metadata   *TaskMetadata `json:"metadata,omitempty"`
+	Progress   any           `json:"progress,omitempty"`
+	Result     any           `json:"result,omitempty"`
+	StartedAt  *string       `json:"started_at,omitempty"`
+	State      TaskState     `json:"state"`
+	Type       string        `json:"type"`
+	UpdatedAt  string        `json:"updated_at"`
 }
 
-type JobEvent struct {
-	Error    *JobError   `json:"error,omitempty"`
-	Job      JobSnapshot `json:"job"`
-	Progress any         `json:"progress,omitempty"`
-	Result   any         `json:"result,omitempty"`
-	Type     string      `json:"type"`
+type TaskEvent struct {
+	Error    *TaskError   `json:"error,omitempty"`
+	Task     TaskSnapshot `json:"task"`
+	Progress any          `json:"progress,omitempty"`
+	Result   any          `json:"result,omitempty"`
+	Type     string       `json:"type"`
 }
 
 type Update struct {

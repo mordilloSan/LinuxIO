@@ -4,6 +4,7 @@ import { act, render, screen, waitFor } from "@/test/render";
 import { consumeSigninNotice } from "@/utils/signinNotice";
 
 const apiMocks = vi.hoisted(() => ({
+  call: vi.fn(),
   closeStreamMux: vi.fn(),
   getCapabilities: vi.fn(),
   initStreamMux: vi.fn(() => ({
@@ -37,11 +38,12 @@ vi.mock("@/api", async () => {
     );
   return {
     ...capabilities,
+    call: apiMocks.call,
     closeStreamMux: apiMocks.closeStreamMux,
     initStreamMux: apiMocks.initStreamMux,
     linuxio: {
       system: {
-        get_capabilities: apiMocks.getCapabilities,
+        get_capabilities: { route: "system.get_capabilities" },
       },
     },
   };
@@ -81,8 +83,10 @@ function renderAuthProvider() {
 
 describe("AuthContext", () => {
   beforeEach(() => {
+    apiMocks.call.mockReset();
     apiMocks.closeStreamMux.mockClear();
     apiMocks.getCapabilities.mockReset();
+    apiMocks.call.mockImplementation(() => apiMocks.getCapabilities());
     apiMocks.initStreamMux.mockReset();
     apiMocks.initStreamMux.mockReturnValue({
       status: "connecting",

@@ -25,11 +25,10 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
 }
 
 function useTimersQuery(viewMode: TableCardViewMode) {
-  return useSuspenseQuery(
-    linuxio.systemd.list_timers.queryOptions({
-      refetchInterval: viewMode === "card" ? false : 5000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.systemd.list_timers,
+    refetchInterval: viewMode === "card" ? false : 5000,
+  });
 }
 
 function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {

@@ -10,22 +10,22 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 var packageUpdateRoutes = packageUpdateBindings().Routes()
 
 func packageUpdateBindings() apischema.BindingSet {
-	policy := bridgejobs.SingletonSystem
+	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.Runner[apischema.PackageUpdateRequest, apischema.JobSnapshot]("packages.update", apischema.WithJobMetadata(func(req apischema.PackageUpdateRequest) bridgejobs.JobMetadata {
-			return bridgejobs.JobMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
-		})).Run(runPackageUpdateJob, policy),
+		apischema.TaskRunner[apischema.PackageUpdateRequest, apischema.TaskSnapshot]("packages.update", apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
+			return bridgetask.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
+		})).Run(runPackageUpdateTask, policy),
 	)
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router) {
+func RegisterTaskRoutes(router *bridgetask.Router) {
 	packageUpdateBindings().Register(router)
 }
 
@@ -44,9 +44,9 @@ type PkgUpdateProgress struct {
 
 type pkgUpdateReporter func(*PkgUpdateProgress) error
 
-func jobPkgUpdateReporter(job *bridgejobs.Job) pkgUpdateReporter {
+func taskPkgUpdateReporter(task *bridgetask.Task) pkgUpdateReporter {
 	return func(p *PkgUpdateProgress) error {
-		job.ReportProgress(*p)
+		task.ReportProgress(*p)
 		return nil
 	}
 }
@@ -157,11 +157,11 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, req apischema.PackageUpdateRequest) (any, error) {
+func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apischema.PackageUpdateRequest) (any, error) {
 	if len(req.PackageIDs) == 0 {
-		return nil, bridgejobs.NewError("no packages specified", 400)
+		return nil, bridgetask.NewError("no packages specified", 400)
 	}
-	report := jobPkgUpdateReporter(job)
+	report := taskPkgUpdateReporter(task)
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
@@ -172,7 +172,7 @@ func runPackageUpdateJob(ctx context.Context, job *bridgejobs.Job, req apischema
 		if ctx.Err() != nil {
 			return nil, context.Canceled
 		}
-		return nil, bridgejobs.NewError(err.Error(), 500)
+		return nil, bridgetask.NewError(err.Error(), 500)
 	}
 
 	result := map[string]any{"updated": len(req.PackageIDs)}
@@ -196,7 +196,7 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 
 		// PackageKit can list updates that cannot be committed together (for
 		// example while an APT phased update is still deferred). Keep one
-		// PackageKit session and job, but give every package its own transaction
+		// PackageKit session and task, but give every package its own transaction
 		// so one package failure does not abandon the batch.
 		trans, err := session.CreateTransaction(100)
 		if err != nil {

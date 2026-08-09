@@ -9,11 +9,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import type {
-  JobSnapshot,
   LinuxIOStreamSchema,
   StreamRouteName,
+  TaskSnapshot,
 } from "./generated/linuxio-types";
-import { isTerminalJobState } from "./job-state";
 import { request as bridgeRequest } from "./linuxio-core";
 import {
   encodeString,
@@ -27,6 +26,7 @@ import {
   type StreamType,
   subscribeMuxInstanceChanged,
 } from "./StreamMultiplexer";
+import { isTerminalTaskState } from "./task-state";
 
 function openMuxStream(
   type: StreamType,
@@ -56,16 +56,16 @@ function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
 type StreamRouteArgs<R extends StreamRouteName> =
   LinuxIOStreamSchema[R] extends void ? [] : [request: LinuxIOStreamSchema[R]];
 
-function openRouteStream<R extends StreamRouteName>(
+export function openChannel<R extends StreamRouteName>(
   route: R,
   ...args: StreamRouteArgs<R>
 ): Stream | null {
   return openMuxStream(route, streamOpenPayload(route, args[0]));
 }
 
-let nextJobBackedStreamID = -1;
+let nextTaskDataStreamID = -1;
 
-type JobDataProgress = {
+type TaskDataProgress = {
   type?: unknown;
   data?: unknown;
 };
@@ -82,7 +82,7 @@ function dataProgressValue(progress: unknown): string | null {
   if (!progress || typeof progress !== "object") {
     return null;
   }
-  const candidate = progress as JobDataProgress;
+  const candidate = progress as TaskDataProgress;
   if (candidate.type !== "data") {
     return null;
   }
@@ -95,8 +95,8 @@ function dataProgressValue(progress: unknown): string | null {
   return String(candidate.data);
 }
 
-class JobBackedDataStream implements Stream {
-  readonly id = nextJobBackedStreamID--;
+class TaskDataStream implements Stream {
+  readonly id = nextTaskDataStreamID--;
   readonly type: StreamType;
   onData: ((data: Uint8Array) => void) | null = null;
   onClose: (() => void) | null = null;
@@ -104,8 +104,8 @@ class JobBackedDataStream implements Stream {
   onResult: ((result: ResultFrame) => void) | null = null;
 
   private _status: StreamStatus = "opening";
-  private attachStream: Stream | null = null;
-  private jobId: string | null = null;
+  private watchStream: Stream | null = null;
+  private taskId: string | null = null;
   private closed = false;
 
   constructor(
@@ -121,11 +121,11 @@ class JobBackedDataStream implements Stream {
   }
 
   write(): void {
-    // Job-backed data streams are receive-only.
+    // Task data streams are receive-only.
   }
 
   resize(): void {
-    // Not applicable to receive-only job data streams.
+    // Not applicable to receive-only Task data streams.
   }
 
   close(): void {
@@ -139,40 +139,40 @@ class JobBackedDataStream implements Stream {
   private async start(route: string): Promise<void> {
     try {
       const [handler, command] = routeParts(route);
-      const snapshot = await bridgeRequest<JobSnapshot>(
+      const snapshot = await bridgeRequest<TaskSnapshot>(
         handler,
         command,
         this.request,
       );
       if (this.closed) {
-        void this.cancelJob(snapshot.id);
+        void this.cancelTask(snapshot.id);
         return;
       }
 
-      this.jobId = snapshot.id;
-      const attach = openJobAttachStream(snapshot.id);
-      if (!attach) {
-        if (isTerminalJobState(snapshot.state)) {
+      this.taskId = snapshot.id;
+      const watch = openTaskWatchStream(snapshot.id);
+      if (!watch) {
+        if (isTerminalTaskState(snapshot.state)) {
           this.forwardProgress(snapshot.progress);
           this.forwardTerminalSnapshot(snapshot);
           return;
         }
-        this.forwardError("Failed to attach job stream", "stream_unavailable");
+        this.forwardError("Failed to watch task", "stream_unavailable");
         return;
       }
 
-      this.attachStream = attach;
+      this.watchStream = watch;
       this._status = "open";
-      attach.onData = (data) => this.onData?.(data);
-      attach.onProgress = (progress) => this.forwardProgress(progress);
-      attach.onResult = (result) => {
+      watch.onData = (data) => this.onData?.(data);
+      watch.onProgress = (progress) => this.forwardProgress(progress);
+      watch.onResult = (result) => {
         this.onResult?.(result);
         this.markClosed();
       };
-      attach.onClose = () => this.markClosed();
+      watch.onClose = () => this.markClosed();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Failed to start job stream";
+        error instanceof Error ? error.message : "Failed to start task";
       const code =
         typeof error === "object" && error !== null && "code" in error
           ? (error as { code?: string | number }).code
@@ -192,13 +192,13 @@ class JobBackedDataStream implements Stream {
     }
   }
 
-  private forwardTerminalSnapshot(snapshot: JobSnapshot): void {
+  private forwardTerminalSnapshot(snapshot: TaskSnapshot): void {
     if (snapshot.state === "completed") {
       this.onResult?.({ status: "ok", data: snapshot.result });
     } else {
       this.onResult?.({
         status: "error",
-        error: snapshot.error?.message ?? "Job failed",
+        error: snapshot.error?.message ?? "Task failed",
         code: snapshot.error?.code,
       });
     }
@@ -217,21 +217,21 @@ class JobBackedDataStream implements Stream {
   private stop(abort: boolean): void {
     if (this.closed) return;
     if (abort) {
-      this.attachStream?.abort();
+      this.watchStream?.abort();
     } else {
-      this.attachStream?.close();
+      this.watchStream?.close();
     }
-    if (this.jobId) {
-      void this.cancelJob(this.jobId);
+    if (this.taskId) {
+      void this.cancelTask(this.taskId);
     }
     this.markClosed();
   }
 
-  private async cancelJob(jobId: string): Promise<void> {
+  private async cancelTask(taskId: string): Promise<void> {
     try {
-      await bridgeRequest<JobSnapshot>("jobs", "cancel", { jobId });
+      await bridgeRequest<TaskSnapshot>("tasks", "cancel", { taskId });
     } catch (error) {
-      console.debug("Failed to cancel bridge job", error);
+      console.debug("Failed to cancel bridge task", error);
     }
   }
 
@@ -243,14 +243,14 @@ class JobBackedDataStream implements Stream {
   }
 }
 
-function openJobBackedDataStream<R extends StreamRouteName>(
+function openTaskOutputStream<R extends StreamRouteName>(
   route: R,
   request: LinuxIOStreamSchema[R],
 ): Stream | null {
   if (!isConnected()) {
     return null;
   }
-  return new JobBackedDataStream(route, request);
+  return new TaskDataStream(route, request);
 }
 
 function makeSubscribeWithRebind(
@@ -365,7 +365,7 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 // ============================================================================
 
 export function openTerminalStream(cols: number, rows: number): Stream | null {
-  return openRouteStream("terminal.open", { cols, rows });
+  return openChannel("terminal.open", { cols, rows });
 }
 
 export function openContainerStream(
@@ -374,68 +374,31 @@ export function openContainerStream(
   cols: number,
   rows: number,
 ): Stream | null {
-  return openRouteStream("container.open", { containerId, shell, cols, rows });
-}
-
-export function openDockerLogsStream(
-  containerId: string,
-  tail: string = "100",
-): Stream | null {
-  return openJobBackedDataStream("docker.logs.follow", { containerId, tail });
-}
-
-export function openServiceLogsStream(
-  serviceName: string,
-  lines: string = "100",
-): Stream | null {
-  return openJobBackedDataStream("logs.service.follow", {
-    serviceName,
-    lines,
-  });
-}
-
-export function openGeneralLogsStream(
-  lines: string = "100",
-  timePeriod: string = "",
-  priority: string = "",
-  identifier: string = "",
-  fieldFilters: string[] = [],
-  follow: boolean = true,
-  afterCursor: string = "",
-): Stream | null {
-  return openJobBackedDataStream("logs.general.follow", {
-    lines,
-    timePeriod,
-    priority,
-    identifier,
-    fieldFilters,
-    follow,
-    afterCursor,
-  });
+  return openChannel("container.open", { containerId, shell, cols, rows });
 }
 
 export function openAppUpdateStream(
   runId: string,
   version?: string,
 ): Stream | null {
-  return openJobBackedDataStream("control.app_update", { runId, version });
+  return openTaskOutputStream("control.app_update", { runId, version });
 }
 
-export function openJobAttachStream(jobId: string): Stream | null {
-  return openRouteStream("jobs.attach", { jobId });
+export function openTaskWatchStream(taskId: string): Stream | null {
+  return openChannel("tasks.watch", { taskId });
 }
 
-export function openJobDataStream(
-  jobId: string,
+export function openTaskDataStream(
+  taskId: string,
   offset: number = 0,
 ): Stream | null {
-  return openRouteStream("jobs.data", { jobId, offset: String(offset) });
+  return openChannel("tasks.data", { taskId, offset: String(offset) });
 }
 
 export function openVMConsoleStream(name: string): Stream | null {
-  return openRouteStream("virt.console_open", { name });
+  return openChannel("virt.console_open", { name });
 }
 
-export function openJobEventsStream(): Stream | null {
-  return openRouteStream("jobs.events");
+export function openTaskEventsStream(): Stream | null {
+  return openChannel("tasks.events");
 }

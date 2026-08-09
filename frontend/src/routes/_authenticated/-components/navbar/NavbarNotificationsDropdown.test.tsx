@@ -6,17 +6,17 @@ const state = {
   transfers: [] as Array<{ id: string; progress: number; type: string }>,
 };
 
-vi.mock("@/hooks/backgroundJobs/useBackgroundJobState", () => ({
-  useBackgroundJobState: () => state,
+vi.mock("@/hooks/backgroundTasks/useBackgroundTaskState", () => ({
+  useBackgroundTaskState: () => state,
 }));
 
-vi.mock("@/hooks/backgroundJobs/useBackgroundJobActions", () => ({
-  useBackgroundJobActions: () => ({
+vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
+  useBackgroundTaskActions: () => ({
     cancelCompression: vi.fn(),
     cancelCopy: vi.fn(),
     cancelDownload: vi.fn(),
     cancelExtraction: vi.fn(),
-    cancelJob: vi.fn(),
+    cancelTask: vi.fn(),
     cancelMove: vi.fn(),
     cancelUpload: vi.fn(),
     openIndexerDialog: vi.fn(),

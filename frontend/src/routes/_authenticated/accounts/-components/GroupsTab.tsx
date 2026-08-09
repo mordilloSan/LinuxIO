@@ -30,11 +30,10 @@ const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
-  const { data: groups } = useSuspenseQuery(
-    linuxio.accounts.list_groups.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: groups } = useSuspenseQuery({
+    ...linuxio.accounts.list_groups,
+    refetchInterval: 10000,
+  });
 
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);

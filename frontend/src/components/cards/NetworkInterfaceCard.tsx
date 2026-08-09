@@ -97,12 +97,11 @@ const NetworkInterfaceCardContent = ({
 }: NetworkInterfaceCardContentProps) => {
   const theme = useAppTheme();
   const handleToggle = useCallback(() => onToggle(name), [name, onToggle]);
-  const { data: rawInterface } = useQuery(
-    linuxio.network.get_network_info.queryOptions({
-      refetchOnMount: false,
-      select: selectNetworkInterface(name),
-    }),
-  );
+  const { data: rawInterface } = useQuery({
+    ...linuxio.network.get_network_info,
+    refetchOnMount: false,
+    select: selectNetworkInterface(name),
+  });
 
   if (!rawInterface) return null;
 

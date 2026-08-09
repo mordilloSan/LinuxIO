@@ -13,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func main() {
@@ -97,7 +98,7 @@ func renderRouteMetadata() string {
 func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 	var b strings.Builder
 	b.WriteString(header())
-	b.WriteString("export type RouteMode = \"query\" | \"job\" | \"duplex\";\n\n")
+	b.WriteString("export type RouteMode = \"call\" | \"task\" | \"duplex\";\n\n")
 	b.WriteString("export const ROUTE_MODES = {\n")
 	for _, route := range routes {
 		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(route.Mode))
@@ -151,6 +152,7 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 		schema.WriteString("  };\n\n")
 	}
 	schema.WriteString("}\n\n")
+	renderCallTypes(&schema, routes, renderer)
 	schema.WriteString("/** Extract handler names from schema */\n")
 	schema.WriteString("export type HandlerName = keyof LinuxIOSchema;\n\n")
 	schema.WriteString("/** Extract command names for a given handler */\n")
@@ -172,15 +174,15 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
 	schema.WriteString("> = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;\n\n")
-	schema.WriteString("/** Extract a declared job progress type, or never when the route has none */\n")
+	schema.WriteString("/** Extract a declared Task progress type, or never when the route has none */\n")
 	schema.WriteString("export type CommandProgress<\n")
 	schema.WriteString("  H extends HandlerName,\n")
 	schema.WriteString("  C extends CommandName<H>,\n")
 	schema.WriteString("> = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;\n\n")
 
 	schema.WriteString("/**\n")
-	schema.WriteString(" * Wire request contracts for stream-consumed routes: duplex opens and job\n")
-	schema.WriteString(" * routes attached via job data streams (routes with no query/job endpoint).\n")
+	schema.WriteString(" * Wire request contracts for stream-consumed routes: duplex opens and Task\n")
+	schema.WriteString(" * routes attached via Task data streams (routes with no query/Task endpoint).\n")
 	schema.WriteString(" * `void` marks routes opened without a request payload.\n")
 	schema.WriteString(" */\n")
 	schema.WriteString("export interface LinuxIOStreamSchema {\n")
@@ -215,6 +217,28 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 	return b.String()
 }
 
+func renderCallTypes(schema *strings.Builder, routes []apischema.RouteSpec, renderer *tsRenderer) {
+	schema.WriteString("/** Type-only contracts for migrated Call routes. */\n")
+	schema.WriteString("export interface LinuxIOCallSchema {\n")
+	callRoutes := make([]apischema.RouteSpec, 0, len(routes))
+	for _, route := range routes {
+		if route.Mode == bridgeipc.ModeCall && route.Endpoint() {
+			callRoutes = append(callRoutes, route)
+		}
+	}
+	sort.Slice(callRoutes, func(i, j int) bool { return callRoutes[i].Route < callRoutes[j].Route })
+	for _, route := range callRoutes {
+		fmt.Fprintf(schema, "  %q: { request: %s; result: %s };\n", route.Route,
+			renderer.requestRef(route.RequestSpec()), renderer.typeRef(route.ResultSpec()))
+	}
+	schema.WriteString("}\n\n")
+	schema.WriteString("export type CallRoute = keyof LinuxIOCallSchema;\n\n")
+	schema.WriteString("export type CallRequest<R extends CallRoute> = LinuxIOCallSchema[R][\"request\"];\n\n")
+	schema.WriteString("export type CallResult<R extends CallRoute> = LinuxIOCallSchema[R][\"result\"];\n\n")
+	schema.WriteString("export type NoRequestCallRoute = { [R in CallRoute]: CallRequest<R> extends void ? R : never }[CallRoute];\n\n")
+	schema.WriteString("export type RequestCallRoute = { [R in CallRoute]: CallRequest<R> extends void ? never : R }[CallRoute];\n\n")
+}
+
 func renderClient() string {
 	return renderClientForRoutes(handlers.Routes)
 }
@@ -222,8 +246,10 @@ func renderClient() string {
 func renderClientForRoutes(routes []apischema.RouteSpec) string {
 	var b strings.Builder
 	b.WriteString(header())
-	b.WriteString("import { createEndpoint } from \"../react-query\";\n")
-	b.WriteString("import type { TypedAPI } from \"../react-query\";\n\n")
+	b.WriteString("import { defineCall, defineCallWithRequest } from \"../call-react-query\";\n")
+	b.WriteString("import type { TypedAPI } from \"../endpoint-types\";\n")
+	b.WriteString("import { createTaskEndpoint } from \"../task-react-query\";\n")
+	b.WriteString("\n")
 	b.WriteString("const linuxio = {\n")
 	byHandler := routesByHandler(routes)
 	handlers := sortedKeys(byHandler)
@@ -236,10 +262,22 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 			if !route.Endpoint() {
 				continue
 			}
+			if route.Mode == bridgeipc.ModeCall {
+				factory := "defineCallWithRequest"
+				if apischema.IsEmptyRequestType(route.RequestSpec().GoType) {
+					factory = "defineCall"
+				}
+				fmt.Fprintf(&b, "    %s: %s(%q),\n", route.Command(), factory, route.Route)
+				continue
+			}
+			if route.Mode != bridgeipc.ModeTask {
+				continue
+			}
 			fmt.Fprintf(
 				&b,
-				"    %s: createEndpoint(%q, %q, %s),\n",
+				"    %s: %s(%q, %q, %s),\n",
 				route.Command(),
+				"createTaskEndpoint",
 				route.Handler(),
 				route.Command(),
 				requestShape(route.RequestSpec()),

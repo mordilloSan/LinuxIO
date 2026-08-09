@@ -36,11 +36,10 @@ const ServiceStatusRows = memo<{ service: Service }>(({ service }) => (
 ServiceStatusRows.displayName = "ServiceStatusRows";
 
 const ServiceInfoRows = ({ service }: { service: Service }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(service.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: service.name }),
+    refetchInterval: 2000,
+  });
   const mainPid = Number(info?.MainPID ?? 0);
   const memory = formatBytes(info?.MemoryCurrent);
   const statusColor = getServiceStatusColor(service.active_state);
@@ -89,11 +88,10 @@ const ServiceInfoRows = ({ service }: { service: Service }) => {
 };
 
 const ServiceActionsWrapper = ({ service }: { service: Service }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(service.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: service.name }),
+    refetchInterval: 2000,
+  });
   return (
     <UnitCardActions
       activeState={service.active_state}

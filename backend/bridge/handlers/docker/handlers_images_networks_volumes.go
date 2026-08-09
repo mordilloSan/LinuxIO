@@ -12,7 +12,7 @@ func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequ
 
 // The delete/create handlers below are void: their routes declare NoResponse, so
 // the docker object or status string their domain functions return was never
-// reachable — and on a job route it lingered in the snapshot instead.
+// reachable — and on a Task route it lingered in the snapshot instead.
 func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.ImageIDRequest) error {
 	_, err := DeleteImage(ctx, req.ImageID)
 	return err

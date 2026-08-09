@@ -57,7 +57,7 @@ func isIndexerEnabled() bool {
 }
 
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
-// that should outlive the request/job which already completed the filesystem change.
+// that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1591,4 +1591,4 @@ func getAllGroups(ctx context.Context) ([]string, error) {
 }
 
 // NOTE: fileUploadFromTemp, fileUpdateFromTemp, fileDownloadToTemp, archiveDownloadSetup removed.
-// These operations now use durable jobs plus built-in jobs.data streams.
+// These operations now use durable tasks plus built-in tasks.data streams.

@@ -20,9 +20,9 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        search: {
-          queryOptions: apiMocks.searchQueryOptions,
-        },
+        search: Object.assign(apiMocks.searchQueryOptions, {
+          route: actual.linuxio.filebrowser.search.route,
+        }),
       },
     },
   };
@@ -56,18 +56,15 @@ describe("useFileSearch", () => {
     });
     apiMocks.searchData = undefined;
     apiMocks.searchError = null;
-    apiMocks.searchQueryOptions.mockImplementation(
-      (request: unknown, options: Record<string, unknown>) => ({
-        queryKey: ["test", "file-search", request],
-        queryFn: () =>
-          apiMocks.searchError
-            ? Promise.reject(apiMocks.searchError)
-            : Promise.resolve(apiMocks.searchData),
-        initialData: apiMocks.searchData,
-        retryDelay: 0,
-        ...options,
-      }),
-    );
+    apiMocks.searchQueryOptions.mockImplementation((request: unknown) => ({
+      queryKey: ["test", "file-search", request],
+      queryFn: () =>
+        apiMocks.searchError
+          ? Promise.reject(apiMocks.searchError)
+          : Promise.resolve(apiMocks.searchData),
+      initialData: apiMocks.searchData,
+      retryDelay: 0,
+    }));
   });
 
   it("keeps short queries disabled and suppresses loading", () => {
@@ -75,10 +72,11 @@ describe("useFileSearch", () => {
       wrapper: queryWrapper,
     });
 
-    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
-      { basePath: "/", limit: "100", query: "a" },
-      expect.objectContaining({ enabled: false }),
-    );
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
+      basePath: "/",
+      limit: "100",
+      query: "a",
+    });
     expect(result.current.isLoading).toBe(false);
     expect(result.current.results).toEqual([]);
     expect(result.current.count).toBe(0);
@@ -108,15 +106,11 @@ describe("useFileSearch", () => {
       { wrapper: queryWrapper },
     );
 
-    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
-      { basePath: "/srv", limit: "25", query: "compose" },
-      expect.objectContaining({
-        enabled: true,
-        refetchOnMount: false,
-        refetchOnWindowFocus: false,
-        retry: 1,
-      }),
-    );
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
+      basePath: "/srv",
+      limit: "25",
+      query: "compose",
+    });
     expect(result.current.count).toBe(1);
     expect(result.current.results[0]).toMatchObject({
       name: "compose.yaml",
@@ -136,10 +130,11 @@ describe("useFileSearch", () => {
       { wrapper: queryWrapper },
     );
 
-    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith(
-      { basePath: "/", limit: "100", query: "compose" },
-      expect.objectContaining({ enabled: false }),
-    );
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
+      basePath: "/",
+      limit: "100",
+      query: "compose",
+    });
     expect(result.current.isUnavailable).toBe(true);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error?.message).toBe("Indexer status unknown");

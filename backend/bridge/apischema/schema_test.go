@@ -19,21 +19,21 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 		if route.Route == "" {
 			t.Fatal("empty route")
 		}
-		if route.Mode != bridgeipc.ModeQuery &&
-			route.Mode != bridgeipc.ModeJob &&
+		if route.Mode != bridgeipc.ModeCall &&
+			route.Mode != bridgeipc.ModeTask &&
 			route.Mode != bridgeipc.ModeDuplex {
 			t.Fatalf("%s has invalid mode %q", route.Route, route.Mode)
 		}
 		if route.Kind != apischema.KindHandler &&
-			route.Kind != apischema.KindRunner &&
+			route.Kind != apischema.KindTaskRunner &&
 			route.Kind != apischema.KindDuplex {
 			t.Fatalf("%s has invalid kind %q", route.Route, route.Kind)
 		}
 		if route.Kind == apischema.KindDuplex && route.Mode != bridgeipc.ModeDuplex {
 			t.Fatalf("%s is duplex kind but has mode %q", route.Route, route.Mode)
 		}
-		if route.Kind == apischema.KindRunner && route.Mode != bridgeipc.ModeJob {
-			t.Fatalf("%s is runner kind but has mode %q", route.Route, route.Mode)
+		if route.Kind == apischema.KindTaskRunner && route.Mode != bridgeipc.ModeTask {
+			t.Fatalf("%s is task-runner kind but has mode %q", route.Route, route.Mode)
 		}
 		if _, exists := seen[route.Route]; exists {
 			t.Fatalf("duplicate route %s", route.Route)
@@ -44,7 +44,7 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	for _, route := range []string{
 		"system.get_cpu_info",
 		"docker.update_container",
-		"jobs.attach",
+		"tasks.watch",
 		"terminal.open",
 		"logs.general.follow",
 	} {
@@ -65,8 +65,8 @@ func mustRoute(t *testing.T, name string) apischema.RouteSpec {
 	return apischema.RouteSpec{}
 }
 
-func TestOnlyProgressHandlersRemainJobs(t *testing.T) {
-	remainingProgressJobs := map[string]bool{
+func TestOnlyProgressHandlersRemainTasks(t *testing.T) {
+	remainingProgressTasks := map[string]bool{
 		"filebrowser.resource_patch": true,
 		"virt.create":                true,
 	}
@@ -74,26 +74,26 @@ func TestOnlyProgressHandlersRemainJobs(t *testing.T) {
 
 	for _, route := range handlers.Routes {
 		modes[route.Mode]++
-		if route.Kind != apischema.KindHandler || route.Mode != bridgeipc.ModeJob {
+		if route.Kind != apischema.KindHandler || route.Mode != bridgeipc.ModeTask {
 			continue
 		}
-		if !remainingProgressJobs[route.Route] {
-			t.Errorf("%s is a progressless handler route but remains a job", route.Route)
+		if !remainingProgressTasks[route.Route] {
+			t.Errorf("%s is a progressless task route", route.Route)
 			continue
 		}
-		delete(remainingProgressJobs, route.Route)
+		delete(remainingProgressTasks, route.Route)
 	}
 
-	if len(remainingProgressJobs) != 0 {
-		t.Errorf("expected progress handler jobs are missing: %v", remainingProgressJobs)
+	if len(remainingProgressTasks) != 0 {
+		t.Errorf("expected progress task routes are missing: %v", remainingProgressTasks)
 	}
-	if got, want := modes[bridgeipc.ModeQuery], 203; got != want {
-		t.Errorf("query route count = %d, want %d", got, want)
+	if got, want := modes[bridgeipc.ModeCall], 203; got != want {
+		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeJob], 21; got != want {
-		t.Errorf("job route count = %d, want %d", got, want)
+	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
+		t.Errorf("task route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeDuplex], 6; got != want {
+	if got, want := modes[bridgeipc.ModeDuplex], 9; got != want {
 		t.Errorf("duplex route count = %d, want %d", got, want)
 	}
 }
@@ -153,23 +153,26 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 	}
 }
 
-func TestEndpointExcludesDuplexAndStreamOnlyJobs(t *testing.T) {
-	for _, route := range []string{"jobs.attach", "jobs.data", "terminal.open", "container.open"} {
+func TestEndpointExcludesChannels(t *testing.T) {
+	for _, route := range []string{"tasks.watch", "tasks.data", "terminal.open", "container.open"} {
 		spec := mustRoute(t, route)
 		if spec.Endpoint() {
-			t.Fatalf("%s should not generate a React Query endpoint", route)
+			t.Fatalf("%s should not generate an endpoint", route)
 		}
 	}
 
 	for _, route := range []string{"docker.logs.follow", "logs.general.follow", "logs.service.follow"} {
 		spec := mustRoute(t, route)
+		if spec.Mode != bridgeipc.ModeDuplex || spec.Kind != apischema.KindDuplex {
+			t.Fatalf("%s should be a direct channel, got mode=%q kind=%q", route, spec.Mode, spec.Kind)
+		}
 		if spec.Endpoint() {
-			t.Fatalf("%s should remain stream-opener only in this phase", route)
+			t.Fatalf("%s should not generate an endpoint", route)
 		}
 	}
 
 	if !mustRoute(t, "system.get_cpu_info").Endpoint() {
-		t.Fatal("query route should generate an endpoint")
+		t.Fatal("call route should generate an endpoint")
 	}
 }
 
@@ -186,27 +189,27 @@ func TestRoutesDeclareContractFields(t *testing.T) {
 
 func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
 	compose := mustRoute(t, "docker.compose")
-	if got, want := compose.Result.GoType, reflect.TypeFor[dockerhandler.ComposeJobResult](); got != want {
+	if got, want := compose.Result.GoType, reflect.TypeFor[dockerhandler.ComposeTaskResult](); got != want {
 		t.Fatalf("docker.compose result type = %v, want %v", got, want)
 	}
-	if got, want := compose.Progress.GoType, reflect.TypeFor[dockerhandler.ComposeJobMessage](); got != want {
+	if got, want := compose.Progress.GoType, reflect.TypeFor[dockerhandler.ComposeTaskMessage](); got != want {
 		t.Fatalf("docker.compose progress type = %v, want %v", got, want)
 	}
 }
 
-func TestWithJobProgressRejectsQueryRoutes(t *testing.T) {
+func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("Query() accepted a job progress contract")
+			t.Fatal("Call() accepted a task progress contract")
 		}
 	}()
-	_ = apischema.Query[apischema.NoRequest, apischema.NoResponse](
-		"test.progress_query",
-		apischema.WithJobProgress[apischema.MessageResponse](),
+	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse](
+		"test.progress_call",
+		apischema.WithTaskProgress[apischema.MessageResponse](),
 	)
 }
 
-func TestJobMetadataBuildersAreAllowlistedRunnerRoutes(t *testing.T) {
+func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
@@ -219,10 +222,10 @@ func TestJobMetadataBuildersAreAllowlistedRunnerRoutes(t *testing.T) {
 			continue
 		}
 		if !want[route.Route] {
-			t.Fatalf("%s unexpectedly declares public job metadata", route.Route)
+			t.Fatalf("%s unexpectedly declares public task metadata", route.Route)
 		}
-		if route.Kind != apischema.KindRunner || route.Mode != bridgeipc.ModeJob {
-			t.Fatalf("%s metadata is not a job runner", route.Route)
+		if route.Kind != apischema.KindTaskRunner || route.Mode != bridgeipc.ModeTask {
+			t.Fatalf("%s metadata is not a task route", route.Route)
 		}
 		delete(want, route.Route)
 	}
@@ -244,8 +247,8 @@ func (e *recordingEmitter) Result(r any) error           { e.results = append(e.
 func (e *recordingEmitter) Error(err error, _ int) error { return err }
 func (e *recordingEmitter) Close(string) error           { return nil }
 
-func TestHandleEmitsTypedResult(t *testing.T) {
-	binding := apischema.Query[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed").
+func TestTaskHandleEmitsTypedResult(t *testing.T) {
+	binding := apischema.Task[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed").
 		Handle(func(_ context.Context, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
 			return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
 		})
@@ -260,9 +263,38 @@ func TestHandleEmitsTypedResult(t *testing.T) {
 	}
 }
 
-func TestHandleErrorEmitsNoResult(t *testing.T) {
+func TestCallBindingReturnsTypedResultDirectly(t *testing.T) {
+	binding := apischema.Call[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.call_typed").
+		Handle(func(_ context.Context, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
+			return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
+		})
+
+	if binding.Call == nil {
+		t.Fatal("Call binding has nil direct handler")
+	}
+	got, err := binding.Call(context.Background(), apischema.UsernameRequest{Username: "ada"})
+	if err != nil {
+		t.Fatalf("Call() error = %v", err)
+	}
+	want := apischema.SuccessNameResponse{Success: true, Name: "ada"}
+	if got != want {
+		t.Fatalf("Call() result = %#v, want %#v", got, want)
+	}
+}
+
+func TestCallRejectsHandleEvents(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("HandleEvents on a Call route should panic")
+		}
+	}()
+	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("test.call_events").
+		HandleEvents(func(context.Context, apischema.NoRequest, bridgeipc.Events) error { return nil })
+}
+
+func TestTaskHandleErrorEmitsNoResult(t *testing.T) {
 	sentinel := errors.New("boom")
-	binding := apischema.Query[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed_err").
+	binding := apischema.Task[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed_err").
 		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
 			return apischema.SuccessNameResponse{Success: true}, sentinel
 		})
@@ -279,13 +311,13 @@ func TestHandleErrorEmitsNoResult(t *testing.T) {
 
 // NoResponse generates TypeScript `void`. Both binding forms must put nil on the
 // wire rather than the zero struct: `{}` would contradict the generated type and
-// would stop job snapshots from omitting `result`.
+// would stop task snapshots from omitting `result`.
 func TestNoResponseRoutesEmitNilNotZeroStruct(t *testing.T) {
-	typed := apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("test.void_typed").
+	typed := apischema.Task[apischema.UsernameRequest, apischema.NoResponse]("test.void_typed").
 		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.NoResponse, error) {
 			return apischema.NoResponse{}, nil
 		})
-	void := apischema.Job[apischema.UsernameRequest, apischema.NoResponse]("test.void_short").
+	void := apischema.Task[apischema.UsernameRequest, apischema.NoResponse]("test.void_short").
 		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error {
 			return nil
 		})
@@ -312,7 +344,7 @@ func TestHandleVoidRejectsNonVoidResult(t *testing.T) {
 			t.Fatal("HandleVoid on a route that declares a real result should panic")
 		}
 	}()
-	apischema.Job[apischema.UsernameRequest, apischema.SuccessResponse]("test.void_mismatch").
+	apischema.Task[apischema.UsernameRequest, apischema.SuccessResponse]("test.void_mismatch").
 		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error { return nil })
 }
 

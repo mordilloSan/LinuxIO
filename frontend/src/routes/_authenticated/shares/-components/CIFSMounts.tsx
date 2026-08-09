@@ -1,7 +1,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
+import { CACHE_TTL_MS, linuxio, type CIFSMount, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -83,22 +83,23 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
     serverToBrowse ? 500 : 0,
   );
 
-  const { mutate: mountCIFS, isPending: isMounting } =
-    linuxio.storage.mount_cifs.useAction({
+  const { mutate: mountCIFS, isPending: isMounting } = useCallMutation(
+    linuxio.storage.mount_cifs,
+    {
       success: `SMB share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount SMB share",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => handleClose() },
-    });
+    },
+  );
 
   // Browsing is best-effort; on error the field falls back to free text.
-  const sharesQuery = useQuery(
-    linuxio.storage.list_cifs_shares.queryOptions(browseServer, {
-      enabled: browseServer !== "",
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-    }),
-  );
+  const sharesQuery = useQuery({
+    ...linuxio.storage.list_cifs_shares({ server: browseServer }),
+    enabled: browseServer !== "",
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
   const shares = sharesQuery.data ?? [];
   const loadingShares = browseServer !== "" && sharesQuery.isLoading;
 
@@ -264,14 +265,16 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
 };
 
 const RemoveCIFSDialog = ({ open, onClose, mount }: RemoveCIFSDialogProps) => {
-  const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_cifs.useAction({
+  const { mutate: removeEntry, isPending: isRemoving } = useCallMutation(
+    linuxio.storage.unmount_cifs,
+    {
       success: `Removed ${mount?.mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
 
   const handleRemove = () => {
     if (!mount) {
@@ -332,14 +335,16 @@ const EditCIFSForm = ({
     (mount.options ?? []).filter((o) => o !== "ro" && o !== "rw").join(","),
   );
 
-  const { mutate: remountCIFS, isPending: isSaving } =
-    linuxio.storage.remount_cifs.useAction({
+  const { mutate: remountCIFS, isPending: isSaving } = useCallMutation(
+    linuxio.storage.remount_cifs,
+    {
       success: "SMB mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
 
   const handleSave = () => {
     const opts: string[] = [readOnly ? "ro" : "rw"];
@@ -432,31 +437,36 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
 
-  const { data: mounts } = useSuspenseQuery(
-    linuxio.storage.list_cifs_mounts.queryOptions({
-      refetchInterval: 10000,
-    }),
+  const { data: mounts } = useSuspenseQuery({
+    ...linuxio.storage.list_cifs_mounts,
+    refetchInterval: 10000,
+  });
+
+  const { mutate: mountExisting } = useCallMutation(
+    linuxio.storage.mount_cifs,
+    {
+      success: "SMB entry mounted",
+      warning: (result) => result.warning,
+      error: "Failed to mount SMB entry",
+      toast: STORAGE_TOAST_META,
+    },
   );
 
-  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useAction({
-    success: "SMB entry mounted",
-    warning: (result) => result.warning,
-    error: "Failed to mount SMB entry",
-    toast: STORAGE_TOAST_META,
-  });
-
-  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useAction({
-    // The message needs `variables`, so the toast stays in a callback; the
-    // warning affordance still owns the warning case.
-    success: (result, variables) => {
-      if (!result.warning) {
-        toast.success(`Unmounted ${variables.mountpoint}`);
-      }
+  const { mutate: unmountEntry } = useCallMutation(
+    linuxio.storage.unmount_cifs,
+    {
+      // The message needs `variables`, so the toast stays in a callback; the
+      // warning affordance still owns the warning case.
+      success: (result, variables) => {
+        if (!result.warning) {
+          toast.success(`Unmounted ${variables.mountpoint}`);
+        }
+      },
+      warning: (result) => result.warning,
+      error: "Failed to unmount",
+      toast: STORAGE_TOAST_META,
     },
-    warning: (result) => result.warning,
-    error: "Failed to unmount",
-    toast: STORAGE_TOAST_META,
-  });
+  );
 
   const handleCreate = useCallback(() => {
     if (cifsUnavailable) {

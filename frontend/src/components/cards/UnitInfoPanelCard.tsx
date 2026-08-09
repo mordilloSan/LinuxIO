@@ -136,11 +136,10 @@ const UnitInfoPanelLive = ({
   unitName,
   renderInfoRows,
 }: Pick<UnitInfoPanelProps, "unitName" | "renderInfoRows">) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(unitName, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName }),
+    refetchInterval: 2000,
+  });
 
   const fragmentPath = String(info?.FragmentPath ?? "");
   const extraRows = renderInfoRows?.(info) ?? [];

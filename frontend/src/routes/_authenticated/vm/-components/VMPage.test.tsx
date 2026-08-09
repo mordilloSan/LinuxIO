@@ -90,10 +90,9 @@ const mocks = vi.hoisted(() => {
     refetchList: vi.fn(),
     rfbConstructor: vi.fn(),
     rfbDisconnect: vi.fn(),
-    openJobAttachStream: vi.fn(),
+    openTaskWatchStream: vi.fn(),
     virtCreate: vi.fn(),
     virtDelete: vi.fn(),
-    virtGetCacheRemove: vi.fn(),
     waitForStreamResult: vi.fn(),
   };
 });
@@ -113,9 +112,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { useState } = await import("react");
-  // Mirrors useAction: on success runs invalidates -> success ->
-  // options.onSuccess, with the unwrapped job result (undefined here).
-  const jobAction = (
+  // Mirrors useCallMutation: on success runs invalidates -> success ->
+  // options.onSuccess, with the unwrapped task result (undefined here).
+  const taskAction = (
     fn: (request: unknown) => unknown,
     config?: {
       invalidates?:
@@ -140,14 +139,14 @@ vi.mock("@/api", async (importOriginal) => {
     },
     mutateAsync: fn,
   });
-  type JobActionConfig = Parameters<typeof jobAction>[1];
-  // Mirrors useJobStreamAction: submit -> onJobStart -> attach -> progress
-  // frames -> result, driven by the openJobAttachStream/waitForStreamResult
-  // mocks so tests control the job stream.
-  interface JobStreamActionConfig extends NonNullable<JobActionConfig> {
-    onJobStart?: (job: unknown, variables: unknown) => void;
-    onOpen?: (stream: unknown, job: unknown, variables: unknown) => void;
-    onProgress?: (progress: unknown, job: unknown, variables: unknown) => void;
+  type TaskActionConfig = Parameters<typeof taskAction>[1];
+  // Mirrors useTaskStreamAction: submit -> onTaskStart -> attach -> progress
+  // frames -> result, driven by the openTaskWatchStream/waitForStreamResult
+  // mocks so tests control the task stream.
+  interface TaskStreamActionConfig extends NonNullable<TaskActionConfig> {
+    onTaskStart?: (task: unknown, variables: unknown) => void;
+    onOpen?: (stream: unknown, task: unknown, variables: unknown) => void;
+    onProgress?: (progress: unknown, task: unknown, variables: unknown) => void;
     options?: {
       onMutate?: (variables: unknown) => void;
       onSettled?: () => void;
@@ -155,22 +154,22 @@ vi.mock("@/api", async (importOriginal) => {
     };
   }
   // Called during component render, so it can hold pending state in a hook.
-  const useJobStreamActionMock = (
+  const useTaskStreamActionMock = (
     submit: (request: unknown) => Promise<{ id: string }>,
-    config?: JobStreamActionConfig,
+    config?: TaskStreamActionConfig,
   ) => {
     const [isPending, setIsPending] = useState(false);
     const run = async (request: unknown) => {
       setIsPending(true);
       config?.options?.onMutate?.(request);
       try {
-        const job = await submit(request);
-        config?.onJobStart?.(job, request);
-        const stream = mocks.openJobAttachStream(job.id);
-        config?.onOpen?.(stream, job, request);
+        const task = await submit(request);
+        config?.onTaskStart?.(task, request);
+        const stream = mocks.openTaskWatchStream(task.id);
+        config?.onOpen?.(stream, task, request);
         const result = await mocks.waitForStreamResult(stream, {
           onProgress: (progress: unknown) =>
-            config?.onProgress?.(progress, job, request),
+            config?.onProgress?.(progress, task, request),
         });
         if (typeof config?.invalidates === "function") {
           config.invalidates(result, request);
@@ -200,7 +199,7 @@ vi.mock("@/api", async (importOriginal) => {
   };
   const useDirectActionMock = (
     runAction: (request: unknown) => Promise<unknown>,
-    config?: JobActionConfig,
+    config?: TaskActionConfig,
   ) => {
     const [isPending, setIsPending] = useState(false);
     const run = async (request: unknown) => {
@@ -232,33 +231,77 @@ vi.mock("@/api", async (importOriginal) => {
       mutateAsync: run,
     };
   };
-  const resourceGet = Object.assign(mocks.resourceGet, {
-    queryKey: (request: { path: string }) => [
+  const useCallMutationMock = (
+    endpoint: { route?: string },
+    config?: TaskActionConfig,
+  ) => {
+    const handlers: Record<string, (request: unknown) => Promise<unknown>> = {
+      "filebrowser.resource_post": mocks.resourcePost,
+      "virt.delete": mocks.virtDelete,
+      "virt.force_off": mocks.mutations.forceOff,
+      "virt.reboot": mocks.mutations.reboot,
+      "virt.resume": mocks.mutations.resume,
+      "virt.shutdown": mocks.mutations.shutdown,
+      "virt.start": mocks.mutations.start,
+      "virt.suspend": mocks.mutations.suspend,
+    };
+    return useDirectActionMock(
+      handlers[endpoint.route ?? ""] ?? vi.fn().mockResolvedValue(undefined),
+      config,
+    );
+  };
+  const callDescriptor = (
+    route: string,
+    queryKey: unknown[],
+    queryFn: () => unknown,
+  ) => ({
+    queryFn,
+    queryKey,
+    route,
+  });
+  const requestCall = <TRequest extends object>(
+    route: string,
+    queryKey: (request: TRequest) => unknown[],
+    queryFn: (request: TRequest) => unknown,
+  ) =>
+    Object.assign(
+      (request: TRequest) => ({
+        queryFn: () => queryFn(request),
+        queryKey: queryKey(request),
+        route,
+      }),
+      { route },
+    );
+
+  const resourceGet = requestCall(
+    "filebrowser.resource_get",
+    (request: { path: string }) => [
       "linuxio",
       "filebrowser",
       "resource_get",
       request,
     ],
-    queryOptions: (
-      request: { path: string },
-      options?: Record<string, unknown>,
-    ) => ({
-      queryKey: ["linuxio", "filebrowser", "resource_get", request],
-      queryFn: () => mocks.resourceGet(request),
-      ...options,
-    }),
-    useFetcher: () => (request: { path: string }) => mocks.resourceGet(request),
-  });
+    (request: { path: string }) => mocks.resourceGet(request),
+  );
   const resourcePost = Object.assign(mocks.resourcePost, {
-    useAction: (config?: JobActionConfig) =>
-      jobAction(mocks.resourcePost, config),
+    route: "filebrowser.resource_post",
   });
-  const resourceStat = Object.assign(mocks.resourceStat, {
-    useFetcher: () => (path: string) => mocks.resourceStat(path),
-  });
+  const resourceStat = Object.assign(
+    requestCall(
+      "filebrowser.resource_stat",
+      (request: { path: string }) => [
+        "linuxio",
+        "filebrowser",
+        "resource_stat",
+        request,
+      ],
+      (request: { path: string }) => mocks.resourceStat(request),
+    ),
+  );
 
   return {
     ...actual,
+    useCallMutation: useCallMutationMock,
     linuxio: {
       ...actual.linuxio,
       filebrowser: {
@@ -269,72 +312,51 @@ vi.mock("@/api", async (importOriginal) => {
       },
       virt: {
         create: Object.assign(mocks.virtCreate, {
-          useJobStreamAction: (config?: JobStreamActionConfig) =>
-            useJobStreamActionMock(mocks.virtCreate, config),
+          useTaskStreamAction: (config?: TaskStreamActionConfig) =>
+            useTaskStreamActionMock(mocks.virtCreate, config),
         }),
-        delete: Object.assign(mocks.virtDelete, {
-          useAction: (config?: JobActionConfig) =>
-            useDirectActionMock(mocks.virtDelete, config),
+        delete: Object.assign(mocks.virtDelete, { route: "virt.delete" }),
+        force_off: Object.assign(mocks.mutations.forceOff, {
+          route: "virt.force_off",
         }),
-        force_off: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.forceOff, config),
-        },
-        get: {
-          queryKey: (name: string) => ["linuxio", "virt", "get", { name }],
-          queryOptions: (name: string, options?: Record<string, unknown>) => ({
-            queryKey: ["linuxio", "virt", "get", { name }],
-            queryFn: () =>
-              Promise.resolve(mocks.listVMs.find((vm) => vm.name === name)),
-            initialData: mocks.listVMs.find((vm) => vm.name === name),
-            ...options,
-          }),
-          useCache: () => ({ remove: mocks.virtGetCacheRemove }),
-        },
-        list: {
-          queryKey: () => ["linuxio", "virt", "list"],
-          queryOptions: (options?: Record<string, unknown>) => ({
-            queryKey: ["linuxio", "virt", "list"],
-            queryFn: () => Promise.resolve(mocks.listVMs),
-            initialData: mocks.listVMs,
-            ...options,
-          }),
-          useCache: () => ({ set: vi.fn() }),
-        },
-        preflight: {
-          queryOptions: (
-            _request: unknown,
-            options?: Record<string, unknown>,
-          ) => ({
-            queryKey: ["linuxio", "virt", "preflight"],
-            queryFn: () => Promise.resolve(mocks.preflight),
-            initialData: mocks.preflight,
-            ...options,
-          }),
-        },
-        reboot: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.reboot, config),
-        },
-        resume: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.resume, config),
-        },
-        shutdown: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.shutdown, config),
-        },
-        start: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.start, config),
-        },
-        suspend: {
-          useAction: (config?: JobActionConfig) =>
-            jobAction(mocks.mutations.suspend, config),
-        },
+        get: requestCall(
+          "virt.get",
+          (request: { name: string }) => ["linuxio", "virt", "get", request],
+          (request: { name: string }) =>
+            Promise.resolve(
+              mocks.listVMs.find((vm) => vm.name === request.name),
+            ),
+        ),
+        list: callDescriptor("virt.list", ["linuxio", "virt", "list"], () =>
+          Promise.resolve(mocks.listVMs),
+        ),
+        preflight: requestCall(
+          "virt.preflight",
+          () => ["linuxio", "virt", "preflight"],
+          () => Promise.resolve(mocks.preflight),
+        ),
+        reboot: Object.assign(mocks.mutations.reboot, {
+          route: "virt.reboot",
+        }),
+        resume: Object.assign(mocks.mutations.resume, {
+          route: "virt.resume",
+        }),
+        shutdown: Object.assign(mocks.mutations.shutdown, {
+          route: "virt.shutdown",
+        }),
+        start: Object.assign(mocks.mutations.start, { route: "virt.start" }),
+        suspend: Object.assign(mocks.mutations.suspend, {
+          route: "virt.suspend",
+        }),
       },
     },
-    openJobAttachStream: mocks.openJobAttachStream,
+    call: (route: string, request?: unknown) => {
+      if (route === "filebrowser.resource_stat") {
+        return mocks.resourceStat(request);
+      }
+      return Promise.resolve(undefined);
+    },
+    openTaskWatchStream: mocks.openTaskWatchStream,
     openVMConsoleStream: mocks.openVMConsoleStream,
     waitForStreamResult: mocks.waitForStreamResult,
   };
@@ -374,7 +396,7 @@ function fakeConsoleStream() {
   };
 }
 
-function fakeJobStream() {
+function fakeTaskStream() {
   return {
     abort: vi.fn(),
     close: vi.fn(),
@@ -385,12 +407,12 @@ function fakeJobStream() {
     onResult: null,
     resize: vi.fn(),
     status: "open",
-    type: "jobs.attach",
+    type: "tasks.watch",
     write: vi.fn(),
   };
 }
 
-function fakeJobSnapshot(id: string, type: string) {
+function fakeTaskSnapshot(id: string, type: string) {
   return {
     created_at: "2026-06-23T00:00:00Z",
     id,
@@ -423,17 +445,16 @@ async function renderVMPage(
 
 beforeEach(() => {
   mocks.listVMs = [mocks.alpha];
-  mocks.openJobAttachStream.mockReset();
-  mocks.openJobAttachStream.mockReturnValue(fakeJobStream());
+  mocks.openTaskWatchStream.mockReset();
+  mocks.openTaskWatchStream.mockReturnValue(fakeTaskStream());
   mocks.openVMConsoleStream.mockReset();
   mocks.openVMConsoleStream.mockReturnValue(fakeConsoleStream());
   mocks.virtCreate.mockReset();
   mocks.virtCreate.mockResolvedValue(
-    fakeJobSnapshot("job-create", "virt.create"),
+    fakeTaskSnapshot("task-create", "virt.create"),
   );
   mocks.virtDelete.mockReset();
   mocks.virtDelete.mockResolvedValue({ failed: [], removed: [] });
-  mocks.virtGetCacheRemove.mockReset();
   mocks.preflight = {
     ...mocks.readyPreflight,
     firmware: { ...mocks.readyPreflight.firmware },
@@ -569,9 +590,11 @@ describe("Virtual Machines page", () => {
   });
 
   it("deletes and evicts only the clicked VM while URL selection points elsewhere", async () => {
+    const queryClient = createTestQueryClient();
+    const removeQueries = vi.spyOn(queryClient, "removeQueries");
     mocks.listVMs = [mocks.alpha, mocks.beta];
     mocks.routeParams = { name: "alpha" };
-    const { user } = await renderVMPage();
+    const { user } = await renderVMPage(true, queryClient);
 
     await user.click(screen.getAllByRole("button", { name: "Delete" })[1]);
     const dialog = screen.getByRole("dialog");
@@ -586,10 +609,10 @@ describe("Virtual Machines page", () => {
         name: "beta",
       }),
     );
-    await waitFor(() =>
-      expect(mocks.virtGetCacheRemove).toHaveBeenCalledOnce(),
-    );
-    expect(mocks.virtGetCacheRemove).toHaveBeenCalledWith("beta");
+    await waitFor(() => expect(removeQueries).toHaveBeenCalledOnce());
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: ["linuxio", "virt", "get", { name: "beta" }],
+    });
   });
 
   it("keeps the delete dialog synced with the live VM list", async () => {
@@ -609,7 +632,7 @@ describe("Virtual Machines page", () => {
     };
     mocks.listVMs = [refreshedAlpha];
     act(() => {
-      queryClient.setQueryData(linuxio.virt.list.queryKey(), [refreshedAlpha]);
+      queryClient.setQueryData(linuxio.virt.list.queryKey, [refreshedAlpha]);
     });
 
     expect(
@@ -620,7 +643,7 @@ describe("Virtual Machines page", () => {
 
     mocks.listVMs = [];
     act(() => {
-      queryClient.setQueryData(linuxio.virt.list.queryKey(), []);
+      queryClient.setQueryData(linuxio.virt.list.queryKey, []);
     });
 
     await waitFor(() =>
@@ -652,7 +675,7 @@ describe("Virtual Machines page", () => {
     // polled list drops the row while the delete action is still pending.
     mocks.listVMs = [];
     act(() => {
-      queryClient.setQueryData(linuxio.virt.list.queryKey(), []);
+      queryClient.setQueryData(linuxio.virt.list.queryKey, []);
     });
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -951,7 +974,7 @@ describe("Virtual Machines page", () => {
     await user.tab();
 
     await waitFor(() => {
-      expect(mocks.resourceStat).toHaveBeenCalledWith("/missing");
+      expect(mocks.resourceStat).toHaveBeenCalledWith({ path: "/missing" });
       expect(mocks.resourcePost).toHaveBeenCalledWith({ path: "/missing/" });
     });
   });

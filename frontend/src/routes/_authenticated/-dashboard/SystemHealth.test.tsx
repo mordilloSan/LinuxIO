@@ -78,18 +78,24 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
+    useCallMutation: (endpoint: { route?: string }) => ({
+      mutate:
+        endpoint.route === "system.dismiss_failed_login_alert"
+          ? dismissFailedLoginAlert
+          : vi.fn(),
+      isPending: false,
+    }),
     linuxio: {
       system: {
-        get_health_summary: { queryOptions: vi.fn(() => ({})) },
-        list_failed_login_events: { queryOptions: vi.fn(() => ({})) },
-        dismiss_unclean_shutdown: {
-          useAction: () => ({ mutate: vi.fn(), isPending: false }),
+        get_health_summary: {
+          queryKey: ["linuxio", "system", "get_health_summary"],
         },
+        list_failed_login_events: () => ({
+          queryKey: ["linuxio", "system", "list_failed_login_events"],
+        }),
+        dismiss_unclean_shutdown: { route: "system.dismiss_unclean_shutdown" },
         dismiss_failed_login_alert: {
-          useAction: () => ({
-            mutate: dismissFailedLoginAlert,
-            isPending: false,
-          }),
+          route: "system.dismiss_failed_login_alert",
         },
       },
     },

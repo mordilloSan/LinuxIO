@@ -12,17 +12,17 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Query[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.Privileged()).Handle(handleList),
-		apischema.Query[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.Privileged()).Handle(handleGet),
-		apischema.Query[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.Privileged()).Handle(handlePreflight),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.start", apischema.Privileged()).HandleVoid(handleStart),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.shutdown", apischema.Privileged()).HandleVoid(handleShutdown),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.reboot", apischema.Privileged()).HandleVoid(handleReboot),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.force_off", apischema.Privileged()).HandleVoid(handleForceOff),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.suspend", apischema.Privileged()).HandleVoid(handleSuspend),
-		apischema.Query[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
-		apischema.Query[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
-		apischema.Job[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged()).HandleEvents(handleCreate),
+		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.Privileged()).Handle(handleList),
+		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.Privileged()).Handle(handleGet),
+		apischema.Call[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.Privileged()).Handle(handlePreflight),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.start", apischema.Privileged()).HandleVoid(handleStart),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.shutdown", apischema.Privileged()).HandleVoid(handleShutdown),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.reboot", apischema.Privileged()).HandleVoid(handleReboot),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.force_off", apischema.Privileged()).HandleVoid(handleForceOff),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.suspend", apischema.Privileged()).HandleVoid(handleSuspend),
+		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
+		apischema.Call[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
+		apischema.Task[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged()).HandleEvents(handleCreate),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
 		),

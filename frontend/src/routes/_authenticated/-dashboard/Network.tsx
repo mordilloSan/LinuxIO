@@ -50,12 +50,11 @@ const NetworkHeader = ({
     [selected],
   );
 
-  const { data: header } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectHeader,
-    }),
-  );
+  const { data: header } = useSuspenseQuery({
+    ...linuxio.system.get_network_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectHeader,
+  });
 
   return (
     <>
@@ -85,12 +84,11 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
     [selected],
   );
 
-  const { data: details } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectDetails,
-    }),
-  );
+  const { data: details } = useSuspenseQuery({
+    ...linuxio.system.get_network_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectDetails,
+  });
 
   if (!details) {
     return (
@@ -121,12 +119,11 @@ const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
     [selected],
   );
 
-  const { data: throughput } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectThroughput,
-    }),
-  );
+  const { data: throughput } = useSuspenseQuery({
+    ...linuxio.system.get_network_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectThroughput,
+  });
 
   if (!throughput) {
     return <AppTypography variant="body2">No graph data.</AppTypography>;

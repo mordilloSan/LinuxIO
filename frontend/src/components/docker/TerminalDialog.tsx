@@ -43,11 +43,10 @@ const TerminalDialog = ({
     data: shells,
     isLoading: loadingShells,
     isFetched: hasFetchedShells,
-  } = useQuery(
-    linuxio.terminal.list_shells.queryOptions(containerId, {
-      enabled: open && !!containerId,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.terminal.list_shells({ containerId }),
+    enabled: open && !!containerId,
+  });
   const availableShells = useMemo(() => {
     if (!shells) return [];
     return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");

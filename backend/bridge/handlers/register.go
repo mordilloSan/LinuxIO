@@ -13,7 +13,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
@@ -23,6 +22,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/tasks"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
@@ -58,13 +58,13 @@ var Families = []Family{
 	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
 	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},
 	{Name: "logs", Routes: logs.Routes, Register: logs.RegisterHandlers},
-	{Name: "jobs", Routes: jobs.Routes},
+	{Name: "tasks", Routes: tasks.Routes},
 }
 
 var Routes = collectRoutes(Families)
 
 func RegisterAllHandlers(rt runtime.Runtime) *bridgeipc.Router {
-	router := bridgeipc.NewRouter(bridgeipc.DefaultRegistry)
+	router := bridgeipc.NewRouter(bridgeipc.DefaultTaskService)
 
 	for _, family := range Families {
 		if family.Register != nil {

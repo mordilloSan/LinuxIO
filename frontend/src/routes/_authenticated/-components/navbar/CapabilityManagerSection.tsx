@@ -66,10 +66,10 @@ const CapabilityManagerSection = () => {
   const [installPercent, setInstallPercent] = useState<number | null>(null);
   const mountedRef = useRef(true);
   // Progress is rendered locally, but the completion toast and app-wide
-  // capability refresh stay owned by the global background-job handler
-  // (useRecoveredJobs) so they still fire if this panel closes mid-install.
+  // capability refresh stay owned by the global background-task handler
+  // (useRecoveredTasks) so they still fire if this panel closes mid-install.
   const { mutateAsync: installCapability } =
-    linuxio.system.install_capability.useJobStreamAction<
+    linuxio.system.install_capability.useTaskStreamAction<
       InstallCapabilityResult,
       InstallCapabilityProgress
     >({
@@ -156,7 +156,7 @@ const CapabilityManagerSection = () => {
         if (!mountedRef.current) return;
         // Optimistically reflect the result while the panel is open. The
         // completion toast and app-wide capability refresh are owned by the
-        // global background-job handler (useRecoveredJobs) so they still fire
+        // global background-task handler (useRecoveredTasks) so they still fire
         // if this dialog has been closed mid-install.
         setLatest((previous) => ({
           ...(previous ?? ({} as CapabilitiesResponse)),
@@ -165,7 +165,7 @@ const CapabilityManagerSection = () => {
         }));
         setLastChecked(new Date());
       } catch {
-        // The global background-job handler owns the install error toast.
+        // The global background-task handler owns the install error toast.
       } finally {
         if (mountedRef.current) {
           setInstallingWire(null);

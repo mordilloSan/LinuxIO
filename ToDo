@@ -22,9 +22,9 @@ any upgrade. The custom plugin in `frontend/vite.config.ts` relies on
 Decide whether the fixed values in `router.go` belong in the global settings
 file.
 
-### Session activity and bridge-survivable jobs
+### Session activity and bridge-survivable Tasks
 
-- Classify every Job/Runner route as session-bound or bridge-survivable.
+- Classify every Task route as session-bound or bridge-survivable.
 - Keep session-bound work cancelable when its bridge/session ends.
 - Run the justified survivable subset under systemd transient units, with
   owner-scoped discovery, reattachment, progress/result recovery, cancellation,
@@ -83,8 +83,8 @@ power-off, logout, and selected network changes:
 
 ## Completed or closed
 
-- [x] **6. Total jobs review:** migrated bounded mutations to direct actions,
-  retained only real progress/recovery jobs, added typed handler bindings and
+- [x] **6. Total background-work review:** migrated bounded mutations to direct actions,
+  retained only real progress/recovery Tasks, added typed handler bindings and
   compile-time route-mode endpoint safety, and eliminated contract drift. See
   [`jobs-review-handoff.md`](jobs-review-handoff.md).
 - [x] Moved the React Compiler backend from Babel to the custom
@@ -93,10 +93,11 @@ power-off, logout, and selected network changes:
 - [x] Completed the post-migration frontend UI architecture cleanup.
 - [x] Fixed file-browser progress updates rerendering the entire browser.
 - [x] Replaced per-item chmod with `filebrowser.chmod_batch`.
-- [x] Added `useJobAction` / `useJobStreamAction` and attach-based recovery.
+- [x] Replaced the Job API with `useTaskAction` / `useTaskStreamAction` and
+  watch-based recovery; Query fetching has no Task lifecycle dependency.
 - [x] Fixed file-browser copy behavior for symlinks.
 - [x] Completed the file-browser batch-operation follow-ups.
-- [x] Implemented batch jobs for copy, move, delete, and uploads.
+- [x] Implemented batch Tasks for copy, move, delete, and uploads.
 - [x] Implemented monitoring.
 - [x] Added virtualized rendering for logs and the file browser.
 - [x] Fixed invalid PackageKit `InfoEnum` debug output.

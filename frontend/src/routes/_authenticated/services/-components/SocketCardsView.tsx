@@ -32,11 +32,10 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
 );
 
 const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
+    refetchInterval: 2000,
+  });
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
 
   return (
@@ -66,11 +65,10 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
 };
 
 const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
+    refetchInterval: 2000,
+  });
   return (
     <UnitCardActions
       activeState={socket.active_state}

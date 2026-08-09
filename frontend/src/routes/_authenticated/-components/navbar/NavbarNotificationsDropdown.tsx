@@ -14,8 +14,8 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
-import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
-import { useBackgroundJobState } from "@/hooks/backgroundJobs/useBackgroundJobState";
+import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
+import { useBackgroundTaskState } from "@/hooks/backgroundTasks/useBackgroundTaskState";
 import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { useAppTheme } from "@/theme";
@@ -36,7 +36,7 @@ interface CompletedTransfer {
     | "indexer"
     | "copy"
     | "move"
-    | "job";
+    | "task";
 }
 
 // --- File transfer helpers ---
@@ -88,8 +88,8 @@ const getTransferTitle = (type: string) => {
       return "Copying";
     case "move":
       return "Moving";
-    case "job":
-      return "Running job";
+    case "task":
+      return "Running task";
     default:
       return "Processing";
   }
@@ -111,8 +111,8 @@ const getCompletedTitle = (type: string) => {
       return "Copy complete";
     case "move":
       return "Move complete";
-    case "job":
-      return "Job complete";
+    case "task":
+      return "Task complete";
     default:
       return "Operation complete";
   }
@@ -246,7 +246,7 @@ export function NavbarNotificationsDropdown() {
   const clearToastHistory = useClearToastHistory();
 
   // File transfers
-  const { transfers } = useBackgroundJobState();
+  const { transfers } = useBackgroundTaskState();
   const {
     cancelDownload,
     cancelUpload,
@@ -254,9 +254,9 @@ export function NavbarNotificationsDropdown() {
     cancelExtraction,
     cancelCopy,
     cancelMove,
-    cancelJob,
+    cancelTask,
     openIndexerDialog,
-  } = useBackgroundJobActions();
+  } = useBackgroundTaskActions();
 
   const [completedTransfers, setCompletedTransfers] = useState<
     CompletedTransfer[]
@@ -350,7 +350,7 @@ export function NavbarNotificationsDropdown() {
       else if (transfer.type === "extraction") cancelExtraction(transfer.id);
       else if (transfer.type === "copy") cancelCopy(transfer.id);
       else if (transfer.type === "move") cancelMove(transfer.id);
-      else if (transfer.type === "job") cancelJob(transfer.id);
+      else if (transfer.type === "task") cancelTask(transfer.id);
     },
     [
       cancelDownload,
@@ -359,7 +359,7 @@ export function NavbarNotificationsDropdown() {
       cancelExtraction,
       cancelCopy,
       cancelMove,
-      cancelJob,
+      cancelTask,
     ],
   );
 
@@ -456,7 +456,7 @@ export function NavbarNotificationsDropdown() {
         case "indexer":
         case "copy":
         case "move":
-        case "job":
+        case "task":
           return {
             icon: (
               <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />

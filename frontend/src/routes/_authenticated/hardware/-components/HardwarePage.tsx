@@ -66,13 +66,12 @@ const getSensorGroupId = (group: { adapter: string; sourceIndex: number }) =>
   `${group.adapter}-${group.sourceIndex}`;
 
 function SensorReadings() {
-  const { data: visibleSensorGroups } = useSuspenseQuery(
-    linuxio.system.get_sensor_info.queryOptions({
-      ...hardwareSensorQueryOptions,
-      refetchInterval: 5_000,
-      select: selectVisibleSensorGroupIdentities,
-    }),
-  );
+  const { data: visibleSensorGroups } = useSuspenseQuery({
+    ...linuxio.system.get_sensor_info,
+    ...hardwareSensorQueryOptions,
+    refetchInterval: 5_000,
+    select: selectVisibleSensorGroupIdentities,
+  });
   const sensorSummary = {
     adapters: visibleSensorGroups.length,
     readings: visibleSensorGroups.reduce(
@@ -122,9 +121,10 @@ function SensorReadings() {
 }
 
 function MemoryModulesTable() {
-  const { data: memoryModules } = useSuspenseQuery(
-    linuxio.system.get_memory_modules.queryOptions(hardwareStableQueryOptions),
-  );
+  const { data: memoryModules } = useSuspenseQuery({
+    ...linuxio.system.get_memory_modules,
+    ...hardwareStableQueryOptions,
+  });
   const memoryColumns: AppDataTableColumnDef<(typeof memoryModules)[number]>[] =
     [
       {
@@ -189,9 +189,10 @@ function MemoryModulesTable() {
 }
 
 function PciDevicesTable() {
-  const { data: pciDevices } = useSuspenseQuery(
-    linuxio.system.get_pci_devices.queryOptions(hardwareStableQueryOptions),
-  );
+  const { data: pciDevices } = useSuspenseQuery({
+    ...linuxio.system.get_pci_devices,
+    ...hardwareStableQueryOptions,
+  });
   const pciColumns: AppDataTableColumnDef<(typeof pciDevices)[number]>[] = [
     {
       accessorKey: "class",

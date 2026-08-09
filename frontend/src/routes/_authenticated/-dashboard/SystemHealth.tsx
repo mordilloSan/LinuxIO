@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 
-import { type AccountUserLogin, linuxio } from "@/api";
+import { type AccountUserLogin, linuxio, useCallMutation } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -105,17 +105,16 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const theme = useAppTheme();
   const { user: currentUser } = useAuth();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    linuxio.system.dismiss_unclean_shutdown.useAction();
+    useCallMutation(linuxio.system.dismiss_unclean_shutdown);
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useAction();
+    useCallMutation(linuxio.system.dismiss_failed_login_alert);
 
   const items: HealthItem[] = [];
   const failedLoginAlert = health?.failedLoginAlert;
@@ -423,11 +422,10 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const theme = useAppTheme();
   const navigate = useNavigate();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const failedLoginAlert = health?.failedLoginAlert;
 
@@ -480,29 +478,24 @@ interface FailedLoginsDialogProps {
 const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
   const theme = useAppTheme();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const {
     data: failedLoginEvents = [],
     isLoading: failedLoginEventsLoading,
     isError: failedLoginEventsError,
     error: failedLoginEventsErrorValue,
-  } = useQuery(
-    linuxio.system.list_failed_login_events.queryOptions(
-      { limit: "24" },
-      {
-        enabled: open,
-        refetchInterval: open ? 30000 : false,
-      },
-    ),
-  );
+  } = useQuery({
+    ...linuxio.system.list_failed_login_events({ limit: "24" }),
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useAction({
+    useCallMutation(linuxio.system.dismiss_failed_login_alert, {
       success: () => {
         onClose();
       },

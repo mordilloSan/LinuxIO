@@ -37,9 +37,9 @@ const UpdateStatus = ({
       {/*
         The progress panel follows the adopted transaction, not the recovery
         scan: `recoveryPending` is true on every entry into the section, and
-        painting "Preparing… 0%" before a job is found reports an update that
+        painting "Preparing… 0%" before a task is found reports an update that
         may not exist. Cancelability is supplied separately by the controller:
-        a recovered attachment exposes it as soon as it has a live job, then a
+        a recovered attachment exposes it as soon as it has a live task, then a
         cancellation request hides it while the terminal frame is pending.
       */}
       <UpdateActions

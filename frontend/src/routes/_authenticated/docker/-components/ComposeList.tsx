@@ -6,6 +6,7 @@ import {
   type ComposeProject,
   type ContainerInfo,
   type ContainerPort,
+  useCallMutation,
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -138,16 +139,20 @@ const ComposeList = ({
       ]),
     );
   }, [projects]);
-  const { mutateAsync: startContainer } =
-    linuxio.docker.start_container.useAction();
-  const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useAction();
-  const { mutateAsync: restartContainer } =
-    linuxio.docker.restart_container.useAction();
-  const { mutateAsync: removeContainer } =
-    linuxio.docker.remove_container.useAction();
+  const { mutateAsync: startContainer } = useCallMutation(
+    linuxio.docker.start_container,
+  );
+  const { mutateAsync: stopContainer } = useCallMutation(
+    linuxio.docker.stop_container,
+  );
+  const { mutateAsync: restartContainer } = useCallMutation(
+    linuxio.docker.restart_container,
+  );
+  const { mutateAsync: removeContainer } = useCallMutation(
+    linuxio.docker.remove_container,
+  );
   const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
-    linuxio.docker.update_container.useAction();
+    useCallMutation(linuxio.docker.update_container);
 
   const handleStartContainer = useCallback(
     async (container: ContainerInfo) => {

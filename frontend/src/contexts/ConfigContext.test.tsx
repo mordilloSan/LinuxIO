@@ -8,13 +8,13 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({
-  configGetFetch: vi.fn(),
-  configSetUseJobAction: vi.fn(),
-  dockerListComposeProjectsQueryKey: vi.fn(() => [
+  configGetCall: vi.fn(),
+  configSetUseAction: vi.fn(),
+  dockerListComposeProjectsQueryKey: [
     "linuxio",
     "docker",
     "list_compose_projects",
-  ]),
+  ],
   setConfigRemote: vi.fn(),
   useStreamMux: vi.fn(),
 }));
@@ -22,6 +22,7 @@ const apiMocks = vi.hoisted(() => ({
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
   success: vi.fn(),
+  warning: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -32,15 +33,26 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
+    call: apiMocks.configGetCall,
+    useCallMutation: (endpoint: { route?: string }, config: unknown) => {
+      if (endpoint.route === "config.set") {
+        apiMocks.configSetUseAction(config);
+      }
+      return { mutate: apiMocks.setConfigRemote };
+    },
     useStreamMux: apiMocks.useStreamMux,
     linuxio: {
       ...actual.linuxio,
       config: {
         get: {
-          useFetcher: () => apiMocks.configGetFetch,
+          queryKey: ["linuxio", "config", "get"],
+          queryFn: () =>
+            apiMocks.configGetCall("config.get", undefined, {
+              staleTime: 0,
+            }),
         },
         set: {
-          useAction: apiMocks.configSetUseJobAction,
+          route: "config.set",
         },
       },
       docker: {
@@ -128,7 +140,7 @@ function Probe() {
   );
 }
 
-interface CapturedJobActionConfig {
+interface CapturedActionConfig {
   invalidates?:
     | readonly (readonly unknown[])[]
     | ((
@@ -147,7 +159,7 @@ function renderProvider({
   sessionExpired?: () => void;
   strictMode?: boolean;
 } = {}) {
-  const jobActionConfigs: CapturedJobActionConfig[] = [];
+  const actionConfigs: CapturedActionConfig[] = [];
   const queryClient = createTestQueryClient();
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -156,16 +168,18 @@ function renderProvider({
     isOpen: true,
     getStream: () => null,
   });
-  apiMocks.configGetFetch.mockImplementation(() => configQueryFn());
-  apiMocks.configSetUseJobAction.mockImplementation((config) => {
-    jobActionConfigs.push(config);
+  apiMocks.configGetCall.mockImplementation(
+    (_route: string, _request: undefined, _options: unknown) => configQueryFn(),
+  );
+  apiMocks.configSetUseAction.mockImplementation((config) => {
+    actionConfigs.push(config);
     return { mutate: apiMocks.setConfigRemote };
   });
 
   // Emulates useAction's success path: invalidates -> success, with the
-  // unwrapped job result (not a JobSnapshot).
-  const fireJobActionSuccess = (result: unknown, variables: unknown) => {
-    const config = jobActionConfigs.at(-1);
+  // bounded action result.
+  const fireActionSuccess = (result: unknown, variables: unknown) => {
+    const config = actionConfigs.at(-1);
     if (!config) return;
     const keys =
       typeof config.invalidates === "function"
@@ -202,9 +216,9 @@ function renderProvider({
   );
 
   return {
-    fireJobActionSuccess,
+    fireActionSuccess,
     invalidateQueries,
-    jobActionConfigs,
+    actionConfigs,
     queryClient,
     sessionExpired,
   };
@@ -220,9 +234,11 @@ describe("ConfigProvider", () => {
       "/srv/docker",
     );
 
-    expect(apiMocks.configGetFetch).toHaveBeenCalledWith({
-      staleTime: 0,
-    });
+    expect(apiMocks.configGetCall).toHaveBeenCalledWith(
+      "config.get",
+      undefined,
+      { staleTime: 0 },
+    );
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
       "/srv/docker",
     );
@@ -240,11 +256,11 @@ describe("ConfigProvider", () => {
     expect(await screen.findByTestId("docker-folders")).toHaveTextContent(
       "/cached",
     );
-    expect(apiMocks.configGetFetch).not.toHaveBeenCalled();
+    expect(apiMocks.configGetCall).not.toHaveBeenCalled();
   });
 
   it("saves user changes only after a successful backend load", async () => {
-    const { jobActionConfigs } = renderProvider();
+    const { actionConfigs } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
@@ -256,7 +272,7 @@ describe("ConfigProvider", () => {
         theme: "DARK",
       },
     });
-    expect(jobActionConfigs.length).toBeGreaterThan(0);
+    expect(actionConfigs.length).toBeGreaterThan(0);
     expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
       '"theme":"DARK"',
     );
@@ -279,13 +295,13 @@ describe("ConfigProvider", () => {
   });
 
   it("invalidates compose projects after persisted Docker folder changes", async () => {
-    const { fireJobActionSuccess, invalidateQueries } = renderProvider();
+    const { fireActionSuccess, invalidateQueries } = renderProvider();
 
     await screen.findByTestId("loaded");
     await act(async () => {
       screen.getByRole("button", { name: "set folders" }).click();
     });
-    fireJobActionSuccess(undefined, {
+    fireActionSuccess(undefined, {
       docker: {
         folders: ["/opt/compose"],
       },

@@ -67,11 +67,10 @@ const DriveSelect = ({
     [selected],
   );
 
-  const { data: header } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({
-      select: selectHeader,
-    }),
-  );
+  const { data: header } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: selectHeader,
+  });
 
   return (
     <CardHeaderSelect
@@ -100,11 +99,10 @@ const DriveStats = ({ selected }: DriveSelectionProps) => {
     [selected],
   );
 
-  const { data: drive } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({
-      select: selectDrive,
-    }),
-  );
+  const { data: drive } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: selectDrive,
+  });
 
   if (!drive) {
     return <AppTypography variant="body2">No drives found.</AppTypography>;
@@ -134,12 +132,8 @@ const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
 
   const [{ data: driveName }, { data: diskThroughput }] = useSuspenseQueries({
     queries: [
-      linuxio.storage.get_drive_info.queryOptions({
-        select: selectDriveName,
-      }),
-      linuxio.system.get_disk_throughput.queryOptions({
-        refetchInterval: 1000,
-      }),
+      { ...linuxio.storage.get_drive_info, select: selectDriveName },
+      { ...linuxio.system.get_disk_throughput, refetchInterval: 1000 },
     ],
   });
 
@@ -158,9 +152,10 @@ const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
 
 const Drive = () => {
   const [selected, setSelected] = useState("");
-  const { data: hasDrives } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({ select: hasAnyDrive }),
-  );
+  const { data: hasDrives } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: hasAnyDrive,
+  });
 
   return (
     <DashboardCard

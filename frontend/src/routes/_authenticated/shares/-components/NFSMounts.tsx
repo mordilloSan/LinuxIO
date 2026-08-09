@@ -1,7 +1,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
-import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
+import { CACHE_TTL_MS, linuxio, type NFSMount, useCallMutation } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -346,22 +346,23 @@ const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
     serverToBrowse,
     serverToBrowse ? 500 : 0,
   );
-  const { mutate: mountNFS, isPending: isMounting } =
-    linuxio.storage.mount_nfs.useAction({
+  const { mutate: mountNFS, isPending: isMounting } = useCallMutation(
+    linuxio.storage.mount_nfs,
+    {
       success: `NFS share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount NFS share",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => handleClose() },
-    });
+    },
+  );
 
   // Browsing is best-effort; on error the field falls back to free text.
-  const exportsQuery = useQuery(
-    linuxio.storage.list_nfs_exports.queryOptions(browseServer, {
-      enabled: browseServer !== "",
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-    }),
-  );
+  const exportsQuery = useQuery({
+    ...linuxio.storage.list_nfs_exports({ server: browseServer }),
+    enabled: browseServer !== "",
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
   const exports = exportsQuery.data ?? [];
   const loadingExports = browseServer !== "" && exportsQuery.isLoading;
   const buildOptions = () => {
@@ -508,14 +509,16 @@ const RemoveDialog = ({ open, onClose, mount }: RemoveDialogProps) => {
       ? `Removed ${mount.mountpoint}`
       : `Unmounted ${mount.mountpoint}`
     : `Removed saved entry for ${mount?.mountpoint}`;
-  const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_nfs.useAction({
+  const { mutate: removeEntry, isPending: isRemoving } = useCallMutation(
+    linuxio.storage.unmount_nfs,
+    {
       success: removedMessage,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
 
   const handleRemove = () => {
     if (!mount) return;
@@ -622,14 +625,16 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
       return [...base, value];
     });
   };
-  const { mutate: remountNFS, isPending: isRemounting } =
-    linuxio.storage.remount_nfs.useAction({
+  const { mutate: remountNFS, isPending: isRemounting } = useCallMutation(
+    linuxio.storage.remount_nfs,
+    {
       success: "NFS mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
   const buildOptions = () => {
     const opts: string[] = [];
     opts.push(readOnly ? "ro" : "rw");
@@ -853,12 +858,11 @@ const NFSMountCardGrid = ({
   onRemove,
   onUnmount,
 }: NFSMountActionProps) => {
-  const { data: mountpoints } = useSuspenseQuery(
-    linuxio.storage.list_nfs_mounts.queryOptions({
-      refetchInterval: 10000,
-      select: selectNFSMountIdentities,
-    }),
-  );
+  const { data: mountpoints } = useSuspenseQuery({
+    ...linuxio.storage.list_nfs_mounts,
+    refetchInterval: 10000,
+    select: selectNFSMountIdentities,
+  });
   // Cards and rows key the same surface: both identify a mount by mountpoint,
   // so a manual order set in one view shows up in the other.
   const surface = useReorderableSurface({
@@ -912,11 +916,10 @@ const NFSMountTable = ({
   onUnmount,
   search,
 }: NFSMountTableProps) => {
-  const { data: mounts } = useSuspenseQuery(
-    linuxio.storage.list_nfs_mounts.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: mounts } = useSuspenseQuery({
+    ...linuxio.storage.list_nfs_mounts,
+    refetchInterval: 10000,
+  });
   const mountsList = Array.isArray(mounts) ? mounts : [];
   const normalizedSearch = search.toLowerCase();
   const surface = useReorderableSurface({
@@ -1166,25 +1169,31 @@ const NFSMounts = ({
   const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
     null,
   );
-  const { mutate: mountExistingEntry } = linuxio.storage.mount_nfs.useAction({
-    success: "NFS entry mounted",
-    warning: (result) => result.warning,
-    error: "Failed to mount NFS entry",
-    toast: STORAGE_TOAST_META,
-    options: { onSettled: () => setMountingMountpoint(null) },
-  });
-  const { mutate: unmountEntry } = linuxio.storage.unmount_nfs.useAction({
-    // The message needs `variables`, so the toast stays in a callback; the
-    // warning affordance still owns the warning case.
-    success: (result, variables) => {
-      if (!result.warning) {
-        toast.success(`Unmounted ${variables.mountpoint}`);
-      }
+  const { mutate: mountExistingEntry } = useCallMutation(
+    linuxio.storage.mount_nfs,
+    {
+      success: "NFS entry mounted",
+      warning: (result) => result.warning,
+      error: "Failed to mount NFS entry",
+      toast: STORAGE_TOAST_META,
+      options: { onSettled: () => setMountingMountpoint(null) },
     },
-    warning: (result) => result.warning,
-    error: "Failed to unmount",
-    toast: STORAGE_TOAST_META,
-  });
+  );
+  const { mutate: unmountEntry } = useCallMutation(
+    linuxio.storage.unmount_nfs,
+    {
+      // The message needs `variables`, so the toast stays in a callback; the
+      // warning affordance still owns the warning case.
+      success: (result, variables) => {
+        if (!result.warning) {
+          toast.success(`Unmounted ${variables.mountpoint}`);
+        }
+      },
+      warning: (result) => result.warning,
+      error: "Failed to unmount",
+      toast: STORAGE_TOAST_META,
+    },
+  );
   const handleMountNFS = useCallback(() => {
     if (nfsUnavailable) {
       toast.error(nfsReason);

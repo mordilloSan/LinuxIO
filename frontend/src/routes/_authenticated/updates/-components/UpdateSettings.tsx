@@ -10,6 +10,7 @@ import {
   type AutoUpdateState,
   type Timer,
   linuxio,
+  useCallMutation,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -111,21 +112,19 @@ const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
 };
 
 export const useUpdateSettingsState = (enabled = true) => {
-  const { data: rawServerState, isLoading: loading } = useQuery(
-    linuxio.updates.get_auto_updates.queryOptions({
-      enabled,
-    }),
-  );
+  const { data: rawServerState, isLoading: loading } = useQuery({
+    ...linuxio.updates.get_auto_updates,
+    enabled,
+  });
   const {
     data: timers = [],
     isError: runtimeError,
     isLoading: runtimeLoading,
-  } = useQuery(
-    linuxio.systemd.list_timers.queryOptions({
-      enabled,
-      refetchInterval: enabled ? 5000 : false,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.systemd.list_timers,
+    enabled,
+    refetchInterval: enabled ? 5000 : false,
+  });
   const toast = useScopedToast(UPDATES_TOAST_META);
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
@@ -152,7 +151,7 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride(null);
   };
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    linuxio.updates.set_auto_updates.useAction({
+    useCallMutation(linuxio.updates.set_auto_updates, {
       success: () => {
         reset();
         toast.success("Automatic Updates Settings saved");

@@ -1,16 +1,16 @@
 import IndexerStatusDialog, {
   type IndexerStat,
 } from "@/components/dialog/IndexerStatusDialog";
-import { indexerPhaseLabel } from "@/hooks/backgroundJobs/indexerProgress";
-import { useAnimatedIndexerStats } from "@/hooks/backgroundJobs/useAnimatedIndexerStats";
-import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
-import { useBackgroundJobIndexer } from "@/hooks/backgroundJobs/useBackgroundJobIndexer";
+import { indexerPhaseLabel } from "@/hooks/backgroundTasks/indexerProgress";
+import { useAnimatedIndexerStats } from "@/hooks/backgroundTasks/useAnimatedIndexerStats";
+import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
+import { useBackgroundTaskIndexer } from "@/hooks/backgroundTasks/useBackgroundTaskIndexer";
 import { formatFileSize } from "@/utils/formaters";
 
 const IndexerDialog = () => {
-  const { closeIndexerDialog } = useBackgroundJobActions();
+  const { closeIndexerDialog } = useBackgroundTaskActions();
   const { indexers, isIndexerDialogOpen, lastIndexerResult, lastIndexerError } =
-    useBackgroundJobIndexer();
+    useBackgroundTaskIndexer();
   const activeIndexer = indexers[0];
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);
@@ -23,7 +23,7 @@ const IndexerDialog = () => {
     },
     {
       enabled: isRunning && isIndexerDialogOpen,
-      jobId: activeIndexer?.id,
+      taskId: activeIndexer?.id,
     },
   );
   const filesIndexed = isRunning

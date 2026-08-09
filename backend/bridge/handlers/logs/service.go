@@ -8,26 +8,29 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os/exec"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 const streamTypeServiceLogs = "logs.service.follow"
 
-// runServiceLogsJob streams service logs from journalctl through the bridge job lifecycle.
-func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
+// streamServiceLogsChannel streams service logs from journalctl through a direct channel.
+func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime.Runtime, req apischema.ServiceLogsFollowRequest) error {
+	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
+	defer cleanup()
 	serviceName, lines, err := parseServiceLogsRequest(req)
 	if err != nil {
-		return nil, err
+		return writeLogError(stream, err)
 	}
-	slog.Debug("starting service log job",
+	slog.Debug("starting service log channel",
 		"component", "logs",
 		"route", streamTypeServiceLogs,
-		"job_id", job.ID(),
 		"service", serviceName,
 		"lines", lines)
 
@@ -37,33 +40,31 @@ func runServiceLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		slog.Error("failed to create service log job pipe",
+		slog.Error("failed to create service log channel pipe",
 			"component", "logs",
 			"route", streamTypeServiceLogs,
-			"job_id", job.ID(),
 			"service", serviceName,
 			"error", err)
-		return nil, err
+		return writeLogErrorUnlessCanceled(ctx, stream, err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		slog.Error("failed to start service log job",
+		slog.Error("failed to start service log channel",
 			"component", "logs",
 			"route", streamTypeServiceLogs,
-			"job_id", job.ID(),
 			"service", serviceName,
 			"error", err)
-		return nil, err
+		return writeLogErrorUnlessCanceled(ctx, stream, err)
 	}
 
-	sentData, readErr := streamServiceLogs(ctx, job, stdout, cmd)
+	sentData, readErr := streamServiceLogs(ctx, stream, stdout, cmd)
 	if readErr != nil {
-		return nil, readErr
+		return writeLogErrorUnlessCanceled(ctx, stream, readErr)
 	}
 	if waitErr := waitForServiceLogsCommand(ctx, cmd, &stderr, sentData); waitErr != nil {
-		return nil, waitErr
+		return writeLogErrorUnlessCanceled(ctx, stream, waitErr)
 	}
-	return map[string]any{"status": "stopped"}, nil
+	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }
 
 func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, string, error) {
@@ -106,7 +107,7 @@ func handleLogsContextCancellation(ctx context.Context, cmd *exec.Cmd, label str
 	}
 }
 
-func streamServiceLogs(ctx context.Context, job *bridgeipc.Job, stdout io.Reader, cmd *exec.Cmd) (bool, error) {
+func streamServiceLogs(ctx context.Context, stream net.Conn, stdout io.Reader, cmd *exec.Cmd) (bool, error) {
 	reader := bufio.NewReader(stdout)
 	sentData := false
 	for {
@@ -128,7 +129,9 @@ func streamServiceLogs(ctx context.Context, job *bridgeipc.Job, stdout io.Reader
 			return sentData, nil
 		}
 		sentData = true
-		job.ReportData(line)
+		if err := relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamData, StreamID: 0, Payload: []byte(line)}); err != nil {
+			return sentData, err
+		}
 	}
 }
 

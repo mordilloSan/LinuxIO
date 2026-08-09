@@ -9,13 +9,13 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, bool]("datetime.get_ntp_status").Handle(handleGetNTPStatus),
-	apischema.Query[apischema.EnabledRequest, apischema.NoResponse]("datetime.set_ntp").HandleVoid(handleSetNTP),
-	apischema.Query[apischema.ISOTimeRequest, apischema.NoResponse]("datetime.set_server_time").HandleVoid(handleSetServerTime),
-	apischema.Query[apischema.NoRequest, string]("datetime.get_timezone").Handle(handleGetTimezone),
-	apischema.Query[apischema.TimezoneRequest, apischema.NoResponse]("datetime.set_timezone").HandleVoid(handleSetTimezone),
-	apischema.Query[apischema.NoRequest, []string]("datetime.get_ntp_servers").Handle(handleGetNTPServers),
-	apischema.Query[apischema.NTPServersRequest, apischema.NoResponse]("datetime.set_ntp_servers").HandleVoid(handleSetNTPServers),
+	apischema.Call[apischema.NoRequest, bool]("datetime.get_ntp_status").Handle(handleGetNTPStatus),
+	apischema.Call[apischema.EnabledRequest, apischema.NoResponse]("datetime.set_ntp").HandleVoid(handleSetNTP),
+	apischema.Call[apischema.ISOTimeRequest, apischema.NoResponse]("datetime.set_server_time").HandleVoid(handleSetServerTime),
+	apischema.Call[apischema.NoRequest, string]("datetime.get_timezone").Handle(handleGetTimezone),
+	apischema.Call[apischema.TimezoneRequest, apischema.NoResponse]("datetime.set_timezone").HandleVoid(handleSetTimezone),
+	apischema.Call[apischema.NoRequest, []string]("datetime.get_ntp_servers").Handle(handleGetNTPServers),
+	apischema.Call[apischema.NTPServersRequest, apischema.NoResponse]("datetime.set_ntp_servers").HandleVoid(handleSetNTPServers),
 )
 
 var Routes = api.Routes()

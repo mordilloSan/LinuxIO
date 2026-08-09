@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CapabilitiesResponse } from "@/api";
 
-const { refreshCapabilities, useJobStreamAction } = vi.hoisted(() => ({
+const { refreshCapabilities, useTaskStreamAction } = vi.hoisted(() => ({
   refreshCapabilities: vi.fn(),
-  useJobStreamAction: vi.fn(() => ({ mutateAsync: vi.fn() })),
+  useTaskStreamAction: vi.fn(() => ({ mutateAsync: vi.fn() })),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -28,7 +28,7 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.system,
         install_capability: {
           ...actual.linuxio.system.install_capability,
-          useJobStreamAction,
+          useTaskStreamAction,
         },
       },
     },

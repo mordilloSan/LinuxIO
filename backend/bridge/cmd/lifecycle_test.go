@@ -10,23 +10,23 @@ import (
 type shutdownTestConn struct {
 	net.Conn
 	sessionCanceled *bool
-	job             *bridgeipc.Job
+	task            *bridgeipc.Task
 	done            chan struct{}
 	canceledOnClose bool
-	jobDoneOnClose  bool
+	taskDoneOnClose bool
 }
 
 func (c *shutdownTestConn) Close() error {
 	c.canceledOnClose = *c.sessionCanceled
-	c.jobDoneOnClose = c.job.IsTerminal()
+	c.taskDoneOnClose = c.task.IsTerminal()
 	close(c.done)
 	return c.Conn.Close()
 }
 
 func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
-	registry := bridgeipc.NewRegistry()
+	registry := bridgeipc.NewTaskService()
 	const sessionID = "shutdown-test"
-	job, err := registry.CreateForOwner("test", nil, bridgeipc.Owner{SessionID: sessionID})
+	task, err := registry.CreateForOwner("test", nil, bridgeipc.TaskOwner{SessionID: sessionID})
 	if err != nil {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
 	conn := &shutdownTestConn{
 		Conn:            left,
 		sessionCanceled: &sessionCanceled,
-		job:             job,
+		task:            task,
 		done:            done,
 	}
 
@@ -47,7 +47,7 @@ func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
 	if !conn.canceledOnClose {
 		t.Fatal("transport closed before session context was canceled")
 	}
-	if !conn.jobDoneOnClose {
+	if !conn.taskDoneOnClose {
 		t.Fatal("transport closed before session jobs were canceled")
 	}
 }

@@ -79,13 +79,15 @@ describe("targeted route query ownership", () => {
     expect(dashboardRoute).toContain(
       'visible("docker") && context.access.dockerAvailable === true',
     );
-    expect(dashboardRoute.match(/\.queryOptions\(/g)).toHaveLength(16);
+    expect(dashboardRoute).not.toContain(".queryOptions(");
+    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(16);
     expect(
       [...hardwareRoute.matchAll(/if \(sections\.([^)]+)\)/g)].map(
         (match) => match[1],
       ),
     ).toEqual(["sensors", "pciDevices", "memoryModules", "systemInfo"]);
-    expect(hardwareRoute.match(/\.queryOptions\(/g)).toHaveLength(7);
+    expect(hardwareRoute).not.toContain(".queryOptions(");
+    expect(hardwareRoute.match(/linuxio\./g)).toHaveLength(7);
     expect(dashboardPage).toContain("<Suspense");
     expect(dashboardPage).toContain("<DashboardCardSkeleton");
     expect(dashboardPage).not.toContain("WidgetLoader");
@@ -108,7 +110,7 @@ describe("targeted route query ownership", () => {
       "get_diskio_history",
       "get_network_history",
     ]) {
-      expect(cards).toContain(`linuxio.monitoring.${endpoint}.queryOptions`);
+      expect(cards).toContain(`linuxio.monitoring.${endpoint}`);
     }
   });
 
@@ -118,10 +120,10 @@ describe("targeted route query ownership", () => {
       "wireguard/-components/CreateInterfaceButton.tsx",
     );
 
-    expect(page.match(/list_interfaces\.queryOptions/g)).toHaveLength(1);
-    expect(createButton).not.toContain("list_interfaces.queryOptions");
+    expect(page.match(/linuxio\.wireguard\.list_interfaces/g)).toHaveLength(1);
+    expect(createButton).not.toContain("linuxio.wireguard.list_interfaces");
     expect(createButton).toMatch(
-      /get_network_info\.queryOptions\(\{\s*enabled: showDialog,/,
+      /\.\.\.linuxio\.network\.get_network_info,\s*enabled: showDialog,/,
     );
   });
 
@@ -129,7 +131,7 @@ describe("targeted route query ownership", () => {
     const logs = readRouteSource("logs/-components/GeneralLogsPage.tsx");
 
     expect(logs).toMatch(
-      /list_services\.queryOptions\(\{\s*enabled: unitStatusNeedsServices,/,
+      /\.\.\.linuxio\.systemd\.list_services,\s*enabled: unitStatusNeedsServices,/,
     );
   });
 

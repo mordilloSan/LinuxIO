@@ -1,6 +1,6 @@
 # Handler Patterns
 
-This document covers handler style and package organization. Route contracts, frontend shape, transport, modes, jobs, and endpoint creation live in the canonical [API Contract](./api-contract.md).
+This document covers handler style and package organization. Route contracts, frontend shape, transport, modes, Tasks, and endpoint creation live in the canonical [API Contract](./api-contract.md).
 
 ## `handlers.go` Layout
 
@@ -12,7 +12,7 @@ This document covers handler style and package organization. Route contracts, fr
 It must not contain package state types, package variables, constants, helper functions, validators, parsers, or domain implementations. Put those in named files beside it, for example:
 
 - `handler_state.go` for small adapter state structs
-- `*_operation.go` for mutation/job orchestration
+- `*_operation.go` for mutation/Task orchestration
 - domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
 
 Every adapter in `handlers.go` receives a typed request and returns `(Result, error)`. The returned `Result` is emitted as the route result, and the compiler checks it against the type declared in the binding:
@@ -111,7 +111,7 @@ D-Bus-backed operations still use domain namespaces:
 - `hostname.*` for hostname changes
 - `datetime.*` for time, timezone, and NTP operations
 
-The `jobs.*` namespace is reserved by `bridgeipc`.
+The `tasks.*` namespace is reserved by `bridgeipc`.
 
 ## File Naming
 
@@ -119,10 +119,13 @@ Handler packages should name files after the domain operation they implement, no
 
 | Location | Allowed naming | Avoid |
 |----------|----------------|-------|
-| `backend/common/ipc/bridge` | Framework terms such as `jobs.go`, `job_primitives.go`, `router.go` | Domain-specific handler code |
-| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `jobs.go`, `stream.go`, `rpc.go`, `handler.go` |
+| `backend/common/ipc/bridge` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
+| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
 
-Use `operation` for job-backed mutations or long-running work, `follow` for log/watch-style jobs, and `session` for true duplex routes. The route mode still lives in the route spec; the filename should help humans find the domain behavior without implying a second IPC subsystem.
+Use `operation` for Task-backed mutations or long-running work, `follow` for
+log/watch Channels, and `session` for bidirectional Channels. The route mode
+still lives in the route spec; the filename should help humans find the domain
+behavior without implying a second IPC subsystem.
 
 ## Request Validation
 

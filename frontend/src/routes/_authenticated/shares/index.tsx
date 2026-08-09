@@ -8,8 +8,8 @@ import SharesPage from "./-components/SharesPage";
 export const Route = createFileRoute("/_authenticated/shares/")({
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.shares.list_nfs_shares.queryOptions(),
-      linuxio.shares.list_samba_shares.queryOptions(),
+      linuxio.shares.list_nfs_shares,
+      linuxio.shares.list_samba_shares,
     ]),
   component: SharesPage,
 });

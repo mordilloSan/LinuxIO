@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
-import { type AccountUser, linuxio } from "@/api";
+import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -38,11 +38,10 @@ const UsersTab = ({
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
-  const { data: users } = useSuspenseQuery(
-    linuxio.accounts.list_users.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: users } = useSuspenseQuery({
+    ...linuxio.accounts.list_users,
+    refetchInterval: 10000,
+  });
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -110,18 +109,22 @@ const UsersTab = ({
     setDialogUser(user);
     setPasswordDialogOpen(true);
   };
-  const { mutate: lockUser, isPending: isLocking } =
-    linuxio.accounts.lock_user.useAction({
+  const { mutate: lockUser, isPending: isLocking } = useCallMutation(
+    linuxio.accounts.lock_user,
+    {
       success: "User locked successfully",
       error: "Failed to lock user",
       toast: ACCOUNTS_TOAST_META,
-    });
-  const { mutate: unlockUser, isPending: isUnlocking } =
-    linuxio.accounts.unlock_user.useAction({
+    },
+  );
+  const { mutate: unlockUser, isPending: isUnlocking } = useCallMutation(
+    linuxio.accounts.unlock_user,
+    {
       success: "User unlocked successfully",
       error: "Failed to unlock user",
       toast: ACCOUNTS_TOAST_META,
-    });
+    },
+  );
 
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;

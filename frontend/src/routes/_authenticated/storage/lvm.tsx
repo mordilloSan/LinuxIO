@@ -11,9 +11,9 @@ import LVMManagement from "./-components/LVMManagement";
 export const Route = createFileRoute("/_authenticated/storage/lvm")({
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.storage.list_pvs.queryOptions(),
-      linuxio.storage.list_vgs.queryOptions(),
-      linuxio.storage.list_lvs.queryOptions(),
+      linuxio.storage.list_pvs,
+      linuxio.storage.list_vgs,
+      linuxio.storage.list_lvs,
     ]),
   component: StorageLVMRoute,
 });

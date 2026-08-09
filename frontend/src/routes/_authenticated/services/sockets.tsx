@@ -17,11 +17,9 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
   loaderDeps: ({ search }) => ({ socket: search.socket }),
   loader: (loaderArgs) => {
     const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [
-      linuxio.systemd.list_sockets.queryOptions(),
-    ];
+    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_sockets];
     if (deps.socket) {
-      queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.socket));
+      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.socket }));
     }
     return loadRouteQueries(loaderArgs, queries);
   },

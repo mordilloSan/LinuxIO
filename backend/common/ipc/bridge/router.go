@@ -18,24 +18,25 @@ import (
 type Mode string
 
 const (
-	ModeQuery  Mode = "query"
-	ModeJob    Mode = "job"
+	ModeCall   Mode = "call"
+	ModeTask   Mode = "task"
 	ModeDuplex Mode = "duplex"
 )
 
-const InitialJobSettleTimeout = 25 * time.Millisecond
+const InitialTaskSettleTimeout = 25 * time.Millisecond
 
 var (
-	ErrInvalidArgs      = errors.New("invalid arguments")
-	ErrForbidden        = errors.New("forbidden")
-	ErrRouteNotFound    = errors.New("route not found")
-	ErrRateLimited      = errors.New("rate limit exceeded")
-	ErrQueueFull        = errors.New("job queue full")
-	ErrDuplicateActive  = errors.New("job already active")
-	ErrReservedJobRoute = errors.New("reserved jobs route")
+	ErrInvalidArgs       = errors.New("invalid arguments")
+	ErrForbidden         = errors.New("forbidden")
+	ErrRouteNotFound     = errors.New("route not found")
+	ErrRateLimited       = errors.New("rate limit exceeded")
+	ErrQueueFull         = errors.New("task queue full")
+	ErrDuplicateActive   = errors.New("task already active")
+	ErrReservedTaskRoute = errors.New("reserved tasks route")
 )
 
 type HandlerFunc func(ctx context.Context, request any, emit Events) error
+type CallFunc func(ctx context.Context, request any) (any, error)
 type DuplexFunc func(ctx context.Context, stream net.Conn, request any) error
 
 type RequestDecoder func(raw json.RawMessage) (any, error)
@@ -53,19 +54,20 @@ type Request struct {
 	RawRequest   json.RawMessage
 	DecodedValue any
 	Session      *session.Session
-	Owner        Owner
+	Owner        TaskOwner
 }
 
 type Route struct {
 	Name       string
 	Mode       Mode
 	Handler    HandlerFunc
-	Runner     Runner
+	Call       CallFunc
+	Runner     TaskRunner
 	Duplex     DuplexFunc
 	Privileged bool
-	Policy     JobPolicy
+	Policy     TaskPolicy
 	Decode     RequestDecoder
-	Metadata   JobMetadataBuilder
+	Metadata   TaskMetadataBuilder
 }
 
 type RouteOption func(*Route)
@@ -80,46 +82,41 @@ func WithRequestDecoder(decode RequestDecoder) RouteOption {
 	}
 }
 
-// WithJobMetadata declares the only request-derived data that may be exposed
-// through public job snapshots. Routes without this option expose no metadata.
-func WithJobMetadata(build JobMetadataBuilder) RouteOption {
+// WithTaskMetadata declares the only request-derived data that may be exposed
+// through public task snapshots. Routes without this option expose no metadata.
+func WithTaskMetadata(build TaskMetadataBuilder) RouteOption {
 	return func(r *Route) {
 		r.Metadata = build
 	}
 }
 
-type JobPolicy struct {
+type TaskPolicy struct {
 	Name                    string
 	MaxActivePerRoute       int
 	MaxActivePerOwnerRoute  int
 	QueueLimit              int
 	StartRatePerMinuteOwner int
-	// Timeout is the maximum runtime after a job starts. Queue time is not counted.
-	// When it expires, bridgeipc cancels the runner context and fails the job with 504.
+	// Timeout is the maximum runtime after a task starts. Queue time is not counted.
+	// When it expires, bridgeipc cancels the runner context and fails the task with 504.
 	Timeout               time.Duration
 	DuplicateActiveReject bool
-	// SkipInitialSettle skips the InitialJobSettleTimeout wait before returning
-	// the start snapshot. The wait lets short jobs return a terminal snapshot in
-	// one round trip; follow-style streams never finish that fast, so for them
-	// it is pure added latency before the client can attach.
-	SkipInitialSettle bool
 }
 
 var (
-	ActionDefault = JobPolicy{
+	TaskDefault = TaskPolicy{
 		Name:                   "action_default",
 		MaxActivePerRoute:      4,
 		MaxActivePerOwnerRoute: 1,
 		QueueLimit:             16,
 		// StartRatePerMinuteOwner is 0 (disabled): copy/move/delete and other
-		// action jobs are user-initiated with one job per item, so a per-minute
+		// action tasks are user-initiated with one task per item, so a per-minute
 		// start cap rejected large multi-selections mid-batch. The frontend
 		// runs these sequentially and MaxActivePerOwnerRoute=1 still serializes
-		// execution, so there is no runaway-job risk.
+		// execution, so there is no runaway-task risk.
 		StartRatePerMinuteOwner: 0,
 		Timeout:                 120 * time.Minute,
 	}
-	SingletonSystem = JobPolicy{
+	TaskSingletonSystem = TaskPolicy{
 		Name:                    "singleton_system",
 		MaxActivePerRoute:       1,
 		MaxActivePerOwnerRoute:  1,
@@ -127,48 +124,37 @@ var (
 		StartRatePerMinuteOwner: 10,
 		DuplicateActiveReject:   true,
 	}
-	StreamDefault = JobPolicy{
+	TaskStreamDefault = TaskPolicy{
 		Name:                   "stream_default",
 		MaxActivePerRoute:      64,
 		MaxActivePerOwnerRoute: 8,
 		QueueLimit:             0,
 		// StartRatePerMinuteOwner is 0 (disabled): file transfers are
-		// user-initiated with one job per file, so a per-minute start cap
+		// user-initiated with one task per file, so a per-minute start cap
 		// rejected large folder uploads mid-batch. Concurrency is still
 		// bounded by MaxActivePerRoute / MaxActivePerOwnerRoute.
 		StartRatePerMinuteOwner: 0,
-	}
-	// StreamFollow is StreamDefault for follow-style streams (log tails) that
-	// by design never settle: the initial 25ms settle wait is skipped so the
-	// client gets the snapshot — and can attach — immediately.
-	StreamFollow = JobPolicy{
-		Name:                    "stream_follow",
-		MaxActivePerRoute:       64,
-		MaxActivePerOwnerRoute:  8,
-		QueueLimit:              0,
-		StartRatePerMinuteOwner: 0,
-		SkipInitialSettle:       true,
 	}
 )
 
 type Router struct {
 	mu                   sync.RWMutex
 	routes               map[string]Route
-	registry             *Registry
+	registry             *TaskService
 	activeByRoute        map[string]int
 	activeByOwnerRoute   map[string]int
-	queuedByRoute        map[string][]queuedJob
+	queuedByRoute        map[string][]queuedTask
 	pendingQueuedByRoute map[string]int
 	startsByOwnerRoute   map[string][]time.Time
 	// beforeStartHook is a narrow test seam for the promotion/cancel race.
 	// Production never sets it.
-	beforeStartHook func(*Job)
+	beforeStartHook func(*Task)
 }
 
-type queuedJob struct {
+type queuedTask struct {
 	route Route
-	job   *Job
-	owner Owner
+	task  *Task
+	owner TaskOwner
 }
 
 type runnerResult struct {
@@ -176,50 +162,51 @@ type runnerResult struct {
 	err    error
 }
 
-func NewRouter(registry *Registry) *Router {
+func NewRouter(registry *TaskService) *Router {
 	if registry == nil {
-		registry = DefaultRegistry
+		registry = DefaultTaskService
 	}
 	return &Router{
 		routes:               make(map[string]Route),
 		registry:             registry,
 		activeByRoute:        make(map[string]int),
 		activeByOwnerRoute:   make(map[string]int),
-		queuedByRoute:        make(map[string][]queuedJob),
+		queuedByRoute:        make(map[string][]queuedTask),
 		pendingQueuedByRoute: make(map[string]int),
 		startsByOwnerRoute:   make(map[string][]time.Time),
 	}
 }
 
-// Registry returns the job registry used by this router.
-func (r *Router) Registry() *Registry {
+// TaskService returns the task service used by this router.
+func (r *Router) TaskService() *TaskService {
 	return r.registry
 }
 
-// Query registers a request-response route. The handler runs synchronously and
-// its result is written back to the caller before the connection is closed.
-func (r *Router) Query(name string, handler HandlerFunc, opts ...RouteOption) {
-	r.register(Route{Name: name, Mode: ModeQuery, Handler: handler}, opts...)
+// Call registers a bounded request-response route. The handler returns one
+// result directly; the router writes its result or error frame and closes the
+// stream.
+func (r *Router) Call(name string, handler CallFunc, opts ...RouteOption) {
+	r.register(Route{Name: name, Mode: ModeCall, Call: handler}, opts...)
 }
 
-// Job registers a background job route using a HandlerFunc. The handler emits
+// Task registers a background task route using a HandlerFunc. The handler emits
 // progress and results through the Events interface. If policy.Name is empty,
-// ActionDefault is used.
-func (r *Router) Job(name string, handler HandlerFunc, policy JobPolicy, opts ...RouteOption) {
+// TaskDefault is used.
+func (r *Router) Task(name string, handler HandlerFunc, policy TaskPolicy, opts ...RouteOption) {
 	if policy.Name == "" {
-		policy = ActionDefault
+		policy = TaskDefault
 	}
-	r.register(Route{Name: name, Mode: ModeJob, Handler: handler, Policy: policy}, opts...)
+	r.register(Route{Name: name, Mode: ModeTask, Handler: handler, Policy: policy}, opts...)
 }
 
-// JobRunner registers a background job route using a Runner. Unlike Job, the
-// runner receives the *Job directly, enabling lower-level control (e.g. calling
-// ReportProgress). If policy.Name is empty, ActionDefault is used.
-func (r *Router) JobRunner(name string, runner Runner, policy JobPolicy, opts ...RouteOption) {
+// TaskRunner registers a background task route using a Runner. Unlike Task, the
+// runner receives the *Task directly, enabling lower-level control (e.g. calling
+// ReportProgress). If policy.Name is empty, TaskDefault is used.
+func (r *Router) TaskRunner(name string, runner TaskRunner, policy TaskPolicy, opts ...RouteOption) {
 	if policy.Name == "" {
-		policy = ActionDefault
+		policy = TaskDefault
 	}
-	r.register(Route{Name: name, Mode: ModeJob, Runner: runner, Policy: policy}, opts...)
+	r.register(Route{Name: name, Mode: ModeTask, Runner: runner, Policy: policy}, opts...)
 }
 
 // Duplex registers a full-duplex streaming route. The handler receives the raw
@@ -233,8 +220,8 @@ func (r *Router) Duplex(name string, handler DuplexFunc, opts ...RouteOption) {
 func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) error {
 	req.Owner = ownerFromSession(req.Session)
 
-	if strings.HasPrefix(req.Route, "jobs.") {
-		return r.dispatchJobPrimitive(ctx, stream, req)
+	if strings.HasPrefix(req.Route, "tasks.") {
+		return r.dispatchTaskPrimitive(ctx, stream, req)
 	}
 
 	route, ok := r.lookup(req.Route)
@@ -266,10 +253,10 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 
 	var err error
 	switch route.Mode {
-	case ModeQuery:
-		err = r.dispatchQuery(ctx, stream, route, req.DecodedValue)
-	case ModeJob:
-		err = r.dispatchJob(ctx, stream, route, req)
+	case ModeCall:
+		err = r.dispatchCall(ctx, stream, route, req.DecodedValue)
+	case ModeTask:
+		err = r.dispatchTask(ctx, stream, route, req)
 	case ModeDuplex:
 		err = route.Duplex(ctx, stream, req.DecodedValue)
 	default:
@@ -294,14 +281,14 @@ func (r *Router) register(route Route, opts ...RouteOption) {
 	if route.Name == "" {
 		panic("bridge route cannot be empty")
 	}
-	if strings.HasPrefix(route.Name, "jobs.") {
-		panic("bridge route uses reserved jobs.* namespace: " + route.Name)
+	if strings.HasPrefix(route.Name, "tasks.") {
+		panic("bridge route uses reserved tasks.* namespace: " + route.Name)
 	}
-	if route.Mode == ModeQuery && route.Handler == nil {
-		panic("bridge route handler cannot be nil: " + route.Name)
+	if route.Mode == ModeCall && route.Call == nil {
+		panic("bridge call route handler cannot be nil: " + route.Name)
 	}
-	if route.Mode == ModeJob && route.Handler == nil && route.Runner == nil {
-		panic("bridge job route handler cannot be nil: " + route.Name)
+	if route.Mode == ModeTask && route.Handler == nil && route.Runner == nil {
+		panic("bridge task route handler cannot be nil: " + route.Name)
 	}
 	if route.Mode == ModeDuplex && route.Duplex == nil {
 		panic("bridge duplex route handler cannot be nil: " + route.Name)
@@ -324,45 +311,43 @@ func (r *Router) lookup(route string) (Route, bool) {
 	return found, ok
 }
 
-func (r *Router) dispatchQuery(ctx context.Context, stream net.Conn, route Route, request any) error {
-	ctx, cleanup := queryAbortContext(ctx, stream)
+func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route, request any) error {
+	ctx, cleanup := requestAbortContext(ctx, stream)
 	defer cleanup()
-
-	emit := newStreamEmitter(stream)
-	err := route.Handler(ctx, request, emit)
-	if err != nil {
-		_ = emit.Error(err, statusCode(err))
-	}
-	_ = emit.Close("")
-	return err
-}
-
-func (r *Router) dispatchJob(ctx context.Context, stream net.Conn, route Route, req Request) error {
-	job, started, err := r.startOrQueueJob(route, req)
+	result, err := route.Call(ctx, request)
 	if err != nil {
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
 		return err
 	}
-	if started && !route.Policy.SkipInitialSettle {
+	return relay.WriteResultOKAndClose(stream, 0, result)
+}
+
+func (r *Router) dispatchTask(ctx context.Context, stream net.Conn, route Route, req Request) error {
+	task, started, err := r.startOrQueueTask(route, req)
+	if err != nil {
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+		return err
+	}
+	if started {
 		select {
-		case <-job.Done():
-		case <-time.After(InitialJobSettleTimeout):
+		case <-task.Done():
+		case <-time.After(InitialTaskSettleTimeout):
 		case <-ctx.Done():
 		}
 	}
-	return relay.WriteResultOKAndClose(stream, 0, job.Snapshot())
+	return relay.WriteResultOKAndClose(stream, 0, task.Snapshot())
 }
 
-// routeRunner reports physical completion through executionDone. A job can
+// routeRunner reports physical completion through executionDone. A task can
 // become terminal before its handler returns when a timed or canceled handler
 // ignores its context, so admission accounting must wait for this signal rather
-// than relying on Job.Done alone.
-func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner {
-	return func(ctx context.Context, job *Job, request any) (any, error) {
+// than relying on Task.Done alone.
+func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRunner {
+	return func(ctx context.Context, task *Task, request any) (any, error) {
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
 			defer close(executionDone)
-			return r.runRoute(ctx, job, request, route)
+			return r.runRoute(ctx, task, request, route)
 		}
 
 		runCtx, cancel := context.WithTimeout(ctx, policy.Timeout)
@@ -371,7 +356,7 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner 
 		done := make(chan runnerResult, 1)
 		go func() {
 			defer close(executionDone)
-			result, err := r.runRoute(runCtx, job, request, route)
+			result, err := r.runRoute(runCtx, task, request, route)
 			done <- runnerResult{result: result, err: err}
 		}()
 
@@ -387,18 +372,18 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) Runner 
 	}
 }
 
-func (r *Router) runRoute(ctx context.Context, job *Job, request any, route Route) (any, error) {
+func (r *Router) runRoute(ctx context.Context, task *Task, request any, route Route) (any, error) {
 	if route.Runner != nil {
-		return route.Runner(ctx, job, request)
+		return route.Runner(ctx, task, request)
 	}
-	emit := newJobEmitter(job)
+	emit := newTaskEmitter(task)
 	if err := route.Handler(ctx, request, emit); err != nil {
 		return nil, err
 	}
 	return emit.result, nil
 }
 
-func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
+func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {
 	now := time.Now().UTC()
 	ownerKey := req.Owner.key()
 	ownerRouteKey := req.Route + "\x00" + ownerKey
@@ -428,7 +413,7 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	if policy.StartRatePerMinuteOwner > 0 {
 		r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
 	}
-	// Reserve an active slot before creating the job. CreateForOwner can take
+	// Reserve an active slot before creating the task. CreateForOwner can take
 	// long enough for another request to otherwise observe stale capacity.
 	if canStart {
 		r.markActiveLocked(req.Route, ownerRouteKey)
@@ -439,17 +424,17 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	}
 	r.mu.Unlock()
 
-	var metadata *JobMetadata
+	var metadata *TaskMetadata
 	if route.Metadata != nil {
 		value := route.Metadata(req.DecodedValue)
 		metadata = &value
 	}
-	job, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
+	task, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
 	if err != nil {
 		if canStart {
-			// Releasing the reserved slot and promoting the next queued job is
-			// exactly the finished-job path.
-			r.finishJob(req.Route, ownerRouteKey)
+			// Releasing the reserved slot and promoting the next queued task is
+			// exactly the finished-task path.
+			r.finishTask(req.Route, ownerRouteKey)
 		} else {
 			r.mu.Lock()
 			if r.pendingQueuedByRoute[req.Route] > 0 {
@@ -463,32 +448,32 @@ func (r *Router) startOrQueueJob(route Route, req Request) (*Job, bool, error) {
 	r.mu.Lock()
 	if canStart {
 		r.mu.Unlock()
-		r.startTrackedJob(route, job, req.Owner)
-		return job, true, nil
+		r.startTrackedTask(route, task, req.Owner)
+		return task, true, nil
 	}
-	r.queuedByRoute[req.Route] = append(r.queuedByRoute[req.Route], queuedJob{route: route, job: job, owner: req.Owner})
+	r.queuedByRoute[req.Route] = append(r.queuedByRoute[req.Route], queuedTask{route: route, task: task, owner: req.Owner})
 	if r.pendingQueuedByRoute[req.Route] > 0 {
 		r.pendingQueuedByRoute[req.Route]--
 	}
-	// An active job may have finished while CreateForOwner was running. Promote
-	// from the real FIFO queue now so this reservation cannot strand the job.
+	// An active task may have finished while CreateForOwner was running. Promote
+	// from the real FIFO queue now so this reservation cannot strand the task.
 	next := r.dequeueStartLocked(req.Route)
 	r.mu.Unlock()
 	if next != nil {
-		r.startTrackedJob(next.route, next.job, next.owner)
-		return job, next.job == job, nil
+		r.startTrackedTask(next.route, next.task, next.owner)
+		return task, next.task == task, nil
 	}
-	return job, false, nil
+	return task, false, nil
 }
 
-func normalizedPolicy(policy JobPolicy) JobPolicy {
+func normalizedPolicy(policy TaskPolicy) TaskPolicy {
 	if policy.Name == "" {
-		return ActionDefault
+		return TaskDefault
 	}
 	return policy
 }
 
-func (r *Router) checkRateLocked(ownerRouteKey string, policy JobPolicy, now time.Time) error {
+func (r *Router) checkRateLocked(ownerRouteKey string, policy TaskPolicy, now time.Time) error {
 	if policy.StartRatePerMinuteOwner <= 0 {
 		return nil
 	}
@@ -507,7 +492,7 @@ func (r *Router) checkRateLocked(ownerRouteKey string, policy JobPolicy, now tim
 	return nil
 }
 
-func (r *Router) canStartLocked(routeName, ownerRouteKey string, policy JobPolicy) bool {
+func (r *Router) canStartLocked(routeName, ownerRouteKey string, policy TaskPolicy) bool {
 	if policy.MaxActivePerRoute > 0 && r.activeByRoute[routeName] >= policy.MaxActivePerRoute {
 		return false
 	}
@@ -531,48 +516,48 @@ func (r *Router) unmarkActiveLocked(routeName, ownerRouteKey string) {
 	}
 }
 
-func (r *Router) startTrackedJob(route Route, job *Job, owner Owner) {
+func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
 	ownerRouteKey := route.Name + "\x00" + owner.key()
 	if r.beforeStartHook != nil {
-		r.beforeStartHook(job)
+		r.beforeStartHook(task)
 	}
 	executionDone := make(chan struct{})
-	if !job.Start(r.routeRunner(route, executionDone)) {
-		r.finishJob(route.Name, ownerRouteKey)
+	if !task.Start(r.routeRunner(route, executionDone)) {
+		r.finishTask(route.Name, ownerRouteKey)
 		return
 	}
 	go func() {
-		<-job.Done()
+		<-task.Done()
 		<-executionDone
-		r.finishJob(route.Name, ownerRouteKey)
+		r.finishTask(route.Name, ownerRouteKey)
 	}()
 }
 
-func (r *Router) finishJob(routeName, ownerRouteKey string) {
+func (r *Router) finishTask(routeName, ownerRouteKey string) {
 	r.mu.Lock()
 	r.unmarkActiveLocked(routeName, ownerRouteKey)
 	next := r.dequeueStartLocked(routeName)
 	r.mu.Unlock()
 
 	if next != nil {
-		r.startTrackedJob(next.route, next.job, next.owner)
+		r.startTrackedTask(next.route, next.task, next.owner)
 	}
 }
 
-// dequeueStartLocked promotes the oldest runnable queued job for a route.
+// dequeueStartLocked promotes the oldest runnable queued task for a route.
 // The caller starts it after releasing r.mu to avoid lock-order surprises.
-func (r *Router) dequeueStartLocked(routeName string) *queuedJob {
-	var next *queuedJob
+func (r *Router) dequeueStartLocked(routeName string) *queuedTask {
+	var next *queuedTask
 	queue := r.queuedByRoute[routeName]
 	for len(queue) > 0 {
 		candidate := queue[0]
 		queue = queue[1:]
-		if candidate.job.IsTerminal() {
+		if candidate.task.IsTerminal() {
 			continue
 		}
 		nextOwnerRouteKey := routeName + "\x00" + candidate.owner.key()
 		if !r.canStartLocked(routeName, nextOwnerRouteKey, normalizedPolicy(candidate.route.Policy)) {
-			queue = append([]queuedJob{candidate}, queue...)
+			queue = append([]queuedTask{candidate}, queue...)
 			break
 		}
 		r.markActiveLocked(routeName, nextOwnerRouteKey)
@@ -583,80 +568,50 @@ func (r *Router) dequeueStartLocked(routeName string) *queuedJob {
 	return next
 }
 
-type streamEmitter struct {
-	stream    net.Conn
-	errorSent bool
-}
-
-func newStreamEmitter(stream net.Conn) *streamEmitter {
-	return &streamEmitter{stream: stream}
-}
-
-func (e *streamEmitter) Data(chunk []byte) error {
-	return relay.WriteRelayFrame(e.stream, &relay.StreamFrame{Opcode: relay.OpStreamData, Payload: chunk})
-}
-
-func (e *streamEmitter) Progress(progress any) error {
-	return relay.WriteProgress(e.stream, 0, progress)
-}
-
-func (e *streamEmitter) Result(result any) error {
-	return relay.WriteResultOK(e.stream, 0, result)
-}
-
-func (e *streamEmitter) Error(err error, code int) error {
-	e.errorSent = true
-	return relay.WriteResultError(e.stream, 0, err.Error(), code)
-}
-
-func (e *streamEmitter) Close(string) error {
-	return relay.WriteStreamClose(e.stream, 0)
-}
-
-type jobEmitter struct {
-	job    *Job
+type taskEmitter struct {
+	task   *Task
 	result any
 }
 
-func newJobEmitter(job *Job) *jobEmitter {
-	return &jobEmitter{job: job}
+func newTaskEmitter(task *Task) *taskEmitter {
+	return &taskEmitter{task: task}
 }
 
-func (e *jobEmitter) Data(chunk []byte) error {
-	e.job.ReportData(string(chunk))
+func (e *taskEmitter) Data(chunk []byte) error {
+	e.task.ReportData(string(chunk))
 	return nil
 }
 
-func (e *jobEmitter) Progress(progress any) error {
-	e.job.ReportProgress(progress)
+func (e *taskEmitter) Progress(progress any) error {
+	e.task.ReportProgress(progress)
 	return nil
 }
 
-func (e *jobEmitter) Result(result any) error {
+func (e *taskEmitter) Result(result any) error {
 	e.result = result
 	return nil
 }
 
-func (e *jobEmitter) Error(err error, code int) error {
+func (e *taskEmitter) Error(err error, code int) error {
 	return NewError(err.Error(), code)
 }
 
-func (e *jobEmitter) Close(string) error {
+func (e *taskEmitter) Close(string) error {
 	return nil
 }
 
-func ownerFromSession(sess *session.Session) Owner {
+func ownerFromSession(sess *session.Session) TaskOwner {
 	if sess == nil {
-		return Owner{}
+		return TaskOwner{}
 	}
-	return Owner{
+	return TaskOwner{
 		SessionID: sess.SessionID,
 		Username:  sess.User.Username,
 		UID:       sess.User.UID,
 	}
 }
 
-func (o Owner) key() string {
+func (o TaskOwner) key() string {
 	if o.Username != "" {
 		return o.Username
 	}
@@ -673,9 +628,9 @@ func statusCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	var jobErr *Error
-	if errors.As(err, &jobErr) && jobErr.Code != 0 {
-		return jobErr.Code
+	var taskErr *Error
+	if errors.As(err, &taskErr) && taskErr.Code != 0 {
+		return taskErr.Code
 	}
 	switch {
 	case errors.Is(err, ErrInvalidArgs):

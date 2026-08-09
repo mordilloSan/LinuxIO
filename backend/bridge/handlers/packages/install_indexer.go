@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -26,23 +26,23 @@ var (
 	indexerInstallRunner     = runIndexerInstallScript
 )
 
-func installIndexer(ctx context.Context, job *bridgejobs.Job) error {
+func installIndexer(ctx context.Context, task *bridgetask.Task) error {
 	ctx, cancel := context.WithTimeout(ctx, indexerInstallTimeout)
 	defer cancel()
 
-	reportProgress(job, stageResolve, "Downloading Indexer installer", pctResolve)
+	reportProgress(task, stageResolve, "Downloading Indexer installer", pctResolve)
 	script, err := downloadIndexerInstallScript(ctx, indexerInstallHTTPClient)
 	if err != nil {
 		return fmt.Errorf("download Indexer installer: %w", err)
 	}
 
-	reportProgress(job, stageInstallAsset, "Running Indexer installer", pctInstallStart)
+	reportProgress(task, stageInstallAsset, "Running Indexer installer", pctInstallStart)
 	output, err := indexerInstallRunner(ctx, script)
 	if err != nil {
 		return fmt.Errorf("run Indexer installer: %w", indexerInstallCommandError(err, output))
 	}
 
-	reportProgress(job, stageInstallAsset, "Installed Indexer", pctInstallEnd)
+	reportProgress(task, stageInstallAsset, "Installed Indexer", pctInstallEnd)
 	return nil
 }
 

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  isTerminalJobState,
+  isTerminalTaskState,
   linuxio,
-  type JobSnapshot,
+  type TaskSnapshot,
   type Stream,
+  useCallMutation,
 } from "@/api";
-import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
+import { TASK_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundTaskTypes";
 import {
   claimTerminalFeedback,
   markTerminalFeedbackEmitted,
-} from "@/hooks/backgroundJobs/terminalJobFeedback";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+} from "@/hooks/backgroundTasks/terminalTaskFeedback";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 
 export interface PackageUpdateRequest {
   packageIds: string[];
@@ -28,7 +29,7 @@ export interface PackageUpdateProgress {
 
 interface ActiveTransaction {
   cancelRequested: boolean;
-  job: JobSnapshot | null;
+  task: TaskSnapshot | null;
   releaseFeedback: () => void;
   request: PackageUpdateRequest;
   stream: Stream | null;
@@ -65,8 +66,8 @@ export function usePackageUpdateTransaction({
     if (transactionRef.current) return false;
     transactionRef.current = {
       cancelRequested: false,
-      job: null,
-      releaseFeedback: claimTerminalFeedback(JOB_TYPE_PACKAGE_UPDATE),
+      task: null,
+      releaseFeedback: claimTerminalFeedback(TASK_TYPE_PACKAGE_UPDATE),
       request,
       stream: null,
     };
@@ -79,8 +80,8 @@ export function usePackageUpdateTransaction({
       if (!accepts(request)) return false;
       const transaction = transactionRef.current;
       if (!transaction) return false;
-      if (transaction.job) {
-        markTerminalFeedbackEmitted(transaction.job.id);
+      if (transaction.task) {
+        markTerminalFeedbackEmitted(transaction.task.id);
       }
       transactionRef.current = null;
       setCanCancel(false);
@@ -90,29 +91,33 @@ export function usePackageUpdateTransaction({
     [accepts],
   );
 
-  const streamAction = linuxio.packages.update.useJobStreamAction<
+  const streamAction = linuxio.packages.update.useTaskStreamAction<
     void,
     PackageUpdateProgress
   >({
     closeMessage: "Update stream closed unexpectedly",
-    onJobStart: (job, request) => {
+    onTaskStart: (task, request) => {
       if (!accepts(request)) return;
       const transaction = transactionRef.current;
       if (!transaction) return;
-      transaction.job = job;
+      transaction.task = task;
       setCanCancel(
-        !transaction.cancelRequested && !isTerminalJobState(job.state),
+        !transaction.cancelRequested && !isTerminalTaskState(task.state),
       );
     },
-    onOpen: (stream, job, request) => {
+    onOpen: (stream, task, request) => {
       const transaction = transactionRef.current;
-      if (!accepts(request) || !transaction || transaction.job?.id !== job.id) {
+      if (
+        !accepts(request) ||
+        !transaction ||
+        transaction.task?.id !== task.id
+      ) {
         stream.close();
         return;
       }
       transaction.stream = stream;
     },
-    onProgress: (progress, _job, request) => {
+    onProgress: (progress, _task, request) => {
       if (accepts(request)) onProgress(progress, request);
     },
     success: (_result, request) => {
@@ -126,7 +131,7 @@ export function usePackageUpdateTransaction({
   const start = useCallback(
     (request: PackageUpdateRequest): Promise<void> | null => {
       if (!begin(request)) return null;
-      // Claim before submission so a very fast terminal job cannot be reported
+      // Claim before submission so a very fast terminal task cannot be reported
       // by the global events path before this page receives its snapshot.
       return streamAction.mutateAsync(request).then(
         () => undefined,
@@ -136,27 +141,27 @@ export function usePackageUpdateTransaction({
     [begin, streamAction],
   );
 
-  const attach = useCallback(
-    (job: JobSnapshot): boolean => {
-      const packageIds = job.metadata?.packageIds ?? [];
+  const watch = useCallback(
+    (task: TaskSnapshot): boolean => {
+      const packageIds = task.metadata?.packageIds ?? [];
       const request = { packageIds };
       if (!begin(request)) return false;
       onRecover(request);
-      streamAction.attach(job, request);
+      streamAction.watch(task, request);
       return true;
     },
     [begin, onRecover, streamAction],
   );
 
-  const { mutateAsync: requestCancel } = linuxio.jobs.cancel.useAction();
+  const { mutateAsync: requestCancel } = useCallMutation(linuxio.tasks.cancel);
   const cancel = useCallback(() => {
     const transaction = transactionRef.current;
-    const job = transaction?.job;
+    const task = transaction?.task;
     if (
       !transaction ||
-      !job ||
+      !task ||
       transaction.cancelRequested ||
-      isTerminalJobState(job.state)
+      isTerminalTaskState(task.state)
     ) {
       return false;
     }
@@ -165,10 +170,10 @@ export function usePackageUpdateTransaction({
     // not this click, is the authority that settles the UI.
     transaction.cancelRequested = true;
     setCanCancel(false);
-    void requestCancel({ jobId: job.id }).catch(() => {
+    void requestCancel({ taskId: task.id }).catch(() => {
       if (
         accepts(transaction.request) &&
-        transactionRef.current?.job?.id === job.id
+        transactionRef.current?.task?.id === task.id
       ) {
         transaction.cancelRequested = false;
         setCanCancel(true);
@@ -177,11 +182,11 @@ export function usePackageUpdateTransaction({
     return true;
   }, [accepts, requestCancel]);
 
-  const recovery = useActiveJobRecovery({
-    type: JOB_TYPE_PACKAGE_UPDATE,
+  const recovery = useActiveTaskRecovery({
+    type: TASK_TYPE_PACKAGE_UPDATE,
     scanKey: "package-update-controller",
     match: () => true,
-    onRecover: attach,
+    onRecover: watch,
   });
 
   useEffect(() => {
@@ -194,7 +199,7 @@ export function usePackageUpdateTransaction({
   }, []);
 
   return {
-    attach,
+    watch,
     cancel,
     canCancel,
     isScanning: recovery.isScanning,

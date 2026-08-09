@@ -49,7 +49,7 @@ runtime behavior, and UI state transitions that do not need a real host.
   - route-mode errors
   - query and mutation option shaping for key generated endpoints
   - retry and no-retry behavior across API layers
-  - generated query route smoke tests using mocked bridge responses
+  - generated Call route smoke tests using mocked bridge responses
 
 ### Backend Scope
 
@@ -100,7 +100,7 @@ the WebSocket bridge, or backend data. Those remain Tier 2 concerns below.
 ## Tier 2: Local Playwright For Non-Privileged Queries
 
 Tier 2 proves that the real browser, real login, real WebSocket bridge, and real
-generated query routes work together against a normal local LinuxIO test user.
+generated Call routes work together against a normal local LinuxIO test user.
 
 This tier should run outside the VM. It should not create or delete host users by
 default. Instead, it should accept credentials from environment variables:
@@ -152,7 +152,7 @@ non-privileged.
 - A developer with an already configured LinuxIO test user can run local
   Playwright without a VM.
 - Browser tests cover real auth, route protection, WebSocket session expiry, and
-  non-privileged generated query routes.
+  non-privileged generated Call routes.
 - The suite never performs host mutation beyond logging in and reading safe
   state.
 
@@ -181,7 +181,7 @@ test contract.
 
 ### Tier 3 Scope
 
-- Privileged generated query routes.
+- Privileged generated Call routes.
 - Config write/read through the real UI.
 - File browser upload, copy, move, delete, archive, and download flows within an
   isolated fixture tree.

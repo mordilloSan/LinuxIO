@@ -21,6 +21,7 @@ import {
   type AccountUserLogin,
   type AccountUserProcess,
   linuxio,
+  useCallMutation,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
@@ -51,11 +52,10 @@ interface UserDetailsPanelProps {
 }
 
 function useAccountDetails(username: string) {
-  return useSuspenseQuery(
-    linuxio.accounts.get_user_details.queryOptions(username, {
-      refetchInterval: 10000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.accounts.get_user_details({ username }),
+    refetchInterval: 10000,
+  });
 }
 
 function getLoginLocation(login: AccountUserLogin): string {
@@ -512,12 +512,14 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const search = accountsRouteApi.useSearch();
   const [{ data: details }, { data: logins }] = useSuspenseQueries({
     queries: [
-      linuxio.accounts.get_user_details.queryOptions(username, {
+      {
+        ...linuxio.accounts.get_user_details({ username }),
         refetchInterval: 10000,
-      }),
-      linuxio.accounts.list_user_logins.queryOptions(username, {
+      },
+      {
+        ...linuxio.accounts.list_user_logins({ username }),
         refetchInterval: 30000,
-      }),
+      },
     ],
   });
   const sessions = details.activeSessions;
@@ -534,13 +536,14 @@ export const UserActivityCard = ({ username }: { username: string }) => {
       : undefined;
   const autoDismissFailedLoginAlert =
     search.autoDismissFailedLoginAlert === true;
-  const { mutate: dismissFailedLoginAlert } =
-    linuxio.system.dismiss_failed_login_alert.useAction();
+  const { mutate: dismissFailedLoginAlert } = useCallMutation(
+    linuxio.system.dismiss_failed_login_alert,
+  );
   const [pendingKillSession, setPendingKillSession] =
     useState<AccountActiveSession | null>(null);
   const [killError, setKillError] = useState<string>("");
   const { mutate: terminateSession, isPending: terminateIsPending } =
-    linuxio.accounts.terminate_session.useAction({
+    useCallMutation(linuxio.accounts.terminate_session, {
       success: () => {
         setPendingKillSession(null);
         setKillError("");

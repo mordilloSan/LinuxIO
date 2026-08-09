@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -209,7 +210,12 @@ const DirectoryTree = ({
   onSelect,
 }: DirectoryTreeProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const fetchResource = linuxio.filebrowser.resource_get.useFetcher();
+  const queryClient = useQueryClient();
+  const fetchResource = useCallback(
+    (path: string) =>
+      queryClient.fetchQuery(linuxio.filebrowser.resource_get({ path })),
+    [queryClient],
+  );
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [
     { name: rootPath, path: rootPath, kind: "directory", loaded: false },
   ]);
@@ -223,7 +229,7 @@ const DirectoryTree = ({
     async (node: TreeNodeData) => {
       if (node.loaded || node.kind !== "directory") return;
 
-      const resource = await fetchResource({ path: node.path });
+      const resource = await fetchResource(node.path);
 
       const children = resourceChildren(resource, node.path, {
         fileFilter,

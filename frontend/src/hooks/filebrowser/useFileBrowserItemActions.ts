@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 
-import { CACHE_TTL_MS, type FileChmodBatchRequest, linuxio } from "@/api";
+import { call, type FileChmodBatchRequest, linuxio } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
-import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
+import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
@@ -35,7 +35,7 @@ interface UseFileBrowserItemActionsParams {
   resource?: FileResource;
   selectedItems: FileItem[];
   selectedPaths: Set<string>;
-  startDownload: BackgroundJobsContextValue["startDownload"];
+  startDownload: BackgroundTasksContextValue["startDownload"];
   view: ViewSlice;
 }
 
@@ -66,7 +66,6 @@ export const useFileBrowserItemActions = ({
   } = dialogs;
   const { actions: editorActions } = editor;
   const { clearSearch, closeContextMenu } = view.actions;
-  const fetchResourceStat = linuxio.filebrowser.resource_stat.useFetcher();
   const { joinPath, getParentPath } = useFilePathUtilities();
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
@@ -169,8 +168,8 @@ export const useFileBrowserItemActions = ({
       (item) => item.type === "directory",
     );
     try {
-      const stat = await fetchResourceStat(selectedPath, {
-        staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+      const stat = await call(linuxio.filebrowser.resource_stat.route, {
+        path: selectedPath,
       });
       const mode = stat.mode || "0644";
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
@@ -190,14 +189,7 @@ export const useFileBrowserItemActions = ({
       console.error("Failed to fetch file stat:", error);
       toast.error("Failed to fetch file permissions");
     }
-  }, [
-    dialogActions,
-    fetchResourceStat,
-    closeContextMenu,
-    selectedItems,
-    selectedPaths,
-    toast,
-  ]);
+  }, [dialogActions, closeContextMenu, selectedItems, selectedPaths, toast]);
 
   const handleStartInlineRename = useCallback(() => {
     closeContextMenu();

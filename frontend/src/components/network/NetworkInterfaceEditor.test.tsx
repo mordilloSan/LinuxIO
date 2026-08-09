@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   enableConnection: vi.fn(),
   setIPv4: vi.fn(),
   setIPv4Manual: vi.fn(),
+  useCallMutation: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
@@ -16,34 +17,25 @@ vi.mock("@/api", async (importOriginal) => {
 
   return {
     ...actual,
+    useCallMutation: mocks.useCallMutation,
     linuxio: {
       ...actual.linuxio,
       network: {
         ...actual.linuxio.network,
-        disable_connection: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.disableConnection,
-          }),
-        },
-        enable_connection: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.enableConnection,
-          }),
-        },
-        set_ipv4: {
-          useAction: () => ({ isPending: false, mutate: mocks.setIPv4 }),
-        },
-        set_ipv4_manual: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.setIPv4Manual,
-          }),
-        },
       },
     },
   };
+});
+
+mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
+  const mutate = endpoint.route.endsWith("disable_connection")
+    ? mocks.disableConnection
+    : endpoint.route.endsWith("enable_connection")
+      ? mocks.enableConnection
+      : endpoint.route.endsWith("set_ipv4_manual")
+        ? mocks.setIPv4Manual
+        : mocks.setIPv4;
+  return { isPending: false, mutate };
 });
 
 const manualInterface = (

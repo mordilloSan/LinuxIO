@@ -37,19 +37,12 @@ const VMPage = ({ children }: VMPageProps) => {
   // interval of their own and inherit this freshness.
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
-      linuxio.virt.list.queryOptions({
-        refetchInterval: 5000,
-      }),
-      linuxio.virt.preflight.queryOptions(
-        {},
-        {
-          refetchInterval: 15000,
-        },
-      ),
+      { ...linuxio.virt.list, refetchInterval: 5000 },
+      { ...linuxio.virt.preflight({}), refetchInterval: 15000 },
     ],
   });
 
-  const createMutation = linuxio.virt.create.useJobStreamAction<
+  const createMutation = linuxio.virt.create.useTaskStreamAction<
     VirtualMachine,
     VMCreateProgress
   >({
@@ -57,8 +50,8 @@ const VMPage = ({ children }: VMPageProps) => {
       "VM create connection closed before final result. Refresh the VM list to check whether creation completed.",
     onProgress: (progress) => setCreateProgress(progress),
     invalidates: (vm) => [
-      linuxio.virt.list.queryKey(),
-      linuxio.virt.get.queryKey(vm.name),
+      linuxio.virt.list.queryKey,
+      linuxio.virt.get({ name: vm.name }).queryKey,
     ],
     success: (vm) => {
       toast.success(`Created ${vm.name}`);
@@ -80,7 +73,7 @@ const VMPage = ({ children }: VMPageProps) => {
     options: {
       onMutate: () => {
         setCreateProgress({
-          message: "Starting VM create job",
+          message: "Starting VM create task",
           phase: "starting",
         });
       },

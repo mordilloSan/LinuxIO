@@ -12,11 +12,11 @@ import { toast } from "sonner";
 import {
   type CapabilitiesResponse,
   type CapabilityState,
+  call,
   capabilityStateFromWire,
   closeStreamMux,
   emptyCapabilityState,
   initStreamMux,
-  linuxio,
   type MuxStatus,
   parseCapabilityState,
   pickCapabilityState,
@@ -183,7 +183,7 @@ function AuthProvider({ children }: AuthProviderProps) {
   const refreshCapabilities =
     useCallback(async (): Promise<CapabilitiesResponse> => {
       const generation = authGeneration.current;
-      const data = await linuxio.system.get_capabilities();
+      const data = await call("system.get_capabilities");
       if (
         mounted.current &&
         state.isAuthenticated &&
@@ -297,7 +297,7 @@ function AuthProvider({ children }: AuthProviderProps) {
         if (refresh?.identity !== identity) {
           refresh = {
             identity,
-            promise: linuxio.system.get_capabilities(),
+            promise: call("system.get_capabilities"),
             applied: false,
           };
           capabilityRefresh.current = refresh;

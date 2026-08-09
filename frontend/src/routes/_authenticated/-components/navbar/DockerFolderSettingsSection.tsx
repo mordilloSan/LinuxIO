@@ -9,7 +9,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -76,10 +76,12 @@ const DockerFolderSettingsSection = () => {
   const { privileged } = useAuth();
   const { config, updateConfig } = useConfig();
   // Errors and toasts are handled by handleSave's try/catch.
-  const { mutateAsync: createDockerFolder } =
-    linuxio.filebrowser.resource_post.useAction();
-  const { mutateAsync: validateDockerFolder } =
-    linuxio.docker.validate_stack_directory.useAction();
+  const { mutateAsync: createDockerFolder } = useCallMutation(
+    linuxio.filebrowser.resource_post,
+  );
+  const { mutateAsync: validateDockerFolder } = useCallMutation(
+    linuxio.docker.validate_stack_directory,
+  );
   const dockerFolders = config.docker.folders;
   const requireMountsForFolders = Boolean(
     config.docker.requireMountsForFolders,

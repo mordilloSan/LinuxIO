@@ -1,6 +1,6 @@
 import { useCallback, type ChangeEvent } from "react";
 
-import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
+import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import { buildEntriesFromFileList } from "@/utils/fileUpload";
 import { joinPath } from "@/utils/path";
 
@@ -13,7 +13,7 @@ interface UseFileBrowserUploadActionsParams {
   normalizedPath: string;
   onContextMenuClose: () => void;
   resolveCollisions: ResolveCollisionsFn;
-  startUpload: BackgroundJobsContextValue["startUpload"];
+  startUpload: BackgroundTasksContextValue["startUpload"];
   upload: UploadSlice;
 }
 

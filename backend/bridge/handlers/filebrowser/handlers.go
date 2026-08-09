@@ -9,23 +9,23 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get").Handle(handleResourceGet),
-	apischema.Query[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
-	apischema.Query[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch").Handle(handleExistsBatch),
-	apischema.Query[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
-	apischema.Job[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").HandleEvents(handleResourcePatch),
-	apischema.Query[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
-	apischema.Query[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
-	apischema.Query[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
-	apischema.Query[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").Handle(handleSearch),
-	apischema.Query[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups").Handle(handleUsersGroups),
+	apischema.Call[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get").Handle(handleResourceGet),
+	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
+	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch").Handle(handleExistsBatch),
+	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
+	apischema.Task[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").HandleEvents(handleResourcePatch),
+	apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
+	apischema.Call[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
+	apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
+	apischema.Call[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search").Handle(handleSearch),
+	apischema.Call[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups").Handle(handleUsersGroups),
 )
 
-var Routes = apischema.CombineRoutes(api.Routes(), fileJobRoutes)
+var Routes = apischema.CombineRoutes(api.Routes(), fileTaskRoutes)
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterJobRoutes(router, rt.Store)
+	RegisterTaskRoutes(router, rt.Store)
 
 	api.Register(router)
 }

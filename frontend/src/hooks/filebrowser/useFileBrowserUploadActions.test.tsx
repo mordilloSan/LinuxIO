@@ -259,7 +259,7 @@ describe("useFileBrowserUploadActions", () => {
     expect(startUpload).toHaveBeenCalledWith([other], "/srv/data", true);
   });
 
-  it("does not start a job when every item is skipped", async () => {
+  it("does not start a task when every item is skipped", async () => {
     const resolveCollisions = vi.fn().mockResolvedValue({
       kept: [],
       overwrite: false,

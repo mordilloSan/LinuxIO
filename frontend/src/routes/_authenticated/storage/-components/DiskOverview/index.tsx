@@ -3,7 +3,13 @@ import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
+import {
+  type ApiDisk,
+  type FilesystemInfo,
+  linuxio,
+  type Stream,
+  useCallMutation,
+} from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import TabSelector from "@/components/tabbar/TabSelector";
@@ -11,8 +17,8 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { JOB_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundJobTypes";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
@@ -90,9 +96,9 @@ const DriveDetails = ({
     useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
   // One config drives both lifecycles: fresh runs via smartTest.mutate() and
-  // page-reload recovery via smartTest.attach() (see useActiveJobRecovery
+  // page-reload recovery via smartTest.watch() (see useActiveTaskRecovery
   // below). Drive-info refresh comes from the invalidation manifest.
-  const smartTest = linuxio.storage.run_smart_test.useJobStreamAction<
+  const smartTest = linuxio.storage.run_smart_test.useTaskStreamAction<
     SmartTestResult,
     SmartTestProgressEvent
   >({
@@ -100,7 +106,7 @@ const DriveDetails = ({
     onOpen: (stream) => {
       streamRef.current = stream;
     },
-    onProgress: (data, _job, variables) => {
+    onProgress: (data, _task, variables) => {
       const testType: "short" | "long" =
         variables.testType === "long" ? "long" : "short";
       setTestProgress((prev) => ({
@@ -167,20 +173,20 @@ const DriveDetails = ({
     };
   }, []);
 
-  // Refresh recovery: if a SMART self-test job for this drive is already running
+  // Refresh recovery: if a SMART self-test task for this drive is already running
   // (e.g. user refreshed the page mid-test), adopt it into the same action —
   // progress, toasts, and cleanup all come from the shared config above.
-  useActiveJobRecovery({
-    type: JOB_TYPE_STORAGE_SMART_TEST,
+  useActiveTaskRecovery({
+    type: TASK_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
-    match: (job) => {
-      const metadata = job.metadata as { device?: string } | undefined;
+    match: (task) => {
+      const metadata = task.metadata as { device?: string } | undefined;
       return metadata?.device === rawDrive?.name;
     },
-    onRecover: (job) => {
+    onRecover: (task) => {
       const deviceName = rawDrive?.name;
       if (!deviceName) return;
-      const metadata = job.metadata as { testType?: string } | undefined;
+      const metadata = task.metadata as { testType?: string } | undefined;
       const testType: "short" | "long" =
         metadata?.testType === "long" ? "long" : "short";
       setStartPending(testType);
@@ -191,7 +197,7 @@ const DriveDetails = ({
         device: deviceName,
         message: "Resuming SMART self-test",
       });
-      smartTest.attach(job, { device: deviceName, testType });
+      smartTest.watch(task, { device: deviceName, testType });
     },
   });
 
@@ -326,15 +332,9 @@ const DiskOverview = () => {
     { data: nfsMountsData },
   ] = useSuspenseQueries({
     queries: [
-      linuxio.storage.get_drive_info.queryOptions({
-        refetchInterval: 30000,
-      }),
-      linuxio.system.get_fs_info.queryOptions({
-        refetchInterval: 10000,
-      }),
-      linuxio.storage.list_nfs_mounts.queryOptions({
-        refetchInterval: 10000,
-      }),
+      { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
+      { ...linuxio.system.get_fs_info, refetchInterval: 10000 },
+      { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
     ],
   });
   const rawDrives = useMemo(
@@ -350,7 +350,7 @@ const DiskOverview = () => {
     [nfsMountsData],
   );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    linuxio.storage.unmount_filesystem.useAction({
+    useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
         toast.success("Filesystem unmounted");
         navigate({
@@ -365,7 +365,7 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    linuxio.storage.create_btrfs_subvolume.useAction({
+    useCallMutation(linuxio.storage.create_btrfs_subvolume, {
       success: (result) => {
         if (result.path) {
           toast.success(`Created subvolume at ${result.path}`);

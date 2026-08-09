@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
@@ -15,12 +15,7 @@ import {
 } from "react";
 
 import type { Service } from "@/api";
-import {
-  CACHE_TTL_MS,
-  linuxio,
-  openGeneralLogsStream,
-  useStreamMux,
-} from "@/api";
+import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
@@ -105,7 +100,7 @@ const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 });
 
-// Progress frames emitted by the general-logs job alongside data frames. The
+// Progress frames emitted by the general-logs Channel alongside data frames. The
 // backend sends backlog_complete once the one-shot history query finishes, so
 // "no matches" is distinguishable from "still loading" even though the follow
 // process never exits.
@@ -374,12 +369,11 @@ const LogEntryDetails = ({
   onAddFieldFilter: (filter: string) => void;
 }) => {
   const theme = useAppTheme();
-  const { data: fullEntry, isError } = useQuery(
-    linuxio.logs.general_entry.queryOptions(log.cursor ?? "", {
-      enabled: log.cursor !== null,
-      staleTime: Infinity,
-    }),
-  );
+  const { data: fullEntry, isError } = useQuery({
+    ...linuxio.logs.general_entry({ cursor: log.cursor ?? "" }),
+    enabled: log.cursor !== null,
+    staleTime: Infinity,
+  });
 
   const entry =
     (fullEntry as Record<string, unknown> | undefined) ?? log.rawJson;
@@ -520,6 +514,7 @@ const GeneralLogsPage = () => {
   const pendingLogsRef = useRef<LogEntry[]>([]);
   const flushScheduledRef = useRef(false);
   const { streamRef, openStream, closeStream } = useLiveStream();
+  const queryClient = useQueryClient();
 
   // Keep the retention target in sync after a logs state commit. This belongs
   // outside state updater callbacks so those callbacks remain pure and safe
@@ -529,8 +524,6 @@ const GeneralLogsPage = () => {
   }, [logs]);
 
   const { isOpen: muxIsOpen } = useStreamMux();
-  const fetchLogsPage = linuxio.logs.general_page.useFetcher();
-
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current);
@@ -555,12 +548,11 @@ const GeneralLogsPage = () => {
   // Current systemd unit states, used by the unit-status filter below.
   const unitStatusNeedsServices =
     UNIT_STATUS_FILTERS_REQUIRING_SERVICES.has(unitStatusFilter);
-  const { data: services } = useQuery(
-    linuxio.systemd.list_services.queryOptions({
-      enabled: unitStatusNeedsServices,
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-    }),
-  );
+  const { data: services } = useQuery({
+    ...linuxio.systemd.list_services,
+    enabled: unitStatusNeedsServices,
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
 
   // Set of unit names matching the selected status. `null` means the filter is
   // either "all" (no filter) or "no_unit" (which is handled by checking for an
@@ -691,7 +683,7 @@ const GeneralLogsPage = () => {
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
-    // One-shot (paused) jobs close normally after the backlog; only a live
+    // One-shot (paused) channels close normally after the backlog; only a live
     // follow stream dying warrants a reconnect.
     if (!liveMode || !muxIsOpen) return;
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) return;
@@ -716,15 +708,15 @@ const GeneralLogsPage = () => {
           : "";
     const opened = openStream<GeneralLogsProgress>({
       open: () =>
-        openGeneralLogsStream(
-          tail,
+        openChannel("logs.general.follow", {
+          lines: tail,
           timePeriod,
-          priorityFilter === "all" ? "" : priorityFilter,
-          backendIdentifier,
+          priority: priorityFilter === "all" ? "" : priorityFilter,
+          identifier: backendIdentifier,
           fieldFilters,
-          liveMode,
+          follow: liveMode,
           afterCursor,
-        ),
+        }),
       onOpenError: handleStreamOpenError,
       onText: handleStreamText,
       onProgress: handleStreamProgress,
@@ -928,22 +920,20 @@ const GeneralLogsPage = () => {
     setIsLoadingOlder(true);
     setPaginationError(null);
     try {
-      const page = await fetchLogsPage(
-        {
+      const page = await queryClient.fetchQuery({
+        ...linuxio.logs.general_page({
           cursor: boundaryCursor,
           lines: PAGE_SIZE,
           timePeriod,
           priority: priorityFilter === "all" ? "" : priorityFilter,
           identifier: backendIdentifier,
           fieldFilters,
-        },
-        {
-          // The parsed rows below are the source of truth. Do not retain a
-          // second raw copy of every history page in React Query's cache.
-          gcTime: CACHE_TTL_MS.NONE,
-          staleTime: CACHE_TTL_MS.NONE,
-        },
-      );
+        }),
+        // The parsed rows below are the source of truth. Do not retain a
+        // second raw copy of every history page in React Query's cache.
+        gcTime: CACHE_TTL_MS.NONE,
+        staleTime: CACHE_TTL_MS.NONE,
+      });
       if (generation !== paginationGenerationRef.current) return;
 
       const olderLogs = (Array.isArray(page.entries) ? page.entries : [])
@@ -981,7 +971,7 @@ const GeneralLogsPage = () => {
       }
     }
   }, [
-    fetchLogsPage,
+    queryClient,
     fieldFilters,
     hasMoreOlder,
     identifierFilter,

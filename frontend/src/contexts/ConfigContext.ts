@@ -13,7 +13,7 @@ export interface ConfigAccessorContextValue {
 }
 
 // Identity-stable escape hatch for providers that must not rerender on
-// config changes (BackgroundJobsProvider): its value never changes after
+// config changes (BackgroundTasksProvider): its value never changes after
 // mount, so subscribing costs nothing per config update.
 export const ConfigAccessorContext =
   createContext<ConfigAccessorContextValue | null>(null);

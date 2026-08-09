@@ -10,12 +10,11 @@ import DevToolsButton from "./DevToolsButton";
 function Footer() {
   const theme = useAppTheme();
 
-  const { data } = useQuery(
-    linuxio.control.version.queryOptions({
-      staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-      retry: false, // Don't retry on failure for footer
-    }),
-  );
+  const { data } = useQuery({
+    ...linuxio.control.version,
+    staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+    retry: false, // Don't retry on failure for footer
+  });
 
   return (
     <footer

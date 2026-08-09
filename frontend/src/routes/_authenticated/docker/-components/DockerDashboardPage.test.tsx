@@ -29,29 +29,32 @@ vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   return {
     ...actual,
+    useCallMutation: (endpoint: { route?: string }) => {
+      if (endpoint.route === "docker.stop_container") {
+        return { mutateAsync: mocks.stopContainer, isPending: false };
+      }
+      if (endpoint.route === "docker.start_all_stopped") {
+        return { mutate: mocks.startAllStopped, isPending: false };
+      }
+      return { mutate: mocks.systemPrune, isPending: false };
+    },
     linuxio: {
       ...actual.linuxio,
       docker: {
         ...actual.linuxio.docker,
         list_containers: {
-          queryOptions: () => ({}),
+          queryKey: ["linuxio", "docker", "list_containers"],
+          queryFn: vi.fn(),
+          ...(actual.linuxio.docker.list_containers as object),
         },
         start_all_stopped: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.startAllStopped,
-          }),
+          route: "docker.start_all_stopped",
         },
         stop_container: {
-          useAction: () => ({
-            mutateAsync: mocks.stopContainer,
-          }),
+          route: "docker.stop_container",
         },
         system_prune: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.systemPrune,
-          }),
+          route: "docker.system_prune",
         },
       },
     },

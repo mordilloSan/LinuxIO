@@ -44,12 +44,11 @@ export const useFileSubfolders = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = useQuery(
-    linuxio.filebrowser.subfolders.queryOptions(path, {
-      enabled: queryEnabled,
-      ...getDirectorySizeQueryOptions(),
-    }),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.filebrowser.subfolders({ path }),
+    enabled: queryEnabled,
+    ...getDirectorySizeQueryOptions(),
+  });
 
   // Create a stable array reference (avoid new empty array on each render)
   const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);

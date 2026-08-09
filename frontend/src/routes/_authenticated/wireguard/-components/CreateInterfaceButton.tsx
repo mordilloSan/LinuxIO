@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { linuxio, type NetworkInterface, type WireGuardInterface } from "@/api";
+import {
+  linuxio,
+  type NetworkInterface,
+  type WireGuardInterface,
+  useCallMutation,
+} from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -36,16 +41,15 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
     data: networkData,
     isPending: networkPending,
     error: networkError,
-  } = useQuery(
-    linuxio.network.get_network_info.queryOptions({
-      enabled: showDialog,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.network.get_network_info,
+    enabled: showDialog,
+  });
 
-  // Job action for adding an interface; invalidation comes from the
+  // Task action for adding an interface; invalidation comes from the
   // OPERATION_QUERY_INVALIDATIONS manifest.
   const { mutate: addInterface, isPending: isAddingInterface } =
-    linuxio.wireguard.add_interface.useAction({
+    useCallMutation(linuxio.wireguard.add_interface, {
       error: (error) => {
         setError(
           getMutationErrorMessage(

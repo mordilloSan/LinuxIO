@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 type SmartTestProgress struct {
@@ -23,13 +23,13 @@ var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.DeviceTestTypeRequest, apischema.JobSnapshot]("storage.run_smart_test", apischema.WithJobMetadata(func(req apischema.DeviceTestTypeRequest) bridgejobs.JobMetadata {
-			return bridgejobs.JobMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
-		})).Run(runSmartTestJob, bridgejobs.ActionDefault),
+		apischema.TaskRunner[apischema.DeviceTestTypeRequest, apischema.TaskSnapshot]("storage.run_smart_test", apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
+			return bridgetasks.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
+		})).Run(runSmartTestTask, bridgetasks.TaskDefault),
 	)
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router) {
+func RegisterTaskRoutes(router *bridgetasks.Router) {
 	smartTestBindings().Register(router)
 }
 
@@ -43,32 +43,32 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
-func runSmartTestJob(ctx context.Context, job *bridgejobs.Job, req apischema.DeviceTestTypeRequest) (any, error) {
-	state := smartTestJobState{
-		job:      job,
+func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema.DeviceTestTypeRequest) (any, error) {
+	state := smartTestTaskState{
+		task:     task,
 		device:   req.Device,
 		testType: req.TestType,
 	}
 	state.reportStart()
 
 	if _, err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
-		return nil, bridgejobs.NewError(err.Error(), 500)
+		return nil, bridgetasks.NewError(err.Error(), 500)
 	}
 
 	state.pollInitial(ctx)
 	return state.pollUntilDone(ctx)
 }
 
-type smartTestJobState struct {
-	job             *bridgejobs.Job
+type smartTestTaskState struct {
+	task            *bridgetasks.Task
 	device          string
 	testType        string
 	seenInProgress  bool
 	consecutiveErrs int
 }
 
-func (s *smartTestJobState) reportStart() {
-	s.job.ReportProgress(SmartTestProgress{
+func (s *smartTestTaskState) reportStart() {
+	s.task.ReportProgress(SmartTestProgress{
 		Type:     "status",
 		Device:   s.device,
 		TestType: s.testType,
@@ -77,7 +77,7 @@ func (s *smartTestJobState) reportStart() {
 	})
 }
 
-func (s *smartTestJobState) pollInitial(ctx context.Context) {
+func (s *smartTestTaskState) pollInitial(ctx context.Context) {
 	// Immediate first poll, but only emit if it observes in_progress.
 	// Anything else here is almost certainly stale residue.
 	if st, err := PollSmartTestStatus(ctx, s.device); err == nil && st.State == "in_progress" {
@@ -86,14 +86,14 @@ func (s *smartTestJobState) pollInitial(ctx context.Context) {
 	}
 }
 
-func (s *smartTestJobState) pollUntilDone(ctx context.Context) (any, error) {
+func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (any, error) {
 	ticker := time.NewTicker(pollInterval(s.testType))
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			// Returning context.Canceled routes to markCanceled (jobs.go),
+			// Returning context.Canceled routes to the Task's canceled state,
 			// not markFailed.
 			return nil, ctx.Err()
 		case <-ticker.C:
@@ -108,7 +108,7 @@ func (s *smartTestJobState) pollUntilDone(ctx context.Context) (any, error) {
 	}
 }
 
-func (s *smartTestJobState) poll(ctx context.Context) (any, bool, error) {
+func (s *smartTestTaskState) poll(ctx context.Context) (any, bool, error) {
 	st, err := PollSmartTestStatus(ctx, s.device)
 	if err != nil {
 		return nil, false, s.handlePollError(ctx, err)
@@ -130,23 +130,23 @@ func (s *smartTestJobState) poll(ctx context.Context) (any, bool, error) {
 	if s.completed(st) {
 		return s.result(st), true, nil
 	}
-	return nil, false, bridgejobs.NewError(st.Message, 500)
+	return nil, false, bridgetasks.NewError(st.Message, 500)
 }
 
-func (s *smartTestJobState) handlePollError(ctx context.Context, err error) error {
+func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return ctx.Err()
 	}
 	s.consecutiveErrs++
 	if s.consecutiveErrs >= 3 {
-		return bridgejobs.NewError(err.Error(), 500)
+		return bridgetasks.NewError(err.Error(), 500)
 	}
 	return nil
 }
 
-func (s *smartTestJobState) emit(st SmartTestStatus) {
+func (s *smartTestTaskState) emit(st SmartTestStatus) {
 	pct := st.PercentComplete
-	s.job.ReportProgress(SmartTestProgress{
+	s.task.ReportProgress(SmartTestProgress{
 		Type:       "status",
 		Device:     s.device,
 		TestType:   s.testType,
@@ -156,7 +156,7 @@ func (s *smartTestJobState) emit(st SmartTestStatus) {
 	})
 }
 
-func (s *smartTestJobState) progressStatus(status string) string {
+func (s *smartTestTaskState) progressStatus(status string) string {
 	if status != "idle" {
 		return status
 	}
@@ -166,11 +166,11 @@ func (s *smartTestJobState) progressStatus(status string) string {
 	return "starting"
 }
 
-func (s *smartTestJobState) completed(st SmartTestStatus) bool {
+func (s *smartTestTaskState) completed(st SmartTestStatus) bool {
 	return st.State == "completed" || (st.State == "idle" && s.seenInProgress)
 }
 
-func (s *smartTestJobState) result(st SmartTestStatus) map[string]any {
+func (s *smartTestTaskState) result(st SmartTestStatus) map[string]any {
 	return map[string]any{
 		"success":  true,
 		"device":   s.device,

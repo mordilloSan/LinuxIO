@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
@@ -25,14 +26,15 @@ const STREAM_DELAY_MS = 1000;
 
 const DriveGraph = ({ readBytesPerSec, writeBytesPerSec }: DriveGraphProps) => {
   const theme = useAppTheme();
+  const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fetchDiskHistory = linuxio.monitoring.get_diskio_history.useFetcher();
   const [readSeries, writeSeries] = useLiveSeries(
     [READ_ID, WRITE_ID],
     async (request) => {
       // One-shot backfill: the request carries a rolling from_ms, so caching
       // the entry would only pollute the cache.
-      const points = await fetchDiskHistory(request, {
+      const points = await queryClient.fetchQuery({
+        ...linuxio.monitoring.get_diskio_history(request),
         staleTime: CACHE_TTL_MS.NONE,
         gcTime: CACHE_TTL_MS.NONE,
       });

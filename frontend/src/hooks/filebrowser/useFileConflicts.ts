@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
+import { call, linuxio } from "@/api";
 
 export type ConflictDecision = "overwrite" | "skip";
 
@@ -42,7 +42,6 @@ const displayName = (destPath: string, destination: string): string => {
  * Transfers never overwrite unless the user explicitly chose to.
  */
 export function useFileConflictResolution() {
-  const fetchExistsBatch = linuxio.filebrowser.exists_batch.useFetcher();
   const [conflictPrompt, setConflictPrompt] = useState<ConflictPrompt | null>(
     null,
   );
@@ -87,9 +86,8 @@ export function useFileConflictResolution() {
       let existingByPath: Map<string, { isDir: boolean }>;
       try {
         // Collision pre-checks must reflect the live filesystem — never cache.
-        const response = await fetchExistsBatch(items.map(getDestPath), {
-          staleTime: CACHE_TTL_MS.NONE,
-          gcTime: CACHE_TTL_MS.NONE,
+        const response = await call(linuxio.filebrowser.exists_batch.route, {
+          paths: items.map(getDestPath),
         });
         existingByPath = new Map(
           (response.existing ?? []).map((entry) => [
@@ -99,7 +97,7 @@ export function useFileConflictResolution() {
         );
       } catch {
         // Pre-check unavailable: proceed without overwriting; any collision
-        // surfaces as a per-item failure in the job result instead.
+        // surfaces as a per-item failure in the task result instead.
         return { kept: items, overwrite: false };
       }
       if (!existingByPath.size) {
@@ -136,7 +134,7 @@ export function useFileConflictResolution() {
       const overwrite = Object.values(decisions).includes("overwrite");
       return { kept, overwrite };
     },
-    [fetchExistsBatch, requestDecisions],
+    [requestDecisions],
   );
 
   return {

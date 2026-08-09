@@ -1,4 +1,4 @@
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -33,8 +33,9 @@ const DeleteGroupDialog = ({
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteGroup, isPending: isDeleting } =
-    linuxio.accounts.delete_group.useAction();
+  const { mutateAsync: deleteGroup, isPending: isDeleting } = useCallMutation(
+    linuxio.accounts.delete_group,
+  );
 
   const handleDelete = async () => {
     const failures: string[] = [];

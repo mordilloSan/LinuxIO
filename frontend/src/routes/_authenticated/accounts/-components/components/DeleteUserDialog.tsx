@@ -1,4 +1,4 @@
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -33,8 +33,9 @@ const DeleteUserDialog = ({
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteUser, isPending: isDeleting } =
-    linuxio.accounts.delete_user.useAction();
+  const { mutateAsync: deleteUser, isPending: isDeleting } = useCallMutation(
+    linuxio.accounts.delete_user,
+  );
 
   const handleDelete = async () => {
     const failures: string[] = [];

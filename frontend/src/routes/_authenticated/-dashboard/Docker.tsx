@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 
-import { type ContainerInfo, linuxio } from "@/api";
+import { type ContainerInfo, linuxio, useCallMutation } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDivider from "@/components/ui/AppDivider";
@@ -69,22 +69,26 @@ const DockerStats = () => {
     { data: volumesCount },
   ] = useSuspenseQueries({
     queries: [
-      linuxio.docker.list_containers.queryOptions({
+      {
+        ...linuxio.docker.list_containers,
         refetchInterval: CONTAINERS_REFETCH_MS,
         select: selectContainerCounts,
-      }),
-      linuxio.docker.list_images.queryOptions({
+      },
+      {
+        ...linuxio.docker.list_images,
         refetchInterval: COLLECTIONS_REFETCH_MS,
         select: getCollectionCount,
-      }),
-      linuxio.docker.list_networks.queryOptions({
+      },
+      {
+        ...linuxio.docker.list_networks,
         refetchInterval: COLLECTIONS_REFETCH_MS,
         select: getCollectionCount,
-      }),
-      linuxio.docker.list_volumes.queryOptions({
+      },
+      {
+        ...linuxio.docker.list_volumes,
         refetchInterval: COLLECTIONS_REFETCH_MS,
         select: getCollectionCount,
-      }),
+      },
     ],
   });
 
@@ -149,12 +153,18 @@ const DockerContainers = () => {
     },
     [theme],
   );
-  const { mutate: startContainer } = linuxio.docker.start_container.useAction();
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction();
-  const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useAction();
-  const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useAction();
+  const { mutate: startContainer } = useCallMutation(
+    linuxio.docker.start_container,
+  );
+  const { mutate: stopContainer } = useCallMutation(
+    linuxio.docker.stop_container,
+  );
+  const { mutate: restartContainer } = useCallMutation(
+    linuxio.docker.restart_container,
+  );
+  const { mutate: removeContainer } = useCallMutation(
+    linuxio.docker.remove_container,
+  );
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();
@@ -204,12 +214,11 @@ const DockerContainers = () => {
       toast,
     ],
   );
-  const { data: containers } = useSuspenseQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchInterval: CONTAINERS_REFETCH_MS,
-      select: selectContainerSummaries,
-    }),
-  );
+  const { data: containers } = useSuspenseQuery({
+    ...linuxio.docker.list_containers,
+    refetchInterval: CONTAINERS_REFETCH_MS,
+    select: selectContainerSummaries,
+  });
 
   return (
     <>

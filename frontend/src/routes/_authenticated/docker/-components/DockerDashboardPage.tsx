@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 
-import { linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import PruneDialog, {
   type PruneOptions,
 } from "@/components/docker/PruneDialog";
@@ -26,9 +26,7 @@ const DockerDashboardPage = () => {
     () => new Set(),
   );
   const { data: containers, isFetching: containersFetching } = useSuspenseQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchInterval: 5000,
-    }),
+    { ...linuxio.docker.list_containers, refetchInterval: 5000 },
   );
   const stoppedContainers = useMemo(
     () => containers.filter((c) => c.State === "exited" || c.State === "dead"),
@@ -38,16 +36,19 @@ const DockerDashboardPage = () => {
     () => containers.filter((c) => c.State === "running"),
     [containers],
   );
-  const { mutate: startAllStopped, isPending: isStartingAll } =
-    linuxio.docker.start_all_stopped.useAction({
+  const { mutate: startAllStopped, isPending: isStartingAll } = useCallMutation(
+    linuxio.docker.start_all_stopped,
+    {
       success: (result) => {
         toast.success(`Started ${result.started} container(s)`);
       },
       error: "Failed to start containers",
       toast: DOCKER_TOAST_META,
-    });
-  const { mutateAsync: stopContainer } =
-    linuxio.docker.stop_container.useAction();
+    },
+  );
+  const { mutateAsync: stopContainer } = useCallMutation(
+    linuxio.docker.stop_container,
+  );
   const isStoppingAll = stoppingContainerIds.size > 0;
   const handleStopAllRunning = async () => {
     if (stopAllInFlightRef.current || runningContainers.length === 0) return;
@@ -80,15 +81,17 @@ const DockerDashboardPage = () => {
       toast.success(`Stopped ${targets.length} container(s)`);
     }
   };
-  const { mutate: systemPrune, isPending: isPruning } =
-    linuxio.docker.system_prune.useAction({
+  const { mutate: systemPrune, isPending: isPruning } = useCallMutation(
+    linuxio.docker.system_prune,
+    {
       success: () => {
         toast.success("Docker prune completed");
         setPruneDialogOpen(false);
       },
       error: "Prune failed",
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   const actions = (
     <>

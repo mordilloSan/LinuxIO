@@ -1,7 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { linuxio, uploadContent } from "@/api";
-import { markTerminalFeedbackEmitted } from "@/hooks/backgroundJobs/terminalJobFeedback";
+import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 
@@ -23,7 +24,7 @@ export const useFileBrowserEditorActions = ({
     params: { _splat: "" },
     to: "/filebrowser/$",
   });
-  const resourceCache = linuxio.filebrowser.resource_get.useCache();
+  const queryClient = useQueryClient();
   const chunkSize = useUploadChunkSize();
 
   const saveContentViaStream = useCallback(
@@ -33,8 +34,8 @@ export const useFileBrowserEditorActions = ({
       await uploadContent(path, contentBytes, {
         chunkSize,
         // handleSaveContent owns the save outcome (toasts), so the global
-        // background-jobs watcher must not also report this job's failure.
-        onJobStart: (job) => markTerminalFeedbackEmitted(job.id),
+        // background-tasks watcher must not also report this task's failure.
+        onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
         overwrite: true,
       });
     },
@@ -43,13 +44,15 @@ export const useFileBrowserEditorActions = ({
 
   const invalidateEditedFile = useCallback(
     (path: string) => {
-      void resourceCache.invalidate({
-        path,
-        unused: "",
-        getContent: "true",
+      void queryClient.invalidateQueries({
+        queryKey: linuxio.filebrowser.resource_get({
+          path,
+          unused: "",
+          getContent: "true",
+        }).queryKey,
       });
     },
-    [resourceCache],
+    [queryClient],
   );
 
   const handleSaveContent = useCallback(

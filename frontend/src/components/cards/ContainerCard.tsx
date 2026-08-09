@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
-import { linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -77,12 +77,11 @@ const ContainerCardLive = ({
   );
   // Cards consume the list cache by identity. The page owns the sole polling
   // observer; this observer only receives fresh values from that shared cache.
-  const { data: container } = useQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchOnMount: false,
-      select: selectContainer,
-    }),
-  );
+  const { data: container } = useQuery({
+    ...linuxio.docker.list_containers,
+    refetchOnMount: false,
+    select: selectContainer,
+  });
 
   if (!container) return null;
 
@@ -121,36 +120,40 @@ const ContainerCardBody = ({
   );
 
   // ---- actions (start/stop/restart/remove) ----
-  const { mutate: startContainer, isPending: isStartPending } =
-    linuxio.docker.start_container.useAction({
+  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
+    linuxio.docker.start_container,
+    {
       success: `Container ${name} started successfully`,
       error: `Failed to start container ${name}`,
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
-  const { mutate: stopContainer, isPending: isStopPending } =
-    linuxio.docker.stop_container.useAction({
+  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
+    linuxio.docker.stop_container,
+    {
       success: `Container ${name} stopped successfully`,
       error: `Failed to stop container ${name}`,
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   const { mutate: restartContainer, isPending: isRestartPending } =
-    linuxio.docker.restart_container.useAction({
+    useCallMutation(linuxio.docker.restart_container, {
       success: `Container ${name} restarted successfully`,
       error: `Failed to restart container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
-    linuxio.docker.remove_container.useAction({
+    useCallMutation(linuxio.docker.remove_container, {
       success: `Container ${name} removed successfully`,
       error: `Failed to remove container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useAction({
+    useCallMutation(linuxio.docker.update_container, {
       success: (result) => {
         toast.success(
           result.updated
