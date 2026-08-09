@@ -7,7 +7,6 @@ import {
   linuxio,
   openTaskWatchStream,
   openTaskDataStream,
-  type ProgressFrame,
 } from "@/api";
 import * as TaskTypes from "@/constants/backgroundTaskTypes";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -215,7 +214,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         // waiting_for_client).
         let dataStreamHasProgress = false;
         const getTaskSpeed = createProgressSpeedCalculator();
-        void runStreamResult<unknown>({
+        void runStreamResult({
           open: () => openTaskWatchStream(activeDownloadTask.id),
           signal: abortController.signal,
           closeOnAbort: "none",

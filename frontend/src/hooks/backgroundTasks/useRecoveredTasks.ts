@@ -241,7 +241,7 @@ export function useRecoveredTasks(
         onFinally: () => void;
       }) => {
         recoveringTaskIdsRef.current.add(task.id);
-        void runStreamResult<unknown>({
+        void runStreamResult({
           open: () => openTaskWatchStream(task.id),
           signal: abortController.signal,
           closeOnAbort: "none",
