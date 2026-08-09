@@ -6,7 +6,6 @@ import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileResource } from "@/types/filebrowser";
 import { joinPath } from "@/utils/path";
 
-import type { DroppedEntry } from "./useFileDroppedEntries";
 import { useFileDroppedEntries } from "./useFileDroppedEntries";
 
 interface UseDragAndDropUploadParams {
@@ -151,5 +150,3 @@ export const useFileDragAndDrop = ({
     handleDrop,
   };
 };
-
-export type { DroppedEntry };

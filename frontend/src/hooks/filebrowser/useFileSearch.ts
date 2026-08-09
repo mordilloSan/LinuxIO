@@ -3,8 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { CACHE_TTL_MS, linuxio, type SearchResult } from "@/api";
 import { useCapability } from "@/hooks/useCapabilities";
 
-export type { SearchResult };
-
 interface UseFileSearchOptions {
   basePath?: string;
   enabled?: boolean;

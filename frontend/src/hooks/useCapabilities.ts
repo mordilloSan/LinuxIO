@@ -8,7 +8,6 @@ import {
 } from "@/api/capabilities";
 import useAuth from "@/hooks/useAuth";
 
-export type { CapabilityKey };
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
 export type AccessContext = CapabilityState & {

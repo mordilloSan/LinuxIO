@@ -12,8 +12,6 @@ import {
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
-export type { SubfolderData };
-
 interface UseSubfoldersResult {
   error: Error | null;
   isLoading: boolean;

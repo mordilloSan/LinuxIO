@@ -12,7 +12,7 @@ import type {
   ConflictPrompt,
 } from "@/hooks/filebrowser/useFileConflicts";
 import type { PermissionsDialogState } from "@/hooks/filebrowser/useFileDialogs";
-import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
 import type {
   FileResource,

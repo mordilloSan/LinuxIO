@@ -9,12 +9,12 @@ import {
   type RefObject,
 } from "react";
 
+import type { SubfolderData } from "@/api";
 import SelectionBox from "@/components/filebrowser/SelectionBox";
 import {
   DirectoryItem,
   SectionHeader,
 } from "@/components/filebrowser/VirtualDirectoryRows";
-import type { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";

@@ -1,8 +1,8 @@
 import { memo, type MouseEvent } from "react";
 
+import type { SubfolderData } from "@/api";
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
-import type { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 
 export interface DirectoryItemProps {
