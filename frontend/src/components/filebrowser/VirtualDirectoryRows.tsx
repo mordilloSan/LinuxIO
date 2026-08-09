@@ -2,8 +2,8 @@ import { memo, type MouseEvent } from "react";
 
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
-import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
-import { FileItem, ViewMode } from "@/types/filebrowser";
+import type { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
+import type { FileItem, ViewMode } from "@/types/filebrowser";
 
 export interface DirectoryItemProps {
   disableHover: boolean;

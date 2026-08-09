@@ -21,8 +21,7 @@ import {
   parseCapabilityState,
   pickCapabilityState,
 } from "@/api";
-import {
-  AUTH_ACTIONS,
+import type {
   AuthActions,
   AuthContextType,
   AuthProviderProps,
@@ -32,6 +31,7 @@ import {
   LoginErrorResponse,
   LoginResponse,
 } from "@/types/auth";
+import { AUTH_ACTIONS } from "@/types/auth";
 import { clearConfigCache } from "@/utils/configCache";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
@@ -262,7 +262,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   // Init on mount
   useEffect(() => {
-    initialize();
+    void initialize();
   }, [initialize]);
 
   // Cross-tab logout via localStorage

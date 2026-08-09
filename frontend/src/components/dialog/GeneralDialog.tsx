@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
-import { AppDialog, AppDialogProps } from "@/components/ui/AppDialog";
+import type { AppDialogProps } from "@/components/ui/AppDialog";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 

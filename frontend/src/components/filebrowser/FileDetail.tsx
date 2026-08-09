@@ -10,7 +10,7 @@ import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
-import { FileResource, ResourceStatData } from "../../types/filebrowser";
+import type { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 interface FileDetailProps {
   isLoadingStat?: boolean;

@@ -14,9 +14,9 @@ import {
   DirectoryItem,
   SectionHeader,
 } from "@/components/filebrowser/VirtualDirectoryRows";
-import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
+import type { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
 import { useAppTheme } from "@/theme";
-import { FileItem, ViewMode } from "@/types/filebrowser";
+import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
 
 const CARD_MIN_WIDTH = 260;

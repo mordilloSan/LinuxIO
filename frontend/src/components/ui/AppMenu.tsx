@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
-import AppPopover, { AppPopoverOrigin } from "./AppPopover";
+import type { AppPopoverOrigin } from "./AppPopover";
+import AppPopover from "./AppPopover";
 import "./app-menu.css";
 
 export interface AppMenuProps {

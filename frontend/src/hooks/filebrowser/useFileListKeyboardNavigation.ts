@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, type RefObject } from "react";
 
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
-import { FileItem } from "@/types/filebrowser";
+import type { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
   allItems: FileItem[];

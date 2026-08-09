@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AutoUpdateState, Timer } from "@/api";
 
-import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
+import type { useUpdateSettingsState } from "./UpdateSettings";
+import UpdateSettings from "./UpdateSettings";
 
 const { render, screen, within } = await import("@/test/render");
 

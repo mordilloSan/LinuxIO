@@ -58,7 +58,7 @@ const LogsDialog = ({
   }, [logs, search]);
 
   const handleCopy = () => {
-    if (filtered) navigator.clipboard.writeText(filtered);
+    if (filtered) void navigator.clipboard.writeText(filtered);
   };
 
   const handleDownload = () => {

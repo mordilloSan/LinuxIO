@@ -1291,8 +1291,8 @@ const SharesPage = () => {
       <CreateFolderShareDialog
         onClose={() => setCreateDialogOpen(false)}
         onSuccess={() => {
-          refetchSamba();
-          refetchNFS();
+          void refetchSamba();
+          void refetchNFS();
         }}
         open={createDialogOpen}
       />
@@ -1301,8 +1301,8 @@ const SharesPage = () => {
         key={editingShare?.id ?? "no-share"}
         onClose={() => setEditingShare(null)}
         onSuccess={() => {
-          refetchSamba();
-          refetchNFS();
+          void refetchSamba();
+          void refetchNFS();
         }}
         open={editingShare !== null}
       />

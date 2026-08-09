@@ -15,11 +15,11 @@ vi.mock("@/api/linuxio", () => ({
 
 vi.mock("@/api/linuxio-core", () => ({
   LinuxIOError: class LinuxIOError extends Error {
-    constructor(
-      message: string,
-      public code?: string | number,
-    ) {
+    code?: string | number;
+
+    constructor(message: string, code?: string | number) {
       super(message);
+      this.code = code;
       this.name = "LinuxIOError";
     }
   },

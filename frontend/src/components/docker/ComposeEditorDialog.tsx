@@ -14,9 +14,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
-import ComposeValidationFeedback, {
-  ValidationResult,
-} from "./ComposeValidationFeedback";
+import type { ValidationResult } from "./ComposeValidationFeedback";
+import ComposeValidationFeedback from "./ComposeValidationFeedback";
 
 interface ComposeEditorDialogProps {
   filePath?: string;

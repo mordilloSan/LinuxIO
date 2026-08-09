@@ -24,7 +24,6 @@ interface UseSubfoldersResult {
 
 /**
  * Hook to fetch all direct child folders with their sizes for a given path.
- * This replaces making multiple individual dir-size calls.
  *
  * @param path - The parent directory path
  * @param enabled - Whether the query should run

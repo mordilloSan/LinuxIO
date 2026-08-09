@@ -16,7 +16,7 @@ import { useLatestRef } from "@/hooks/useLatestRef";
 
 import EmptyState from "./EmptyState";
 import VirtualDirectoryItems from "./VirtualDirectoryItems";
-import {
+import type {
   FileItem,
   FileResource,
   SortField,

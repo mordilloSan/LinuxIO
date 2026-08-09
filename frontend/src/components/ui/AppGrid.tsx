@@ -1,6 +1,6 @@
+import type { HTMLAttributes } from "react";
 import {
   forwardRef,
-  HTMLAttributes,
   type CSSProperties,
   type ElementType,
   type Ref,

@@ -127,7 +127,7 @@ const DockerDashboard = ({
       | "/docker/networks"
       | "/docker/volumes",
   ) => {
-    navigate({ to });
+    void navigate({ to });
   };
   const [dockerDashboardSections, setDockerDashboardSections] = useConfigValue(
     "dockerDashboardSections",

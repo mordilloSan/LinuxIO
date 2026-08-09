@@ -353,7 +353,7 @@ const DiskOverview = () => {
     useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
         toast.success("Filesystem unmounted");
-        navigate({
+        void navigate({
           to: "/storage",
           search: (previous) => ({
             ...previous,
@@ -388,7 +388,7 @@ const DiskOverview = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        navigate({
+        void navigate({
           to: "/storage",
           search: (previous) => ({
             ...previous,
@@ -403,7 +403,7 @@ const DiskOverview = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
   const handleToggle = (driveName: string) => {
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,
@@ -449,7 +449,7 @@ const DiskOverview = () => {
   );
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     setCreatingSubvolumeMountpoint(null);
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,
@@ -461,13 +461,13 @@ const DiskOverview = () => {
     });
   };
   const handleBrowseFilesystem = (mountpoint: string) => {
-    navigate({
+    void navigate({
       to: "/filebrowser/$",
       params: { _splat: mountpoint.replace(/^\/+/, "") },
     });
   };
   const handleInspectDrive = (driveName: string) => {
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,

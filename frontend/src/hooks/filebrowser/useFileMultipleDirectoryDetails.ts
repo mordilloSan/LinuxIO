@@ -1,7 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { type DirectorySizeData, linuxio } from "@/api";
-import { MultiStatsItem } from "@/types/filebrowser";
+import type { MultiStatsItem } from "@/types/filebrowser";
 
 import {
   getDirectorySizeQueryOptions,

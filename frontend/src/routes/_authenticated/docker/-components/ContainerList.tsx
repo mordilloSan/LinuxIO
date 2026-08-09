@@ -108,7 +108,7 @@ const ContainerList = ({
 
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
-      navigate({
+      void navigate({
         to: "/docker/containers",
         search: (previous) => ({
           ...previous,

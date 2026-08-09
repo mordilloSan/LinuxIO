@@ -1,6 +1,6 @@
+import type { HTMLAttributes } from "react";
 import {
   forwardRef,
-  HTMLAttributes,
   useEffect,
   useEffectEvent,
   useRef,

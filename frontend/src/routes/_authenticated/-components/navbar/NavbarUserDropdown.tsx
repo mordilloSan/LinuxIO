@@ -56,7 +56,7 @@ function NavbarUserDropdown() {
   const handleSignOut = async () => {
     closeMenu();
     await signOut();
-    navigate({ to: "/sign-in", search: {} });
+    await navigate({ to: "/sign-in", search: {} });
   };
 
   const handleConfirmedAction = () => {

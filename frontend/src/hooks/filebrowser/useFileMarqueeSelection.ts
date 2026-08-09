@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react";
 
-import { FileItem } from "@/types/filebrowser";
+import type { FileItem } from "@/types/filebrowser";
 
 interface MarqueeBox {
   currentX: number;

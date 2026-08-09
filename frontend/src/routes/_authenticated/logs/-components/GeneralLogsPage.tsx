@@ -66,17 +66,19 @@ const UNIT_STATUS_FILTERS_REQUIRING_SERVICES = new Set([
   "inactive",
 ]);
 
-// Log priority levels (syslog standard)
-enum LogPriority {
-  EMERGENCY = 0,
-  ALERT = 1,
-  CRITICAL = 2,
-  ERROR = 3,
-  WARNING = 4,
-  NOTICE = 5,
-  INFO = 6,
-  DEBUG = 7,
-}
+// Log priority levels (syslog standard). Const object rather than a TS enum
+// so the file stays within erasableSyntaxOnly.
+const LogPriority = {
+  EMERGENCY: 0,
+  ALERT: 1,
+  CRITICAL: 2,
+  ERROR: 3,
+  WARNING: 4,
+  NOTICE: 5,
+  INFO: 6,
+  DEBUG: 7,
+} as const;
+type LogPriority = (typeof LogPriority)[keyof typeof LogPriority];
 
 interface LogEntry {
   /** Stable row identity: the journal cursor, or a synthetic fallback. */
@@ -1095,7 +1097,7 @@ const GeneralLogsPage = () => {
           `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
       )
       .join("\n");
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
   };
 
   const handleDownload = () => {
@@ -1136,17 +1138,17 @@ const GeneralLogsPage = () => {
       const target = resolveUnitTarget(log);
       if (!target) return;
       if (target.section === "timers") {
-        navigate({
+        void navigate({
           to: "/services/timers",
           search: { timer: target.unit },
         });
       } else if (target.section === "sockets") {
-        navigate({
+        void navigate({
           to: "/services/sockets",
           search: { socket: target.unit },
         });
       } else {
-        navigate({
+        void navigate({
           to: "/services",
           search: { service: target.unit },
         });

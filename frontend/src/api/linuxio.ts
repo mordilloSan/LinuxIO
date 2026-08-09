@@ -107,11 +107,10 @@ class TaskDataStream implements Stream {
   private watchStream: Stream | null = null;
   private taskId: string | null = null;
   private closed = false;
+  private readonly request: unknown;
 
-  constructor(
-    route: string,
-    private readonly request: unknown,
-  ) {
+  constructor(route: string, request: unknown) {
+    this.request = request;
     this.type = route;
     void this.start(route);
   }

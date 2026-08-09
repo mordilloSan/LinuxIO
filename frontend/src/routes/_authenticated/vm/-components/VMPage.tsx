@@ -57,7 +57,7 @@ const VMPage = ({ children }: VMPageProps) => {
       toast.success(`Created ${vm.name}`);
       setCreateProgress(null);
       setCreateOpen(false);
-      navigate({
+      void navigate({
         params: { name: vm.name },
         to: "/vm/machines/$name",
       });

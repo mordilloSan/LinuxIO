@@ -20,7 +20,7 @@ import type {
   NoRequestCallRoute,
   RequestCallRoute,
 } from "./generated/linuxio-types";
-import { LinuxIOError } from "./linuxio-core";
+import type { LinuxIOError } from "./linuxio-core";
 import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
 
 // Shared freshness presets for TanStack Query descriptors.

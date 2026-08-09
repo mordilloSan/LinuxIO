@@ -608,9 +608,9 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
     setExpanded((current) => (current === panel ? false : panel));
   };
   const handleRefreshAll = () => {
-    refetchPVs();
-    refetchVGs();
-    refetchLVs();
+    void refetchPVs();
+    void refetchVGs();
+    void refetchLVs();
   };
   const handleResize = (lv: LogicalVolume) => {
     setSelectedLV(lv);

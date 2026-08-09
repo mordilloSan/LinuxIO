@@ -451,7 +451,7 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       onOpenFailedLogins();
       return;
     }
-    navigate({ to: iconLink });
+    void navigate({ to: iconLink });
   };
 
   return (

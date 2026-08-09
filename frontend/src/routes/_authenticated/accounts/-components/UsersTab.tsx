@@ -55,7 +55,7 @@ const UsersTab = ({
 
   const setSelectedUsername = useCallback(
     (username: string | null) => {
-      navigate({
+      void navigate({
         to: "/accounts",
         search: (previous) => ({
           ...previous,

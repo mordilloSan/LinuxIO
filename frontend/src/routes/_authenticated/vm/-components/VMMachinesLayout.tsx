@@ -101,7 +101,7 @@ const VMMachinesLayout = () => {
         linuxio.virt.list.queryKey,
         (current) => current?.filter((vm) => vm.name !== request.name),
       );
-      if (request.name === selectedName) setSelectedName(null);
+      if (request.name === selectedName) void setSelectedName(null);
     },
     error: (error) => {
       toast.error(getMutationErrorMessage(error, "Failed to delete VM"));

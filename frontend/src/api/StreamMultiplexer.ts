@@ -141,7 +141,10 @@ class CircularBuffer {
   private head = 0; // Start of valid data
   private len = 0; // Length of valid data
 
-  constructor(private capacity: number) {
+  private capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
     this.data = new Uint8Array(capacity);
   }
 
@@ -212,11 +215,14 @@ class StreamImpl implements Stream {
   private readonly detachedBufferBytes: number;
   private readonly scrollback: CircularBuffer;
 
-  constructor(
-    public readonly id: number,
-    public readonly type: StreamType,
-    private mux: StreamMultiplexer,
-  ) {
+  readonly id: number;
+  readonly type: StreamType;
+  private mux: StreamMultiplexer;
+
+  constructor(id: number, type: StreamType, mux: StreamMultiplexer) {
+    this.id = id;
+    this.type = type;
+    this.mux = mux;
     this.detachedBufferBytes = STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes;
     this.scrollback = new CircularBuffer(
       STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,

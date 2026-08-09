@@ -13,7 +13,7 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
-import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
+import type { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
 import DeleteStackDialog, {
   type DeleteOption,
 } from "@/components/docker/DeleteStackDialog";
@@ -115,7 +115,7 @@ const ComposeStacksPage = ({
   const handleOperationDialogClose = useCallback(() => {
     setOperationDialogOpen(false);
     // Refresh projects after operation completes
-    refetch();
+    void refetch();
   }, [refetch]);
 
   const startProject = useCallback((projectName: string, filePath?: string) => {
@@ -303,7 +303,7 @@ const ComposeStacksPage = ({
       toast.success("Compose file saved successfully");
 
       // Invalidate queries
-      refetch();
+      void refetch();
 
       // Close editor
       setEditorOpen(false);

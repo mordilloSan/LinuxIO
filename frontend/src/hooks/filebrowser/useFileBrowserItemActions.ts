@@ -108,7 +108,7 @@ export const useFileBrowserItemActions = ({
 
   const handleDownloadCurrent = useCallback(
     (path: string) => {
-      downloadPaths([path]);
+      void downloadPaths([path]);
     },
     [downloadPaths],
   );
@@ -121,7 +121,7 @@ export const useFileBrowserItemActions = ({
 
   const handleDownloadDetail = useCallback(
     (path: string) => {
-      downloadPaths([path]);
+      void downloadPaths([path]);
     },
     [downloadPaths],
   );
@@ -261,7 +261,7 @@ export const useFileBrowserItemActions = ({
     closeContextMenu();
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
-    downloadPaths(paths);
+    void downloadPaths(paths);
   }, [downloadPaths, closeContextMenu, selectedPaths]);
 
   const handleOpenContainingFolder = useCallback(() => {

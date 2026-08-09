@@ -484,12 +484,18 @@ describe("useFileBrowserController", () => {
     expect(dragArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
     expect(mutationArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
 
-    act(() => mutationArgs.onDeleteSuccess());
+    act(() => {
+      void mutationArgs.onDeleteSuccess();
+    });
 
     expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
 
-    act(() => dragArgs.onUploadComplete());
-    act(() => uploadArgs.invalidateListing());
+    act(() => {
+      void dragArgs.onUploadComplete();
+    });
+    act(() => {
+      void uploadArgs.invalidateListing();
+    });
 
     // Both flows share the one useListingInvalidation callback.
     expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);

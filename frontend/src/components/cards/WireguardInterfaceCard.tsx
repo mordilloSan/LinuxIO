@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { motion } from "motion/react";
-import { RefObject, type CSSProperties } from "react";
+import type { RefObject } from "react";
+import { type CSSProperties } from "react";
 
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";

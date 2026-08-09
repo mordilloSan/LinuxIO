@@ -1,12 +1,6 @@
 import { Icon } from "@iconify/react";
-import {
-  ComponentType,
-  memo,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import type { ComponentType } from "react";
+import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import DashboardCardSkeleton, {
   type DashboardCardSkeletonLayout,

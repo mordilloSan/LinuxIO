@@ -195,7 +195,7 @@ const NetworkInterfaceList = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        navigate({
+        void navigate({
           to: ".",
           search: (previous) => ({
             ...previous,
@@ -209,7 +209,7 @@ const NetworkInterfaceList = () => {
   }, [navigate]);
 
   const handleClose = useCallback(() => {
-    navigate({
+    void navigate({
       to: ".",
       search: (previous) => ({
         ...previous,
@@ -220,7 +220,7 @@ const NetworkInterfaceList = () => {
 
   const handleToggle = useCallback(
     (name: string) => {
-      navigate({
+      void navigate({
         to: ".",
         search: (previous) => ({
           ...previous,
