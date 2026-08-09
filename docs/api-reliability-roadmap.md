@@ -1,0 +1,375 @@
+# API Reliability, Recovery, and Notifications Roadmap
+
+## Status
+
+This is the canonical dependency-ordered roadmap for the remaining API
+reliability work. It connects the implemented API contract, the final transport
+cleanup, connection-loss behavior, Task lifetime, durable execution, and the
+planned notification system.
+
+Detailed contracts remain in their focused documents:
+
+- [API Contract](./api-contract.md) describes implemented API behavior.
+- [API Transport Simplification Plan](./api-transport-simplification-plan.md)
+  tracks the remaining cleanup from the completed Query/Job migration.
+- [Handler Patterns](./bridge_handler_patterns.md) defines handler code style.
+- [Durable Operations and Transient Units](./transient-units-plan.md) defines the durable Task
+  execution pilot.
+- [Notifications](./notifications.md) defines the notification product and
+  storage contract.
+
+The repository [`ToDo`](../ToDo) links here instead of duplicating these plans.
+
+## Principles
+
+Make the smallest change that establishes a real invariant:
+
+- **Simple solutions:** no compatibility runtime, parallel API, or universal
+  recovery framework.
+- **Idiomatic code:** typed Go handlers, caller contexts, standard-library JSON,
+  TanStack Query for frontend server state, and existing D-Bus/systemd
+  boundaries.
+- **Performance:** measure before replacing standard components or adding code
+  generation; keep buffers, replay, retention, and persistent records bounded.
+- **Safety:** no blind mutation retry, explicit owner scope, validated privilege
+  boundaries, atomic persistence, and honest unknown-outcome reporting.
+- **Simple handlers:** transport, scheduling, persistence, and presentation do
+  not leak into ordinary domain handlers.
+
+## Current Baseline
+
+The Query/Job migration is complete. The generated route contract currently
+contains 203 Calls, 18 Tasks, and 9 Channel routes implemented with
+`ModeDuplex`. React Query fetching is independent of Task lifecycle.
+
+The remaining transitional surfaces are deliberately narrow:
+
+- `filebrowser.resource_patch` and `virt.create` still use emitter-form Tasks.
+- Task runner results are erased to `any` before the router boundary instead of
+  being checked against the declared result type at the binding.
+- the general router recognizes the reserved `tasks.*` namespace with a special
+  dispatch branch;
+- in-memory Task ownership does not distinguish exact-session visibility from
+  durable user visibility;
+- Call retry safety is inferred from route naming instead of declared policy;
+- request decoding uses permissive `json.Unmarshal`;
+- server notifications are not implemented; the navbar history is local toast
+  history only.
+
+These constraints determine the phase order below. Durable Tasks and
+notifications must not be built on the transitional Task forms.
+
+## Target Model
+
+~~~text
+Browser
+├── TanStack Query + Call descriptors
+├── payload-specific Channels
+└── Task client
+        │
+Bridge
+├── Call registry             bounded request/result
+├── Channel registry          live stream with explicit resume semantics
+└── Task service
+    ├── session Task          in memory, exact-session owner
+    └── durable Task          persistent record + external execution owner
+
+Server-side persistent state
+└── Notification store        bounded, per-user records
+~~~
+
+| Primitive | Execution owner | Loss behavior |
+|-----------|-----------------|---------------|
+| Call | Request context | Retry only explicitly safe reads; an unacknowledged mutation can have an unknown outcome. |
+| Channel | Live connection | Resume only through the payload's cursor, offset, sequence, or external session identity. |
+| Session Task | Bridge process | A watcher may detach; ending the owning session or bridge cancels the Task. |
+| Durable Task | External executor plus persistent operation record | A later bridge discovers the same operation by stable ID. |
+| Notification | Persistent per-user store | A reconnecting client receives an authoritative snapshot before live changes. |
+
+Task is a service composed from bounded control operations and Channels. It is
+not a third wire protocol.
+
+## Phase 1: Finish the Existing Transport Cleanup
+
+Complete this phase before adding persistence:
+
+1. Convert `filebrowser.resource_patch` and `virt.create` to the single Task
+   runner form.
+2. Bind Task runner results as their declared Go result type; erase types only at
+   the registry boundary.
+3. Remove `HandleEvents`, `taskEmitter`, and progress/data capabilities from
+   ordinary handlers after their final consumers move.
+4. Register `tasks.get`, `tasks.list`, `tasks.cancel`, `tasks.watch`,
+   `tasks.data`, and `tasks.events` through the Task service rather than a
+   `tasks.*` prefix branch in the general router.
+5. Document and test Channel ownership, close behavior, cancellation versus
+   detach, read/write concurrency, backpressure, terminal frames, and the
+   payload-specific resume contract.
+
+Do not begin a standalone Mode/Kind rewrite. After the exceptions above are
+gone, remove duplicated registration state only when the replacement is a clear
+net deletion.
+
+### Phase 1 exit criteria
+
+- one typed Task runner shape remains;
+- ordinary handlers never receive an emitter;
+- the general router does not own Task registry or primitive dispatch details;
+- Call, Channel, and Task registration cannot form invalid combinations;
+- existing ownership, admission, cancellation, replay, and transfer tests still
+  pass.
+
+## Phase 2: Strict Input and Explicit Call Policy
+
+### Request decoding
+
+Keep JSON envelopes and Go structs as the source of truth. Replace permissive
+request decoding with one standard-library path that:
+
+- uses `json.Decoder`;
+- calls `DisallowUnknownFields()`;
+- accepts exactly one JSON value;
+- rejects trailing input;
+- preserves normal `encoding/json` scalar type errors.
+
+Required-field meaning remains domain validation. Absence cannot safely be
+inferred from a zero value or `omitempty`; use pointer presence only where the
+wire contract must distinguish absent from zero.
+
+Generated request decoders are not planned work. Reconsider them only if a
+profile shows request decoding is material or a concrete contract requires
+generated presence tracking. If duplicate-key rejection becomes a hard
+security requirement, first evaluate one envelope-level detector and measure
+its cost instead of generating a decoder for every route.
+
+### Call policy
+
+Replace command-prefix retry inference with a route option such as
+`apischema.RetrySafe()`. The generator emits one compact Call-policy map, and
+both generated query descriptors and imperative `call()` consult it. The
+default is no retry. Only an explicitly safe read may retry a
+connection-close failure, within its original deadline.
+
+The transport records whether failure happened before or after opening the
+request stream and must distinguish:
+
+| Outcome | Meaning |
+|---------|---------|
+| `connection_unavailable` | No request stream opened; the operation was not sent. |
+| backend result or error | The server confirmed the outcome. |
+| `outcome_unknown` | The stream opened, then closed before a result; a mutation may have been accepted. |
+
+Do not add `expected_loss` or native-handoff metadata until it drives a concrete
+generated-client behavior and has route-specific recovery tests.
+
+### Self-severing Calls
+
+A self-severing mutation is issued once. Feature code confirms its own
+convergence condition after reconnect:
+
+- reboot compares the boot identity;
+- a network mutation reads the resulting interface configuration;
+- logout confirms authentication state;
+- power-off reports an acknowledged request or an unknown outcome, not success
+  merely because the host became unreachable.
+
+Structured error codes cross every layer unchanged. Frontend code must not
+branch on error message text.
+
+## Phase 3: Task Lifetime, Identity, and Session Activity
+
+Every Task route declares one lifetime:
+
+~~~text
+session
+durable
+~~~
+
+The lifetime selects an owner policy:
+
+- **Session Task:** exact `SessionID`; cancel on logout, session deletion, idle or
+  absolute expiry, and bridge failure.
+- **Durable Task:** authenticated UID/user; visible from a later authenticated
+  session for the same account.
+
+Do not use one fuzzy owner-match function for both policies. The webserver's
+session-deletion callback already closes the owned bridge; bridge shutdown must
+also call `CancelTasksForSession` before process exit so cancellation is
+explicit and testable rather than an incidental effect of process death.
+
+Do not change every session Task merely to gain idempotency. For a durable
+route, the generated Task start accepts a client-generated UUID operation ID,
+generated with Web Crypto, and that ID is also the durable Task identity. The
+backend validates its canonical form and claims `(owner scope, operation ID,
+route, route-defined safe request fingerprint)`. Repeating the same start
+returns the existing operation; reusing the ID for different input is a
+conflict. The ID is not an authorization secret. The guarantee is at most one
+accepted start for that identity, not exactly-once external side effects.
+Session Tasks keep their existing server IDs until a separate migration
+demonstrates value.
+
+### Initial Task classification
+
+| Route group | Initial lifetime / recovery owner |
+|-------------|-----------------------------------|
+| File transfers and file operations | Session Task. Upload/download data depends on a live client; other file work remains session-bound until a product requirement proves otherwise. |
+| `docker.compose`, `virt.create`, file indexer | Session Task initially; require an idempotency and convergence design before promotion. |
+| `control.app_update` | First durable Task using a systemd transient unit and persistent operation record. |
+| `packages.update`, `system.install_capability` | Investigate recovery through PackageKit's transaction state before adding another executor. |
+| `storage.run_smart_test` | Recover through drive state; the drive already owns execution. |
+
+### Session activity
+
+Background work must not keep an idle session alive accidentally. Passive query
+polling, Task progress, server-sent Channel data, and an open WebSocket do not
+count as user activity. Use an explicit throttled user-activity signal and
+inbound interactive data where needed. Durable work continues independently of
+session activity; session Tasks end with the session.
+
+## Phase 4: Durable Task Pilot
+
+Implement the [transient-unit plan](./transient-units-plan.md) for
+`control.app_update` only.
+
+A durable Task requires both:
+
+1. an external execution owner; and
+2. a persistent operation record.
+
+Use a bounded service-owned directory with one JSON record per operation,
+protected by the repository's existing file-lock patterns and written through
+the atomic utility that fsyncs the temporary file and parent directory. Active
+records are never pruned; the pilot retains terminal records for 30 days and at
+most the newest 200 per UID. Do not add a database dependency before record
+volume or query behavior requires one.
+
+The record contains the stable operation ID, route/type, sanitized owner UID,
+external executor identity, state and timestamps, bounded progress, result or
+structured error, route-defined safe request fingerprint, and log cursor. It
+contains no raw request, credential, or secret. A `launching` state and
+deterministic executor name close the crash window around `StartTransientUnit`:
+recovery queries that exact name, validates it against the record, and adopts or
+fails the operation instead of starting a second unit. The name is a locator;
+the record remains authoritative.
+
+For app update, replace the current `systemd-run --wait --pipe` path with
+`StartTransientUnit` through the existing D-Bus stack. The update remains an
+explicitly privileged root operation; the initiating UID owns its record but is
+not automatically the unit's execution user. journald owns logs, while the
+operation record owns typed state and result. Bridge-owned pipes are not a
+durability mechanism.
+
+### Required fault matrix
+
+Test these as different events:
+
+1. page reload;
+2. WebSocket reconnect;
+3. bridge death and later reauthentication;
+4. host restart.
+
+Do not claim survival for an event unless the external executor and persistent
+record both survive it. Cancellation becomes terminal only after the external
+owner confirms it stopped.
+
+## Phase 5: Persistent Notifications
+
+Implement [Notifications](./notifications.md) after Task ownership and terminal
+state rules are stable.
+
+The first version is deliberately small:
+
+- one bounded per-user JSON snapshot store using atomic replacement and sidecar
+  locking;
+- Calls for list, read/unread changes, mark-all-read, and clear;
+- one `notifications.watch` Channel that emits an authoritative snapshot plus
+  revision on open and whenever that persisted revision changes;
+- server-created terminal Task notifications deduplicated by stable operation
+  ID;
+- TanStack Query as the frontend server-state cache and Sonner as presentation
+  only.
+
+Do not persist every toast or progress frame. Do not create durable
+notifications from recovered frontend Task events. Task completion remains
+authoritative if notification persistence fails; durable Task recovery
+reconciles a missing notification by stable operation ID. Remove local
+toast-history persistence only when the server-backed navbar cuts over, so
+there is one history owner.
+
+Preferences, a full history page, and global disk/Docker/system producers are
+later slices. Add them only after the per-user core and reconnect behavior are
+proven.
+
+## Phase 6: Extend from Evidence
+
+After the app-update and notification vertical slices:
+
+- recover PackageKit work through PackageKit when supported;
+- recover SMART tests from drive state;
+- promote Docker or VM work only with explicit idempotency and convergence;
+- add a bridge worker subcommand only for an in-process Task with a demonstrated
+  durability requirement;
+- add cursor replay or a database only if bounded snapshot behavior is measured
+  to be insufficient.
+
+## Performance and Safety Gates
+
+Do not claim a performance gain from architectural simplification alone.
+Capture a baseline and compare:
+
+- Call p50/p95 latency and allocations;
+- request-decoding CPU before considering generation;
+- Task start acknowledgement latency;
+- progress replay and Channel memory under a slow consumer;
+- notification insert/list latency and file size;
+- reconnect and convergence duration.
+
+Safety tests cover invalid envelopes, privilege checks, exact owner scope,
+pre-send and post-send loss, Task start deduplication, cancellation, bounded
+retention, path/link sanitization, and bridge/host restart behavior.
+
+Generated or cross-boundary changes run `make generate` followed by `make test`.
+Browser reconnect, Channel, notification, and convergence behavior additionally
+runs `make test-frontend-browser`.
+
+## External Design Comparison
+
+LinuxIO should adopt focused lessons, not another product's full protocol:
+
+| Product | Useful documented pattern | Decision for LinuxIO |
+|---------|---------------------------|----------------------|
+| [TrueNAS](https://api.truenas.com/v25.10/jobs.html) | Stable long-running operation IDs, queryable state/progress/result, cancellation, and optional live updates. | Persistent state is authoritative after reconnect; push is for freshness, not the only recovery path. |
+| [Cockpit](https://cockpit-project.org/blog/protocol-for-web-access-to-system-apis.html) | A per-user bridge, multiplexed Channels, and delegation to D-Bus/systemd/process owners. | Keep live Channels simple and let native Linux services own external work. |
+| [Unraid](https://docs.unraid.net/API/how-to-use-the-api/) | A typed query/mutation API with explicit authentication and errors. | Keep bounded Calls typed; GraphQL does not solve Task durability. |
+| [CasaOS](https://github.com/IceWhaleTech/CasaOS-Gateway) | Local services behind a route-registering gateway. | Service isolation is useful, but LinuxIO does not need another gateway layer. |
+| [ZimaOS](https://github.com/IceWhaleTech/ZimaOS) | OS-owned OTA and offline update delivery. | Treat it as deployment inspiration; its public repository does not establish a reusable Task recovery protocol. |
+
+## Documentation Ownership
+
+- `api-contract.md`: the implemented contract and clearly labelled local
+  follow-up; cross-cutting future work stays in this roadmap.
+- `api-transport-simplification-plan.md`: migration history and remaining
+  transport deletion.
+- `bridge_handler_patterns.md`: current handler style.
+- `transient-units-plan.md`: durable execution and recovery mechanics.
+- `notifications.md`: notification storage, API, Channel, and frontend behavior.
+- this roadmap: phase ordering and cross-cutting decisions.
+- `ToDo`: one short entry linking this roadmap.
+
+## Definition of Done
+
+This roadmap is complete when:
+
+- one typed Task runner form remains and the general Router has no Task-service
+  special case;
+- strict request decoding and explicit retry policy replace permissive decoding
+  and name heuristics;
+- connection loss reports confirmed failure, confirmed result, or unknown
+  outcome honestly;
+- every Task has an explicit lifetime and owner scope;
+- session deletion cancels session Tasks in production;
+- the app-update durable pilot survives every event it claims to survive;
+- notifications have one persistent server owner and one frontend cache owner;
+- no feature relies on a live event stream as its only recovery source;
+- measurements and fault tests meet the agreed gates;
+- the focused documents and `ToDo` match the implemented state.

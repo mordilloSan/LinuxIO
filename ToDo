@@ -1,8 +1,25 @@
 # TODO
 
-### Notifications
+### API reliability, recovery, and notifications
 
-Implement the notifications plan in [`docs/notifications.md`](docs/notifications.md).
+Follow the dependency-ordered
+[`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
+
+1. Finish the remaining Task/Router transport cleanup.
+2. Add strict standard-library request decoding and explicit safe-retry policy.
+3. Define connection-loss outcomes, Task lifetime/owner scope, and session
+   activity semantics.
+4. Prove one durable Task with a persistent operation record and an external
+   execution owner.
+5. Implement the persistent per-user notification core.
+6. Extend durability, recovery, notification sources, or generated decoding
+   only from measured need.
+
+The focused implementation details live in
+[`docs/api-transport-simplification-plan.md`](docs/api-transport-simplification-plan.md),
+[`docs/transient-units-plan.md`](docs/transient-units-plan.md), and
+[`docs/notifications.md`](docs/notifications.md). Do not duplicate their task
+lists here.
 
 ### React Compiler dependency pin
 
@@ -22,34 +39,10 @@ any upgrade. The custom plugin in `frontend/vite.config.ts` relies on
 Decide whether the fixed values in `router.go` belong in the global settings
 file.
 
-### Session activity and bridge-survivable Tasks
-
-- Classify every Task route as session-bound or bridge-survivable.
-- Keep session-bound work cancelable when its bridge/session ends.
-- Run the justified survivable subset under systemd transient units, with
-  owner-scoped discovery, reattachment, progress/result recovery, cancellation,
-  and runtime limits.
-- Ensure idle session cleanup does not terminate accepted survivable work.
-- Start with subprocess-backed operations; add a worker subcommand only where
-  an in-process job demonstrably needs survivability.
-- Follow [`docs/transient-units-plan.md`](docs/transient-units-plan.md), updating
-  its assumptions against the current implementation before execution.
-
 ### Frontend test coverage
 
 Define and complete the intended division of coverage between Vitest and
 Playwright.
-
-### Generated JSON request decoders
-
-- Keep JSON envelopes and Go structs as the source of truth.
-- Extend `linuxio-api-gen` to emit backend request decoders alongside frontend
-  TypeScript.
-- Reject unknown fields, duplicate fields, missing required fields, and invalid
-  scalar types.
-- Do not hand-write per-route decoders; `make generate` must update them.
-- Keep response encoding on `encoding/json` unless profiling proves otherwise.
-- Follow the Generated Request Decoder Plan in `docs/api-contract.md`.
 
 ### Docker update-status persistence
 
@@ -66,27 +59,11 @@ reader/store:
 - Treat a Watchtower upgrade as separate work; it is not required to complete
   this producer.
 
-### Connection-loss and recovery semantics
-
-Implement explicit semantics for self-severing actions such as reboot,
-power-off, logout, and selected network changes:
-
-- Add `native_handoff` / `expected_loss` route metadata only when it drives
-  concrete generated-client behavior.
-- Never automatically retry an ambiguous connection loss for these mutations.
-- Distinguish confirmed failure, native acceptance, and an unknown outcome after
-  disconnection.
-- Reconnect and query the route-specific convergence condition before reporting
-  confirmed success; otherwise report a clear timeout/unknown outcome.
-- Add backend contract tests and frontend recovery/feedback tests for every
-  classified route.
-
 ## Completed or closed
 
 - [x] **6. Total background-work review:** migrated bounded mutations to direct actions,
   retained only real progress/recovery Tasks, added typed handler bindings and
-  compile-time route-mode endpoint safety, and eliminated contract drift. See
-  [`jobs-review-handoff.md`](jobs-review-handoff.md).
+  compile-time route-mode endpoint safety, and eliminated contract drift.
 - [x] Moved the React Compiler backend from Babel to the custom
   `oxc-transform` plugin (2026-07-09).
 - [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.

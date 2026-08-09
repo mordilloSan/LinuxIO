@@ -2,13 +2,22 @@
 
 ## Status
 
-In progress as of 2026-08-09. The legacy Job API has been replaced in place by
-Task (no dual runtime or compatibility facade), the three log-follow routes are
-direct Channels, and every bounded route has moved from Query to Call. The
-current route inventory is 203 Call, 18 Task, and 9 Channel/Duplex routes.
+In progress as of 2026-08-09. The Query-to-Call, Job-to-Task, and log-stream
+Query/Job-to-Channel migrations are complete (no dual runtime or compatibility
+facade). The current route inventory is 203 Call, 18 Task, and 9 Channel routes
+implemented with `ModeDuplex`.
 `ModeQuery`, `apischema.Query`, `createQueryEndpoint`, the legacy React Query
 endpoint module, and all `.queryOptions`/`.useAction`/`.useFetcher`/`.useCache`
 consumers are removed.
+
+The remaining transport cleanup is deliberately narrow: convert the two
+`HandleEvents` Task routes (`filebrowser.resource_patch` and `virt.create`) to
+the single typed Task runner/result shape; register Task lifecycle routes
+through the normal `TaskService` rather than a `Router` `tasks.*` switch; and
+remove obsolete emitter, mode, and kind surfaces only where the result is a
+net deletion. Connection-loss, session/durable Task, strict validation,
+decoder, and notification design work is tracked in the canonical
+[API reliability roadmap](./api-reliability-roadmap.md), not duplicated here.
 
 This plan replaces the original Query/Job/Runner/Duplex API framework with two
 transport primitives, Call and Channel, while modeling Task as an application
@@ -124,7 +133,7 @@ universal retry mechanism:
 - Uploads either resume explicitly or abort.
 - Task watches replay from a sequence number or current snapshot.
 
-## Phase 0: Classification and baseline
+## Phase 0: Classification and baseline (transport classification complete)
 
 Create an architecture decision record and classify every existing route across
 independent dimensions:
@@ -143,7 +152,7 @@ All former Job and Runner routes must be explicitly classified. Log-follow
 routes and transfer routes must not remain Tasks merely because they once used
 the Job infrastructure.
 
-Freeze new uses of the following during the migration:
+The migration freeze covered the following surfaces:
 
 - Mode and Kind additions
 - Handler-form Task routes
@@ -172,13 +181,14 @@ overhead.
 
 ### Phase 0 exit criteria
 
-- Every route is classified.
-- Every former Job route has an explicit lifetime and recovery requirement.
-- Representative measurements are reproducible.
-- The intended Call, Channel, and Task semantics are documented.
-- No new code expands the legacy abstractions.
+- [x] Every route is classified as Call, Channel, or Task.
+- [x] Every former Job route was reclassified for the transport migration.
+- [ ] A reproducible baseline is captured for each future performance-sensitive
+  change; the migration itself did not establish a universal benchmark result.
+- [x] The intended Call, Channel, and Task semantics are documented.
+- [x] No new code expands the removed Query/Job abstractions.
 
-## Phase 1: Establish the final primitives
+## Phase 1: Establish the final primitives (complete)
 
 Introduce each final primitive with its first complete route migration. Do not
 add an unused facade or a forwarding layer over the legacy framework.
@@ -189,7 +199,8 @@ add an unused facade or a forwarding layer over the legacy framework.
 - Make Call handlers return one result directly.
 - Write one result frame and close without a stream emitter.
 - Add direction-neutral Channel registration and dispatch.
-- Put task lifecycle behind a focused TaskService.
+- Introduce a focused `TaskService` for lifecycle state and scheduling. Its
+  remaining registration isolation is Phase 5 work.
 - Preserve privilege checks, request decoding, owner checks, cancellation,
   deadlines, and error codes.
 - Change a route's registration only when its handler and frontend consumers
@@ -268,7 +279,7 @@ behavior. `task-react-query.ts` may reuse the shared mutation lifecycle in
 - Authorization, owner isolation, cancellation, and deadlines remain covered.
 - No migrated route has parallel legacy and final runtime paths.
 
-## Phase 2: Vertical-slice pilots
+## Phase 2: Vertical-slice pilots (complete)
 
 Migrate a small set of representative routes before broad conversion:
 
@@ -284,9 +295,9 @@ Each pilot is a direct cutover. Establish parity with focused tests, then remove
 the old backend registration and frontend call path in the same slice; do not
 ship dual dispatch or fallback behavior.
 
-Add an upload or download pilot after the first slices prove the basic design.
-That pilot must cover binary throughput, slow readers, cancellation, and resume
-offsets.
+Upload and download paths subsequently retained Task identity plus their binary
+data Channels. Their tests cover bounded transfer memory, cancellation, and
+resume offsets.
 
 For each pilot:
 
@@ -298,20 +309,17 @@ For each pilot:
 - Cut over only after the candidate passes its acceptance gate; source control
   is the rollback path.
 
-### Phase 2 performance gates
+### Reusable performance gates
 
-- No additional network round trips.
-- No more than a 10 percent Call p95 latency regression.
-- No more than a 5 percent sustained Channel throughput regression.
-- Bounded memory with slow consumers.
-- No lost, duplicated, or reordered frames.
-- No cancellation or reconnect regression.
-- The new callsite and framework code are materially smaller.
+For future transport changes, preserve the same round-trip count and bounded
+memory under slow consumers. Compare latency and throughput with identical
+fixtures, a documented workload and environment, enough samples to show normal
+variance, and a retained baseline artifact. Do not use an arbitrary percentage
+or “materially smaller” claim without that evidence. Ordering, cancellation,
+and reconnect behavior remain correctness gates rather than performance
+tradeoffs.
 
-If the pilot fails to reduce complexity or adds meaningful runtime overhead,
-stop before broad migration and revise the design.
-
-## Phase 3: Migrate bounded Calls
+## Phase 3: Migrate bounded Calls (complete)
 
 Convert every bounded Query route to Call, one handler family at a time.
 
@@ -391,11 +399,11 @@ part of the wire contract and should not be generated into transport code.
 
 - [x] Every bounded route uses Call.
 - [x] No code uses the legacy Query registration or endpoint API.
-- Query and mutation behavior remains covered.
-- Route count and request/result contract parity are maintained.
-- Domain-by-domain migrations pass the combined repository checks.
+- [x] Query and mutation behavior remains covered.
+- [x] Route count and request/result contract parity are maintained.
+- [x] Domain-by-domain migrations pass the combined repository checks.
 
-## Phase 4: Migrate Channels
+## Phase 4: Migrate Channels (complete)
 
 Move all long-lived streaming behavior to Channel:
 
@@ -423,13 +431,13 @@ must not forward to a Task watch or data stream.
 
 ### Phase 4 exit criteria
 
-- No log-follow route requires a Task merely to stream data.
-- All Channel directions and control messages are explicit.
-- Resume and reconnect behavior is tested per payload.
-- No separate SSE abstraction exists.
-- Binary transfer memory remains bounded under backpressure.
+- [x] No log-follow route requires a Task merely to stream data.
+- [x] All Channel directions and control messages are explicit.
+- [x] Resume and reconnect behavior is tested per payload.
+- [x] No separate SSE abstraction exists.
+- [x] Binary transfer memory remains bounded under backpressure.
 
-## Phase 5: Simplify Tasks
+## Phase 5: Simplify Tasks (in progress)
 
 Expose one Task service:
 
@@ -456,8 +464,11 @@ Separate its internal responsibilities:
 The Job-to-Task runtime and public namespace cutover is complete. It preserved
 execution, ownership, recovery, queueing, replay, and transfer-data semantics
 while deleting the old Job names and paths. The remaining Task simplification
-is to convert `filebrowser.resource_patch` and `virt.create` from emitter-form
-Tasks to the single Task runner shape. After that migration, remove:
+is to convert `filebrowser.resource_patch` and `virt.create` from
+`HandleEvents`/emitter-form Tasks to the single typed Task runner and result
+shape, and to register the Task lifecycle through `TaskService` instead of the
+general Router's `tasks.*` switch. Only after those routes and registrations
+are migrated should we remove:
 
 - Handler-form Tasks
 - HandleEvents
@@ -470,7 +481,8 @@ The former Job routes were reclassified as follows:
 - Bounded work becomes Call.
 - Session streaming becomes Channel.
 - Genuine detached or recoverable work remains Task.
-- Process-survivable work becomes a durable Task only in Phase 6.
+- Process-survivable work becomes a durable Task only under the
+  [API reliability roadmap](./api-reliability-roadmap.md).
 
 Frontend task helpers should remain thin. Feature-specific progress rendering,
 toasts, and labels belong in feature descriptors or components rather than one
@@ -478,69 +490,43 @@ large universal Task configuration object.
 
 ### Phase 5 exit criteria
 
-- There is one Task runner shape.
-- Task lifecycle is isolated from general Call and Channel routing.
-- The Router does not contain a special `tasks.*` route switch.
-- Ownership, queueing, rate limits, cancellation, timeout, result replay, and
-  progress replay remain covered.
-- In-memory Tasks are not described as bridge-survivable.
+- [ ] There is one typed Task runner/result shape (the two `HandleEvents` routes
+  remain).
+- [ ] Task lifecycle is registered through `TaskService` and isolated from
+  general Call and Channel routing.
+- [ ] The Router has no special `tasks.*` route switch.
+- [ ] Obsolete emitter, mode, and kind surfaces are removed only where that is
+  a net deletion.
+- [x] Ownership, queueing, rate limits, cancellation, timeout, result replay,
+  and progress replay remain covered.
+- [x] In-memory Tasks are not described as bridge-survivable.
 
-## Phase 6: Connection loss and durable Tasks
+## Reliability follow-up
 
-Define loss semantics per primitive.
+Connection-loss semantics, session-bound and durable Tasks, strict request
+validation, decoder strategy, and server-side notifications are maintained in
+the canonical [API reliability roadmap](./api-reliability-roadmap.md). This
+transport plan records only the primitive cutover and its transport-specific
+cleanup; it does not duplicate those designs or claim them implemented.
 
-### Calls
-
-- Retry read-only Calls only when they are explicitly safe.
-- Never blindly retry an ambiguous mutating Call.
-- Report an unknown outcome when the connection is lost after a mutation may
-  have been accepted.
-- For self-severing operations, confirm success through a route-specific
-  convergence check.
-
-### Tasks
-
-- Give Task starts a client-generated operation or idempotency identifier.
-- Allow reconnecting clients to discover whether an ambiguously acknowledged
-  Task start succeeded.
-- Preserve the same Task identity across reconnect and reattachment.
-
-### Channels
-
-- Resume only through the payload's explicit cursor, offset, session identity,
-  or sequence contract.
-- Do not apply a universal automatic retry policy.
-
-For the classified durable subset, implement
-[Bridge-Survivable Tasks via systemd Transient Units](./transient-units-plan.md).
-Keep ordinary session-bound Tasks in memory.
-
-### Phase 6 exit criteria
-
-- Page reload, WebSocket reconnect, bridge death, and host restart are distinct
-  tested conditions.
-- Session-bound work has explicit termination behavior.
-- Durable Tasks survive bridge restart, retain identity, and complete exactly
-  once from the client's perspective.
-- Nothing claims durability unless an external executor owns the work.
-
-## Phase 7: Remove the remaining legacy framework
+## Phase 6: Remove the remaining legacy framework (pending Phase 5)
 
 Delete each remaining legacy surface as its last route moves. Repository
 searches must show no consumers before the shared definition itself is removed.
 
-Expected removals include:
+The remaining cleanup candidates are:
 
 - createTaskEndpoint after the remaining Task transport cleanup
 - Runtime route-mode assertions used only by Task endpoints
 - TaskEndpoint and related Task capability types
-- Mode and Kind
-- Universal Events
-- taskEmitter after the remaining handler-form Tasks move to the final Task service
-- Old Query, Task-handler, Task-runner, and Duplex registration adapters
-- HandleEvents
-- RequestShape
-- Any remaining Task-backed stream facade without payload-specific behavior
+- Mode and Kind where their removal is a net deletion
+- Universal Events and `taskEmitter`
+- HandleEvents after the two remaining handler-form Tasks move
+- RequestShape and any remaining Task-backed stream facade without
+  payload-specific behavior
+
+The old Query endpoint, Job, and obsolete registration adapters were removed
+as part of the completed vertical slices above; they are not future work.
 
 Keep generated domain models, the flat type maps, StreamMultiplexer, relay
 framing, and feature-specific stream presentation.
@@ -549,7 +535,7 @@ Update:
 
 - [API Contract](./api-contract.md)
 - [Server Yamux Protocol](./server-yamux-protocol.md)
-- [Bridge-Survivable Tasks](./transient-units-plan.md)
+- [Durable Operations and Transient Units](./transient-units-plan.md)
 - ToDo
 - Source guards and architecture tests
 
@@ -571,9 +557,10 @@ JSON-Schema-based tool. Adopt a replacement only if it reduces total maintained
 code and dependencies while correctly preserving Go JSON tags, optional fields,
 nested models, route request types, route result types, and Task progress types.
 
-Generated backend request decoders remain paused until profiling demonstrates
-that request decoding is a meaningful bottleneck. Strict request validation and
-runtime performance are separate decisions.
+Generated backend request decoders are not planned unless profiling
+demonstrates that request decoding is a meaningful bottleneck. Strict request
+validation is a separate reliability decision tracked in the
+[API reliability roadmap](./api-reliability-roadmap.md).
 
 ## Validation strategy
 
@@ -618,21 +605,11 @@ Measure:
 - Duplicate or lost progress events
 - Registry memory under queued and active load
 
-### Correctness and fault matrix
-
-Cover:
-
-- Valid and invalid request envelopes
-- Missing, unknown, duplicate, and incorrectly typed fields
-- Authentication and privilege failures
-- Owner isolation
-- Context cancellation and deadlines
-- Error identity and status preservation
-- Channel ordering, close, flow control, and backpressure
-- WebSocket loss during Call, Channel, and Task operations
-- Authentication close behavior
-- Task queueing, rate limiting, cancellation, result replay, and progress replay
-- Bridge restart for both session-bound and externally durable Tasks
+Transport correctness still covers authentication, authorization, owner
+isolation, cancellation, deadlines, error identity, frame ordering, close
+semantics, flow control, and backpressure. Connection-loss behavior, strict
+request validation, and session/durable Task fault matrices belong to the
+[API reliability roadmap](./api-reliability-roadmap.md).
 
 ## Required repository checks
 
@@ -660,26 +637,22 @@ invocation. Inspect the complete worktree after generation and verification.
 - Demonstrate contract parity and runtime behavior before cutover; rollback is
   source control, not a second production path.
 
-## Expected reduction
+## Reduction
 
-The predictable deletions are:
+The completed slices removed the former React Query endpoint factory, generated
+Query factories, Query route metadata, the Job API, and Job-backed log-stream
+adapters. The remaining possible deletions are the emitter/Mode/Kind and Task
+endpoint surfaces listed in Phase 6 plus any background-Task glue made redundant
+by the final Task runner form.
 
-- The former React Query endpoint factory (deleted after the final Call moved)
-- Generated Query factory calls and Query route metadata
-- Several hundred backend lines involving Mode, Kind, emitters, bindings, and
-  special Task dispatch
-- Former Job-backed log-stream adapters (already removed)
-- Additional background-Task glue after Task consolidation
-
-Generated model definitions and most of StreamMultiplexer should remain. A
-realistic initial target is approximately 1,500 to 2,500 lines of
-framework/generated-runtime deletion, with potentially more after Task
-presentation and recovery are consolidated.
+Generated models and most of `StreamMultiplexer` remain because they implement
+real contract and transport behavior. Use the final commit diff to report code
+reduction; do not preserve a speculative line-count target.
 
 The more important reduction is conceptual:
 
 ~~~text
-Current:
+Before migration:
     Query / Action / Task handler / Task runner / Duplex /
     generated endpoint capabilities
 
@@ -697,13 +670,12 @@ The migration is complete when:
 - Query versus mutation is purely frontend cache policy.
 - Adding a Channel requires an open contract and only the payload-specific
   behavior it actually uses.
-- Adding a Task requires one runner and explicit lifetime/recovery semantics.
+- Adding a Task requires one runner; lifetime and recovery follow the
+  [API reliability roadmap](./api-reliability-roadmap.md).
 - The compiler rejects using a Call route as a Task or Channel.
 - No generated endpoint objects or runtime route-mode checks remain.
 - No universal Events interface remains.
 - No handler-form Task remains.
 - The general Router does not own Task registry, scheduling, or replay details.
-- Connection-loss behavior is explicit and tested.
-- Durable Tasks have an external execution owner.
 - Performance is no worse than the agreed gates.
 - Canonical documentation and ToDo entries match the implemented architecture.

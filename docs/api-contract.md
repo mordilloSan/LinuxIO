@@ -4,6 +4,18 @@ This is the canonical guide for LinuxIO's Go-owned API contract between the fron
 
 ## Summary
 
+LinuxIO exposes three deliberately different operation shapes:
+
+- **Call** is bounded request/response work.
+- **Channel** is a live stream with an explicit resume/reconnect contract.
+- **Task** is tracked background work with identity, progress, and watcher
+  recovery while the current bridge remains alive. Durable Task execution is
+  planned separately and is not part of the implemented contract.
+
+Task progress/data events are not persistent history. The current navbar keeps
+toast history in the browser; the planned server notification store is separate
+from Task snapshots.
+
 - Go owns route names, modes, request types, and result types. Route declarations live with each handler family's registration in `backend/bridge/handlers/<domain>/handlers.go`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
 - API requests use JSON stream-open envelopes: `{"route":"handler.command","request":{...}}`.
@@ -47,7 +59,7 @@ For request routes:
 
 | File | Role |
 |------|------|
-| `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each entry contains the route contract and the typed handler binding together. |
+| `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each entry contains the route contract and the typed handler binding together. Built-in `tasks.*` primitives are dispatched by `bridgeipc` and are not entries in these tables. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
@@ -82,18 +94,22 @@ Every route has one mode:
 | Mode | Use |
 |------|-----|
 | `bridgeipc.ModeCall` | Bounded request/response work. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
-| `bridgeipc.ModeTask` | Progress-tracked/background work that needs Task identity or recovery. |
-| `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals. |
+| `bridgeipc.ModeTask` | Bridge-process work with Task identity, progress, and watcher recovery. Durable execution is a planned opt-in, not current `ModeTask` behavior. |
+| `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
 
 Every route has one schema kind:
 
 | Kind | Go binding |
 |------|------------|
 | `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`; `.HandleEvents(...)` is reserved for raw progress/data emitters. |
-| `KindTaskRunner` | `func(context.Context, *bridgeipc.Task, TRequest) (any, error)` |
+| `KindTaskRunner` | `func(context.Context, *bridgeipc.Task, TRequest) (any, error)`; the route's generic `Result` documents the terminal contract, while the runner ABI remains `any`. |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
 
 Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for no result payload. They are API contract marker types owned by `apischema`.
+
+Typed handler bindings are the default. The only transitional raw-emitter Task
+routes are `filebrowser.resource_patch` and `virt.create`; they use
+`.HandleEvents` because their implementations still emit progress frames.
 
 ## Frontend Shape
 
@@ -277,7 +293,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 Tasks are reserved for work that emits progress, continues independently of a
 watching component, or needs recovery by identity. Bounded mutations complete
-through a single direct `useAction` request/response.
+through a single direct `useCallMutation` request/response.
 
 On the frontend, `useTaskAction` awaits the terminal state via
 `waitForTaskCompletion()`: a failed Task rejects with a `LinuxIOError` carrying
@@ -320,7 +336,8 @@ payload-specific helper instead of constructing envelopes directly.
 Terminal and container sessions are bidirectional Channels. The three log
 routes are direct server-producing Channels and never create a Task. App update
 uses a Task plus its binary data Channel because the operation survives the
-watching component and deliberately severs the bridge during restart.
+watching component and deliberately severs the bridge during restart. The
+current in-memory Task itself does not survive that bridge exit.
 
 ## Adding An Endpoint
 
@@ -395,7 +412,7 @@ var api = apischema.Bindings(
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.
 
-## Remaining Plan
+## Documented Follow-up
 
 The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. Call fetching and Task lifecycle have separate runtime factories; the remaining transport simplification is tracked in [API Transport Simplification Plan](./api-transport-simplification-plan.md).
 
@@ -416,162 +433,18 @@ Remaining runtime cleanup:
 1. Keep `apischema/schema.go` free of runtime reflection.
 2. If `TypeSpec` starts feeling too runtime-shaped, move the type metadata into a codegen-only package or generated manifest and keep runtime route registration data-only.
 
-### 2. Generated Request Decoder Plan
+### 2. Request decoding
 
-JSON envelopes are the current transport contract:
+The current request path uses `json.Unmarshal` into the typed Go request struct.
+This is the implemented contract: JSON remains readable and Go remains the
+source of truth. Generated request decoders are not implemented; any future
+decoder work is benchmark-gated and must demonstrate a meaningful runtime or
+validation benefit before changing the path.
 
-```json
-{"route":"handler.command","request":{}}
-```
-
-The current request decode path uses `encoding/json`. That keeps the runtime small and the payloads readable, but Go's JSON package interprets struct tags through runtime reflection. If we decide that request decoding should also be codegen-owned, the next step is generated JSON request decoders, not protobuf.
-
-The developer workflow should not change:
-
-1. Write or reuse the Go request struct.
-2. Add the route binding.
-3. Run `make generate`.
-
-The generator then emits both frontend TypeScript and backend request decode code. Developers should not hand-write per-route decoders.
-
-Example source contract:
-
-```go
-type ContainerIDRequest struct {
-    ContainerID string `json:"containerId"`
-}
-
-var api = apischema.Bindings(
-    apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse](
-        "docker.start_container",
-    ).Handle(handleStartContainer),
-)
-```
-
-Generated backend code would be conceptually:
-
-```go
-func decodeContainerIDRequest(raw []byte) (apischema.ContainerIDRequest, error) {
-    // Generated from the Go struct:
-    // - raw must be a JSON object
-    // - "containerId" is allowed once
-    // - unknown fields are rejected
-    // - duplicate fields are rejected
-    // - "containerId" must be a JSON string
-    // - required fields are enforced by generated presence checks
-}
-```
-
-Runtime flow:
-
-```text
-JSON envelope
-    |
-    v
-generated route-specific request decoder
-    |
-    v
-typed Go request struct
-    |
-    v
-typed handler / runner / duplex function
-```
-
-This keeps JSON on the wire and keeps Go structs as the source of truth. It does not introduce `.proto` files or make frontend TypeScript the contract source.
-
-Generated request decoders would give us:
-
-- no request decode reflection in LinuxIO's API path
-- duplicate field rejection
-- unknown field rejection
-- required field enforcement based on struct field presence and tags
-- route/field-specific errors
-- one generated decoder registry wired into route registration
-
-Non-goals for this phase:
-
-- Do not generate response encoders. Responses are produced by trusted Go code and can keep using `encoding/json`.
-- Do not replace the relay frame format. Only the JSON request decoder changes.
-- Do not add hand-written validators for every route.
-- Do not move the source of truth from Go structs to `.proto` files.
-
-#### Implementation Slices
-
-1. Add a generated decoder registry target.
-   - Extend `backend/common/tools/linuxio-api-gen` to emit `backend/bridge/apischema/generated_decoders.go`.
-   - The generated file maps route names to `bridgeipc.RequestDecoder` functions.
-   - `apischema.RouteSpec` registration uses the generated decoder when present.
-
-2. Start with a narrow supported type set.
-   - structs
-   - strings, booleans, numbers
-   - pointers for optional fields
-   - slices and maps of supported values
-   - nested structs
-   - `json:"name"` and `json:"name,omitempty"` tags
-   - `json:"-"` fields ignored
-
-3. Fail loudly for unsupported request shapes.
-   - The generator should return a clear error naming the route, request type, and unsupported field.
-   - Avoid silent fallback for routes that claim to be generated.
-
-4. Add golden tests.
-   - valid object
-   - unknown field
-   - duplicate field
-   - missing required field
-   - wrong scalar type
-   - optional field omitted
-   - nested object
-   - array
-   - map
-   - no-request route
-
-5. Roll out behind a temporary fallback.
-   - During migration, generated decoders can cover supported routes.
-   - Unsupported routes keep the strict stdlib decoder until the generator supports them.
-   - Remove the fallback once all request types are covered.
-
-6. Keep the route authoring model stable.
-   - Normal route additions still happen in one `apischema.Bindings(...)` table.
-   - New request structs still live in Go.
-   - `make generate` updates frontend types/client and backend decoders together.
-
-#### Decision Boundary
-
-Stay with `encoding/json` if we only need:
-
-- JSON envelopes
-- typed Go request structs
-- readable payloads
-- low generator complexity
-- acceptable runtime reflection inside Go's JSON package
-
-Move to generated JSON request decoders if we require:
-
-- no runtime reflection on request decode
-- duplicate-key rejection
-- required-field enforcement
-- precise route/field errors
-- contract validation generated from Go structs
-
-Consider protobuf-style codegen only if we are willing to:
-
-- make schema files the protocol source of truth
-- give up plain JSON payloads for the request body
-- maintain generated codec packages on both Go and TypeScript sides
-
-#### Why Not Response Encoders First
-
-Requests are the untrusted input boundary. They are small, route-specific, and security-sensitive. Generated request decoders improve validation exactly where external input enters the bridge.
-
-Responses are different: LinuxIO's own Go code creates them. They are often larger and more varied, and generated response encoders would add substantially more generated code for less safety gain. Keep response encoding on `encoding/json` unless profiling proves it matters.
-
-#### Immediate Low-Churn Strictness
-
-Before generated decoders, the small standard-library improvement is to switch request decoding from `json.Unmarshal` to `json.Decoder` with `DisallowUnknownFields()` and a trailing-token check. That catches unknown top-level fields and malformed trailing JSON without changing the transport or adding generated backend code.
-
-This is not a substitute for generated decoders because it does not reject duplicate keys and does not enforce required fields. It is only the low-churn guardrail if we want stricter behavior before a generator pass.
+The approved next direction is a small strict-standard-library step (unknown
+fields and trailing-token checks) before considering generated decoders. The
+scope, evidence, and decision boundary are tracked in the [API reliability
+roadmap](./api-reliability-roadmap.md); do not duplicate that plan here.
 
 ### 3. Keep Route Declarations Local
 

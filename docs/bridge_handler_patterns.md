@@ -4,18 +4,23 @@ This document covers handler style and package organization. Route contracts, fr
 
 ## `handlers.go` Layout
 
-`handlers.go` is only route wiring and IPC adapter code. It may contain:
+`handlers.go` is only route wiring and IPC adapter code. It may contain route
+binding variables/functions (`api`, `Routes`, `routeBindings`) in addition to:
 
 - `RegisterHandlers`
 - `handle*` adapter functions or methods
 
-It must not contain package state types, package variables, constants, helper functions, validators, parsers, or domain implementations. Put those in named files beside it, for example:
+It must not contain domain state, package variables/constants unrelated to route
+registration, helper functions, validators, parsers, or domain implementations.
+Put those in named files beside it, for example:
 
 - `handler_state.go` for small adapter state structs
 - `*_operation.go` for mutation/Task orchestration
 - domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
 
-Every adapter in `handlers.go` receives a typed request and returns `(Result, error)`. The returned `Result` is emitted as the route result, and the compiler checks it against the type declared in the binding:
+Every Call adapter in `handlers.go` receives a typed request. A result-bearing
+adapter returns `(Result, error)`; the compiler checks `Result` against the type
+declared in the binding:
 
 ```go
 func handleListTimers(ctx context.Context, _ apischema.NoRequest) ([]apischema.Timer, error) {
@@ -27,11 +32,13 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apis
 }
 ```
 
-Void routes declare `apischema.NoResponse` and return through `apischema.Done`, which keeps the wire result null:
+Void routes declare `apischema.NoResponse` and use `HandleVoid`; the adapter
+returns the implementation error directly and the binding keeps the wire result
+null:
 
 ```go
-func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) (apischema.NoResponse, error) {
-    return apischema.Done(SetMTU(ctx, req.Iface, req.MTU))
+func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) error {
+    return SetMTU(ctx, req.Iface, req.MTU)
 }
 ```
 
@@ -43,7 +50,15 @@ func ListTimers(ctx context.Context) ([]apischema.Timer, error) {
 }
 ```
 
-Handlers do not receive an emitter. The raw `func(ctx, req, emit bridgeipc.Events) error` shape exists only as `.HandleEvents`, reserved for the few handlers that emit progress frames before their result (`filebrowser.resource_patch`, `virt.create`); everything else binds with `.Handle`.
+Handlers do not receive an emitter by default. Calls use
+`func(context.Context, Request) (Result, error)` (or `error` with
+`HandleVoid`); Task runners currently use
+`func(context.Context, *bridgeipc.Task, Request) (any, error)`; Channels use
+`func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
+The raw `func(ctx, req, emit bridgeipc.Events) error` shape exists only as
+`.HandleEvents` for the two transitional Task progress emitters
+(`filebrowser.resource_patch`, `virt.create`). See the [API reliability
+roadmap](./api-reliability-roadmap.md) for their planned cleanup.
 
 ## Context
 
@@ -132,11 +147,11 @@ behavior without implying a second IPC subsystem.
 Request JSON is decoded before the handler runs. Use typed fields directly:
 
 ```go
-func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) (apischema.NoResponse, error) {
+func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
     if req.ServiceName == "" {
-        return apischema.Done(bridgeipc.NewError("missing service name", 400))
+        return bridgeipc.NewError("missing service name", 400)
     }
-    return apischema.Done(StartUnit(ctx, req.ServiceName))
+    return StartUnit(ctx, req.ServiceName)
 }
 ```
 
