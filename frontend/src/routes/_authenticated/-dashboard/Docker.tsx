@@ -28,7 +28,7 @@ const getStatusLabel = (status: string, state: string): string => {
   if (health === "healthy" || health === "unhealthy") return health;
   return state;
 };
-const getCollectionCount = <T,>(items: T[] | null | undefined) =>
+const getCollectionCount = (items: unknown[] | null | undefined) =>
   items?.length ?? 0;
 
 const selectContainerCounts = (containers: ContainerInfo[]) => ({
