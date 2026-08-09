@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -43,11 +43,5 @@
       "@/theme": ["./src/theme/index"]
     }
   },
-  "include": [
-    "src",
-    "config/browser.vite.config.ts",
-    "config/playwright.config.ts",
-    "config/vite.config.ts",
-    "config/vitest.config.ts"
-  ]
+  "include": ["src", "config"]
 }

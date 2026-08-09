@@ -508,7 +508,7 @@ setup-frontend-browser: ensure-node setup
 test-frontend-browser: ensure-node setup
 	@set -e
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
-	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
+	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native'
 	@echo "🌐 Running frontend browser tests..."
 	@bash -c 'cd frontend && ./node_modules/.bin/playwright test --config config/playwright.config.ts'
 	@echo "✅ Frontend browser tests passed!"
@@ -630,7 +630,7 @@ lint-only:
 	  cd frontend; \
 	  lint_output="$$(mktemp)"; \
 	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
+	  	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
 	  if [ -n "$$warning_count" ]; then \
@@ -638,7 +638,7 @@ lint-only:
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
-	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/oxlint.config.mts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/**/*.ts" "scripts/run-browser-fixture.mjs"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
@@ -1006,7 +1006,7 @@ dev: setup dev-prep
 	  echo "  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
 	  rm -f "$(VITE_DEV_PID)"; \
-	  nohup bash -c 'cd frontend && exec npx vite --config config/vite.config.ts --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  nohup bash -c 'cd frontend && exec ./node_modules/.bin/vite --config config/vite.config.ts --configLoader native --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
 	  echo $$! > "$(VITE_DEV_PID)"; \
 	  STARTED_VITE=1; \
 	fi

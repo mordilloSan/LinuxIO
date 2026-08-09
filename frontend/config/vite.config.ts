@@ -1,12 +1,12 @@
-import { defineConfig, type PluginOption } from "vite";
-import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
-import { compression } from "vite-plugin-compression2";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type PluginOption, type UserConfig } from "vite";
 import { analyzer } from "vite-bundle-analyzer";
+import { compression } from "vite-plugin-compression2";
 
 import { oxcReactCompiler } from "./oxc-react-compiler.ts";
 
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command }): Promise<UserConfig> => {
   const { generateIcons } = await import("../scripts/generate-icons.mjs");
   generateIcons();
 
@@ -40,6 +40,11 @@ export default defineConfig(async ({ command }) => {
   return {
     base: "/",
     clearScreen: false,
+    css: {
+      // Rust CSS pipeline; ships inside Vite 8 (no postcss config exists to
+      // migrate). Targets are derived from build.target automatically.
+      transformer: "lightningcss",
+    },
     plugins,
     resolve: {
       tsconfigPaths: true,
@@ -66,6 +71,9 @@ export default defineConfig(async ({ command }) => {
       // instead. If you flip this on, also flip `sourcemap` in
       // oxcReactCompiler() above so compiled files keep complete maps.
       sourcemap: false,
+      // The compression plugin emits real .gz/.br artifacts below; the extra
+      // gzip pass behind this option only feeds the build-log size column.
+      reportCompressedSize: false,
       chunkSizeWarningLimit: 2000,
       manifest: true,
       outDir: "../backend/webserver/web/frontend",
