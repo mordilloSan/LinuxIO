@@ -4,7 +4,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { compression } from "vite-plugin-compression2";
 import { analyzer } from "vite-bundle-analyzer";
 
-import { oxcReactCompiler } from "./oxc-react-compiler";
+import { oxcReactCompiler } from "./oxc-react-compiler.ts";
 
 export default defineConfig(async ({ command }) => {
   const { generateIcons } = await import("../scripts/generate-icons.mjs");
