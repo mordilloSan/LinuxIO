@@ -51,28 +51,43 @@ const ServicesTab = ({
       data={data}
       matchesSearch={matchesServiceSearch}
       onSelectedChange={onSelectedChange}
-      renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
+      renderCardsView={({
+        items,
+        expanded,
+        onExpand,
+        renderDetailPanel,
+        surface,
+      }) => (
         <ServiceCardsView
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
           services={items}
+          surface={surface}
         />
       )}
       renderDetailPanel={(service, onClose) => (
         <UnitInfoPanel onClose={onClose} unitName={service.name} />
       )}
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+      renderTableView={({
+        items,
+        selected,
+        onSelect,
+        onDoubleClick,
+        surface,
+      }) => (
         <ServiceTableView
           onDoubleClick={onDoubleClick}
           onSelect={onSelect}
           selected={selected}
           services={items}
+          surface={surface}
         />
       )}
       searchPlaceholder="Search services…"
       selected={selected}
       setViewMode={onViewModeChange}
+      surfaceId="services.list"
       viewMode={viewMode}
     />
   );

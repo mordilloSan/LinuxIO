@@ -444,12 +444,11 @@ type ConfigAppSettingsPayload struct {
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
 	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitempty"`
 	ShowHiddenFiles         *bool                           `json:"showHiddenFiles,omitempty"`
-	DashboardOrder          []string                        `json:"dashboardOrder,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
-	ContainerOrder          []string                        `json:"containerOrder,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	ViewModes               map[string]string               `json:"viewModes,omitempty"`
+	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
 }
 

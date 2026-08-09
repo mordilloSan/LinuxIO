@@ -62,9 +62,8 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     appSettings: {
       chunkSizeMB: 1,
-      containerOrder: [],
-      dashboardOrder: ["overview"],
       hiddenCards: [],
+      layoutOrders: { dashboard: ["overview"] },
       primaryColor: "#123456",
       showHiddenFiles: true,
       sidebarCollapsed: false,

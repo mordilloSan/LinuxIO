@@ -1,5 +1,9 @@
-import type { UniqueIdentifier } from "@dnd-kit/core";
-import { useSortable } from "@dnd-kit/sortable";
+import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import { flexRender, useTable } from "@tanstack/react-table";
@@ -37,6 +41,10 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import {
+  REORDER_HOLD_MS,
+  type ReorderableSurfaceDndProps,
+} from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_STANDARD_CSS,
@@ -47,6 +55,7 @@ import { alpha } from "@/utils/color";
 import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-virtual-data-table.css";
+import "../reorder/reorder.css";
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
@@ -69,10 +78,25 @@ export interface AppDataTableRowRenderProps<TData extends RowData> {
 }
 
 export interface AppDataTableDndOptions<TData extends RowData> {
-  enabled?: boolean;
+  /**
+   * `DndContext` props for the surface. The table mounts the context itself so a
+   * reorderable table stays a one-prop change at the call site.
+   */
+  contextProps: ReorderableSurfaceDndProps;
   getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
+  /** Every id in the surface, in saved order — the `SortableContext` items. */
+  itemIds: UniqueIdentifier[];
+  /**
+   * Layout mode is open: rows show a drag handle and stop reacting to clicks.
+   * Rows are draggable whenever `dnd` is supplied — this only controls the
+   * chrome, because the hold that opens layout mode must reach dnd-kit first.
+   */
+  editing?: boolean;
+  enabled?: boolean;
   handleAriaLabel?: string;
   handleColumnWidth?: string | number;
+  /** Row currently being held, before the hold completes. */
+  pendingItemId?: UniqueIdentifier | null;
 }
 
 export interface AppDataTableProps<TData extends RowData> {
@@ -433,6 +457,10 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
     id: dnd.getItemId(row),
     disabled: dnd.enabled === false,
   });
+  const isArmed = dnd.enabled !== false;
+  const isEditing = isArmed && (dnd.editing ?? false);
+  const isPending =
+    dnd.pendingItemId != null && dnd.pendingItemId === dnd.getItemId(row);
   const transformValue = CSS.Transform.toString(transform);
   const rowAttributes = getRowAttributes?.(row);
   const rowTransition = [rowAttributes?.style?.transition, transition]
@@ -453,8 +481,8 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
     <AppDataTableBodyRow
       canExpand={canExpand}
       cells={cells}
-      dragHandle={dragHandle}
-      hasDragColumn
+      dragHandle={isEditing ? dragHandle : undefined}
+      hasDragColumn={isEditing}
       hasExpandColumn={hasExpandColumn}
       isExpanded={isExpanded}
       isInteractive={isInteractive}
@@ -466,7 +494,18 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
       row={row}
       rowIndex={rowIndex}
       rowAttributes={{
+        // The whole row carries the press listeners, not just the handle: the
+        // handle only exists once layout mode is open, and the hold is what
+        // opens it.
+        ...(isArmed ? listeners : undefined),
         ...rowAttributes,
+        className: [
+          rowAttributes?.className,
+          isPending && "app-vdt__row--reorder-pending",
+          isEditing && "app-vdt__row--reordering",
+        ]
+          .filter(Boolean)
+          .join(" "),
         ref: mergeRefs(rowAttributes?.ref, setNodeRef),
         style: {
           ...rowAttributes?.style,
@@ -697,6 +736,10 @@ function AppDataTable<TData extends RowData>({
 
   const resolvedExpanded = expanded ?? internalExpanded;
   const resolvedSorting = sorting ?? internalSorting;
+  // A column sort already decides the row order, and a saved manual order would
+  // be invisible underneath it. Sorted tables therefore aren't reorderable at
+  // all, rather than accepting drags that appear to do nothing.
+  const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
 
   const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
     if (expanded === undefined) {
@@ -744,7 +787,10 @@ function AppDataTable<TData extends RowData>({
   const hoverBg = alpha(theme.palette.primary.main, 0.08);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
-  const hasDragColumn = Boolean(dnd);
+  // Only layout mode adds the handle column; an armed-but-idle table keeps its
+  // normal column widths.
+  const hasDragColumn =
+    Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
   const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
   // TanStack can preserve Column objects while swapping their definitions.
@@ -756,16 +802,16 @@ function AppDataTable<TData extends RowData>({
   const gridTemplate = [
     ...(hasDragColumn
       ? [
-          typeof dnd?.handleColumnWidth === "number"
-            ? `${dnd.handleColumnWidth}px`
-            : (dnd?.handleColumnWidth ?? "32px"),
+          typeof dndOptions?.handleColumnWidth === "number"
+            ? `${dndOptions.handleColumnWidth}px`
+            : (dndOptions?.handleColumnWidth ?? "32px"),
         ]
       : []),
     ...visibleColumns.map((column) => columnTrack(column)),
     ...(hasExpandColumn ? ["40px"] : []),
   ].join(" ");
 
-  return (
+  const content = (
     <div
       aria-label={ariaLabel}
       className={[
@@ -786,6 +832,8 @@ function AppDataTable<TData extends RowData>({
           "--app-vdt-head-bg": headRowBg,
           "--app-vdt-hover-bg": hoverBg,
           "--app-vdt-selected-bg": selectedBg,
+          "--reorder-hold-color": theme.palette.primary.main,
+          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,
           height: height ?? (fillAvailable ? "100%" : undefined),
           maxHeight,
@@ -819,11 +867,11 @@ function AppDataTable<TData extends RowData>({
 
             return (
               <Fragment key={row.id}>
-                {dnd ? (
+                {dndOptions ? (
                   <AppDataTableSortableBodyRow
                     canExpand={canExpand}
                     cells={cells}
-                    dnd={dnd}
+                    dnd={dndOptions}
                     getRowAttributes={getRowAttributes}
                     hasExpandColumn={hasExpandColumn}
                     isExpanded={isExpanded}
@@ -878,6 +926,19 @@ function AppDataTable<TData extends RowData>({
         )}
       </div>
     </div>
+  );
+
+  if (!dndOptions) return content;
+
+  return (
+    <DndContext {...dndOptions.contextProps}>
+      <SortableContext
+        items={dndOptions.itemIds}
+        strategy={verticalListSortingStrategy}
+      >
+        {content}
+      </SortableContext>
+    </DndContext>
   );
 }
 

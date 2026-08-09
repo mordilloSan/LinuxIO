@@ -15,7 +15,7 @@ func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 	require.Equal(t, ThemeDark, app.Theme)
 	require.Equal(t, CSSColor("#2196f3"), app.PrimaryColor)
 	require.True(t, app.ShowHiddenFiles)
-	require.Equal(t, []string{"overview", "system", "cpu", "memory", "docker", "nic", "fs", "mb", "gpu", "drive"}, app.DashboardOrder)
+	require.Empty(t, app.LayoutOrders)
 	require.Equal(t, 1, app.ChunkSizeMB)
 	require.Equal(t, []AbsolutePath{"/home/miguel/docker"}, cfg.Docker.Folders)
 	require.False(t, cfg.Docker.RequireMountsForFolders)
@@ -69,7 +69,7 @@ jobs:
 	cfg, err := readConfigStrict(cfgPath)
 	require.NoError(t, err)
 	require.NotNil(t, cfg.AppSettings.ThemeColors)
-	require.Equal(t, defaultDashboardOrder(), cfg.AppSettings.DashboardOrder)
+	require.Empty(t, cfg.AppSettings.LayoutOrders)
 	require.NotNil(t, cfg.AppSettings.DockerDashboardSections)
 	require.NotNil(t, cfg.AppSettings.HardwareSections)
 	require.Equal(t, defaultViewModes(), cfg.AppSettings.ViewModes)
@@ -78,4 +78,60 @@ jobs:
 	require.Equal(t, 1000, cfg.Jobs.NotificationMinIntervalMs)
 	require.Equal(t, 16, cfg.Jobs.ProgressMinBytesMB)
 	require.Equal(t, 1, cfg.Jobs.HeavyArchiveConcurrency)
+}
+
+func TestRepairConfigFoldsLegacyOrdersIntoLayoutOrders(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+
+	err := os.WriteFile(cfgPath, []byte(`appSettings:
+  theme: DARK
+  primaryColor: "#2196f3"
+  sidebarCollapsed: false
+  showHiddenFiles: true
+  dashboardOrder:
+  - cpu
+  - overview
+  containerOrder:
+  - beta
+  - alpha
+docker:
+  folders:
+  - `+filepath.Join(base, "docker")+`
+jobs:
+  progressMinIntervalMs: 250
+`), filePerm)
+	require.NoError(t, err)
+
+	require.NoError(t, repairConfig(cfgPath, base))
+
+	cfg, err := readConfigStrict(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, map[string][]string{
+		"dashboard":         {"cpu", "overview"},
+		"docker.containers": {"beta", "alpha"},
+	}, cfg.AppSettings.LayoutOrders)
+	require.Empty(t, cfg.AppSettings.DashboardOrder)
+	require.Empty(t, cfg.AppSettings.ContainerOrder)
+
+	rewritten, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(rewritten), "dashboardOrder")
+	require.NotContains(t, string(rewritten), "containerOrder")
+}
+
+func TestRepairConfigLeavesLayoutOrdersAloneWhenNoLegacyKeys(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	cfg := DefaultSettings(base)
+	cfg.AppSettings.LayoutOrders = map[string][]string{"docker.images": {"img-b", "img-a"}}
+	require.NoError(t, writeConfigFrom(cfgPath, *cfg))
+
+	before, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	require.NoError(t, repairConfig(cfgPath, base))
+	after, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	require.Equal(t, string(before), string(after))
 }

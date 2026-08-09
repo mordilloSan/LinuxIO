@@ -53,8 +53,6 @@ function configWrapper({
     config: {
       appSettings: {
         chunkSizeMB: 1,
-        containerOrder: [],
-        dashboardOrder: [],
         hiddenCards: [],
         primaryColor: "#2196f3",
         showHiddenFiles,

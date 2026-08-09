@@ -16,7 +16,7 @@ func TestUserStoreSnapshotReturnsIsolatedCopy(t *testing.T) {
 	snapshot, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	snapshot.AppSettings.Theme = ThemeLight
-	snapshot.AppSettings.DashboardOrder[0] = "mutated"
+	snapshot.AppSettings.LayoutOrders["dashboard"][0] = "mutated"
 	snapshot.AppSettings.ViewModes["accounts.users"] = "table"
 	*snapshot.AppSettings.ThemeColors.Dark.BackgroundDefault = "#ffffff"
 	snapshot.Docker.Folders[0] = "/tmp/mutated"
@@ -24,7 +24,7 @@ func TestUserStoreSnapshotReturnsIsolatedCopy(t *testing.T) {
 	next, err := store.Snapshot(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, ThemeDark, next.AppSettings.Theme)
-	require.Equal(t, "overview", next.AppSettings.DashboardOrder[0])
+	require.Equal(t, "overview", next.AppSettings.LayoutOrders["dashboard"][0])
 	require.Equal(t, "card", next.AppSettings.ViewModes["accounts.users"])
 	require.Equal(t, cssColor("#1B2635"), next.AppSettings.ThemeColors.Dark.BackgroundDefault)
 	require.Equal(t, cfg.Docker.Folders, next.Docker.Folders)
@@ -98,6 +98,7 @@ func writeTestConfig(t *testing.T) (string, *Settings) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)
 	cfg := DefaultSettings(base)
+	cfg.AppSettings.LayoutOrders = map[string][]string{"dashboard": {"overview", "cpu"}}
 	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), dirPerm))
 	require.NoError(t, writeConfigFrom(cfgPath, *cfg))
 	return cfgPath, cfg

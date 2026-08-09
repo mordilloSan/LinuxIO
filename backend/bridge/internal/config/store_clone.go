@@ -22,9 +22,7 @@ func cloneSettings(in *Settings) *Settings {
 func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 	out := in
 	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
-	out.DashboardOrder = slices.Clone(in.DashboardOrder)
 	out.HiddenCards = slices.Clone(in.HiddenCards)
-	out.ContainerOrder = slices.Clone(in.ContainerOrder)
 	if in.DockerDashboardSections != nil {
 		sections := *in.DockerDashboardSections
 		out.DockerDashboardSections = &sections
@@ -34,6 +32,18 @@ func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 		out.HardwareSections = &sections
 	}
 	out.ViewModes = maps.Clone(in.ViewModes)
+	out.LayoutOrders = cloneLayoutOrders(in.LayoutOrders)
+	return out
+}
+
+func cloneLayoutOrders(in map[string][]string) map[string][]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for surface, order := range in {
+		out[surface] = slices.Clone(order)
+	}
 	return out
 }
 

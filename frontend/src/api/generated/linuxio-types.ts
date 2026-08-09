@@ -136,11 +136,10 @@ export interface AppConfig {
 
 export interface AppSettings {
   chunkSizeMB?: number;
-  containerOrder?: string[];
-  dashboardOrder?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
+  layoutOrders?: Record<string, string[]>;
   primaryColor: string;
   showHiddenFiles: boolean;
   sidebarCollapsed: boolean;
@@ -359,12 +358,11 @@ export interface ConfigAppSettingsPayload {
   themeColors?: ConfigThemeColorsByModePayload;
   sidebarCollapsed?: boolean;
   showHiddenFiles?: boolean;
-  dashboardOrder?: string[];
   hiddenCards?: string[];
-  containerOrder?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   viewModes?: Record<string, string>;
+  layoutOrders?: Record<string, string[]>;
   chunkSizeMB?: number;
 }
 

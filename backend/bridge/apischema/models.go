@@ -1376,11 +1376,10 @@ type AppConfig struct {
 
 type AppSettings struct {
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
-	ContainerOrder          []string                        `json:"containerOrder,omitempty"`
-	DashboardOrder          []string                        `json:"dashboardOrder,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
+	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	PrimaryColor            string                          `json:"primaryColor"`
 	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`

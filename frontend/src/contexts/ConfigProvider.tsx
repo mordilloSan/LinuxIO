@@ -107,20 +107,7 @@ const defaultConfig: AppConfig = {
     themeColors: defaultThemeColors,
     sidebarCollapsed: false,
     showHiddenFiles: true,
-    dashboardOrder: [
-      "overview",
-      "system",
-      "cpu",
-      "memory",
-      "docker",
-      "nic",
-      "fs",
-      "mb",
-      "gpu",
-      "drive",
-    ],
     hiddenCards: [],
-    containerOrder: [],
     dockerDashboardSections: {
       overview: true,
       daemon: true,
@@ -190,6 +177,22 @@ const cloneRecord = <T,>(
   value?: Record<string, T>,
 ): Record<string, T> | undefined => (value ? { ...value } : undefined);
 
+// Surfaces the user never rearranged stay absent instead of being stored as an
+// empty array, so an undefined map is the normal case rather than a defect.
+const cloneLayoutOrders = (
+  layoutOrders?: AppSettings["layoutOrders"],
+): AppSettings["layoutOrders"] => {
+  if (!layoutOrders) return undefined;
+
+  const normalized: Record<string, string[]> = {};
+  for (const [surface, order] of Object.entries(layoutOrders)) {
+    if (!surface || !Array.isArray(order) || order.length === 0) continue;
+    normalized[surface] = [...order];
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
+
 const cloneDockerDashboardSections = (
   sections?: DockerDashboardSections,
 ): DockerDashboardSections | undefined =>
@@ -220,15 +223,10 @@ const applyDefaults = (
         app.sidebarCollapsed ?? defaultConfig.appSettings.sidebarCollapsed,
       showHiddenFiles:
         app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
-      dashboardOrder:
-        cloneArray(app.dashboardOrder) ??
-        cloneArray(defaultConfig.appSettings.dashboardOrder),
       hiddenCards:
         cloneArray(app.hiddenCards) ??
         cloneArray(defaultConfig.appSettings.hiddenCards),
-      containerOrder:
-        cloneArray(app.containerOrder) ??
-        cloneArray(defaultConfig.appSettings.containerOrder),
+      layoutOrders: cloneLayoutOrders(app.layoutOrders),
       dockerDashboardSections:
         cloneDockerDashboardSections(app.dockerDashboardSections) ??
         cloneDockerDashboardSections(

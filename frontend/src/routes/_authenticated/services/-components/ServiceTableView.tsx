@@ -2,6 +2,8 @@ import { useCallback } from "react";
 
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import UnitStatusDot from "./UnitStatusDot";
 import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
@@ -11,6 +13,7 @@ interface ServiceTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   services: Service[];
+  surface: ReorderableSurface<Service>;
 }
 
 const desktopColumns = [
@@ -78,6 +81,7 @@ const renderServiceMobileExpandedContent = (service: Service) => (
 );
 
 const ServiceTableView = ({
+  surface,
   services,
   selected,
   onSelect,
@@ -97,8 +101,11 @@ const ServiceTableView = ({
     [onSelect],
   );
 
+  const dnd = useVirtualReorderableTableDnd<Service, Service>({ surface });
+
   return (
     <UnitTableView
+      dnd={dnd}
       data={services}
       desktopColumns={desktopColumns}
       emptyMessage="No services found."

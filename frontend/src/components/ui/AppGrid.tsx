@@ -8,7 +8,7 @@ import {
 
 import "./app-grid.css";
 
-type GridSize =
+export type GridSize =
   | number
   | {
       xs?: number;

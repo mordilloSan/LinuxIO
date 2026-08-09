@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -19,7 +20,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -29,6 +29,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -838,6 +840,10 @@ interface NFSMountTableProps extends NFSMountActionProps {
   search: string;
 }
 
+const NFS_SURFACE_ID = "shares.mounts.nfs";
+const identity = (mountpoint: string) => mountpoint;
+const getNFSMountId = (mount: NFSMount) => mount.mountpoint;
+
 const NFSMountCardGrid = ({
   mountingMountpoint,
   nfsClientAvailable,
@@ -853,6 +859,13 @@ const NFSMountCardGrid = ({
       select: selectNFSMountIdentities,
     }),
   );
+  // Cards and rows key the same surface: both identify a mount by mountpoint,
+  // so a manual order set in one view shows up in the other.
+  const surface = useReorderableSurface({
+    getId: identity,
+    items: mountpoints,
+    surface: NFS_SURFACE_ID,
+  });
 
   if (mountpoints.length === 0) {
     return (
@@ -878,13 +891,14 @@ const NFSMountCardGrid = ({
   );
 
   return (
-    <AppGrid container spacing={2}>
-      {mountpoints.map((mountpoint) => (
-        <AppGrid key={mountpoint} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-          <NFSMountCard actions={renderActions} mountpoint={mountpoint} />
-        </AppGrid>
-      ))}
-    </AppGrid>
+    <ReorderableCardGrid
+      getId={identity}
+      renderItem={(mountpoint) => (
+        <NFSMountCard actions={renderActions} mountpoint={mountpoint} />
+      )}
+      size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+      surface={surface}
+    />
   );
 };
 
@@ -905,7 +919,16 @@ const NFSMountTable = ({
   );
   const mountsList = Array.isArray(mounts) ? mounts : [];
   const normalizedSearch = search.toLowerCase();
-  const filtered = mountsList.filter(
+  const surface = useReorderableSurface({
+    getId: getNFSMountId,
+    items: mountsList,
+    surface: NFS_SURFACE_ID,
+  });
+  const tableDnd = useReorderableTableDnd<NFSMount, NFSMount>({
+    handleAriaLabel: "Reorder NFS mount",
+    surface,
+  });
+  const filtered = surface.items.filter(
     (mount) =>
       mount.source.toLowerCase().includes(normalizedSearch) ||
       mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
@@ -1074,6 +1097,7 @@ const NFSMountTable = ({
 
   return (
     <AppDataTable
+      dnd={tableDnd}
       ariaLabel="NFS mounts"
       columns={columns}
       data={filtered}

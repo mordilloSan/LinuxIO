@@ -8,6 +8,8 @@ import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import {
   type VMAction,
@@ -44,6 +46,8 @@ const rowActionsStyle: CSSProperties = {
   flexWrap: "wrap",
   gap: 6,
 };
+
+const getVirtualMachineId = (vm: VirtualMachine) => vm.name;
 
 export default function VMListTable({
   actionPending,
@@ -186,13 +190,23 @@ export default function VMListTable({
     ],
     [actionPending, onDelete, onOpenConsole, onRunAction, onSelect],
   );
+  const surface = useReorderableSurface({
+    getId: getVirtualMachineId,
+    items: vms,
+    surface: "vm.list",
+  });
+  const tableDnd = useReorderableTableDnd<VirtualMachine, VirtualMachine>({
+    handleAriaLabel: "Reorder virtual machine",
+    surface,
+  });
 
   return (
     <FrostedCard style={listPanelStyle}>
       <AppDataTable
         ariaLabel="Virtual machines"
         columns={columns}
-        data={vms}
+        data={surface.items}
+        dnd={tableDnd}
         emptyMessage="No virtual machines."
         enableSorting={false}
         getRowId={(vm) => vm.name}

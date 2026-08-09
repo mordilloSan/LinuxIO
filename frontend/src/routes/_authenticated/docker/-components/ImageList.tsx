@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { linuxio } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -16,10 +17,11 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -160,6 +162,8 @@ const DeleteImageDialog = ({
     </GeneralDialog>
   );
 };
+const getImageRowId = (image: { id: string }) => image.id;
+
 const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -216,16 +220,29 @@ const ImageList = ({
       }),
     [images],
   );
+  const surface = useReorderableSurface({
+    getId: getImageRowId,
+    items: imageRows,
+    surface: "docker.images",
+  });
+  const tableDnd = useReorderableTableDnd<
+    (typeof imageRows)[number],
+    (typeof imageRows)[number]
+  >({
+    handleAriaLabel: "Reorder image",
+    surface,
+  });
+  const orderedRows = surface.items;
   const filtered = useMemo(() => {
     const needle = search.toLowerCase();
-    if (!needle) return imageRows;
-    return imageRows.filter(
+    if (!needle) return orderedRows;
+    return orderedRows.filter(
       (img) =>
         img.repos.some((repo) => repo.toLowerCase().includes(needle)) ||
         img.tags.some((tag) => tag.toLowerCase().includes(needle)) ||
         img.shortId.toLowerCase().includes(needle),
     );
-  }, [imageRows, search]);
+  }, [orderedRows, search]);
 
   // Compute effective selection - only include items that are in the filtered list
   const effectiveSelected = useMemo(() => {
@@ -463,25 +480,19 @@ const ImageList = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((image) => (
-              <AppGrid
-                key={image.id}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 3,
-                }}
-              >
-                <DockerImageCard
-                  image={image}
-                  onSelect={(checked) => handleSelectOne(image.id, checked)}
-                  selected={effectiveSelected.has(image.id)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getImageRowId}
+            items={filtered}
+            renderItem={(image) => (
+              <DockerImageCard
+                image={image}
+                onSelect={(checked) => handleSelectOne(image.id, checked)}
+                selected={effectiveSelected.has(image.id)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            surface={surface}
+          />
         ) : (
           <div
             style={{
@@ -500,6 +511,7 @@ const ImageList = ({
           ariaLabel="Docker images"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}

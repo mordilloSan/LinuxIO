@@ -17,6 +17,7 @@ import {
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type {
@@ -34,7 +35,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
@@ -42,6 +42,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -1180,6 +1182,15 @@ const SharesPage = () => {
       ),
     [nfsShares, sambaShares],
   );
+  const sharesSurface = useReorderableSurface({
+    getId: getShareGroupId,
+    items: shareGroups,
+    surface: "shares",
+  });
+  const sharesTableDnd = useReorderableTableDnd<ShareGroup, ShareGroup>({
+    handleAriaLabel: "Reorder share",
+    surface: sharesSurface,
+  });
   const renderShareExpandedContent = useCallback<
     NonNullable<AppDataTableProps<ShareGroup>["renderExpandedContent"]>
   >(
@@ -1222,26 +1233,27 @@ const SharesPage = () => {
     >
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {shareGroups.map((group) => (
-              <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
-                <FolderShareCard
-                  actions={
-                    <FolderShareCardActions
-                      group={group}
-                      onDeleteNFS={(share) => setDeletingNFS(share)}
-                      onDeleteSamba={(share) => setDeletingSamba(share)}
-                      onEditShare={(shareGroup) => setEditingShare(shareGroup)}
-                    />
-                  }
-                  comment={group.comment}
-                  name={group.name}
-                  path={group.path}
-                  protocolSummary={renderProtocolSummary(group)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getShareGroupId}
+            renderItem={(group) => (
+              <FolderShareCard
+                actions={
+                  <FolderShareCardActions
+                    group={group}
+                    onDeleteNFS={(share) => setDeletingNFS(share)}
+                    onDeleteSamba={(share) => setDeletingSamba(share)}
+                    onEditShare={(shareGroup) => setEditingShare(shareGroup)}
+                  />
+                }
+                comment={group.comment}
+                name={group.name}
+                path={group.path}
+                protocolSummary={renderProtocolSummary(group)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            surface={sharesSurface}
+          />
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 24 }}>
             <AppTypography color="text.secondary" variant="body2">
@@ -1253,7 +1265,8 @@ const SharesPage = () => {
         <AppDataTable
           ariaLabel="Folder shares"
           columns={tableColumns}
-          data={shareGroups}
+          data={sharesSurface.items}
+          dnd={sharesTableDnd}
           emptyMessage="No shares configured. Add a folder share to get started."
           fillAvailable
           getRowId={getShareGroupId}

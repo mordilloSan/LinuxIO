@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Timer } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import { formatUsec } from "./unitFormatters";
 import {
@@ -18,6 +19,7 @@ interface TimerCardsViewProps {
   onExpand: (name: string | null) => void;
   renderDetailPanel: (timer: Timer) => ReactNode;
   timers: Timer[];
+  surface: ReorderableSurface<Timer>;
 }
 
 const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
@@ -84,11 +86,13 @@ const TimerCardsView = ({
   expanded,
   onExpand,
   renderDetailPanel,
+  surface,
 }: TimerCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No timers found."
     expanded={expanded}
     items={timers}
+    surface={surface}
     onExpand={onExpand}
     renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
     renderBottomPanel={(timer) => (

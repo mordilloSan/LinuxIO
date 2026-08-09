@@ -71,12 +71,19 @@ const TimersTab = ({
       data={data}
       matchesSearch={matchesTimerSearch}
       onSelectedChange={onSelectedChange}
-      renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
+      renderCardsView={({
+        items,
+        expanded,
+        onExpand,
+        renderDetailPanel,
+        surface,
+      }) => (
         <TimerCardsView
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
           timers={items}
+          surface={surface}
         />
       )}
       renderDetailPanel={(timer, onClose) => (
@@ -86,17 +93,25 @@ const TimersTab = ({
           unitName={timer.name}
         />
       )}
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+      renderTableView={({
+        items,
+        selected,
+        onSelect,
+        onDoubleClick,
+        surface,
+      }) => (
         <TimerTableView
           onDoubleClick={onDoubleClick}
           onSelect={onSelect}
           selected={selected}
           timers={items}
+          surface={surface}
         />
       )}
       searchPlaceholder="Search timers…"
       selected={selected}
       setViewMode={onViewModeChange}
+      surfaceId="timers.list"
       viewMode={viewMode}
     />
   );

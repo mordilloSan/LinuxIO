@@ -1,3 +1,10 @@
+import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import { flexRender, useTable } from "@tanstack/react-table";
 import type {
@@ -38,6 +45,10 @@ import type {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import {
+  REORDER_HOLD_MS,
+  type ReorderableSurfaceDndProps,
+} from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_STANDARD_CSS,
@@ -47,6 +58,7 @@ import {
 import { alpha } from "@/utils/color";
 
 import "./app-virtual-data-table.css";
+import "../reorder/reorder.css";
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
@@ -57,12 +69,27 @@ export type AppVirtualDataTableColumnDef<
   TValue = unknown,
 > = AppDataTableColumnDef<TData, TValue>;
 
+export interface AppVirtualDataTableDndOptions<TData extends RowData> {
+  contextProps: ReorderableSurfaceDndProps;
+  getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
+  itemIds: UniqueIdentifier[];
+  editing?: boolean;
+  enabled?: boolean;
+  pendingItemId?: UniqueIdentifier | null;
+}
+
 export interface AppVirtualDataTableProps<TData extends RowData> {
   ariaLabel?: string;
   className?: string;
   columns: AppVirtualDataTableColumnDef<TData, unknown>[];
   data: TData[];
   density?: "comfortable" | "compact";
+  /**
+   * Hold-to-reorder wiring from `useReorderableTableDnd`. Virtualized rows drag
+   * from the row body — there is no handle column, so the column template stays
+   * identical whether or not layout mode is open.
+   */
+  dnd?: AppVirtualDataTableDndOptions<TData>;
   emptyMessage?: string;
   estimateExpandedRowHeight?: number;
   enableSorting?: boolean;
@@ -213,8 +240,50 @@ const MemoizedAppVirtualDataTableCell = memo(
     areCellRenderKeysEqual(previous.renderKey, next.renderKey),
 ) as typeof AppVirtualDataTableCell;
 
+/**
+ * Sortable wiring for one virtualized row. The virtualizer owns the outer
+ * wrapper's translateY, so the drag transform goes on the inner row instead of
+ * fighting it.
+ *
+ * Only mounted rows are drop targets — dnd-kit cannot see what virtualization
+ * has unmounted — so long lists are reordered by dragging in steps, scrolling
+ * as you go.
+ */
+function useVirtualRowReorder<TData extends RowData>(
+  dnd: AppVirtualDataTableDndOptions<TData> | undefined,
+  row: Row<AppTableFeatures, TData>,
+) {
+  const isArmed = Boolean(dnd) && dnd?.enabled !== false;
+  const itemId = dnd?.getItemId(row);
+  const { isDragging, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: itemId ?? row.id, disabled: !isArmed });
+
+  if (!dnd || !isArmed) {
+    return {
+      isReorderEditing: false,
+      isReorderPending: false,
+      reorderListeners: undefined,
+      reorderStyle: undefined,
+      setReorderNodeRef: undefined,
+    } as const;
+  }
+
+  return {
+    isReorderEditing: dnd.editing ?? false,
+    isReorderPending: dnd.pendingItemId != null && dnd.pendingItemId === itemId,
+    reorderListeners: listeners,
+    reorderStyle: {
+      opacity: isDragging ? 0.45 : undefined,
+      transform: CSS.Transform.toString(transform) || undefined,
+      transition: transition || undefined,
+    } as CSSProperties,
+    setReorderNodeRef: setNodeRef,
+  } as const;
+}
+
 interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
   canExpand: boolean;
+  dnd?: AppVirtualDataTableDndOptions<TData>;
   // Invalidate a memoized row when same-ID columns replace their renderer or
   // metadata; the row reads the actual visible cells from TanStack Table.
   columnVersion: AppVirtualDataTableColumnDef<TData, unknown>[];
@@ -244,6 +313,7 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
 
 function AppVirtualDataTableBodyRow<TData extends RowData>({
   canExpand,
+  dnd,
   getRowAttributes,
   hasExpandColumn,
   isExpanded,
@@ -260,6 +330,13 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   virtualIndex,
 }: AppVirtualDataTableBodyRowProps<TData>) {
   const rowAttributes = getRowAttributes?.(row);
+  const {
+    isReorderEditing,
+    isReorderPending,
+    reorderListeners,
+    reorderStyle,
+    setReorderNodeRef,
+  } = useVirtualRowReorder(dnd, row);
   const rowAttributeOnClick = rowAttributes?.onClick;
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
@@ -272,13 +349,17 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
       style={{ transform: `translateY(${start}px)` }}
     >
       <div
+        {...reorderListeners}
         {...rowAttributes}
+        ref={setReorderNodeRef}
         className={[
           "app-vdt__row",
           "app-vdt__row--body",
           isInteractive && "app-vdt__row--interactive",
           isSelected && "app-vdt__row--selected",
           rowIndex % 2 === 1 && "app-vdt__row--alt",
+          isReorderPending && "app-vdt__row--reorder-pending",
+          isReorderEditing && "app-vdt__row--reordering",
           rowAttributes?.className,
         ]
           .filter(Boolean)
@@ -296,7 +377,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
           if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
         }}
         role="row"
-        style={rowAttributes?.style}
+        style={{ ...rowAttributes?.style, ...reorderStyle }}
       >
         {row.getVisibleCells().map((cell) => (
           <MemoizedAppVirtualDataTableCell
@@ -366,6 +447,7 @@ function AppVirtualDataTable<TData extends RowData>({
   columns,
   data,
   density = "comfortable",
+  dnd,
   emptyMessage = "No data available.",
   estimateExpandedRowHeight = 0,
   enableSorting = false,
@@ -441,6 +523,8 @@ function AppVirtualDataTable<TData extends RowData>({
 
   const resolvedExpanded = expanded ?? internalExpanded;
   const resolvedSorting = sorting ?? internalSorting;
+  // A column sort already owns the row order; see AppDataTable for the reasoning.
+  const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
 
   const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
     if (expanded === undefined) {
@@ -757,7 +841,7 @@ function AppVirtualDataTable<TData extends RowData>({
     virtualizer.scrollToIndex(scrollToIndex, { align: "auto" });
   }, [rows.length, scrollToIndex, virtualizer]);
 
-  return (
+  const content = (
     <div
       className={[
         "app-vdt",
@@ -777,6 +861,8 @@ function AppVirtualDataTable<TData extends RowData>({
           "--app-vdt-head-bg": headRowBg,
           "--app-vdt-hover-bg": hoverBg,
           "--app-vdt-selected-bg": selectedBg,
+          "--reorder-hold-color": theme.palette.primary.main,
+          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,
           height: height ?? (fillAvailable ? "100%" : undefined),
           maxHeight,
@@ -914,6 +1000,7 @@ function AppVirtualDataTable<TData extends RowData>({
               <MemoizedAppVirtualDataTableBodyRow
                 canExpand={row.getCanExpand()}
                 columnVersion={columns}
+                dnd={dndOptions}
                 getRowAttributes={getRowAttributes}
                 hasExpandColumn={hasExpandColumn}
                 isExpanded={isExpanded}
@@ -943,6 +1030,19 @@ function AppVirtualDataTable<TData extends RowData>({
         )}
       </div>
     </div>
+  );
+
+  if (!dndOptions) return content;
+
+  return (
+    <DndContext {...dndOptions.contextProps}>
+      <SortableContext
+        items={dndOptions.itemIds}
+        strategy={verticalListSortingStrategy}
+      >
+        {content}
+      </SortableContext>
+    </DndContext>
   );
 }
 

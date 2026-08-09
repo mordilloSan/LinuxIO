@@ -26,6 +26,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -416,6 +418,8 @@ const EditCIFSForm = ({
   );
 };
 
+const getCIFSMountId = (mount: CIFSMount) => mount.mountpoint;
+
 const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: cifsReason, status: cifsStatus } = useCapability(
@@ -485,6 +489,15 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   );
 
   const mountsList = Array.isArray(mounts) ? mounts : [];
+  const surface = useReorderableSurface({
+    getId: getCIFSMountId,
+    items: mountsList,
+    surface: "shares.mounts.cifs",
+  });
+  const tableDnd = useReorderableTableDnd<CIFSMount, CIFSMount>({
+    handleAriaLabel: "Reorder SMB mount",
+    surface,
+  });
 
   const columns = useMemo<AppDataTableColumnDef<CIFSMount>[]>(
     () => [
@@ -701,7 +714,8 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
       <AppDataTable
         ariaLabel="SMB mounts"
         columns={columns}
-        data={mountsList}
+        data={surface.items}
+        dnd={tableDnd}
         emptyMessage="No SMB entries found. Click 'Mount SMB' to add one."
         getRowId={(mount) => mount.mountpoint}
         renderExpandedContent={({ original: mount }) => (

@@ -3,6 +3,8 @@ import { useCallback } from "react";
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppTheme } from "@/theme";
 
 import UnitStatusDot from "./UnitStatusDot";
@@ -13,6 +15,7 @@ interface SocketTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   sockets: Socket[];
+  surface: ReorderableSurface<Socket>;
 }
 
 const desktopColumns = [
@@ -102,6 +105,7 @@ const renderSocketMobileExpandedContent = (socket: Socket) => (
 );
 
 const SocketTableView = ({
+  surface,
   sockets,
   selected,
   onSelect,
@@ -121,8 +125,11 @@ const SocketTableView = ({
     [onSelect],
   );
 
+  const dnd = useVirtualReorderableTableDnd<Socket, Socket>({ surface });
+
   return (
     <UnitTableView
+      dnd={dnd}
       data={sockets}
       desktopColumns={desktopColumns}
       emptyMessage="No sockets found."

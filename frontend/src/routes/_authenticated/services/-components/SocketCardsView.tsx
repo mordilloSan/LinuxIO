@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import {
   DetailRow,
@@ -17,6 +18,7 @@ interface SocketCardsViewProps {
   onExpand: (name: string | null) => void;
   renderDetailPanel: (socket: Socket) => ReactNode;
   sockets: Socket[];
+  surface: ReorderableSurface<Socket>;
 }
 
 const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
@@ -84,11 +86,13 @@ const SocketCardsView = ({
   expanded,
   onExpand,
   renderDetailPanel,
+  surface,
 }: SocketCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No sockets found."
     expanded={expanded}
     items={sockets}
+    surface={surface}
     onExpand={onExpand}
     renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
     renderBottomPanel={(socket) => (

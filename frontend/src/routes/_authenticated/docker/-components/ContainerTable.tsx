@@ -1009,7 +1009,8 @@ interface ContainerTableProps {
   autoUpdateSelectedNames: Set<string>;
   checkingUpdates?: boolean;
   containers: ContainerInfo[];
-  editMode?: boolean;
+  /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
+  dnd?: AppDataTableDndOptions<ContainerInfo>;
   onSelectContainer?: (containerId: string) => void;
   onToggleAutoUpdate: (name: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
@@ -1027,7 +1028,7 @@ const ContainerTable = ({
   autoUpdateSelectedNames,
   checkingUpdates = false,
   containers,
-  editMode = false,
+  dnd,
   onSelectContainer,
   onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
@@ -1357,17 +1358,7 @@ const ContainerTable = ({
       toggleExpanded,
     ],
   );
-  const dnd = useMemo<AppDataTableDndOptions<ContainerInfo> | undefined>(
-    () =>
-      editMode
-        ? {
-            getItemId: (row) => row.original.Id,
-            handleAriaLabel: "Reorder container",
-            handleColumnWidth: 28,
-          }
-        : undefined,
-    [editMode],
-  );
+  const editMode = dnd?.editing ?? false;
 
   return (
     <>
@@ -1416,7 +1407,7 @@ const areContainerTablePropsEqual = (
   previous.autoUpdateDisabled === next.autoUpdateDisabled &&
   previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&
-  previous.editMode === next.editMode &&
+  previous.dnd === next.dnd &&
   previous.onSelectContainer === next.onSelectContainer &&
   previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
   areStringSetsEqual(

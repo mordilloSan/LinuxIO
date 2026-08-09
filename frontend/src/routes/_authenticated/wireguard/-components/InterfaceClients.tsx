@@ -5,9 +5,11 @@ import { CACHE_TTL_MS, linuxio, type Peer } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 const WIREGUARD_TOAST_META = {
@@ -27,6 +29,9 @@ interface PeerIdentity {
 
 export const selectPeerIdentities = (peers: Peer[]): PeerIdentity[] =>
   peers.map((peer) => ({ name: peer.name }));
+
+const EMPTY_PEER_IDENTITIES: { name: string }[] = [];
+const getPeerId = (peer: { name: string }) => peer.name;
 
 const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
@@ -88,6 +93,13 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
       },
     ),
   );
+  // Peers are per interface, so the saved order is too.
+  const surface = useReorderableSurface({
+    getId: getPeerId,
+    items: peerIdentities ?? EMPTY_PEER_IDENTITIES,
+    surface: `wireguard.peers.${interfaceName}`,
+  });
+
   if (isLoading) return <PageLoader />;
   if (isError)
     return (
@@ -95,8 +107,8 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
     );
   return (
     <>
-      <AppGrid container spacing={3}>
-        {!peerIdentities || peerIdentities.length === 0 ? (
+      {!peerIdentities || peerIdentities.length === 0 ? (
+        <AppGrid container spacing={3}>
           <AppGrid
             size={{
               xs: 6,
@@ -108,25 +120,26 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
           >
             <AppTypography>No peers found for this interface.</AppTypography>
           </AppGrid>
-        ) : (
-          peerIdentities.map((peer, idx) => (
-            <AppGrid
-              key={peer.name || idx}
-              size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
-            >
-              <WireguardPeerCard
-                interfaceName={interfaceName}
-                onDelete={handleDeletePeer}
-                onDownloadConfig={(peerName) =>
-                  downloadConfig({ interfaceName, peerName })
-                }
-                onViewQrCode={setQrPeer}
-                peerName={peer.name}
-              />
-            </AppGrid>
-          ))
-        )}
-      </AppGrid>
+        </AppGrid>
+      ) : (
+        <ReorderableCardGrid
+          getId={getPeerId}
+          renderItem={(peer) => (
+            <WireguardPeerCard
+              interfaceName={interfaceName}
+              onDelete={handleDeletePeer}
+              onDownloadConfig={(peerName) =>
+                downloadConfig({ interfaceName, peerName })
+              }
+              onViewQrCode={setQrPeer}
+              peerName={peer.name}
+            />
+          )}
+          size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+          spacing={3}
+          surface={surface}
+        />
+      )}
 
       <GeneralDialog onClose={() => setQrPeer(null)} open={qrPeer !== null}>
         <AppDialogContent>

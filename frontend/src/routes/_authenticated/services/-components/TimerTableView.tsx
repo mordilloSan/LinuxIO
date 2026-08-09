@@ -2,6 +2,8 @@ import { useCallback } from "react";
 
 import type { Timer } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import { formatUsec } from "./unitFormatters";
 import UnitStatusDot from "./UnitStatusDot";
@@ -12,6 +14,7 @@ interface TimerTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   timers: Timer[];
+  surface: ReorderableSurface<Timer>;
 }
 
 const desktopColumns = [
@@ -74,6 +77,7 @@ const renderTimerMobileExpandedContent = (timer: Timer) => (
 );
 
 const TimerTableView = ({
+  surface,
   timers,
   selected,
   onSelect,
@@ -93,8 +97,11 @@ const TimerTableView = ({
     [onSelect],
   );
 
+  const dnd = useVirtualReorderableTableDnd<Timer, Timer>({ surface });
+
   return (
     <UnitTableView
+      dnd={dnd}
       data={timers}
       desktopColumns={desktopColumns}
       emptyMessage="No timers found."

@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { linuxio, type DockerNetworkContainer } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -17,13 +18,14 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -348,6 +350,8 @@ const DeleteNetworkDialog = ({
   );
 };
 
+const getNetworkId = (network: { Id: string }) => network.Id;
+
 const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -365,7 +369,16 @@ const NetworkList = ({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const filtered = networks.filter((net) =>
+  const surface = useReorderableSurface({
+    getId: getNetworkId,
+    items: networks,
+    surface: "docker.networks",
+  });
+  const tableDnd = useReorderableTableDnd<
+    (typeof networks)[number],
+    (typeof networks)[number]
+  >({ handleAriaLabel: "Reorder network", surface });
+  const filtered = surface.items.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -642,17 +655,19 @@ const NetworkList = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((network) => (
-              <AppGrid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <NetworkCard
-                  network={network}
-                  onSelect={(checked) => handleSelectOne(network.Id, checked)}
-                  selected={effectiveSelected.has(network.Id)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getNetworkId}
+            items={filtered}
+            renderItem={(network) => (
+              <NetworkCard
+                network={network}
+                onSelect={(checked) => handleSelectOne(network.Id, checked)}
+                selected={effectiveSelected.has(network.Id)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            surface={surface}
+          />
         ) : (
           <div
             style={{
@@ -671,6 +686,7 @@ const NetworkList = ({
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}

@@ -8,6 +8,7 @@ import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
@@ -15,6 +16,7 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { cardHeight } from "@/theme/constants";
 
 import {
@@ -51,6 +53,18 @@ export const selectVisibleSensorGroupIdentities = (groups: SensorGroup[]) =>
       : [];
   });
 
+const SYSTEM_INFO_CARDS = [
+  { id: "motherboard", component: MotherboardInfoCard },
+  { id: "cpu-details", component: CPUDetailsCard },
+  { id: "bios", component: BIOSInfoCard },
+  { id: "gpu-details", component: GPUInfoCard },
+];
+
+const getSystemInfoCardId = (card: { id: string }) => card.id;
+
+const getSensorGroupId = (group: { adapter: string; sourceIndex: number }) =>
+  `${group.adapter}-${group.sourceIndex}`;
+
 function SensorReadings() {
   const { data: visibleSensorGroups } = useSuspenseQuery(
     linuxio.system.get_sensor_info.queryOptions({
@@ -66,6 +80,12 @@ function SensorReadings() {
       0,
     ),
   };
+
+  const sensorSurface = useReorderableSurface({
+    getId: getSensorGroupId,
+    items: visibleSensorGroups,
+    surface: "hardware.sensors",
+  });
 
   if (visibleSensorGroups.length === 0) return <SensorEmptyCard />;
 
@@ -85,27 +105,18 @@ function SensorReadings() {
           variant="soft"
         />
       </div>
-      <AppGrid
-        alignItems="stretch"
-        container
-        spacing={2}
-        style={{ marginBottom: 16 }}
-      >
-        {visibleSensorGroups.map(
-          ({ adapter, sourceIndex, visibleReadingCount }) => (
-            <AppGrid
-              key={`${adapter}-${sourceIndex}`}
-              size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
-            >
-              <SensorGroupCard
-                adapter={adapter}
-                sourceIndex={sourceIndex}
-                visibleReadingCount={visibleReadingCount}
-              />
-            </AppGrid>
-          ),
+      <ReorderableCardGrid
+        getId={getSensorGroupId}
+        renderItem={({ adapter, sourceIndex, visibleReadingCount }) => (
+          <SensorGroupCard
+            adapter={adapter}
+            sourceIndex={sourceIndex}
+            visibleReadingCount={visibleReadingCount}
+          />
         )}
-      </AppGrid>
+        size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
+        surface={sensorSurface}
+      />
     </>
   );
 }
@@ -233,6 +244,12 @@ const HardwarePage = () => {
   const [historyRange, setHistoryRange] =
     useState<HardwareHistoryRangeId>("1h");
 
+  const systemInfoSurface = useReorderableSurface({
+    getId: getSystemInfoCardId,
+    items: SYSTEM_INFO_CARDS,
+    surface: "hardware.systemInfo",
+  });
+
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
   const sections = resolvedHardwareSections(hwSections);
@@ -265,27 +282,19 @@ const HardwarePage = () => {
       />
       <div id="hardware-system-info-panel">
         <AppCollapse in={sections.systemInfo} unmountOnExit>
-          <AppGrid
-            alignItems="stretch"
-            container
+          <ReorderableCardGrid
+            getId={getSystemInfoCardId}
+            renderItem={({ component: CardComponent }) => (
+              <ErrorBoundary>
+                <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
+                  <CardComponent />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+            size={{ xs: 12, md: 6, xl: 3 }}
             spacing={4}
-            style={{ marginBottom: 16 }}
-          >
-            {[
-              { id: "motherboard", component: MotherboardInfoCard },
-              { id: "cpu-details", component: CPUDetailsCard },
-              { id: "bios", component: BIOSInfoCard },
-              { id: "gpu-details", component: GPUInfoCard },
-            ].map(({ id, component: CardComponent }) => (
-              <AppGrid key={id} size={{ xs: 12, md: 6, xl: 3 }}>
-                <ErrorBoundary>
-                  <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
-                    <CardComponent />
-                  </Suspense>
-                </ErrorBoundary>
-              </AppGrid>
-            ))}
-          </AppGrid>
+            surface={systemInfoSurface}
+          />
         </AppCollapse>
       </div>
 

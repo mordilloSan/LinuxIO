@@ -9,11 +9,11 @@ import {
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -21,6 +21,8 @@ import {
   getComposeStatusColor,
   getContainerStatusColor,
 } from "@/constants/statusColors";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -87,6 +89,8 @@ const getTotalContainers = (project: ComposeProject) => {
   );
 };
 
+const getComposeProjectId = (project: ComposeProject) => project.name;
+
 const ComposeList = ({
   projects,
   onStart,
@@ -106,14 +110,24 @@ const ComposeList = ({
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const surface = useReorderableSurface({
+    getId: getComposeProjectId,
+    items: projects,
+    surface: "docker.stacks",
+  });
+  const tableDnd = useReorderableTableDnd<ComposeProject, ComposeProject>({
+    handleAriaLabel: "Reorder stack",
+    surface,
+  });
+  const orderedProjects = surface.items;
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) return projects;
+    if (!normalizedSearch) return orderedProjects;
 
-    return projects.filter((project) =>
+    return orderedProjects.filter((project) =>
       project.name.toLowerCase().includes(normalizedSearch),
     );
-  }, [projects, search]);
+  }, [orderedProjects, search]);
   const containersByProject = useMemo(() => {
     return new Map(
       projects.map((project) => [
@@ -836,29 +850,23 @@ const ComposeList = ({
             </AppTypography>
           </div>
         ) : (
-          <AppGrid container spacing={2}>
-            {filtered.map((project) => (
-              <AppGrid
-                key={project.name}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 2,
-                }}
-              >
-                <ComposeStackCard
-                  isLoading={isLoading || isUpdatingContainer}
-                  onDelete={onDelete}
-                  onEdit={onEdit}
-                  onRestart={onRestart}
-                  onStart={onStart}
-                  onStop={onStop}
-                  project={project}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getComposeProjectId}
+            items={filtered}
+            renderItem={(project) => (
+              <ComposeStackCard
+                isLoading={isLoading || isUpdatingContainer}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                onRestart={onRestart}
+                onStart={onStart}
+                onStop={onStop}
+                project={project}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            surface={surface}
+          />
         )}
         {containerDialogs}
       </div>
@@ -878,6 +886,7 @@ const ComposeList = ({
         ariaLabel="Docker compose stacks"
         columns={columns}
         data={filtered}
+        dnd={tableDnd}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
         getRowId={(project) => project.name}
         renderExpandedContent={({ original: project }) =>

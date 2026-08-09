@@ -11,6 +11,8 @@ import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
@@ -29,6 +31,8 @@ interface UsersTabProps {
   setViewMode?: (next: "table" | "card") => void;
   viewMode?: "table" | "card";
 }
+const getAccountUserId = (user: AccountUser) => user.username;
+
 const UsersTab = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -80,7 +84,16 @@ const UsersTab = ({
     setCreateDialogOpen(true);
   }, []);
   useRegisterCreateHandler(onMountCreateHandler, handleCreateUser);
-  const filtered = usersList.filter(
+  const surface = useReorderableSurface({
+    getId: getAccountUserId,
+    items: usersList,
+    surface: "accounts.users",
+  });
+  const tableDnd = useReorderableTableDnd<AccountUser, AccountUser>({
+    handleAriaLabel: "Reorder user",
+    surface,
+  });
+  const filtered = surface.items.filter(
     (user) =>
       user.username.toLowerCase().includes(search.toLowerCase()) ||
       user.gecos.toLowerCase().includes(search.toLowerCase()) ||
@@ -397,6 +410,7 @@ const UsersTab = ({
           onSelect={setSelectedUsername}
           onToggleLock={handleToggleLock}
           selectedUser={detailUser}
+          surface={surface}
           users={filtered}
         />
       ) : (
@@ -404,6 +418,7 @@ const UsersTab = ({
           ariaLabel="Users"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No users found."
           fillAvailable
           getRowId={(user) => user.username}

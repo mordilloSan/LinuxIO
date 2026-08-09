@@ -5,6 +5,7 @@ import type { Service } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import { formatBytes } from "./unitFormatters";
 import {
@@ -19,6 +20,7 @@ interface ServiceCardsViewProps {
   onExpand: (name: string | null) => void;
   renderDetailPanel: (service: Service) => ReactNode;
   services: Service[];
+  surface: ReorderableSurface<Service>;
 }
 
 const ServiceStatusRows = memo<{ service: Service }>(({ service }) => (
@@ -107,11 +109,13 @@ const ServiceCardsView = ({
   expanded,
   onExpand,
   renderDetailPanel,
+  surface,
 }: ServiceCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No services found."
     expanded={expanded}
     items={services}
+    surface={surface}
     onExpand={onExpand}
     renderActions={(service) => <ServiceActionsWrapper service={service} />}
     renderBottomPanel={(service) => (

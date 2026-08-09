@@ -5,8 +5,11 @@ import { useCallback, useEffect, useRef, type MouseEvent } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
+import SortableCard from "@/components/cards/SortableCard";
+import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
@@ -175,6 +178,10 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   );
 };
 
+// A press in layout mode belongs to the drag, not to expanding the interface.
+const noopToggle = () => {};
+const getNetworkInterfaceId = (iface: { name: string }) => iface.name;
+
 const NetworkInterfaceList = () => {
   const search = networkRouteApi.useSearch();
   const navigate = networkRouteApi.useNavigate();
@@ -228,61 +235,74 @@ const NetworkInterfaceList = () => {
 
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const selectedIface = interfaces.find((iface) => iface.name === expanded);
+  const surface = useReorderableSurface({
+    getId: getNetworkInterfaceId,
+    items: interfaces,
+    surface: "network.interfaces",
+  });
 
   return (
     <div>
-      <AppGrid container spacing={4}>
-        <AnimatePresence>
-          {interfaces.map((iface) =>
-            expanded && expanded !== iface.name ? null : (
+      <ReorderableArea surface={surface}>
+        <AppGrid container spacing={4}>
+          <AnimatePresence>
+            {surface.items.map((iface) =>
+              expanded && expanded !== iface.name ? null : (
+                <AppGrid
+                  animate={{ opacity: 1, scale: 1 }}
+                  component={motion.div}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  key={iface.name}
+                  layout
+                  size={
+                    expanded === iface.name
+                      ? { xs: 12, md: 4, lg: 3 }
+                      : { xs: 12, sm: 6, md: 4, lg: 2 }
+                  }
+                  transition={{
+                    duration: slowTransitionDurationSeconds,
+                    ease: EASING_STANDARD,
+                  }}
+                >
+                  <SortableCard
+                    editMode={surface.editMode}
+                    id={iface.name}
+                    pending={surface.pendingId === iface.name}
+                  >
+                    <NetworkInterfaceCard
+                      expanded={expanded === iface.name}
+                      name={iface.name}
+                      onClose={handleClose}
+                      onToggle={surface.editMode ? noopToggle : handleToggle}
+                      type={iface.type}
+                    />
+                  </SortableCard>
+                </AppGrid>
+              ),
+            )}
+
+            {/* Traffic graphs — appear on the right when a NIC is selected */}
+            {selectedIface && (
               <AppGrid
-                animate={{ opacity: 1, scale: 1 }}
+                animate={{ opacity: 1, x: 0 }}
                 component={motion.div}
-                exit={{ opacity: 0, scale: 0.9 }}
-                initial={{ opacity: 0, scale: 0.95 }}
-                key={iface.name}
-                layout
-                size={
-                  expanded === iface.name
-                    ? { xs: 12, md: 4, lg: 3 }
-                    : { xs: 12, sm: 6, md: 4, lg: 2 }
-                }
+                exit={{ opacity: 0, x: 40 }}
+                initial={{ opacity: 0, x: 40 }}
+                key="traffic-graphs"
+                size={{ xs: 12, md: 8, lg: 9 }}
                 transition={{
                   duration: slowTransitionDurationSeconds,
+                  delay: 0.05,
                   ease: EASING_STANDARD,
                 }}
               >
-                <NetworkInterfaceCard
-                  expanded={expanded === iface.name}
-                  name={iface.name}
-                  onClose={handleClose}
-                  onToggle={handleToggle}
-                  type={iface.type}
-                />
+                <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
               </AppGrid>
-            ),
-          )}
-
-          {/* Traffic graphs — appear on the right when a NIC is selected */}
-          {selectedIface && (
-            <AppGrid
-              animate={{ opacity: 1, x: 0 }}
-              component={motion.div}
-              exit={{ opacity: 0, x: 40 }}
-              initial={{ opacity: 0, x: 40 }}
-              key="traffic-graphs"
-              size={{ xs: 12, md: 8, lg: 9 }}
-              transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.05,
-                ease: EASING_STANDARD,
-              }}
-            >
-              <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
-            </AppGrid>
-          )}
-        </AnimatePresence>
-      </AppGrid>
+            )}
+          </AnimatePresence>
+        </AppGrid>
+      </ReorderableArea>
     </div>
   );
 };
