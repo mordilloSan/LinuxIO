@@ -1,8 +1,8 @@
-import type { ElementType } from "react";
+import type { ComponentType } from "react";
 
 import type { RouteTarget } from "@/types/navigation";
 
 export type SidebarItem = RouteTarget & {
-  icon?: ElementType | string;
+  icon?: ComponentType | string;
   title: string;
 };

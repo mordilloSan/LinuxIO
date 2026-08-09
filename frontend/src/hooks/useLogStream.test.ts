@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
+import type { OpenLiveStreamOptions } from "@/hooks/useLiveStream";
 
 const streamRef: { current: Stream | null } = { current: null };
 
@@ -57,7 +58,7 @@ function createStream(overrides: Partial<Stream> = {}): Stream {
 }
 
 function setupOpenStream() {
-  let handlers: Parameters<typeof liveStreamMocks.openStream>[0] | undefined;
+  let handlers: OpenLiveStreamOptions | undefined;
   liveStreamMocks.openStream.mockImplementation((options) => {
     handlers = options;
     const opened = options.open();

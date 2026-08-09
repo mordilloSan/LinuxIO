@@ -17,7 +17,8 @@ export const Flags = {
 } as const;
 
 export type StreamStatus = "opening" | "open" | "closing" | "closed";
-export type StreamType = "terminal" | "container" | string;
+// Free-form by design: "terminal", "container", or a route name such as "tasks.watch".
+export type StreamType = string;
 
 // Forward declare types used in Stream interface (full definitions below)
 export interface ProgressFrame {

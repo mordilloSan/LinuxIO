@@ -14,7 +14,8 @@ import type { CSSProperties } from "react";
 
 export type AppDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
 
-export type AppDataTableCellRenderKey = unknown | readonly unknown[];
+/** A single value compared with Object.is, or a readonly array compared element-wise. */
+export type AppDataTableCellRenderKey = unknown;
 
 export interface AppDataTableColumnMeta {
   align?: "left" | "center" | "right";

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
-import { memo, type ElementType } from "react";
+import { memo } from "react";
 
 import type { SidebarItem } from "./types";
 
@@ -15,7 +15,7 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
       if (!icon) return null;
       if (typeof icon === "string")
         return <Icon height={24} icon={icon} width={24} />;
-      const IconComponent = icon as ElementType;
+      const IconComponent = icon;
       return <IconComponent />;
     };
 

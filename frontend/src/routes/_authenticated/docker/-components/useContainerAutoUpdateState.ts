@@ -201,7 +201,7 @@ export const useContainerAutoUpdateState = () => {
     }
     flushTimerRef.current = window.setTimeout(() => {
       flushTimerRef.current = undefined;
-      void runQueuedSave();
+      runQueuedSave();
     }, SAVE_DEBOUNCE_MS);
   };
 
@@ -249,7 +249,7 @@ export const useContainerAutoUpdateState = () => {
       );
     }
     queuedOptionsRef.current = nextOptions;
-    void runQueuedSave();
+    runQueuedSave();
   };
 
   return {

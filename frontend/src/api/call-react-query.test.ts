@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   type ActionConfig,
@@ -56,20 +56,16 @@ describe("generated Call and Task definitions", () => {
       : false = true;
     const callActionConfig: ActionConfig<ContainerIDRequest, void> = {
       success: (result, variables) => {
-        const typedResult: void = result;
-        const typedVariables: ContainerIDRequest = variables;
-        void typedResult;
-        void typedVariables;
+        expectTypeOf(result).toEqualTypeOf<void>();
+        expectTypeOf(variables).toEqualTypeOf<ContainerIDRequest>();
       },
     };
     const taskActionConfig: NonNullable<
       Parameters<typeof linuxio.docker.compose.useTaskAction>[0]
     > = {
       success: (result, variables) => {
-        const typedResult: ComposeTaskResult = result;
-        const typedVariables: DockerComposeRequest = variables;
-        void typedResult;
-        void typedVariables;
+        expectTypeOf(result).toEqualTypeOf<ComposeTaskResult>();
+        expectTypeOf(variables).toEqualTypeOf<DockerComposeRequest>();
       },
     };
 
