@@ -9,7 +9,6 @@ import {
   type CapabilitiesResponse,
   type CapabilityDef,
   type CapabilityErrorKey,
-  type CapabilityKey,
   type CapabilityValueKey,
   linuxio,
 } from "@/api";
@@ -83,14 +82,14 @@ const CapabilityManagerSection = () => {
       CAPABILITIES.map((item) => {
         const valueKey = `${item.wire}_available` as CapabilityValueKey;
         const errorKey = `${item.wire}_error` as CapabilityErrorKey;
-        const authValue = auth[item.state as CapabilityKey];
+        const authValue = auth[item.state];
         const value = latest?.[valueKey] ?? authValue;
         const status = getCapabilityStatus(value);
         const detail =
           latest?.[errorKey] ||
           (status === "available"
             ? item.readyText
-            : getCapabilityReason(item.state as CapabilityKey, status));
+            : getCapabilityReason(item.state, status));
         const installable = (item as CapabilityDef).installable;
 
         return {

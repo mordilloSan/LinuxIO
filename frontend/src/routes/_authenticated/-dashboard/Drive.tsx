@@ -13,7 +13,7 @@ import DriveGraph from "./DriveGraph";
 
 function parseSizeToBytes(input: string | undefined | null): number {
   if (!input) return 0;
-  const s = String(input).trim().toUpperCase();
+  const s = input.trim().toUpperCase();
 
   const m = s.match(/^([\d.]+)\s*([KMGTPE]?)(B)?$/);
   if (!m) return 0;

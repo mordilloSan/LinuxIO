@@ -83,9 +83,7 @@ const DockerFolderSettingsSection = () => {
     linuxio.docker.validate_stack_directory,
   );
   const dockerFolders = config.docker.folders;
-  const requireMountsForFolders = Boolean(
-    config.docker.requireMountsForFolders,
-  );
+  const requireMountsForFolders = config.docker.requireMountsForFolders;
   const setDockerFolders = useCallback(
     (folders: string[]) => updateConfig({ docker: { folders } }),
     [updateConfig],

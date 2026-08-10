@@ -179,15 +179,13 @@ const DriveDetails = ({
     type: TASK_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
     match: (task) => {
-      const metadata = task.metadata as { device?: string } | undefined;
-      return metadata?.device === rawDrive?.name;
+      return task.metadata?.device === rawDrive?.name;
     },
     onRecover: (task) => {
       const deviceName = rawDrive?.name;
       if (!deviceName) return;
-      const metadata = task.metadata as { testType?: string } | undefined;
       const testType: "short" | "long" =
-        metadata?.testType === "long" ? "long" : "short";
+        task.metadata?.testType === "long" ? "long" : "short";
       setStartPending(testType);
       setTestProgress({
         type: "status",
@@ -222,6 +220,7 @@ const DriveDetails = ({
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
   const smart = (rawDrive?.smart ?? drive.smart) as SmartData | undefined;
   const power = drive.power;
   const isNvme =
@@ -420,6 +419,7 @@ const DiskOverview = () => {
         vendor: d.vendor,
         serial: d.serial,
         ro: d.ro,
+        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
         smart: d.smart as SmartData | undefined,
         power: d.power,
       })),

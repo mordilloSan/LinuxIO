@@ -31,9 +31,7 @@ export const isCapabilityEnabled = (
   capability: boolean | null | undefined,
 ): boolean => capability === true;
 
-const capabilityByKey = new Map(
-  CAPABILITIES.map((c) => [c.state as CapabilityKey, c]),
-);
+const capabilityByKey = new Map(CAPABILITIES.map((c) => [c.state, c]));
 
 export const getCapabilityReason = (
   capability: CapabilityKey,

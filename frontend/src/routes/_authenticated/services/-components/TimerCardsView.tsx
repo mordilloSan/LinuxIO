@@ -47,7 +47,7 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
       </DetailRow>
       <DetailRow label="Unit">
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-          {String(info?.Unit ?? timer.unit ?? "—")}
+          {info?.Unit ?? timer.unit ?? "—"}
         </span>
       </DetailRow>
       <DetailRow label="Next">

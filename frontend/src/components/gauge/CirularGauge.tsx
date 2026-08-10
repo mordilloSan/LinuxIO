@@ -108,7 +108,7 @@ export const MultiValueCircularGauge = ({
           percentage: Math.round(percentage),
           strokeDasharray,
           rotation,
-        } as Seg);
+        });
         return { list: acc.list, offset: acc.offset + degrees + gap };
       },
       { list: [] as Seg[], offset: 0 },

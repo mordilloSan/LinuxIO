@@ -30,7 +30,7 @@ export function withProps<P extends { children?: ReactNode }>(
   provider: ComponentType<P>,
   props: Omit<P, "children"> & { key?: Key },
 ): ProviderEntry {
-  return [provider as ProviderComponent, props as ProviderProps];
+  return [provider as ProviderComponent, props];
 }
 
 /**

@@ -120,7 +120,7 @@ describe("ToastProvider", () => {
     expect(screen.getByTestId("history")).not.toHaveTextContent("older");
   });
 
-  it("coerces invalid stored titles and ignores malformed storage", () => {
+  it("sanitizes stored history and ignores malformed entries", () => {
     localStorage.setItem(
       "linuxio.toastHistory",
       JSON.stringify([
@@ -129,12 +129,27 @@ describe("ToastProvider", () => {
           id: "bad-title",
           title: { not: "text" },
         },
+        {
+          createdAt: "2",
+          description: 123,
+          id: 7,
+          meta: "invalid",
+          title: 42,
+          type: "invalid",
+        },
+        {
+          createdAt: 3,
+          id: { invalid: true },
+          title: "discarded",
+        },
       ]),
     );
 
     renderProvider();
 
     expect(screen.getByTestId("history")).toHaveTextContent("Notification");
+    expect(screen.getByTestId("history")).toHaveTextContent("42:::");
+    expect(screen.getByTestId("history")).not.toHaveTextContent("discarded");
   });
 
   it("clears persisted history, dismisses active toasts, and ignores current active toast ids", async () => {

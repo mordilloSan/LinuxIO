@@ -26,30 +26,63 @@ const sessionId = `${Date.now().toString(36)}-${
 }`;
 const ignoredToastIds = new Set<string>();
 
+const storedToastTypes = [
+  "normal",
+  "action",
+  "success",
+  "info",
+  "warning",
+  "error",
+  "loading",
+  "default",
+] as const satisfies readonly NonNullable<ToastT["type"]>[];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const isStoredToastType = (
+  value: unknown,
+): value is NonNullable<ToastT["type"]> =>
+  typeof value === "string" &&
+  storedToastTypes.some((toastType) => toastType === value);
+
 const parseStoredHistory = (): ToastHistoryItem[] => {
   if (!isBrowser) return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter((item) => item && typeof item === "object")
-      .map((item) => {
-        const rawTitle = (item as ToastHistoryItem).title;
-        return {
-          id: (item as ToastHistoryItem).id,
-          title:
-            typeof rawTitle === "string" || typeof rawTitle === "number"
-              ? String(rawTitle)
-              : "Notification",
-          description: (item as ToastHistoryItem).description || undefined,
-          type: (item as ToastHistoryItem).type,
-          createdAt: Number((item as ToastHistoryItem).createdAt || Date.now()),
-          meta: (item as ToastHistoryItem).meta,
-        };
+      .flatMap<ToastHistoryItem>((item) => {
+        if (!isRecord(item)) return [];
+
+        const id = item.id;
+        if (typeof id !== "string" && typeof id !== "number") return [];
+
+        const createdAt = Number(item.createdAt || Date.now());
+        if (!createdAt) return [];
+
+        const rawTitle = item.title;
+        const title =
+          typeof rawTitle === "string" || typeof rawTitle === "number"
+            ? String(rawTitle)
+            : "Notification";
+
+        return [
+          {
+            id,
+            title,
+            description:
+              typeof item.description === "string"
+                ? item.description || undefined
+                : undefined,
+            type: isStoredToastType(item.type) ? item.type : undefined,
+            createdAt,
+            meta: isRecord(item.meta) ? item.meta : undefined,
+          },
+        ];
       })
-      .filter((item) => item.id !== undefined && item.title && item.createdAt)
       .slice(0, MAX_STORED_TOASTS);
   } catch {
     return [];

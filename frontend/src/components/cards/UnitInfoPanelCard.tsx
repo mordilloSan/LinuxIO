@@ -141,7 +141,7 @@ const UnitInfoPanelLive = ({
     refetchInterval: 2000,
   });
 
-  const fragmentPath = String(info?.FragmentPath ?? "");
+  const fragmentPath = info?.FragmentPath ?? "";
   const extraRows = renderInfoRows?.(info) ?? [];
 
   return (

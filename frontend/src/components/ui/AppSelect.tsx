@@ -39,6 +39,15 @@ interface OptionData {
   value: string;
 }
 
+// `<option>` children are text in practice, but ReactNode also admits elements,
+// which stringify to "[object Object]". Pull out the text parts instead.
+function optionLabel(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(optionLabel).join("");
+  return "";
+}
+
 function collectOptions(children: ReactNode): OptionData[] {
   const opts: OptionData[] = [];
   Children.forEach(children, (child) => {
@@ -53,7 +62,7 @@ function collectOptions(children: ReactNode): OptionData[] {
       const p = child.props as OptionHTMLAttributes<HTMLOptionElement>;
       opts.push({
         value: String(p.value ?? ""),
-        label: String(p.children ?? ""),
+        label: optionLabel(p.children),
         disabled: !!p.disabled,
         hidden: !!p.hidden,
       });

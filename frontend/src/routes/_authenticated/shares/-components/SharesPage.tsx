@@ -562,7 +562,7 @@ const CreateFolderShareDialog = ({
       handleClose();
     } catch (error) {
       const message = getMutationErrorMessage(
-        error as Error,
+        error,
         "Failed to create folder share",
       );
 
@@ -843,7 +843,7 @@ const EditFolderShareDialog = ({
       onClose();
     } catch (error) {
       const message = getMutationErrorMessage(
-        error as Error,
+        error,
         "Failed to update folder share",
       );
 

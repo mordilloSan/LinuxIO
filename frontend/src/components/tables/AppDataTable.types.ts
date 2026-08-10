@@ -54,6 +54,7 @@ export const appTableFeatures = tableFeatures({
     datetime: sortFn_datetime,
     text: sortFn_text,
   },
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- load-bearing: this assertion is what carries AppDataTableColumnMeta into `typeof appTableFeatures`; removing it types the slot as `{}` and erases column meta everywhere.
   columnMeta: {} as AppDataTableColumnMeta,
 });
 

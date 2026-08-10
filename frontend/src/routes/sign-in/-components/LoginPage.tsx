@@ -7,7 +7,7 @@ import "./login-page.css";
 const LoginPage = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
-  const paperRadius = Number(theme.shape.borderRadius) * 4;
+  const paperRadius = theme.shape.borderRadius * 4;
   const paperOverlay = `linear-gradient(${alpha(theme.palette.common.white, 0.051)}, ${alpha(theme.palette.common.white, 0.051)})`;
 
   return (

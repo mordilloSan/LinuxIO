@@ -158,9 +158,7 @@ const ComposeOperationDialog = ({
     type: TASK_TYPE_DOCKER_COMPOSE,
     scanKey: open && muxIsOpen ? `${action}:${projectName}` : null,
     match: (task) => {
-      const metadata = task.metadata as
-        | { action?: string; projectName?: string }
-        | undefined;
+      const metadata = task.metadata;
       return (
         metadata?.action === action && metadata?.projectName === projectName
       );

@@ -92,7 +92,14 @@ function dataProgressValue(progress: unknown): string | null {
   if (candidate.data == null) {
     return "";
   }
-  return String(candidate.data);
+  if (
+    typeof candidate.data === "number" ||
+    typeof candidate.data === "boolean"
+  ) {
+    return String(candidate.data);
+  }
+  // Objects and arrays would stringify to "[object Object]"; emit JSON instead.
+  return JSON.stringify(candidate.data) ?? "";
 }
 
 class TaskDataStream implements Stream {

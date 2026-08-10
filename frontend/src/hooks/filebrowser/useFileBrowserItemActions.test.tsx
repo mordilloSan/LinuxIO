@@ -7,7 +7,7 @@ import type { DialogsSlice } from "@/hooks/filebrowser/useFileDialogs";
 import type { EditorSlice } from "@/hooks/filebrowser/useFileEditor";
 import type { ViewSlice } from "@/hooks/filebrowser/useFileViewState";
 import { act, createTestQueryClient, renderHook } from "@/test/render";
-import type { FileItem, FileResource } from "@/types/filebrowser";
+import type { FileItem } from "@/types/filebrowser";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
@@ -372,7 +372,7 @@ describe("useFileBrowserItemActions", () => {
           name: "projects",
           path: "/srv/projects",
           type: "directory",
-        } as FileResource,
+        },
       });
 
       await act(async () => {

@@ -83,6 +83,7 @@ describe("useActiveTaskRecovery", () => {
           match: () => true,
           onRecover: vi.fn(),
         }),
+      // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- widens the literal so renderHook infers `string | null` and the later null rerender typechecks.
       { initialProps: { scanKey: "updates" as string | null } },
     );
 

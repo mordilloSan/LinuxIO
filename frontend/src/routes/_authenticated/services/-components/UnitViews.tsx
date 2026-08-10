@@ -293,7 +293,7 @@ export const UnitCardActions = ({
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";
-  const liveUnitFileState = String(info?.UnitFileState ?? unitFileState ?? "");
+  const liveUnitFileState = info?.UnitFileState ?? unitFileState ?? "";
   const isEnabled =
     liveUnitFileState === "enabled" || liveUnitFileState === "enabled-runtime";
   const isMasked = liveUnitFileState === "masked";

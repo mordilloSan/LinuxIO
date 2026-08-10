@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio, type DockerNetworkContainer, useCallMutation } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -892,19 +892,16 @@ const NetworkList = ({
                     <AppDataTable
                       ariaLabel="Connected containers"
                       columns={connectedContainerColumns}
-                      data={Object.entries(
-                        network.Containers as Record<
-                          string,
-                          DockerNetworkContainer
-                        >,
-                      ).map(([id, info]) => ({
-                        endpointId: info.EndpointID || "",
-                        id,
-                        ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
-                        ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
-                        mac: info.MacAddress || "-",
-                        name: info.Name || "-",
-                      }))}
+                      data={Object.entries(network.Containers).map(
+                        ([id, info]) => ({
+                          endpointId: info.EndpointID || "",
+                          id,
+                          ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
+                          ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
+                          mac: info.MacAddress || "-",
+                          name: info.Name || "-",
+                        }),
+                      )}
                       density="compact"
                       getRowId={(container) => container.id}
                       maxHeight={240}

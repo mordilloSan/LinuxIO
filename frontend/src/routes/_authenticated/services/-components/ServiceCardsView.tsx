@@ -40,7 +40,7 @@ const ServiceInfoRows = ({ service }: { service: Service }) => {
     ...linuxio.systemd.get_unit_info({ unitName: service.name }),
     refetchInterval: 2000,
   });
-  const mainPid = Number(info?.MainPID ?? 0);
+  const mainPid = info?.MainPID ?? 0;
   const memory = formatBytes(info?.MemoryCurrent);
   const statusColor = getServiceStatusColor(service.active_state);
 

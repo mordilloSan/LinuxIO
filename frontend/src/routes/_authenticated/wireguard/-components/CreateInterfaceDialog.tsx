@@ -61,8 +61,7 @@ const CreateInterfaceDialog = ({
 }: CreateInterfaceDialogProps) => {
   const theme = useAppTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
-  const portTaken =
-    port && existingPorts.some((p) => Number(port) === Number(p));
+  const portTaken = port && existingPorts.some((p) => Number(port) === p);
   const cidrTaken =
     CIDR &&
     existingCIDRs.some(

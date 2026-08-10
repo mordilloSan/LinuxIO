@@ -83,7 +83,7 @@ const mocks = vi.hoisted(() => {
     preflight: readyPreflight,
     routeNavigate: vi.fn(),
     // Detail selection is a path param on /vm/machines/$name.
-    routeParams: { name: "alpha" } as { name?: string } | undefined,
+    routeParams: { name: "alpha" },
     resourceGet: vi.fn(),
     resourcePost: vi.fn(),
     resourceStat: vi.fn(),

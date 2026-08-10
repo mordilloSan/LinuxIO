@@ -213,9 +213,9 @@ const resolveUnitTarget = (
   const raw = log.rawJson;
   const systemdUnit =
     typeof raw?._SYSTEMD_UNIT === "string" && raw._SYSTEMD_UNIT
-      ? (raw._SYSTEMD_UNIT as string)
+      ? raw._SYSTEMD_UNIT
       : typeof raw?.UNIT === "string" && raw.UNIT
-        ? (raw.UNIT as string)
+        ? raw.UNIT
         : null;
 
   let unit = systemdUnit;
@@ -377,8 +377,7 @@ const LogEntryDetails = ({
     staleTime: Infinity,
   });
 
-  const entry =
-    (fullEntry as Record<string, unknown> | undefined) ?? log.rawJson;
+  const entry = fullEntry ?? log.rawJson;
   const filterableEntries = collectFilterableFields(entry, fieldFilters);
 
   return (
@@ -1018,11 +1017,8 @@ const GeneralLogsPage = () => {
         // `resolveUnitTarget` logic for the row-click → services navigation.
         const raw = log.rawJson;
         const systemdUnit =
-          typeof raw?._SYSTEMD_UNIT === "string"
-            ? (raw._SYSTEMD_UNIT as string)
-            : "";
-        const aboutUnit =
-          typeof raw?.UNIT === "string" ? (raw.UNIT as string) : "";
+          typeof raw?._SYSTEMD_UNIT === "string" ? raw._SYSTEMD_UNIT : "";
+        const aboutUnit = typeof raw?.UNIT === "string" ? raw.UNIT : "";
         if (unitStatusFilter === "no_unit") {
           return systemdUnit === "" && aboutUnit === "";
         }
@@ -1180,7 +1176,7 @@ const GeneralLogsPage = () => {
         header: "Priority",
         cell: ({ row }) => (
           <Chip
-            color={getPriorityColor(row.original.priority) as any}
+            color={getPriorityColor(row.original.priority)}
             label={getPriorityLabel(row.original.priority)}
             size="small"
             style={{ fontSize: "0.7rem" }}

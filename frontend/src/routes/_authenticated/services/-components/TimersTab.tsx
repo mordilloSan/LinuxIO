@@ -35,7 +35,7 @@ function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
   return [
     {
       label: "Unit",
-      value: String(info?.Unit ?? timer.unit ?? "—"),
+      value: info?.Unit ?? timer.unit ?? "—",
       hidden: !info && !timer.unit,
     },
     {

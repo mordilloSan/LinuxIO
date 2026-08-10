@@ -259,9 +259,7 @@ export function useUploadTasks(
             if (result.status === "ok") {
               resolveSafe({
                 success: true,
-                result: (result.data ?? undefined) as
-                  | BatchUploadResult
-                  | undefined,
+                result: result.data ?? undefined,
               });
             } else {
               resolveSafe({

@@ -244,8 +244,8 @@ const formatTimerTimestamp = (usec: unknown, fallback: string): string => {
 };
 
 const formatTimerState = (info: UnitInfo | undefined) => {
-  const activeState = String(info?.ActiveState ?? "unknown");
-  const subState = String(info?.SubState ?? "");
+  const activeState = info?.ActiveState ?? "unknown";
+  const subState = info?.SubState ?? "";
   const activeLabel = formatStatusLabel(activeState);
   const subLabel = formatStatusLabel(subState);
   return subState && subState !== activeState
@@ -254,7 +254,7 @@ const formatTimerState = (info: UnitInfo | undefined) => {
 };
 
 const getTimerColor = (info: UnitInfo | undefined, theme: AppTheme) => {
-  const activeState = String(info?.ActiveState ?? "").toLowerCase();
+  const activeState = (info?.ActiveState ?? "").toLowerCase();
   if (activeState === "active") {
     return theme.palette.success.main;
   }
@@ -711,9 +711,7 @@ const IndexerSettingsSection = () => {
                 />
                 <StatusMetric
                   label="Auto-start"
-                  value={formatStatusLabel(
-                    String(timerInfo.UnitFileState ?? ""),
-                  )}
+                  value={formatStatusLabel(timerInfo.UnitFileState ?? "")}
                 />
                 <StatusMetric
                   label="Next run"

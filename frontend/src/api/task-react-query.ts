@@ -204,7 +204,7 @@ export function createTaskEndpoint<TResult>(
     );
   };
 
-  endpoint.useTaskStreamAction = (<
+  endpoint.useTaskStreamAction = <
     TStreamResult = TResult,
     TProgress = ProgressFrame,
   >(
@@ -238,7 +238,7 @@ export function createTaskEndpoint<TResult>(
       [mutate],
     );
     return { ...mutation, watch };
-  }) as TaskEndpoint<[] | [unknown], unknown, TResult>["useTaskStreamAction"];
+  };
 
   return endpoint;
 }

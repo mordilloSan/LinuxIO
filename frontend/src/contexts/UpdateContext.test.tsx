@@ -189,7 +189,7 @@ describe("UpdateProvider", () => {
     };
     let statusCalls = 0;
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
+      const url = input instanceof Request ? input.url : String(input);
       if (url.startsWith("/api/update-status")) {
         statusCalls += 1;
         return response({ status: statusCalls === 1 ? "running" : "ok" });
@@ -242,7 +242,7 @@ describe("UpdateProvider", () => {
     const mux = { setUpdating: vi.fn(), status: "open" };
     let statusCalls = 0;
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
+      const url = input instanceof Request ? input.url : String(input);
       if (url.startsWith("/api/update-status")) {
         statusCalls += 1;
         return response({ status: statusCalls === 1 ? "running" : "ok" });

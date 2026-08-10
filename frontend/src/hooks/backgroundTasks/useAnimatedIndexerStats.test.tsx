@@ -17,9 +17,7 @@ let nextFrameID = 1;
 let frames: Map<number, FrameRequestCallback>;
 
 function nextFrame(timestamp: number) {
-  const frame = frames.entries().next().value as
-    | [number, FrameRequestCallback]
-    | undefined;
+  const frame = frames.entries().next().value;
   if (!frame) {
     throw new Error("expected a scheduled animation frame");
   }
@@ -28,15 +26,12 @@ function nextFrame(timestamp: number) {
 }
 
 function createMatchMedia(matches = false) {
-  return vi.fn().mockImplementation(
-    () =>
-      ({
-        addEventListener: vi.fn(),
-        matches,
-        media: "(prefers-reduced-motion: reduce)",
-        removeEventListener: vi.fn(),
-      }) as unknown as MediaQueryList,
-  );
+  return vi.fn().mockImplementation(() => ({
+    addEventListener: vi.fn(),
+    matches,
+    media: "(prefers-reduced-motion: reduce)",
+    removeEventListener: vi.fn(),
+  }));
 }
 
 describe("useAnimatedIndexerStats", () => {

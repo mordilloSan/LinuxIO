@@ -297,7 +297,7 @@ const getConfigValue = <K extends ConfigValueKey>(
   cfg: AppConfig,
   key: K,
 ): ConfigValueMap[K] => {
-  return cfg.appSettings[key as keyof AppSettings] as ConfigValueMap[K];
+  return cfg.appSettings[key];
 };
 
 const patchConfigValue = <K extends ConfigValueKey>(
@@ -307,7 +307,7 @@ const patchConfigValue = <K extends ConfigValueKey>(
   return {
     appSettings: {
       [key]: value,
-    } as Partial<AppSettings>,
+    },
   };
 };
 

@@ -1,6 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
 
-import { type DirectorySizeData, linuxio } from "@/api";
+import { linuxio } from "@/api";
 import type { MultiStatsItem } from "@/types/filebrowser";
 
 import {
@@ -80,7 +80,7 @@ export const useFileMultipleDirectoryDetails = (
         if (query.isError && query.error) {
           itemError = query.error;
         }
-        aggregateSize = (query.data as DirectorySizeData | undefined)?.size;
+        aggregateSize = query.data?.size;
       }
     }
 

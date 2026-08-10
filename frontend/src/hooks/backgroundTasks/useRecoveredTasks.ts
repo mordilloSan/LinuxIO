@@ -214,7 +214,7 @@ export function useRecoveredTasks(
             );
           case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
             return data?.package_id
-              ? `Updating ${String(data.package_id).split(";")[0]}`
+              ? `Updating ${data.package_id.split(";")[0]}`
               : data?.status
                 ? `Updating packages: ${data.status}`
                 : "Updating packages";

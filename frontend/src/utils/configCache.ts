@@ -42,7 +42,7 @@ export function readConfigCache(
       return null;
     }
 
-    return parsed.config as Partial<AppConfig>;
+    return parsed.config;
   } catch {
     return null;
   }

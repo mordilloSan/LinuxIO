@@ -407,7 +407,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           label: progressLabel(descriptor, labelBase, initialPct),
           bytes: progress?.bytes,
           total: progress?.total,
-        } as TransferItem,
+        },
       ]);
       void watchTransfer(descriptor, task.id, labelBase, abortController);
       return true;
