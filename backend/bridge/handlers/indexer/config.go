@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,14 +115,8 @@ func normalizeConfigPatchPayload(payload []byte) ([]byte, error) {
 	}
 
 	var patch configPatch
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&patch); err != nil {
+	if err := jsonv2.Unmarshal(payload, &patch, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("invalid indexer config JSON: %w", err)
-	}
-	var extra struct{}
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("invalid indexer config JSON: unexpected trailing JSON")
 	}
 
 	body, err := json.Marshal(patch)

@@ -184,8 +184,11 @@ formatters:
       local-prefixes:
         - github.com/mordilloSan/LinuxIO/backend
     gci:
+      custom-order: true
       sections:
         - standard
+        # Remove when gci recognizes Go 1.27's root-level uuid package.
+        - prefix(uuid)
         - default
         - prefix(github.com/mordilloSan/LinuxIO/backend)
   enable:

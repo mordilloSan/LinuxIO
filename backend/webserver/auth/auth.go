@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -53,7 +53,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsonv2.UnmarshalRead(r.Body, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
 		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}

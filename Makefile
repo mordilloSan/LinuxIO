@@ -797,22 +797,18 @@ analyze: ensure-node setup
 	@echo "🔬 Building frontend bundle analysis..."
 	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
-# Debug-only binaries for goroutine leak hunting. Compiled with
-# GOEXPERIMENT=goroutineleakprofile and the pprofdebug build tag, which serves
+3# Debug-only binaries for goroutine leak hunting. Serves
 # net/http/pprof on localhost only (webserver :6060, bridge :6061). The leak
 # report lives at /debug/pprof/goroutineleak. The endpoint has no auth (it is
-# loopback-bound) and the GOEXPERIMENT is not production-stable — never ship
-# these binaries; rebuild with `make build` afterwards.
+# loopback-bound). Rebuild with `make build` afterwards.
 build-leak-profile:
 	@echo ""
 	@echo "🕵️  Building DEBUG binaries with pprof + goroutine leak profile..."
 	@$(MAKE) --no-print-directory build-bridge \
-		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
 		GO_BUILD_TAGS="pprofdebug"
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Bridge hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1 \
-		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
 		GO_BUILD_TAGS="pprofdebug"
 	@echo ""
 	@echo "   Webserver pprof: http://127.0.0.1:6060/debug/pprof/  (leaks: /debug/pprof/goroutineleak)"

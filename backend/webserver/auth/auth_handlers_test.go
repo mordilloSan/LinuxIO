@@ -99,6 +99,54 @@ func sessionCookie(t *testing.T, sm *session.Manager, privileged bool) *http.Coo
 
 // --- tests -----------------------------------------------------------------
 
+func TestLoginRejectsNonCanonicalJSON(t *testing.T) {
+	oldStart := startBridge
+	t.Cleanup(func() { startBridge = oldStart })
+
+	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	handler := newRouterForTests(&Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)})
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{name: "unknown member", body: []byte(`{"username":"user","password":"pw","extra":true}`)},
+		{name: "case-mismatched member", body: []byte(`{"Username":"user","password":"pw"}`)},
+		{name: "duplicate member", body: []byte(`{"username":"user","username":"other","password":"pw"}`)},
+		{name: "invalid UTF-8", body: []byte("{\"username\":\"\xff\",\"password\":\"pw\"}")},
+		{name: "trailing value", body: []byte(`{"username":"user","password":"pw"} {}`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridgeStarted := false
+			startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
+				bridgeStarted = true
+				return nil, fmt.Errorf("unexpected bridge start")
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d: %s", w.Code, http.StatusBadRequest, w.Body.String())
+			}
+			if bridgeStarted {
+				t.Fatal("invalid login payload started the bridge")
+			}
+			var response loginErrorResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if response.Code != "invalid_request" {
+				t.Fatalf("error code = %q, want invalid_request", response.Code)
+			}
+		})
+	}
+}
+
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Arrange seams
 	oldStart := startBridge

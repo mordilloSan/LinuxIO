@@ -26,6 +26,29 @@ func createVMForTest(ctx context.Context, req apischema.VMCreateRequest) (apisch
 	return CreateVMWithProgress(ctx, req, nil)
 }
 
+func TestUUIDString(t *testing.T) {
+	tests := []struct {
+		name  string
+		value libvirt.UUID
+		want  string
+	}{
+		{name: "zero"},
+		{
+			name:  "canonical",
+			value: libvirt.UUID{0x12, 0x3e, 0x45, 0x67, 0xe8, 0x9b, 0x12, 0xd3, 0xa4, 0x56, 0x42, 0x66, 0x14, 0x17, 0x40, 0x00},
+			want:  "123e4567-e89b-12d3-a456-426614174000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := uuidString(tt.value); got != tt.want {
+				t.Fatalf("uuidString(%v) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildDomainXML(t *testing.T) {
 	req := apischema.VMCreateRequest{
 		Name:     "test-vm",

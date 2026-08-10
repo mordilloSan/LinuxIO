@@ -140,10 +140,24 @@ func TestUpdateConfigIntegrityCheckDoesNotRequireRestart(t *testing.T) {
 	}
 }
 
-func TestNormalizeConfigPatchRejectsUnknownFields(t *testing.T) {
-	_, err := normalizeConfigPatchPayload([]byte(`{"unknown":true}`))
-	if err == nil {
-		t.Fatal("expected unknown field error")
+func TestNormalizeConfigPatchRejectsNonCanonicalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "unknown member", payload: []byte(`{"unknown":true}`)},
+		{name: "case-mismatched member", payload: []byte(`{"FTSSearch":false}`)},
+		{name: "duplicate member", payload: []byte(`{"fts_search":true,"fts_search":false}`)},
+		{name: "invalid UTF-8", payload: []byte("{\"index_path\":\"\xff\"}")},
+		{name: "trailing value", payload: []byte(`{"fts_search":false} {}`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := normalizeConfigPatchPayload(tt.payload); err == nil {
+				t.Fatal("expected invalid JSON error")
+			}
+		})
 	}
 }
 

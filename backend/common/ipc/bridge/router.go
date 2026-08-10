@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -505,6 +506,16 @@ func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
 		return
 	}
 	go func() {
+		// Set explicitly, not inherited: a queued task is promoted from
+		// finishTask, so this goroutine may be spawned by the waiter of an
+		// unrelated task and would otherwise carry that task's labels.
+		goroutinelabel.With(context.Background(),
+			"route", route.Name,
+			"task_id", task.ID(),
+			"session_id", owner.SessionID,
+			"user", owner.Username,
+		)
+
 		<-task.Done()
 		<-executionDone
 		r.finishTask(route.Name, ownerRouteKey)

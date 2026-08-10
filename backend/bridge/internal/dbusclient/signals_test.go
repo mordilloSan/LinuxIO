@@ -1,6 +1,31 @@
 package dbusclient
 
-import "context"
+import (
+	"context"
+	"testing"
+)
+
+func TestSplitSignalName(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantIface  string
+		wantMember string
+	}{
+		{name: "org.freedesktop.DBus.NameOwnerChanged", wantIface: "org.freedesktop.DBus", wantMember: "NameOwnerChanged"},
+		{name: "NameOwnerChanged", wantMember: "NameOwnerChanged"},
+		{name: ".Changed", wantMember: "Changed"},
+		{name: "org.example.", wantIface: "org.example"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			iface, member := splitSignalName(tt.name)
+			if iface != tt.wantIface || member != tt.wantMember {
+				t.Fatalf("splitSignalName(%q) = (%q, %q), want (%q, %q)", tt.name, iface, member, tt.wantIface, tt.wantMember)
+			}
+		})
+	}
+}
 
 func closeSignalsForTest(ctx context.Context) error {
 	ctx = requireContext(ctx)

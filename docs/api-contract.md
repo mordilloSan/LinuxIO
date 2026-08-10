@@ -248,6 +248,11 @@ Required-field meaning remains handler/domain validation; use pointer fields
 only when the wire contract must distinguish an absent value from its zero
 value.
 
+The HTTP login body and indexer configuration patch are separate request
+boundaries, but apply the same strict v2 member and syntax rules directly.
+Response encoding and upstream-service decoding retain the compatible
+`encoding/json` API; in Go 1.27 that API uses the v2 engine with v1 semantics.
+
 Retry safety is Go-owned route metadata. Add `apischema.RetrySafe()` only to a
 Call that can be repeated after connection loss without a user-visible
 mutation. Code generation emits the sparse policy consumed by both Call

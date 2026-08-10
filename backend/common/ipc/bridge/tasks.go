@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
 )
 
 type TaskState string
@@ -615,6 +617,18 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 }
 
 func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
+	// Every field is set explicitly rather than inherited. A task context is
+	// rooted at context.Background (see CreateForOwner), and a queued task is
+	// promoted by whichever goroutine finished the task ahead of it, so an
+	// inherited label set would name the wrong session. The routeRunner timeout
+	// goroutine picks these up from here.
+	ctx = goroutinelabel.With(ctx,
+		"task_id", j.id,
+		"task_type", j.typ,
+		"session_id", j.owner.SessionID,
+		"user", j.owner.Username,
+	)
+
 	result, err := runner(ctx, j, request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -887,6 +901,10 @@ func (r *TaskService) startCleanupLoop(ttl, interval time.Duration) {
 	}
 	r.cleanupOnce.Do(func() {
 		go func() {
+			// A process-lifetime singleton. It is labeled only so it stops
+			// reading as an unattributed goroutine next to the per-session ones.
+			goroutinelabel.With(context.Background(), "component", "task-cleanup")
+
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
