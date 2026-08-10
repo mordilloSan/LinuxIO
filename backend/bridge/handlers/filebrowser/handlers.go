@@ -13,7 +13,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
 	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),
 	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
-	apischema.TaskRunner[apischema.ActionSourceDestinationRequest, FileOperationResult]("filebrowser.resource_patch", apischema.WithTaskProgress[FileProgress]()).Run(handleResourcePatch, bridgeipc.TaskDefault),
+	apischema.TaskRunner[apischema.ActionSourceDestinationRequest, FileOperationResult]("filebrowser.resource_patch", apischema.SessionTask(), apischema.WithTaskProgress[FileProgress]()).Run(handleResourcePatch, bridgeipc.TaskDefault),
 	apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size", apischema.RetrySafe()).Handle(handleDirSize),
 	apischema.Call[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status", apischema.RetrySafe()).Handle(handleIndexerStatus),
 	apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders", apischema.RetrySafe()).Handle(handleSubfolders),

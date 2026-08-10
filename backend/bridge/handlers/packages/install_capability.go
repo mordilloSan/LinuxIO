@@ -63,7 +63,7 @@ func capabilityInstallBindings() apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 10 * time.Minute
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
+		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
 		})).Run(runInstallCapabilityTask, policy),
 	)

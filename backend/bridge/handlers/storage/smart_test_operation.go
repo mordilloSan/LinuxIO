@@ -32,7 +32,7 @@ var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.SessionTask(), apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
 		})).Run(runSmartTestTask, bridgetasks.TaskDefault),
 	)

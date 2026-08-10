@@ -16,7 +16,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	policy.Timeout = 30 * time.Minute
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.VersionResponse]("control.version", apischema.RetrySafe()).Handle(handleVersion),
-		apischema.TaskRunner[apischema.AppUpdateRequest, AppUpdateResult](routeAppUpdate, apischema.NoEndpoint()).Run(
+		apischema.TaskRunner[apischema.AppUpdateRequest, AppUpdateResult](routeAppUpdate, apischema.NoEndpoint(), apischema.SessionTask()).Run(
 			func(ctx context.Context, task *bridgeipc.Task, req apischema.AppUpdateRequest) (AppUpdateResult, error) {
 				return runAppUpdateTask(ctx, rt, task, req)
 			},

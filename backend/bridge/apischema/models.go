@@ -1150,9 +1150,8 @@ type TaskError struct {
 }
 
 type TaskOwner struct {
-	SessionID *string `json:"session_id,omitempty"`
-	Username  *string `json:"username,omitempty"`
-	UID       *int    `json:"uid,omitempty"`
+	Username *string `json:"username,omitempty"`
+	UID      *int    `json:"uid,omitempty"`
 }
 
 type TaskMetadata struct {

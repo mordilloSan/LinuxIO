@@ -153,7 +153,7 @@ func (r *TaskService) handleTaskEvents(_ context.Context, stream net.Conn, req R
 			if !ok {
 				return nil
 			}
-			if !writeSubscribedTaskEvent(stream, event, req.Owner, pending, lastSent, interval, time.Now()) {
+			if !r.writeSubscribedTaskEvent(stream, event, req.Owner, pending, lastSent, interval, time.Now()) {
 				return nil
 			}
 		}
@@ -183,8 +183,9 @@ func flushPendingTaskEvents(stream net.Conn, pending map[string]TaskEvent, lastS
 	return true
 }
 
-func writeSubscribedTaskEvent(stream net.Conn, event TaskEvent, owner TaskOwner, pending map[string]TaskEvent, lastSent map[string]time.Time, interval time.Duration, now time.Time) bool {
-	if !event.Task.Owner.Matches(owner) {
+func (r *TaskService) writeSubscribedTaskEvent(stream net.Conn, event TaskEvent, owner TaskOwner, pending map[string]TaskEvent, lastSent map[string]time.Time, interval time.Duration, now time.Time) bool {
+	task, ok := r.Get(event.Task.ID)
+	if !ok || !task.matchesOwner(owner) {
 		return true
 	}
 	switch event.Type {

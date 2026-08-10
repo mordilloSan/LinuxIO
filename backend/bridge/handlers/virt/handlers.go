@@ -22,7 +22,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.suspend", apischema.Privileged()).HandleVoid(handleSuspend),
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
 		apischema.Call[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
-		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
+		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
 		),

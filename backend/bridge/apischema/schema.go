@@ -11,12 +11,13 @@ import (
 
 // RouteSpec is the Go-side contract for one LinuxIO API route.
 type RouteSpec struct {
-	Route      string
-	Mode       bridgeipc.Mode
-	Kind       Kind
-	Privileged bool
-	NoEndpoint bool
-	RetrySafe  bool
+	Route        string
+	Mode         bridgeipc.Mode
+	Kind         Kind
+	Privileged   bool
+	NoEndpoint   bool
+	RetrySafe    bool
+	TaskLifetime bridgeipc.TaskLifetime
 
 	Request  TypeSpec
 	Result   TypeSpec
@@ -38,6 +39,22 @@ func Privileged() RouteSpecOption {
 // cause a user-visible mutation. Calls default to no retry.
 func RetrySafe() RouteSpecOption {
 	return func(spec *RouteSpec) { spec.RetrySafe = true }
+}
+
+// WithTaskLifetime declares how long a Task remains owned by its caller.
+// Lifetime declarations are valid only for Task routes.
+func WithTaskLifetime(lifetime bridgeipc.TaskLifetime) RouteSpecOption {
+	return func(spec *RouteSpec) { spec.TaskLifetime = lifetime }
+}
+
+// SessionTask declares a Task whose lifetime is bound to the owning session.
+func SessionTask() RouteSpecOption {
+	return WithTaskLifetime(bridgeipc.TaskLifetimeSession)
+}
+
+// DurableTask declares a Task whose lifetime is independent of one session.
+func DurableTask() RouteSpecOption {
+	return WithTaskLifetime(bridgeipc.TaskLifetimeDurable)
 }
 
 func NoEndpoint() RouteSpecOption {
@@ -106,6 +123,12 @@ func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, 
 	}
 	if spec.RetrySafe && spec.Mode != bridgeipc.ModeCall {
 		panic(fmt.Sprintf("apischema: route %s retry safety is allowed only on call routes", spec.Route))
+	}
+	if spec.Mode == bridgeipc.ModeTask && spec.TaskLifetime == "" {
+		panic(fmt.Sprintf("apischema: task route %s must declare a lifetime", spec.Route))
+	}
+	if spec.Mode != bridgeipc.ModeTask && spec.TaskLifetime != "" {
+		panic(fmt.Sprintf("apischema: route %s task lifetime is allowed only on task routes", spec.Route))
 	}
 	return Route[Request, Result]{spec: spec}
 }
@@ -419,6 +442,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	}
 	if spec.Metadata != nil {
 		opts = append(opts, bridgeipc.WithTaskMetadata(spec.Metadata))
+	}
+	if spec.TaskLifetime != "" {
+		opts = append(opts, bridgeipc.WithTaskLifetime(spec.TaskLifetime))
 	}
 	return opts
 }

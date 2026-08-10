@@ -57,6 +57,7 @@ type Route struct {
 	Privileged bool
 	Policy     TaskPolicy
 	Decode     RequestDecoder
+	Lifetime   TaskLifetime
 	Metadata   TaskMetadataBuilder
 }
 
@@ -77,6 +78,16 @@ func WithRequestDecoder(decode RequestDecoder) RouteOption {
 func WithTaskMetadata(build TaskMetadataBuilder) RouteOption {
 	return func(r *Route) {
 		r.Metadata = build
+	}
+}
+
+// WithTaskLifetime declares the owner scope for a Task route.
+func WithTaskLifetime(lifetime TaskLifetime) RouteOption {
+	return func(r *Route) {
+		if lifetime != TaskLifetimeSession && lifetime != TaskLifetimeDurable {
+			panic("bridge task route has invalid lifetime: " + string(lifetime))
+		}
+		r.Lifetime = lifetime
 	}
 }
 
@@ -282,6 +293,17 @@ func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...
 	for _, opt := range opts {
 		opt(&route)
 	}
+	if route.Mode == ModeTask {
+		if route.Lifetime == "" {
+			route.Lifetime = TaskLifetimeSession
+		}
+		if route.Lifetime != TaskLifetimeSession && route.Lifetime != TaskLifetimeDurable {
+			panic("bridge task route has invalid lifetime: " + string(route.Lifetime))
+		}
+	} else if route.Lifetime != "" {
+		panic("bridge task lifetime is allowed only on task routes: " + route.Name)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.routes[route.Name]; exists {
@@ -364,7 +386,8 @@ func (r *Router) runRoute(ctx context.Context, task *Task, request any, route Ro
 
 func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {
 	now := time.Now().UTC()
-	ownerKey := req.Owner.key()
+	lifetime := normalizedTaskLifetime(route.Lifetime)
+	ownerKey := req.Owner.key(lifetime)
 	ownerRouteKey := req.Route + "\x00" + ownerKey
 	policy := normalizedPolicy(route.Policy)
 
@@ -408,7 +431,7 @@ func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error)
 		value := route.Metadata(req.DecodedValue)
 		metadata = &value
 	}
-	task, err := r.registry.CreateForOwner(req.Route, req.DecodedValue, req.Owner, metadata)
+	task, err := r.registry.CreateForOwnerWithLifetime(req.Route, req.DecodedValue, req.Owner, lifetime, metadata)
 	if err != nil {
 		if canStart {
 			// Releasing the reserved slot and promoting the next queued task is
@@ -450,6 +473,13 @@ func normalizedPolicy(policy TaskPolicy) TaskPolicy {
 		return TaskDefault
 	}
 	return policy
+}
+
+func normalizedTaskLifetime(lifetime TaskLifetime) TaskLifetime {
+	if lifetime == "" {
+		return TaskLifetimeSession
+	}
+	return lifetime
 }
 
 func (r *Router) checkRateLocked(ownerRouteKey string, policy TaskPolicy, now time.Time) error {
@@ -496,7 +526,7 @@ func (r *Router) unmarkActiveLocked(routeName, ownerRouteKey string) {
 }
 
 func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
-	ownerRouteKey := route.Name + "\x00" + owner.key()
+	ownerRouteKey := route.Name + "\x00" + owner.key(normalizedTaskLifetime(route.Lifetime))
 	if r.beforeStartHook != nil {
 		r.beforeStartHook(task)
 	}
@@ -544,7 +574,7 @@ func (r *Router) dequeueStartLocked(routeName string) *queuedTask {
 		if candidate.task.IsTerminal() {
 			continue
 		}
-		nextOwnerRouteKey := routeName + "\x00" + candidate.owner.key()
+		nextOwnerRouteKey := routeName + "\x00" + candidate.owner.key(normalizedTaskLifetime(candidate.route.Lifetime))
 		if !r.canStartLocked(routeName, nextOwnerRouteKey, normalizedPolicy(candidate.route.Policy)) {
 			queue = append([]queuedTask{candidate}, queue...)
 			break
@@ -568,17 +598,21 @@ func ownerFromSession(sess *session.Session) TaskOwner {
 	}
 }
 
-func (o TaskOwner) key() string {
-	if o.Username != "" {
-		return o.Username
+func (o TaskOwner) key(lifetime TaskLifetime) string {
+	switch normalizedTaskLifetime(lifetime) {
+	case TaskLifetimeDurable:
+		if o.Username != "" {
+			return fmt.Sprintf("uid:%d", o.UID)
+		}
+		return "durable:anonymous"
+	case TaskLifetimeSession:
+		if o.SessionID != "" {
+			return "session:" + o.SessionID
+		}
+		return "session:anonymous"
+	default:
+		return "anonymous"
 	}
-	if o.UID != 0 {
-		return fmt.Sprintf("uid:%d", o.UID)
-	}
-	if o.SessionID != "" {
-		return "session:" + o.SessionID
-	}
-	return "anonymous"
 }
 
 func statusCode(err error) int {

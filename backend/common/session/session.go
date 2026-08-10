@@ -403,9 +403,20 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 }
 
 func (m *Manager) Refresh(id string) error {
-	s, err := m.GetSession(id)
+	s, err := m.ValidateSession(id)
 	if err != nil {
 		return err
+	}
+	return m.refreshLoadedSession(s, time.Now())
+}
+
+// ValidateSession loads a session and verifies its absolute and idle expiry
+// without extending its idle deadline. Callers that represent explicit user
+// activity must use Refresh after validation.
+func (m *Manager) ValidateSession(id string) (*Session, error) {
+	s, err := m.GetSession(id)
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	if expiredAbsolute(s, now) {
@@ -415,7 +426,7 @@ func (m *Manager) Refresh(id string) error {
 				"reason", string(ReasonGCAbsolute),
 				"error", delErr)
 		}
-		return fmt.Errorf("session expired")
+		return nil, fmt.Errorf("session expired")
 	}
 	if expiredIdle(s, now) {
 		if delErr := m.DeleteSession(id, ReasonGCIdle); delErr != nil {
@@ -424,9 +435,9 @@ func (m *Manager) Refresh(id string) error {
 				"reason", string(ReasonGCIdle),
 				"error", delErr)
 		}
-		return fmt.Errorf("session expired")
+		return nil, fmt.Errorf("session expired")
 	}
-	return m.refreshLoadedSession(s, now)
+	return s, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -465,44 +476,12 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 	if err != nil || ck.Value == "" {
 		return nil, fmt.Errorf("missing or invalid %s", m.cfg.Cookie.Name)
 	}
-	s, err := m.GetSession(ck.Value)
+	s, err := m.ValidateSession(ck.Value)
 	if err != nil {
 		slog.Debug("access attempt with unknown session cookie",
 			"cookie_name", m.cfg.Cookie.Name,
 			"session_id", ck.Value)
 		return nil, fmt.Errorf("unknown session ID")
-	}
-	now := time.Now()
-	if expiredAbsolute(s, now) {
-		if delErr := m.DeleteSession(s.SessionID, ReasonGCAbsolute); delErr != nil {
-			slog.Warn("failed to delete absolute-expired session",
-				"session_id", s.SessionID,
-				"reason", string(ReasonGCAbsolute),
-				"error", delErr)
-		}
-		slog.Warn("session expired",
-			"user", s.User.Username,
-			"session_id", s.SessionID,
-			"reason", string(ReasonGCAbsolute))
-		return nil, fmt.Errorf("session expired")
-	}
-	if expiredIdle(s, now) {
-		if delErr := m.DeleteSession(s.SessionID, ReasonGCIdle); delErr != nil {
-			slog.Warn("failed to delete idle-expired session",
-				"session_id", s.SessionID,
-				"reason", string(ReasonGCIdle),
-				"error", delErr)
-		}
-		slog.Warn("session expired",
-			"user", s.User.Username,
-			"session_id", s.SessionID,
-			"reason", string(ReasonGCIdle))
-		return nil, fmt.Errorf("session expired")
-	}
-	if refreshErr := m.refreshLoadedSession(s, now); refreshErr != nil {
-		slog.Warn("failed to refresh session",
-			"session_id", s.SessionID,
-			"error", refreshErr)
 	}
 	return s, nil
 }

@@ -87,6 +87,72 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	}
 }
 
+func TestTaskRoutesDeclareSessionLifetime(t *testing.T) {
+	count := 0
+	for _, route := range handlers.Routes {
+		if route.Mode != bridgeipc.ModeTask {
+			continue
+		}
+		count++
+		if route.TaskLifetime != bridgeipc.TaskLifetimeSession {
+			t.Errorf("%s task lifetime = %q, want %q", route.Route, route.TaskLifetime, bridgeipc.TaskLifetimeSession)
+		}
+	}
+	if count != 18 {
+		t.Fatalf("task route count = %d, want 18", count)
+	}
+}
+
+func TestTaskLifetimeOptionsRejectInvalidRoutes(t *testing.T) {
+	tests := map[string]func(){
+		"missing task lifetime": func() {
+			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.missing_lifetime")
+		},
+		"call lifetime": func() {
+			_ = apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("test.call_lifetime", apischema.SessionTask())
+		},
+		"duplex lifetime": func() {
+			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.duplex_lifetime", apischema.SessionTask())
+		},
+	}
+
+	for name, build := range tests {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("invalid task lifetime declaration was accepted")
+				}
+			}()
+			build()
+		})
+	}
+}
+
+func TestTaskLifetimeOptionsDeclareExpectedLifetime(t *testing.T) {
+	tests := []struct {
+		name string
+		want bridgeipc.TaskLifetime
+		opt  apischema.RouteSpecOption
+	}{
+		{name: "session", want: bridgeipc.TaskLifetimeSession, opt: apischema.SessionTask()},
+		{name: "durable", want: bridgeipc.TaskLifetimeDurable, opt: apischema.DurableTask()},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			binding := apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test."+tc.name+"_lifetime", tc.opt).Run(
+				func(context.Context, *bridgeipc.Task, apischema.NoRequest) (apischema.SuccessResponse, error) {
+					return apischema.SuccessResponse{}, nil
+				},
+				bridgeipc.TaskDefault,
+			)
+			if binding.Route.TaskLifetime != tc.want {
+				t.Fatalf("task lifetime = %q, want %q", binding.Route.TaskLifetime, tc.want)
+			}
+		})
+	}
+}
+
 func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 	count := 0
 	for _, route := range handlers.Routes {
@@ -358,7 +424,7 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 }
 
 func TestTaskRunnerErasesOnlyAtBridgeBoundary(t *testing.T) {
-	route := apischema.TaskRunner[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.runner")
+	route := apischema.TaskRunner[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.runner", apischema.SessionTask())
 	binding := route.Run(func(_ context.Context, _ *bridgeipc.Task, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
 		return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
 	}, bridgeipc.TaskDefault)

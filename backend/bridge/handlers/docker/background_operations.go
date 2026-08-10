@@ -45,7 +45,7 @@ var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
 func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
+		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
 			func(ctx context.Context, task *bridgetask.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {

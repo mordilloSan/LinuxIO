@@ -175,3 +175,95 @@ func TestProtectedRouteReturnsUnauthorizedForExpiredSessionCookie(t *testing.T) 
 		t.Fatal("expired session should be deleted during route validation")
 	}
 }
+
+func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
+	cfg := session.DefaultConfig
+	cfg.IdleTimeout = 500 * time.Millisecond
+	cfg.RefreshThrottle = 0
+	sm := newTestSessionManager(cfg)
+	defer sm.Close()
+
+	sess, err := sm.CreateSession("activity-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	server := httptest.NewServer(wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
+	defer server.Close()
+	header := http.Header{}
+	header.Add("Cookie", (&http.Cookie{Name: sm.CookieName(), Value: sess.SessionID}).String())
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL, "/ws"), header)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	beforeHandshake, err := sm.GetSession(sess.SessionID)
+	if err != nil {
+		t.Fatalf("get session after handshake: %v", err)
+	}
+	if writeErr := conn.WriteMessage(websocket.BinaryMessage, []byte{0, 0, 0, 0, FlagDATA}); writeErr != nil {
+		t.Fatalf("write passive frame: %v", writeErr)
+	}
+	time.Sleep(20 * time.Millisecond)
+	afterPassive, err := sm.GetSession(sess.SessionID)
+	if err != nil {
+		t.Fatalf("get session after passive frame: %v", err)
+	}
+	if !afterPassive.Timing.IdleUntil.Equal(beforeHandshake.Timing.IdleUntil) {
+		t.Fatalf("passive frame refreshed IdleUntil from %v to %v", beforeHandshake.Timing.IdleUntil, afterPassive.Timing.IdleUntil)
+	}
+	if writeErr := conn.WriteMessage(websocket.BinaryMessage, []byte{0, 0, 0, 0, FlagActivity}); writeErr != nil {
+		t.Fatalf("write activity frame: %v", writeErr)
+	}
+	deadline := time.Now().Add(time.Second)
+	var afterActivity *session.Session
+	for time.Now().Before(deadline) {
+		afterActivity, err = sm.GetSession(sess.SessionID)
+		if err == nil && afterActivity.Timing.IdleUntil.After(afterPassive.Timing.IdleUntil) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if afterActivity == nil || !afterActivity.Timing.IdleUntil.After(afterPassive.Timing.IdleUntil) {
+		t.Fatalf("activity frame did not refresh IdleUntil")
+	}
+
+	cfg.IdleTimeout = 10 * time.Millisecond
+	// The existing session keeps its original deadline; expire it by waiting
+	// past the deadline, then ensure an inbound frame is rejected.
+	time.Sleep(time.Until(afterActivity.Timing.IdleUntil) + 20*time.Millisecond)
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte{0, 0, 0, 0, FlagDATA}); err != nil {
+		t.Fatalf("write expired-session frame: %v", err)
+	}
+	_, _, readErr := conn.ReadMessage()
+	if readErr == nil {
+		t.Fatal("expected expired-session websocket to close")
+	}
+	if _, err := sm.GetSession(sess.SessionID); err == nil {
+		t.Fatal("expired session should be deleted after inbound frame")
+	}
+}
+
+func TestValidateSessionActivityDoesNotRefresh(t *testing.T) {
+	m := newTestSessionManager(session.DefaultConfig)
+	defer m.Close()
+	sess, err := m.CreateSession("pong-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	before, err := m.GetSession(sess.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if validateErr := validateSessionActivity(m, sess.SessionID); validateErr != nil {
+		t.Fatalf("validate activity: %v", validateErr)
+	}
+	after, err := m.GetSession(sess.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Timing.IdleUntil.Equal(before.Timing.IdleUntil) || !after.Timing.LastAccess.Equal(before.Timing.LastAccess) {
+		t.Fatal("read-only session validation changed activity timing")
+	}
+}

@@ -9,7 +9,8 @@ security model justify surviving a bridge restart or websocket loss.
 
 A durable operation has all of the following:
 
-- ownership by a numeric UID (and the initiating session for authorization),
+- ownership by a numeric UID; the initiating session is used only for initial
+  authorization and its raw credential is not persisted,
 - a stable client-visible operation/Task ID, allocated before execution,
 - one atomically written persistent operation record, and
 - an external execution owner that can outlive the bridge.
@@ -44,16 +45,19 @@ Non-goals:
 
 Today `TaskOwner` is assembled from the session and task execution is a
 goroutine in the bridge. Its context is detached from the request stream but
-still ends with the bridge process. A session-bound Task should retain this
-behavior.
+still ends with the bridge process. All current Tasks explicitly use the
+session lifetime and exact `SessionID` owner scope. That `SessionID` is an
+internal authorization value, not public Task data, and is never serialized in
+the owner model.
 
 For a durable route, `TaskOwner` must not mean “the session that happens to be
-connected now.” The durable owner is the authenticated UID, with the creating
-session retained as audit metadata and for initial authorization. A later
-session for the same UID may read or cancel the operation according to the
-route policy; a different UID may not. Do not infer ownership from a transient
-unit name, and do not make a thin in-bridge map authoritative: either can be
-lost or forged independently of the operation record.
+connected now.” The durable owner is the authenticated numeric UID. The raw
+creating `SessionID` must not be retained in the durable record because it is a
+session-cookie credential; later sessions for the same UID may read or cancel
+the operation according to the route policy, while a different UID may not.
+Do not infer ownership from a transient unit name, and do not make a thin
+in-bridge map authoritative: either can be lost or forged independently of the
+operation record.
 
 ## Durable operation record
 

@@ -346,6 +346,24 @@ Tasks are reserved for work that emits progress, continues independently of a
 watching component, or needs recovery by identity. Bounded mutations complete
 through a single direct `useCallMutation` request/response.
 
+### Task lifetime, ownership, and activity
+
+All 18 current Task routes declare `SessionTask()`. Their owner is the exact
+authenticated `SessionID`; logout, expiry, session deletion, bridge failure,
+or bridge shutdown cancels the in-memory Task. No current route is durable.
+The runtime also has a separate durable-owner path keyed by authenticated
+numeric UID for the future durable pilot; it is not used by current routes.
+
+`TaskOwner.SessionID` is an internal authorization value and is never emitted
+in public Task snapshots or serialized API models. Public owner fields are
+limited to non-secret identity data.
+
+WebSocket keepalive, passive relay frames, Task progress, and Channel traffic
+only validate session expiry. The outer relay `FlagActivity` bit is the sole
+activity signal: the frontend emits it on throttled document interaction and
+selected interactive stream data, and the server strips it before forwarding
+the payload and refreshes session activity.
+
 Starting a generated Task endpoint returns a `TaskSnapshot` immediately. On the
 frontend, `useTaskAction` awaits the terminal state via
 `waitForTaskCompletion()`: a failed Task rejects with a `LinuxIOError` carrying

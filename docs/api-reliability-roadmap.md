@@ -252,19 +252,30 @@ demonstrates value.
 
 | Route group | Initial lifetime / recovery owner |
 |-------------|-----------------------------------|
-| File transfers and file operations | Session Task. Upload/download data depends on a live client; other file work remains session-bound until a product requirement proves otherwise. |
-| `docker.compose`, `virt.create`, file indexer | Session Task initially; require an idempotency and convergence design before promotion. |
-| `control.app_update` | First durable Task using a systemd transient unit and persistent operation record. |
-| `packages.update`, `system.install_capability` | Investigate recovery through PackageKit's transaction state before adding another executor. |
-| `storage.run_smart_test` | Recover through drive state; the drive already owns execution. |
+| All 18 current Task routes, including file operations, `docker.compose`, `virt.create`, `filebrowser.index`, `control.app_update`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` | Session Task. Every current route is canceled with its owning bridge/session; no route is durable yet. |
 
 ### Session activity
 
 Background work must not keep an idle session alive accidentally. Passive query
 polling, Task progress, server-sent Channel data, and an open WebSocket do not
-count as user activity. Use an explicit throttled user-activity signal and
-inbound interactive data where needed. Durable work continues independently of
-session activity; session Tasks end with the session.
+count as user activity. The relay's `FlagActivity` bit is the explicit,
+throttled signal: the frontend emits it for document interaction and selected
+interactive stream data, while the server strips the bit and refreshes the
+session. Passive frames and WebSocket ping/pong only validate that the session
+is still alive. Durable work continues independently of session activity;
+session Tasks end with the session.
+
+### Phase 3 exit criteria
+
+- [x] Every Task declaration has an explicit lifetime; all 18 current routes are
+  `SessionTask()`.
+- [x] Owner plumbing distinguishes exact `SessionID` from durable numeric UID;
+  no current route is marked durable.
+- [x] Bridge shutdown calls `CancelTasksForSession` before closing its transport.
+- [x] Session IDs remain internal authorization values and are redacted from
+  public Task snapshots and serialized owner models.
+- [x] Passive WebSocket traffic does not refresh activity; only the explicit
+  `FlagActivity` bit does.
 
 ## Phase 4: Durable Task Pilot
 

@@ -1950,7 +1950,6 @@ export interface TaskMetadata {
 }
 
 export interface TaskOwner {
-  session_id?: string;
   username?: string;
   uid?: number;
 }

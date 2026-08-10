@@ -391,4 +391,47 @@ describe("StreamMultiplexer", () => {
     FakeWebSocket.latest().open();
     await expect(ready).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it("reports document activity once per minute and removes listeners on close", () => {
+    const { mux, socket } = openMux();
+
+    document.dispatchEvent(new Event("pointerdown"));
+    expect(socket.sent).toHaveLength(1);
+    expect(readMuxFrame(socket.sent[0])).toMatchObject({
+      streamID: 0,
+      flags: Flags.Activity,
+      payload: new Uint8Array(0),
+    });
+
+    document.dispatchEvent(new Event("keydown"));
+    expect(socket.sent).toHaveLength(1);
+    vi.advanceTimersByTime(60_000);
+    document.dispatchEvent(new Event("keydown"));
+    expect(socket.sent).toHaveLength(2);
+    expect(readMuxFrame(socket.sent[1]).flags).toBe(Flags.Activity);
+
+    mux.close();
+    vi.advanceTimersByTime(60_000);
+    document.dispatchEvent(new Event("pointerdown"));
+    expect(socket.sent).toHaveLength(2);
+  });
+
+  it("marks only interactive DATA writes with Activity", () => {
+    const { mux, socket } = openMux();
+    const terminal = requireStream(mux.openStream("terminal.open"));
+    socket.sent = [];
+
+    terminal.write(encodeString("input"));
+    expect(readMuxFrame(socket.sent[0]).flags).toBe(
+      Flags.DATA | Flags.Activity,
+    );
+
+    terminal.resize(80, 24);
+    expect(readMuxFrame(socket.sent[1]).flags).toBe(Flags.DATA);
+
+    const passive = requireStream(mux.openStream("tasks.watch"));
+    socket.sent = [];
+    passive.write(encodeString("request"));
+    expect(readMuxFrame(socket.sent[0]).flags).toBe(Flags.DATA);
+  });
 });

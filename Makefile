@@ -426,26 +426,6 @@ tsc: ensure-node setup
 golint: ensure-golint ensure-modernize
 	@$(MAKE) --no-print-directory golint-only
 
-# Two ordering rules govern this target. Breaking either is silent, so measure
-# before reshuffling. Warm-cache durations on a 16-core dev host, which is what
-# the follow order below is sorted by:
-#
-#   lint-only 4.4s   golint-only 7.6s          (wave 1, writers)
-#   tsc-only 2.3s    deadcode-only 5.0s
-#   test-backend 9.8s   test-frontend-only 17.6s   (wave 2, readers)
-#
-# 1. Writers before readers. lint-only (oxlint --fix, oxfmt) and golint-only
-#    (golangci-lint fmt, go mod tidy, modernize -fix) REWRITE source. Every job
-#    in the second wave only reads. A reader that runs beside its writer sees a
-#    half-rewritten tree, and only when there were fixes to apply — that is,
-#    exactly when someone just edited code. tsc-only in particular reads the
-#    files lint-only rewrites, which is why it sits in the second wave despite
-#    being a lint-flavoured check rather than a test.
-#
-# 2. follow() displays a job's output only once it exits, so a job's results
-#    surface at max(duration of every job followed before it). Ordering the
-#    follows by ascending duration is what makes each result appear as soon as
-#    it exists; any other order hides finished work behind a slower job.
 test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \

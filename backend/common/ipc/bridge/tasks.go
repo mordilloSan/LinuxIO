@@ -24,6 +24,17 @@ const (
 	TaskStateCanceled  TaskState = "canceled"
 )
 
+// TaskLifetime selects the owner scope and shutdown behavior for a Task.
+// Session Tasks are visible only to the exact authenticated session that
+// created them. Durable Tasks are visible to authenticated sessions for the
+// same numeric UID; persistence and an external executor are separate work.
+type TaskLifetime string
+
+const (
+	TaskLifetimeSession TaskLifetime = "session"
+	TaskLifetimeDurable TaskLifetime = "durable"
+)
+
 type Error struct {
 	Message string `json:"message"`
 	Code    int    `json:"code,omitempty"`
@@ -43,7 +54,9 @@ func NewError(message string, code int) *Error {
 }
 
 type TaskOwner struct {
-	SessionID string `json:"session_id,omitempty"`
+	// SessionID is an internal authorization value. It must never be emitted in
+	// public Task snapshots because it is also the session-cookie credential.
+	SessionID string `json:"-"`
 	Username  string `json:"username,omitempty"`
 	UID       uint32 `json:"uid,omitempty"`
 }
@@ -53,15 +66,17 @@ func (o TaskOwner) Empty() bool {
 	return o.SessionID == "" && o.Username == "" && o.UID == 0
 }
 
-// Matches reports whether o and other refer to the same owner by username or UID.
-func (o TaskOwner) Matches(other TaskOwner) bool {
-	if o.Empty() || other.Empty() {
-		return false
-	}
-	if o.Username != "" && other.Username != "" {
-		return o.Username == other.Username
-	}
-	return o.UID != 0 && o.UID == other.UID
+// MatchesSession reports whether o and other refer to the same exact session.
+func (o TaskOwner) MatchesSession(other TaskOwner) bool {
+	return o.SessionID != "" && other.SessionID != "" && o.SessionID == other.SessionID
+}
+
+// MatchesDurable reports whether o and other are authenticated identities for
+// the same numeric UID. Username and session ID prove that UID zero is an
+// authenticated root identity rather than an unset owner; UID remains the
+// authorization key and is compared even when it is zero.
+func (o TaskOwner) MatchesDurable(other TaskOwner) bool {
+	return o.Username != "" && other.Username != "" && other.SessionID != "" && o.UID == other.UID
 }
 
 type TaskSnapshot struct {
@@ -141,6 +156,7 @@ type Task struct {
 	mu          sync.RWMutex
 	id          string
 	typ         string
+	lifetime    TaskLifetime
 	request     any
 	metadata    *TaskMetadata
 	owner       TaskOwner
@@ -237,10 +253,21 @@ func (r *TaskService) Create(taskType string, request any) (*Task, error) {
 	return r.CreateForOwner(taskType, request, TaskOwner{})
 }
 
-// CreateForOwner creates a new task owned by the specified owner.
+// CreateForOwner creates a new session-scoped task owned by the specified owner.
 func (r *TaskService) CreateForOwner(taskType string, request any, owner TaskOwner, metadata ...*TaskMetadata) (*Task, error) {
+	return r.CreateForOwnerWithLifetime(taskType, request, owner, TaskLifetimeSession, metadata...)
+}
+
+// CreateForOwnerWithLifetime creates a new task with an explicit owner scope.
+func (r *TaskService) CreateForOwnerWithLifetime(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, metadata ...*TaskMetadata) (*Task, error) {
 	if taskType == "" {
 		return nil, fmt.Errorf("task type cannot be empty")
+	}
+	if lifetime == "" {
+		lifetime = TaskLifetimeSession
+	}
+	if lifetime != TaskLifetimeSession && lifetime != TaskLifetimeDurable {
+		return nil, fmt.Errorf("invalid task lifetime: %q", lifetime)
 	}
 
 	r.mu.Lock()
@@ -259,6 +286,7 @@ func (r *TaskService) CreateForOwner(taskType string, request any, owner TaskOwn
 		ctx:         ctx,
 		id:          id,
 		typ:         taskType,
+		lifetime:    lifetime,
 		request:     request,
 		metadata:    publicMetadata,
 		owner:       owner,
@@ -289,7 +317,7 @@ func (r *TaskService) GetForOwner(id string, owner TaskOwner) (*Task, bool) {
 	if !ok {
 		return nil, false
 	}
-	if !task.Owner().Matches(owner) {
+	if !task.matchesOwner(owner) {
 		return nil, false
 	}
 	return task, true
@@ -313,11 +341,17 @@ func (r *TaskService) List() []TaskSnapshot {
 
 // ListForOwner returns snapshots of all tasks belonging to the owner.
 func (r *TaskService) ListForOwner(owner TaskOwner) []TaskSnapshot {
-	all := r.List()
-	filtered := all[:0]
-	for _, snapshot := range all {
-		if snapshot.Owner.Matches(owner) {
-			filtered = append(filtered, snapshot)
+	r.mu.RLock()
+	tasks := make([]*Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		tasks = append(tasks, task)
+	}
+	r.mu.RUnlock()
+
+	filtered := make([]TaskSnapshot, 0, len(tasks))
+	for _, task := range tasks {
+		if task.matchesOwner(owner) {
+			filtered = append(filtered, task.Snapshot())
 		}
 	}
 	return filtered
@@ -386,6 +420,29 @@ func (j *Task) Owner() TaskOwner {
 	return j.owner
 }
 
+// Lifetime returns the task owner scope.
+func (j *Task) Lifetime() TaskLifetime {
+	return j.lifetime
+}
+
+func (j *Task) matchesOwner(owner TaskOwner) bool {
+	j.mu.RLock()
+	taskOwner, lifetime := j.owner, j.lifetime
+	j.mu.RUnlock()
+	return ownersMatch(lifetime, taskOwner, owner)
+}
+
+func ownersMatch(lifetime TaskLifetime, taskOwner, requester TaskOwner) bool {
+	switch lifetime {
+	case TaskLifetimeDurable:
+		return taskOwner.MatchesDurable(requester)
+	case TaskLifetimeSession, "":
+		return taskOwner.MatchesSession(requester)
+	default:
+		return false
+	}
+}
+
 // TaskSnapshot returns a point-in-time snapshot of the task's state.
 func (j *Task) Snapshot() TaskSnapshot {
 	j.mu.RLock()
@@ -442,6 +499,9 @@ func (r *TaskService) CancelTasksForSession(sessionID string) {
 	}
 	r.mu.RUnlock()
 	for _, task := range tasks {
+		if task.Lifetime() != TaskLifetimeSession {
+			continue
+		}
 		if task.IsTerminal() {
 			continue
 		}

@@ -64,7 +64,10 @@ Browser sends/receives binary WebSocket messages:
 0x04 = DATA  Data frame
 0x08 = FIN   Close stream gracefully
 0x10 = RST   Abort stream
+0x20 = Activity marker (outer relay metadata)
 ```
+
+Activity is payload-blind metadata. The browser may send stream ID 0 with an empty payload and only this flag for explicit document activity. Interactive DATA frames may combine Activity with DATA. The relay observes and strips Activity before dispatching SYN, DATA, FIN, or RST; it never parses route JSON or other payload bytes. Passive requests, resize, FIN, and RST frames do not carry Activity.
 
 **Example — Open terminal stream:**
 ```

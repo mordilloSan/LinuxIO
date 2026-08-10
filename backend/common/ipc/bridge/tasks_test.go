@@ -134,9 +134,9 @@ func TestSnapshotNeverPublishesRequestAndClearsTerminalReference(t *testing.T) {
 func TestPublicTaskSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
-	owner := TaskOwner{Username: "alice", UID: 1000}
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	registry.RegisterRoutes(router)
-	sess := &session.Session{User: session.User{Username: owner.Username, UID: owner.UID}}
+	sess := &session.Session{SessionID: owner.SessionID, User: session.User{Username: owner.Username, UID: owner.UID}}
 	secret := map[string]string{"password": "sentinel-secret"}
 	task, err := registry.CreateForOwner("test.public.secret", secret, owner, &TaskMetadata{Label: "safe"})
 	if err != nil {
@@ -161,7 +161,7 @@ func TestPublicTaskSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
-	owner := TaskOwner{Username: "alice", UID: 1000}
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	secret := map[string]string{"password": "sentinel-secret"}
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -504,7 +504,7 @@ func TestTaskServiceSubscribeReceivesLiveEvents(t *testing.T) {
 			if event.Task.ID != task.ID() {
 				continue
 			}
-			if !event.Task.Owner.Matches(owner) {
+			if !task.matchesOwner(owner) {
 				t.Fatalf("event owner = %#v, want %#v", event.Task.Owner, owner)
 			}
 			seen[event.Type] = true
@@ -915,6 +915,116 @@ func readProgressData(t *testing.T, conn net.Conn) string {
 		t.Fatalf("progress type = %q, want data", progress.Type)
 	}
 	return progress.Data
+}
+
+func TestTaskLifetimeOwnerPolicies(t *testing.T) {
+	registry := NewTaskService()
+	sessionA := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+	sessionB := TaskOwner{SessionID: "session-b", Username: "alice", UID: 1000}
+	durableOther := TaskOwner{SessionID: "session-c", Username: "bob", UID: 1001}
+	sessionTask, err := registry.CreateForOwnerWithLifetime("test.session.scope", nil, sessionA, TaskLifetimeSession)
+	if err != nil {
+		t.Fatalf("create session task: %v", err)
+	}
+	durableTask, err := registry.CreateForOwnerWithLifetime("test.durable.scope", nil, sessionA, TaskLifetimeDurable)
+	if err != nil {
+		t.Fatalf("create durable task: %v", err)
+	}
+	rootA := TaskOwner{SessionID: "root-a", Username: "root", UID: 0}
+	rootB := TaskOwner{SessionID: "root-b", Username: "root", UID: 0}
+	rootTask, err := registry.CreateForOwnerWithLifetime("test.durable.root", nil, rootA, TaskLifetimeDurable)
+	if err != nil {
+		t.Fatalf("create root task: %v", err)
+	}
+	if _, ok := registry.GetForOwner(rootTask.ID(), rootB); !ok {
+		t.Fatal("UID 0 durable owner did not match authenticated root")
+	}
+	if _, ok := registry.GetForOwner(sessionTask.ID(), sessionB); ok {
+		t.Fatal("different session accessed session Task")
+	}
+	if _, ok := registry.GetForOwner(durableTask.ID(), sessionB); !ok {
+		t.Fatal("same UID session could not access durable Task")
+	}
+	if _, ok := registry.GetForOwner(durableTask.ID(), durableOther); ok {
+		t.Fatal("different UID accessed durable Task")
+	}
+	if got := registry.ListForOwner(sessionB); len(got) != 1 || got[0].ID != durableTask.ID() {
+		t.Fatalf("session-scoped list leaked or omitted durable task: %#v", got)
+	}
+}
+
+func TestTaskSnapshotRedactsSessionID(t *testing.T) {
+	registry := NewTaskService()
+	task, err := registry.CreateForOwnerWithLifetime("test.redact", nil, TaskOwner{SessionID: "secret-session", Username: "alice", UID: 1000}, TaskLifetimeSession)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	payload, err := json.Marshal(task.Snapshot())
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	if strings.Contains(string(payload), "secret-session") {
+		t.Fatalf("snapshot leaked session ID: %s", payload)
+	}
+}
+
+func TestCancelTasksForSessionIgnoresDurableTask(t *testing.T) {
+	registry := NewTaskService()
+	task, err := registry.CreateForOwnerWithLifetime("test.durable.cancel", nil, TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}, TaskLifetimeDurable)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	registry.CancelTasksForSession("session-a")
+	if got := task.Snapshot().State; got != TaskStateQueued {
+		t.Fatalf("durable state after session cancellation = %q, want queued", got)
+	}
+	task.Cancel()
+}
+
+func TestTaskLifetimeAdmissionKeys(t *testing.T) {
+	a := TaskOwner{SessionID: "session-a", Username: "alice", UID: 0}
+	b := TaskOwner{SessionID: "session-b", Username: "alice", UID: 0}
+	if a.key(TaskLifetimeSession) == b.key(TaskLifetimeSession) {
+		t.Fatal("session admission keys merged distinct sessions")
+	}
+	if a.key(TaskLifetimeDurable) != b.key(TaskLifetimeDurable) {
+		t.Fatal("durable admission keys split same UID")
+	}
+	if a.key(TaskLifetimeDurable) != "uid:0" {
+		t.Fatalf("root durable key = %q, want uid:0", a.key(TaskLifetimeDurable))
+	}
+}
+
+func TestTaskEventFilteringUsesLifetime(t *testing.T) {
+	registry := NewTaskService()
+	ownerA := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+	ownerB := TaskOwner{SessionID: "session-b", Username: "alice", UID: 1000}
+	sessionTask, err := registry.CreateForOwnerWithLifetime("test.events.session", nil, ownerA, TaskLifetimeSession)
+	if err != nil {
+		t.Fatalf("create session task: %v", err)
+	}
+	event := TaskEvent{Type: TaskEventStarted, Task: sessionTask.Snapshot()}
+	server, client := net.Pipe()
+	if !registry.writeSubscribedTaskEvent(server, event, ownerB, nil, nil, 0, time.Now()) {
+		t.Fatal("session event filter failed")
+	}
+	server.Close()
+	client.Close()
+	durableTask, err := registry.CreateForOwnerWithLifetime("test.events.durable", nil, ownerA, TaskLifetimeDurable)
+	if err != nil {
+		t.Fatalf("create durable task: %v", err)
+	}
+	server, client = net.Pipe()
+	done := make(chan bool, 1)
+	go func() {
+		done <- registry.writeSubscribedTaskEvent(server, TaskEvent{Type: TaskEventStarted, Task: durableTask.Snapshot()}, ownerB, map[string]TaskEvent{}, map[string]time.Time{}, 0, time.Now())
+	}()
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("same-UID durable event was not delivered: %v", err)
+	}
+	client.Close()
+	server.Close()
+	<-done
 }
 
 func startTestTask(registry *TaskService, taskType string, request any, owner TaskOwner, runner TaskRunner) (*Task, error) {

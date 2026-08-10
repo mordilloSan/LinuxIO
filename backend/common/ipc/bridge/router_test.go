@@ -111,7 +111,7 @@ func TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled(t *testing.T) {
 
 	// checkRateLocked never prunes for a disabled limit, so admission must not
 	// record start history at all — it would grow for the bridge lifetime.
-	ownerRouteKey := route.Name + "\x00" + TaskOwner{}.key()
+	ownerRouteKey := route.Name + "\x00" + TaskOwner{}.key(TaskLifetimeSession)
 	router.mu.RLock()
 	tracked := len(router.startsByOwnerRoute[ownerRouteKey])
 	router.mu.RUnlock()

@@ -39,6 +39,8 @@ const (
 	FlagDATA byte = 0x04 // Data frame
 	FlagFIN  byte = 0x08 // Close stream
 	FlagRST  byte = 0x10 // Abort stream
+	// FlagActivity is outer relay metadata. It is observed and stripped by the relay; payload bytes are never inspected.
+	FlagActivity byte = 0x20
 )
 
 // streamRelay manages the mapping of streamID to yamux stream
@@ -206,12 +208,19 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 	})
 }
 
-func refreshSessionActivity(sm *session.Manager, sessionID string) {
+func refreshSessionActivity(sm *session.Manager, sessionID string) error {
 	if err := sm.Refresh(sessionID); err != nil {
 		slog.Debug("failed to refresh WebSocket session",
 			"session_id", sessionID,
 			"error", err)
+		return err
 	}
+	return nil
+}
+
+func validateSessionActivity(sm *session.Manager, sessionID string) error {
+	_, err := sm.ValidateSession(sessionID)
+	return err
 }
 
 // WebSocketRelayHandler handles binary WebSocket connections as a pure byte relay.
@@ -248,8 +257,6 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		}()
 		slog.Info("WebSocket connected", "user", sess.User.Username, "session_id", sess.SessionID)
 
-		// Count websocket liveness toward session activity so transport and
-		// idle-session lifecycles stay aligned under the configured throttle.
 		conn.SetPongHandler(func(string) error {
 			slog.Debug("WebSocket pong received", "session_id", sess.SessionID, "deadline", pongWait)
 			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
@@ -258,7 +265,10 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 					"error", err)
 				return err
 			}
-			refreshSessionActivity(sm, sess.SessionID)
+			if err := validateSessionActivity(sm, sess.SessionID); err != nil {
+				slog.Debug("WebSocket pong rejected for expired session", "session_id", sess.SessionID, "error", err)
+				return err
+			}
 			return nil
 		})
 		// Set initial read deadline.
@@ -295,7 +305,11 @@ func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
 			slog.Debug("failed to reset WebSocket read deadline", "error", err)
 			return
 		}
-		refreshSessionActivity(sm, sess.SessionID)
+		if err := validateSessionActivity(sm, sess.SessionID); err != nil {
+			slog.Debug("WebSocket frame rejected for expired session", "session_id", sess.SessionID, "error", err)
+			r.closeAll()
+			return
+		}
 
 		if messageType != websocket.BinaryMessage {
 			slog.Debug("ignoring non-binary WebSocket message", "type", messageType)
@@ -310,6 +324,10 @@ func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
 		streamID := binary.BigEndian.Uint32(data[0:4])
 		flags := data[4]
 		payload := data[5:]
+		flags, ok := r.consumeActivityFlag(sm, sess.SessionID, flags)
+		if !ok {
+			return
+		}
 
 		switch {
 		case flags&FlagSYN != 0:
@@ -322,6 +340,17 @@ func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
 			r.handleRST(streamID)
 		}
 	}
+}
+
+func (r *streamRelay) consumeActivityFlag(sm *session.Manager, sessionID string, flags byte) (byte, bool) {
+	if flags&FlagActivity == 0 {
+		return flags, true
+	}
+	if err := refreshSessionActivity(sm, sessionID); err != nil {
+		r.closeAll()
+		return 0, false
+	}
+	return flags &^ FlagActivity, true
 }
 
 // handleSYN opens a new yamux stream and starts relaying

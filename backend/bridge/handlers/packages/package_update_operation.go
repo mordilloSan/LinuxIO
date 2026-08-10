@@ -19,7 +19,7 @@ func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
+		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
 		})).Run(runPackageUpdateTask, policy),
 	)
