@@ -41,7 +41,7 @@ func detectNetworkdBackend(env Environment, iface string) (ConfigBackend, error)
 	if len(matches) > 1 {
 		return nil, ambiguousf(iface, "systemd-networkd", matches)
 	}
-	return &networkdBackend{baseBackend: baseBackend{env: env, iface: iface, path: matches[0]}}, nil
+	return &networkdBackend{env: env, iface: iface, path: matches[0]}, nil
 }
 
 func (b *networkdBackend) Read() (InterfaceConfig, error) {

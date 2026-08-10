@@ -116,10 +116,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential
 
-      - name: Use Go (from Makefile)
+      - name: Use Go
         uses: actions/setup-go@v6
         with:
-          go-version: "${{ steps.toolchain.outputs.go }}"
+          go-version: "1.27.0-rc.2"
           cache: true
           cache-dependency-path: backend/go.sum
 

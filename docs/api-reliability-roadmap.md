@@ -140,7 +140,7 @@ net deletion.
 Completed on 2026-08-10:
 
 1. Routed normal contracts and reserved Task-service requests through one
-   strict `json.Decoder` implementation.
+   strict `encoding/json/v2` implementation.
 2. Replaced frontend command-name inference with Go-owned `RetrySafe` metadata.
 3. Split connection loss into `connection_unavailable` before stream-open send
    and `outcome_unknown` after it.
@@ -154,11 +154,12 @@ Completed on 2026-08-10:
 JSON envelopes and Go structs remain the source of truth. All route requests
 use one standard-library path that:
 
-- uses `json.Decoder`;
-- calls `DisallowUnknownFields()`;
-- accepts exactly one JSON value;
-- rejects trailing input;
-- preserves normal `encoding/json` scalar type errors.
+- uses `encoding/json/v2.Unmarshal`;
+- calls `RejectUnknownMembers(true)`;
+- matches object members case-sensitively;
+- rejects duplicate names, invalid UTF-8, and trailing input;
+- accepts exactly one JSON value; and
+- reports scalar type failures as `*json.SemanticError`.
 
 Required-field meaning remains domain validation. Absence cannot safely be
 inferred from a zero value or `omitempty`; use pointer presence only where the
@@ -166,9 +167,8 @@ wire contract must distinguish absent from zero.
 
 Generated request decoders are not planned work. Reconsider them only if a
 profile shows request decoding is material or a concrete contract requires
-generated presence tracking. If duplicate-key rejection becomes a hard
-security requirement, first evaluate one envelope-level detector and measure
-its cost instead of generating a decoder for every route.
+generated presence tracking. The shared v2 decoder provides the strict envelope
+policy without generating a decoder for every route.
 
 ### Call policy
 
@@ -206,8 +206,9 @@ branch on error message text.
 
 ### Phase 2 exit criteria
 
-- [x] Unknown request fields and trailing JSON values are rejected before a
-  handler runs, including for reserved `tasks.*` routes.
+- [x] Unknown or case-mismatched fields, duplicate names, invalid UTF-8, and
+  trailing JSON values are rejected before a handler runs, including for
+  reserved `tasks.*` routes.
 - [x] Call retry safety is explicit Go-owned metadata; absence means no retry.
 - [x] Pre-send connection failure and post-send unknown outcome have different
   structured codes.

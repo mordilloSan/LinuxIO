@@ -94,29 +94,25 @@ func TestExtendedFileInfoResponseMapsInternalFileInfo(t *testing.T) {
 	childModified := modified.Add(time.Minute)
 
 	got := extendedFileInfoResponse(&iteminfo.ExtendedFileInfo{
-		FileInfo: iteminfo.FileInfo{
-			ItemInfo: iteminfo.ItemInfo{
-				Name:       "media",
-				Size:       4096,
-				ModTime:    modified,
-				Type:       "directory",
-				Hidden:     true,
-				HasPreview: true,
-				Symlink:    true,
-			},
-			Files: []iteminfo.ItemInfo{{
-				Name:    "haos.iso",
-				Size:    1024,
-				ModTime: childModified,
-				Type:    "application/x-iso9660-image",
-			}},
-			Folders: []iteminfo.ItemInfo{{
-				Name:    "nested",
-				ModTime: childModified,
-				Type:    "directory",
-			}},
-			Path: "/srv/media",
-		},
+		Name:       "media",
+		Size:       4096,
+		ModTime:    modified,
+		Type:       "directory",
+		Hidden:     true,
+		HasPreview: true,
+		Symlink:    true,
+		Files: []iteminfo.ItemInfo{{
+			Name:    "haos.iso",
+			Size:    1024,
+			ModTime: childModified,
+			Type:    "application/x-iso9660-image",
+		}},
+		Folders: []iteminfo.ItemInfo{{
+			Name:    "nested",
+			ModTime: childModified,
+			Type:    "directory",
+		}},
+		Path:     "/srv/media",
 		Content:  "hello",
 		RealPath: "/mnt/storage/media",
 	})

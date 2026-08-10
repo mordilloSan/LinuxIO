@@ -168,8 +168,8 @@ func (r Route[Request, Result]) Handle(handle TypedHandlerFunc[Request, Result],
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
 		Options: options,
+		Call:    wrapTypedCall(r.spec, handle),
 	}
-	binding.Call = wrapTypedCall(r.spec, handle)
 	return binding
 }
 
@@ -187,8 +187,8 @@ func (r Route[Request, Result]) HandleVoid(handle VoidHandlerFunc[Request], opti
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
 		Options: options,
+		Call:    wrapVoidCall(r.spec.Route, handle),
 	}
-	binding.Call = wrapVoidCall(r.spec.Route, handle)
 	return binding
 }
 

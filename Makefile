@@ -338,9 +338,15 @@ ensure-golint: ensure-go
 
 ensure-deadcode: ensure-go
 	@{ set -euo pipefail; \
-	   bin="$(DEADCODE)"; \
-	   if [ ! -x "$$bin" ]; then \
+	   bin="$(DEADCODE)"; need=1; \
+	   if [ -x "$$bin" ]; then \
+	     build_info="$$( $(GO_CMD_ENV) "$(GO_BIN)" version -m "$$bin" 2>/dev/null || true )"; \
+	     tool_go_version="$$(printf '%s\n' "$$build_info" | sed -n '1s/.*: go\([^ ]*\).*/\1/p')"; \
+	     if [ "$$tool_go_version" = "$(GO_VERSION)" ] && "$$bin" -h >/dev/null 2>&1; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing deadcode $(DEADCODE_VERSION) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
 	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(DEADCODE_MODULE)@$(DEADCODE_VERSION)"; \
 	   fi; \
@@ -350,9 +356,15 @@ ensure-deadcode: ensure-go
 
 ensure-modernize: ensure-go
 	@{ set -euo pipefail; \
-	   bin="$(MODERNIZE)"; \
-	   if [ ! -x "$$bin" ]; then \
+	   bin="$(MODERNIZE)"; need=1; \
+	   if [ -x "$$bin" ]; then \
+	     build_info="$$( $(GO_CMD_ENV) "$(GO_BIN)" version -m "$$bin" 2>/dev/null || true )"; \
+	     tool_go_version="$$(printf '%s\n' "$$build_info" | sed -n '1s/.*: go\([^ ]*\).*/\1/p')"; \
+	     if [ "$$tool_go_version" = "$(GO_VERSION)" ] && "$$bin" -h >/dev/null 2>&1; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing modernize $(MODERNIZE_VERSION) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
 	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)"; \
 	   fi; \

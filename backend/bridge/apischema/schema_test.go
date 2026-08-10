@@ -3,9 +3,10 @@ package apischema_test
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -217,39 +218,49 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 	spec := mustRoute(t, "docker.start_container")
 	tests := []struct {
-		name             string
-		raw              json.RawMessage
-		wantContainerID  string
-		wantError        string
-		wantTypeMismatch bool
+		name               string
+		raw                json.RawMessage
+		wantContainerID    string
+		wantSemanticError  bool
+		wantSyntacticError bool
 	}{
 		{name: "valid object", raw: json.RawMessage(`{"containerId":"web"}`), wantContainerID: "web"},
-		{name: "unknown field", raw: json.RawMessage(`{"containerId":"web","unexpected":true}`), wantError: `unknown field "unexpected"`},
-		{name: "trailing JSON value", raw: json.RawMessage(`{"containerId":"web"} {}`), wantError: "exactly one JSON value"},
-		{name: "scalar type mismatch", raw: json.RawMessage(`{"containerId":123}`), wantTypeMismatch: true},
+		{name: "unknown field", raw: json.RawMessage(`{"containerId":"web","unexpected":true}`), wantSemanticError: true},
+		{name: "case-mismatched field", raw: json.RawMessage(`{"ContainerId":"web"}`), wantSemanticError: true},
+		{name: "duplicate field", raw: json.RawMessage(`{"containerId":"web","containerId":"db"}`), wantSyntacticError: true},
+		{name: "invalid UTF-8", raw: json.RawMessage("{\"containerId\":\"\xff\"}"), wantSyntacticError: true},
+		{name: "trailing JSON value", raw: json.RawMessage(`{"containerId":"web"} {}`), wantSyntacticError: true},
+		{name: "scalar type mismatch", raw: json.RawMessage(`{"containerId":123}`), wantSemanticError: true},
 		{name: "empty input", raw: nil},
 		{name: "null input", raw: json.RawMessage(`null`)},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assertContainerRequestDecode(t, spec, tc.raw, tc.wantContainerID, tc.wantError, tc.wantTypeMismatch)
+			assertContainerRequestDecode(t, spec, tc.raw, tc.wantContainerID, tc.wantSemanticError, tc.wantSyntacticError)
 		})
 	}
 }
 
-func assertContainerRequestDecode(t *testing.T, spec apischema.RouteSpec, raw json.RawMessage, wantContainerID, wantError string, wantTypeMismatch bool) {
+func assertContainerRequestDecode(
+	t *testing.T,
+	spec apischema.RouteSpec,
+	raw json.RawMessage,
+	wantContainerID string,
+	wantSemanticError bool,
+	wantSyntacticError bool,
+) {
 	t.Helper()
 	decoded, err := spec.Decode(raw)
-	if wantTypeMismatch {
-		if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
-			t.Fatalf("Decode() error = %v, want *json.UnmarshalTypeError", err)
+	if wantSemanticError {
+		if _, ok := errors.AsType[*jsonv2.SemanticError](err); !ok {
+			t.Fatalf("Decode() error = %v, want *jsonv2.SemanticError", err)
 		}
 		return
 	}
-	if wantError != "" {
-		if err == nil || !strings.Contains(err.Error(), wantError) {
-			t.Fatalf("Decode() error = %v, want error containing %q", err, wantError)
+	if wantSyntacticError {
+		if _, ok := errors.AsType[*jsontext.SyntacticError](err); !ok {
+			t.Fatalf("Decode() error = %v, want *jsontext.SyntacticError", err)
 		}
 		return
 	}

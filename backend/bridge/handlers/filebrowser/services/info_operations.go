@@ -100,13 +100,11 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	if !dirStat.IsDir() {
 		// It's a file - basic info only
 		fileInfo := &iteminfo.FileInfo{
-			Path: adjustedPath,
-			ItemInfo: iteminfo.ItemInfo{
-				Name:    filepath.Base(cleanRealPath),
-				Size:    dirStat.Size(),
-				ModTime: dirStat.ModTime(),
-				Type:    "file",
-			},
+			Path:    adjustedPath,
+			Name:    filepath.Base(cleanRealPath),
+			Size:    dirStat.Size(),
+			ModTime: dirStat.ModTime(),
+			Type:    "file",
 		}
 		return fileInfo, nil
 	}

@@ -1,10 +1,8 @@
 package bridge
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
+	jsonv2 "encoding/json/v2"
 )
 
 // JSONRequestDecoder returns the shared strict decoder for bridge route
@@ -17,17 +15,7 @@ func JSONRequestDecoder[T any]() RequestDecoder {
 		}
 
 		var request T
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&request); err != nil {
-			return nil, err
-		}
-
-		var trailing any
-		if err := decoder.Decode(&trailing); err != io.EOF {
-			if err == nil {
-				return nil, errors.New("request must contain exactly one JSON value")
-			}
+		if err := jsonv2.Unmarshal(raw, &request, jsonv2.RejectUnknownMembers(true)); err != nil {
 			return nil, err
 		}
 		return request, nil

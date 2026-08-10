@@ -240,12 +240,13 @@ useCallMutation(linuxio.docker.start_container).mutate({ containerId });
 ## Request Decoding and Call Reliability
 
 Every normal route and reserved `tasks.*` request uses the shared
-`bridge.JSONRequestDecoder`. It uses `json.Decoder` with
-`DisallowUnknownFields`, accepts exactly one JSON value, and preserves
-`encoding/json` scalar type errors. A missing or `null` request retains the
-existing empty-object behavior. Required-field meaning remains handler/domain
-validation; use pointer fields only when the wire contract must distinguish an
-absent value from its zero value.
+`bridge.JSONRequestDecoder`. It uses `encoding/json/v2.Unmarshal` with
+`RejectUnknownMembers(true)`. The v2 defaults require exact, case-sensitive
+member matches and reject duplicate names, invalid UTF-8, and trailing data.
+A missing or `null` request retains the existing empty-object behavior.
+Required-field meaning remains handler/domain validation; use pointer fields
+only when the wire contract must distinguish an absent value from its zero
+value.
 
 Retry safety is Go-owned route metadata. Add `apischema.RetrySafe()` only to a
 Call that can be repeated after connection loss without a user-visible
@@ -516,16 +517,16 @@ Remaining runtime cleanup:
 
 ### 2. Request decoding
 
-The implemented request path uses one strict `json.Decoder` into the typed Go
-request struct. Unknown fields and trailing values fail before handler dispatch;
-normal scalar type errors retain their `encoding/json` identity. JSON remains
-readable and Go remains the source of truth.
+The implemented request path uses one strict `encoding/json/v2.Unmarshal` into
+the typed Go request struct. Unknown or case-mismatched fields, duplicate
+names, invalid UTF-8, and trailing values fail before handler dispatch; scalar
+type failures are `*json.SemanticError`. JSON remains readable and Go remains
+the source of truth.
 
 Generated request decoders are not implemented. Reconsider them only if a
 profile shows decoding is material or a concrete contract needs generated
-presence tracking. If duplicate-key rejection becomes a hard security
-requirement, first evaluate one envelope-level detector and measure its cost
-instead of generating a decoder for every route.
+presence tracking. The shared v2 decoder supplies the strict envelope policy
+without generating a decoder for every route.
 
 ### 3. Keep Route Declarations Local
 

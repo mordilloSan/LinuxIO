@@ -59,7 +59,7 @@ func TestDockerVolumesFromSDKReturnsEmptySlice(t *testing.T) {
 
 func TestDockerNetworkFromSDKPreservesFieldsAndHandlesOptionalAddresses(t *testing.T) {
 	created := time.Date(2026, time.July, 30, 10, 15, 0, 123, time.UTC)
-	summary := network.Summary{Network: network.Network{
+	summary := network.Summary{
 		Attachable: true,
 		ConfigOnly: true,
 		Created:    created,
@@ -82,8 +82,7 @@ func TestDockerNetworkFromSDKPreservesFieldsAndHandlesOptionalAddresses(t *testi
 		Labels:  map[string]string{"managed": "true"},
 		Name:    "network-a",
 		Options: map[string]string{"com.docker.network.bridge.name": "br-a"},
-		Scope:   "local",
-	}}
+		Scope:   "local"}
 	inspect := network.Inspect{Containers: map[string]network.EndpointResource{
 		"container-id": {
 			EndpointID:  "endpoint-id",
@@ -118,7 +117,7 @@ func TestDockerNetworkFromSDKPreservesFieldsAndHandlesOptionalAddresses(t *testi
 }
 
 func TestDockerNetworkFromSDKOmitsEmptyOptionalData(t *testing.T) {
-	got := dockerNetworkFromSDK(network.Summary{Network: network.Network{Name: "empty"}}, network.Inspect{})
+	got := dockerNetworkFromSDK(network.Summary{Name: "empty"}, network.Inspect{})
 	if got.Created != nil || got.IPAM != nil || got.Containers != nil {
 		t.Fatalf("optional network values = %#v, want omitted", got)
 	}

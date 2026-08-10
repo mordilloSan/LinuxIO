@@ -4,7 +4,7 @@ import "testing"
 
 func TestPeersToAPIKeepsKnownZeroRuntimeStats(t *testing.T) {
 	peers := peersToAPI([]PeerInfo{{
-		PeerConfig:    PeerConfig{PublicKey: "public", PersistentKeepalive: 0},
+		PublicKey: "public", PersistentKeepalive: 0,
 		LastHandshake: "never", runtimeStatsKnown: true,
 	}})
 	peer := peers[0]
@@ -24,7 +24,7 @@ func TestPeersToAPIKeepsKnownZeroRuntimeStats(t *testing.T) {
 
 func TestPeersToAPIOmitsUnavailableRuntimeStats(t *testing.T) {
 	peers := peersToAPI([]PeerInfo{{
-		PeerConfig:    PeerConfig{PublicKey: "public", PersistentKeepalive: 0},
+		PublicKey: "public", PersistentKeepalive: 0,
 		LastHandshake: "never",
 	}})
 	peer := peers[0]

@@ -48,7 +48,7 @@ func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error)
 	if len(matches) > 1 {
 		return nil, ambiguousf(iface, "ifupdown", matches)
 	}
-	return &ifupdownBackend{baseBackend: baseBackend{env: env, iface: iface, path: matches[0]}}, nil
+	return &ifupdownBackend{env: env, iface: iface, path: matches[0]}, nil
 }
 
 func (b *ifupdownBackend) Read() (InterfaceConfig, error) {

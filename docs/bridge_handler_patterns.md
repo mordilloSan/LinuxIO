@@ -147,10 +147,11 @@ behavior without implying a second IPC subsystem.
 ## Request Validation
 
 Request JSON is decoded before the handler runs. Normal route bindings and the
-reserved Task service use the same strict `json.Decoder`: unknown fields and a
-second/trailing JSON value are rejected, while normal scalar type errors retain
-their `encoding/json` identity. A missing or `null` request produces the typed
-zero value. Required fields remain domain validation because zero values alone
+reserved Task service use the same strict `encoding/json/v2.Unmarshal` path
+with `RejectUnknownMembers(true)`. Unknown or case-mismatched fields, duplicate
+names, invalid UTF-8, and trailing data are rejected; scalar type failures are
+`*json.SemanticError`. A missing or `null` request produces the typed zero
+value. Required fields remain domain validation because zero values alone
 cannot prove presence. Use typed fields directly:
 
 ```go

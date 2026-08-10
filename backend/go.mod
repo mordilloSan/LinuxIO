@@ -1,9 +1,10 @@
 module github.com/mordilloSan/LinuxIO/backend
 
-go 1.26.5
+go 1.27rc2
 
 require (
 	github.com/creack/pty v1.1.24
+	github.com/digitalocean/go-libvirt v0.0.0-20260609165003-6254771e63a8
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
@@ -21,9 +22,8 @@ require (
 	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/ini.v1 v1.67.3
+	libvirt.org/go/libvirtxml v1.12005.0
 )
-
-require libvirt.org/go/libvirtxml v1.12005.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -31,7 +31,6 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/digitalocean/go-libvirt v0.0.0-20260609165003-6254771e63a8
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
