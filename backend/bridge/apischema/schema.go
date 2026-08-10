@@ -2,7 +2,6 @@ package apischema
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -17,6 +16,7 @@ type RouteSpec struct {
 	Kind       Kind
 	Privileged bool
 	NoEndpoint bool
+	RetrySafe  bool
 
 	Request  TypeSpec
 	Result   TypeSpec
@@ -32,6 +32,12 @@ func Privileged() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.Privileged = true
 	}
+}
+
+// RetrySafe declares that repeating this Call after connection loss cannot
+// cause a user-visible mutation. Calls default to no retry.
+func RetrySafe() RouteSpecOption {
+	return func(spec *RouteSpec) { spec.RetrySafe = true }
 }
 
 func NoEndpoint() RouteSpecOption {
@@ -91,12 +97,15 @@ func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Rout
 }
 
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
-	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), requestDecoder[Request](), opts...)
+	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), bridgeipc.JSONRequestDecoder[Request](), opts...)
 	if spec.Metadata != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
 		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task runners", spec.Route))
 	}
 	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask {
 		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task routes", spec.Route))
+	}
+	if spec.RetrySafe && spec.Mode != bridgeipc.ModeCall {
+		panic(fmt.Sprintf("apischema: route %s retry safety is allowed only on call routes", spec.Route))
 	}
 	return Route[Request, Result]{spec: spec}
 }
@@ -335,19 +344,6 @@ func requireRouteSpec(spec RouteSpec) RouteSpec {
 		panic("apischema: route spec cannot be empty")
 	}
 	return spec
-}
-
-func requestDecoder[Request any]() bridgeipc.RequestDecoder {
-	return func(raw json.RawMessage) (any, error) {
-		if len(raw) == 0 || string(raw) == "null" {
-			raw = json.RawMessage("{}")
-		}
-		var req Request
-		if err := json.Unmarshal(raw, &req); err != nil {
-			return nil, err
-		}
-		return req, nil
-	}
 }
 
 func wrapTypedCall[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.CallFunc {

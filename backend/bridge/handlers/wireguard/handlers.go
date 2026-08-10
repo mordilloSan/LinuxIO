@@ -16,14 +16,14 @@ import (
 // unreachable by design and, for Task routes, sat in the Task snapshot for
 // DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").Handle(handleListInterfaces),
+	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
 	apischema.Call[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
-	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").Handle(handleListPeers),
+	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe()).Handle(handleListPeers),
 	apischema.Call[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
 	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
-	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode").Handle(handlePeerQRCode),
-	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download").Handle(handlePeerConfigDownload),
+	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(handlePeerQRCode),
+	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(handlePeerConfigDownload),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),

@@ -105,6 +105,21 @@ func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 	}
 	b.WriteString("} as const satisfies Record<string, RouteMode>;\n\n")
 	b.WriteString("export type RouteName = keyof typeof ROUTE_MODES;\n\n")
+	b.WriteString("export const RETRY_SAFE_CALLS = {\n")
+	retrySafeRoutes := make([]string, 0)
+	for _, route := range routes {
+		if route.RetrySafe && route.Mode == bridgeipc.ModeCall && route.Endpoint() {
+			retrySafeRoutes = append(retrySafeRoutes, route.Route)
+		}
+	}
+	sort.Strings(retrySafeRoutes)
+	for _, route := range retrySafeRoutes {
+		fmt.Fprintf(&b, "  %q: true,\n", route)
+	}
+	b.WriteString("} as const satisfies Partial<Record<RouteName, true>>;\n\n")
+	b.WriteString("export function isRetrySafeCall(route: string): boolean {\n")
+	b.WriteString("  return Object.prototype.hasOwnProperty.call(RETRY_SAFE_CALLS, route);\n")
+	b.WriteString("}\n\n")
 	b.WriteString("export type RouteModeFor<R extends string> =\n")
 	b.WriteString("  R extends RouteName ? (typeof ROUTE_MODES)[R] : never;\n\n")
 	b.WriteString("export function routeName(handler: string, command: string): string {\n")

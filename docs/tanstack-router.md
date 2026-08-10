@@ -169,10 +169,11 @@ That is what makes speculative hover preloads quiet — see
 [Loaders](#loaders).
 
 The default Query retry handles one ordinary transient failure, but does not
-retry a `connection_closed` error after the RPC transport has already applied
-its own bounded reconnect attempt. Route loaders are stricter still and default
-their Query-layer attempt to `retry: false`. A component may opt into a local
-retry policy when its UX benefits from one, but that is an explicit exception.
+retry `connection_unavailable` or `outcome_unknown` after the Call transport
+has applied its route-owned bounded policy. Route loaders are stricter still
+and default their Query-layer attempt to `retry: false`. A component may opt
+into a local retry policy when its UX benefits from one, but that is an explicit
+exception.
 
 ## The Shared Route Toolkit
 

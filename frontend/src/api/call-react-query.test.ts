@@ -122,7 +122,7 @@ describe("generated Call and Task definitions", () => {
       "tasks",
       "get",
       { taskId: "task-1" },
-      { retryPolicy: "none", signal: controller.signal },
+      { retryPolicy: "connection_loss", signal: controller.signal },
     );
 
     const write = linuxio.docker.stop_container({ containerId: "abc" });
@@ -287,9 +287,9 @@ describe("Task React Query integration", () => {
   });
 
   it("unwraps a terminal Task result and invalidates its keys", async () => {
-    vi.spyOn(core, "request").mockResolvedValue(
-      taskSnapshot({ result: { updated: true } }),
-    );
+    const request = vi
+      .spyOn(core, "request")
+      .mockResolvedValue(taskSnapshot({ result: { updated: true } }));
     const endpoint = createTaskEndpoint<{ updated: boolean }>(
       "virt",
       "create",
@@ -305,6 +305,12 @@ describe("Task React Query integration", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["linuxio", "virt", "list"],
     });
+    expect(request).toHaveBeenCalledWith(
+      "virt",
+      "create",
+      { name: "vm" },
+      { retryPolicy: "none" },
+    );
   });
 
   it("watches Task progress and resolves its terminal result", async () => {

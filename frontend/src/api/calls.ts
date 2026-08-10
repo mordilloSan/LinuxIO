@@ -5,34 +5,13 @@ import type {
   NoRequestCallRoute,
   RequestCallRoute,
 } from "./generated/linuxio-types";
+import { isRetrySafeCall } from "./generated/route-metadata";
 import * as core from "./linuxio-core";
 
-const RETRYABLE_COMMAND_PREFIXES = ["get_", "list_", "validate_"] as const;
-const RETRYABLE_COMMANDS = new Set([
-  "control.version",
-  "filebrowser.dir_size",
-  "filebrowser.indexer_status",
-  "filebrowser.resource_get",
-  "filebrowser.resource_stat",
-  "filebrowser.search",
-  "filebrowser.subfolders",
-  "filebrowser.users_groups",
-  "wireguard.peer_config_download",
-  "wireguard.peer_qrcode",
-]);
-
 export function getRetryPolicy(
-  handler: string,
-  command: string,
+  route: string,
 ): core.RequestOptions["retryPolicy"] {
-  const route = `${handler}.${command}`;
-  if (
-    RETRYABLE_COMMAND_PREFIXES.some((prefix) => command.startsWith(prefix)) ||
-    RETRYABLE_COMMANDS.has(route)
-  ) {
-    return "connection_closed";
-  }
-  return "none";
+  return isRetrySafeCall(route) ? "connection_loss" : "none";
 }
 
 export function splitCallRoute(route: string): [string, string] {
@@ -68,6 +47,6 @@ export async function call(
   return core.request(handler, command, request ?? {}, {
     ...options,
     // Mutating Calls must never acquire a reconnect retry from a caller.
-    retryPolicy: getRetryPolicy(handler, command),
+    retryPolicy: getRetryPolicy(route),
   });
 }

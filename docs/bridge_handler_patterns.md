@@ -146,7 +146,12 @@ behavior without implying a second IPC subsystem.
 
 ## Request Validation
 
-Request JSON is decoded before the handler runs. Use typed fields directly:
+Request JSON is decoded before the handler runs. Normal route bindings and the
+reserved Task service use the same strict `json.Decoder`: unknown fields and a
+second/trailing JSON value are rejected, while normal scalar type errors retain
+their `encoding/json` identity. A missing or `null` request produces the typed
+zero value. Required fields remain domain validation because zero values alone
+cannot prove presence. Use typed fields directly:
 
 ```go
 func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
@@ -158,6 +163,24 @@ func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) e
 ```
 
 Return `bridgeipc.NewError(message, code)` for typed client errors.
+
+## Call Retry Safety
+
+Calls default to no retry. Add `apischema.RetrySafe()` only when repeating the
+Call after a lost result cannot cause a user-visible mutation:
+
+```go
+apischema.Call[apischema.NoRequest, apischema.SystemInfo](
+    "system.get_system_info",
+    apischema.RetrySafe(),
+).Handle(handleGetSystemInfo)
+```
+
+The Go option is emitted into generated route metadata; handlers and frontend
+call sites must not infer safety from `get_`, `list_`, or another route-name
+pattern. Task starts and mutating Calls remain no-retry. Return structured
+`bridgeipc.Error` codes when feature code must distinguish outcomes; human error
+messages are presentation, not control flow.
 
 ## Privilege
 

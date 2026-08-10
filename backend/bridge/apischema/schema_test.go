@@ -3,7 +3,9 @@ package apischema_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -84,6 +86,64 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	}
 }
 
+func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
+	count := 0
+	for _, route := range handlers.Routes {
+		if !route.RetrySafe {
+			continue
+		}
+		count++
+		if route.Mode != bridgeipc.ModeCall || !route.Endpoint() {
+			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
+		}
+	}
+	if count != 86 {
+		t.Fatalf("retry-safe Call count = %d, want 86", count)
+	}
+	for _, route := range []string{"config.get", "system.get_cpu_info", "tasks.get", "virt.preflight"} {
+		if !mustRoute(t, route).RetrySafe {
+			t.Errorf("%s should be explicitly retry-safe", route)
+		}
+	}
+	for _, route := range []string{
+		"docker.check_updates",
+		"docker.get_icon",
+		"docker.get_icon_uri",
+		"docker.start_container",
+		"network.get_network_info",
+		"system.get_disk_throughput",
+		"system.get_health_summary",
+		"system.get_network_info",
+		"system.get_updates_fast",
+		"tasks.cancel",
+		"terminal.list_shells",
+	} {
+		if mustRoute(t, route).RetrySafe {
+			t.Errorf("%s should default to no retry", route)
+		}
+	}
+}
+
+func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
+	for name, build := range map[string]func(){
+		"task": func() {
+			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.retry_task", apischema.RetrySafe())
+		},
+		"duplex": func() {
+			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.retry_duplex", apischema.RetrySafe())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("non-Call route accepted RetrySafe")
+				}
+			}()
+			build()
+		})
+	}
+}
+
 func TestTaskRoutesDeclareTerminalResultsAndProgress(t *testing.T) {
 	taskSnapshotType := reflect.TypeFor[apischema.TaskSnapshot]()
 	for _, route := range handlers.Routes {
@@ -151,6 +211,57 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 				t.Fatalf("decoded request %#v does not match %s", decoded, tc.raw)
 			}
 		})
+	}
+}
+
+func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
+	spec := mustRoute(t, "docker.start_container")
+	tests := []struct {
+		name             string
+		raw              json.RawMessage
+		wantContainerID  string
+		wantError        string
+		wantTypeMismatch bool
+	}{
+		{name: "valid object", raw: json.RawMessage(`{"containerId":"web"}`), wantContainerID: "web"},
+		{name: "unknown field", raw: json.RawMessage(`{"containerId":"web","unexpected":true}`), wantError: `unknown field "unexpected"`},
+		{name: "trailing JSON value", raw: json.RawMessage(`{"containerId":"web"} {}`), wantError: "exactly one JSON value"},
+		{name: "scalar type mismatch", raw: json.RawMessage(`{"containerId":123}`), wantTypeMismatch: true},
+		{name: "empty input", raw: nil},
+		{name: "null input", raw: json.RawMessage(`null`)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertContainerRequestDecode(t, spec, tc.raw, tc.wantContainerID, tc.wantError, tc.wantTypeMismatch)
+		})
+	}
+}
+
+func assertContainerRequestDecode(t *testing.T, spec apischema.RouteSpec, raw json.RawMessage, wantContainerID, wantError string, wantTypeMismatch bool) {
+	t.Helper()
+	decoded, err := spec.Decode(raw)
+	if wantTypeMismatch {
+		if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
+			t.Fatalf("Decode() error = %v, want *json.UnmarshalTypeError", err)
+		}
+		return
+	}
+	if wantError != "" {
+		if err == nil || !strings.Contains(err.Error(), wantError) {
+			t.Fatalf("Decode() error = %v, want error containing %q", err, wantError)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	request, ok := decoded.(apischema.ContainerIDRequest)
+	if !ok {
+		t.Fatalf("Decode() result = %T, want apischema.ContainerIDRequest", decoded)
+	}
+	if request.ContainerID != wantContainerID {
+		t.Fatalf("containerId = %q, want %q", request.ContainerID, wantContainerID)
 	}
 }
 

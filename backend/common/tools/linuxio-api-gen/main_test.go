@@ -79,6 +79,9 @@ func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	for _, expected := range []string{
 		`export type RouteMode = "call" | "task" | "duplex";`,
 		"export type RouteName = keyof typeof ROUTE_MODES;",
+		"export const RETRY_SAFE_CALLS = {",
+		`"system.get_cpu_info": true`,
+		"export function isRetrySafeCall(route: string): boolean",
 		"export type RouteModeFor<R extends string> =",
 		`"terminal.open": "duplex"`,
 		`"tasks.watch": "duplex"`,
@@ -89,6 +92,15 @@ func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated route metadata missing %s", expected)
+		}
+	}
+	for _, unexpected := range []string{
+		`"docker.start_container": true`,
+		`"docker.check_updates": true`,
+		`"tasks.watch": true`,
+	} {
+		if strings.Contains(out, unexpected) {
+			t.Fatalf("generated retry-safe policy unexpectedly contains %s", unexpected)
 		}
 	}
 }

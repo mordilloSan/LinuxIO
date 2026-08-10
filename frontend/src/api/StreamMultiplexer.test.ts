@@ -9,6 +9,7 @@ import {
   getStreamMux,
   initStreamMux,
   StreamMultiplexer,
+  type Stream,
   waitForStreamMux,
 } from "@/api/StreamMultiplexer";
 import {
@@ -43,9 +44,18 @@ describe("StreamMultiplexer", () => {
     return { mux, socket };
   }
 
+  function requireStream(stream: Stream | null): Stream {
+    if (!stream) {
+      throw new Error("Expected stream to open");
+    }
+    return stream;
+  }
+
   it("encodes stream open frames with odd stream ids", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("tasks.watch", encodeString("payload"));
+    const stream = requireStream(
+      mux.openStream("tasks.watch", encodeString("payload")),
+    );
 
     expect(stream.id).toBe(1);
     expect(stream.status).toBe("open");
@@ -63,13 +73,54 @@ describe("StreamMultiplexer", () => {
     expect(decodeString(bridgeFrame.payload)).toBe("payload");
   });
 
+  it("returns null when the SYN cannot enter the socket send queue", () => {
+    const mux = new StreamMultiplexer("ws://linuxio.test/ws");
+    const socket = FakeWebSocket.latest();
+
+    expect(mux.openStream("terminal.open")).toBeNull();
+    expect(socket.sent).toEqual([]);
+    expect(mux.getStream("terminal.open")).toBeNull();
+
+    mux.close();
+  });
+
+  it("returns null when WebSocket.send fails synchronously", () => {
+    const { mux, socket } = openMux();
+    vi.spyOn(socket, "send").mockImplementationOnce(() => {
+      throw new DOMException("Socket closed", "InvalidStateError");
+    });
+
+    expect(mux.openStream("terminal.open")).toBeNull();
+    expect(socket.sent).toEqual([]);
+    expect(mux.getStream("terminal.open")).toBeNull();
+
+    mux.close();
+  });
+
+  it("closes a stream that loses its connection after sending SYN", () => {
+    const { mux, socket } = openMux();
+    const stream = requireStream(mux.openStream("tasks.watch"));
+    const onClose = vi.fn();
+    stream.onClose = onClose;
+
+    expect(socket.sent).toHaveLength(1);
+    expect(readMuxFrame(socket.sent[0]).flags).toBe(Flags.SYN);
+
+    socket.closeWith({ code: 1006 });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(stream.status).toBe("closed");
+
+    mux.close();
+  });
+
   it("reuses only persistent terminal streams", () => {
     const { mux } = openMux();
 
-    const terminalA = mux.openStream("terminal.open");
-    const terminalB = mux.openStream("terminal.open");
-    const requestA = mux.openStream("tasks.watch");
-    const requestB = mux.openStream("tasks.watch");
+    const terminalA = requireStream(mux.openStream("terminal.open"));
+    const terminalB = requireStream(mux.openStream("terminal.open"));
+    const requestA = requireStream(mux.openStream("tasks.watch"));
+    const requestB = requireStream(mux.openStream("tasks.watch"));
 
     expect(terminalB).toBe(terminalA);
     expect(requestB).not.toBe(requestA);
@@ -78,7 +129,7 @@ describe("StreamMultiplexer", () => {
 
   it("routes split inbound bridge data, progress, result, and close frames", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("tasks.watch");
+    const stream = requireStream(mux.openStream("tasks.watch"));
     const onData = vi.fn();
     const onProgress = vi.fn();
     const onResult = vi.fn();
@@ -139,7 +190,7 @@ describe("StreamMultiplexer", () => {
 
   it("buffers detached data and does not duplicate buffered bytes on reattach", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("terminal.open");
+    const stream = requireStream(mux.openStream("terminal.open"));
 
     socket.receive(
       makeInboundMuxFrame(
@@ -181,7 +232,7 @@ describe("StreamMultiplexer", () => {
 
   it("sends write, resize, close, and abort bridge opcodes", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("terminal.open");
+    const stream = requireStream(mux.openStream("terminal.open"));
     socket.sent = [];
 
     stream.write(encodeString("input"));
@@ -244,7 +295,7 @@ describe("StreamMultiplexer", () => {
 
   it("ignores events from a superseded socket after reconnecting", () => {
     const { mux, socket } = openMux();
-    const stream = mux.openStream("terminal.open");
+    const stream = requireStream(mux.openStream("terminal.open"));
     const statusListener = vi.fn();
     mux.addStatusListener(statusListener);
 

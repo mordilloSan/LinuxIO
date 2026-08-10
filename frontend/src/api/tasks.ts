@@ -1,6 +1,7 @@
+import { call } from "./calls";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskWatchStream } from "./linuxio";
-import { LinuxIOError, request } from "./linuxio-core";
+import { LinuxIOError } from "./linuxio-core";
 import { waitForStreamResult } from "./stream-helpers";
 import { isTerminalTaskState } from "./task-state";
 
@@ -43,17 +44,12 @@ const TASK_POLL_INTERVAL_MS = 1_000;
 /**
  * Poll `tasks.get` until the Task reaches a terminal state. Fallback for when
  * the watch stream cannot be opened (mux dropped between Task start and
- * watch); the connection_closed retry policy re-initializes the mux and
- * waits, so this resolves at actual completion instead of failing fast.
+ * watch); the route-owned retry policy re-initializes the mux and waits, so
+ * this resolves at actual completion instead of failing fast.
  */
 async function pollTaskUntilTerminal(taskId: string): Promise<TaskSnapshot> {
   for (;;) {
-    const snapshot = await request<TaskSnapshot>(
-      "tasks",
-      "get",
-      { taskId },
-      { retryPolicy: "connection_closed" },
-    );
+    const snapshot = await call("tasks.get", { taskId });
     if (isTerminalTaskState(snapshot.state)) {
       return snapshot;
     }
@@ -94,14 +90,7 @@ export async function waitForTaskCompletion(
   });
 
   try {
-    return await request<TaskSnapshot>(
-      "tasks",
-      "get",
-      { taskId: snapshot.id },
-      {
-        retryPolicy: "connection_closed",
-      },
-    );
+    return await call("tasks.get", { taskId: snapshot.id });
   } catch {
     const now = new Date().toISOString();
     return {

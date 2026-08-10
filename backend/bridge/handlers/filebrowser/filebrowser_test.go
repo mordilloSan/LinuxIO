@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +11,32 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+func TestResourceStatReturnsStructuredClientErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		code int
+	}{
+		{name: "missing request path", code: 400},
+		{name: "path not found", path: filepath.Join(t.TempDir(), "missing"), code: 404},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := resourceStat(context.Background(), apischema.PathRequest{Path: tc.path})
+			var apiErr *bridgeipc.Error
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("resourceStat() error = %v, want *bridgeipc.Error", err)
+			}
+			if apiErr.Code != tc.code {
+				t.Fatalf("resourceStat() code = %d, want %d", apiErr.Code, tc.code)
+			}
+		})
+	}
+}
 
 func TestExistsBatchReportsExistingPaths(t *testing.T) {
 	dir := t.TempDir()

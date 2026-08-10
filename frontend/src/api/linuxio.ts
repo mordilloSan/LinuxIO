@@ -208,7 +208,7 @@ class TaskDataStream implements Stream {
     this.onResult?.({
       status: "error",
       error: message,
-      code: typeof code === "number" ? code : undefined,
+      code,
     });
     this.markClosed();
   }

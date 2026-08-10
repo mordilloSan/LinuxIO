@@ -1,10 +1,10 @@
-import type {
-  Stream,
-  VMDeleteResult,
-  VMPreflight,
-  VirtualMachine,
+import {
+  LinuxIOError,
+  type Stream,
+  type VMDeleteResult,
+  type VMPreflight,
+  type VirtualMachine,
 } from "@/api";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 export type VMAction =
   | "start"
@@ -165,10 +165,5 @@ export function folderFromISOPathText(path: string): string {
 }
 
 export function isMissingPathError(error: unknown): boolean {
-  const message = getMutationErrorMessage(error, "").toLowerCase();
-  return (
-    message.includes("not found") ||
-    message.includes("no such file") ||
-    message.includes("does not exist")
-  );
+  return error instanceof LinuxIOError && Number(error.code) === 404;
 }

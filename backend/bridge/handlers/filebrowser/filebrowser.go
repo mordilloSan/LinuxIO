@@ -143,7 +143,7 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 		return nil, err
 	}
 	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+		return nil, bridgeipc.NewError("missing path", 400)
 	}
 
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
@@ -152,12 +152,18 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 	})
 	if err != nil {
 		slog.Debug("error getting file stat info", "path", req.Path, "error", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, bridgeipc.NewError("path not found", 404)
+		}
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	statData, err := iteminfo.CollectStatInfo(fileInfo.RealPath)
 	if err != nil {
 		slog.Debug("error collecting stat info", "path", fileInfo.RealPath, "error", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, bridgeipc.NewError("path not found", 404)
+		}
 		return nil, fmt.Errorf("error collecting stat info: %w", err)
 	}
 

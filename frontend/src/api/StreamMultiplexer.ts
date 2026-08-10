@@ -31,7 +31,7 @@ export interface ProgressFrame {
 }
 
 export interface ResultFrame {
-  code?: number;
+  code?: string | number;
   data?: unknown;
   error?: string;
   status: "ok" | "error";
@@ -745,7 +745,7 @@ export class StreamMultiplexer {
    * Open a new stream and send initial payload.
    * The payload is wrapped in a StreamFrame for the bridge.
    */
-  openStream(type: StreamType, initialPayload?: Uint8Array): Stream {
+  openStream(type: StreamType, initialPayload?: Uint8Array): Stream | null {
     // Only reuse persistent streams (terminal) - not request/response streams
     const isPersistent = StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
     if (isPersistent) {
@@ -778,19 +778,18 @@ export class StreamMultiplexer {
     // Send SYN with the StreamFrame as payload
     const sent = this.sendFrame(id, Flags.SYN, bridgeFrame);
     if (!sent) {
-      // Fail fast: keep API behavior deterministic when transport is not available.
+      // No SYN reached the WebSocket send queue, so callers can distinguish an
+      // unavailable connection from a stream that opened and later lost its
+      // result.
       this.streams.delete(id);
       if (isPersistent && this.streamsByType.get(type) === stream) {
         this.streamsByType.delete(type);
       }
       stream.setStatus("closed");
-      queueMicrotask(() => {
-        stream.handleClose();
-      });
-      return stream;
+      return null;
     }
 
-    // Mark as open immediately (server-side stream is created on SYN)
+    // The SYN is enqueued; server acceptance is not acknowledged separately.
     stream.setStatus("open");
 
     return stream;
@@ -811,8 +810,13 @@ export class StreamMultiplexer {
     frame[4] = flags;
     frame.set(payload, 5);
 
-    this.ws.send(frame);
-    return true;
+    try {
+      this.ws.send(frame);
+      return true;
+    } catch (error) {
+      console.warn("[StreamMux] Failed to send WebSocket frame", error);
+      return false;
+    }
   }
 
   /**

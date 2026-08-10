@@ -9,13 +9,13 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
-	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
-	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
+	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic", apischema.RetrySafe()).Handle(handleGetUpdatesBasic),
+	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail", apischema.RetrySafe()).Handle(handleGetUpdateDetail),
+	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates", apischema.RetrySafe()).Handle(handleGetAutoUpdates),
 	apischema.Call[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
 	apischema.Call[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
 	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
-	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history").Handle(handleGetUpdateHistory),
+	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabilityInstallRoutes)

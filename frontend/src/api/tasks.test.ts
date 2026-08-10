@@ -102,7 +102,7 @@ describe("tasks helpers", () => {
       "tasks",
       "get",
       { taskId: "task-1" },
-      { retryPolicy: "connection_closed" },
+      { retryPolicy: "connection_loss" },
     );
     expect(mocks.waitForStreamResult).not.toHaveBeenCalled();
   });
@@ -137,7 +137,7 @@ describe("tasks helpers", () => {
       "tasks",
       "get",
       { taskId: "task-1" },
-      { retryPolicy: "connection_closed" },
+      { retryPolicy: "connection_loss" },
     );
   });
 

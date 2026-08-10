@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -28,21 +27,15 @@ type taskDataRequest struct {
 // namespace itself.
 func (r *TaskService) RegisterRoutes(router *Router) {
 	routes := []Route{
-		{Name: "tasks.get", Mode: ModeCall, Call: r.handleTaskGet, Decode: taskPrimitiveDecoder[taskIDRequest]()},
-		{Name: "tasks.list", Mode: ModeCall, Call: r.handleTaskList, Decode: taskPrimitiveDecoder[taskListRequest]()},
-		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: taskPrimitiveDecoder[taskIDRequest]()},
-		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: taskPrimitiveDecoder[taskIDRequest]()},
-		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: taskPrimitiveDecoder[taskDataRequest]()},
-		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: taskPrimitiveDecoder[struct{}]()},
+		{Name: "tasks.get", Mode: ModeCall, Call: r.handleTaskGet, Decode: JSONRequestDecoder[taskIDRequest]()},
+		{Name: "tasks.list", Mode: ModeCall, Call: r.handleTaskList, Decode: JSONRequestDecoder[taskListRequest]()},
+		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: JSONRequestDecoder[taskIDRequest]()},
+		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: JSONRequestDecoder[taskIDRequest]()},
+		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: JSONRequestDecoder[taskDataRequest]()},
+		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[struct{}]()},
 	}
 	for _, route := range routes {
 		router.registerTaskServiceRoute(r, route)
-	}
-}
-
-func taskPrimitiveDecoder[T any]() RequestDecoder {
-	return func(raw json.RawMessage) (any, error) {
-		return decodeTaskPrimitiveRequest[T](raw)
 	}
 }
 
@@ -306,17 +299,6 @@ func writeWatchLagError(stream net.Conn) {
 		"task stream fell behind; reconnect to resume",
 		503,
 	)
-}
-
-func decodeTaskPrimitiveRequest[T any](raw json.RawMessage) (T, error) {
-	var payload T
-	if len(raw) == 0 {
-		raw = json.RawMessage("{}")
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return payload, err
-	}
-	return payload, nil
 }
 
 func interruptTaskStreamWrite(stream net.Conn) {

@@ -9,7 +9,6 @@ import { type QueryKey, type UseMutationResult } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 
 import { type ActionConfig, useActionMutation } from "./call-react-query";
-import { getRetryPolicy } from "./calls";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { getRouteMode, routeName } from "./generated/route-metadata";
 import { openTaskWatchStream } from "./linuxio";
@@ -177,7 +176,6 @@ export function createTaskEndpoint<TResult>(
   command: string,
   requestShape: RequestShape,
 ): TaskEndpoint<[] | [unknown], unknown, TResult> {
-  const retryPolicy = getRetryPolicy(handler, command);
   const queryKey = (...rawArgs: [] | [unknown]): QueryKey =>
     endpointQueryKey(handler, command, requestShape, rawArgs[0]);
   const execute = (...rawArgs: [] | [unknown]): Promise<TaskSnapshot> =>
@@ -185,7 +183,7 @@ export function createTaskEndpoint<TResult>(
       handler,
       command,
       requestForWire(requestShape, rawArgs[0]),
-      { retryPolicy },
+      { retryPolicy: "none" },
     );
 
   const endpoint = ((...rawArgs: [] | [unknown]) =>

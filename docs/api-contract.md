@@ -63,22 +63,23 @@ For request routes:
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
-| `backend/bridge/apischema/schema.go` | Contract helpers, request decoders, and typed registration adapters. |
+| `backend/bridge/apischema/schema.go` | Contract helpers, route policy, and typed registration adapters. |
+| `backend/common/ipc/bridge/request_decoder.go` | Shared strict request decoder for normal contracts and the reserved Task service. |
 | `backend/common/tools/linuxio-api-gen` | Generator for frontend client/types/route metadata. |
 | `frontend/src/api/generated/client.ts` | Generated concrete `linuxio` object. Calls are TanStack descriptors or descriptor factories; Tasks use their separate lifecycle factory. |
 | `frontend/src/api/generated/linuxio-types.ts` | Generated API models and schema types. |
-| `frontend/src/api/generated/route-metadata.ts` | Generated route mode metadata. |
+| `frontend/src/api/generated/route-metadata.ts` | Generated route modes and sparse retry-safe Call policy. |
 
 ## Frontend API Files
 
 | File | Role |
 |------|------|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
-| `frontend/src/api/calls.ts` | Framework-independent typed `call()` transport and the centrally owned retry-safety policy. |
+| `frontend/src/api/calls.ts` | Framework-independent typed `call()` transport and consumer of the generated retry-safety policy. |
 | `frontend/src/api/call-react-query.ts` | Final TanStack descriptor builders and the shared bounded-mutation lifecycle. It has no dependency on Task lifecycle or streams. |
 | `frontend/src/api/task-react-query.ts` | Task-only mutation integration: `useTaskAction`, `useTaskStreamAction`, completion waiting, watching, and progress handling. It imports the shared mutation lifecycle; Call fetching never imports Task lifecycle. |
 | `frontend/src/api/endpoint-types.ts` | Type-only aggregate that maps generated routes to Call descriptors or Task capabilities without merging their runtime factories. |
-| `frontend/src/api/linuxio-core.ts` | Low-level JSON request path over the stream multiplexer. API internals only. |
+| `frontend/src/api/linuxio-core.ts` | Low-level JSON Call path, deadline ownership, bounded retry, and connection-outcome classification. API internals only. |
 | `frontend/src/api/linuxio.ts` | Typed `openChannel()` transport, connection hooks, terminal/Task stream helpers, and the app-update Task data stream. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
 | `frontend/src/api/stream-helpers.ts` | Helpers for binding stream callbacks, awaiting result frames, and writing byte chunks. |
@@ -236,6 +237,44 @@ useCallMutation(linuxio.tasks.cancel).mutate({ taskId });
 useCallMutation(linuxio.docker.start_container).mutate({ containerId });
 ```
 
+## Request Decoding and Call Reliability
+
+Every normal route and reserved `tasks.*` request uses the shared
+`bridge.JSONRequestDecoder`. It uses `json.Decoder` with
+`DisallowUnknownFields`, accepts exactly one JSON value, and preserves
+`encoding/json` scalar type errors. A missing or `null` request retains the
+existing empty-object behavior. Required-field meaning remains handler/domain
+validation; use pointer fields only when the wire contract must distinguish an
+absent value from its zero value.
+
+Retry safety is Go-owned route metadata. Add `apischema.RetrySafe()` only to a
+Call that can be repeated after connection loss without a user-visible
+mutation. Code generation emits the sparse policy consumed by both Call
+descriptors and imperative `call()`. Absence means no retry, and Task starts are
+always issued once. An explicitly safe Call may make one reconnect attempt;
+both attempts share the original absolute deadline.
+
+The Call transport exposes three outcome classes:
+
+| Outcome | Contract |
+|---------|----------|
+| `connection_unavailable` | Readiness or stream-open send failed before the request SYN was enqueued. The operation was not sent. |
+| backend result or error | The bridge confirmed the outcome. Numeric or string error codes are preserved. |
+| `outcome_unknown` | The request SYN was enqueued, then the stream closed before a result. The operation may have been accepted. |
+
+The relay protocol has no server-side stream-open acknowledgement, so a close
+after the browser enqueues the SYN is conservatively `outcome_unknown`, even
+when a later relay failure may have prevented bridge dispatch. Caller aborts
+remain `AbortError`, request deadlines remain `timeout`, and neither is retried
+or relabelled. Channel and Task-watch close behavior remains payload-specific;
+their generic pre-result close code is still `connection_closed`.
+
+Only a route marked `RetrySafe` retries either named connection-loss outcome.
+Default/no-policy Calls, including mutations, never retry. The shared TanStack
+Query policy also refuses a second Query-layer attempt for these two codes, so
+it cannot multiply the transport decision. Frontend feature code branches on a
+structured code, never on error message text.
+
 ## Backend Handler Shapes
 
 Call route:
@@ -244,6 +283,7 @@ Call route:
 var api = apischema.Bindings(
     apischema.Call[apischema.NoRequest, *apischema.CPUInfoResponse](
         "system.get_cpu_info",
+        apischema.RetrySafe(),
     ).Handle(handleGetCPUInfo),
 )
 ```
@@ -303,10 +343,12 @@ through a single direct `useCallMutation` request/response.
 Starting a generated Task endpoint returns a `TaskSnapshot` immediately. On the
 frontend, `useTaskAction` awaits the terminal state via
 `waitForTaskCompletion()`: a failed Task rejects with a `LinuxIOError` carrying
-the Task's error message/code, and success resolves with the unwrapped
-typed `TaskSnapshot.result`. If the watch stream cannot be opened (the mux
-dropped between Task start and watch), completion waiting falls back to polling
-`tasks.get`; `useTaskStreamAction` instead fails fast because it promises live
+the Task's error message/code, and success resolves with the unwrapped typed
+`TaskSnapshot.result`. A Task start is never retried after connection loss; Task
+recovery begins only after the client has received its snapshot identity. If
+the watch stream cannot be opened (the mux dropped between Task start and
+watch), completion waiting falls back to the explicitly retry-safe `tasks.get`
+Call; `useTaskStreamAction` instead fails fast because it promises live
 progress, and the recovered-Tasks stream can pick the Task up.
 
 Built-in Task routes:
@@ -447,7 +489,7 @@ var api = apischema.Bindings(
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.
 
-## Documented Follow-up
+## Implementation Boundaries and Follow-up
 
 The current contract shape is intentionally JSON-first and Go-owned. Runtime
 route binding is typed, and TypeScript generation still reads Go type metadata.
@@ -474,16 +516,16 @@ Remaining runtime cleanup:
 
 ### 2. Request decoding
 
-The current request path uses `json.Unmarshal` into the typed Go request struct.
-This is the implemented contract: JSON remains readable and Go remains the
-source of truth. Generated request decoders are not implemented; any future
-decoder work is benchmark-gated and must demonstrate a meaningful runtime or
-validation benefit before changing the path.
+The implemented request path uses one strict `json.Decoder` into the typed Go
+request struct. Unknown fields and trailing values fail before handler dispatch;
+normal scalar type errors retain their `encoding/json` identity. JSON remains
+readable and Go remains the source of truth.
 
-The approved next direction is a small strict-standard-library step (unknown
-fields and trailing-token checks) before considering generated decoders. The
-scope, evidence, and decision boundary are tracked in the [API reliability
-roadmap](./api-reliability-roadmap.md); do not duplicate that plan here.
+Generated request decoders are not implemented. Reconsider them only if a
+profile shows decoding is material or a concrete contract needs generated
+presence tracking. If duplicate-key rejection becomes a hard security
+requirement, first evaluate one envelope-level detector and measure its cost
+instead of generating a decoder for every route.
 
 ### 3. Keep Route Declarations Local
 

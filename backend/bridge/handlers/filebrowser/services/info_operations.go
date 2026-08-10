@@ -25,7 +25,7 @@ func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, erro
 	// Resolve symlinks
 	resolvedPath, isDir, err := iteminfo.ResolveSymlinks(realPath)
 	if err != nil {
-		return response, fmt.Errorf("could not resolve path: %v, error: %v", opts.Path, err)
+		return response, fmt.Errorf("could not resolve path %s: %w", opts.Path, err)
 	}
 
 	if !strings.HasSuffix(opts.Path, "/") && isDir {
@@ -63,7 +63,7 @@ func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, erro
 			}
 		}
 		if info == nil {
-			return response, fmt.Errorf("file not found: %s", opts.Path)
+			return response, fmt.Errorf("file not found %s: %w", opts.Path, os.ErrNotExist)
 		}
 	}
 

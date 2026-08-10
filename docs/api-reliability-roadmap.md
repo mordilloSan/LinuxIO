@@ -53,12 +53,20 @@ The transport cleanup is complete:
 - server-producing Channels cancel blocked writers when their client closes,
   aborts, or disconnects.
 
+The strict-input and explicit Call-policy phase is also complete:
+
+- normal routes and the reserved `tasks.*` service share one strict
+  standard-library request decoder;
+- safe retry is declared in Go with `apischema.RetrySafe()` and emitted as a
+  generated sparse policy map;
+- Call transport failures distinguish pre-send unavailability from an unknown
+  post-send outcome; and
+- feature decisions use structured error codes rather than message text.
+
 The remaining reliability constraints are:
 
 - in-memory Task ownership does not distinguish exact-session visibility from
   durable user visibility;
-- Call retry safety is inferred from route naming instead of declared policy;
-- request decoding uses permissive `json.Unmarshal`;
 - server notifications are not implemented; the navbar history is local toast
   history only.
 
@@ -127,12 +135,24 @@ net deletion.
 - [x] Existing ownership, admission, cancellation, replay, and transfer tests
   still pass.
 
-## Phase 2: Strict Input and Explicit Call Policy
+## Phase 2: Strict Input and Explicit Call Policy (complete)
+
+Completed on 2026-08-10:
+
+1. Routed normal contracts and reserved Task-service requests through one
+   strict `json.Decoder` implementation.
+2. Replaced frontend command-name inference with Go-owned `RetrySafe` metadata.
+3. Split connection loss into `connection_unavailable` before stream-open send
+   and `outcome_unknown` after it.
+4. Kept mutation and Task starts at no retry and prevented TanStack Query from
+   multiplying transport attempts.
+5. Replaced the remaining feature decision based on error message text with a
+   structured missing-path status.
 
 ### Request decoding
 
-Keep JSON envelopes and Go structs as the source of truth. Replace permissive
-request decoding with one standard-library path that:
+JSON envelopes and Go structs remain the source of truth. All route requests
+use one standard-library path that:
 
 - uses `json.Decoder`;
 - calls `DisallowUnknownFields()`;
@@ -152,11 +172,11 @@ its cost instead of generating a decoder for every route.
 
 ### Call policy
 
-Replace command-prefix retry inference with a route option such as
-`apischema.RetrySafe()`. The generator emits one compact Call-policy map, and
-both generated query descriptors and imperative `call()` consult it. The
-default is no retry. Only an explicitly safe read may retry a
-connection-close failure, within its original deadline.
+Call declarations opt into retry with `apischema.RetrySafe()`. The generator
+emits one compact Call-policy map, and both generated query descriptors and
+imperative `call()` consult it. The default is no retry. Only an explicitly
+safe read may retry either connection-loss outcome, within its original
+deadline.
 
 The transport records whether failure happened before or after opening the
 request stream and must distinguish:
@@ -183,6 +203,17 @@ convergence condition after reconnect:
 
 Structured error codes cross every layer unchanged. Frontend code must not
 branch on error message text.
+
+### Phase 2 exit criteria
+
+- [x] Unknown request fields and trailing JSON values are rejected before a
+  handler runs, including for reserved `tasks.*` routes.
+- [x] Call retry safety is explicit Go-owned metadata; absence means no retry.
+- [x] Pre-send connection failure and post-send unknown outcome have different
+  structured codes.
+- [x] Only explicitly safe Calls retry connection loss, at most once and within
+  the original deadline; Task starts do not retry.
+- [x] Backend and transport error codes reach feature decisions unchanged.
 
 ## Phase 3: Task Lifetime, Identity, and Session Activity
 

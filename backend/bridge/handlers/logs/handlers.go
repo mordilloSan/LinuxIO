@@ -23,8 +23,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 				return streamServiceLogsChannel(ctx, stream, rt, req)
 			},
 		),
-		apischema.Call[apischema.GeneralLogEntryRequest, map[string]any]("logs.general_entry").Handle(handleGeneralLogEntry),
-		apischema.Call[apischema.GeneralLogsPageRequest, apischema.GeneralLogsPageResponse]("logs.general_page").Handle(handleGeneralLogsPage),
+		apischema.Call[apischema.GeneralLogEntryRequest, map[string]any]("logs.general_entry", apischema.RetrySafe()).Handle(handleGeneralLogEntry),
+		apischema.Call[apischema.GeneralLogsPageRequest, apischema.GeneralLogsPageResponse]("logs.general_page", apischema.RetrySafe()).Handle(handleGeneralLogsPage),
 	)
 }
 

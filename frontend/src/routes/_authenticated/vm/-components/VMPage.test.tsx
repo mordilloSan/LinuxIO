@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { linuxio } from "@/api";
+import { LinuxIOError, linuxio } from "@/api";
 import {
   act,
   createTestQueryClient,
@@ -960,7 +960,7 @@ describe("Virtual Machines page", () => {
 
   it("creates a missing folder derived from typed ISO path text", async () => {
     mocks.resourceStat.mockRejectedValueOnce(
-      new Error("bad_request:no such file or directory"),
+      new LinuxIOError("path wording is presentation only", 404),
     );
     const { user } = await renderVMPage();
 

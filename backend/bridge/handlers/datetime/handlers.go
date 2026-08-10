@@ -9,12 +9,12 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, bool]("datetime.get_ntp_status").Handle(handleGetNTPStatus),
+	apischema.Call[apischema.NoRequest, bool]("datetime.get_ntp_status", apischema.RetrySafe()).Handle(handleGetNTPStatus),
 	apischema.Call[apischema.EnabledRequest, apischema.NoResponse]("datetime.set_ntp").HandleVoid(handleSetNTP),
 	apischema.Call[apischema.ISOTimeRequest, apischema.NoResponse]("datetime.set_server_time").HandleVoid(handleSetServerTime),
-	apischema.Call[apischema.NoRequest, string]("datetime.get_timezone").Handle(handleGetTimezone),
+	apischema.Call[apischema.NoRequest, string]("datetime.get_timezone", apischema.RetrySafe()).Handle(handleGetTimezone),
 	apischema.Call[apischema.TimezoneRequest, apischema.NoResponse]("datetime.set_timezone").HandleVoid(handleSetTimezone),
-	apischema.Call[apischema.NoRequest, []string]("datetime.get_ntp_servers").Handle(handleGetNTPServers),
+	apischema.Call[apischema.NoRequest, []string]("datetime.get_ntp_servers", apischema.RetrySafe()).Handle(handleGetNTPServers),
 	apischema.Call[apischema.NTPServersRequest, apischema.NoResponse]("datetime.set_ntp_servers").HandleVoid(handleSetNTPServers),
 )
 

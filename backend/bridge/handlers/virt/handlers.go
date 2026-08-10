@@ -12,9 +12,9 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.Privileged()).Handle(handleList),
-		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.Privileged()).Handle(handleGet),
-		apischema.Call[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.Privileged()).Handle(handlePreflight),
+		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.RetrySafe(), apischema.Privileged()).Handle(handleList),
+		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGet),
+		apischema.Call[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.RetrySafe(), apischema.Privileged()).Handle(handlePreflight),
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.start", apischema.Privileged()).HandleVoid(handleStart),
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.shutdown", apischema.Privileged()).HandleVoid(handleShutdown),
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.reboot", apischema.Privileged()).HandleVoid(handleReboot),

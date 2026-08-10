@@ -11,8 +11,8 @@ var api = apischema.Bindings(
 	apischema.DuplexRoute[apischema.TaskDataRequest, apischema.NoResponse]("tasks.data", apischema.NoEndpoint()),
 	apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("tasks.events", apischema.NoEndpoint()),
 	apischema.Call[apischema.TaskIDRequest, apischema.TaskSnapshot]("tasks.cancel"),
-	apischema.Call[apischema.TaskIDRequest, apischema.TaskSnapshot]("tasks.get"),
-	apischema.Call[apischema.TaskListRequest, []apischema.TaskSnapshot]("tasks.list"),
+	apischema.Call[apischema.TaskIDRequest, apischema.TaskSnapshot]("tasks.get", apischema.RetrySafe()),
+	apischema.Call[apischema.TaskListRequest, []apischema.TaskSnapshot]("tasks.list", apischema.RetrySafe()),
 )
 
 var Routes = api.Routes()

@@ -9,10 +9,10 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").Handle(handleListTimers),
-	apischema.Call[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").Handle(handleListSockets),
-	apischema.Call[apischema.NoRequest, []apischema.Service]("systemd.list_services").Handle(handleListServices),
-	apischema.Call[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").Handle(handleGetUnitInfo),
+	apischema.Call[apischema.NoRequest, []apischema.Timer]("systemd.list_timers", apischema.RetrySafe()).Handle(handleListTimers),
+	apischema.Call[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets", apischema.RetrySafe()).Handle(handleListSockets),
+	apischema.Call[apischema.NoRequest, []apischema.Service]("systemd.list_services", apischema.RetrySafe()).Handle(handleListServices),
+	apischema.Call[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info", apischema.RetrySafe()).Handle(handleGetUnitInfo),
 	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").HandleVoid(handleStartService),
 	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").HandleVoid(handleStopService),
 	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").HandleVoid(handleRestartService),

@@ -42,7 +42,12 @@ export {
 } from "./tasks";
 
 // === API Error Type ===
-export { LinuxIOError, ensureLoaderRequestReady } from "./linuxio-core";
+export {
+  LinuxIOError,
+  ensureLoaderRequestReady,
+  isConnectionLossError,
+} from "./linuxio-core";
+export type { ConnectionLossCode } from "./linuxio-core";
 
 // === React Hooks ===
 export { useStreamMux } from "./linuxio";

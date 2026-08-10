@@ -10,8 +10,8 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.Privileged()).Handle(handleGetConfig),
-	apischema.Call[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Call[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetConfig),
+	apischema.Call[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetStatus),
 	apischema.Call[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
 	apischema.Call[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
