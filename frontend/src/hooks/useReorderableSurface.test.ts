@@ -5,6 +5,8 @@ import type {
 } from "@dnd-kit/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { REORDER_IDLE_EXIT_MS } from "@/constants/reorder";
+
 const configMocks = vi.hoisted(() => ({
   layoutOrders: undefined as Record<string, string[]> | undefined,
   setLayoutOrders: vi.fn(),
@@ -17,8 +19,7 @@ vi.mock("@/hooks/useConfig", () => ({
   ]),
 }));
 
-const { REORDER_IDLE_EXIT_MS, useReorderableSurface } =
-  await import("@/hooks/useReorderableSurface");
+const { useReorderableSurface } = await import("@/hooks/useReorderableSurface");
 const { act, renderHook } = await import("@/test/render");
 
 interface Item {

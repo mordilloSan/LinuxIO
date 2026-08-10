@@ -3,12 +3,12 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   getLiveHoverNowMs,
   getLiveHoverRightPx,
-  LIVE_MILLIS_PER_PIXEL,
   setLiveHoverRightPx,
   subscribeLiveHover,
 } from "@/components/charts/liveSeriesStore";
 import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
 import { formatChartClockWithSeconds } from "@/components/charts/timeFormat";
+import { LIVE_MILLIS_PER_PIXEL } from "@/constants/liveCharts";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 

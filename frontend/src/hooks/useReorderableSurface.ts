@@ -19,17 +19,12 @@ import {
   useState,
 } from "react";
 
+import {
+  REORDER_HOLD_MS,
+  REORDER_HOLD_TOLERANCE_PX,
+  REORDER_IDLE_EXIT_MS,
+} from "@/constants/reorder";
 import { useConfigValue } from "@/hooks/useConfig";
-
-/** How long a card or row must be held before layout mode opens. */
-export const REORDER_HOLD_MS = 2000;
-/** How long layout mode survives without any interaction. */
-export const REORDER_IDLE_EXIT_MS = 5000;
-/**
- * Pointer slack allowed during the hold. Anything larger reads as a scroll or a
- * drag-select and cancels the hold instead of arming it.
- */
-const REORDER_HOLD_TOLERANCE_PX = 8;
 
 export interface ReorderableSurfaceOptions<TItem> {
   /**

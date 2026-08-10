@@ -426,6 +426,26 @@ tsc: ensure-node setup
 golint: ensure-golint ensure-modernize
 	@$(MAKE) --no-print-directory golint-only
 
+# Two ordering rules govern this target. Breaking either is silent, so measure
+# before reshuffling. Warm-cache durations on a 16-core dev host, which is what
+# the follow order below is sorted by:
+#
+#   lint-only 4.4s   golint-only 7.6s          (wave 1, writers)
+#   tsc-only 2.3s    deadcode-only 5.0s
+#   test-backend 9.8s   test-frontend-only 17.6s   (wave 2, readers)
+#
+# 1. Writers before readers. lint-only (oxlint --fix, oxfmt) and golint-only
+#    (golangci-lint fmt, go mod tidy, modernize -fix) REWRITE source. Every job
+#    in the second wave only reads. A reader that runs beside its writer sees a
+#    half-rewritten tree, and only when there were fixes to apply — that is,
+#    exactly when someone just edited code. tsc-only in particular reads the
+#    files lint-only rewrites, which is why it sits in the second wave despite
+#    being a lint-flavoured check rather than a test.
+#
+# 2. follow() displays a job's output only once it exits, so a job's results
+#    surface at max(duration of every job followed before it). Ordering the
+#    follows by ascending duration is what makes each result appear as soon as
+#    it exists; any other order hides finished work behind a slower job.
 test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
@@ -434,23 +454,23 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup
 	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/golint"; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/golint"; \
 	$(MAKE) --no-print-directory lint-only   > "$$TMPDIR_JOBS/lint"   2>&1 & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only    > "$$TMPDIR_JOBS/tsc"    2>&1 & PID_TSC=$$!; \
 	$(MAKE) --no-print-directory golint-only > "$$TMPDIR_JOBS/golint" 2>&1 & PID_GOLINT=$$!; \
-	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
-	follow "$$TMPDIR_JOBS/tsc"    $$PID_TSC    || ST=1; \
+	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	$(PRINTC) ""; \
-	touch "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	touch "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory tsc-only                        > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
 	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/fe"   $$PID_FE   || ST=1; \
-	$(PRINTC) ""; \
-	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
@@ -471,13 +491,14 @@ check-frontend: ensure-node setup
 	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc"; \
-	$(MAKE) --no-print-directory lint-only > "$$TMPDIR_JOBS/lint" 2>&1 & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only  > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
-	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
-	follow "$$TMPDIR_JOBS/lint" $$PID_LINT || ST=1; \
+	$(MAKE) --no-print-directory lint-only || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	touch "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/fe"; \
+	$(MAKE) --no-print-directory tsc-only           > "$$TMPDIR_JOBS/tsc" 2>&1 & PID_TSC=$$!; \
+	$(MAKE) --no-print-directory test-frontend-only > "$$TMPDIR_JOBS/fe"  2>&1 & PID_FE=$$!; \
+	follow "$$TMPDIR_JOBS/tsc" $$PID_TSC || ST=1; \
+	$(PRINTC) ""; \
+	follow "$$TMPDIR_JOBS/fe"  $$PID_FE  || ST=1; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  Frontend checks completed with $$FRONTEND_LINT_WARNINGS lint warning(s).$(COLOR_RESET)"; \
@@ -500,9 +521,9 @@ check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
-	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
-	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	$(PRINTC) ""; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \

@@ -6,7 +6,6 @@ import { CACHE_TTL_MS, linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
   appendLiveSample,
-  LIVE_MILLIS_PER_PIXEL,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
 import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
@@ -14,6 +13,7 @@ import {
   type LiveSeriesPoint,
   useLiveSeries,
 } from "@/components/charts/useLiveSeries";
+import { LIVE_MILLIS_PER_PIXEL } from "@/constants/liveCharts";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";

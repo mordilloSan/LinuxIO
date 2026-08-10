@@ -5,10 +5,12 @@ import type { MonitoringHistoryRequest } from "@/api";
 import {
   backfillLiveSeries,
   getLiveSeries,
-  LIVE_BACKFILL_WINDOW_MS,
-  LIVE_STALE_AFTER_MS,
   resetStaleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
+import {
+  LIVE_BACKFILL_WINDOW_MS,
+  LIVE_STALE_AFTER_MS,
+} from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
 
 export interface LiveSeriesPoint {

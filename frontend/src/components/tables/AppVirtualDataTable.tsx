@@ -45,10 +45,8 @@ import type {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import {
-  REORDER_HOLD_MS,
-  type ReorderableSurfaceDndProps,
-} from "@/hooks/useReorderableSurface";
+import { REORDER_HOLD_MS } from "@/constants/reorder";
+import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_STANDARD_CSS,
