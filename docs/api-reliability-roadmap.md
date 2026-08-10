@@ -63,16 +63,10 @@ The strict-input and explicit Call-policy phase is also complete:
   post-send outcome; and
 - feature decisions use structured error codes rather than message text.
 
-The remaining reliability constraints are:
-
-- in-memory Task ownership does not distinguish exact-session visibility from
-  durable user visibility;
-- server notifications are not implemented; the navbar history is local toast
-  history only.
-
-These constraints determine the remaining phase order. Durable Tasks and
-notifications build on the completed transport boundary rather than adding a
-parallel runtime.
+The remaining reliability constraint is that server notifications are not
+implemented; the navbar history is local toast history only. Notifications
+build on the completed transport, Task ownership, and durable-operation
+boundaries rather than adding a parallel runtime.
 
 ## Target Model
 
@@ -252,7 +246,8 @@ demonstrates value.
 
 | Route group | Initial lifetime / recovery owner |
 |-------------|-----------------------------------|
-| All 18 current Task routes, including file operations, `docker.compose`, `virt.create`, `filebrowser.index`, `control.app_update`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` | Session Task. Every current route is canceled with its owning bridge/session; no route is durable yet. |
+| File operations, `docker.compose`, `virt.create`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (17 routes) | Session Task. Each is canceled with its owning bridge/session. |
+| `control.app_update` | Durable Task owned by authenticated numeric UID. A persistent record and deterministic systemd transient unit own recovery. |
 
 ### Session activity
 
@@ -267,10 +262,10 @@ session Tasks end with the session.
 
 ### Phase 3 exit criteria
 
-- [x] Every Task declaration has an explicit lifetime; all 18 current routes are
-  `SessionTask()`.
+- [x] Every Task declaration has an explicit lifetime. Phase 3 initially landed
+  all routes as session-bound; Phase 4 promotes only `control.app_update`.
 - [x] Owner plumbing distinguishes exact `SessionID` from durable numeric UID;
-  no current route is marked durable.
+  `control.app_update` uses UID scope and the other 17 routes use session scope.
 - [x] Bridge shutdown calls `CancelTasksForSession` before closing its transport.
 - [x] Session IDs remain internal authorization values and are redacted from
   public Task snapshots and serialized owner models.
@@ -301,7 +296,9 @@ contains no raw request, credential, or secret. A `launching` state and
 deterministic executor name close the crash window around `StartTransientUnit`:
 recovery queries that exact name, validates it against the record, and adopts or
 fails the operation instead of starting a second unit. The name is a locator;
-the record remains authoritative.
+the record remains authoritative. A recovered `queued` record is safe to resume
+because it proves the executor was never called; after `launching`, recovery
+may only adopt the recorded executor and must never start a replacement.
 
 For app update, replace the current `systemd-run --wait --pipe` path with
 `StartTransientUnit` through the existing D-Bus stack. The update remains an
@@ -312,16 +309,37 @@ durability mechanism.
 
 ### Required fault matrix
 
-Test these as different events:
+These are different events with deliberately different outcomes:
 
-1. page reload;
-2. WebSocket reconnect;
-3. bridge death and later reauthentication;
-4. host restart.
+| Event | Pilot behavior |
+|-------|----------------|
+| Page reload | The browser retains the canonical operation ID and target, detaches its watch without canceling, then converges through authenticated `/api/update-status`. |
+| WebSocket reconnect | Repeating the same UID/UUID/fingerprint claim returns the existing Task/record; a different request fingerprint conflicts. |
+| Bridge death and later reauthentication | The systemd unit and record outlive the bridge. A replacement bridge reattaches each active record as a real UID-owned Task, validates the exact unit identity, and resumes observation without launching a second unit; watch and cancellation work from the replacement session. |
+| Host restart | The JSON record survives but the transient unit does not promise reboot survival. A previously running record with no typed result becomes terminal `unknown`; recovery never starts a replacement automatically. |
 
 Do not claim survival for an event unless the external executor and persistent
 record both survive it. Cancellation becomes terminal only after the external
 owner confirms it stopped.
+
+### Phase 4 exit criteria
+
+- [x] `control.app_update` is the only durable Task; all other Tasks remain
+  session-bound by default.
+- [x] Starts use a Web-Crypto UUID as the Task and operation identity, with
+  idempotent same-fingerprint claims and conflict on reuse for other input.
+- [x] The bounded UID-scoped store atomically persists one sanitized record per
+  operation and never prunes active records.
+- [x] The updater runs in a deterministic, identity-checked systemd transient
+  unit started through D-Bus; journald remains diagnostic-only and a typed
+  result file determines completion.
+- [x] Page reload, reconnect, bridge recovery, conservative host-restart
+  `unknown`, and stop-confirmed cancellation have focused automated coverage.
+- [x] `/api/update-status` requires authentication and hides records owned by a
+  different UID as missing.
+- [x] Recovered operations are reattached to the router Task registry, remain
+  cancelable from a replacement same-UID session, and count toward singleton
+  admission; the locked store also enforces the singleton across processes.
 
 ## Phase 5: Persistent Notifications
 

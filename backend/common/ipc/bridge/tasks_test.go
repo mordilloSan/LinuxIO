@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -33,6 +34,31 @@ func TestCanceledQueuedTaskCannotStart(t *testing.T) {
 	}
 	if !task.IsTerminal() {
 		t.Fatal("canceled task is not terminal")
+	}
+}
+
+func TestStableTaskIdentityClaimIsIdempotentAndScoped(t *testing.T) {
+	registry := NewTaskService()
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+	identity := TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: "same-request"}
+
+	first, created, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	if err != nil || !created {
+		t.Fatalf("first claim = %v, %t, %v", first, created, err)
+	}
+	second, created, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	if err != nil || created || second != first {
+		t.Fatalf("repeat claim = %v, %t, %v; want existing task", second, created, err)
+	}
+
+	conflicting := identity
+	conflicting.Fingerprint = "different-request"
+	if _, _, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, conflicting); !errors.Is(err, ErrTaskIdentityConflict) {
+		t.Fatalf("fingerprint conflict error = %v", err)
+	}
+	otherOwner := TaskOwner{SessionID: "session-b", Username: "bob", UID: 1001}
+	if _, _, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, otherOwner, TaskLifetimeDurable, identity); !errors.Is(err, ErrTaskIdentityConflict) {
+		t.Fatalf("owner conflict error = %v", err)
 	}
 }
 

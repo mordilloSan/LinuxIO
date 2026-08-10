@@ -25,6 +25,7 @@ type RouteSpec struct {
 
 	Decode   bridgeipc.RequestDecoder
 	Metadata bridgeipc.TaskMetadataBuilder
+	Identity bridgeipc.TaskIdentityBuilder
 }
 
 type RouteSpecOption func(*RouteSpec)
@@ -101,6 +102,25 @@ func WithTaskMetadata[Request any](build func(Request) bridgeipc.TaskMetadata) R
 	}
 }
 
+// WithTaskIdentity declares the canonical ID and safe request fingerprint for
+// a durable Task. The typed wrapper prevents identity logic from accidentally
+// inspecting another route's request model.
+func WithTaskIdentity[Request any](build func(Request) (bridgeipc.TaskIdentity, error)) RouteSpecOption {
+	return func(spec *RouteSpec) {
+		if build == nil {
+			panic("apischema: task identity builder cannot be nil")
+		}
+		spec.Identity = func(value any) (bridgeipc.TaskIdentity, error) {
+			req, ok := value.(Request)
+			if !ok {
+				var zero Request
+				panic(fmt.Sprintf("apischema: identity for %s got %T, want %T", spec.Route, value, zero))
+			}
+			return build(req)
+		}
+	}
+}
+
 func Call[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
 	return newRoute[Request, Result](KindHandler, bridgeipc.ModeCall, name, opts...)
 }
@@ -118,6 +138,9 @@ func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, 
 	if spec.Metadata != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
 		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task runners", spec.Route))
 	}
+	if spec.Identity != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
+		panic(fmt.Sprintf("apischema: route %s identity is allowed only on task runners", spec.Route))
+	}
 	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask {
 		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task routes", spec.Route))
 	}
@@ -126,6 +149,9 @@ func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, 
 	}
 	if spec.Mode == bridgeipc.ModeTask && spec.TaskLifetime == "" {
 		panic(fmt.Sprintf("apischema: task route %s must declare a lifetime", spec.Route))
+	}
+	if spec.Identity != nil && spec.TaskLifetime != bridgeipc.TaskLifetimeDurable {
+		panic(fmt.Sprintf("apischema: route %s stable identity requires durable lifetime", spec.Route))
 	}
 	if spec.Mode != bridgeipc.ModeTask && spec.TaskLifetime != "" {
 		panic(fmt.Sprintf("apischema: route %s task lifetime is allowed only on task routes", spec.Route))
@@ -442,6 +468,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	}
 	if spec.Metadata != nil {
 		opts = append(opts, bridgeipc.WithTaskMetadata(spec.Metadata))
+	}
+	if spec.Identity != nil {
+		opts = append(opts, bridgeipc.WithTaskIdentity(spec.Identity))
 	}
 	if spec.TaskLifetime != "" {
 		opts = append(opts, bridgeipc.WithTaskLifetime(spec.TaskLifetime))

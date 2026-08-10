@@ -9,8 +9,8 @@ LinuxIO exposes three deliberately different operation shapes:
 - **Call** is bounded request/response work.
 - **Channel** is a live stream with an explicit resume/reconnect contract.
 - **Task** is tracked background work with identity, progress, and watcher
-  recovery while the current bridge remains alive. Durable Task execution is
-  planned separately and is not part of the implemented contract.
+  recovery. Seventeen routes are session-bound; `control.app_update` opts into
+  a persistent UID-owned record and external executor.
 
 Task progress/data events are not persistent history. The current navbar keeps
 toast history in the browser; the planned server notification store is separate
@@ -95,7 +95,7 @@ Every route has one mode:
 | Mode | Use |
 |------|-----|
 | `bridgeipc.ModeCall` | Bounded request/response work. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
-| `bridgeipc.ModeTask` | Bridge-process work with Task identity, progress, and watcher recovery. Durable execution is a planned opt-in, not current `ModeTask` behavior. |
+| `bridgeipc.ModeTask` | Tracked work with Task identity, progress, watcher recovery, and an explicit session or durable lifetime. Only `control.app_update` currently opts into durable execution. |
 | `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
 
 Every route has one schema kind:
@@ -348,11 +348,11 @@ through a single direct `useCallMutation` request/response.
 
 ### Task lifetime, ownership, and activity
 
-All 18 current Task routes declare `SessionTask()`. Their owner is the exact
+Seventeen Task routes declare `SessionTask()`. Their owner is the exact
 authenticated `SessionID`; logout, expiry, session deletion, bridge failure,
-or bridge shutdown cancels the in-memory Task. No current route is durable.
-The runtime also has a separate durable-owner path keyed by authenticated
-numeric UID for the future durable pilot; it is not used by current routes.
+or bridge shutdown cancels the in-memory Task. `control.app_update` alone
+declares `DurableTask()` and is owned by the authenticated numeric UID, so a
+later session for that UID can observe the same operation.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
 in public Task snapshots or serialized API models. Public owner fields are
@@ -374,6 +374,24 @@ the watch stream cannot be opened (the mux dropped between Task start and
 watch), completion waiting falls back to the explicitly retry-safe `tasks.get`
 Call; `useTaskStreamAction` instead fails fast because it promises live
 progress, and the recovered-Tasks stream can pick the Task up.
+
+The app-update exception receives a canonical Web-Crypto UUID before start.
+That UUID is both its Task ID and persistent operation ID. The backend binds it
+to the UID, route, and a safe fingerprint of the requested version; repeating
+the same claim attaches to the existing operation while incompatible reuse is
+a conflict. Closing the app-update stream only detaches observation. Explicit
+abort invokes `tasks.cancel`, and cancellation is terminal only after systemd
+confirms that the exact unit stopped. A replacement bridge reattaches active
+records as Tasks before accepting requests, so a later session for the same UID
+retains watch/cancel access and the recovered updater still occupies singleton
+admission.
+
+`GET /api/update-status?id=<uuid>` is session-authenticated and UID-scoped. It
+reads the persistent operation record, reconciles a typed executor result when
+available, and reports `running`, `ok`, `error`, or `unknown`. Missing and
+different-UID records are indistinguishable. The endpoint is the browser's
+convergence path across reloads and the LinuxIO service restart performed by
+the updater.
 
 Built-in Task routes:
 
@@ -411,8 +429,9 @@ payload-specific helper instead of constructing envelopes directly.
 Terminal and container sessions are bidirectional Channels. The three log
 routes are direct server-producing Channels and never create a Task. App update
 uses a Task plus its binary data Channel because the operation survives the
-watching component and deliberately severs the bridge during restart. The
-current in-memory Task itself does not survive that bridge exit.
+watching component and deliberately severs the bridge during restart. Its
+persistent UID-owned record and external systemd executor, rather than the
+in-memory Task or stream, are authoritative across that bridge exit.
 
 ### Channel lifecycle and ownership
 

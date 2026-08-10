@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -59,6 +60,122 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 		t.Fatalf("accepted %d singleton tasks, want 1", successes)
 	}
 	close(release)
+}
+
+func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
+	registry := NewTaskService()
+	router := NewRouter(registry)
+	release := make(chan struct{})
+	runnerStarted := make(chan struct{})
+	var runs atomic.Int32
+	route := Route{
+		Name:     "control.app_update",
+		Mode:     ModeTask,
+		Policy:   TaskSingletonSystem,
+		Lifetime: TaskLifetimeDurable,
+		Identity: func(request any) (TaskIdentity, error) {
+			fingerprint, ok := request.(string)
+			if !ok {
+				return TaskIdentity{}, fmt.Errorf("unexpected identity request %T", request)
+			}
+			return TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: fingerprint}, nil
+		},
+		Runner: func(context.Context, *Task, any) (any, error) {
+			runs.Add(1)
+			close(runnerStarted)
+			<-release
+			return nil, nil
+		},
+	}
+	request := Request{
+		Route:        route.Name,
+		DecodedValue: "same-request",
+		Owner:        TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000},
+	}
+
+	type startResult struct {
+		task *Task
+		err  error
+	}
+	results := make(chan startResult, 2)
+	var starts sync.WaitGroup
+	starts.Add(2)
+	for range 2 {
+		go func() {
+			defer starts.Done()
+			task, _, err := router.startOrQueueTask(route, request)
+			results <- startResult{task: task, err: err}
+		}()
+	}
+	starts.Wait()
+	close(results)
+	var claimed []*Task
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("start error: %v", result.err)
+		}
+		claimed = append(claimed, result.task)
+	}
+	if len(claimed) != 2 || claimed[0] != claimed[1] {
+		t.Fatalf("concurrent claims = %v", claimed)
+	}
+	<-runnerStarted
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("runner starts = %d, want 1", got)
+	}
+	close(release)
+	<-claimed[0].Done()
+}
+
+func TestRouterRecoveredDurableTaskIsCancelableAndBlocksSingletonStart(t *testing.T) {
+	type identityRequest struct {
+		id          string
+		fingerprint string
+	}
+	registry := NewTaskService()
+	router := NewRouter(registry)
+	runnerStarted := make(chan struct{})
+	route := Route{
+		Name:     "control.app_update",
+		Mode:     ModeTask,
+		Policy:   TaskSingletonSystem,
+		Lifetime: TaskLifetimeDurable,
+		Identity: func(request any) (TaskIdentity, error) {
+			value, ok := request.(identityRequest)
+			if !ok {
+				return TaskIdentity{}, fmt.Errorf("unexpected identity request %T", request)
+			}
+			return TaskIdentity{ID: value.id, Fingerprint: value.fingerprint}, nil
+		},
+		Runner: func(ctx context.Context, _ *Task, _ any) (any, error) {
+			close(runnerStarted)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+	router.register(route)
+	owner := TaskOwner{SessionID: "new-session", Username: "alice", UID: 1000}
+	identity := TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: "same-request"}
+	task, created, err := router.RecoverDurableTask(route.Name, identityRequest{id: identity.ID, fingerprint: identity.Fingerprint}, owner, identity)
+	if err != nil || !created {
+		t.Fatalf("RecoverDurableTask = %v, %t, %v", task, created, err)
+	}
+	<-runnerStarted
+	if _, _, err := router.startOrQueueTask(route, Request{
+		Route: route.Name,
+		DecodedValue: identityRequest{
+			id:          "00000000-0000-4000-8000-000000000043",
+			fingerprint: "different-request",
+		},
+		Owner: owner,
+	}); !errors.Is(err, ErrDuplicateActive) {
+		t.Fatalf("new singleton start error = %v, want ErrDuplicateActive", err)
+	}
+	task.Cancel()
+	<-task.Done()
+	if state := task.Snapshot().State; state != TaskStateCanceled {
+		t.Fatalf("recovered task state = %q, want canceled", state)
+	}
 }
 
 func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {

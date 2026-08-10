@@ -84,6 +84,8 @@ async function renderProvider() {
 
 describe("UpdateProvider", () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    vi.useRealTimers();
     apiMocks.bindStreamHandlers.mockReturnValue(vi.fn());
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -138,6 +140,11 @@ describe("UpdateProvider", () => {
       expect.any(String),
       "v2.0.0",
     );
+    expect(
+      JSON.parse(
+        window.localStorage.getItem("linuxio.active-app-update") ?? "{}",
+      ),
+    ).toMatchObject({ targetVersion: "v2.0.0" });
     expect(mux.setUpdating).toHaveBeenCalledWith(true);
     expect(screen.getByTestId("phase")).toHaveTextContent("running");
     expect(screen.getByTestId("target")).toHaveTextContent("v2.0.0");
@@ -221,6 +228,53 @@ describe("UpdateProvider", () => {
     expect(screen.getByTestId("phase")).toHaveTextContent("done");
     expect(screen.getByTestId("status")).toHaveTextContent("Update complete");
     expect(screen.getByTestId("progress")).toHaveTextContent("100");
+    expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
+  });
+
+  it("recovers an active durable update after a page reload", async () => {
+    window.localStorage.setItem(
+      "linuxio.active-app-update",
+      JSON.stringify({
+        runId: "00000000-0000-4000-8000-000000000042",
+        targetVersion: "v2.0.0",
+      }),
+    );
+    const mux = { setUpdating: vi.fn(), status: "open" };
+    let statusCalls = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/update-status")) {
+        statusCalls += 1;
+        return response({ status: statusCalls === 1 ? "running" : "ok" });
+      }
+      if (url === "/api/version") {
+        return response({ version: "v2.0.0" });
+      }
+      return response({}, false);
+    });
+    apiMocks.getStreamMux.mockReturnValue(mux);
+    vi.useFakeTimers();
+
+    renderWithTanStackRouter(
+      <UpdateProvider>
+        <Probe />
+      </UpdateProvider>,
+    );
+    await act(async () => {
+      await flushPromises();
+    });
+    expect(screen.getByTestId("phase")).toHaveTextContent("verifying");
+    expect(screen.getByTestId("target")).toHaveTextContent("v2.0.0");
+    expect(apiMocks.openAppUpdateStream).not.toHaveBeenCalled();
+    expect(mux.setUpdating).toHaveBeenCalledWith(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+      await flushPromises();
+    });
+
+    expect(screen.getByTestId("phase")).toHaveTextContent("done");
+    expect(window.localStorage.getItem("linuxio.active-app-update")).toBeNull();
     expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
   });
 

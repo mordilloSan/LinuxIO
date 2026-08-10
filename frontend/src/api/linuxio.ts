@@ -108,10 +108,12 @@ class TaskDataStream implements Stream {
   private taskId: string | null = null;
   private closed = false;
   private readonly request: unknown;
+  private readonly cancelOnClose: boolean;
 
-  constructor(route: string, request: unknown) {
+  constructor(route: string, request: unknown, cancelOnClose: boolean) {
     this.request = request;
     this.type = route;
+    this.cancelOnClose = cancelOnClose;
     void this.start(route);
   }
 
@@ -144,7 +146,9 @@ class TaskDataStream implements Stream {
         this.request,
       );
       if (this.closed) {
-        void this.cancelTask(snapshot.id);
+        if (this.cancelOnClose) {
+          void this.cancelTask(snapshot.id);
+        }
         return;
       }
 
@@ -220,7 +224,7 @@ class TaskDataStream implements Stream {
     } else {
       this.watchStream?.close();
     }
-    if (this.taskId) {
+    if (this.taskId && (abort || this.cancelOnClose)) {
       void this.cancelTask(this.taskId);
     }
     this.markClosed();
@@ -245,11 +249,12 @@ class TaskDataStream implements Stream {
 function openTaskOutputStream<R extends StreamRouteName>(
   route: R,
   request: LinuxIOStreamSchema[R],
+  cancelOnClose = true,
 ): Stream | null {
   if (!isConnected()) {
     return null;
   }
-  return new TaskDataStream(route, request);
+  return new TaskDataStream(route, request, cancelOnClose);
 }
 
 function makeSubscribeWithRebind(
@@ -380,7 +385,9 @@ export function openAppUpdateStream(
   runId: string,
   version?: string,
 ): Stream | null {
-  return openTaskOutputStream("control.app_update", { runId, version });
+  // Closing the UI stream only detaches observation. The durable updater is
+  // canceled explicitly through abort()/tasks.cancel after systemd confirms it.
+  return openTaskOutputStream("control.app_update", { runId, version }, false);
 }
 
 export function openTaskWatchStream(taskId: string): Stream | null {

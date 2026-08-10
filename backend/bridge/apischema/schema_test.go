@@ -87,19 +87,33 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	}
 }
 
-func TestTaskRoutesDeclareSessionLifetime(t *testing.T) {
-	count := 0
+func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
+	sessionCount := 0
+	durableCount := 0
 	for _, route := range handlers.Routes {
 		if route.Mode != bridgeipc.ModeTask {
 			continue
 		}
-		count++
-		if route.TaskLifetime != bridgeipc.TaskLifetimeSession {
-			t.Errorf("%s task lifetime = %q, want %q", route.Route, route.TaskLifetime, bridgeipc.TaskLifetimeSession)
+		switch route.TaskLifetime {
+		case bridgeipc.TaskLifetimeSession:
+			sessionCount++
+			if route.Identity != nil {
+				t.Errorf("session task %s unexpectedly has a stable identity", route.Route)
+			}
+		case bridgeipc.TaskLifetimeDurable:
+			durableCount++
+			if route.Route != "control.app_update" {
+				t.Errorf("unexpected durable task route %s", route.Route)
+			}
+			if route.Identity == nil {
+				t.Errorf("durable task %s has no stable identity", route.Route)
+			}
+		default:
+			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if count != 18 {
-		t.Fatalf("task route count = %d, want 18", count)
+	if sessionCount != 17 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -113,6 +127,15 @@ func TestTaskLifetimeOptionsRejectInvalidRoutes(t *testing.T) {
 		},
 		"duplex lifetime": func() {
 			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.duplex_lifetime", apischema.SessionTask())
+		},
+		"stable identity on session task": func() {
+			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse](
+				"test.session_identity",
+				apischema.SessionTask(),
+				apischema.WithTaskIdentity(func(apischema.NoRequest) (bridgeipc.TaskIdentity, error) {
+					return bridgeipc.TaskIdentity{ID: "id", Fingerprint: "fingerprint"}, nil
+				}),
+			)
 		},
 	}
 

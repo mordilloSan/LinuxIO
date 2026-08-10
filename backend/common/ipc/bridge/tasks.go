@@ -135,6 +135,18 @@ type TaskEvent struct {
 type TaskRunner func(ctx context.Context, task *Task, request any) (any, error)
 type TaskDataAttacher func(ctx context.Context, task *Task, stream net.Conn, request any) error
 
+// TaskIdentity is a route-defined, stable identity for a durable Task. The
+// fingerprint proves that replaying the same ID refers to the same sanitized
+// request without retaining the raw request in public or persistent state.
+type TaskIdentity struct {
+	ID          string
+	Fingerprint string
+}
+
+type TaskIdentityBuilder func(request any) (TaskIdentity, error)
+
+var ErrTaskIdentityConflict = errors.New("task identity conflict")
+
 type TaskDataAttachRequest struct {
 	Offset *string `json:"offset,omitempty"`
 }
@@ -158,6 +170,7 @@ type Task struct {
 	typ         string
 	lifetime    TaskLifetime
 	request     any
+	fingerprint string
 	metadata    *TaskMetadata
 	owner       TaskOwner
 	state       TaskState
@@ -260,20 +273,51 @@ func (r *TaskService) CreateForOwner(taskType string, request any, owner TaskOwn
 
 // CreateForOwnerWithLifetime creates a new task with an explicit owner scope.
 func (r *TaskService) CreateForOwnerWithLifetime(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, metadata ...*TaskMetadata) (*Task, error) {
+	task, _, err := r.ClaimForOwnerWithIdentity(taskType, request, owner, lifetime, TaskIdentity{}, metadata...)
+	return task, err
+}
+
+// ClaimForOwnerWithIdentity creates a Task or returns the existing Task for an
+// identical stable identity. A reused ID with a different route, owner scope,
+// or fingerprint is rejected instead of being treated as a retry.
+func (r *TaskService) ClaimForOwnerWithIdentity(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, identity TaskIdentity, metadata ...*TaskMetadata) (*Task, bool, error) {
 	if taskType == "" {
-		return nil, fmt.Errorf("task type cannot be empty")
+		return nil, false, fmt.Errorf("task type cannot be empty")
 	}
 	if lifetime == "" {
 		lifetime = TaskLifetimeSession
 	}
 	if lifetime != TaskLifetimeSession && lifetime != TaskLifetimeDurable {
-		return nil, fmt.Errorf("invalid task lifetime: %q", lifetime)
+		return nil, false, fmt.Errorf("invalid task lifetime: %q", lifetime)
+	}
+	if identity.ID == "" && identity.Fingerprint != "" {
+		return nil, false, fmt.Errorf("task fingerprint requires a stable ID")
+	}
+	if identity.ID != "" && identity.Fingerprint == "" {
+		return nil, false, fmt.Errorf("stable task ID requires a fingerprint")
 	}
 
 	r.mu.Lock()
-	r.nextID++
+	if identity.ID != "" {
+		if existing, ok := r.tasks[identity.ID]; ok {
+			if existing.typ == taskType &&
+				existing.lifetime == lifetime &&
+				existing.fingerprint == identity.Fingerprint &&
+				existing.matchesOwner(owner) {
+				r.mu.Unlock()
+				return existing, false, nil
+			}
+			r.mu.Unlock()
+			return nil, false, fmt.Errorf("%w: %s", ErrTaskIdentityConflict, identity.ID)
+		}
+	}
+
 	now := time.Now().UTC()
-	id := fmt.Sprintf("task-%d", r.nextID)
+	id := identity.ID
+	if id == "" {
+		r.nextID++
+		id = fmt.Sprintf("task-%d", r.nextID)
+	}
 	// Tasks are intentionally detached from the stream that created them; cancel
 	// through tasks.cancel, watched stream abort, or policy timeout instead.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -288,6 +332,7 @@ func (r *TaskService) CreateForOwnerWithLifetime(taskType string, request any, o
 		typ:         taskType,
 		lifetime:    lifetime,
 		request:     request,
+		fingerprint: identity.Fingerprint,
 		metadata:    publicMetadata,
 		owner:       owner,
 		state:       TaskStateQueued,
@@ -300,7 +345,7 @@ func (r *TaskService) CreateForOwnerWithLifetime(taskType string, request any, o
 	r.tasks[id] = task
 	r.mu.Unlock()
 
-	return task, nil
+	return task, true, nil
 }
 
 // Get retrieves a task by ID, returning false if not found.

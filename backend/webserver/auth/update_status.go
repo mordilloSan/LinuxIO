@@ -2,22 +2,17 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"os"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
-const updateStatusPath = "/run/linuxio/update-status.json"
+var updateStatusStoreRoot = durabletask.DefaultRoot
 
-type updateStatusFile struct {
-	ID         string `json:"id"`
-	Status     string `json:"status"`
-	ExitCode   *int   `json:"exit_code,omitempty"`
-	Error      string `json:"error,omitempty"`
-	StartedAt  *int64 `json:"started_at,omitempty"`
-	FinishedAt *int64 `json:"finished_at,omitempty"`
-}
+const appUpdateRoute = "control.app_update"
 
 type updateStatusResponse struct {
 	Status     string `json:"status"`
@@ -28,53 +23,77 @@ type updateStatusResponse struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// UpdateStatus reports the last update status written by the update runner.
-// Returns status=unknown if no update status file is present or if the run ID does not match.
+// UpdateStatus reports one durable app update owned by the authenticated UID.
+// A different UID receives the same unknown response as a missing operation.
 func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	data, err := os.ReadFile(updateStatusPath)
+	sess := session.SessionFromContext(r.Context())
+	if sess == nil {
+		web.WriteJSON(w, http.StatusUnauthorized, updateStatusResponse{Status: "unknown"})
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if durabletask.ValidateID(id) != nil {
+		web.WriteJSON(w, http.StatusOK, updateStatusResponse{Status: "unknown"})
+		return
+	}
+
+	store := durabletask.NewStore(updateStatusStoreRoot)
+	record, err := store.Get(r.Context(), id, sess.User.UID)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, durabletask.ErrNotFound) {
 			web.WriteJSON(w, http.StatusOK, updateStatusResponse{Status: "unknown"})
 			return
 		}
-		web.WriteJSON(w, http.StatusInternalServerError, updateStatusResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
+		web.WriteJSON(w, http.StatusInternalServerError, updateStatusResponse{Status: "error", Message: "failed to read update status"})
 		return
 	}
-
-	if len(data) == 0 {
+	if record.Route != appUpdateRoute {
 		web.WriteJSON(w, http.StatusOK, updateStatusResponse{Status: "unknown"})
 		return
 	}
 
-	var statusFile updateStatusFile
-	if err := json.Unmarshal(data, &statusFile); err != nil {
-		web.WriteJSON(w, http.StatusInternalServerError, updateStatusResponse{
-			Status:  "error",
-			Message: "invalid update status file",
-		})
-		return
+	if !record.Terminal() {
+		if result, resultErr := store.ReadExecutorResult(record.ID); resultErr == nil {
+			if terminal, applyErr := store.ApplyExecutorResult(r.Context(), record.UID, result); applyErr == nil {
+				record = terminal
+			}
+		}
+	}
+	web.WriteJSON(w, http.StatusOK, updateStatusFromRecord(record))
+}
+
+func updateStatusFromRecord(record durabletask.Record) updateStatusResponse {
+	response := updateStatusResponse{ID: record.ID}
+	if record.StartedAt != nil {
+		value := record.StartedAt.Unix()
+		response.StartedAt = &value
+	}
+	if record.FinishedAt != nil {
+		value := record.FinishedAt.Unix()
+		response.FinishedAt = &value
+	}
+	if len(record.Result) > 0 {
+		var result struct {
+			ExitCode int `json:"exit_code"`
+		}
+		if json.Unmarshal(record.Result, &result) == nil {
+			response.ExitCode = &result.ExitCode
+		}
+	}
+	if record.Error != nil {
+		response.Message = record.Error.Message
+		if response.ExitCode == nil && record.Error.Code != 0 {
+			response.ExitCode = &record.Error.Code
+		}
 	}
 
-	if statusFile.Status == "" {
-		web.WriteJSON(w, http.StatusOK, updateStatusResponse{Status: "unknown"})
-		return
+	switch record.State {
+	case durabletask.StateCompleted:
+		response.Status = "ok"
+	case durabletask.StateFailed, durabletask.StateCanceled, durabletask.StateUnknown:
+		response.Status = "error"
+	default:
+		response.Status = "running"
 	}
-
-	requestID := r.URL.Query().Get("id")
-	if requestID != "" && statusFile.ID != requestID {
-		web.WriteJSON(w, http.StatusOK, updateStatusResponse{Status: "unknown"})
-		return
-	}
-
-	web.WriteJSON(w, http.StatusOK, updateStatusResponse{
-		Status:     statusFile.Status,
-		ID:         statusFile.ID,
-		ExitCode:   statusFile.ExitCode,
-		StartedAt:  statusFile.StartedAt,
-		FinishedAt: statusFile.FinishedAt,
-		Message:    statusFile.Error,
-	})
+	return response
 }

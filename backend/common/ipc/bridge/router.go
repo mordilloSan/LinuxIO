@@ -59,6 +59,7 @@ type Route struct {
 	Decode     RequestDecoder
 	Lifetime   TaskLifetime
 	Metadata   TaskMetadataBuilder
+	Identity   TaskIdentityBuilder
 }
 
 type RouteOption func(*Route)
@@ -88,6 +89,18 @@ func WithTaskLifetime(lifetime TaskLifetime) RouteOption {
 			panic("bridge task route has invalid lifetime: " + string(lifetime))
 		}
 		r.Lifetime = lifetime
+	}
+}
+
+// WithTaskIdentity declares a stable Task ID and safe request fingerprint.
+// It is reserved for durable routes whose persistent operation store enforces
+// the same identity across bridge processes.
+func WithTaskIdentity(build TaskIdentityBuilder) RouteOption {
+	return func(r *Route) {
+		if build == nil {
+			panic("bridge task identity builder cannot be nil")
+		}
+		r.Identity = build
 	}
 }
 
@@ -147,6 +160,7 @@ type Router struct {
 	queuedByRoute        map[string][]queuedTask
 	pendingQueuedByRoute map[string]int
 	startsByOwnerRoute   map[string][]time.Time
+	pendingIdentities    map[string]chan struct{}
 	// beforeStartHook is a narrow test seam for the promotion/cancel race.
 	// Production never sets it.
 	beforeStartHook func(*Task)
@@ -175,12 +189,44 @@ func NewRouter(registry *TaskService) *Router {
 		queuedByRoute:        make(map[string][]queuedTask),
 		pendingQueuedByRoute: make(map[string]int),
 		startsByOwnerRoute:   make(map[string][]time.Time),
+		pendingIdentities:    make(map[string]chan struct{}),
 	}
 }
 
 // TaskService returns the task service used by this router.
 func (r *Router) TaskService() *TaskService {
 	return r.registry
+}
+
+// RecoverDurableTask reattaches a persisted operation to its registered route
+// without treating recovery as a new admission. The recovered Task counts as
+// active so normal singleton and capacity policy still protects new starts.
+func (r *Router) RecoverDurableTask(routeName string, request any, owner TaskOwner, identity TaskIdentity) (*Task, bool, error) {
+	route, ok := r.lookup(routeName)
+	if !ok || route.Mode != ModeTask || route.Lifetime != TaskLifetimeDurable || route.Identity == nil {
+		return nil, false, fmt.Errorf("%w: durable task route %s", ErrRouteNotFound, routeName)
+	}
+	if owner.Username == "" || owner.SessionID == "" {
+		return nil, false, fmt.Errorf("%w: durable task recovery requires an authenticated owner", ErrForbidden)
+	}
+	expected, err := route.Identity(request)
+	if err != nil {
+		return nil, false, err
+	}
+	if identity.ID == "" || identity.Fingerprint == "" || expected != identity {
+		return nil, false, fmt.Errorf("%w: durable task recovery identity mismatch", ErrInvalidArgs)
+	}
+	metadata := buildTaskMetadata(route, request)
+	task, created, err := r.registry.ClaimForOwnerWithIdentity(routeName, request, owner, TaskLifetimeDurable, identity, metadata)
+	if err != nil || !created {
+		return task, created, err
+	}
+	ownerRouteKey := routeName + "\x00" + owner.key(TaskLifetimeDurable)
+	r.mu.Lock()
+	r.markActiveLocked(routeName, ownerRouteKey)
+	r.mu.Unlock()
+	r.startTrackedTask(route, task, owner)
+	return task, true, nil
 }
 
 // Call registers a bounded request-response route. The handler returns one
@@ -281,27 +327,18 @@ func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...
 	if strings.HasPrefix(route.Name, "tasks.") && !allowTaskServiceRoute {
 		panic("bridge route uses reserved tasks.* namespace: " + route.Name)
 	}
-	if route.Mode == ModeCall && route.Call == nil {
-		panic("bridge call route handler cannot be nil: " + route.Name)
-	}
-	if route.Mode == ModeTask && route.Runner == nil {
-		panic("bridge task route handler cannot be nil: " + route.Name)
-	}
-	if route.Mode == ModeDuplex && route.Duplex == nil {
-		panic("bridge duplex route handler cannot be nil: " + route.Name)
-	}
+	validateRouteHandler(route)
 	for _, opt := range opts {
 		opt(&route)
 	}
-	if route.Mode == ModeTask {
+	switch route.Mode {
+	case ModeTask:
 		if route.Lifetime == "" {
 			route.Lifetime = TaskLifetimeSession
 		}
-		if route.Lifetime != TaskLifetimeSession && route.Lifetime != TaskLifetimeDurable {
-			panic("bridge task route has invalid lifetime: " + string(route.Lifetime))
-		}
-	} else if route.Lifetime != "" {
-		panic("bridge task lifetime is allowed only on task routes: " + route.Name)
+		validateTaskRouteOptions(route)
+	default:
+		validateNonTaskRouteOptions(route)
 	}
 
 	r.mu.Lock()
@@ -310,6 +347,43 @@ func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...
 		panic("bridge route already registered: " + route.Name)
 	}
 	r.routes[route.Name] = route
+}
+
+func validateRouteHandler(route Route) {
+	switch route.Mode {
+	case ModeCall:
+		if route.Call == nil {
+			panic("bridge call route handler cannot be nil: " + route.Name)
+		}
+	case ModeTask:
+		if route.Runner == nil {
+			panic("bridge task route handler cannot be nil: " + route.Name)
+		}
+	case ModeDuplex:
+		if route.Duplex == nil {
+			panic("bridge duplex route handler cannot be nil: " + route.Name)
+		}
+	default:
+		panic("bridge route has invalid mode: " + string(route.Mode))
+	}
+}
+
+func validateTaskRouteOptions(route Route) {
+	if route.Lifetime != TaskLifetimeSession && route.Lifetime != TaskLifetimeDurable {
+		panic("bridge task route has invalid lifetime: " + string(route.Lifetime))
+	}
+	if route.Identity != nil && route.Lifetime != TaskLifetimeDurable {
+		panic("bridge stable task identity requires durable lifetime: " + route.Name)
+	}
+}
+
+func validateNonTaskRouteOptions(route Route) {
+	if route.Lifetime != "" {
+		panic("bridge task lifetime is allowed only on task routes: " + route.Name)
+	}
+	if route.Identity != nil {
+		panic("bridge task identity is allowed only on task routes: " + route.Name)
+	}
 }
 
 func (r *Router) lookup(route string) (Route, bool) {
@@ -385,81 +459,130 @@ func (r *Router) runRoute(ctx context.Context, task *Task, request any, route Ro
 }
 
 func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {
-	now := time.Now().UTC()
-	lifetime := normalizedTaskLifetime(route.Lifetime)
-	ownerKey := req.Owner.key(lifetime)
-	ownerRouteKey := req.Route + "\x00" + ownerKey
-	policy := normalizedPolicy(route.Policy)
-
-	r.mu.Lock()
-	if err := r.checkRateLocked(ownerRouteKey, policy, now); err != nil {
-		r.mu.Unlock()
+	if route.Identity == nil {
+		return r.startOrQueueTaskWithIdentity(route, req, TaskIdentity{})
+	}
+	identity, err := route.Identity(req.DecodedValue)
+	if err != nil {
 		return nil, false, err
 	}
-	if policy.DuplicateActiveReject && r.activeByRoute[req.Route] > 0 {
-		r.mu.Unlock()
-		return nil, false, fmt.Errorf("%w: %s", ErrDuplicateActive, req.Route)
+	if identity.ID == "" || identity.Fingerprint == "" {
+		return nil, false, fmt.Errorf("%w: durable task identity is incomplete", ErrInvalidArgs)
 	}
 
-	canStart := r.canStartLocked(req.Route, ownerRouteKey, policy)
-	if !canStart && policy.QueueLimit <= 0 {
+	claimKey := route.Name + "\x00" + identity.ID
+	for {
+		r.mu.Lock()
+		if pending, ok := r.pendingIdentities[claimKey]; ok {
+			r.mu.Unlock()
+			<-pending
+			continue
+		}
+		if _, ok := r.registry.Get(identity.ID); ok {
+			r.mu.Unlock()
+			task, _, claimErr := r.registry.ClaimForOwnerWithIdentity(
+				req.Route,
+				req.DecodedValue,
+				req.Owner,
+				normalizedTaskLifetime(route.Lifetime),
+				identity,
+			)
+			return task, false, claimErr
+		}
+		pending := make(chan struct{})
+		r.pendingIdentities[claimKey] = pending
 		r.mu.Unlock()
-		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
-	}
-	if !canStart && len(r.queuedByRoute[req.Route])+r.pendingQueuedByRoute[req.Route] >= policy.QueueLimit {
+
+		task, started, startErr := r.startOrQueueTaskWithIdentity(route, req, identity)
+		r.mu.Lock()
+		delete(r.pendingIdentities, claimKey)
+		close(pending)
 		r.mu.Unlock()
-		return nil, false, fmt.Errorf("%w: %s", ErrQueueFull, req.Route)
+		return task, started, startErr
 	}
-	// checkRateLocked prunes this history, but only when the owner rate limit
-	// is enabled — with it disabled the append would grow unbounded, so skip it.
+}
+
+func (r *Router) startOrQueueTaskWithIdentity(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
+	now := time.Now().UTC()
+	lifetime := normalizedTaskLifetime(route.Lifetime)
+	ownerRouteKey := req.Route + "\x00" + req.Owner.key(lifetime)
+	policy := normalizedPolicy(route.Policy)
+	canStart, err := r.reserveTaskAdmission(req.Route, ownerRouteKey, policy, now)
+	if err != nil {
+		return nil, false, err
+	}
+	metadata := buildTaskMetadata(route, req.DecodedValue)
+	task, created, err := r.registry.ClaimForOwnerWithIdentity(req.Route, req.DecodedValue, req.Owner, lifetime, identity, metadata)
+	if err != nil {
+		r.releaseTaskReservation(req.Route, ownerRouteKey, canStart)
+		return nil, false, err
+	}
+	if !created {
+		r.releaseTaskReservation(req.Route, ownerRouteKey, canStart)
+		return task, false, nil
+	}
+	return r.startOrEnqueueClaimedTask(route, req.Owner, task, ownerRouteKey, canStart)
+}
+
+func (r *Router) reserveTaskAdmission(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.checkRateLocked(ownerRouteKey, policy, now); err != nil {
+		return false, err
+	}
+	if policy.DuplicateActiveReject && r.activeByRoute[routeName] > 0 {
+		return false, fmt.Errorf("%w: %s", ErrDuplicateActive, routeName)
+	}
+	canStart := r.canStartLocked(routeName, ownerRouteKey, policy)
+	if !canStart && (policy.QueueLimit <= 0 || len(r.queuedByRoute[routeName])+r.pendingQueuedByRoute[routeName] >= policy.QueueLimit) {
+		return false, fmt.Errorf("%w: %s", ErrQueueFull, routeName)
+	}
 	if policy.StartRatePerMinuteOwner > 0 {
 		r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
 	}
-	// Reserve an active slot before creating the task. CreateForOwner can take
-	// long enough for another request to otherwise observe stale capacity.
 	if canStart {
-		r.markActiveLocked(req.Route, ownerRouteKey)
+		r.markActiveLocked(routeName, ownerRouteKey)
 	} else {
-		// Queue capacity is also reserved before CreateForOwner so concurrent
-		// admission cannot overfill a bounded queue.
-		r.pendingQueuedByRoute[req.Route]++
+		r.pendingQueuedByRoute[routeName]++
+	}
+	return canStart, nil
+}
+
+func buildTaskMetadata(route Route, request any) *TaskMetadata {
+	if route.Metadata == nil {
+		return nil
+	}
+	value := route.Metadata(request)
+	return &value
+}
+
+func (r *Router) releaseTaskReservation(routeName, ownerRouteKey string, canStart bool) {
+	if canStart {
+		r.finishTask(routeName, ownerRouteKey)
+		return
+	}
+	r.mu.Lock()
+	if r.pendingQueuedByRoute[routeName] > 0 {
+		r.pendingQueuedByRoute[routeName]--
 	}
 	r.mu.Unlock()
+}
 
-	var metadata *TaskMetadata
-	if route.Metadata != nil {
-		value := route.Metadata(req.DecodedValue)
-		metadata = &value
-	}
-	task, err := r.registry.CreateForOwnerWithLifetime(req.Route, req.DecodedValue, req.Owner, lifetime, metadata)
-	if err != nil {
-		if canStart {
-			// Releasing the reserved slot and promoting the next queued task is
-			// exactly the finished-task path.
-			r.finishTask(req.Route, ownerRouteKey)
-		} else {
-			r.mu.Lock()
-			if r.pendingQueuedByRoute[req.Route] > 0 {
-				r.pendingQueuedByRoute[req.Route]--
-			}
-			r.mu.Unlock()
-		}
-		return nil, false, err
-	}
+func (r *Router) startOrEnqueueClaimedTask(route Route, owner TaskOwner, task *Task, ownerRouteKey string, canStart bool) (*Task, bool, error) {
 
 	r.mu.Lock()
 	if canStart {
 		r.mu.Unlock()
-		r.startTrackedTask(route, task, req.Owner)
+		r.startTrackedTask(route, task, owner)
 		return task, true, nil
 	}
-	r.queuedByRoute[req.Route] = append(r.queuedByRoute[req.Route], queuedTask{route: route, task: task, owner: req.Owner})
-	if r.pendingQueuedByRoute[req.Route] > 0 {
-		r.pendingQueuedByRoute[req.Route]--
+	r.queuedByRoute[route.Name] = append(r.queuedByRoute[route.Name], queuedTask{route: route, task: task, owner: owner})
+	if r.pendingQueuedByRoute[route.Name] > 0 {
+		r.pendingQueuedByRoute[route.Name]--
 	}
 	// An active task may have finished while CreateForOwner was running. Promote
 	// from the real FIFO queue now so this reservation cannot strand the task.
-	next := r.dequeueStartLocked(req.Route)
+	next := r.dequeueStartLocked(route.Name)
 	r.mu.Unlock()
 	if next != nil {
 		r.startTrackedTask(next.route, next.task, next.owner)
@@ -635,6 +758,8 @@ func statusCode(err error) int {
 	case errors.Is(err, ErrQueueFull):
 		return 429
 	case errors.Is(err, ErrDuplicateActive):
+		return 409
+	case errors.Is(err, ErrTaskIdentityConflict):
 		return 409
 	case errors.Is(err, context.DeadlineExceeded):
 		return 504

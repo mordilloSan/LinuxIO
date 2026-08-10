@@ -15,7 +15,7 @@ A durable operation has all of the following:
 - one atomically written persistent operation record, and
 - an external execution owner that can outlive the bridge.
 
-The first pilot should be `control.app_update`. A systemd transient unit is one
+The implemented first pilot is `control.app_update`. A systemd transient unit is one
 possible execution owner for subprocess work; it is not a universal Task
 framework. PackageKit transactions, drive jobs, or a daemon that already owns
 state may be the better recovery owner for other routes. See the related API
@@ -41,14 +41,14 @@ Non-goals:
 - Adding a new go-systemd dependency or a temporary dependency spike.
 - Making journald a typed progress/result protocol; journald is for logs.
 
-## Current model and required correction
+## Implemented pilot
 
-Today `TaskOwner` is assembled from the session and task execution is a
-goroutine in the bridge. Its context is detached from the request stream but
-still ends with the bridge process. All current Tasks explicitly use the
-session lifetime and exact `SessionID` owner scope. That `SessionID` is an
-internal authorization value, not public Task data, and is never serialized in
-the owner model.
+The 17 ordinary Task routes remain bridge goroutines with session lifetime and
+exact `SessionID` owner scope. `control.app_update` is the sole durable route:
+its stable UUID is claimed by numeric UID, its record is persisted before
+launch, and its external systemd unit can continue through bridge and
+WebSocket loss. `TaskOwner.SessionID` remains an internal authorization value
+and is never serialized in the public owner model or durable record.
 
 For a durable route, `TaskOwner` must not mean “the session that happens to be
 connected now.” The durable owner is the authenticated numeric UID. The raw
@@ -119,10 +119,11 @@ runtime limit, resource limits appropriate to the route, and a deterministic
 but non-authoritative unit name containing the operation ID. `CollectMode` and
 cleanup prevent leaks, but cleanup must not erase the operation record.
 
-The unit's exit status is a coarse terminal signal. Standard output/error may
-go to journald for diagnostics, but journald is not typed state. Typed progress
-and results must use a small, authenticated operation channel or a service-owned
-result file tied to the operation ID; define its schema with the pilot.
+The unit's exit status is a coarse terminal signal. Standard output/error goes
+to journald for diagnostics, but journald is not typed state. The pilot writes
+a bounded service-owned `executor-result.json` tied to the operation UUID; the
+record stores the typed terminal state, exit status, timestamp, and structured
+error after reconciliation.
 
 ## Lifecycle, cancellation, and restart
 
@@ -142,12 +143,14 @@ result file tied to the operation ID; define its schema with the pilot.
   or daemon API). Do not claim cancellation until observed or explicitly mark
   `unknown`.
 - **Bridge/session loss:** session-bound Tasks stop as today. Durable work
-  continues under its external owner; a new bridge reads records and resumes
-  observation. A websocket disconnect never deletes durable state.
-- **Host restart:** systemd/PackageKit/daemon semantics decide whether work
-  resumes, fails, or is unknown. On startup reconcile records with the selected
-  owner and expose that state to clients; do not promise resume unless the
-  executor guarantees it.
+  continues under its external owner; a new bridge reads records, reattaches a
+  UID-owned Task, and resumes observation. The reattached Task remains
+  cancelable and occupies route admission. A websocket disconnect never
+  deletes durable state.
+- **Host restart:** the pilot does not promise that a transient unit resumes
+  across reboot. If its record says `running` but neither a typed result nor the
+  exact unit exists, reconciliation records terminal `unknown` and never starts
+  a replacement automatically.
 
 Security requirements are part of the route contract: validate UID ownership on
 every read/cancel, restrict command and environment construction, prevent
@@ -155,20 +158,20 @@ cross-user result paths, and ensure privileged operations use the existing
 capability/authorization checks. Runtime limits and bounded polling protect
 against wedged workers; they do not replace cancellation.
 
-## Phasing
+## Completed pilot and next steps
 
-1. **Classify routes.** Inventory Task routes and document durability,
+1. **Classify routes (complete).** Inventory Task routes and document durability,
    idempotency/resume, cancellation, and recovery owner. Keep the default
    session-bound.
-2. **Build the store.** Implement the bounded service-owned JSON record with the
+2. **Build the store (complete).** Implement the bounded service-owned JSON record with the
    existing lock and fsync-capable atomic-write conventions, stable IDs, UID
    checks, terminal retention, and tests for torn writes, duplicate completion,
    malformed records, and crash recovery from `launching`.
-3. **Pilot `control.app_update`.** Persist first; launch the existing update
+3. **Pilot `control.app_update` (complete).** Persist first; launch the existing update
    subprocess as a systemd transient unit through `dbusclient`; capture typed
    terminal state and retain journald only as logs. Do not rely on `--wait` or
    `--pipe` for durability.
-4. **Reconcile and exercise failure.** Restart the bridge, disconnect clients,
+4. **Reconcile and exercise failure (complete for the pilot).** Restart the bridge, disconnect clients,
    cancel from a second session of the same UID, and test host-restart/unknown
    outcomes. Verify authorization and idempotency.
 5. **Add executors selectively.** Prefer PackageKit or daemon job APIs where
