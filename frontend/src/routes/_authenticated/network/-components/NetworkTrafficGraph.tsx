@@ -1,75 +1,49 @@
-import {
-  forwardRef,
-  useEffect,
-  useEffectEvent,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
-import { SmoothieChart, TimeSeries } from "smoothie";
+import { useEffect, useRef } from "react";
+import { SmoothieChart, type TimeSeries } from "smoothie";
 
-import {
-  flipSmoothieTooltip,
-  liveTooltipHTML,
-} from "@/components/charts/liveTooltip";
+import LiveChartHover from "@/components/charts/LiveChartHover";
+import { sampleLiveSeries } from "@/components/charts/liveSeriesStore";
+import { LIVE_MILLIS_PER_PIXEL } from "@/constants/liveCharts";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+import { formatThroughput } from "@/utils/formaters";
+
+export const STREAM_DELAY_MS = 1000;
 
 interface NetworkTrafficGraphProps {
   color: string;
   label: string;
-  value: number;
+  /**
+   * Persistent buffer from the live series store, in kB/s. The owner feeds it
+   * (history backfill plus live samples) so the chart survives remounts.
+   */
+  series: TimeSeries;
 }
 
-const NetworkTrafficGraph = forwardRef<
-  HTMLCanvasElement,
-  NetworkTrafficGraphProps
->(({ value, color, label }, ref) => {
+const NetworkTrafficGraph = ({
+  color,
+  label,
+  series,
+}: NetworkTrafficGraphProps) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<SmoothieChart | null>(null);
-  const series = useMemo(() => new TimeSeries(), []);
-
-  useImperativeHandle(ref, () => canvasRef.current!);
-
-  const appendLatestValue = useEffectEvent(() => {
-    series.append(Date.now(), value);
-  });
+  const chartNeutral = theme.chart.neutral;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const chart = new SmoothieChart({
-      millisPerPixel: 40,
+      millisPerPixel: LIVE_MILLIS_PER_PIXEL,
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
-        strokeStyle: alpha(theme.chart.neutral, 0.08),
+        strokeStyle: alpha(chartNeutral, 0.08),
         verticalSections: 3,
         millisPerLine: 0,
         borderVisible: false,
       },
       labels: { disabled: true },
-      tooltip: true,
-      tooltipLine: {
-        strokeStyle: alpha(theme.chart.neutral, 0.3),
-        lineWidth: 1,
-      },
-      tooltipFormatter: (
-        timestamp: number,
-        data: { series: TimeSeries; index: number; value: number }[],
-      ) => {
-        flipSmoothieTooltip(chartRef.current);
-        return liveTooltipHTML(
-          timestamp,
-          data.map((d) => ({
-            color,
-            value: `${(d.value / 1024).toFixed(1)} kB/s`,
-            label,
-          })),
-        );
-      },
       responsive: true,
       minValue: 0,
       maxValueScale: 1.15,
@@ -81,24 +55,27 @@ const NetworkTrafficGraph = forwardRef<
       lineWidth: 1.5,
     });
 
-    chart.streamTo(canvas, 1000);
-    chartRef.current = chart;
+    chart.streamTo(canvas, STREAM_DELAY_MS);
 
-    // Append a data point every second on a fixed interval,
-    // completely decoupled from React's render cycle.
-    const intervalId = setInterval(() => {
-      appendLatestValue();
-    }, 1000);
+    return () => chart.stop();
+  }, [chartNeutral, color, series]);
 
-    return () => {
-      clearInterval(intervalId);
-      chart.stop();
-    };
-  }, [color, label, series, theme.chart.neutral]);
-
-  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
-});
-
-NetworkTrafficGraph.displayName = "NetworkTrafficGraph";
+  return (
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: "100%", display: "block" }}
+      />
+      <LiveChartHover
+        delayMs={STREAM_DELAY_MS}
+        rowsAt={(t) => {
+          const value = sampleLiveSeries(series, t);
+          if (value === null) return [];
+          return [{ color, value: formatThroughput(value * 1024), label }];
+        }}
+      />
+    </div>
+  );
+};
 
 export default NetworkTrafficGraph;

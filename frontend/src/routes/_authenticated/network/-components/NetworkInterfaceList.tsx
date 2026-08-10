@@ -1,11 +1,20 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useEffectEvent } from "react";
 
-import { linuxio, type NetworkInterface } from "@/api";
+import { CACHE_TTL_MS, linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import SortableCard from "@/components/cards/SortableCard";
+import { appendLiveSample } from "@/components/charts/liveSeriesStore";
+import {
+  type LiveSeriesPoint,
+  useLiveSeries,
+} from "@/components/charts/useLiveSeries";
 import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -15,6 +24,7 @@ import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
+import { formatThroughput } from "@/utils/formaters";
 
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
@@ -46,75 +56,73 @@ const selectNetworkInterface =
   (name: string) => (interfaces: NetworkInterface[]) =>
     interfaces.find((iface) => iface.name === name);
 
+/** Live sampling cadence, matching the dashboard network chart. */
+const SAMPLE_INTERVAL_MS = 1000;
+
 const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   const theme = useAppTheme();
-  const rxCanvasRef = useRef<HTMLCanvasElement>(null);
-  const txCanvasRef = useRef<HTMLCanvasElement>(null);
+  const queryClient = useQueryClient();
   const { data: iface } = useQuery({
     ...linuxio.network.get_network_info,
     refetchOnMount: false,
     select: selectNetworkInterface(name),
   });
 
-  const dispatchToCanvas = useCallback(
-    (
-      canvas: HTMLCanvasElement | null,
-      type: string,
-      clientX: number,
-      clientY: number,
-    ) => {
-      if (!canvas) return;
-      canvas.dispatchEvent(
-        new MouseEvent(type, { clientX, clientY, bubbles: false }),
-      );
-    },
-    [],
-  );
-
-  const handleGraphMouseMove = useCallback(
-    (e: MouseEvent) => {
-      const containerRect = (
-        e.currentTarget as HTMLElement
-      ).getBoundingClientRect();
-      const relX = (e.clientX - containerRect.left) / containerRect.width;
-
-      for (const canvas of [rxCanvasRef.current, txCanvasRef.current]) {
-        if (!canvas) continue;
-        const rect = canvas.getBoundingClientRect();
-        dispatchToCanvas(
-          canvas,
-          "mousemove",
-          rect.left + relX * rect.width,
-          rect.top,
-        );
-      }
-    },
-    [dispatchToCanvas],
-  );
-
-  const handleGraphMouseLeave = useCallback(() => {
-    for (const canvas of [rxCanvasRef.current, txCanvasRef.current]) {
-      if (!canvas) continue;
-      canvas.dispatchEvent(new MouseEvent("mouseout", { bubbles: false }));
+  // Same series ids as the dashboard network chart, so the buffers carry over
+  // between the two pages instead of each starting from an empty canvas.
+  const rxId = `network:rx:${name}`;
+  const txId = `network:tx:${name}`;
+  // History arrives in bytes/s; the store keeps kB/s like the dashboard chart.
+  const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
+    // One-shot backfill: the request carries a rolling from_ms, so caching
+    // the entry would only pollute the cache.
+    const points = await queryClient.fetchQuery({
+      ...linuxio.monitoring.get_network_history(request),
+      staleTime: CACHE_TTL_MS.NONE,
+      gcTime: CACHE_TTL_MS.NONE,
+    });
+    const rxPoints: LiveSeriesPoint[] = [];
+    const txPoints: LiveSeriesPoint[] = [];
+    for (const point of points) {
+      const rates = point.interfaces?.[name];
+      if (!rates) continue;
+      rxPoints.push({
+        t: point.captured_at_ms,
+        v: rates.recv_bytes_per_sec / 1024,
+      });
+      txPoints.push({
+        t: point.captured_at_ms,
+        v: rates.sent_bytes_per_sec / 1024,
+      });
     }
-  }, []);
+    return { [rxId]: rxPoints, [txId]: txPoints };
+  });
+
+  const appendLatestTraffic = useEffectEvent(() => {
+    if (!iface) return;
+    appendLiveSample(rxId, iface.rx_speed / 1024);
+    appendLiveSample(txId, iface.tx_speed / 1024);
+  });
+
+  // Append on a fixed interval, decoupled from React's render cycle.
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      appendLatestTraffic();
+    }, SAMPLE_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [rxId, txId]);
 
   if (!iface) return null;
 
   return (
-    <div
-      onMouseLeave={handleGraphMouseLeave}
-      onMouseMove={handleGraphMouseMove}
-      style={{ display: "flex", flexDirection: "column", gap: 8 }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div>
         <div style={{ height: 120, width: "100%", minWidth: 0 }}>
           <NetworkTrafficGraph
             color={theme.chart.rx}
-            key={`rx-${name}`}
+            key={rxId}
             label="RX"
-            ref={rxCanvasRef}
-            value={iface.rx_speed}
+            series={rxSeries}
           />
         </div>
         <div
@@ -136,7 +144,7 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
             }}
           />
           <AppTypography style={{ opacity: 0.7 }} variant="caption">
-            RX: {(iface.rx_speed / 1024).toFixed(1)} kB/s
+            RX: {formatThroughput(iface.rx_speed)}
           </AppTypography>
         </div>
       </div>
@@ -144,10 +152,9 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
         <div style={{ height: 120, width: "100%", minWidth: 0 }}>
           <NetworkTrafficGraph
             color={theme.chart.tx}
-            key={`tx-${name}`}
+            key={txId}
             label="TX"
-            ref={txCanvasRef}
-            value={iface.tx_speed}
+            series={txSeries}
           />
         </div>
         <div
@@ -169,7 +176,7 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
             }}
           />
           <AppTypography style={{ opacity: 0.7 }} variant="caption">
-            TX: {(iface.tx_speed / 1024).toFixed(1)} kB/s
+            TX: {formatThroughput(iface.tx_speed)}
           </AppTypography>
         </div>
       </div>
