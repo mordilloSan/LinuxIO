@@ -7,6 +7,7 @@ import {
   type ApiDisk,
   type FilesystemInfo,
   linuxio,
+  type SmartTestResult,
   type Stream,
   useCallMutation,
 } from "@/api";
@@ -31,12 +32,7 @@ import {
   SmartAttributesTab,
   TabPanel,
 } from "./components";
-import type {
-  DriveInfo,
-  SmartData,
-  SmartTestProgressEvent,
-  SmartTestResult,
-} from "./types";
+import type { DriveInfo, SmartData, SmartTestProgressEvent } from "./types";
 import { parseSizeToBytes } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
@@ -125,7 +121,10 @@ const DriveDetails = ({
         type: "status",
         status: finalStatus as SmartTestProgressEvent["status"],
         message: data?.message ?? prev?.message,
-        test_type: data?.test_type ?? prev?.test_type ?? testType,
+        test_type:
+          data.test === "short" || data.test === "long"
+            ? data.test
+            : (prev?.test_type ?? testType),
         device: data?.device ?? prev?.device ?? variables.device,
       }));
       const label = testType === "short" ? "Short" : "Extended";

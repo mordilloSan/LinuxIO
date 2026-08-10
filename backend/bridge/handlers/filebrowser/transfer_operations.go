@@ -620,7 +620,7 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 		notifyUploadedFile(path, finalInfo)
 	}
 
-	result := map[string]any{"path": path, "size": bytes}
+	result := FileUploadResult{Path: path, Size: bytes}
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
@@ -739,11 +739,7 @@ func (t *downloadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataA
 		return err
 	}
 
-	result := map[string]any{
-		"path":     t.path,
-		"size":     t.total,
-		"fileName": t.fileName,
-	}
+	result := FileDownloadResult{Path: t.path, Size: t.total, FileName: t.fileName}
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
@@ -912,11 +908,7 @@ func (t *archiveTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAt
 	}
 
 	t.mu.Lock()
-	result := map[string]any{
-		"archiveName": t.archiveName,
-		"size":        t.archiveSize,
-		"format":      t.format,
-	}
+	result := FileArchiveResult{ArchiveName: t.archiveName, Size: t.archiveSize, Format: t.format}
 	t.mu.Unlock()
 
 	t.reportProgress("completed")

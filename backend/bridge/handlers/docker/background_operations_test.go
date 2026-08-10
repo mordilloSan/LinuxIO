@@ -24,8 +24,7 @@ func TestRunDockerComposeTaskUsesResultAsOnlyTerminalSignal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runDockerComposeTask() error = %v", err)
 		}
-		message, ok := result.(ComposeTaskResult)
-		if !ok || message.Type != "complete" {
+		if result.Type != "complete" {
 			t.Fatalf("runDockerComposeTask() result = %#v, want complete ComposeTaskResult", result)
 		}
 		if progress := task.Snapshot().Progress; progress != nil {
@@ -49,8 +48,8 @@ func TestRunDockerComposeTaskUsesResultAsOnlyTerminalSignal(t *testing.T) {
 		if err == nil {
 			t.Fatal("runDockerComposeTask() error = nil, want command failure")
 		}
-		if result != nil {
-			t.Fatalf("runDockerComposeTask() result = %#v, want nil", result)
+		if result != (ComposeTaskResult{}) {
+			t.Fatalf("runDockerComposeTask() result = %#v, want zero value", result)
 		}
 		if progress := task.Snapshot().Progress; progress != nil {
 			t.Fatalf("task progress = %#v, want no terminal progress", progress)

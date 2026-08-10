@@ -48,7 +48,7 @@ func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
-			func(ctx context.Context, task *bridgetask.Task, req apischema.DockerComposeRequest) (any, error) {
+			func(ctx context.Context, task *bridgetask.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
 			},
 			bridgetask.TaskDefault,
@@ -60,9 +60,9 @@ func RegisterTaskRoutes(router *bridgetask.Router, rt runtime.Runtime) {
 	dockerTaskBindings(rt).Register(router)
 }
 
-func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {
+func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username string, store *config.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 	if req.Action == "" || req.ProjectName == "" {
-		return nil, bridgetask.NewError("missing required arguments: action, projectName", 400)
+		return ComposeTaskResult{}, bridgetask.NewError("missing required arguments: action, projectName", 400)
 	}
 
 	var composePath string
@@ -72,7 +72,7 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 
 	configFile, workingDir, err := resolveComposeTaskPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
-		return nil, bridgetask.NewError("compose file not found: "+err.Error(), 404)
+		return ComposeTaskResult{}, bridgetask.NewError("compose file not found: "+err.Error(), 404)
 	}
 
 	var reportMu sync.Mutex
@@ -98,15 +98,15 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 	case "restart":
 		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
-		return nil, bridgetask.NewError("unsupported action: "+req.Action, 400)
+		return ComposeTaskResult{}, bridgetask.NewError("unsupported action: "+req.Action, 400)
 	}
 
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, context.Canceled
+			return ComposeTaskResult{}, context.Canceled
 		}
 		msg := "command failed: " + err.Error()
-		return nil, bridgetask.NewError(msg, 500)
+		return ComposeTaskResult{}, bridgetask.NewError(msg, 500)
 	}
 
 	result := ComposeTaskResult{Type: "complete", Message: "operation completed successfully"}

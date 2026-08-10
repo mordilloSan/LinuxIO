@@ -39,6 +39,8 @@ vi.mock("@/api/linuxio", async (importOriginal) => {
 
 describe("generated Call and Task definitions", () => {
   it("exposes only the capabilities owned by each route kind", () => {
+    const taskStart: Awaited<ReturnType<typeof linuxio.docker.compose>> =
+      taskSnapshot();
     const callHasLegacyAction: "useAction" extends keyof typeof linuxio.tasks.get
       ? true
       : false = false;
@@ -90,6 +92,7 @@ describe("generated Call and Task definitions", () => {
     expect(linuxio.docker.compose).not.toHaveProperty("queryOptions");
     expect(callActionConfig.success).toBeTypeOf("function");
     expect(taskActionConfig.success).toBeTypeOf("function");
+    expectTypeOf(taskStart).toEqualTypeOf<TaskSnapshot>();
   });
 
   it("builds canonical keys for no-request and request Calls", () => {

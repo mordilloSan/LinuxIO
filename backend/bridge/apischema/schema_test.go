@@ -3,7 +3,6 @@ package apischema_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"testing"
 
@@ -65,27 +64,14 @@ func mustRoute(t *testing.T, name string) apischema.RouteSpec {
 	return apischema.RouteSpec{}
 }
 
-func TestOnlyProgressHandlersRemainTasks(t *testing.T) {
-	remainingProgressTasks := map[string]bool{
-		"filebrowser.resource_patch": true,
-		"virt.create":                true,
-	}
+func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	modes := map[bridgeipc.Mode]int{}
 
 	for _, route := range handlers.Routes {
 		modes[route.Mode]++
-		if route.Kind != apischema.KindHandler || route.Mode != bridgeipc.ModeTask {
-			continue
+		if route.Mode == bridgeipc.ModeTask && route.Kind != apischema.KindTaskRunner {
+			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
-		if !remainingProgressTasks[route.Route] {
-			t.Errorf("%s is a progressless task route", route.Route)
-			continue
-		}
-		delete(remainingProgressTasks, route.Route)
-	}
-
-	if len(remainingProgressTasks) != 0 {
-		t.Errorf("expected progress task routes are missing: %v", remainingProgressTasks)
 	}
 	if got, want := modes[bridgeipc.ModeCall], 203; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
@@ -95,6 +81,21 @@ func TestOnlyProgressHandlersRemainTasks(t *testing.T) {
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 9; got != want {
 		t.Errorf("duplex route count = %d, want %d", got, want)
+	}
+}
+
+func TestTaskRoutesDeclareTerminalResultsAndProgress(t *testing.T) {
+	taskSnapshotType := reflect.TypeFor[apischema.TaskSnapshot]()
+	for _, route := range handlers.Routes {
+		if route.Mode != bridgeipc.ModeTask {
+			continue
+		}
+		if route.Result.GoType == taskSnapshotType || route.Result.Void() {
+			t.Errorf("%s has placeholder terminal result %v", route.Route, route.Result.GoType)
+		}
+		if route.Route != "control.app_update" && route.Progress.GoType == nil {
+			t.Errorf("%s reports progress but has no progress contract", route.Route)
+		}
 	}
 }
 
@@ -234,32 +235,17 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 	}
 }
 
-// recordingEmitter captures what a binding emitted so the tests can assert on
-// the exact value that reaches the wire — in particular nil vs a zero struct.
-type recordingEmitter struct {
-	results  []any
-	progress []any
-}
-
-func (e *recordingEmitter) Data([]byte) error            { return nil }
-func (e *recordingEmitter) Progress(p any) error         { e.progress = append(e.progress, p); return nil }
-func (e *recordingEmitter) Result(r any) error           { e.results = append(e.results, r); return nil }
-func (e *recordingEmitter) Error(err error, _ int) error { return err }
-func (e *recordingEmitter) Close(string) error           { return nil }
-
-func TestTaskHandleEmitsTypedResult(t *testing.T) {
-	binding := apischema.Task[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed").
-		Handle(func(_ context.Context, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
-			return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
-		})
-
-	emit := &recordingEmitter{}
-	if err := binding.Handle(context.Background(), apischema.UsernameRequest{Username: "ada"}, emit); err != nil {
-		t.Fatalf("Handle() error = %v", err)
+func TestTaskRunnerErasesOnlyAtBridgeBoundary(t *testing.T) {
+	route := apischema.TaskRunner[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.runner")
+	binding := route.Run(func(_ context.Context, _ *bridgeipc.Task, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
+		return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
+	}, bridgeipc.TaskDefault)
+	got, err := binding.Runner(context.Background(), &bridgeipc.Task{}, apischema.UsernameRequest{Username: "ada"})
+	if err != nil {
+		t.Fatalf("Runner() error = %v", err)
 	}
-	want := apischema.SuccessNameResponse{Success: true, Name: "ada"}
-	if len(emit.results) != 1 || emit.results[0] != want {
-		t.Fatalf("emitted %#v, want one %#v", emit.results, want)
+	if got != (apischema.SuccessNameResponse{Success: true, Name: "ada"}) {
+		t.Fatalf("Runner() result = %#v", got)
 	}
 }
 
@@ -272,7 +258,9 @@ func TestCallBindingReturnsTypedResultDirectly(t *testing.T) {
 	if binding.Call == nil {
 		t.Fatal("Call binding has nil direct handler")
 	}
-	got, err := binding.Call(context.Background(), apischema.UsernameRequest{Username: "ada"})
+	got, err := binding.Call(context.Background(), bridgeipc.Request{
+		DecodedValue: apischema.UsernameRequest{Username: "ada"},
+	})
 	if err != nil {
 		t.Fatalf("Call() error = %v", err)
 	}
@@ -282,69 +270,13 @@ func TestCallBindingReturnsTypedResultDirectly(t *testing.T) {
 	}
 }
 
-func TestCallRejectsHandleEvents(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("HandleEvents on a Call route should panic")
-		}
-	}()
-	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("test.call_events").
-		HandleEvents(func(context.Context, apischema.NoRequest, bridgeipc.Events) error { return nil })
-}
-
-func TestTaskHandleErrorEmitsNoResult(t *testing.T) {
-	sentinel := errors.New("boom")
-	binding := apischema.Task[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.typed_err").
-		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
-			return apischema.SuccessNameResponse{Success: true}, sentinel
-		})
-
-	emit := &recordingEmitter{}
-	err := binding.Handle(context.Background(), apischema.UsernameRequest{}, emit)
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("Handle() error = %v, want %v", err, sentinel)
-	}
-	if len(emit.results) != 0 {
-		t.Fatalf("a failing handler emitted %#v; nothing should reach the wire", emit.results)
-	}
-}
-
-// NoResponse generates TypeScript `void`. Both binding forms must put nil on the
-// wire rather than the zero struct: `{}` would contradict the generated type and
-// would stop task snapshots from omitting `result`.
-func TestNoResponseRoutesEmitNilNotZeroStruct(t *testing.T) {
-	typed := apischema.Task[apischema.UsernameRequest, apischema.NoResponse]("test.void_typed").
-		Handle(func(_ context.Context, _ apischema.UsernameRequest) (apischema.NoResponse, error) {
-			return apischema.NoResponse{}, nil
-		})
-	void := apischema.Task[apischema.UsernameRequest, apischema.NoResponse]("test.void_short").
-		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error {
-			return nil
-		})
-
-	for name, binding := range map[string]apischema.HandlerBinding{"Handle": typed, "HandleVoid": void} {
-		t.Run(name, func(t *testing.T) {
-			emit := &recordingEmitter{}
-			if err := binding.Handle(context.Background(), apischema.UsernameRequest{}, emit); err != nil {
-				t.Fatalf("Handle() error = %v", err)
-			}
-			if len(emit.results) != 1 {
-				t.Fatalf("emitted %d results, want 1", len(emit.results))
-			}
-			if emit.results[0] != nil {
-				t.Fatalf("emitted %#v, want nil so the wire stays null", emit.results[0])
-			}
-		})
-	}
-}
-
 func TestHandleVoidRejectsNonVoidResult(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("HandleVoid on a route that declares a real result should panic")
 		}
 	}()
-	apischema.Task[apischema.UsernameRequest, apischema.SuccessResponse]("test.void_mismatch").
+	apischema.Call[apischema.UsernameRequest, apischema.SuccessResponse]("test.void_mismatch").
 		HandleVoid(func(_ context.Context, _ apischema.UsernameRequest) error { return nil })
 }
 

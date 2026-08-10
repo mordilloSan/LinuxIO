@@ -26,28 +26,18 @@ const (
 const InitialTaskSettleTimeout = 25 * time.Millisecond
 
 var (
-	ErrInvalidArgs       = errors.New("invalid arguments")
-	ErrForbidden         = errors.New("forbidden")
-	ErrRouteNotFound     = errors.New("route not found")
-	ErrRateLimited       = errors.New("rate limit exceeded")
-	ErrQueueFull         = errors.New("task queue full")
-	ErrDuplicateActive   = errors.New("task already active")
-	ErrReservedTaskRoute = errors.New("reserved tasks route")
+	ErrInvalidArgs     = errors.New("invalid arguments")
+	ErrForbidden       = errors.New("forbidden")
+	ErrRouteNotFound   = errors.New("route not found")
+	ErrRateLimited     = errors.New("rate limit exceeded")
+	ErrQueueFull       = errors.New("task queue full")
+	ErrDuplicateActive = errors.New("task already active")
 )
 
-type HandlerFunc func(ctx context.Context, request any, emit Events) error
-type CallFunc func(ctx context.Context, request any) (any, error)
-type DuplexFunc func(ctx context.Context, stream net.Conn, request any) error
+type CallFunc func(ctx context.Context, request Request) (any, error)
+type DuplexFunc func(ctx context.Context, stream net.Conn, request Request) error
 
 type RequestDecoder func(raw json.RawMessage) (any, error)
-
-type Events interface {
-	Data(chunk []byte) error
-	Progress(progress any) error
-	Result(result any) error
-	Error(err error, code int) error
-	Close(reason string) error
-}
 
 type Request struct {
 	Route        string
@@ -60,7 +50,6 @@ type Request struct {
 type Route struct {
 	Name       string
 	Mode       Mode
-	Handler    HandlerFunc
 	Call       CallFunc
 	Runner     TaskRunner
 	Duplex     DuplexFunc
@@ -189,19 +178,8 @@ func (r *Router) Call(name string, handler CallFunc, opts ...RouteOption) {
 	r.register(Route{Name: name, Mode: ModeCall, Call: handler}, opts...)
 }
 
-// Task registers a background task route using a HandlerFunc. The handler emits
-// progress and results through the Events interface. If policy.Name is empty,
-// TaskDefault is used.
-func (r *Router) Task(name string, handler HandlerFunc, policy TaskPolicy, opts ...RouteOption) {
-	if policy.Name == "" {
-		policy = TaskDefault
-	}
-	r.register(Route{Name: name, Mode: ModeTask, Handler: handler, Policy: policy}, opts...)
-}
-
-// TaskRunner registers a background task route using a Runner. Unlike Task, the
-// runner receives the *Task directly, enabling lower-level control (e.g. calling
-// ReportProgress). If policy.Name is empty, TaskDefault is used.
+// TaskRunner registers a background task route. The runner receives the *Task
+// directly for progress reporting. If policy.Name is empty, TaskDefault is used.
 func (r *Router) TaskRunner(name string, runner TaskRunner, policy TaskPolicy, opts ...RouteOption) {
 	if policy.Name == "" {
 		policy = TaskDefault
@@ -219,10 +197,6 @@ func (r *Router) Duplex(name string, handler DuplexFunc, opts ...RouteOption) {
 // request route, enforcing privilege checks and logging request lifecycle events.
 func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) error {
 	req.Owner = ownerFromSession(req.Session)
-
-	if strings.HasPrefix(req.Route, "tasks.") {
-		return r.dispatchTaskPrimitive(ctx, stream, req)
-	}
 
 	route, ok := r.lookup(req.Route)
 	if !ok {
@@ -254,11 +228,11 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	var err error
 	switch route.Mode {
 	case ModeCall:
-		err = r.dispatchCall(ctx, stream, route, req.DecodedValue)
+		err = r.dispatchCall(ctx, stream, route, req)
 	case ModeTask:
 		err = r.dispatchTask(ctx, stream, route, req)
 	case ModeDuplex:
-		err = route.Duplex(ctx, stream, req.DecodedValue)
+		err = route.Duplex(ctx, stream, req)
 	default:
 		err = fmt.Errorf("unsupported route mode: %s", route.Mode)
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 500)
@@ -278,16 +252,27 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 }
 
 func (r *Router) register(route Route, opts ...RouteOption) {
+	r.registerRoute(route, false, opts...)
+}
+
+func (r *Router) registerTaskServiceRoute(service *TaskService, route Route, opts ...RouteOption) {
+	if service == nil || service != r.registry {
+		panic("bridge task service route must use the router task service")
+	}
+	r.registerRoute(route, true, opts...)
+}
+
+func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...RouteOption) {
 	if route.Name == "" {
 		panic("bridge route cannot be empty")
 	}
-	if strings.HasPrefix(route.Name, "tasks.") {
+	if strings.HasPrefix(route.Name, "tasks.") && !allowTaskServiceRoute {
 		panic("bridge route uses reserved tasks.* namespace: " + route.Name)
 	}
 	if route.Mode == ModeCall && route.Call == nil {
 		panic("bridge call route handler cannot be nil: " + route.Name)
 	}
-	if route.Mode == ModeTask && route.Handler == nil && route.Runner == nil {
+	if route.Mode == ModeTask && route.Runner == nil {
 		panic("bridge task route handler cannot be nil: " + route.Name)
 	}
 	if route.Mode == ModeDuplex && route.Duplex == nil {
@@ -311,7 +296,7 @@ func (r *Router) lookup(route string) (Route, bool) {
 	return found, ok
 }
 
-func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route, request any) error {
+func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route, request Request) error {
 	ctx, cleanup := requestAbortContext(ctx, stream)
 	defer cleanup()
 	result, err := route.Call(ctx, request)
@@ -373,14 +358,7 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 }
 
 func (r *Router) runRoute(ctx context.Context, task *Task, request any, route Route) (any, error) {
-	if route.Runner != nil {
-		return route.Runner(ctx, task, request)
-	}
-	emit := newTaskEmitter(task)
-	if err := route.Handler(ctx, request, emit); err != nil {
-		return nil, err
-	}
-	return emit.result, nil
+	return route.Runner(ctx, task, request)
 }
 
 func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {
@@ -568,38 +546,6 @@ func (r *Router) dequeueStartLocked(routeName string) *queuedTask {
 	return next
 }
 
-type taskEmitter struct {
-	task   *Task
-	result any
-}
-
-func newTaskEmitter(task *Task) *taskEmitter {
-	return &taskEmitter{task: task}
-}
-
-func (e *taskEmitter) Data(chunk []byte) error {
-	e.task.ReportData(string(chunk))
-	return nil
-}
-
-func (e *taskEmitter) Progress(progress any) error {
-	e.task.ReportProgress(progress)
-	return nil
-}
-
-func (e *taskEmitter) Result(result any) error {
-	e.result = result
-	return nil
-}
-
-func (e *taskEmitter) Error(err error, code int) error {
-	return NewError(err.Error(), code)
-}
-
-func (e *taskEmitter) Close(string) error {
-	return nil
-}
-
 func ownerFromSession(sess *session.Session) TaskOwner {
 	if sess == nil {
 		return TaskOwner{}
@@ -652,11 +598,4 @@ func statusCode(err error) int {
 	default:
 		return 500
 	}
-}
-
-func EmitResult(emit Events, result any, err error) error {
-	if err != nil {
-		return err
-	}
-	return emit.Result(result)
 }

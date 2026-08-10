@@ -2,21 +2,22 @@
 
 ## Status
 
-In progress as of 2026-08-09. The Query-to-Call, Job-to-Task, and log-stream
-Query/Job-to-Channel migrations are complete (no dual runtime or compatibility
-facade). The current route inventory is 203 Call, 18 Task, and 9 Channel routes
-implemented with `ModeDuplex`.
+Complete as of 2026-08-10. The Query-to-Call, Job-to-Task, log-stream-to-Channel,
+and final Task-runner migrations are complete, with no dual runtime or
+compatibility facade. The current route inventory is 203 Call, 18 Task, and 9
+Channel routes implemented with `ModeDuplex`.
 `ModeQuery`, `apischema.Query`, `createQueryEndpoint`, the legacy React Query
 endpoint module, and all `.queryOptions`/`.useAction`/`.useFetcher`/`.useCache`
 consumers are removed.
 
-The remaining transport cleanup is deliberately narrow: convert the two
-`HandleEvents` Task routes (`filebrowser.resource_patch` and `virt.create`) to
-the single typed Task runner/result shape; register Task lifecycle routes
-through the normal `TaskService` rather than a `Router` `tasks.*` switch; and
-remove obsolete emitter, mode, and kind surfaces only where the result is a
-net deletion. Connection-loss, session/durable Task, strict validation,
-decoder, and notification design work is tracked in the canonical
+All 18 Task routes now use one typed runner/result shape. `TaskService` owns and
+registers the reserved `tasks.*` Calls and Channels, and the ordinary-handler
+emitter surface and Router prefix-dispatch branch are removed. `Mode`, `Kind`,
+the generated Task endpoint factory, and route metadata remain because they
+still enforce real registration, code-generation, and lifecycle boundaries;
+removing them would add replacement code rather than simplify the system.
+Connection-loss, session/durable Task, strict validation, decoder, and
+notification work is tracked in the canonical
 [API reliability roadmap](./api-reliability-roadmap.md), not duplicated here.
 
 This plan replaces the original Query/Job/Runner/Duplex API framework with two
@@ -199,8 +200,8 @@ add an unused facade or a forwarding layer over the legacy framework.
 - Make Call handlers return one result directly.
 - Write one result frame and close without a stream emitter.
 - Add direction-neutral Channel registration and dispatch.
-- Introduce a focused `TaskService` for lifecycle state and scheduling. Its
-  remaining registration isolation is Phase 5 work.
+- Introduce a focused `TaskService` for lifecycle state and Task-control
+  registration.
 - Preserve privilege checks, request decoding, owner checks, cancellation,
   deadlines, and error codes.
 - Change a route's registration only when its handler and frontend consumers
@@ -437,7 +438,7 @@ must not forward to a Task watch or data stream.
 - [x] No separate SSE abstraction exists.
 - [x] Binary transfer memory remains bounded under backpressure.
 
-## Phase 5: Simplify Tasks (in progress)
+## Phase 5: Simplify Tasks (complete)
 
 Expose one Task service:
 
@@ -461,20 +462,18 @@ Separate its internal responsibilities:
 - Optional binary data attachment
 - Execution substrate
 
-The Job-to-Task runtime and public namespace cutover is complete. It preserved
-execution, ownership, recovery, queueing, replay, and transfer-data semantics
-while deleting the old Job names and paths. The remaining Task simplification
-is to convert `filebrowser.resource_patch` and `virt.create` from
-`HandleEvents`/emitter-form Tasks to the single typed Task runner and result
-shape, and to register the Task lifecycle through `TaskService` instead of the
-general Router's `tasks.*` switch. Only after those routes and registrations
-are migrated should we remove:
+The Job-to-Task runtime and public namespace cutover preserved execution,
+ownership, recovery, queueing, replay, and transfer-data semantics while
+deleting the old Job names and paths. The final cleanup then:
 
-- Handler-form Tasks
-- HandleEvents
-- taskEmitter
-- Progress and data capabilities from ordinary Calls
-- Hard-coded Task primitive dispatch from the general Router
+- converted `filebrowser.resource_patch` and `virt.create` to typed Task
+  runners;
+- bound every Task runner's terminal result to its declared route result;
+- declared generated progress types on Task routes;
+- removed handler-form Tasks, `HandleEvents`, the universal Events interface,
+  and `taskEmitter`; and
+- made `TaskService` register `tasks.get/list/cancel/watch/data/events` as
+  ordinary Call or Channel routes, removing the Router's prefix switch.
 
 The former Job routes were reclassified as follows:
 
@@ -490,13 +489,12 @@ large universal Task configuration object.
 
 ### Phase 5 exit criteria
 
-- [ ] There is one typed Task runner/result shape (the two `HandleEvents` routes
-  remain).
-- [ ] Task lifecycle is registered through `TaskService` and isolated from
-  general Call and Channel routing.
-- [ ] The Router has no special `tasks.*` route switch.
-- [ ] Obsolete emitter, mode, and kind surfaces are removed only where that is
-  a net deletion.
+- [x] There is one typed Task runner/result shape.
+- [x] Task lifecycle controls are registered through `TaskService` as normal
+  Call and Channel routes.
+- [x] The Router has no special `tasks.*` route switch.
+- [x] Obsolete emitter surfaces were deleted; `Mode` and `Kind` remain only
+  where they enforce a real boundary.
 - [x] Ownership, queueing, rate limits, cancellation, timeout, result replay,
   and progress replay remain covered.
 - [x] In-memory Tasks are not described as bridge-survivable.
@@ -509,47 +507,44 @@ the canonical [API reliability roadmap](./api-reliability-roadmap.md). This
 transport plan records only the primitive cutover and its transport-specific
 cleanup; it does not duplicate those designs or claim them implemented.
 
-## Phase 6: Remove the remaining legacy framework (pending Phase 5)
+## Phase 6: Final deletion review (complete)
 
-Delete each remaining legacy surface as its last route moves. Repository
-searches must show no consumers before the shared definition itself is removed.
+Repository searches confirmed that the Query endpoint, Job API, handler-form
+Task, universal Events interface, `HandleEvents`, `taskEmitter`, and obsolete
+registration adapters have no production consumers and are removed.
 
-The remaining cleanup candidates are:
+The following are final surfaces rather than compatibility layers:
 
-- createTaskEndpoint after the remaining Task transport cleanup
-- Runtime route-mode assertions used only by Task endpoints
-- TaskEndpoint and related Task capability types
-- Mode and Kind where their removal is a net deletion
-- Universal Events and `taskEmitter`
-- HandleEvents after the two remaining handler-form Tasks move
-- RequestShape and any remaining Task-backed stream facade without
-  payload-specific behavior
+- `createTaskEndpoint` provides Task start/wait/watch/cancel semantics that a
+  Call descriptor does not have;
+- `TaskEndpoint` types keep those capabilities separate from Calls;
+- runtime route modes protect Task endpoint construction, and generated route
+  metadata supports compile-time and source-guard checks;
+- `Mode` and `Kind` validate backend registration and drive code generation;
+- `RequestShape` normalizes generated Task inputs; and
+- payload-specific Channel helpers retain cursor, offset, terminal, resize, or
+  Task-data behavior.
 
-The old Query endpoint, Job, and obsolete registration adapters were removed
-as part of the completed vertical slices above; they are not future work.
-
-Keep generated domain models, the flat type maps, StreamMultiplexer, relay
-framing, and feature-specific stream presentation.
-
-Update:
-
-- [API Contract](./api-contract.md)
-- [Server Yamux Protocol](./server-yamux-protocol.md)
-- [Durable Operations and Transient Units](./transient-units-plan.md)
-- ToDo
-- Source guards and architecture tests
+Keep generated domain models and type maps, `StreamMultiplexer`, relay framing,
+and feature-specific stream presentation. Revisit a retained surface only when
+a measured change produces a clear net deletion without weakening type or
+lifecycle safety.
 
 Only consider a new wire-protocol version after cleanup, and only if profiling
 shows the current relay framing is a bottleneck.
 
 ## Generator strategy
 
-Initially trim the current generator rather than replacing it:
+Keep the current small Go-owned generator rather than adding a second schema
+tool:
 
 - Continue generating TypeScript domain models.
 - Generate flat type-only Call, Task, and Channel maps.
-- Stop generating endpoint objects, hooks, cache behavior, or route-mode
-  metadata.
+- Generate plain Call descriptor/factory invocations and thin Task endpoint
+  factory invocations; do not generate React hooks, cache policy, feature
+  behavior, or a compatibility facade.
+- Generate route-mode metadata while it enforces Task construction and source
+  guards.
 - Preserve deterministic formatting and generated-file checks.
 
 After the vertical slice, compare the trimmed generator with a standard
@@ -640,10 +635,10 @@ invocation. Inspect the complete worktree after generation and verification.
 ## Reduction
 
 The completed slices removed the former React Query endpoint factory, generated
-Query factories, Query route metadata, the Job API, and Job-backed log-stream
-adapters. The remaining possible deletions are the emitter/Mode/Kind and Task
-endpoint surfaces listed in Phase 6 plus any background-Task glue made redundant
-by the final Task runner form.
+Query factories, Query route mode, the Job API, Job-backed log-stream adapters,
+handler-form Tasks, and the universal emitter. The final deletion review kept
+only the typed Task and mode/kind surfaces that still own real behavior or
+enforce a contract.
 
 Generated models and most of `StreamMultiplexer` remain because they implement
 real contract and transport behavior. Use the final commit diff to report code
@@ -673,9 +668,14 @@ The migration is complete when:
 - Adding a Task requires one runner; lifetime and recovery follow the
   [API reliability roadmap](./api-reliability-roadmap.md).
 - The compiler rejects using a Call route as a Task or Channel.
-- No generated endpoint objects or runtime route-mode checks remain.
+- Generated runtime values are limited to Call descriptors and thin Task
+  endpoints; no generated React hooks, cache policy, or compatibility facade
+  remains.
 - No universal Events interface remains.
 - No handler-form Task remains.
-- The general Router does not own Task registry, scheduling, or replay details.
-- Performance is no worse than the agreed gates.
+- `TaskService` owns Task state, replay, attachments, and primitive
+  implementations; the Router owns common dispatch and admission without a
+  namespace-specific Task switch.
+- Performance claims require a reproducible benchmark; the migration does not
+  claim a gain from code reduction alone.
 - Canonical documentation and ToDo entries match the implemented architecture.

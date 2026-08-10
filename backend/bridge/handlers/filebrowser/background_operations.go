@@ -197,61 +197,76 @@ const (
 
 var fileTaskRoutes = fileTaskBindings(nil).Routes()
 
+func transferResult[T any](value any, err error) (T, error) {
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	result, ok := value.(T)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("unexpected transfer result %T", value)
+	}
+	return result, nil
+}
+
 func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.FileCompressRequest, apischema.TaskSnapshot]("filebrowser.compress", apischema.WithTaskMetadata(func(req apischema.FileCompressRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileCompressRequest, FileCompressResult]("filebrowser.compress", apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileCompressRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.TargetPath}, Label: req.TargetPath, Path: req.TargetPath}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileCompressRequest) (any, error) {
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileCompressRequest) (FileCompressResult, error) {
 				return runCompressTask(ctx, task, store, req)
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.FileExtractRequest, apischema.TaskSnapshot]("filebrowser.extract", apischema.WithTaskMetadata(func(req apischema.FileExtractRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileExtractRequest, FileExtractResult]("filebrowser.extract", apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileExtractRequest) bridgetasks.TaskMetadata {
 			identity := []string{req.ArchivePath}
 			if req.Destination != nil {
 				identity = append(identity, *req.Destination)
 			}
 			return bridgetasks.TaskMetadata{Identity: identity, Label: req.ArchivePath, Path: req.ArchivePath}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileExtractRequest) (any, error) {
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileExtractRequest) (FileExtractResult, error) {
 				return runExtractTask(ctx, task, store, req)
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchTransferRequest, apischema.TaskSnapshot]("filebrowser.copy_batch", apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.BatchTransferRequest, FileBatchResult]("filebrowser.copy_batch", apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchTaskLabel(req.Sources), Path: req.Destination}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchTransferRequest) (any, error) {
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchTransferRequest) (FileBatchResult, error) {
 				return runCopyBatchTask(ctx, task, store, req)
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchTransferRequest, apischema.TaskSnapshot]("filebrowser.move_batch", apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.BatchTransferRequest, FileBatchResult]("filebrowser.move_batch", apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchTaskLabel(req.Sources), Path: req.Destination}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchTransferRequest) (any, error) {
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchTransferRequest) (FileBatchResult, error) {
 				return runMoveBatchTask(ctx, task, store, req)
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchPathRequest, apischema.TaskSnapshot]("filebrowser.delete_batch", apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.WithTaskProgress[DeleteProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
 			runDeleteBatchTask,
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.OptionalPathRequest, apischema.TaskSnapshot]("filebrowser.index", apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
 			path := ""
 			if req.Path != nil {
 				path = *req.Path
 			}
 			return bridgetasks.TaskMetadata{Identity: []string{path}, Path: path, Label: path}
 		})).Run(runIndexerTask, bridgetasks.TaskSingletonSystem),
-		apischema.TaskRunner[apischema.FileUploadRequest, apischema.TaskSnapshot](routeUpload, apischema.WithTaskMetadata(func(req apischema.FileUploadRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileUploadRequest, FileUploadResult](routeUpload, apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileUploadRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.TargetPath}, Path: req.TargetPath, Label: req.TargetPath}
-		})).Run(runUploadTask, bridgetasks.TaskStreamDefault),
-		apischema.TaskRunner[apischema.FileUploadBatchRequest, apischema.TaskSnapshot](routeUploadBatch, apischema.WithTaskMetadata(func(req apischema.FileUploadBatchRequest) bridgetasks.TaskMetadata {
+		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest) (FileUploadResult, error) {
+			return transferResult[FileUploadResult](runUploadTask(ctx, task, req))
+		}, bridgetasks.TaskStreamDefault),
+		apischema.TaskRunner[apischema.FileUploadBatchRequest, FileUploadBatchResult](routeUploadBatch, apischema.WithTaskProgress[BatchUploadProgress](), apischema.WithTaskMetadata(func(req apischema.FileUploadBatchRequest) bridgetasks.TaskMetadata {
 			identity := []string{req.Destination}
 			for _, file := range req.Files {
 				identity = append(identity, "file", file.Path, "size", file.Size)
@@ -265,22 +280,26 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 				identity = append(identity, "overwrite", "false")
 			}
 			return bridgetasks.TaskMetadata{Identity: identity, Path: req.Destination, Label: req.Destination}
-		})).Run(runUploadBatchTask, bridgetasks.TaskStreamDefault),
-		apischema.TaskRunner[apischema.PathRequest, apischema.TaskSnapshot](routeDownload, apischema.WithTaskMetadata(func(req apischema.PathRequest) bridgetasks.TaskMetadata {
+		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (FileUploadBatchResult, error) {
+			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req))
+		}, bridgetasks.TaskStreamDefault),
+		apischema.TaskRunner[apischema.PathRequest, FileDownloadResult](routeDownload, apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.PathRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.Path}, Path: req.Path, Label: req.Path}
-		})).Run(runDownloadTask, bridgetasks.TaskStreamDefault),
-		apischema.TaskRunner[apischema.FileArchiveRequest, apischema.TaskSnapshot](routeArchive, apischema.WithTaskMetadata(func(req apischema.FileArchiveRequest) bridgetasks.TaskMetadata {
+		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.PathRequest) (FileDownloadResult, error) {
+			return transferResult[FileDownloadResult](runDownloadTask(ctx, task, req))
+		}, bridgetasks.TaskStreamDefault),
+		apischema.TaskRunner[apischema.FileArchiveRequest, FileArchiveResult](routeArchive, apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileArchiveRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileArchiveRequest) (any, error) {
-				return runArchiveTask(ctx, task, store, req)
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileArchiveRequest) (FileArchiveResult, error) {
+				return transferResult[FileArchiveResult](runArchiveTask(ctx, task, store, req))
 			},
 			bridgetasks.TaskStreamDefault,
 		),
-		apischema.TaskRunner[apischema.FileChmodBatchRequest, apischema.TaskSnapshot]("filebrowser.chmod_batch", apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileChmodBatchRequest, FileBatchResult]("filebrowser.chmod_batch", apischema.WithTaskProgress[ChmodProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Mode, req.Owner, req.Group}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
-			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileChmodBatchRequest) (any, error) {
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {
 				return runChmodBatchTask(ctx, task, store, req)
 			},
 			bridgetasks.TaskDefault,
@@ -301,10 +320,10 @@ func batchTaskLabel(paths []string) string {
 
 func RegisterTaskRoutes(router *bridgetasks.Router, store *config.UserStore) {
 	fileTaskBindings(store).Register(router)
-	bridgetasks.RegisterTaskDataAttacher(routeUpload, attachFileTransferData)
-	bridgetasks.RegisterTaskDataAttacher(routeUploadBatch, attachFileTransferData)
-	bridgetasks.RegisterTaskDataAttacher(routeDownload, attachFileTransferData)
-	bridgetasks.RegisterTaskDataAttacher(routeArchive, attachFileTransferData)
+	router.TaskService().RegisterTaskDataAttacher(routeUpload, attachFileTransferData)
+	router.TaskService().RegisterTaskDataAttacher(routeUploadBatch, attachFileTransferData)
+	router.TaskService().RegisterTaskDataAttacher(routeDownload, attachFileTransferData)
+	router.TaskService().RegisterTaskDataAttacher(routeArchive, attachFileTransferData)
 }
 
 func newTaskPhaseCallbacks(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {
@@ -459,26 +478,26 @@ func notifyExtractedFiles(destination string) {
 	})
 }
 
-func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileCompressRequest) (any, error) {
+func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileCompressRequest) (FileCompressResult, error) {
 	if req.Format == "" || req.TargetPath == "" || len(req.Paths) == 0 {
-		return nil, bridgetasks.NewError("missing format, destination, or paths", 400)
+		return FileCompressResult{}, bridgetasks.NewError("missing format, destination, or paths", 400)
 	}
 
 	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgetasks.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
+		return FileCompressResult{}, bridgetasks.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
 	settings := taskSettingsForTask(ctx, task, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
-		return nil, context.Canceled
+		return FileCompressResult{}, context.Canceled
 	}
 	defer release()
 
 	targetPath := normalizeArchiveTargetPath(req.TargetPath, extension)
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, bridgetasks.NewError("failed to access filesystem", 500)
+		return FileCompressResult{}, bridgetasks.NewError("failed to access filesystem", 500)
 	}
 	defer root.Close()
 	targetRel, tempRel, tempPath, err := prepareArchiveTarget(root, targetPath)
@@ -489,7 +508,7 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 			status = 400
 			message = "destination is a directory"
 		}
-		return nil, bridgetasks.NewError(message, status)
+		return FileCompressResult{}, bridgetasks.NewError(message, status)
 	}
 
 	totalSize := computeArchiveSize(req.Paths)
@@ -499,15 +518,15 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 	if err == ipc.ErrAborted {
 		slog.Info("compress aborted, cleaning up", "path", targetPath)
 		removeWithDebug(root, tempRel, tempPath)
-		return nil, abortErr(ctx)
+		return FileCompressResult{}, abortErr(ctx)
 	}
 	if err != nil {
 		removeWithDebug(root, tempRel, tempPath)
-		return nil, bridgetasks.NewError(fmt.Sprintf("compression failed: %v", err), 500)
+		return FileCompressResult{}, bridgetasks.NewError(fmt.Sprintf("compression failed: %v", err), 500)
 	}
 	if err := root.Root.Rename(tempRel, targetRel); err != nil {
 		removeWithDebug(root, tempRel, tempPath)
-		return nil, bridgetasks.NewError(fmt.Sprintf("finalize archive: %v", err), 500)
+		return FileCompressResult{}, bridgetasks.NewError(fmt.Sprintf("finalize archive: %v", err), 500)
 	}
 
 	var archiveSize int64
@@ -517,22 +536,18 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 	}
 
 	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format)
-	return map[string]any{
-		"path":   targetPath,
-		"size":   archiveSize,
-		"format": req.Format,
-	}, nil
+	return FileCompressResult{Path: targetPath, Size: archiveSize, Format: req.Format}, nil
 }
 
-func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileExtractRequest) (any, error) {
+func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileExtractRequest) (FileExtractResult, error) {
 	archivePath, destination, err := parseExtractRequest(req)
 	if err != nil {
-		return nil, bridgetasks.NewError("missing archive path", 400)
+		return FileExtractResult{}, bridgetasks.NewError("missing archive path", 400)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, bridgetasks.NewError("failed to access filesystem", 500)
+		return FileExtractResult{}, bridgetasks.NewError("failed to access filesystem", 500)
 	}
 	defer root.Close()
 
@@ -541,16 +556,16 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 
 	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
 	if err != nil {
-		return nil, bridgetasks.NewError(fmt.Sprintf("archive not found: %v", err), 404)
+		return FileExtractResult{}, bridgetasks.NewError(fmt.Sprintf("archive not found: %v", err), 404)
 	}
 	if archiveStat.IsDir() {
-		return nil, bridgetasks.NewError("path is a directory, not an archive", 400)
+		return FileExtractResult{}, bridgetasks.NewError("path is a directory, not an archive", 400)
 	}
 
 	settings := taskSettingsForTask(ctx, task, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
-		return nil, context.Canceled
+		return FileExtractResult{}, context.Canceled
 	}
 	defer release()
 
@@ -565,20 +580,18 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 				slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
 			}
 		}
-		return nil, abortErr(ctx)
+		return FileExtractResult{}, abortErr(ctx)
 	}
 	if err != nil {
-		return nil, bridgetasks.NewError(fmt.Sprintf("extraction failed: %v", err), 500)
+		return FileExtractResult{}, bridgetasks.NewError(fmt.Sprintf("extraction failed: %v", err), 500)
 	}
 
 	notifyExtractedFiles(destination)
 	slog.Info("extract complete", "archive", archivePath, "destination", destination)
-	return map[string]any{
-		"destination": destination,
-	}, nil
+	return FileExtractResult{Destination: destination}, nil
 }
 
-func runIndexerTask(ctx context.Context, task *bridgetasks.Task, req apischema.OptionalPathRequest) (any, error) {
+func runIndexerTask(ctx context.Context, task *bridgetasks.Task, req apischema.OptionalPathRequest) (indexer.IndexerResult, error) {
 	path := "/"
 	if req.Path != nil && *req.Path != "" {
 		path = filepath.Clean(*req.Path)
@@ -586,8 +599,9 @@ func runIndexerTask(ctx context.Context, task *bridgetasks.Task, req apischema.O
 	return runIndexerOperation(ctx, task, path, false)
 }
 
-func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path string, attachOnly bool) (any, error) {
-	var result any
+func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path string, attachOnly bool) (indexer.IndexerResult, error) {
+	var result indexer.IndexerResult
+	var hasResult bool
 	var taskErr *bridgetasks.Error
 	cb := indexer.IndexerCallbacks{
 		OnProgress: func(p indexer.IndexerProgress) error {
@@ -596,6 +610,7 @@ func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path strin
 		},
 		OnResult: func(r indexer.IndexerResult) error {
 			result = r
+			hasResult = true
 			return nil
 		},
 		OnError: func(msg string, code int) error {
@@ -616,16 +631,16 @@ func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path strin
 	}
 	if err != nil {
 		if ctx.Err() != nil || errors.Is(err, ipc.ErrAborted) {
-			return nil, context.Canceled
+			return indexer.IndexerResult{}, context.Canceled
 		}
 		if taskErr != nil {
-			return nil, taskErr
+			return indexer.IndexerResult{}, taskErr
 		}
-		return nil, err
+		return indexer.IndexerResult{}, err
 	}
 
-	if result == nil {
-		return map[string]any{}, nil
+	if !hasResult {
+		return indexer.IndexerResult{}, nil
 	}
 	return result, nil
 }

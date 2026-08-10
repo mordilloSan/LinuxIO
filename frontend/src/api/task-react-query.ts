@@ -1,5 +1,5 @@
 /**
- * TanStack Query integration for durable Task mutations.
+ * TanStack Query integration for tracked Task mutations.
  *
  * Cached Call reads and bounded actions live in `call-react-query.ts`. This
  * module owns Task completion, watching, and progress-stream behavior.
@@ -23,7 +23,6 @@ import {
 import { waitForStreamResult } from "./stream-helpers";
 import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
 import {
-  isTaskSnapshot,
   isTerminalTaskState,
   taskSnapshotResult,
   waitForTaskCompletion,
@@ -79,8 +78,8 @@ export type TaskStreamActionResult<TRequest, TResult> = UseMutationResult<
   watch: (task: TaskSnapshot, variables: TRequest) => void;
 };
 
-interface BaseTaskEndpoint<TInput extends readonly unknown[], TResult> {
-  (...args: TInput): Promise<TResult>;
+interface BaseTaskEndpoint<TInput extends readonly unknown[]> {
+  (...args: TInput): Promise<TaskSnapshot>;
   queryKey: (...args: TInput) => QueryKey;
 }
 
@@ -103,7 +102,7 @@ export type TaskEndpoint<
   TRequest,
   TResult,
   TProgress = ProgressFrame,
-> = BaseTaskEndpoint<TInput, TResult> &
+> = BaseTaskEndpoint<TInput> &
   TaskEndpointCapabilities<TRequest, TResult, TProgress>;
 
 function assertTaskRoute(route: string): void {
@@ -181,8 +180,8 @@ export function createTaskEndpoint<TResult>(
   const retryPolicy = getRetryPolicy(handler, command);
   const queryKey = (...rawArgs: [] | [unknown]): QueryKey =>
     endpointQueryKey(handler, command, requestShape, rawArgs[0]);
-  const execute = (...rawArgs: [] | [unknown]): Promise<TResult> =>
-    core.request<TResult>(
+  const execute = (...rawArgs: [] | [unknown]): Promise<TaskSnapshot> =>
+    core.request<TaskSnapshot>(
       handler,
       command,
       requestForWire(requestShape, rawArgs[0]),
@@ -201,12 +200,7 @@ export function createTaskEndpoint<TResult>(
       route,
       async (request: unknown) => {
         const result = await execute(request);
-        if (isTaskSnapshot(result)) {
-          return taskSnapshotResult<TResult>(
-            await waitForTaskCompletion(result),
-          );
-        }
-        return result;
+        return taskSnapshotResult<TResult>(await waitForTaskCompletion(result));
       },
       config,
     );
@@ -228,15 +222,12 @@ export function createTaskEndpoint<TResult>(
         const watchedTask = watchedTaskRef.current;
         watchedTaskRef.current = null;
         const result = watchedTask ?? (await execute(request));
-        if (isTaskSnapshot(result)) {
-          return waitForTaskStreamAction<unknown, TStreamResult, TProgress>(
-            result,
-            request,
-            config,
-            signal,
-          );
-        }
-        return result as unknown as TStreamResult;
+        return waitForTaskStreamAction<unknown, TStreamResult, TProgress>(
+          result,
+          request,
+          config,
+          signal,
+        );
       },
       config,
     );

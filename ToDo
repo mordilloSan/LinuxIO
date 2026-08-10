@@ -5,14 +5,13 @@
 Follow the dependency-ordered
 [`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
 
-1. Finish the remaining Task/Router transport cleanup.
-2. Add strict standard-library request decoding and explicit safe-retry policy.
-3. Define connection-loss outcomes, Task lifetime/owner scope, and session
+1. Add strict standard-library request decoding and explicit safe-retry policy.
+2. Define connection-loss outcomes, Task lifetime/owner scope, and session
    activity semantics.
-4. Prove one durable Task with a persistent operation record and an external
+3. Prove one durable Task with a persistent operation record and an external
    execution owner.
-5. Implement the persistent per-user notification core.
-6. Extend durability, recovery, notification sources, or generated decoding
+4. Implement the persistent per-user notification core.
+5. Extend durability, recovery, notification sources, or generated decoding
    only from measured need.
 
 The focused implementation details live in
@@ -61,6 +60,10 @@ reader/store:
 
 ## Completed or closed
 
+- [x] Completed the Call/Channel/Task transport migration: all Tasks use one
+  typed runner/result shape, ordinary handlers have no emitter, and
+  `TaskService` registers the reserved `tasks.*` Calls and Channels without a
+  special dispatch branch.
 - [x] **6. Total background-work review:** migrated bounded mutations to direct actions,
   retained only real progress/recovery Tasks, added typed handler bindings and
   compile-time route-mode endpoint safety, and eliminated contract drift.

@@ -201,11 +201,6 @@ func NewTaskService() *TaskService {
 	return r
 }
 
-// RegisterTaskDataAttacher registers a data attacher for the given task type on the default service.
-func RegisterTaskDataAttacher(taskType string, attacher TaskDataAttacher) {
-	DefaultTaskService.RegisterTaskDataAttacher(taskType, attacher)
-}
-
 // RegisterTaskDataAttacher registers a data attacher for the given task type.
 func (r *TaskService) RegisterTaskDataAttacher(taskType string, attacher TaskDataAttacher) {
 	if taskType == "" {

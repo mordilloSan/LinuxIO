@@ -19,7 +19,7 @@ func packageUpdateBindings() apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PackageUpdateRequest, apischema.TaskSnapshot]("packages.update", apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
+		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
 		})).Run(runPackageUpdateTask, policy),
 	)
@@ -40,6 +40,10 @@ type PkgUpdateProgress struct {
 	InfoCode       *uint32 `json:"info_code,omitempty"`       // PackageKit info enum (Package signal)
 	Percentage     *uint32 `json:"percentage,omitempty"`      // Overall percentage (0-100, 101=unknown)
 	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
+}
+
+type PackageUpdateResult struct {
+	Updated int `json:"updated"`
 }
 
 type pkgUpdateReporter func(*PkgUpdateProgress) error
@@ -157,9 +161,9 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apischema.PackageUpdateRequest) (any, error) {
+func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
 	if len(req.PackageIDs) == 0 {
-		return nil, bridgetask.NewError("no packages specified", 400)
+		return PackageUpdateResult{}, bridgetask.NewError("no packages specified", 400)
 	}
 	report := taskPkgUpdateReporter(task)
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
@@ -170,12 +174,12 @@ func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apisch
 
 	if err := updatePackagesWithProgress(ctx, req.PackageIDs, report); err != nil {
 		if ctx.Err() != nil {
-			return nil, context.Canceled
+			return PackageUpdateResult{}, context.Canceled
 		}
-		return nil, bridgetask.NewError(err.Error(), 500)
+		return PackageUpdateResult{}, bridgetask.NewError(err.Error(), 500)
 	}
 
-	result := map[string]any{"updated": len(req.PackageIDs)}
+	result := PackageUpdateResult{Updated: len(req.PackageIDs)}
 	return result, nil
 }
 

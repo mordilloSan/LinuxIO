@@ -1,6 +1,10 @@
 package tasks
 
-import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+import (
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+)
 
 var api = apischema.Bindings(
 	apischema.DuplexRoute[apischema.TaskIDRequest, apischema.NoResponse]("tasks.watch", apischema.NoEndpoint()),
@@ -12,3 +16,7 @@ var api = apischema.Bindings(
 )
 
 var Routes = api.Routes()
+
+func RegisterHandlers(_ runtime.Runtime, router *bridgeipc.Router) {
+	router.TaskService().RegisterRoutes(router)
+}

@@ -11,7 +11,6 @@ import {
   type CapabilityErrorKey,
   type CapabilityKey,
   type CapabilityValueKey,
-  type InstallCapabilityResult,
   linuxio,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -27,13 +26,6 @@ import {
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
-
-interface InstallCapabilityProgress {
-  message: string;
-  /** Single global 0-100 percentage that only moves forward across stages. */
-  percentage?: number;
-  stage: string;
-}
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -69,10 +61,7 @@ const CapabilityManagerSection = () => {
   // capability refresh stay owned by the global background-task handler
   // (useRecoveredTasks) so they still fire if this panel closes mid-install.
   const { mutateAsync: installCapability } =
-    linuxio.system.install_capability.useTaskStreamAction<
-      InstallCapabilityResult,
-      InstallCapabilityProgress
-    >({
+    linuxio.system.install_capability.useTaskStreamAction({
       onProgress: (progress) => {
         if (!mountedRef.current) return;
         if (typeof progress?.percentage === "number") {

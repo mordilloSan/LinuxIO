@@ -33,20 +33,24 @@ type updateStatus struct {
 	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
+type AppUpdateResult struct {
+	ExitCode int `json:"exit_code"`
+}
+
 type appUpdateRequest struct {
 	runID   string
 	version string
 }
 
-func runAppUpdateTask(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, payload apischema.AppUpdateRequest) (any, error) {
+func runAppUpdateTask(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, payload apischema.AppUpdateRequest) (AppUpdateResult, error) {
 	req, err := parseAppUpdateRequest(payload)
 	if err != nil {
-		return nil, err
+		return AppUpdateResult{}, err
 	}
 
 	version, err := resolveAppUpdateVersion(ctx, req)
 	if err != nil {
-		return nil, err
+		return AppUpdateResult{}, err
 	}
 
 	return executeAppUpdate(ctx, rt, task, req.runID, version)
@@ -82,7 +86,7 @@ func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string,
 	return latest, nil
 }
 
-func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (any, error) {
+func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (AppUpdateResult, error) {
 	slog.Info("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
 
 	startedAt := time.Now().Unix()
@@ -94,15 +98,15 @@ func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.T
 	finishedAt := time.Now().Unix()
 
 	if isAppUpdateCanceled(ctx, err) {
-		return nil, finishCanceledUpdate(runID, startedAt, finishedAt)
+		return AppUpdateResult{}, finishCanceledUpdate(runID, startedAt, finishedAt)
 	}
 	if err != nil {
-		return nil, finishFailedUpdate(runID, version, relay, startedAt, finishedAt, err)
+		return AppUpdateResult{}, finishFailedUpdate(runID, version, relay, startedAt, finishedAt, err)
 	}
 
 	finishSuccessfulUpdate(runID, relay, startedAt, finishedAt)
 	reloadAndRestartAfterUpdate(runID)
-	return map[string]any{"exit_code": 0}, nil
+	return AppUpdateResult{ExitCode: 0}, nil
 }
 
 func isAppUpdateCanceled(ctx context.Context, err error) bool {

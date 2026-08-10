@@ -52,18 +52,14 @@ type Route[Request, Result any] struct {
 	spec RouteSpec
 }
 
-// TypedHandlerFunc is the ordinary handler shape: take a decoded request,
-// return a result. Unlike HandlerFunc it binds Result, so a handler returning
-// the wrong type is a compile error rather than a wire-format surprise.
+// TypedHandlerFunc is the ordinary call shape: take a decoded request and
+// return a result whose type is bound to the route.
 type TypedHandlerFunc[Request, Result any] func(ctx context.Context, req Request) (Result, error)
 
 // VoidHandlerFunc is TypedHandlerFunc for routes whose Result is NoResponse.
 type VoidHandlerFunc[Request any] func(ctx context.Context, req Request) error
 
-// HandlerFunc is the raw emitter shape, needed only by handlers that emit
-// progress or data frames. Prefer TypedHandlerFunc.
-type HandlerFunc[Request any] func(ctx context.Context, req Request, emit bridgeipc.Events) error
-type TaskRunnerFunc[Request any] func(ctx context.Context, task *bridgeipc.Task, req Request) (any, error)
+type TaskRunnerFunc[Request, Result any] func(ctx context.Context, task *bridgeipc.Task, req Request) (Result, error)
 type DuplexFunc[Request any] func(ctx context.Context, stream net.Conn, req Request) error
 
 // WithTaskMetadata declares a typed, safe request projection for a Task runner.
@@ -84,10 +80,6 @@ func WithTaskMetadata[Request any](build func(Request) bridgeipc.TaskMetadata) R
 
 func Call[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
 	return newRoute[Request, Result](KindHandler, bridgeipc.ModeCall, name, opts...)
-}
-
-func Task[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return newRoute[Request, Result](KindHandler, bridgeipc.ModeTask, name, opts...)
 }
 
 func TaskRunner[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
@@ -158,56 +150,40 @@ func (r RouteSpec) ProgressSpec() (TypeSpec, bool) {
 	return r.Progress, r.Progress.GoType != nil
 }
 
-// Handle binds the ordinary request-in/result-out handler for this route.
+// Handle binds the ordinary request-in/result-out handler for call routes.
 func (r Route[Request, Result]) Handle(handle TypedHandlerFunc[Request, Result], options ...bridgeipc.RouteOption) HandlerBinding {
+	if r.spec.Mode != bridgeipc.ModeCall {
+		panic(fmt.Sprintf("apischema: route %s is not a call route", r.spec.Route))
+	}
 	binding := HandlerBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
 		Options: options,
 	}
-	if r.spec.Mode == bridgeipc.ModeCall {
-		binding.Call = wrapTypedCall(r.spec, handle)
-	} else {
-		binding.Handle = wrapTypedHandler(r.spec, handle)
-	}
+	binding.Call = wrapTypedCall(r.spec, handle)
 	return binding
 }
 
-// HandleVoid binds a handler for a route declared with a NoResponse result.
+// HandleVoid binds a handler for a call route declared with a NoResponse result.
 // It panics at binding time if Result is anything else, so the declaration and
 // the handler cannot drift apart.
 func (r Route[Request, Result]) HandleVoid(handle VoidHandlerFunc[Request], options ...bridgeipc.RouteOption) HandlerBinding {
 	if !r.spec.Result.Void() {
 		panic(fmt.Sprintf("apischema: route %s returns %s, so it cannot use HandleVoid", r.spec.Route, r.spec.Result.GoType))
 	}
+	if r.spec.Mode != bridgeipc.ModeCall {
+		panic(fmt.Sprintf("apischema: route %s is not a call route", r.spec.Route))
+	}
 	binding := HandlerBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
 		Options: options,
 	}
-	if r.spec.Mode == bridgeipc.ModeCall {
-		binding.Call = wrapVoidCall(r.spec.Route, handle)
-	} else {
-		binding.Handle = wrapVoidHandler(r.spec.Route, handle)
-	}
+	binding.Call = wrapVoidCall(r.spec.Route, handle)
 	return binding
 }
 
-// HandleEvents binds a handler that needs the raw emitter — progress or data
-// frames. Every other route should use Handle or HandleVoid.
-func (r Route[Request, Result]) HandleEvents(handle HandlerFunc[Request], options ...bridgeipc.RouteOption) HandlerBinding {
-	if r.spec.Mode == bridgeipc.ModeCall {
-		panic(fmt.Sprintf("apischema: call route %s cannot use HandleEvents; calls return one result directly", r.spec.Route))
-	}
-	return HandlerBinding{
-		Route:   r.spec,
-		Decode:  r.spec.Decode,
-		Handle:  wrapHandler(r.spec.Route, handle),
-		Options: options,
-	}
-}
-
-func (r Route[Request, Result]) Run(runner TaskRunnerFunc[Request], policy bridgeipc.TaskPolicy, options ...bridgeipc.RouteOption) TaskBinding {
+func (r Route[Request, Result]) Run(runner TaskRunnerFunc[Request, Result], policy bridgeipc.TaskPolicy, options ...bridgeipc.RouteOption) TaskBinding {
 	return TaskBinding{
 		Route:   r.spec,
 		Decode:  r.spec.Decode,
@@ -226,14 +202,9 @@ func (r Route[Request, Result]) Duplex(handle DuplexFunc[Request], options ...br
 	}
 }
 
-// HandlerBinding carries no TaskPolicy: HandleWithPolicy was its only setter and
-// had zero call sites, so every handler-form task route has always run under
-// TaskDefault. Only .Run (TaskBinding) chooses a policy. If a handler-form
-// route ever needs one, the question to ask first is whether it should be a task
-// at all.
+// HandlerBinding carries a direct call handler.
 type HandlerBinding struct {
 	Route   RouteSpec
-	Handle  bridgeipc.HandlerFunc
 	Call    bridgeipc.CallFunc
 	Decode  bridgeipc.RequestDecoder
 	Options []bridgeipc.RouteOption
@@ -327,14 +298,10 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 	}
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
-	switch spec.Mode {
-	case bridgeipc.ModeCall:
-		router.Call(spec.Route, binding.Call, opts...)
-	case bridgeipc.ModeTask:
-		router.Task(spec.Route, binding.Handle, bridgeipc.TaskDefault, opts...)
-	default:
-		panic(fmt.Sprintf("apischema: route %s is %s, not call/task", spec.Route, spec.Mode))
+	if spec.Mode != bridgeipc.ModeCall {
+		panic(fmt.Sprintf("apischema: route %s is %s, not call", spec.Route, spec.Mode))
 	}
+	router.Call(spec.Route, binding.Call, opts...)
 }
 
 func AttachTask(router *bridgeipc.Router, binding TaskBinding) {
@@ -383,35 +350,11 @@ func requestDecoder[Request any]() bridgeipc.RequestDecoder {
 	}
 }
 
-func wrapTypedHandler[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.HandlerFunc {
-	// NoResponse generates TypeScript `void`, so it must stay off the wire:
-	// emitting the zero struct would send `{}` to a `void` consumer and stop
-	// task snapshots from omitting `result`. Read once per binding off the spec's
-	// already-materialized result type — the same predicate the generator uses
-	// to decide `void`.
-	voidResult := spec.Result.Void()
-	route := spec.Route
-	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
-		req, err := typedRequest[Request](route, request)
-		if err != nil {
-			return err
-		}
-		result, err := handle(ctx, req)
-		if err != nil {
-			return err
-		}
-		if voidResult {
-			return emit.Result(nil)
-		}
-		return emit.Result(result)
-	}
-}
-
 func wrapTypedCall[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.CallFunc {
 	voidResult := spec.Result.Void()
 	route := spec.Route
-	return func(ctx context.Context, request any) (any, error) {
-		req, err := typedRequest[Request](route, request)
+	return func(ctx context.Context, request bridgeipc.Request) (any, error) {
+		req, err := typedRequest[Request](route, request.DecodedValue)
 		if err != nil {
 			return nil, err
 		}
@@ -426,22 +369,9 @@ func wrapTypedCall[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[
 	}
 }
 
-func wrapVoidHandler[Request any](route string, handle VoidHandlerFunc[Request]) bridgeipc.HandlerFunc {
-	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
-		req, err := typedRequest[Request](route, request)
-		if err != nil {
-			return err
-		}
-		if err := handle(ctx, req); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	}
-}
-
 func wrapVoidCall[Request any](route string, handle VoidHandlerFunc[Request]) bridgeipc.CallFunc {
-	return func(ctx context.Context, request any) (any, error) {
-		req, err := typedRequest[Request](route, request)
+	return func(ctx context.Context, request bridgeipc.Request) (any, error) {
+		req, err := typedRequest[Request](route, request.DecodedValue)
 		if err != nil {
 			return nil, err
 		}
@@ -449,29 +379,20 @@ func wrapVoidCall[Request any](route string, handle VoidHandlerFunc[Request]) br
 	}
 }
 
-func wrapHandler[Request any](route string, handle HandlerFunc[Request]) bridgeipc.HandlerFunc {
-	return func(ctx context.Context, request any, emit bridgeipc.Events) error {
-		req, err := typedRequest[Request](route, request)
-		if err != nil {
-			return err
-		}
-		return handle(ctx, req, emit)
-	}
-}
-
-func wrapTaskRunner[Request any](route string, runner TaskRunnerFunc[Request]) bridgeipc.TaskRunner {
+func wrapTaskRunner[Request, Result any](route string, runner TaskRunnerFunc[Request, Result]) bridgeipc.TaskRunner {
 	return func(ctx context.Context, task *bridgeipc.Task, request any) (any, error) {
 		req, err := typedRequest[Request](route, request)
 		if err != nil {
 			return nil, err
 		}
-		return runner(ctx, task, req)
+		result, err := runner(ctx, task, req)
+		return any(result), err
 	}
 }
 
 func wrapDuplex[Request any](route string, handle DuplexFunc[Request]) bridgeipc.DuplexFunc {
-	return func(ctx context.Context, stream net.Conn, request any) error {
-		req, err := typedRequest[Request](route, request)
+	return func(ctx context.Context, stream net.Conn, request bridgeipc.Request) error {
+		req, err := typedRequest[Request](route, request.DecodedValue)
 		if err != nil {
 			return err
 		}

@@ -13,7 +13,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat").Handle(handleResourceStat),
 	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch").Handle(handleExistsBatch),
 	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
-	apischema.Task[apischema.ActionSourceDestinationRequest, apischema.NoResponse]("filebrowser.resource_patch").HandleEvents(handleResourcePatch),
+	apischema.TaskRunner[apischema.ActionSourceDestinationRequest, FileOperationResult]("filebrowser.resource_patch", apischema.WithTaskProgress[FileProgress]()).Run(handleResourcePatch, bridgeipc.TaskDefault),
 	apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size").Handle(handleDirSize),
 	apischema.Call[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status").Handle(handleIndexerStatus),
 	apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders").Handle(handleSubfolders),
@@ -47,9 +47,8 @@ func handleResourcePost(ctx context.Context, req apischema.FileResourcePostReque
 	return err
 }
 
-func handleResourcePatch(ctx context.Context, req apischema.ActionSourceDestinationRequest, emit bridgeipc.Events) error {
-	result, err := resourcePatchWithProgress(ctx, req, emit)
-	return bridgeipc.EmitResult(emit, result, err)
+func handleResourcePatch(ctx context.Context, task *bridgeipc.Task, req apischema.ActionSourceDestinationRequest) (FileOperationResult, error) {
+	return resourcePatchWithProgress(ctx, req, task)
 }
 
 func handleDirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {

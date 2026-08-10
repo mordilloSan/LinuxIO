@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isTerminalTaskState,
   linuxio,
+  type PackageUpdateRequest,
+  type PackageUpdateResult,
   type TaskSnapshot,
   type Stream,
   useCallMutation,
@@ -13,10 +15,6 @@ import {
   markTerminalFeedbackEmitted,
 } from "@/hooks/backgroundTasks/terminalTaskFeedback";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
-
-export interface PackageUpdateRequest {
-  packageIds: string[];
-}
 
 export interface PackageUpdateProgress {
   item_pct?: number;
@@ -92,7 +90,7 @@ export function usePackageUpdateTransaction({
   );
 
   const streamAction = linuxio.packages.update.useTaskStreamAction<
-    void,
+    PackageUpdateResult,
     PackageUpdateProgress
   >({
     closeMessage: "Update stream closed unexpectedly",

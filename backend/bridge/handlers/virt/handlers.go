@@ -22,7 +22,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.suspend", apischema.Privileged()).HandleVoid(handleSuspend),
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
 		apischema.Call[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
-		apischema.Task[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged()).HandleEvents(handleCreate),
+		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
 		),
@@ -73,10 +73,9 @@ func handleDelete(ctx context.Context, req apischema.VMDeleteRequest) (apischema
 	return DeleteVM(ctx, req)
 }
 
-func handleCreate(ctx context.Context, req apischema.VMCreateRequest, emit bridgeipc.Events) error {
+func handleCreate(ctx context.Context, task *bridgeipc.Task, req apischema.VMCreateRequest) (apischema.VirtualMachine, error) {
 	report := func(progress apischema.VMCreateProgress) {
-		_ = emit.Progress(progress)
+		task.ReportProgress(progress)
 	}
-	result, err := CreateVMWithProgress(ctx, req, report)
-	return bridgeipc.EmitResult(emit, result, err)
+	return CreateVMWithProgress(ctx, req, report)
 }

@@ -50,15 +50,14 @@ func ListTimers(ctx context.Context) ([]apischema.Timer, error) {
 }
 ```
 
-Handlers do not receive an emitter by default. Calls use
+Handlers do not receive a universal emitter. Calls use
 `func(context.Context, Request) (Result, error)` (or `error` with
-`HandleVoid`); Task runners currently use
-`func(context.Context, *bridgeipc.Task, Request) (any, error)`; Channels use
+`HandleVoid`); Task runners use
+`func(context.Context, *bridgeipc.Task, Request) (Result, error)`; Channels use
 `func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
-The raw `func(ctx, req, emit bridgeipc.Events) error` shape exists only as
-`.HandleEvents` for the two transitional Task progress emitters
-(`filebrowser.resource_patch`, `virt.create`). See the [API reliability
-roadmap](./api-reliability-roadmap.md) for their planned cleanup.
+The compiler checks each Call and Task terminal result against its route
+declaration. Task progress uses `task.ReportProgress()` with a declared
+`WithTaskProgress[T]`, and Task data uses the focused data-attachment Channel.
 
 ## Context
 
@@ -126,7 +125,10 @@ D-Bus-backed operations still use domain namespaces:
 - `hostname.*` for hostname changes
 - `datetime.*` for time, timezone, and NTP operations
 
-The `tasks.*` namespace is reserved by `bridgeipc`.
+The `tasks.*` namespace is reserved by `bridgeipc`. Its public contracts live in
+the `tasks` handler family, while the router's `TaskService` registers and owns
+their implementations. Domain packages must not register routes in that
+namespace.
 
 ## File Naming
 

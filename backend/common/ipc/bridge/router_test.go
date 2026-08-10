@@ -601,9 +601,9 @@ func TestRouterTaskFastCompleteReturnsTerminalSnapshot(t *testing.T) {
 
 func TestRouterCallWritesOneResultAndClose(t *testing.T) {
 	router := NewRouter(NewTaskService())
-	router.Call("test.call", func(_ context.Context, request any) (any, error) {
-		if request != "decoded" {
-			t.Fatalf("request = %#v, want decoded", request)
+	router.Call("test.call", func(_ context.Context, request Request) (any, error) {
+		if request.DecodedValue != "decoded" {
+			t.Fatalf("request = %#v, want decoded", request.DecodedValue)
 		}
 		return map[string]any{"ok": true}, nil
 	})
@@ -717,7 +717,7 @@ func TestRouterRejectsRegisteredTasksNamespace(t *testing.T) {
 			t.Fatal("expected reserved tasks.* registration to panic")
 		}
 	}()
-	router.Call("tasks.get", func(context.Context, any) (any, error) {
+	router.Call("tasks.get", func(context.Context, Request) (any, error) {
 		return nil, nil
 	})
 }

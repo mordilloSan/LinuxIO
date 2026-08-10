@@ -194,6 +194,15 @@ export interface BatchTransferRequest {
   overwrite?: boolean;
 }
 
+export interface BatchUploadProgress {
+  bytes: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  filesDone: number;
+  filesTotal: number;
+}
+
 export interface BootIDRequest {
   bootId: string;
 }
@@ -293,6 +302,12 @@ export interface CapabilityRequest {
 export interface ChangePasswordRequest {
   username: string;
   password: string;
+}
+
+export interface ChmodProgress {
+  processed: number;
+  phase?: string;
+  indeterminate?: boolean;
 }
 
 export interface ComposeActionResult {
@@ -541,6 +556,14 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
+}
+
+export interface DeleteProgress {
+  processed: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  indeterminate?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -865,6 +888,23 @@ export interface FileArchiveRequest {
   paths: string[];
 }
 
+export interface FileArchiveResult {
+  archiveName: string;
+  size: number;
+  format: string;
+}
+
+export interface FileBatchItemFailure {
+  path: string;
+  error: string;
+}
+
+export interface FileBatchResult {
+  total: number;
+  succeeded: number;
+  failed: FileBatchItemFailure[];
+}
+
 export interface FileChmodBatchRequest {
   paths: string[];
   mode: string;
@@ -879,9 +919,36 @@ export interface FileCompressRequest {
   paths: string[];
 }
 
+export interface FileCompressResult {
+  path: string;
+  size: number;
+  format: string;
+}
+
+export interface FileDownloadResult {
+  path: string;
+  size: number;
+  fileName: string;
+}
+
 export interface FileExtractRequest {
   archivePath: string;
   destination?: string;
+}
+
+export interface FileExtractResult {
+  destination: string;
+}
+
+export interface FileOperationResult {
+  message: string;
+}
+
+export interface FileProgress {
+  bytes: number;
+  total: number;
+  pct: number;
+  phase?: string;
 }
 
 export interface FileResourceGetRequest {
@@ -923,10 +990,23 @@ export interface FileUploadBatchRequest {
   overwrite?: boolean;
 }
 
+export interface FileUploadBatchResult {
+  total: number;
+  succeeded: number;
+  failed: FileBatchItemFailure[];
+  destination: string;
+  size: number;
+}
+
 export interface FileUploadRequest {
   targetPath: string;
   size: string;
   overwrite?: boolean;
+}
+
+export interface FileUploadResult {
+  path: string;
+  size: number;
 }
 
 export interface FilesystemInfo {
@@ -1134,6 +1214,31 @@ export interface IndexerDaemonStatus {
 
 export type IndexerIntegrityCheck = "full" | "quick" | "off";
 
+export interface IndexerProgress {
+  status?: string;
+  operation?: string;
+  state?: string;
+  message?: string;
+  path?: string;
+  files_indexed?: number;
+  dirs_indexed?: number;
+  bytes_indexed?: number;
+  current_path?: string;
+  phase?: string;
+}
+
+export interface IndexerResult {
+  status?: string;
+  operation?: string;
+  path: string;
+  files_indexed: number;
+  dirs_indexed: number;
+  total_size: number;
+  duration_ms: number;
+  deleted_indexes?: number;
+  deleted_entries?: number;
+}
+
 export interface IndexerStatusResponse {
   dirs_indexed: number;
   fts_active: boolean;
@@ -1149,6 +1254,12 @@ export interface IndexerTimerSetResult {
   config: IndexerConfig;
   interval: string;
   timer_unit: string;
+}
+
+export interface InstallCapabilityProgress {
+  stage: string;
+  message: string;
+  percentage?: number;
 }
 
 export interface InstallCapabilityResult {
@@ -1484,6 +1595,10 @@ export interface PackageUpdateRequest {
   packageIds: string[];
 }
 
+export interface PackageUpdateResult {
+  updated: number;
+}
+
 export interface PathRequest {
   path: string;
 }
@@ -1515,6 +1630,18 @@ export interface PhysicalVolume {
   name: string;
   size: number;
   vgName: string;
+}
+
+export interface PkgUpdateProgress {
+  type: string;
+  package_id?: string;
+  package_summary?: string;
+  status?: string;
+  message?: string;
+  status_code?: number;
+  info_code?: number;
+  percentage?: number;
+  item_pct?: number;
 }
 
 export interface PowerStatus {
@@ -1658,6 +1785,24 @@ export interface ShareUpdateSambaRequest {
   oldName: string;
   newName: string;
   properties: Record<string, string>;
+}
+
+export interface SmartTestProgress {
+  type: string;
+  device?: string;
+  test_type?: string;
+  status?: string;
+  message?: string;
+  percentage?: number;
+}
+
+export interface SmartTestResult {
+  success: boolean;
+  device: string;
+  test: string;
+  status: string;
+  message: string;
+  duration?: number;
 }
 
 export interface Socket {
@@ -2410,27 +2555,32 @@ export interface LinuxIOSchema {
     archive: {
       input: [request: FileArchiveRequest];
       request: FileArchiveRequest;
-      result: TaskSnapshot;
+      result: FileArchiveResult;
+      progress: FileProgress;
     };
     chmod_batch: {
       input: [request: FileChmodBatchRequest];
       request: FileChmodBatchRequest;
-      result: TaskSnapshot;
+      result: FileBatchResult;
+      progress: ChmodProgress;
     };
     compress: {
       input: [request: FileCompressRequest];
       request: FileCompressRequest;
-      result: TaskSnapshot;
+      result: FileCompressResult;
+      progress: FileProgress;
     };
     copy_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: TaskSnapshot;
+      result: FileBatchResult;
+      progress: FileProgress;
     };
     delete_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
-      result: TaskSnapshot;
+      result: FileBatchResult;
+      progress: DeleteProgress;
     };
     dir_size: {
       input: [path: string];
@@ -2440,7 +2590,8 @@ export interface LinuxIOSchema {
     download: {
       input: [path: string];
       request: PathRequest;
-      result: TaskSnapshot;
+      result: FileDownloadResult;
+      progress: FileProgress;
     };
     exists_batch: {
       input: [paths: string[]];
@@ -2450,18 +2601,21 @@ export interface LinuxIOSchema {
     extract: {
       input: [request: FileExtractRequest];
       request: FileExtractRequest;
-      result: TaskSnapshot;
+      result: FileExtractResult;
+      progress: FileProgress;
     };
     index: {
       input: [request: OptionalPathRequest];
       request: OptionalPathRequest;
-      result: TaskSnapshot;
+      result: IndexerResult;
+      progress: IndexerProgress;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: TaskSnapshot;
+      result: FileBatchResult;
+      progress: FileProgress;
     };
     resource_get: {
       input: [request: FileResourceGetRequest];
@@ -2471,7 +2625,8 @@ export interface LinuxIOSchema {
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
       request: ActionSourceDestinationRequest;
-      result: void;
+      result: FileOperationResult;
+      progress: FileProgress;
     };
     resource_post: {
       input: [request: FileResourcePostRequest];
@@ -2496,12 +2651,14 @@ export interface LinuxIOSchema {
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
-      result: TaskSnapshot;
+      result: FileUploadResult;
+      progress: FileProgress;
     };
     upload_batch: {
       input: [request: FileUploadBatchRequest];
       request: FileUploadBatchRequest;
-      result: TaskSnapshot;
+      result: FileUploadBatchResult;
+      progress: BatchUploadProgress;
     };
     users_groups: { input: []; request: void; result: UsersGroupsResponse };
   };
@@ -2611,7 +2768,8 @@ export interface LinuxIOSchema {
     update: {
       input: [packageIds: string[]];
       request: PackageUpdateRequest;
-      result: TaskSnapshot;
+      result: PackageUpdateResult;
+      progress: PkgUpdateProgress;
     };
   };
 
@@ -2721,7 +2879,8 @@ export interface LinuxIOSchema {
     run_smart_test: {
       input: [request: DeviceTestTypeRequest];
       request: DeviceTestTypeRequest;
-      result: TaskSnapshot;
+      result: SmartTestResult;
+      progress: SmartTestProgress;
     };
     unmount_cifs: {
       input: [request: MountpointRemoveFstabRequest];
@@ -2785,7 +2944,8 @@ export interface LinuxIOSchema {
     install_capability: {
       input: [capability: string];
       request: CapabilityRequest;
-      result: TaskSnapshot;
+      result: InstallCapabilityResult;
+      progress: InstallCapabilityProgress;
     };
     list_failed_login_events: {
       input: [request: FailedLoginEventsRequest];
@@ -2907,6 +3067,7 @@ export interface LinuxIOSchema {
       input: [request: VMCreateRequest];
       request: VMCreateRequest;
       result: VirtualMachine;
+      progress: VMCreateProgress;
     };
     delete: {
       input: [request: VMDeleteRequest];

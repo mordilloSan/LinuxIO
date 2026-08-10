@@ -63,7 +63,7 @@ func capabilityInstallBindings() apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 10 * time.Minute
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.CapabilityRequest, apischema.TaskSnapshot]("system.install_capability", apischema.Privileged(), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
+		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
 		})).Run(runInstallCapabilityTask, policy),
 	)
@@ -76,18 +76,18 @@ func RegisterCapabilityTaskRoutes(router *bridgetask.Router) {
 	capabilityInstallBindings().Register(router)
 }
 
-func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (any, error) {
+func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 	name := strings.TrimSpace(req.Capability)
 	if name == "" {
-		return nil, bridgetask.NewError("capability name required", 400)
+		return apischema.InstallCapabilityResult{}, bridgetask.NewError("capability name required", 400)
 	}
 
 	result, err := installCapability(ctx, task, name)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, context.Canceled
+			return apischema.InstallCapabilityResult{}, context.Canceled
 		}
-		return nil, bridgetask.NewError(err.Error(), 500)
+		return apischema.InstallCapabilityResult{}, bridgetask.NewError(err.Error(), 500)
 	}
 	return result, nil
 }

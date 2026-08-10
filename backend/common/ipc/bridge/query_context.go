@@ -30,28 +30,7 @@ func readOwnedStreamContext(parent context.Context, stream net.Conn, cancelOnClo
 	ctx, cancel := context.WithCancel(parent)
 	monitorDone := make(chan struct{})
 
-	go func() {
-		defer close(monitorDone)
-		for {
-			frame, err := relay.ReadRelayFrame(stream)
-			if err != nil {
-				if cancelOnClose {
-					cancel()
-				}
-				return
-			}
-			switch frame.Opcode {
-			case relay.OpStreamAbort:
-				cancel()
-				return
-			case relay.OpStreamClose:
-				if cancelOnClose {
-					cancel()
-				}
-				return
-			}
-		}
-	}()
+	go monitorReadOwnedStream(stream, cancel, cancelOnClose, monitorDone)
 
 	cleanup := func() {
 		cancel()
@@ -63,6 +42,41 @@ func readOwnedStreamContext(parent context.Context, stream net.Conn, cancelOnClo
 		}
 		<-monitorDone
 		_ = stream.SetReadDeadline(time.Time{})
+		if cancelOnClose {
+			_ = stream.SetWriteDeadline(time.Time{})
+		}
 	}
 	return ctx, cleanup
+}
+
+func monitorReadOwnedStream(stream net.Conn, cancel context.CancelFunc, cancelOnClose bool, done chan<- struct{}) {
+	defer close(done)
+	for {
+		frame, err := relay.ReadRelayFrame(stream)
+		if err != nil {
+			if cancelOnClose {
+				cancelForClientEnd(stream, cancel, true)
+			}
+			return
+		}
+		switch frame.Opcode {
+		case relay.OpStreamAbort:
+			cancelForClientEnd(stream, cancel, cancelOnClose)
+			return
+		case relay.OpStreamClose:
+			if cancelOnClose {
+				cancelForClientEnd(stream, cancel, true)
+			}
+			return
+		}
+	}
+}
+
+func cancelForClientEnd(stream net.Conn, cancel context.CancelFunc, interruptWrite bool) {
+	if interruptWrite {
+		// A server-producing Channel may be blocked by backpressure on its
+		// write side. Wake that write so cancellation cannot leak the producer.
+		_ = stream.SetWriteDeadline(time.Now())
+	}
+	cancel()
 }

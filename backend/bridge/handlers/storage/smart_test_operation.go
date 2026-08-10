@@ -19,11 +19,20 @@ type SmartTestProgress struct {
 	Percentage *int   `json:"percentage,omitempty"`
 }
 
+type SmartTestResult struct {
+	Success  bool   `json:"success"`
+	Device   string `json:"device"`
+	Test     string `json:"test"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
+	Duration *int64 `json:"duration"`
+}
+
 var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DeviceTestTypeRequest, apischema.TaskSnapshot]("storage.run_smart_test", apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
 		})).Run(runSmartTestTask, bridgetasks.TaskDefault),
 	)
@@ -43,7 +52,7 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
-func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema.DeviceTestTypeRequest) (any, error) {
+func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema.DeviceTestTypeRequest) (SmartTestResult, error) {
 	state := smartTestTaskState{
 		task:     task,
 		device:   req.Device,
@@ -52,7 +61,7 @@ func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema
 	state.reportStart()
 
 	if _, err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
-		return nil, bridgetasks.NewError(err.Error(), 500)
+		return SmartTestResult{}, bridgetasks.NewError(err.Error(), 500)
 	}
 
 	state.pollInitial(ctx)
@@ -86,7 +95,7 @@ func (s *smartTestTaskState) pollInitial(ctx context.Context) {
 	}
 }
 
-func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (any, error) {
+func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult, error) {
 	ticker := time.NewTicker(pollInterval(s.testType))
 	defer ticker.Stop()
 
@@ -95,11 +104,11 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (any, error) {
 		case <-ctx.Done():
 			// Returning context.Canceled routes to the Task's canceled state,
 			// not markFailed.
-			return nil, ctx.Err()
+			return SmartTestResult{}, ctx.Err()
 		case <-ticker.C:
 			result, done, err := s.poll(ctx)
 			if err != nil {
-				return nil, err
+				return SmartTestResult{}, err
 			}
 			if done {
 				return result, nil
@@ -108,29 +117,29 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (any, error) {
 	}
 }
 
-func (s *smartTestTaskState) poll(ctx context.Context) (any, bool, error) {
+func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, error) {
 	st, err := PollSmartTestStatus(ctx, s.device)
 	if err != nil {
-		return nil, false, s.handlePollError(ctx, err)
+		return SmartTestResult{}, false, s.handlePollError(ctx, err)
 	}
 	s.consecutiveErrs = 0
 
 	// Don't accept terminal status until we've actually seen the test run.
 	if !s.seenInProgress && st.State != "in_progress" {
 		s.emit(st)
-		return nil, false, nil
+		return SmartTestResult{}, false, nil
 	}
 	if st.State == "in_progress" {
 		s.seenInProgress = true
 		s.emit(st)
-		return nil, false, nil
+		return SmartTestResult{}, false, nil
 	}
 
 	s.emit(st)
 	if s.completed(st) {
 		return s.result(st), true, nil
 	}
-	return nil, false, bridgetasks.NewError(st.Message, 500)
+	return SmartTestResult{}, false, bridgetasks.NewError(st.Message, 500)
 }
 
 func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) error {
@@ -170,13 +179,6 @@ func (s *smartTestTaskState) completed(st SmartTestStatus) bool {
 	return st.State == "completed" || (st.State == "idle" && s.seenInProgress)
 }
 
-func (s *smartTestTaskState) result(st SmartTestStatus) map[string]any {
-	return map[string]any{
-		"success":  true,
-		"device":   s.device,
-		"test":     s.testType,
-		"status":   "completed",
-		"message":  st.Message,
-		"duration": nil,
-	}
+func (s *smartTestTaskState) result(st SmartTestStatus) SmartTestResult {
+	return SmartTestResult{Success: true, Device: s.device, Test: s.testType, Status: "completed", Message: st.Message, Duration: nil}
 }

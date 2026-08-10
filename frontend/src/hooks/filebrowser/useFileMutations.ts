@@ -54,13 +54,6 @@ interface RenamePayload {
   from: string;
 }
 
-// Result returned by the batch copy/move/delete/chmod bridge tasks.
-interface BatchTaskResult {
-  total?: number;
-  succeeded?: number;
-  failed?: { path: string; error: string }[];
-}
-
 export const useFileMutations = ({
   normalizedPath,
   onDeleteSuccess,
@@ -115,7 +108,7 @@ export const useFileMutations = ({
   // One batch task deletes the whole selection; the bridge loops server-side
   // and reports per-item failures in the result.
   const deleteBatchAction =
-    linuxio.filebrowser.delete_batch.useTaskStreamAction<BatchTaskResult>({
+    linuxio.filebrowser.delete_batch.useTaskStreamAction({
       closeMessage: "Delete task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
@@ -186,7 +179,7 @@ export const useFileMutations = ({
   // One batch task changes permissions of the whole selection; the bridge
   // loops server-side and reports per-item failures in the result.
   const changePermissionsAction =
-    linuxio.filebrowser.chmod_batch.useTaskStreamAction<BatchTaskResult>({
+    linuxio.filebrowser.chmod_batch.useTaskStreamAction({
       closeMessage: "Permissions task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],

@@ -1,6 +1,6 @@
 import { useCallback, useReducer } from "react";
 
-import { isTaskCancellationError } from "@/api";
+import { isTaskCancellationError, type PackageUpdateRequest } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
@@ -9,7 +9,6 @@ import {
 } from "./packageUpdateState";
 import {
   type PackageUpdateProgress,
-  type PackageUpdateRequest,
   usePackageUpdateTransaction,
 } from "./usePackageUpdateTransaction";
 

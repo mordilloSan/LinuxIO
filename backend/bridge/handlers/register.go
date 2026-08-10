@@ -58,7 +58,7 @@ var Families = []Family{
 	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
 	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},
 	{Name: "logs", Routes: logs.Routes, Register: logs.RegisterHandlers},
-	{Name: "tasks", Routes: tasks.Routes},
+	{Name: "tasks", Routes: tasks.Routes, Register: tasks.RegisterHandlers},
 }
 
 var Routes = collectRoutes(Families)

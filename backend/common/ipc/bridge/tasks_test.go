@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 func TestCanceledQueuedTaskCannotStart(t *testing.T) {
@@ -33,6 +34,45 @@ func TestCanceledQueuedTaskCannotStart(t *testing.T) {
 	if !task.IsTerminal() {
 		t.Fatal("canceled task is not terminal")
 	}
+}
+
+func TestTaskServiceRegistersPrimitiveRoutes(t *testing.T) {
+	service := NewTaskService()
+	router := NewRouter(service)
+	service.RegisterRoutes(router)
+
+	want := map[string]Mode{
+		"tasks.get":    ModeCall,
+		"tasks.list":   ModeCall,
+		"tasks.cancel": ModeCall,
+		"tasks.watch":  ModeDuplex,
+		"tasks.data":   ModeDuplex,
+		"tasks.events": ModeDuplex,
+	}
+	for name, mode := range want {
+		route, ok := router.lookup(name)
+		if !ok {
+			t.Errorf("task service route %q is not registered", name)
+			continue
+		}
+		if route.Mode != mode {
+			t.Errorf("task service route %q mode = %q, want %q", name, route.Mode, mode)
+		}
+	}
+	if _, ok := router.lookup("tasks.unknown"); ok {
+		t.Fatal("unknown task service route was registered")
+	}
+}
+
+func TestTaskServiceRejectsRegistrationOnDifferentRouter(t *testing.T) {
+	service := NewTaskService()
+	router := NewRouter(NewTaskService())
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected mismatched task service registration to panic")
+		}
+	}()
+	service.RegisterRoutes(router)
 }
 
 func TestTaskCompletesAndSnapshotsResult(t *testing.T) {
@@ -95,19 +135,21 @@ func TestPublicTaskSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
 	owner := TaskOwner{Username: "alice", UID: 1000}
+	registry.RegisterRoutes(router)
+	sess := &session.Session{User: session.User{Username: owner.Username, UID: owner.UID}}
 	secret := map[string]string{"password": "sentinel-secret"}
 	task, err := registry.CreateForOwner("test.public.secret", secret, owner, &TaskMetadata{Label: "safe"})
 	if err != nil {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleTaskGet(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.get", Session: sess, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleTaskList(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.list", Session: sess, RawRequest: json.RawMessage(`{}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.handleTaskCancel(context.Background(), stream, Request{Owner: owner, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.cancel", Session: sess, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
 	}))
 	task.mu.RLock()
 	if task.request != nil {
@@ -161,7 +203,7 @@ func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	eventErr := make(chan error, 1)
 	go func() {
 		defer eventServer.Close()
-		eventErr <- router.handleTaskEvents(eventServer, Request{Owner: owner})
+		eventErr <- registry.handleTaskEvents(context.Background(), eventServer, Request{Owner: owner})
 	}()
 	initial, err := relay.ReadRelayFrame(eventClient)
 	if err != nil {
@@ -178,6 +220,42 @@ func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	if err := <-eventErr; err != nil {
 		t.Fatalf("events: %v", err)
 	}
+	close(release)
+	<-task.Done()
+}
+
+func TestTaskEventsCloseInterruptsBlockedSnapshot(t *testing.T) {
+	registry := NewTaskService()
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+	release := make(chan struct{})
+	task, err := startTestTask(registry, "test.events.close", nil, owner, func(context.Context, *Task, any) (any, error) {
+		<-release
+		return map[string]any{"ok": true}, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- registry.handleTaskEvents(context.Background(), server, Request{Owner: owner})
+	}()
+
+	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamClose}); err != nil {
+		t.Fatalf("WriteRelayFrame(close): %v", err)
+	}
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("task events returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("task events close did not interrupt the blocked snapshot")
+	}
+
 	close(release)
 	<-task.Done()
 }
@@ -662,6 +740,53 @@ func TestWatchTaskStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("WatchTaskStream returned error: %v", err)
+	}
+}
+
+func TestWatchTaskStreamAbortInterruptsBlockedReplay(t *testing.T) {
+	registry := NewTaskService()
+	task, err := registry.Create("test.attach.abort", nil)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	task.ReportData("blocked replay\n")
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- WatchTaskStream(server, task)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		task.mu.RLock()
+		subscribers := len(task.subscribers)
+		task.mu.RUnlock()
+		if subscribers == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for watch subscriber")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamAbort}); err != nil {
+		t.Fatalf("WriteRelayFrame(abort): %v", err)
+	}
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("WatchTaskStream returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("task watch abort did not interrupt the blocked replay")
+	}
+	if snapshot := task.Snapshot(); snapshot.State != TaskStateCanceled {
+		t.Fatalf("task state = %q, want canceled", snapshot.State)
 	}
 }
 

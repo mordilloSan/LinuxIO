@@ -3,15 +3,15 @@
 ## Status
 
 This is the canonical dependency-ordered roadmap for the remaining API
-reliability work. It connects the implemented API contract, the final transport
-cleanup, connection-loss behavior, Task lifetime, durable execution, and the
-planned notification system.
+reliability work. It starts from the completed transport migration and connects
+connection-loss behavior, Task lifetime, durable execution, and the planned
+notification system.
 
 Detailed contracts remain in their focused documents:
 
 - [API Contract](./api-contract.md) describes implemented API behavior.
 - [API Transport Simplification Plan](./api-transport-simplification-plan.md)
-  tracks the remaining cleanup from the completed Query/Job migration.
+  records the completed Query/Job and Task-runner cleanup.
 - [Handler Patterns](./bridge_handler_patterns.md) defines handler code style.
 - [Durable Operations and Transient Units](./transient-units-plan.md) defines the durable Task
   execution pilot.
@@ -42,13 +42,19 @@ The Query/Job migration is complete. The generated route contract currently
 contains 203 Calls, 18 Tasks, and 9 Channel routes implemented with
 `ModeDuplex`. React Query fetching is independent of Task lifecycle.
 
-The remaining transitional surfaces are deliberately narrow:
+The transport cleanup is complete:
 
-- `filebrowser.resource_patch` and `virt.create` still use emitter-form Tasks.
-- Task runner results are erased to `any` before the router boundary instead of
-  being checked against the declared result type at the binding.
-- the general router recognizes the reserved `tasks.*` namespace with a special
-  dispatch branch;
+- every Task route uses the typed Task-runner form;
+- the compiler checks each runner's terminal result against its route contract
+  before the bridge registry erases the type;
+- ordinary handlers have no progress/data emitter surface;
+- `TaskService` owns and registers the reserved `tasks.*` Calls and Channels;
+- the general router has no `tasks.*` primitive-dispatch branch; and
+- server-producing Channels cancel blocked writers when their client closes,
+  aborts, or disconnects.
+
+The remaining reliability constraints are:
+
 - in-memory Task ownership does not distinguish exact-session visibility from
   durable user visibility;
 - Call retry safety is inferred from route naming instead of declared policy;
@@ -56,8 +62,9 @@ The remaining transitional surfaces are deliberately narrow:
 - server notifications are not implemented; the navbar history is local toast
   history only.
 
-These constraints determine the phase order below. Durable Tasks and
-notifications must not be built on the transitional Task forms.
+These constraints determine the remaining phase order. Durable Tasks and
+notifications build on the completed transport boundary rather than adding a
+parallel runtime.
 
 ## Target Model
 
@@ -89,22 +96,22 @@ Server-side persistent state
 Task is a service composed from bounded control operations and Channels. It is
 not a third wire protocol.
 
-## Phase 1: Finish the Existing Transport Cleanup
+## Phase 1: Finish the Existing Transport Cleanup (complete)
 
-Complete this phase before adding persistence:
+Completed on 2026-08-10:
 
-1. Convert `filebrowser.resource_patch` and `virt.create` to the single Task
+1. Converted `filebrowser.resource_patch` and `virt.create` to the single Task
    runner form.
-2. Bind Task runner results as their declared Go result type; erase types only at
-   the registry boundary.
-3. Remove `HandleEvents`, `taskEmitter`, and progress/data capabilities from
-   ordinary handlers after their final consumers move.
-4. Register `tasks.get`, `tasks.list`, `tasks.cancel`, `tasks.watch`,
-   `tasks.data`, and `tasks.events` through the Task service rather than a
-   `tasks.*` prefix branch in the general router.
-5. Document and test Channel ownership, close behavior, cancellation versus
-   detach, read/write concurrency, backpressure, terminal frames, and the
-   payload-specific resume contract.
+2. Bound Task runner results as their declared Go result type and erased types
+   only at the registry boundary.
+3. Removed `HandleEvents`, `taskEmitter`, and progress/data capabilities from
+   ordinary handlers.
+4. Registered `tasks.get`, `tasks.list`, `tasks.cancel`, `tasks.watch`,
+   `tasks.data`, and `tasks.events` through `TaskService` rather than a
+   `tasks.*` primitive-dispatch branch.
+5. Documented the Channel ownership, close, cancellation, concurrency,
+   backpressure, terminal-frame, and payload-specific resume contract; added a
+   regression test for cancellation unblocking a backpressured writer.
 
 Do not begin a standalone Mode/Kind rewrite. After the exceptions above are
 gone, remove duplicated registration state only when the replacement is a clear
@@ -112,12 +119,13 @@ net deletion.
 
 ### Phase 1 exit criteria
 
-- one typed Task runner shape remains;
-- ordinary handlers never receive an emitter;
-- the general router does not own Task registry or primitive dispatch details;
-- Call, Channel, and Task registration cannot form invalid combinations;
-- existing ownership, admission, cancellation, replay, and transfer tests still
-  pass.
+- [x] One typed Task runner shape remains.
+- [x] Ordinary handlers never receive an emitter.
+- [x] `TaskService` owns Task state and primitive implementations; the router
+  has no namespace-specific primitive dispatch.
+- [x] Call, Channel, and Task bindings reject invalid combinations.
+- [x] Existing ownership, admission, cancellation, replay, and transfer tests
+  still pass.
 
 ## Phase 2: Strict Input and Explicit Call Policy
 
@@ -360,8 +368,8 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 
 This roadmap is complete when:
 
-- one typed Task runner form remains and the general Router has no Task-service
-  special case;
+- the completed typed Task runner and normal `TaskService` registration
+  boundary remains source-guarded;
 - strict request decoding and explicit retry policy replace permissive decoding
   and name heuristics;
 - connection loss reports confirmed failure, confirmed result, or unknown

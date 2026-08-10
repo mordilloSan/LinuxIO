@@ -23,124 +23,104 @@ type taskDataRequest struct {
 	Offset string `json:"offset,omitempty"`
 }
 
-func (r *Router) dispatchTaskPrimitive(ctx context.Context, stream net.Conn, req Request) error {
-	switch req.Route {
-	case "tasks.get":
-		return r.dispatchTaskCallPrimitive(ctx, stream, req, r.handleTaskGet)
-	case "tasks.list":
-		return r.dispatchTaskCallPrimitive(ctx, stream, req, r.handleTaskList)
-	case "tasks.cancel":
-		return r.dispatchTaskCallPrimitive(ctx, stream, req, r.handleTaskCancel)
-	case "tasks.watch":
-		return r.handleTaskWatch(stream, req)
-	case "tasks.data":
-		return r.handleTaskData(ctx, stream, req)
-	case "tasks.events":
-		return r.handleTaskEvents(stream, req)
-	default:
-		err := fmt.Errorf("%w: %s", ErrRouteNotFound, req.Route)
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
-		return err
+// RegisterRoutes installs the Task control Calls and Channels on the router
+// that owns this service. The general Router does not dispatch the reserved
+// namespace itself.
+func (r *TaskService) RegisterRoutes(router *Router) {
+	routes := []Route{
+		{Name: "tasks.get", Mode: ModeCall, Call: r.handleTaskGet, Decode: taskPrimitiveDecoder[taskIDRequest]()},
+		{Name: "tasks.list", Mode: ModeCall, Call: r.handleTaskList, Decode: taskPrimitiveDecoder[taskListRequest]()},
+		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: taskPrimitiveDecoder[taskIDRequest]()},
+		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: taskPrimitiveDecoder[taskIDRequest]()},
+		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: taskPrimitiveDecoder[taskDataRequest]()},
+		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: taskPrimitiveDecoder[struct{}]()},
+	}
+	for _, route := range routes {
+		router.registerTaskServiceRoute(r, route)
 	}
 }
 
-type taskCallPrimitiveHandler func(context.Context, net.Conn, Request) error
-
-func (r *Router) dispatchTaskCallPrimitive(
-	ctx context.Context,
-	stream net.Conn,
-	req Request,
-	handler taskCallPrimitiveHandler,
-) error {
-	ctx, cleanup := requestAbortContext(ctx, stream)
-	defer cleanup()
-	return handler(ctx, stream, req)
+func taskPrimitiveDecoder[T any]() RequestDecoder {
+	return func(raw json.RawMessage) (any, error) {
+		return decodeTaskPrimitiveRequest[T](raw)
+	}
 }
 
-func (r *Router) handleTaskGet(ctx context.Context, stream net.Conn, req Request) error {
+func (r *TaskService) handleTaskGet(ctx context.Context, req Request) (any, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	payload, err := decodeTaskPrimitiveRequest[taskIDRequest](req.RawRequest)
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+	payload, ok := req.DecodedValue.(taskIDRequest)
+	if !ok || payload.TaskID == "" {
+		return nil, NewError("missing task id", 400)
 	}
-	if err != nil || payload.TaskID == "" {
-		return relay.WriteResultErrorAndClose(stream, 0, "missing task id", 400)
-	}
-	task, ok := r.registry.GetForOwner(payload.TaskID, req.Owner)
+	task, ok := r.GetForOwner(payload.TaskID, req.Owner)
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", payload.TaskID), 404)
+		return nil, NewError(fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
-	return relay.WriteResultOKAndClose(stream, 0, task.Snapshot())
+	return task.Snapshot(), nil
 }
 
-func (r *Router) handleTaskList(ctx context.Context, stream net.Conn, req Request) error {
+func (r *TaskService) handleTaskList(ctx context.Context, req Request) (any, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	payload, err := decodeTaskPrimitiveRequest[taskListRequest](req.RawRequest)
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
-	}
-	if err != nil {
-		return relay.WriteResultErrorAndClose(stream, 0, "invalid tasks list request", 400)
+	payload, ok := req.DecodedValue.(taskListRequest)
+	if !ok {
+		return nil, NewError("invalid tasks list request", 400)
 	}
 	var snapshots []TaskSnapshot
 	if payload.Status == "active" {
-		snapshots = r.registry.ListActiveForOwner(req.Owner)
+		snapshots = r.ListActiveForOwner(req.Owner)
 	} else {
-		snapshots = r.registry.ListForOwner(req.Owner)
+		snapshots = r.ListForOwner(req.Owner)
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	return relay.WriteResultOKAndClose(stream, 0, snapshots)
+	return snapshots, nil
 }
 
-func (r *Router) handleTaskCancel(ctx context.Context, stream net.Conn, req Request) error {
+func (r *TaskService) handleTaskCancel(ctx context.Context, req Request) (any, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	payload, err := decodeTaskPrimitiveRequest[taskIDRequest](req.RawRequest)
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+	payload, ok := req.DecodedValue.(taskIDRequest)
+	if !ok || payload.TaskID == "" {
+		return nil, NewError("missing task id", 400)
 	}
-	if err != nil || payload.TaskID == "" {
-		return relay.WriteResultErrorAndClose(stream, 0, "missing task id", 400)
-	}
-	task, ok := r.registry.GetForOwner(payload.TaskID, req.Owner)
+	task, ok := r.GetForOwner(payload.TaskID, req.Owner)
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if !ok {
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", payload.TaskID), 404)
+		return nil, NewError(fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	task.Cancel()
-	return relay.WriteResultOKAndClose(stream, 0, task.Snapshot())
+	return task.Snapshot(), nil
 }
 
-func (r *Router) handleTaskWatch(stream net.Conn, req Request) error {
-	payload, err := decodeTaskPrimitiveRequest[taskIDRequest](req.RawRequest)
-	if err != nil || payload.TaskID == "" {
+func (r *TaskService) handleTaskWatch(_ context.Context, stream net.Conn, req Request) error {
+	payload, ok := req.DecodedValue.(taskIDRequest)
+	if !ok || payload.TaskID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing task id", 400)
 	}
-	task, ok := r.registry.GetForOwner(payload.TaskID, req.Owner)
+	task, ok := r.GetForOwner(payload.TaskID, req.Owner)
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	return WatchTaskStream(stream, task)
 }
 
-func (r *Router) handleTaskData(ctx context.Context, stream net.Conn, req Request) error {
-	payload, err := decodeTaskPrimitiveRequest[taskDataRequest](req.RawRequest)
-	if err != nil || payload.TaskID == "" {
+func (r *TaskService) handleTaskData(ctx context.Context, stream net.Conn, req Request) error {
+	payload, ok := req.DecodedValue.(taskDataRequest)
+	if !ok || payload.TaskID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing task id", 400)
 	}
-	task, ok := r.registry.GetForOwner(payload.TaskID, req.Owner)
+	task, ok := r.GetForOwner(payload.TaskID, req.Owner)
 	if !ok {
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
@@ -148,11 +128,11 @@ func (r *Router) handleTaskData(ctx context.Context, stream net.Conn, req Reques
 	if payload.Offset != "" {
 		offset = &payload.Offset
 	}
-	return r.registry.AttachData(ctx, task, stream, TaskDataAttachRequest{Offset: offset})
+	return r.AttachData(ctx, task, stream, TaskDataAttachRequest{Offset: offset})
 }
 
-func (r *Router) handleTaskEvents(stream net.Conn, req Request) error {
-	events, unsubscribe := r.registry.Subscribe(128)
+func (r *TaskService) handleTaskEvents(_ context.Context, stream net.Conn, req Request) error {
+	events, unsubscribe := r.Subscribe(128)
 	defer unsubscribe()
 
 	done := make(chan struct{})
@@ -187,8 +167,8 @@ func (r *Router) handleTaskEvents(stream net.Conn, req Request) error {
 	}
 }
 
-func (r *Router) writeInitialTaskSnapshots(stream net.Conn, owner TaskOwner) bool {
-	for _, snapshot := range r.registry.ListActiveForOwner(owner) {
+func (r *TaskService) writeInitialTaskSnapshots(stream net.Conn, owner TaskOwner) bool {
+	for _, snapshot := range r.ListActiveForOwner(owner) {
 		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 			return false
 		}
@@ -242,9 +222,8 @@ func writeTrackedTaskEvent(stream net.Conn, event TaskEvent, lastSent map[string
 }
 
 func WatchTaskStream(stream net.Conn, task *Task) error {
-	abortCh := make(chan struct{})
 	detachCh := make(chan struct{})
-	go monitorClient(stream, abortCh, detachCh)
+	go monitorTaskClient(stream, task, detachCh)
 
 	// The general-log backlog is deliberately sized to fit this full replay
 	// window. Matching the live channel prevents a subscriber that watches
@@ -260,7 +239,7 @@ func WatchTaskStream(stream net.Conn, task *Task) error {
 	if writeTerminalTaskSnapshot(stream, snapshot) {
 		return nil
 	}
-	return streamWatchedTaskEvents(stream, task, events, abortCh, detachCh, lagged)
+	return streamWatchedTaskEvents(stream, events, detachCh, lagged)
 }
 
 func writeWatchReplay(stream net.Conn, replay []TaskEvent, lagged <-chan struct{}) bool {
@@ -274,9 +253,7 @@ func writeWatchReplay(stream net.Conn, replay []TaskEvent, lagged <-chan struct{
 
 func streamWatchedTaskEvents(
 	stream net.Conn,
-	task *Task,
 	events <-chan TaskEvent,
-	abortCh <-chan struct{},
 	detachCh <-chan struct{},
 	lagged <-chan struct{},
 ) error {
@@ -285,9 +262,6 @@ func streamWatchedTaskEvents(
 			return nil
 		}
 		select {
-		case <-abortCh:
-			task.Cancel()
-			return nil
 		case <-detachCh:
 			return nil
 		case <-lagged:
@@ -345,15 +319,25 @@ func decodeTaskPrimitiveRequest[T any](raw json.RawMessage) (T, error) {
 	return payload, nil
 }
 
-func monitorClient(stream net.Conn, abortCh, detachCh chan<- struct{}) {
+func interruptTaskStreamWrite(stream net.Conn) {
+	_ = stream.SetWriteDeadline(time.Now())
+}
+
+func monitorTaskClient(stream net.Conn, task *Task, detachCh chan<- struct{}) {
+	defer close(detachCh)
 	for {
 		frame, err := relay.ReadRelayFrame(stream)
 		if err != nil {
-			close(detachCh)
+			interruptTaskStreamWrite(stream)
 			return
 		}
-		if frame.Opcode == relay.OpStreamAbort {
-			close(abortCh)
+		switch frame.Opcode {
+		case relay.OpStreamAbort:
+			task.Cancel()
+			interruptTaskStreamWrite(stream)
+			return
+		case relay.OpStreamClose:
+			interruptTaskStreamWrite(stream)
 			return
 		}
 	}
@@ -364,9 +348,11 @@ func monitorDetach(stream net.Conn, done chan<- struct{}) {
 	for {
 		frame, err := relay.ReadRelayFrame(stream)
 		if err != nil {
+			interruptTaskStreamWrite(stream)
 			return
 		}
 		if frame.Opcode == relay.OpStreamClose || frame.Opcode == relay.OpStreamAbort {
+			interruptTaskStreamWrite(stream)
 			return
 		}
 	}

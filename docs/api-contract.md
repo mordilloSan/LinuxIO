@@ -59,7 +59,7 @@ For request routes:
 
 | File | Role |
 |------|------|
-| `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each entry contains the route contract and the typed handler binding together. Built-in `tasks.*` primitives are dispatched by `bridgeipc` and are not entries in these tables. |
+| `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each normal entry contains the route contract and typed handler binding together. The `tasks` family publishes the reserved Task-service contracts while `TaskService` supplies their runtime implementations. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
@@ -101,15 +101,16 @@ Every route has one schema kind:
 
 | Kind | Go binding |
 |------|------------|
-| `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`; `.HandleEvents(...)` is reserved for raw progress/data emitters. |
-| `KindTaskRunner` | `func(context.Context, *bridgeipc.Task, TRequest) (any, error)`; the route's generic `Result` documents the terminal contract, while the runner ABI remains `any`. |
+| `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`. |
+| `KindTaskRunner` | `.Run(func(context.Context, *bridgeipc.Task, TRequest) (TResult, error), policy)`; the compiler checks the terminal result before the binding erases it at the bridge registry boundary. |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
 
 Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for no result payload. They are API contract marker types owned by `apischema`.
 
-Typed handler bindings are the default. The only transitional raw-emitter Task
-routes are `filebrowser.resource_patch` and `virt.create`; they use
-`.HandleEvents` because their implementations still emit progress frames.
+Calls and Task runners are typed at their binding. Task progress uses
+`task.ReportProgress()` with a route-declared `WithTaskProgress[T]`; Task data
+uses the focused `tasks.data` attachment Channel. Ordinary handlers have no
+universal emitter surface.
 
 ## Frontend Shape
 
@@ -268,6 +269,10 @@ func RegisterTaskRoutes(router *bridgeipc.Router, rt runtime.Runtime) {
 }
 ```
 
+The route's `ComposeTaskResult` is both the generated terminal-result contract
+and the runner's Go return type. `TaskSnapshot` is the immediate response to
+starting any Task; it is not a route's terminal result type.
+
 Duplex route:
 
 ```go
@@ -295,11 +300,12 @@ Tasks are reserved for work that emits progress, continues independently of a
 watching component, or needs recovery by identity. Bounded mutations complete
 through a single direct `useCallMutation` request/response.
 
-On the frontend, `useTaskAction` awaits the terminal state via
+Starting a generated Task endpoint returns a `TaskSnapshot` immediately. On the
+frontend, `useTaskAction` awaits the terminal state via
 `waitForTaskCompletion()`: a failed Task rejects with a `LinuxIOError` carrying
 the Task's error message/code, and success resolves with the unwrapped
-`TaskSnapshot.result`. If the watch stream cannot be opened (the mux dropped
-between Task start and watch), completion waiting falls back to polling
+typed `TaskSnapshot.result`. If the watch stream cannot be opened (the mux
+dropped between Task start and watch), completion waiting falls back to polling
 `tasks.get`; `useTaskStreamAction` instead fails fast because it promises live
 progress, and the recovered-Tasks stream can pick the Task up.
 
@@ -314,7 +320,10 @@ Built-in Task routes:
 | `tasks.data` | Upload/download/archive data stream. |
 | `tasks.events` | Lifecycle event stream. |
 
-The `tasks.*` namespace is reserved by `bridgeipc`.
+The `tasks.*` namespace is reserved by `bridgeipc`. The `tasks` handler family
+provides the generated route catalog, and its registration callback asks the
+router's `TaskService` to install the matching Call and Channel
+implementations. The general router has no route-prefix dispatch branch.
 
 ## Streams
 
@@ -338,6 +347,27 @@ routes are direct server-producing Channels and never create a Task. App update
 uses a Task plus its binary data Channel because the operation survives the
 watching component and deliberately severs the bridge during restart. The
 current in-memory Task itself does not survive that bridge exit.
+
+### Channel lifecycle and ownership
+
+- The router owns route lookup, decoding, privilege checks, and the stream
+  until it calls the Channel handler. The handler owns the `net.Conn` only for
+  that call; the yamux/relay layer remains responsible for closing it.
+- A Channel has at most one reader and one writer per direction. Code that needs
+  multiple producers must serialize their frames before writing.
+- Writes are synchronous and provide backpressure. Do not add an unbounded
+  queue between a producer and the connection.
+- Direct log Channels use `ReceiveOnlyChannelContext`; Task watch/events use
+  focused monitors with the same write-deadline rule. Client close, abort, or
+  disconnect therefore interrupts a blocked server write. Direct Channel
+  cleanup restores deadlines without taking ownership of the connection.
+- Task-watch close detaches without cancelling the Task; Task-watch abort
+  cancels it. Other payloads document their own close-versus-abort rule.
+- JSON Channels with a terminal outcome emit exactly one result or error frame
+  followed by close. Indefinite event Channels end when either side closes.
+- Reconnect is never transparent: logs use cursors, transfers use offsets, Task
+  watches use Task identity and replay/current state, and terminals use their
+  external session identity.
 
 ## Adding An Endpoint
 
@@ -395,7 +425,12 @@ const result = await call("packages.search", { query });
 
 For a stream-only route, use `apischema.NoEndpoint()` in the route declaration and add a focused stream opener in `frontend/src/api/linuxio.ts` only when it carries real payload-specific behavior.
 
-Keep each route contract in the same binding table that attaches its handler or runner, even when the public route name belongs to a different frontend namespace. For example, `appupdate` owns the `control.version` binding because it owns the implementation, and `packages` owns the `system.install_capability` binding because it runs the installer Task.
+Keep each domain route contract in the same binding table that attaches its
+handler or runner, even when the public route name belongs to a different
+frontend namespace. For example, `appupdate` owns the `control.version` binding
+because it owns the implementation, and `packages` owns the
+`system.install_capability` binding because it runs the installer Task. The
+reserved Task-service catalog is the deliberate exception described above.
 
 ## Privilege
 
@@ -414,7 +449,11 @@ The dispatcher checks the authenticated session before running the route. Handle
 
 ## Documented Follow-up
 
-The current contract shape is intentionally JSON-first and Go-owned. Runtime route binding is typed, and TypeScript generation still reads Go type metadata. Call fetching and Task lifecycle have separate runtime factories; the remaining transport simplification is tracked in [API Transport Simplification Plan](./api-transport-simplification-plan.md).
+The current contract shape is intentionally JSON-first and Go-owned. Runtime
+route binding is typed, and TypeScript generation still reads Go type metadata.
+Call fetching and Task lifecycle have separate, final runtime factories; the
+completed transport migration is recorded in
+[API Transport Simplification Plan](./api-transport-simplification-plan.md).
 
 ### 1. Keep Reflection Generator-Only
 

@@ -2,7 +2,7 @@ import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
-import { linuxio, type VMCreateProgress, type VirtualMachine } from "@/api";
+import { linuxio, type VMCreateProgress } from "@/api";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -42,10 +42,7 @@ const VMPage = ({ children }: VMPageProps) => {
     ],
   });
 
-  const createMutation = linuxio.virt.create.useTaskStreamAction<
-    VirtualMachine,
-    VMCreateProgress
-  >({
+  const createMutation = linuxio.virt.create.useTaskStreamAction({
     closeMessage:
       "VM create connection closed before final result. Refresh the VM list to check whether creation completed.",
     onProgress: (progress) => setCreateProgress(progress),

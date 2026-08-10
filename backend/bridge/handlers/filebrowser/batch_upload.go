@@ -60,7 +60,7 @@ type uploadBatchTransferTask struct {
 	attrs     uploadAttributes
 	curFailed bool // current file failed; its remaining bytes are discarded
 	succeeded int
-	failures  []batchItemFailure
+	failures  []FileBatchItemFailure
 }
 
 // uploadBatchSession holds per-attach state: the filesystem root and the open
@@ -489,7 +489,7 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, c
 
 func (t *uploadBatchTransferTask) recordFailure(path, message string) {
 	t.mu.Lock()
-	t.failures = append(t.failures, batchItemFailure{Path: path, Error: message})
+	t.failures = append(t.failures, FileBatchItemFailure{Path: path, Error: message})
 	t.mu.Unlock()
 }
 
@@ -514,9 +514,11 @@ func (t *uploadBatchTransferTask) isComplete() bool {
 
 func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	t.mu.Lock()
-	result := batchResult(len(t.directories)+len(t.files), t.succeeded, append([]batchItemFailure(nil), t.failures...))
-	result["destination"] = t.destination
-	result["size"] = t.bytes
+	result := FileUploadBatchResult{
+		FileBatchResult: batchResult(len(t.directories)+len(t.files), t.succeeded, append([]FileBatchItemFailure(nil), t.failures...)),
+		Destination:     t.destination,
+		Size:            t.bytes,
+	}
 	bytes := t.bytes
 	failed := len(t.failures)
 	t.mu.Unlock()
