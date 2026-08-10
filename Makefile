@@ -797,7 +797,7 @@ analyze: ensure-node setup
 	@echo "🔬 Building frontend bundle analysis..."
 	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
-3# Debug-only binaries for goroutine leak hunting. Serves
+# Debug-only binaries for goroutine leak hunting. Serves
 # net/http/pprof on localhost only (webserver :6060, bridge :6061). The leak
 # report lives at /debug/pprof/goroutineleak. The endpoint has no auth (it is
 # loopback-bound). Rebuild with `make build` afterwards.
