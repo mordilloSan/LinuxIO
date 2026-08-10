@@ -17,14 +17,12 @@
 @keyframes reorder-hold-fill {
   0% {
     opacity: 0;
-    transform: scale(1);
   }
   60% {
     opacity: 0.55;
   }
   100% {
     opacity: 1;
-    transform: scale(0.985);
   }
 }
 
