@@ -33,7 +33,11 @@ type nvidiaGPUStats struct {
 }
 
 func FetchGPUInfo(ctx context.Context) ([]apischema.GpuDevice, error) {
-	info, err := gpu.New()
+	// Cached: the card list is static topology, and building it parses the
+	// whole PCI IDs database. The live data the dashboard polls for
+	// (utilization, temperatures, clocks) comes from the sysfs/nvidia-smi
+	// enrichment below, which still runs on every call.
+	info, err := cachedGPUInfo()
 	if err != nil || info == nil {
 		return nil, fmt.Errorf("failed to retrieve GPU information: %w", err)
 	}
