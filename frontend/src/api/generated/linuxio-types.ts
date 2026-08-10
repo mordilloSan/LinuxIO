@@ -1560,9 +1560,7 @@ export interface NetworkInterface {
   gateway: string;
   ipv4: string[];
   ipv4_method?: string;
-  ipv6: string[];
   mac: string;
-  mtu: number;
   name: string;
   rx_speed: number;
   speed: string;
@@ -2741,6 +2739,7 @@ export interface LinuxIOSchema {
       request: InterfaceRequest;
       result: void;
     };
+    get_interface_stats: { input: []; request: void; result: InterfaceStats[] };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
     set_ipv4: {
       input: [request: InterfaceMethodRequest];
@@ -2932,7 +2931,6 @@ export interface LinuxIOSchema {
     get_memory_info: { input: []; request: void; result: MemoryInfoResponse };
     get_memory_modules: { input: []; request: void; result: MemoryModule[] };
     get_motherboard_info: { input: []; request: void; result: MotherboardInfo };
-    get_network_info: { input: []; request: void; result: InterfaceStats[] };
     get_pci_devices: { input: []; request: void; result: PCIDevice[] };
     get_processes: { input: []; request: void; result: ProcessInfo[] };
     get_sensor_info: { input: []; request: void; result: SensorGroup[] };
@@ -3364,6 +3362,7 @@ export interface LinuxIOCallSchema {
   };
   "network.disable_connection": { request: InterfaceRequest; result: void };
   "network.enable_connection": { request: InterfaceRequest; result: void };
+  "network.get_interface_stats": { request: void; result: InterfaceStats[] };
   "network.get_network_info": { request: void; result: NetworkInterface[] };
   "network.set_ipv4": { request: InterfaceMethodRequest; result: void };
   "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
@@ -3469,7 +3468,6 @@ export interface LinuxIOCallSchema {
   "system.get_memory_info": { request: void; result: MemoryInfoResponse };
   "system.get_memory_modules": { request: void; result: MemoryModule[] };
   "system.get_motherboard_info": { request: void; result: MotherboardInfo };
-  "system.get_network_info": { request: void; result: InterfaceStats[] };
   "system.get_pci_devices": { request: void; result: PCIDevice[] };
   "system.get_processes": { request: void; result: ProcessInfo[] };
   "system.get_sensor_info": { request: void; result: SensorGroup[] };

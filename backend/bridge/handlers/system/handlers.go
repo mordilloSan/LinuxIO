@@ -25,7 +25,6 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleVoid(handleGetServices),
 		apischema.Call[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info", apischema.RetrySafe()).Handle(handleGetGPUInfo),
 		apischema.Call[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
-		apischema.Call[apischema.NoRequest, []apischema.InterfaceStats]("system.get_network_info").Handle(handleGetNetworkInfo),
 		apischema.Call[apischema.NoRequest, apischema.DiskThroughputResponse]("system.get_disk_throughput").Handle(handleGetDiskThroughput),
 		apischema.Call[apischema.NoRequest, *apischema.SystemInfo]("system.get_system_info", apischema.RetrySafe()).Handle(handleGetSystemInfo),
 		apischema.Call[apischema.NoRequest, []apischema.PCIDevice]("system.get_pci_devices", apischema.RetrySafe()).Handle(handleGetPCIDevices),
@@ -100,11 +99,6 @@ func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.G
 
 func handleGetUpdatesFast(ctx context.Context, _ apischema.NoRequest) (*apischema.UpdatesFastResponse, error) {
 	return GetUpdatesFast(ctx)
-}
-
-func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {
-	result, err := FetchNetworks(ctx)
-	return result, err
 }
 
 func handleGetDiskThroughput(ctx context.Context, _ apischema.NoRequest) (apischema.DiskThroughputResponse, error) {

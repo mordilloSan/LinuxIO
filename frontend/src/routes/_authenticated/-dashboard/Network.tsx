@@ -51,7 +51,7 @@ const NetworkHeader = ({
   );
 
   const { data: header } = useSuspenseQuery({
-    ...linuxio.system.get_network_info,
+    ...linuxio.network.get_interface_stats,
     refetchInterval: REFETCH_INTERVAL_MS,
     select: selectHeader,
   });
@@ -85,7 +85,7 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
   );
 
   const { data: details } = useSuspenseQuery({
-    ...linuxio.system.get_network_info,
+    ...linuxio.network.get_interface_stats,
     refetchInterval: REFETCH_INTERVAL_MS,
     select: selectDetails,
   });
@@ -113,14 +113,18 @@ const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
       const current = resolveInterface(filterInterfaces(interfaces), selected);
 
       return current
-        ? { name: current.name, rx: current.rx_speed, tx: current.tx_speed }
+        ? {
+            name: current.name,
+            rx: current.rx_speed / 1024,
+            tx: current.tx_speed / 1024,
+          }
         : null;
     },
     [selected],
   );
 
   const { data: throughput } = useSuspenseQuery({
-    ...linuxio.system.get_network_info,
+    ...linuxio.network.get_interface_stats,
     refetchInterval: REFETCH_INTERVAL_MS,
     select: selectThroughput,
   });

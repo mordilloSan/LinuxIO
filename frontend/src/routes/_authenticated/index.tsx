@@ -42,7 +42,7 @@ export const Route = createFileRoute("/_authenticated/")({
       queries.push(linuxio.system.get_memory_info);
     }
     if (visible("nic")) {
-      queries.push(linuxio.system.get_network_info);
+      queries.push(linuxio.network.get_interface_stats);
     }
     if (visible("fs")) {
       queries.push(linuxio.system.get_fs_info);

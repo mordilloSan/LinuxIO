@@ -298,9 +298,7 @@ type NetworkInterface struct {
 	Gateway    string   `json:"gateway"`
 	IPv4       []string `json:"ipv4"`
 	IPv4Method *string  `json:"ipv4_method,omitempty"`
-	IPv6       []string `json:"ipv6"`
 	MAC        string   `json:"mac"`
-	MTU        int      `json:"mtu"`
 	Name       string   `json:"name"`
 	RXSpeed    float64  `json:"rx_speed"`
 	Speed      string   `json:"speed"`

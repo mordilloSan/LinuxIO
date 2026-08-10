@@ -1,5 +1,5 @@
-// bridge/handlers/system/network.go
-package system
+// bridge/handlers/network/interface_stats.go
+package network
 
 import (
 	"context"
@@ -54,14 +54,14 @@ func collectSimpleNetStats(
 			continue
 		}
 
-		rxKBs, txKBs := computeSimpleNetRates(iface.Name, previousStats, currentStats, intervalSeconds)
+		rxBytes, txBytes := computeSimpleNetRates(iface.Name, previousStats, currentStats, intervalSeconds)
 		infos = append(infos, apischema.InterfaceStats{
 			Name:    iface.Name,
 			IPv4:    collectInterfaceIPv4s(iface),
 			MAC:     iface.HardwareAddr,
 			Speed:   netSpeedReader(ctx, iface.Name),
-			TXSpeed: txKBs,
-			RXSpeed: rxKBs,
+			TXSpeed: txBytes,
+			RXSpeed: rxBytes,
 		})
 	}
 	return infos
@@ -94,6 +94,8 @@ func readInterfaceSpeed(ctx context.Context, name string) string {
 	return speed + " Mbps"
 }
 
+// Rates are bytes/s, matching the rx_speed/tx_speed units of
+// network.get_network_info.
 func computeSimpleNetRates(
 	name string,
 	previousStats,
@@ -113,13 +115,13 @@ func computeSimpleNetRates(
 		return 0, 0
 	}
 
-	rx := float64(current.BytesRecv-previous.BytesRecv) / intervalSeconds / 1024.0
-	tx := float64(current.BytesSent-previous.BytesSent) / intervalSeconds / 1024.0
+	rx := float64(current.BytesRecv-previous.BytesRecv) / intervalSeconds
+	tx := float64(current.BytesSent-previous.BytesSent) / intervalSeconds
 	return rx, tx
 }
 
 // Pure fetcher used by the bridge handler map.
-func FetchNetworks(ctx context.Context) ([]apischema.InterfaceStats, error) {
+func FetchInterfaceStats(ctx context.Context) ([]apischema.InterfaceStats, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-package system
+package network
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
+func TestFetchInterfaceStatsComputesRatesOnDemand(t *testing.T) {
 	originalCounterSampler := netCounterSampler
 	originalInterfaceReader := netInterfaceReader
 	originalSpeedReader := netSpeedReader
@@ -76,7 +76,7 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 		return ts
 	}
 
-	first, err := FetchNetworks(context.Background())
+	first, err := FetchInterfaceStats(context.Background())
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Equal(t, "eth0", first[0].Name)
@@ -86,11 +86,11 @@ func TestFetchNetworksComputesRatesOnDemand(t *testing.T) {
 	require.Zero(t, first[0].RXSpeed)
 	require.Zero(t, first[0].TXSpeed)
 
-	second, err := FetchNetworks(context.Background())
+	second, err := FetchInterfaceStats(context.Background())
 	require.NoError(t, err)
 	require.Len(t, second, 1)
-	require.InDelta(t, 2.0, second[0].RXSpeed, 0.000001)
-	require.InDelta(t, 4.0, second[0].TXSpeed, 0.000001)
+	require.InDelta(t, 2048.0, second[0].RXSpeed, 0.000001)
+	require.InDelta(t, 4096.0, second[0].TXSpeed, 0.000001)
 }
 
 func TestComputeSimpleNetRatesReturnsZeroForInvalidSamples(t *testing.T) {
@@ -117,6 +117,6 @@ func TestComputeSimpleNetRatesReturnsZeroForInvalidSamples(t *testing.T) {
 		"eth0": {BytesRecv: 1224, BytesSent: 2450},
 	}
 	rx, tx = computeSimpleNetRates("eth0", previous, validCurrent, 1)
-	require.InDelta(t, 1.0, rx, 0.000001)
-	require.InDelta(t, 2.001953125, tx, 0.000001)
+	require.InDelta(t, 1024.0, rx, 0.000001)
+	require.InDelta(t, 2050.0, tx, 0.000001)
 }

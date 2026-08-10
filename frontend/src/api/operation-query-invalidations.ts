@@ -142,13 +142,21 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "systemd.unmask_service": UNIT_KEYS,
   "systemd.reset_failed_service": UNIT_KEYS,
 
-  "network.set_ipv4": [endpointQueryPrefix("network.get_network_info")],
-  "network.set_ipv4_manual": [endpointQueryPrefix("network.get_network_info")],
+  "network.set_ipv4": [
+    endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
+  ],
+  "network.set_ipv4_manual": [
+    endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
+  ],
   "network.enable_connection": [
     endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
   ],
   "network.disable_connection": [
     endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
   ],
 
   "hostname.set_hostname": [endpointQueryPrefix("system.get_host_info")],

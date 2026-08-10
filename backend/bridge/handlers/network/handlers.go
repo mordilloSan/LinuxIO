@@ -12,6 +12,7 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	apischema.Call[apischema.NoRequest, []apischema.InterfaceStats]("network.get_interface_stats").Handle(handleGetInterfaceStats),
 	// NetworkManager owns an accepted configuration change. Applying it can
 	// sever this bridge, so transport loss is an expected ambiguous outcome and
 	// callers must not retry the mutation automatically.
@@ -32,6 +33,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
 	result, err := GetNetworkInfo(ctx)
 	return networkInterfacesToAPI(result), err
+}
+
+func handleGetInterfaceStats(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {
+	return FetchInterfaceStats(ctx)
 }
 
 func handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {

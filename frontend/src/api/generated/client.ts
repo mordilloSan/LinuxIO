@@ -163,6 +163,7 @@ const linuxio = {
   network: {
     disable_connection: defineCallWithRequest("network.disable_connection"),
     enable_connection: defineCallWithRequest("network.enable_connection"),
+    get_interface_stats: defineCall("network.get_interface_stats"),
     get_network_info: defineCall("network.get_network_info"),
     set_ipv4: defineCallWithRequest("network.set_ipv4"),
     set_ipv4_manual: defineCallWithRequest("network.set_ipv4_manual"),
@@ -234,7 +235,6 @@ const linuxio = {
     get_memory_info: defineCall("system.get_memory_info"),
     get_memory_modules: defineCall("system.get_memory_modules"),
     get_motherboard_info: defineCall("system.get_motherboard_info"),
-    get_network_info: defineCall("system.get_network_info"),
     get_pci_devices: defineCall("system.get_pci_devices"),
     get_processes: defineCall("system.get_processes"),
     get_sensor_info: defineCall("system.get_sensor_info"),
