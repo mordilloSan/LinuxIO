@@ -26,7 +26,6 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import "./compose-list.css";
 
@@ -92,6 +91,154 @@ const getTotalContainers = (project: ComposeProject) => {
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
 
+interface ComposeContainerActionsProps {
+  container: ContainerInfo;
+  disabled: boolean;
+  onOpenLogs: (container: ContainerInfo) => void;
+  onOpenTerminal: (container: ContainerInfo) => void;
+}
+
+const ComposeContainerActions = memo(function ComposeContainerActions({
+  container,
+  disabled,
+  onOpenLogs,
+  onOpenTerminal,
+}: ComposeContainerActionsProps) {
+  const name = getContainerName(container);
+  const toast = useScopedToast(DOCKER_TOAST_META);
+  const { mutate: startContainer, isPending: isStarting } = useCallMutation(
+    linuxio.docker.start_container,
+    {
+      success: `Container ${name} started`,
+      error: `Failed to start ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: stopContainer, isPending: isStopping } = useCallMutation(
+    linuxio.docker.stop_container,
+    {
+      success: `Container ${name} stopped`,
+      error: `Failed to stop ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: restartContainer, isPending: isRestarting } = useCallMutation(
+    linuxio.docker.restart_container,
+    {
+      success: `Container ${name} restarted`,
+      error: `Failed to restart ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: updateContainer, isPending: isUpdating } = useCallMutation(
+    linuxio.docker.update_container,
+    {
+      success: (result) => {
+        toast.success(
+          result.updated
+            ? `Container ${name} updated`
+            : `Container ${name} is already up to date`,
+        );
+      },
+      error: `Failed to update ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: removeContainer, isPending: isRemoving } = useCallMutation(
+    linuxio.docker.remove_container,
+    {
+      success: `Container ${name} removed`,
+      error: `Failed to remove ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const actionPending =
+    isStarting || isStopping || isRestarting || isUpdating || isRemoving;
+  const controlsDisabled = disabled || actionPending;
+  const request = { containerId: container.Id };
+
+  return (
+    <div
+      aria-busy={actionPending || undefined}
+      aria-label={`Actions for ${name}`}
+      className="compose-container-actions"
+      role="group"
+    >
+      {container.State !== "running" && (
+        <AppActionIconButton
+          disabled={controlsDisabled}
+          icon="mdi:play"
+          iconSize={18}
+          label="Start container"
+          loading={isStarting}
+          onClick={() => startContainer(request)}
+        />
+      )}
+      {container.State === "running" && (
+        <AppActionIconButton
+          disabled={controlsDisabled}
+          icon="mdi:stop"
+          iconSize={18}
+          label="Stop container"
+          loading={isStopping}
+          onClick={() => stopContainer(request)}
+        />
+      )}
+      <AppActionIconButton
+        disabled={controlsDisabled}
+        icon="mdi:restart"
+        iconSize={18}
+        label="Restart container"
+        loading={isRestarting}
+        onClick={() => restartContainer(request)}
+      />
+      {container.updateAvailable && (
+        <AppActionIconButton
+          disabled={controlsDisabled}
+          icon="mdi:update"
+          iconSize={18}
+          label="Update container"
+          loading={isUpdating}
+          onClick={() => updateContainer(request)}
+        />
+      )}
+      <AppActionIconButton
+        disabled={controlsDisabled}
+        icon="mdi:file-document-outline"
+        iconSize={18}
+        label="View logs"
+        onClick={() => onOpenLogs(container)}
+      />
+      {container.State === "running" && (
+        <AppActionIconButton
+          disabled={controlsDisabled}
+          icon="mdi:console"
+          iconSize={18}
+          label="Open terminal"
+          onClick={() => onOpenTerminal(container)}
+        />
+      )}
+      {container.url && (
+        <AppActionIconButton
+          disabled={controlsDisabled}
+          icon="mdi:open-in-new"
+          iconSize={18}
+          label="Open app"
+          onClick={() => window.open(container.url, "_blank", "noopener")}
+        />
+      )}
+      <AppActionIconButton
+        disabled={controlsDisabled}
+        icon="mdi:delete"
+        iconSize={18}
+        label="Remove container"
+        loading={isRemoving}
+        onClick={() => removeContainer(request)}
+      />
+    </div>
+  );
+});
+
 const ComposeList = ({
   projects,
   onStart,
@@ -109,7 +256,6 @@ const ComposeList = ({
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
   const theme = useAppTheme();
-  const toast = useScopedToast(DOCKER_TOAST_META);
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const surface = useReorderableSurface({
     getId: getComposeProjectId,
@@ -139,91 +285,6 @@ const ComposeList = ({
       ]),
     );
   }, [projects]);
-  const { mutateAsync: startContainer } = useCallMutation(
-    linuxio.docker.start_container,
-  );
-  const { mutateAsync: stopContainer } = useCallMutation(
-    linuxio.docker.stop_container,
-  );
-  const { mutateAsync: restartContainer } = useCallMutation(
-    linuxio.docker.restart_container,
-  );
-  const { mutateAsync: removeContainer } = useCallMutation(
-    linuxio.docker.remove_container,
-  );
-  const { mutateAsync: updateContainer, isPending: isUpdatingContainer } =
-    useCallMutation(linuxio.docker.update_container);
-
-  const handleStartContainer = useCallback(
-    async (container: ContainerInfo) => {
-      const name = getContainerName(container);
-      try {
-        await startContainer({ containerId: container.Id });
-        toast.success(`Container ${name} started`);
-      } catch (error) {
-        toast.error(getMutationErrorMessage(error, `Failed to start ${name}`));
-      }
-    },
-    [startContainer, toast],
-  );
-
-  const handleStopContainer = useCallback(
-    async (container: ContainerInfo) => {
-      const name = getContainerName(container);
-      try {
-        await stopContainer({ containerId: container.Id });
-        toast.success(`Container ${name} stopped`);
-      } catch (error) {
-        toast.error(getMutationErrorMessage(error, `Failed to stop ${name}`));
-      }
-    },
-    [stopContainer, toast],
-  );
-
-  const handleRestartContainer = useCallback(
-    async (container: ContainerInfo) => {
-      const name = getContainerName(container);
-      try {
-        await restartContainer({ containerId: container.Id });
-        toast.success(`Container ${name} restarted`);
-      } catch (error) {
-        toast.error(
-          getMutationErrorMessage(error, `Failed to restart ${name}`),
-        );
-      }
-    },
-    [restartContainer, toast],
-  );
-
-  const handleRemoveContainer = useCallback(
-    async (container: ContainerInfo) => {
-      const name = getContainerName(container);
-      try {
-        await removeContainer({ containerId: container.Id });
-        toast.success(`Container ${name} removed`);
-      } catch (error) {
-        toast.error(getMutationErrorMessage(error, `Failed to remove ${name}`));
-      }
-    },
-    [removeContainer, toast],
-  );
-
-  const handleUpdateContainer = useCallback(
-    async (container: ContainerInfo) => {
-      const name = getContainerName(container);
-      try {
-        const result = await updateContainer({ containerId: container.Id });
-        toast.success(
-          result.updated
-            ? `Container ${name} updated`
-            : `Container ${name} is already up to date`,
-        );
-      } catch (error) {
-        toast.error(getMutationErrorMessage(error, `Failed to update ${name}`));
-      }
-    },
-    [toast, updateContainer],
-  );
 
   const columns = useMemo<AppDataTableColumnDef<ComposeProject>[]>(
     () => [
@@ -665,76 +726,12 @@ const ComposeList = ({
           const container = row.original;
 
           return (
-            <div className="compose-container-actions">
-              {container.State !== "running" && (
-                <AppActionIconButton
-                  disabled={isLoading}
-                  icon="mdi:play"
-                  iconSize={18}
-                  label="Start container"
-                  onClick={() => void handleStartContainer(container)}
-                />
-              )}
-              {container.State === "running" && (
-                <AppActionIconButton
-                  disabled={isLoading}
-                  icon="mdi:stop"
-                  iconSize={18}
-                  label="Stop container"
-                  onClick={() => void handleStopContainer(container)}
-                />
-              )}
-              <AppActionIconButton
-                disabled={isLoading}
-                icon="mdi:restart"
-                iconSize={18}
-                label="Restart container"
-                onClick={() => void handleRestartContainer(container)}
-              />
-              {container.updateAvailable && (
-                <AppActionIconButton
-                  disabled={isLoading || isUpdatingContainer}
-                  icon="mdi:update"
-                  iconSize={18}
-                  label="Update container"
-                  onClick={() => void handleUpdateContainer(container)}
-                />
-              )}
-              <AppActionIconButton
-                disabled={isLoading}
-                icon="mdi:file-document-outline"
-                iconSize={18}
-                label="View logs"
-                onClick={() => setLogsContainer(container)}
-              />
-              {container.State === "running" && (
-                <AppActionIconButton
-                  disabled={isLoading}
-                  icon="mdi:console"
-                  iconSize={18}
-                  label="Open terminal"
-                  onClick={() => setTerminalContainer(container)}
-                />
-              )}
-              {container.url && (
-                <AppActionIconButton
-                  disabled={isLoading}
-                  icon="mdi:open-in-new"
-                  iconSize={18}
-                  label="Open app"
-                  onClick={() =>
-                    window.open(container.url, "_blank", "noopener")
-                  }
-                />
-              )}
-              <AppActionIconButton
-                disabled={isLoading}
-                icon="mdi:delete"
-                iconSize={18}
-                label="Remove container"
-                onClick={() => void handleRemoveContainer(container)}
-              />
-            </div>
+            <ComposeContainerActions
+              container={container}
+              disabled={isLoading}
+              onOpenLogs={setLogsContainer}
+              onOpenTerminal={setTerminalContainer}
+            />
           );
         },
         meta: {
@@ -753,15 +750,7 @@ const ComposeList = ({
         },
       },
     ],
-    [
-      handleRemoveContainer,
-      handleRestartContainer,
-      handleStartContainer,
-      handleStopContainer,
-      handleUpdateContainer,
-      isLoading,
-      isUpdatingContainer,
-    ],
+    [isLoading],
   );
 
   const renderExpandedContent = useCallback(
@@ -860,7 +849,7 @@ const ComposeList = ({
             items={filtered}
             renderItem={(project) => (
               <ComposeStackCard
-                isLoading={isLoading || isUpdatingContainer}
+                isLoading={isLoading}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onRestart={onRestart}

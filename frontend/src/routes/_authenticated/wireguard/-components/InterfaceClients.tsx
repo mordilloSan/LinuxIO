@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer, useCallMutation } from "@/api";
 import WireguardPeerCard from "@/components/cards/WireguardPeerCard";
+import type { WireguardPeerAction } from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -37,6 +38,9 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   // Peer whose QR code dialog is open; opening the dialog drives the fetch.
   const [qrPeer, setQrPeer] = useState<string | null>(null);
+  const [pendingActions, setPendingActions] = useState<
+    ReadonlyMap<string, WireguardPeerAction>
+  >(() => new Map());
   const interfaceName = params.id;
 
   const {
@@ -52,20 +56,13 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   });
 
   // Mutations
-  const { mutate: deletePeer } = useCallMutation(
-    linuxio.wireguard.remove_peer,
-    {
-      success: (_result, variables) =>
-        toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
-      error: "Failed to delete peer",
-      toast: WIREGUARD_TOAST_META,
-    },
-  );
-  const handleDeletePeer = (peerName: string) => {
-    deletePeer({ interfaceName, peerName });
-  };
-
-  const { mutate: downloadConfig } = useCallMutation(
+  const deletePeer = useCallMutation(linuxio.wireguard.remove_peer, {
+    success: (_result, variables) =>
+      toast.success(`WireGuard Peer '${variables.peerName}' deleted`),
+    error: "Failed to delete peer",
+    toast: WIREGUARD_TOAST_META,
+  });
+  const downloadConfig = useCallMutation(
     linuxio.wireguard.peer_config_download,
     {
       success: (result, { peerName }) => {
@@ -86,6 +83,38 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
       toast: WIREGUARD_TOAST_META,
     },
   );
+
+  const runPeerAction = (
+    peerName: string,
+    action: WireguardPeerAction,
+    run: () => Promise<unknown>,
+  ) => {
+    if (pendingActions.has(peerName)) return;
+
+    setPendingActions((current) => new Map(current).set(peerName, action));
+    void run()
+      .catch(() => undefined)
+      .finally(() => {
+        setPendingActions((current) => {
+          if (current.get(peerName) !== action) return current;
+          const next = new Map(current);
+          next.delete(peerName);
+          return next;
+        });
+      });
+  };
+
+  const handleDeletePeer = (peerName: string) => {
+    runPeerAction(peerName, "delete", () =>
+      deletePeer.mutateAsync({ interfaceName, peerName }),
+    );
+  };
+
+  const handleDownloadConfig = (peerName: string) => {
+    runPeerAction(peerName, "download", () =>
+      downloadConfig.mutateAsync({ interfaceName, peerName }),
+    );
+  };
 
   const qrQuery = useQuery({
     ...linuxio.wireguard.peer_qrcode({ interfaceName, peerName: qrPeer ?? "" }),
@@ -128,10 +157,9 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
             <WireguardPeerCard
               interfaceName={interfaceName}
               onDelete={handleDeletePeer}
-              onDownloadConfig={(peerName) =>
-                downloadConfig({ interfaceName, peerName })
-              }
+              onDownloadConfig={handleDownloadConfig}
               onViewQrCode={setQrPeer}
+              pendingAction={pendingActions.get(peer.name)}
               peerName={peer.name}
             />
           )}

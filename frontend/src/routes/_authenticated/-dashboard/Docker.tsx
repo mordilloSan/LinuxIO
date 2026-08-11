@@ -5,6 +5,7 @@ import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 import { type ContainerInfo, linuxio, useCallMutation } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -43,6 +44,22 @@ interface ContainerSummary {
   state: string;
   statusLabel: string;
 }
+
+type ContainerAction = "start" | "stop" | "restart" | "remove";
+
+const ACTION_PROGRESS_LABEL: Record<ContainerAction, string> = {
+  start: "Starting",
+  stop: "Stopping",
+  restart: "Restarting",
+  remove: "Removing",
+};
+
+const ACTION_SUCCESS_LABEL: Record<ContainerAction, string> = {
+  start: "started",
+  stop: "stopped",
+  restart: "restarted",
+  remove: "removed",
+};
 
 const selectContainerSummaries = (
   containers: ContainerInfo[],
@@ -126,6 +143,9 @@ const DockerContainers = () => {
     name: string;
     state: string;
   } | null>(null);
+  const [pendingActions, setPendingActions] = useState<
+    Map<string, ContainerAction>
+  >(() => new Map());
   const [logsOpen, setLogsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
@@ -153,21 +173,22 @@ const DockerContainers = () => {
     },
     [theme],
   );
-  const { mutate: startContainer } = useCallMutation(
+  const { mutateAsync: startContainer } = useCallMutation(
     linuxio.docker.start_container,
   );
-  const { mutate: stopContainer } = useCallMutation(
+  const { mutateAsync: stopContainer } = useCallMutation(
     linuxio.docker.stop_container,
   );
-  const { mutate: restartContainer } = useCallMutation(
+  const { mutateAsync: restartContainer } = useCallMutation(
     linuxio.docker.restart_container,
   );
-  const { mutate: removeContainer } = useCallMutation(
+  const { mutateAsync: removeContainer } = useCallMutation(
     linuxio.docker.remove_container,
   );
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();
+      if (pendingActions.has(id)) return;
       setMenuAnchor(e.currentTarget);
       setMenuContainer({
         id,
@@ -175,37 +196,54 @@ const DockerContainers = () => {
         state,
       });
     },
-    [],
+    [pendingActions],
   );
   const handleMenuClose = useCallback(() => {
     setMenuAnchor(null);
     setMenuContainer(null);
   }, []);
   const handleAction = useCallback(
-    (action: "start" | "stop" | "restart" | "remove") => {
+    (action: ContainerAction) => {
       if (!menuContainer) return;
       const { id, name } = menuContainer;
+      if (pendingActions.has(id)) return;
       const request = { containerId: id };
-      const callbacks = {
-        onSuccess: () => {
-          toast.success(
-            `Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`,
-          );
-        },
-        onError: (e: Error) => {
-          toast.error(
-            getMutationErrorMessage(e, `Failed to ${action} container`),
-          );
-        },
+      setPendingActions((current) => {
+        const next = new Map(current);
+        next.set(id, action);
+        return next;
+      });
+      const clearPending = () => {
+        setPendingActions((current) => {
+          if (current.get(id) !== action) return current;
+          const next = new Map(current);
+          next.delete(id);
+          return next;
+        });
       };
-      if (action === "start") startContainer(request, callbacks);
-      else if (action === "stop") stopContainer(request, callbacks);
-      else if (action === "restart") restartContainer(request, callbacks);
-      else removeContainer(request, callbacks);
+      const operation =
+        action === "start"
+          ? startContainer(request)
+          : action === "stop"
+            ? stopContainer(request)
+            : action === "restart"
+              ? restartContainer(request)
+              : removeContainer(request);
       handleMenuClose();
+      void operation
+        .then(() => {
+          toast.success(`Container ${name} ${ACTION_SUCCESS_LABEL[action]}`);
+        })
+        .catch((error: Error) => {
+          toast.error(
+            getMutationErrorMessage(error, `Failed to ${action} container`),
+          );
+        })
+        .finally(clearPending);
     },
     [
       menuContainer,
+      pendingActions,
       startContainer,
       stopContainer,
       restartContainer,
@@ -241,6 +279,10 @@ const DockerContainers = () => {
       >
         {containers.map((c) => {
           const statusColor = resolveStateColor(c.statusLabel);
+          const pendingAction = pendingActions.get(c.id);
+          const progressLabel = pendingAction
+            ? ACTION_PROGRESS_LABEL[pendingAction]
+            : undefined;
           return (
             <AppTooltip
               arrow
@@ -263,26 +305,53 @@ const DockerContainers = () => {
                   <AppTypography
                     component="span"
                     style={{
-                      color: statusColor,
+                      color: progressLabel
+                        ? theme.palette.info.main
+                        : statusColor,
                     }}
                   >
-                    {c.statusLabel}
+                    {progressLabel ?? c.statusLabel}
                   </AppTypography>
                 </div>
               }
             >
               <div
+                aria-busy={Boolean(pendingAction)}
+                aria-label={
+                  progressLabel ? `${c.name}: ${progressLabel}` : c.name
+                }
                 onContextMenu={(e) =>
                   handleContextMenu(e, c.id, c.name, c.state)
                 }
+                role="group"
                 style={{
                   position: "relative",
                   width: 36,
                   height: 36,
-                  cursor: "context-menu",
+                  cursor: pendingAction ? "progress" : "context-menu",
                 }}
               >
                 <DockerIcon alt={c.name} identifier={c.icon} size={36} />
+                {progressLabel && (
+                  <div
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: "var(--app-overlay-dark)",
+                      borderRadius: "inherit",
+                      display: "flex",
+                      inset: 0,
+                      justifyContent: "center",
+                      position: "absolute",
+                      zIndex: 1,
+                    }}
+                  >
+                    <AppCircularProgress
+                      aria-label={`${progressLabel} ${c.name}`}
+                      color="inherit"
+                      size={20}
+                    />
+                  </div>
+                )}
                 <StatusDot
                   color={resolveStateColor(c.state)}
                   size={8}

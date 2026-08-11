@@ -65,6 +65,9 @@ const VMMachinesLayout = () => {
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
+  const [pendingActions, setPendingActions] = useState<
+    ReadonlyMap<string, VMAction>
+  >(() => new Map());
 
   const setSelectedName = useCallback(
     (name: string | null) =>
@@ -134,40 +137,50 @@ const VMMachinesLayout = () => {
     linuxio.virt.resume,
     actionConfig("VM resumed", "Failed to resume VM"),
   );
-  const actionPending =
-    startMutation.isPending ||
-    shutdownMutation.isPending ||
-    rebootMutation.isPending ||
-    forceOffMutation.isPending ||
-    suspendMutation.isPending ||
-    resumeMutation.isPending;
-
   const runAction = useCallback(
     (action: VMAction, vm: VirtualMachine) => {
+      if (pendingActions.has(vm.name)) return;
+
       const request = { name: vm.name };
+      let promise: Promise<unknown>;
+
+      setPendingActions((current) => new Map(current).set(vm.name, action));
+
       switch (action) {
         case "start":
-          startMutation.mutate(request);
+          promise = startMutation.mutateAsync(request);
           break;
         case "shutdown":
-          shutdownMutation.mutate(request);
+          promise = shutdownMutation.mutateAsync(request);
           break;
         case "reboot":
-          rebootMutation.mutate(request);
+          promise = rebootMutation.mutateAsync(request);
           break;
         case "force_off":
-          forceOffMutation.mutate(request);
+          promise = forceOffMutation.mutateAsync(request);
           break;
         case "suspend":
-          suspendMutation.mutate(request);
+          promise = suspendMutation.mutateAsync(request);
           break;
         case "resume":
-          resumeMutation.mutate(request);
+          promise = resumeMutation.mutateAsync(request);
           break;
       }
+
+      void promise
+        .catch(() => undefined)
+        .finally(() => {
+          setPendingActions((current) => {
+            if (current.get(vm.name) !== action) return current;
+            const next = new Map(current);
+            next.delete(vm.name);
+            return next;
+          });
+        });
     },
     [
       forceOffMutation,
+      pendingActions,
       rebootMutation,
       resumeMutation,
       shutdownMutation,
@@ -199,7 +212,6 @@ const VMMachinesLayout = () => {
           }}
         >
           <VMListTable
-            actionPending={actionPending}
             effectiveSelectedName={selectedName}
             onDelete={(vm) => {
               setDeleteTargetName(vm.name);
@@ -212,6 +224,7 @@ const VMMachinesLayout = () => {
             }
             onRunAction={runAction}
             onSelect={setSelectedName}
+            pendingActions={pendingActions}
             vms={vms}
           />
           <Outlet />

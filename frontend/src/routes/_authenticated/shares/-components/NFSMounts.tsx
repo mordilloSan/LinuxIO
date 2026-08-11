@@ -252,7 +252,7 @@ function getNFSOptionValue(options: string[], keys: string[]): string {
 
 const MountEntryActions = ({
   mount,
-  mountingMountpoint,
+  pendingActionByMountpoint,
   onEdit,
   onMount,
   onUnmount,
@@ -262,7 +262,7 @@ const MountEntryActions = ({
   stopPropagation = false,
 }: {
   mount: NFSMount;
-  mountingMountpoint: string | null;
+  pendingActionByMountpoint: ReadonlyMap<string, PendingMountAction>;
   onEdit: (mount: NFSMount) => void;
   onMount: (mount: NFSMount) => void;
   onUnmount: (mount: NFSMount) => void;
@@ -280,7 +280,8 @@ const MountEntryActions = ({
       handler(mount);
     };
 
-  const isMounting = mountingMountpoint === mount.mountpoint;
+  const pendingAction = pendingActionByMountpoint.get(mount.mountpoint);
+  const isPending = Boolean(pendingAction);
   const mountActionColor = mount.mounted
     ? "var(--app-palette-success-main)"
     : "var(--app-palette-text-secondary)";
@@ -288,12 +289,17 @@ const MountEntryActions = ({
   const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
   const mountActionTitle = mountActionDisabled
     ? nfsReason
-    : isMounting
-      ? "Mounting..."
+    : pendingAction
+      ? pendingAction === "mount"
+        ? "Mounting..."
+        : "Unmounting..."
       : mountActionLabel;
 
   return (
     <div
+      aria-busy={isPending}
+      aria-label={`Actions for ${mount.mountpoint}`}
+      role="group"
       style={{
         display: "flex",
         gap: 2,
@@ -308,15 +314,21 @@ const MountEntryActions = ({
         icon="mdi:pencil-outline"
         iconSize={18}
         label="Edit entry"
+        disabled={isPending}
         onClick={wrapClick(onEdit)}
       />
       <AppActionIconButton
-        ariaLabel={mountActionLabel}
+        ariaLabel={
+          pendingAction
+            ? `${pendingAction === "mount" ? "Mounting" : "Unmounting"} ${mount.mountpoint}`
+            : mountActionLabel
+        }
         color={mountActionColor}
-        disabled={isMounting || mountActionDisabled}
+        disabled={isPending || mountActionDisabled}
         icon={mount.mounted ? "mdi:link-variant" : "mdi:link-variant-off"}
         iconSize={18}
         label={mountActionTitle}
+        loading={isPending}
         onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
       />
       <AppActionIconButton
@@ -325,6 +337,7 @@ const MountEntryActions = ({
         icon="mdi:trash-can-outline"
         iconSize={18}
         label="Remove entry"
+        disabled={isPending}
         onClick={wrapClick(onRemove)}
       />
     </div>
@@ -832,7 +845,7 @@ const selectNFSMountIdentities = (mounts: NFSMount[]) =>
   mounts.map((mount) => mount.mountpoint);
 
 interface NFSMountActionProps {
-  mountingMountpoint: string | null;
+  pendingActionByMountpoint: ReadonlyMap<string, PendingMountAction>;
   nfsClientAvailable: boolean;
   nfsReason: string;
   onEdit: (mount: NFSMount) => void;
@@ -840,6 +853,8 @@ interface NFSMountActionProps {
   onRemove: (mount: NFSMount) => void;
   onUnmount: (mount: NFSMount) => void;
 }
+
+type PendingMountAction = "mount" | "unmount";
 
 interface NFSMountTableProps extends NFSMountActionProps {
   search: string;
@@ -850,7 +865,7 @@ const identity = (mountpoint: string) => mountpoint;
 const getNFSMountId = (mount: NFSMount) => mount.mountpoint;
 
 const NFSMountCardGrid = ({
-  mountingMountpoint,
+  pendingActionByMountpoint,
   nfsClientAvailable,
   nfsReason,
   onEdit,
@@ -884,7 +899,7 @@ const NFSMountCardGrid = ({
   const renderActions = (mount: NFSMount) => (
     <MountEntryActions
       mount={mount}
-      mountingMountpoint={mountingMountpoint}
+      pendingActionByMountpoint={pendingActionByMountpoint}
       nfsClientAvailable={nfsClientAvailable}
       nfsReason={nfsReason}
       onEdit={onEdit}
@@ -907,7 +922,7 @@ const NFSMountCardGrid = ({
 };
 
 const NFSMountTable = ({
-  mountingMountpoint,
+  pendingActionByMountpoint,
   nfsClientAvailable,
   nfsReason,
   onEdit,
@@ -1061,7 +1076,7 @@ const NFSMountTable = ({
         cell: ({ row }) => (
           <MountEntryActions
             mount={row.original}
-            mountingMountpoint={mountingMountpoint}
+            pendingActionByMountpoint={pendingActionByMountpoint}
             nfsClientAvailable={nfsClientAvailable}
             nfsReason={nfsReason}
             onEdit={onEdit}
@@ -1078,7 +1093,7 @@ const NFSMountTable = ({
             return [
               mount.mountpoint,
               mount.mounted,
-              mountingMountpoint === mount.mountpoint,
+              pendingActionByMountpoint.get(mount.mountpoint),
               nfsClientAvailable,
               nfsReason,
             ];
@@ -1088,13 +1103,13 @@ const NFSMountTable = ({
       },
     ],
     [
-      mountingMountpoint,
       nfsClientAvailable,
       nfsReason,
       onEdit,
       onMount,
       onRemove,
       onUnmount,
+      pendingActionByMountpoint,
     ],
   );
 
@@ -1166,34 +1181,27 @@ const NFSMounts = ({
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<NFSMount | null>(null);
-  const [mountingMountpoint, setMountingMountpoint] = useState<string | null>(
-    null,
-  );
-  const { mutate: mountExistingEntry } = useCallMutation(
-    linuxio.storage.mount_nfs,
-    {
-      success: "NFS entry mounted",
-      warning: (result) => result.warning,
-      error: "Failed to mount NFS entry",
-      toast: STORAGE_TOAST_META,
-      options: { onSettled: () => setMountingMountpoint(null) },
+  const [pendingActionByMountpoint, setPendingActionByMountpoint] = useState<
+    ReadonlyMap<string, PendingMountAction>
+  >(() => new Map());
+  const mountExistingEntry = useCallMutation(linuxio.storage.mount_nfs, {
+    success: "NFS entry mounted",
+    warning: (result) => result.warning,
+    error: "Failed to mount NFS entry",
+    toast: STORAGE_TOAST_META,
+  });
+  const unmountEntry = useCallMutation(linuxio.storage.unmount_nfs, {
+    // The message needs `variables`, so the toast stays in a callback; the
+    // warning affordance still owns the warning case.
+    success: (result, variables) => {
+      if (!result.warning) {
+        toast.success(`Unmounted ${variables.mountpoint}`);
+      }
     },
-  );
-  const { mutate: unmountEntry } = useCallMutation(
-    linuxio.storage.unmount_nfs,
-    {
-      // The message needs `variables`, so the toast stays in a callback; the
-      // warning affordance still owns the warning case.
-      success: (result, variables) => {
-        if (!result.warning) {
-          toast.success(`Unmounted ${variables.mountpoint}`);
-        }
-      },
-      warning: (result) => result.warning,
-      error: "Failed to unmount",
-      toast: STORAGE_TOAST_META,
-    },
-  );
+    warning: (result) => result.warning,
+    error: "Failed to unmount",
+    toast: STORAGE_TOAST_META,
+  });
   const handleMountNFS = useCallback(() => {
     if (nfsUnavailable) {
       toast.error(nfsReason);
@@ -1202,8 +1210,36 @@ const NFSMounts = ({
     setMountDialogOpen(true);
   }, [nfsUnavailable, nfsReason, toast]);
   useRegisterCreateHandler(onMountCreateHandler, handleMountNFS);
+
+  const runMountAction = (
+    mountpoint: string,
+    action: PendingMountAction,
+    run: () => Promise<unknown>,
+  ) => {
+    if (pendingActionByMountpoint.has(mountpoint)) return;
+
+    setPendingActionByMountpoint((current) =>
+      new Map(current).set(mountpoint, action),
+    );
+    void run()
+      .catch(() => undefined)
+      .finally(() => {
+        setPendingActionByMountpoint((current) => {
+          if (current.get(mountpoint) !== action) return current;
+          const next = new Map(current);
+          next.delete(mountpoint);
+          return next;
+        });
+      });
+  };
+
   const handleUnmount = (mount: NFSMount) => {
-    unmountEntry({ mountpoint: mount.mountpoint, removeFstab: "false" });
+    runMountAction(mount.mountpoint, "unmount", () =>
+      unmountEntry.mutateAsync({
+        mountpoint: mount.mountpoint,
+        removeFstab: "false",
+      }),
+    );
   };
   const handleEdit = (mount: NFSMount) => {
     setSelectedMount(mount);
@@ -1222,17 +1258,18 @@ const NFSMounts = ({
       toast.error("This NFS entry is missing its server or export path");
       return;
     }
-    setMountingMountpoint(mount.mountpoint);
-    mountExistingEntry({
-      server: mount.server,
-      exportPath: mount.exportPath,
-      mountpoint: mount.mountpoint,
-      options: buildMountOptionsFromEntry(mount),
-      persist: mount.inFstab ? "true" : "false",
-    });
+    runMountAction(mount.mountpoint, "mount", () =>
+      mountExistingEntry.mutateAsync({
+        server: mount.server,
+        exportPath: mount.exportPath,
+        mountpoint: mount.mountpoint,
+        options: buildMountOptionsFromEntry(mount),
+        persist: mount.inFstab ? "true" : "false",
+      }),
+    );
   };
   const actionProps: NFSMountActionProps = {
-    mountingMountpoint,
+    pendingActionByMountpoint,
     nfsClientAvailable: !nfsUnavailable,
     nfsReason,
     onEdit: handleEdit,

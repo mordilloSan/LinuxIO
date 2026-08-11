@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 
 import type { AccountUser } from "@/api";
 import UserCard from "@/components/cards/UserCard";
+import type { UserLockAction } from "@/components/cards/UserCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -17,12 +18,11 @@ import {
 
 interface UserCardsViewProps {
   currentUsername?: string;
-  isLocking: boolean;
-  isUnlocking: boolean;
   onChangePassword: (user: AccountUser) => void;
   onEdit: (user: AccountUser) => void;
   onSelect: (username: string | null) => void;
   onToggleLock: (user: AccountUser) => void;
+  pendingLockActions: ReadonlyMap<string, UserLockAction>;
   selectedUser: AccountUser | null;
   /** Reorder wiring for the collapsed card grid. */
   surface: ReorderableSurface<AccountUser>;
@@ -39,12 +39,11 @@ const UserCardsView = ({
   users,
   selectedUser,
   currentUsername,
-  isLocking,
-  isUnlocking,
   onSelect,
   onEdit,
   onChangePassword,
   onToggleLock,
+  pendingLockActions,
 }: UserCardsViewProps) => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
@@ -72,12 +71,11 @@ const UserCardsView = ({
         renderItem={(user) => (
           <UserCard
             currentUsername={currentUsername}
-            isLocking={isLocking}
-            isUnlocking={isUnlocking}
             onChangePassword={() => onChangePassword(user)}
             onEdit={() => onEdit(user)}
             onOpen={surface.editMode ? noopOpen : () => onSelect(user.username)}
             onToggleLock={() => onToggleLock(user)}
+            pendingLockAction={pendingLockActions.get(user.username)}
             user={user}
           />
         )}
@@ -92,13 +90,12 @@ const UserCardsView = ({
       <AppGrid size={{ xs: 12, lg: 4 }} style={{ display: "flex" }}>
         <UserCard
           currentUsername={currentUsername}
-          isLocking={isLocking}
           isSelected
-          isUnlocking={isUnlocking}
           onChangePassword={() => onChangePassword(selectedUser)}
           onEdit={() => onEdit(selectedUser)}
           onOpen={() => onSelect(null)}
           onToggleLock={() => onToggleLock(selectedUser)}
+          pendingLockAction={pendingLockActions.get(selectedUser.username)}
           user={selectedUser}
         />
       </AppGrid>

@@ -424,6 +424,7 @@ const EditCIFSForm = ({
 };
 
 const getCIFSMountId = (mount: CIFSMount) => mount.mountpoint;
+type PendingMountAction = "mount" | "unmount";
 
 const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
@@ -436,13 +437,16 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
+  const [pendingActionByMountpoint, setPendingActionByMountpoint] = useState<
+    ReadonlyMap<string, PendingMountAction>
+  >(() => new Map());
 
   const { data: mounts } = useSuspenseQuery({
     ...linuxio.storage.list_cifs_mounts,
     refetchInterval: 10000,
   });
 
-  const { mutate: mountExisting } = useCallMutation(
+  const { mutateAsync: mountExisting } = useCallMutation(
     linuxio.storage.mount_cifs,
     {
       success: "SMB entry mounted",
@@ -452,7 +456,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
     },
   );
 
-  const { mutate: unmountEntry } = useCallMutation(
+  const { mutateAsync: unmountEntry } = useCallMutation(
     linuxio.storage.unmount_cifs,
     {
       // The message needs `variables`, so the toast stays in a callback; the
@@ -477,6 +481,31 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   }, [cifsUnavailable, cifsReason, toast]);
   useRegisterCreateHandler(onMountCreateHandler, handleCreate);
 
+  const runMountAction = useCallback(
+    (
+      mountpoint: string,
+      action: PendingMountAction,
+      run: () => Promise<unknown>,
+    ) => {
+      if (pendingActionByMountpoint.has(mountpoint)) return;
+
+      setPendingActionByMountpoint((current) =>
+        new Map(current).set(mountpoint, action),
+      );
+      void run()
+        .catch(() => undefined)
+        .finally(() => {
+          setPendingActionByMountpoint((current) => {
+            if (current.get(mountpoint) !== action) return current;
+            const next = new Map(current);
+            next.delete(mountpoint);
+            return next;
+          });
+        });
+    },
+    [pendingActionByMountpoint],
+  );
+
   // Re-activate an inactive fstab entry — the backend mounts it from fstab
   // using the stored credentials, so no password is needed.
   const handleMountExisting = useCallback(
@@ -485,17 +514,31 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         toast.error(cifsReason);
         return;
       }
-      mountExisting({
-        server: mount.server,
-        share: mount.share,
-        mountpoint: mount.mountpoint,
-        username: "",
-        password: "",
-        domain: "",
-        options: [],
-      });
+      runMountAction(mount.mountpoint, "mount", () =>
+        mountExisting({
+          server: mount.server,
+          share: mount.share,
+          mountpoint: mount.mountpoint,
+          username: "",
+          password: "",
+          domain: "",
+          options: [],
+        }),
+      );
     },
-    [cifsReason, cifsUnavailable, mountExisting, toast],
+    [cifsReason, cifsUnavailable, mountExisting, runMountAction, toast],
+  );
+
+  const handleUnmount = useCallback(
+    (mount: CIFSMount) => {
+      runMountAction(mount.mountpoint, "unmount", () =>
+        unmountEntry({
+          mountpoint: mount.mountpoint,
+          removeFstab: "false",
+        }),
+      );
+    },
+    [runMountAction, unmountEntry],
   );
 
   const mountsList = Array.isArray(mounts) ? mounts : [];
@@ -637,35 +680,58 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         enableSorting: false,
         cell: ({ row }) => {
           const mount = row.original;
+          const pendingAction = pendingActionByMountpoint.get(mount.mountpoint);
+          const isPending = Boolean(pendingAction);
           return (
             <div
+              aria-busy={isPending}
+              aria-label={`Actions for ${mount.mountpoint}`}
+              role="group"
               style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}
               onClick={(e) => e.stopPropagation()}
             >
               {!mount.mounted && (
-                <AppTooltip title={cifsUnavailable ? cifsReason : "Mount"}>
+                <AppTooltip
+                  title={
+                    cifsUnavailable
+                      ? cifsReason
+                      : pendingAction === "mount"
+                        ? "Mounting..."
+                        : "Mount"
+                  }
+                >
                   <span>
                     <AppActionIconButton
-                      ariaLabel="Mount"
-                      disabled={cifsUnavailable}
+                      ariaLabel={
+                        pendingAction === "mount"
+                          ? `Mounting ${mount.mountpoint}`
+                          : "Mount"
+                      }
+                      disabled={cifsUnavailable || isPending}
                       icon="mdi:play"
+                      loading={isPending}
                       onClick={() => handleMountExisting(mount)}
                     />
                   </span>
                 </AppTooltip>
               )}
               {mount.mounted && (
-                <AppTooltip title="Unmount">
+                <AppTooltip
+                  title={
+                    pendingAction === "unmount" ? "Unmounting..." : "Unmount"
+                  }
+                >
                   <span>
                     <AppActionIconButton
-                      ariaLabel="Unmount"
-                      icon="mdi:eject"
-                      onClick={() =>
-                        unmountEntry({
-                          mountpoint: mount.mountpoint,
-                          removeFstab: "false",
-                        })
+                      ariaLabel={
+                        pendingAction === "unmount"
+                          ? `Unmounting ${mount.mountpoint}`
+                          : "Unmount"
                       }
+                      disabled={isPending}
+                      icon="mdi:eject"
+                      loading={isPending}
+                      onClick={() => handleUnmount(mount)}
                     />
                   </span>
                 </AppTooltip>
@@ -674,6 +740,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
                 <span>
                   <AppActionIconButton
                     ariaLabel="Edit options"
+                    disabled={isPending}
                     icon="mdi:pencil"
                     onClick={() => {
                       setSelectedMount(mount);
@@ -686,6 +753,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
                 <span>
                   <AppActionIconButton
                     ariaLabel="Remove"
+                    disabled={isPending}
                     icon="mdi:delete"
                     onClick={() => {
                       setSelectedMount(mount);
@@ -706,13 +774,20 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
               mount.mounted,
               cifsUnavailable,
               cifsReason,
+              pendingActionByMountpoint.get(mount.mountpoint),
             ];
           },
           width: "180px",
         },
       },
     ],
-    [cifsReason, cifsUnavailable, handleMountExisting, unmountEntry],
+    [
+      cifsReason,
+      cifsUnavailable,
+      handleMountExisting,
+      handleUnmount,
+      pendingActionByMountpoint,
+    ],
   );
 
   return (

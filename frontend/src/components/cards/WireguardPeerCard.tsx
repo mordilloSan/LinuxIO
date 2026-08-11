@@ -210,8 +210,11 @@ export interface WireguardPeerCardProps {
   onDelete: (peerName: string) => void;
   onDownloadConfig: (peerName: string) => void;
   onViewQrCode: (peerName: string) => void;
+  pendingAction?: WireguardPeerAction;
   peerName: string;
 }
+
+export type WireguardPeerAction = "delete" | "download";
 
 const WireguardPeerCard = ({
   interfaceName,
@@ -219,6 +222,7 @@ const WireguardPeerCard = ({
   onDelete,
   onDownloadConfig,
   onViewQrCode,
+  pendingAction,
 }: WireguardPeerCardProps) => (
   <FrostedCard hoverLift style={CARD_STYLE}>
     {/* Header: icon + name + live status chip */}
@@ -250,12 +254,23 @@ const WireguardPeerCard = ({
     <AppDivider style={{ marginBlock: 12 }} />
 
     {/* Actions */}
-    <div style={{ display: "flex", gap: 2, marginTop: "auto" }}>
+    <div
+      aria-busy={Boolean(pendingAction)}
+      aria-label={`Actions for ${peerName}`}
+      role="group"
+      style={{ display: "flex", gap: 2, marginTop: "auto" }}
+    >
       <AppActionIconButton
-        ariaLabel="Download Config"
+        ariaLabel={
+          pendingAction === "download"
+            ? `Downloading config for ${peerName}`
+            : "Download Config"
+        }
+        disabled={Boolean(pendingAction)}
         icon="mdi:download"
         iconSize={20}
         label="Download Config"
+        loading={pendingAction === "download"}
         onClick={() => onDownloadConfig(peerName)}
       />
       <AppActionIconButton
@@ -266,11 +281,15 @@ const WireguardPeerCard = ({
         onClick={() => onViewQrCode(peerName)}
       />
       <AppActionIconButton
-        ariaLabel="Delete"
+        ariaLabel={
+          pendingAction === "delete" ? `Deleting peer ${peerName}` : "Delete"
+        }
         color="var(--app-palette-error-main)"
+        disabled={Boolean(pendingAction)}
         icon="mdi:delete"
         iconSize={20}
         label="Delete Peer"
+        loading={pendingAction === "delete"}
         onClick={() => onDelete(peerName)}
       />
     </div>

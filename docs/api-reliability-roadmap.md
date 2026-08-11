@@ -77,6 +77,8 @@ route-specific field names.
 
 The remaining reliability constraints are:
 
+- Docker and other entity-scoped mutation feedback are complete, while File
+  Browser, disabled-only, and consistency batches still gate persistent alerts;
 - server alerts are not implemented and the navbar history is local toast
   history only; and
 - future scheduled scripts need native timing, stable run identity, and log
@@ -415,6 +417,11 @@ action, entity, dialog, or global surface that owns the user's expectation.
 This is a frontend reliability gate, not notification infrastructure. It does
 not require a database, another Task type, a global mutation registry, or a
 Suspense boundary.
+
+Progress: Docker action surfaces (audit Batch 1) and the VM, WireGuard,
+NFS/CIFS, and account entity-scoped surfaces (audit Batch 2) were completed on
+2026-08-11 with delayed-mutation UI coverage. Batches 3 through 5 remain open,
+so the gate and all exit criteria below remain incomplete.
 
 ### Phase 5.5 exit criteria
 

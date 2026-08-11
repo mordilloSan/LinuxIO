@@ -584,6 +584,79 @@ describe("Virtual Machines page", () => {
     expect(mocks.mutations.shutdown).toHaveBeenCalledWith({ name: "alpha" });
   });
 
+  it("keeps lifecycle feedback scoped to each VM until its action settles", async () => {
+    let resolveShutdown!: () => void;
+    let resolveStart!: () => void;
+    mocks.listVMs = [mocks.alpha, mocks.beta];
+    mocks.mutations.shutdown.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveShutdown = resolve;
+        }),
+    );
+    mocks.mutations.start.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const { user } = await renderVMPage();
+    const alphaRow = screen
+      .getByRole("button", { name: "alpha" })
+      .closest<HTMLElement>('[role="row"]');
+    const betaRow = screen
+      .getByRole("button", { name: "beta" })
+      .closest<HTMLElement>('[role="row"]');
+
+    expect(alphaRow).not.toBeNull();
+    expect(betaRow).not.toBeNull();
+
+    await user.click(
+      within(alphaRow!).getByRole("button", { name: "Shutdown" }),
+    );
+
+    expect(
+      within(
+        within(alphaRow!).getByRole("button", { name: "Shutdown" }),
+      ).getByRole("progressbar"),
+    ).toBeInTheDocument();
+    expect(
+      within(alphaRow!).getByRole("button", { name: "Reboot" }),
+    ).toBeDisabled();
+    expect(
+      within(betaRow!).getByRole("button", { name: "Start" }),
+    ).toBeEnabled();
+
+    await user.click(within(betaRow!).getByRole("button", { name: "Start" }));
+
+    expect(
+      within(within(betaRow!).getByRole("button", { name: "Start" })).getByRole(
+        "progressbar",
+      ),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveShutdown();
+    });
+
+    await waitFor(() => {
+      expect(
+        within(alphaRow!).queryByRole("progressbar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(within(betaRow!).getByRole("progressbar")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveStart();
+    });
+
+    await waitFor(() => {
+      expect(
+        within(betaRow!).queryByRole("progressbar"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("does not crash when delete success has no disk arrays", async () => {
     const { user } = await renderVMPage();
 

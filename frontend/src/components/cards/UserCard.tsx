@@ -182,32 +182,33 @@ const SelectedSummaryRows = ({ rows }: { rows: SummaryRow[] }) => (
   </div>
 );
 
+export type UserLockAction = "lock" | "unlock";
+
 export interface UserCardProps {
   currentUsername: string | undefined;
-  isLocking: boolean;
   isSelected?: boolean;
-  isUnlocking: boolean;
   onChangePassword: () => void;
   onEdit: () => void;
   onOpen: () => void;
   onToggleLock: () => void;
+  pendingLockAction?: UserLockAction;
   user: AccountUser;
 }
 
 const UserCard = ({
   user,
   currentUsername,
-  isLocking,
-  isUnlocking,
   isSelected = false,
   onOpen,
   onEdit,
   onChangePassword,
   onToggleLock,
+  pendingLockAction,
 }: UserCardProps) => {
   const theme = useAppTheme();
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;
+  const lockLabel = user.isLocked ? "Unlock" : "Lock";
 
   const accentColor = user.isLocked
     ? theme.palette.warning.main
@@ -382,10 +383,16 @@ const UserCard = ({
             onClick={onChangePassword}
           />
           <AppActionIconButton
-            disabled={isProtected || isLocking || isUnlocking}
+            ariaLabel={
+              pendingLockAction
+                ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
+                : `${lockLabel} ${user.username}`
+            }
+            disabled={isProtected || Boolean(pendingLockAction)}
             icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
             iconSize={14}
-            label={user.isLocked ? "Unlock" : "Lock"}
+            label={lockLabel}
+            loading={Boolean(pendingLockAction)}
             onClick={onToggleLock}
           />
           <StatusDot

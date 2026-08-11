@@ -14,6 +14,14 @@ import { getWireguardStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
 import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
 
+export type WireguardInterfaceAction =
+  | "add-peer"
+  | "delete"
+  | "disable"
+  | "down"
+  | "enable"
+  | "up";
+
 interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
   handleDelete: (name: string) => void;
@@ -21,6 +29,7 @@ interface InterfaceCardProps {
   handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
   handleToggleInterface: (name: string, status: "up" | "down") => void;
   iface: WireGuardInterface;
+  pendingAction?: WireguardInterfaceAction;
   selectedCardRef: RefObject<HTMLDivElement> | null;
   selectedInterface: string | null;
 }
@@ -44,11 +53,15 @@ const InterfaceCard = ({
   handleToggleBootPersistence,
   handleDelete,
   handleAddPeer,
+  pendingAction,
 }: InterfaceCardProps) => {
   const theme = useAppTheme();
   const isActive = iface.isConnected === "Active";
   const statusColor = getWireguardStatusColor(iface.isConnected);
   const isSelected = iface.name === selectedInterface;
+  const actionBusy = Boolean(pendingAction);
+  const togglePending = pendingAction === "up" || pendingAction === "down";
+  const bootPending = pendingAction === "enable" || pendingAction === "disable";
   const detailsId = `wg-card-${iface.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
   return (
@@ -151,24 +164,40 @@ const InterfaceCard = ({
         <AppDivider style={{ marginBlock: 12 }} />
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 2, marginTop: "auto" }}>
+        <div
+          aria-busy={actionBusy}
+          aria-label={`Actions for ${iface.name}`}
+          role="group"
+          style={{ display: "flex", gap: 2, marginTop: "auto" }}
+        >
           <AppActionIconButton
-            ariaLabel={isActive ? "Turn interface off" : "Turn interface on"}
+            ariaLabel={
+              togglePending
+                ? `${pendingAction === "up" ? "Turning interface on" : "Turning interface off"} ${iface.name}`
+                : isActive
+                  ? "Turn interface off"
+                  : "Turn interface on"
+            }
             color={isActive ? statusColor : undefined}
+            disabled={actionBusy}
             icon="mdi:power"
             iconSize={20}
             label={isActive ? "Turn Off" : "Turn On"}
+            loading={togglePending}
             onClick={() => {
               handleToggleInterface(iface.name, isActive ? "down" : "up");
             }}
           />
           <AppActionIconButton
             ariaLabel={
-              iface.isEnabled
-                ? "Disable boot persistence"
-                : "Enable boot persistence"
+              bootPending
+                ? `${pendingAction === "enable" ? "Enabling boot persistence" : "Disabling boot persistence"} ${iface.name}`
+                : iface.isEnabled
+                  ? "Disable boot persistence"
+                  : "Enable boot persistence"
             }
             color={iface.isEnabled ? theme.palette.primary.main : undefined}
+            disabled={actionBusy}
             icon="mdi:restart"
             iconSize={20}
             label={
@@ -176,25 +205,38 @@ const InterfaceCard = ({
                 ? "Disable Boot Persistence"
                 : "Enable Boot Persistence"
             }
+            loading={bootPending}
             onClick={() => {
               handleToggleBootPersistence(iface.name, iface.isEnabled);
             }}
           />
           <AppActionIconButton
-            ariaLabel="Add peer"
+            ariaLabel={
+              pendingAction === "add-peer"
+                ? `Adding peer to ${iface.name}`
+                : "Add peer"
+            }
+            disabled={actionBusy}
             icon="mdi:plus"
             iconSize={20}
             label="Add Peer"
+            loading={pendingAction === "add-peer"}
             onClick={() => {
               handleAddPeer(iface.name, {});
             }}
           />
           <AppActionIconButton
-            ariaLabel="Delete interface"
+            ariaLabel={
+              pendingAction === "delete"
+                ? `Deleting interface ${iface.name}`
+                : "Delete interface"
+            }
             color="var(--app-palette-error-main)"
+            disabled={actionBusy}
             icon="mdi:delete"
             iconSize={20}
             label="Delete Interface"
+            loading={pendingAction === "delete"}
             onClick={() => {
               handleDelete(iface.name);
             }}

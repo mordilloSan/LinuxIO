@@ -1,8 +1,16 @@
 # Mutation Feedback Audit and Handoff
 
-Status: audit complete; implementation not started.
+Status: implementation in progress; entity-scoped action Batches 1 and 2
+complete.
 
 Snapshot date: 2026-08-11.
+
+Implementation progress: Batches 1 and 2 were completed on 2026-08-11. Docker,
+VM, WireGuard, existing NFS/CIFS mount, and account-lock actions now retain
+entity/action-scoped pending state without blocking unrelated entities. Docker
+compact and context-menu actions keep a visible owner after their menus close.
+Focused delayed-mutation tests cover every repaired ownership boundary. Batches
+3 through 5 remain open.
 
 This document is the portable handoff for restoring visible working state to
 frontend mutations before the persistent alert phase begins. It records the
@@ -70,10 +78,10 @@ where useful, a `startIcon` spinner.
 | Auto-update toggle | save per-container selection | Optimistic state plus a per-container action spinner. | Complete. |
 | Compose stack operation | up, down, stop, restart | Dedicated Task dialog renders progress and logs. | Complete. |
 | Compose setup/editor/delete | validate, resolve path, save, delete | Dialog-owned saving/validating state or the operation dialog. | Complete. |
-| `ContainerTable` row actions | start, stop, restart, remove | Each hook discards `isPending`. The row `pending` prop represents Stop All only. Compact menus close and leave no feedback. | Defect. |
-| Dashboard Docker mini-icons | start, stop, restart, remove | Context menu closes immediately and no pending target remains visible. | Defect. |
-| Compose expanded containers | start, stop, restart, remove | Hooks discard pending state. | Defect. |
-| Compose expanded container update | update | A shared pending flag disables some parent controls, but the affected row/action has no spinner. | Incomplete. |
+| `ContainerTable` row actions | start, stop, restart, remove | Each action owns its spinner and row-busy state; compact rows retain an action-labelled trigger spinner after the menu closes. Stop All remains row-scoped. | Complete. |
+| Dashboard Docker mini-icons | start, stop, restart, remove | A pending-action map retains each target and action after the context menu closes; affected icons render labelled progress without blocking unrelated containers. | Complete. |
+| Compose expanded containers | start, stop, restart, remove | Row-owned mutations render the matching action spinner and disable only conflicting controls on that container. | Complete. |
+| Compose expanded container update | update | Update now uses the same row-owned action state and spinner instead of a shared page flag. | Complete. |
 
 Primary source locations:
 
@@ -89,9 +97,9 @@ Primary source locations:
 |---------|-----------|------------------|------------|
 | VM creation | create Task and ISO-folder creation | Typed message/percentage, linear progress, and action spinner. | Complete. |
 | VM deletion | delete | Confirmation dialog remains mounted and renders a spinner. | Complete. |
-| VM table lifecycle | start, shutdown, reboot, force off, suspend, resume | A single aggregate flag disables lifecycle actions for every VM, but no control identifies the running action or target VM. | Incomplete. |
+| VM table lifecycle | start, shutdown, reboot, force off, suspend, resume | A per-VM pending-action map renders the matching spinner, disables conflicting controls only on that VM, and permits concurrent work on unrelated VMs. | Complete. |
 
-The lifecycle repair belongs in
+The lifecycle ownership is implemented in
 [`frontend/src/routes/_authenticated/vm/-components/VMMachinesLayout.tsx`](../frontend/src/routes/_authenticated/vm/-components/VMMachinesLayout.tsx)
 and
 [`frontend/src/routes/_authenticated/vm/-components/VMListTable.tsx`](../frontend/src/routes/_authenticated/vm/-components/VMListTable.tsx).
@@ -102,7 +110,7 @@ and
 |---------|-----------|------------------|------------|
 | Account dialogs | create, edit, delete, password, group membership | Explicit `Creating...`, `Saving...`, `Deleting...`, or `Changing...` state. | Complete. |
 | Session termination | terminate session | Confirmation remains open with `Terminating...`. | Complete. |
-| User lock/unlock | lock, unlock | All lock buttons disable, but the affected user and operation have no visible working state. | Incomplete. |
+| User lock/unlock | lock, unlock | Table and card views retain the affected username and action, render `Locking` or `Unlocking` progress, and leave unrelated users actionable. | Complete. |
 | Failed-login dialog | dismiss alert | Shows `Dismissing...`. | Complete. |
 | Health-card quick dismiss | dismiss failed-login/unclean-shutdown alert | The icon merely disables. | Incomplete, low priority. |
 | Account-detail automatic dismissal | dismiss alert on routed focus | Background convergence with no direct user action. | Intentional. |
@@ -116,9 +124,9 @@ and
 | LVM dialogs | create, resize, delete | Explicit active-verb labels. | Complete. |
 | Share create/edit/delete dialogs | SMB and NFS lifecycle | Explicit active-verb labels. | Complete. |
 | NFS/CIFS create, edit, remove dialogs | mount/remount/remove | Explicit active-verb labels. | Complete. |
-| Existing NFS entry mount | mount | Tracks the mountpoint and disables the action; only the tooltip changes to `Mounting...`. | Incomplete. |
-| Existing NFS entry unmount | unmount | Hook pending state is discarded. | Defect. |
-| Existing CIFS entry mount/unmount | mount, unmount | Hook pending state is discarded. | Defect. |
+| Existing NFS entry mount | mount | The affected mountpoint owns a labelled spinner and row/card busy state until request and invalidations settle. | Complete. |
+| Existing NFS entry unmount | unmount | Uses the same per-mountpoint owner without blocking unrelated entries. | Complete. |
+| Existing CIFS entry mount/unmount | mount, unmount | Matching action spinners and per-entry conflict disabling remain visible through settlement. | Complete. |
 
 ### Services, Network, Power, and Settings
 
@@ -146,9 +154,9 @@ is the best existing reference for action-specific spinners.
 | Surface | Mutations | Current behavior | Assessment |
 |---------|-----------|------------------|------------|
 | Interface creation | add interface | Creation dialog shows `Creating...`. | Complete. |
-| Interface lifecycle | remove, up, down, enable, disable | Pending state is not retained or rendered. | Defect. |
-| Peer lifecycle | add/remove peer | Pending state is not retained or rendered. | Defect. |
-| Peer config download | generate/download config | No pending state remains visible after activation. | Defect. |
+| Interface lifecycle | remove, up, down, enable, disable | Per-interface action ownership renders the matching labelled spinner and survives polled status changes. | Complete. |
+| Peer lifecycle | add/remove peer | Interface and peer maps scope action feedback without blocking unrelated cards. | Complete. |
+| Peer config download | generate/download config | The affected peer retains a labelled download spinner through generation and browser handoff. | Complete. |
 
 The affected owners are
 [`frontend/src/routes/_authenticated/wireguard/-components/WireguardDashboard.tsx`](../frontend/src/routes/_authenticated/wireguard/-components/WireguardDashboard.tsx)
@@ -202,7 +210,9 @@ make the state available, but the affected components still have to render it.
 
 Implement one independently reviewable frontend batch at a time.
 
-### Batch 1: Docker action surfaces
+### Batch 1: Docker action surfaces (complete)
+
+Completed on 2026-08-11:
 
 - Connect each `ContainerTable` lifecycle mutation to the matching action's
   `loading` prop.
@@ -214,12 +224,18 @@ Implement one independently reviewable frontend batch at a time.
 - Add delayed-mutation tests that assert the correct spinner and disabled
   controls while the promise is unsettled.
 
-### Batch 2: Other entity-scoped actions
+### Batch 2: Other entity-scoped actions (complete)
 
-- VM lifecycle actions.
-- WireGuard interface and peer actions.
-- NFS and CIFS inline mount/unmount actions.
-- Account lock/unlock.
+Completed on 2026-08-11:
+
+- Replaced VM-wide lifecycle disabling with per-VM, per-action progress.
+- Retained WireGuard interface and peer targets for lifecycle and config
+  download Calls, including across polled status changes.
+- Added per-mountpoint ownership to NFS and CIFS inline mount/unmount actions.
+- Kept account lock/unlock progress attached to the affected user across table
+  and card views.
+- Added delayed-mutation tests for concurrent entities, action settlement, and
+  unrelated-row availability.
 
 For a mutation owner that permits only one in-flight action, the mutation's
 `variables` can identify the affected entity. If parallel actions are an
@@ -276,13 +292,16 @@ are usually short, but they should converge on the same visible contract.
 
 ## Test Baseline and Gaps
 
-Existing progress tests cover important update and VM-create flows, but the
-affected Docker row/menu, VM lifecycle, WireGuard, mount, account lock, and File
-Browser pending states have little or no direct UI coverage. A passing mutation
-hook test is insufficient: the regression is specifically whether pending
+Focused delayed-mutation tests now cover Docker table action spinners and
+compact-menu closure, concurrent dashboard mini-icon targets, Compose expanded
+containers, VM lifecycle actions, WireGuard interfaces and peers, NFS/CIFS
+mount actions, and account lock/unlock across view changes. File Browser and
+the smaller disabled-only controls remain uncovered. A passing mutation-hook
+test remains insufficient: the regression is specifically whether pending
 state reaches a mounted user-visible control.
 
-No implementation or test command was run as part of this audit. The working
+The original audit ran no implementation or test command. Batches 1 and 2 pass
+`make check-frontend` on 2026-08-11 (152 test files, 713 tests). The working
 tree already contained the API reliability and generic-progress changes when
 the audit was written; preserve those changes when moving or committing this
 handoff.
@@ -296,4 +315,3 @@ handoff.
 - Do not hide entity identity behind one page-wide `isPending` flag.
 - Do not duplicate Task progress in both a local dialog and the navbar without
   a deliberate single-owner presentation rule.
-

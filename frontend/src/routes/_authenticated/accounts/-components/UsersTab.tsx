@@ -3,6 +3,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
+import type { UserLockAction } from "@/components/cards/UserCard";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -47,6 +48,9 @@ const UsersTab = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [dialogUser, setDialogUser] = useState<AccountUser | null>(null);
+  const [pendingLockActions, setPendingLockActions] = useState<
+    Map<string, UserLockAction>
+  >(() => new Map());
   const navigate = accountsRouteApi.useNavigate();
   const routeSearch = accountsRouteApi.useSearch();
   const selectedUsername =
@@ -109,7 +113,7 @@ const UsersTab = ({
     setDialogUser(user);
     setPasswordDialogOpen(true);
   };
-  const { mutate: lockUser, isPending: isLocking } = useCallMutation(
+  const { mutateAsync: lockUser } = useCallMutation(
     linuxio.accounts.lock_user,
     {
       success: "User locked successfully",
@@ -117,7 +121,7 @@ const UsersTab = ({
       toast: ACCOUNTS_TOAST_META,
     },
   );
-  const { mutate: unlockUser, isPending: isUnlocking } = useCallMutation(
+  const { mutateAsync: unlockUser } = useCallMutation(
     linuxio.accounts.unlock_user,
     {
       success: "User unlocked successfully",
@@ -128,11 +132,28 @@ const UsersTab = ({
 
   const handleToggleLock = (user: AccountUser) => {
     if (user.username === "root" || user.username === currentUser?.name) return;
-    if (user.isLocked) {
-      unlockUser({ username: user.username });
-    } else {
-      lockUser({ username: user.username });
-    }
+    if (pendingLockActions.has(user.username)) return;
+
+    const action: UserLockAction = user.isLocked ? "unlock" : "lock";
+    setPendingLockActions((current) => {
+      const next = new Map(current);
+      next.set(user.username, action);
+      return next;
+    });
+    const operation =
+      action === "unlock"
+        ? unlockUser({ username: user.username })
+        : lockUser({ username: user.username });
+    void operation
+      .finally(() => {
+        setPendingLockActions((current) => {
+          if (current.get(user.username) !== action) return current;
+          const next = new Map(current);
+          next.delete(user.username);
+          return next;
+        });
+      })
+      .catch(() => undefined);
   };
 
   // Format last login for display
@@ -317,6 +338,8 @@ const UsersTab = ({
       enableSorting: false,
       cell: ({ row }) => {
         const user = row.original;
+        const pendingLockAction = pendingLockActions.get(user.username);
+        const lockLabel = user.isLocked ? "Unlock" : "Lock";
         return (
           <div
             style={{
@@ -345,15 +368,20 @@ const UsersTab = ({
               }}
             />
             <AppActionIconButton
+              ariaLabel={
+                pendingLockAction
+                  ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
+                  : `${lockLabel} ${user.username}`
+              }
               disabled={
                 user.username === "root" ||
                 user.username === currentUser?.name ||
-                isLocking ||
-                isUnlocking
+                Boolean(pendingLockAction)
               }
               icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
               iconSize={20}
-              label={user.isLocked ? "Unlock" : "Lock"}
+              label={lockLabel}
+              loading={Boolean(pendingLockAction)}
               onClick={(e) => {
                 e.stopPropagation();
                 handleToggleLock(user);
@@ -406,12 +434,11 @@ const UsersTab = ({
       {effectiveViewMode === "card" ? (
         <UserCardsView
           currentUsername={currentUser?.name}
-          isLocking={isLocking}
-          isUnlocking={isUnlocking}
           onChangePassword={handleChangePassword}
           onEdit={handleEditUser}
           onSelect={setSelectedUsername}
           onToggleLock={handleToggleLock}
+          pendingLockActions={pendingLockActions}
           selectedUser={detailUser}
           surface={surface}
           users={filtered}

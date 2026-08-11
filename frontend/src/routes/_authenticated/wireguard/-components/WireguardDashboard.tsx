@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
+import type { WireguardInterfaceAction } from "@/components/cards/WireguardInterfaceCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -29,6 +30,9 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
+  const [pendingActions, setPendingActions] = useState<
+    ReadonlyMap<string, WireguardInterfaceAction>
+  >(() => new Map());
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
 
@@ -40,36 +44,33 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   });
 
   // Mutations
-  const { mutate: removeInterface } = useCallMutation(
-    linuxio.wireguard.remove_interface,
-    {
-      success: (_result, variables) => {
-        toast.success(`WireGuard interface '${variables.name}' deleted`);
-        setSelectedInterface(null);
-      },
-      error: "Failed to remove WireGuard interface",
-      toast: WIREGUARD_TOAST_META,
+  const removeInterface = useCallMutation(linuxio.wireguard.remove_interface, {
+    success: (_result, variables) => {
+      toast.success(`WireGuard interface '${variables.name}' deleted`);
+      setSelectedInterface(null);
     },
-  );
+    error: "Failed to remove WireGuard interface",
+    toast: WIREGUARD_TOAST_META,
+  });
 
-  const { mutate: addPeer } = useCallMutation(linuxio.wireguard.add_peer, {
+  const addPeer = useCallMutation(linuxio.wireguard.add_peer, {
     success: (_result, variables) =>
       toast.success(`Peer added to '${variables.interfaceName}'`),
     error: "Failed to add peer",
     toast: WIREGUARD_TOAST_META,
   });
 
-  const { mutate: upInterface } = useCallMutation(
+  const upInterface = useCallMutation(
     linuxio.wireguard.up_interface,
     interfaceActionConfig("turned on.", "Failed to bring interface up"),
   );
 
-  const { mutate: downInterface } = useCallMutation(
+  const downInterface = useCallMutation(
     linuxio.wireguard.down_interface,
     interfaceActionConfig("turned off.", "Failed to bring interface down"),
   );
 
-  const { mutate: enableInterface } = useCallMutation(
+  const enableInterface = useCallMutation(
     linuxio.wireguard.enable_interface,
     interfaceActionConfig(
       "enabled for boot persistence.",
@@ -77,7 +78,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     ),
   );
 
-  const { mutate: disableInterface } = useCallMutation(
+  const disableInterface = useCallMutation(
     linuxio.wireguard.disable_interface,
     interfaceActionConfig(
       "disabled for boot persistence.",
@@ -119,28 +120,59 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     };
   }, [hasSelectedInterface]);
 
+  const runInterfaceAction = (
+    interfaceName: string,
+    action: WireguardInterfaceAction,
+    run: () => Promise<unknown>,
+  ) => {
+    if (pendingActions.has(interfaceName)) return;
+
+    setPendingActions((current) => new Map(current).set(interfaceName, action));
+    void run()
+      .catch(() => undefined)
+      .finally(() => {
+        setPendingActions((current) => {
+          if (current.get(interfaceName) !== action) return current;
+          const next = new Map(current);
+          next.delete(interfaceName);
+          return next;
+        });
+      });
+  };
+
   const handleDelete = (interfaceName: string) => {
-    removeInterface({ name: interfaceName });
+    runInterfaceAction(interfaceName, "delete", () =>
+      removeInterface.mutateAsync({ name: interfaceName }),
+    );
   };
 
   const handleAddPeer = (interfaceName: string) => {
-    addPeer({ interfaceName });
+    runInterfaceAction(interfaceName, "add-peer", () =>
+      addPeer.mutateAsync({ interfaceName }),
+    );
   };
 
   const handleToggleInterface = (
     interfaceName: string,
     status: "up" | "down",
   ) => {
-    const mutation = status === "up" ? upInterface : downInterface;
-    mutation({ name: interfaceName });
+    runInterfaceAction(interfaceName, status, () =>
+      status === "up"
+        ? upInterface.mutateAsync({ name: interfaceName })
+        : downInterface.mutateAsync({ name: interfaceName }),
+    );
   };
 
   const handleToggleBootPersistence = (
     interfaceName: string,
     isEnabled: boolean,
   ) => {
-    const mutation = isEnabled ? disableInterface : enableInterface;
-    mutation({ name: interfaceName });
+    const action = isEnabled ? "disable" : "enable";
+    runInterfaceAction(interfaceName, action, () =>
+      isEnabled
+        ? disableInterface.mutateAsync({ name: interfaceName })
+        : enableInterface.mutateAsync({ name: interfaceName }),
+    );
   };
 
   const surface = useReorderableSurface({
@@ -168,6 +200,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
                   handleToggleBootPersistence={handleToggleBootPersistence}
                   handleToggleInterface={handleToggleInterface}
                   iface={iface}
+                  pendingAction={pendingActions.get(iface.name)}
                   selectedCardRef={
                     iface.name === selectedInterface ? selectedCardRef : null
                   }

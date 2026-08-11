@@ -851,7 +851,7 @@ const ActionsCell = memo(function ActionsCell({
   url,
 }: ActionsCellProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { mutate: startContainer } = useCallMutation(
+  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
     linuxio.docker.start_container,
     {
       success: `Container ${name} started`,
@@ -859,7 +859,7 @@ const ActionsCell = memo(function ActionsCell({
       toast: DOCKER_TOAST_META,
     },
   );
-  const { mutate: stopContainer } = useCallMutation(
+  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
     linuxio.docker.stop_container,
     {
       success: `Container ${name} stopped`,
@@ -867,44 +867,59 @@ const ActionsCell = memo(function ActionsCell({
       toast: DOCKER_TOAST_META,
     },
   );
-  const { mutate: restartContainer } = useCallMutation(
-    linuxio.docker.restart_container,
-    {
+  const { mutate: restartContainer, isPending: isRestartPending } =
+    useCallMutation(linuxio.docker.restart_container, {
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: removeContainer } = useCallMutation(
-    linuxio.docker.remove_container,
-    {
+    });
+  const { mutate: removeContainer, isPending: isRemovePending } =
+    useCallMutation(linuxio.docker.remove_container, {
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
+  const rowBusy =
+    pending ||
+    isStartPending ||
+    isStopPending ||
+    isRestartPending ||
+    isRemovePending;
+  const pendingActionLabel =
+    pending || isStopPending
+      ? "Stopping"
+      : isStartPending
+        ? "Starting"
+        : isRestartPending
+          ? "Restarting"
+          : isRemovePending
+            ? "Removing"
+            : undefined;
 
   const actions: ContainerAction[] = [
     state === "running"
       ? {
           icon: "mdi:stop",
           label: "Stop",
-          loading: pending,
+          loading: pending || isStopPending,
           onClick: () => stopContainer({ containerId }),
         }
       : {
           icon: "mdi:play",
           label: "Start",
+          loading: isStartPending,
           onClick: () => startContainer({ containerId }),
         },
     {
       icon: "mdi:restart",
       label: "Restart",
+      loading: isRestartPending,
       onClick: () => restartContainer({ containerId }),
     },
     {
       icon: "mdi:delete",
       label: "Remove",
+      loading: isRemovePending,
       onClick: () => removeContainer({ containerId }),
     },
     {
@@ -932,9 +947,15 @@ const ActionsCell = memo(function ActionsCell({
     return (
       <>
         <AppActionIconButton
-          ariaLabel={`Actions for ${name}`}
+          ariaLabel={
+            pendingActionLabel
+              ? `${pendingActionLabel} ${name}`
+              : `Actions for ${name}`
+          }
+          disabled={rowBusy}
           icon="mdi:dots-vertical"
           iconSize={20}
+          loading={rowBusy}
           onClick={(event) => setMenuAnchor(event.currentTarget)}
           tooltip={false}
         />
@@ -946,7 +967,7 @@ const ActionsCell = memo(function ActionsCell({
         >
           {actions.map((action) => (
             <AppMenuItem
-              disabled={pending}
+              disabled={rowBusy}
               key={action.label}
               onClick={() => {
                 setMenuAnchor(null);
@@ -997,7 +1018,7 @@ const ActionsCell = memo(function ActionsCell({
         <AppTooltip key={action.label} title={action.label}>
           <span>
             <AppActionIconButton
-              disabled={pending && !action.loading}
+              disabled={rowBusy && !action.loading}
               icon={action.icon}
               iconSize={16}
               label={action.label}
