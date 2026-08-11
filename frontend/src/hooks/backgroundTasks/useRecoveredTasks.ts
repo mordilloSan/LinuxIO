@@ -12,10 +12,10 @@ import {
   isTaskCancellationError,
   isTerminalTaskState,
   type TaskEvent,
+  type TaskProgress,
   type TaskSnapshot,
   openTaskWatchStream,
   openTaskEventsStream,
-  type ProgressFrame,
   type Stream,
   useStreamMux,
 } from "@/api";
@@ -66,6 +66,20 @@ interface RecoveredTaskControls {
     setLastIndexerError: Dispatch<SetStateAction<string | null>>;
     removeIndexer: (id: string) => void;
   };
+}
+
+interface GenericProgressDetail {
+  type?: string;
+  message?: string;
+  status?: string;
+  package_id?: string;
+  files_indexed?: number;
+  dirs_indexed?: number;
+  filesDone?: number;
+  filesTotal?: number;
+  phase?: string;
+  processed?: number;
+  indeterminate?: boolean;
 }
 
 export function useRecoveredTasks(
@@ -127,47 +141,35 @@ export function useRecoveredTasks(
         return parts[parts.length - 1] || fallback;
       };
       const abortController = new AbortController();
-      const genericProgressPct = (value: unknown) => {
-        const data = value as
-          | {
-              pct?: number;
-              percentage?: number;
-              item_pct?: number;
-              indeterminate?: boolean;
-            }
-          | undefined;
-        if (data?.indeterminate) return 0;
-        return Math.min(
-          99,
-          data?.pct ?? data?.percentage ?? data?.item_pct ?? 0,
-        );
+      const progressDetail = (value: TaskProgress | null | undefined) => {
+        if (!value?.detail || typeof value.detail !== "object") {
+          return undefined;
+        }
+        return value.detail as GenericProgressDetail;
       };
-      const genericProgressMeta = (value: unknown) => {
-        const data = value as
-          | { indeterminate?: boolean; processed?: number }
-          | undefined;
+      const genericProgressPct = (value: TaskProgress | null | undefined) => {
+        const detail = progressDetail(value);
+        if (detail?.indeterminate) return 0;
+        return Math.min(99, value?.percentage ?? 0);
+      };
+      const genericProgressMeta = (value: TaskProgress | null | undefined) => {
+        const detail = progressDetail(value);
         return {
-          indeterminate: data?.indeterminate,
-          processed: data?.processed,
+          indeterminate:
+            typeof detail?.indeterminate === "boolean"
+              ? detail.indeterminate
+              : undefined,
+          processed:
+            typeof detail?.processed === "number"
+              ? detail.processed
+              : undefined,
         };
       };
-      const genericLabel = (value: unknown) => {
-        const data = value as
-          | {
-              type?: string;
-              message?: string;
-              status?: string;
-              package_id?: string;
-              files_indexed?: number;
-              dirs_indexed?: number;
-              filesDone?: number;
-              filesTotal?: number;
-              phase?: string;
-              pct?: number;
-              processed?: number;
-              indeterminate?: boolean;
-            }
-          | undefined;
+      const genericLabel = (value: TaskProgress | null | undefined) => {
+        const data = progressDetail(value);
+        const phase = value?.phase ?? data?.phase;
+        const percentage = value?.percentage;
+        const message = value?.message ?? data?.message;
         switch (task.type) {
           case TaskTypes.TASK_TYPE_FILE_UPLOAD: {
             const name = getName(
@@ -175,15 +177,15 @@ export function useRecoveredTasks(
                 requestString(metadata, "label"),
               "file",
             );
-            return data?.phase === "waiting_for_client"
+            return phase === "waiting_for_client"
               ? `Upload waiting: ${name}`
-              : `Uploading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+              : `Uploading ${name}${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           }
           case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH: {
             const filesTotal = data?.filesTotal ?? 0;
-            return data?.phase === "waiting_for_client"
+            return phase === "waiting_for_client"
               ? `Upload waiting: ${filesTotal} file${filesTotal === 1 ? "" : "s"}`
-              : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+              : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           }
           case TaskTypes.TASK_TYPE_FILE_DOWNLOAD: {
             const name = getName(
@@ -191,14 +193,14 @@ export function useRecoveredTasks(
                 requestString(metadata, "label"),
               "file",
             );
-            return data?.phase === "waiting_for_client"
+            return phase === "waiting_for_client"
               ? `Download waiting: ${name}`
-              : `Downloading ${name}${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+              : `Downloading ${name}${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           }
           case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
-            return data?.phase === "waiting_for_client"
+            return phase === "waiting_for_client"
               ? "Archive download waiting"
-              : `Preparing archive${data?.pct !== undefined ? ` (${data.pct}%)` : ""}`;
+              : `Preparing archive${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH: {
             const processed = data?.processed ?? 0;
             return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}: ${processed} item${processed === 1 ? "" : "s"}`;
@@ -209,7 +211,7 @@ export function useRecoveredTasks(
           }
           case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
             return (
-              data?.message ??
+              message ??
               `Docker compose ${requestString(metadata, "action") ?? "operation"}`
             );
           case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
@@ -217,15 +219,15 @@ export function useRecoveredTasks(
               ? `Updating ${data.package_id.split(";")[0]}`
               : data?.status
                 ? `Updating packages: ${data.status}`
-                : "Updating packages";
+                : (message ?? "Updating packages");
           case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
-            return data?.message ?? "Running SMART self-test";
+            return message ?? "Running SMART self-test";
           case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY: {
             const cap = requestString(metadata, "capability") ?? "capability";
-            return data?.message ?? `Installing ${cap}`;
+            return message ?? `Installing ${cap}`;
           }
           default:
-            return "Running task";
+            return message ?? "Running task";
         }
       };
 
@@ -235,7 +237,7 @@ export function useRecoveredTasks(
         onError,
         onFinally,
       }: {
-        onProgress: (progress: ProgressFrame) => void;
+        onProgress: (progress: TaskProgress<Record<string, unknown>>) => void;
         onSuccess: (result: unknown) => void;
         onError: (error: unknown) => void;
         onFinally: () => void;
@@ -297,13 +299,14 @@ export function useRecoveredTasks(
           ]);
           watch({
             onProgress: (nextProgress) => {
+              const detail = nextProgress.detail as
+                | IndexerProgressFrame
+                | undefined;
+              if (!detail) return;
               setIndexers((prev) =>
                 prev.map((item) =>
                   item.id === task.id
-                    ? mergeIndexerProgress(
-                        item,
-                        nextProgress as IndexerProgressFrame,
-                      )
+                    ? mergeIndexerProgress(item, detail)
                     : item,
                 ),
               );

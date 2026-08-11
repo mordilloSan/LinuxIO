@@ -107,11 +107,13 @@ const ComposeOperationDialog = ({
       }
       toast.error(`Failed to ${action} stack: ${message}`);
     },
-    onProgress: (msg) => {
+    onProgress: (taskProgress) => {
       // A finished run stays attached until its result frame lands, so frames
       // can still arrive after the dialog was closed and reset. Writing them
       // back would leave the next open showing the previous run's state.
       if (!startedRef.current) return;
+      const msg = taskProgress.detail;
+      if (!msg) return;
       switch (msg.type) {
         case "progress": {
           const progress = msg.progress;

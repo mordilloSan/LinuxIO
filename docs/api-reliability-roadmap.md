@@ -17,6 +17,10 @@ Detailed contracts remain in their focused documents:
   execution pilot.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
+- [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
+  run-summary, and journald ownership boundaries.
+- [Mutation Feedback Audit](./mutation-feedback-audit.md) records the
+  post-transport frontend pending-state gaps and their repair order.
 
 The repository [`ToDo`](../ToDo) links here instead of duplicating these plans.
 
@@ -35,6 +39,9 @@ Make the smallest change that establishes a real invariant:
   boundaries, atomic persistence, and honest unknown-outcome reporting.
 - **Simple handlers:** transport, scheduling, persistence, and presentation do
   not leak into ordinary domain handlers.
+- **Native ownership:** systemd owns schedules and process execution, journald
+  owns logs, and LinuxIO persists only the user-facing state those services do
+  not represent.
 
 ## Current Baseline
 
@@ -63,10 +70,20 @@ The strict-input and explicit Call-policy phase is also complete:
   post-send outcome; and
 - feature decisions use structured error codes rather than message text.
 
-The remaining reliability constraint is that server notifications are not
-implemented; the navbar history is local toast history only. Notifications
-build on the completed transport, Task ownership, and durable-operation
-boundaries rather than adding a parallel runtime.
+Uniform generic Task progress is also complete: snapshots and lifecycle events
+carry the common percentage, phase, and message fields, generated route
+endpoints retain typed detail, and generic recovery no longer guesses among
+route-specific field names.
+
+The remaining reliability constraints are:
+
+- server alerts are not implemented and the navbar history is local toast
+  history only; and
+- future scheduled scripts need native timing, stable run identity, and log
+  correlation without making the bridge a scheduler or a log database.
+
+These slices build on the completed transport, Task ownership, and
+durable-operation boundaries rather than adding a parallel runtime.
 
 ## Target Model
 
@@ -74,17 +91,24 @@ boundaries rather than adding a parallel runtime.
 Browser
 ├── TanStack Query + Call descriptors
 ├── payload-specific Channels
-└── Task client
+├── Task client
+└── alert cache + presentation
         │
 Bridge
 ├── Call registry             bounded request/result
 ├── Channel registry          live stream with explicit resume semantics
-└── Task service
-    ├── session Task          in memory, exact-session owner
-    └── durable Task          persistent record + external execution owner
+├── Task service
+│   ├── session Task          in memory, exact-session owner
+│   └── durable Task          persistent record + external execution owner
+├── alert service             lifecycle, user state, routing
+└── scheduled-run projection  definitions + bounded run summaries
+
+Native Linux owners
+├── systemd service/timer     schedule and process state
+└── journald                  execution logs
 
 Server-side persistent state
-└── Notification store        bounded, per-user records
+└── LinuxIO metadata store    alerts, user state, run summaries, delivery state
 ~~~
 
 | Primitive | Execution owner | Loss behavior |
@@ -93,7 +117,10 @@ Server-side persistent state
 | Channel | Live connection | Resume only through the payload's cursor, offset, sequence, or external session identity. |
 | Session Task | Bridge process | A watcher may detach; ending the owning session or bridge cancels the Task. |
 | Durable Task | External executor plus persistent operation record | A later bridge discovers the same operation by stable ID. |
-| Notification | Persistent per-user store | A reconnecting client receives an authoritative snapshot before live changes. |
+| Schedule | Native systemd timer and service | systemd owns activation and process state even when no bridge is connected. |
+| Run summary | Persistent LinuxIO metadata keyed to a systemd invocation | A reconnecting client can query bounded execution history and then open the corresponding journal. |
+| Alert | Persistent LinuxIO metadata store | A reconnecting client receives authoritative lifecycle and per-user seen state before live changes. |
+| Delivery | Alert router plus configured target | Matchers select targets; retry and outcome state do not alter the source alert or run. |
 
 Task is a service composed from bounded control operations and Channels. It is
 not a third wire protocol.
@@ -341,45 +368,156 @@ owner confirms it stopped.
   cancelable from a replacement same-UID session, and count toward singleton
   admission; the locked store also enforces the singleton across processes.
 
-## Phase 5: Persistent Notifications
+## Phase 5: Uniform Generic Task Progress
 
-Implement [Notifications](./notifications.md) after Task ownership and terminal
-state rules are stable.
+Completed on 2026-08-10.
 
-The first version is deliberately small:
+Adopt one envelope for snapshot-retained Task progress while preserving generated
+route-specific detail:
 
-- one bounded per-user JSON snapshot store using atomic replacement and sidecar
-  locking;
-- Calls for list, read/unread changes, mark-all-read, and clear;
-- one `notifications.watch` Channel that emits an authoritative snapshot plus
-  revision on open and whenever that persisted revision changes;
-- server-created terminal Task notifications deduplicated by stable operation
-  ID;
-- TanStack Query as the frontend server-state cache and Sonner as presentation
-  only.
+~~~text
+percentage?   generic completion from 0 through 100
+phase?        stable machine-readable phase
+message?      concise presentation-ready status
+detail?       route-declared typed payload
+~~~
 
-Do not persist every toast or progress frame. Do not create durable
-notifications from recovered frontend Task events. Task completion remains
-authoritative if notification persistence fails; durable Task recovery
-reconciles a missing notification by stable operation ID. Remove local
-toast-history persistence only when the server-backed navbar cuts over, so
-there is one history owner.
+`WithTaskProgress[T]` declares `T` as the detail contract and the generator
+exposes `TaskProgress<T>` to the route-specific frontend endpoint. Global Task
+snapshots and lifecycle events expose `TaskProgress<unknown>`, allowing generic
+consumers to read the common fields without unsafe route heuristics. Retained
+progress uses that envelope on both `tasks.events` and `tasks.watch`: the former
+provides owner-wide discovery and recovery, while the latter follows one Task
+with its typed detail and terminal result. Explicit transient output remains
+local to a direct watcher and does not enter the owner-wide lifecycle stream.
 
-Preferences, a full history page, and global disk/Docker/system producers are
-later slices. Add them only after the per-user core and reconnect behavior are
-proven.
+Transient stream data remains distinct. `tasks.data` and progress-shaped
+Channel control frames do not become durable Task progress merely because they
+use the progress opcode.
 
-## Phase 6: Extend from Evidence
+### Phase 5 exit criteria
 
-After the app-update and notification vertical slices:
+- [x] Every Task route reports the common progress envelope.
+- [x] Generated route endpoints retain their concrete detail type.
+- [x] Global Task recovery reads only the common percentage, phase, and message
+  fields for generic presentation.
+- [x] Route-owned UIs read their typed `detail`; no compatibility field-name
+  guessing remains.
+- [x] Progress remains bounded and coalesced on the owner-wide event stream.
 
+## Phase 5.5: Mutation Feedback Consistency Gate
+
+Complete the [Mutation Feedback Audit](./mutation-feedback-audit.md) before
+starting the persistent alert implementation. Uniform Task progress does not
+make bounded Call mutations visible automatically: `isPending` must reach the
+action, entity, dialog, or global surface that owns the user's expectation.
+
+This is a frontend reliability gate, not notification infrastructure. It does
+not require a database, another Task type, a global mutation registry, or a
+Suspense boundary.
+
+### Phase 5.5 exit criteria
+
+- [ ] Every directly activated mutation has a visible working state until the
+  mutation and its mapped invalidations settle.
+- [ ] Row and card feedback identifies the affected entity and action instead
+  of disabling an unrelated page or table without explanation.
+- [ ] Closing a menu or dialog never leaves active work with no visible owner.
+- [ ] Tasks with meaningful progress use the common Task envelope; bounded
+  Calls remain bounded Calls.
+- [ ] Optimistic and self-severing actions retain their intentional specialized
+  feedback.
+- [ ] Repaired ownership boundaries have pending-state UI tests and pass
+  `make check-frontend`.
+
+## Phase 6: Persistent Alert Lifecycle
+
+Implement [Notifications](./notifications.md) after uniform Task progress and
+the mutation-feedback consistency gate.
+The domain is an alert lifecycle rather than a persisted toast list:
+
+- stable alert identity and source-defined deduplication key;
+- severity, category, title, message, first/last occurrence, and count;
+- active/resolved state distinct from seen/unseen and dismissed/restored state;
+- authenticated Calls for list and lifecycle mutations;
+- one snapshot-first watch Channel feeding the TanStack Query cache; and
+- Sonner as presentation only.
+
+Use a small SQLite metadata store when this phase lands. Seen state,
+deduplication, concurrent sessions, resolution, delivery attempts, and future
+run history are relational application semantics; replaying journald or
+rewriting per-user JSON snapshots is no longer the simpler reliable solution.
+Do not put raw logs, every toast, or progress frames in that database.
+
+### Phase 6 exit criteria
+
+- [ ] Reconnect receives an authoritative bounded alert snapshot before live
+  changes.
+- [ ] Seen, dismissal, restoration, recurrence, and source resolution have
+  explicit tested transitions.
+- [ ] Stable source keys make repeated creation idempotent.
+- [ ] Alert persistence failure never changes the originating Task or systemd
+  run outcome.
+- [ ] The server-backed navbar replaces local toast-history persistence.
+
+## Phase 7: Scheduled Execution and Run History
+
+Implement [Scheduled Execution](./scheduled-execution.md). LinuxIO manages
+declarative definitions; native systemd `.timer` and `.service` units own
+calendar activation, overlap, process lifetime, timeout, and exit state.
+journald owns stdout and stderr.
+
+LinuxIO persists only a bounded run summary: stable run and definition IDs,
+the exact unit and invocation identity, scheduled/started/finished timestamps,
+terminal state, exit status, and a concise result or error. The journal is
+opened by unit plus invocation identity; raw output is never copied into the
+metadata store. Unit operations use the existing D-Bus boundary rather than
+shelling out to `systemctl`.
+
+### Phase 7 exit criteria
+
+- [ ] Creating, editing, enabling, disabling, and deleting a schedule converges
+  to deterministic systemd service/timer definitions.
+- [ ] The API reports next/last activation and current unit state from systemd.
+- [ ] Each execution has a stable bounded summary correlated to one systemd
+  invocation and its journal.
+- [ ] Restarting or disconnecting the bridge does not stop scheduling or lose
+  the authoritative execution owner.
+- [ ] Overlap, timeout, cancellation, retention, privilege, and script-path
+  policies are explicit and tested.
+
+## Phase 8: Alert Sources, Routing, and Delivery
+
+Integrate meaningful sources only after the alert core and scheduled runs are
+stable. A failed run, SMART condition, update condition, or service failure may
+raise or update an alert; ordinary log lines do not. Source recovery resolves
+the same stable alert instead of creating an unrelated success notification.
+
+Delivery follows an event/matcher/target model:
+
+- events contain severity, source, type, timestamp, and allow-listed metadata;
+- matchers select by severity and metadata, with calendar rules only when
+  needed; and
+- targets initially cover email or webhook-style delivery, with secrets stored
+  separately and delivery attempts bounded and auditable.
+
+Frequency, grouping, and retry belong to delivery policy. They do not redefine
+whether the alert itself is active, seen, or dismissed.
+
+## Phase 9: Converge and Extend from Evidence
+
+After the progress, alert, and scheduled-run vertical slices:
+
+- reassess `control.app_update`: keep its external systemd executor and stable
+  result, but replace replacement-bridge Task reconstruction if the generic run
+  status model gives the same honest post-login recovery with less machinery;
 - recover PackageKit work through PackageKit when supported;
 - recover SMART tests from drive state;
 - promote Docker or VM work only with explicit idempotency and convergence;
 - add a bridge worker subcommand only for an in-process Task with a demonstrated
   durability requirement;
-- add cursor replay or a database only if bounded snapshot behavior is measured
-  to be insufficient.
+- extend persistence or replay only when bounded behavior is measured to be
+  insufficient.
 
 ## Performance and Safety Gates
 
@@ -390,7 +528,8 @@ Capture a baseline and compare:
 - request-decoding CPU before considering generation;
 - Task start acknowledgement latency;
 - progress replay and Channel memory under a slow consumer;
-- notification insert/list latency and file size;
+- alert insert/list latency, database size, and delivery retry depth;
+- scheduled-run reconciliation and journal-open latency;
 - reconnect and convergence duration.
 
 Safety tests cover invalid envelopes, privilege checks, exact owner scope,
@@ -407,9 +546,10 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 
 | Product | Useful documented pattern | Decision for LinuxIO |
 |---------|---------------------------|----------------------|
-| [TrueNAS](https://api.truenas.com/v25.10/jobs.html) | Stable long-running operation IDs, queryable state/progress/result, cancellation, and optional live updates. | Persistent state is authoritative after reconnect; push is for freshness, not the only recovery path. |
-| [Cockpit](https://cockpit-project.org/blog/protocol-for-web-access-to-system-apis.html) | A per-user bridge, multiplexed Channels, and delegation to D-Bus/systemd/process owners. | Keep live Channels simple and let native Linux services own external work. |
-| [Unraid](https://docs.unraid.net/API/how-to-use-the-api/) | A typed query/mutation API with explicit authentication and errors. | Keep bounded Calls typed; GraphQL does not solve Task durability. |
+| [TrueNAS Jobs](https://api.truenas.com/v25.10/jobs.html) and [Alerts](https://www.truenas.com/docs/scale/toptoolbar/alerts/) | Queryable jobs use common progress plus job-specific detail; alerts separately own severity, recurrence, dismissal, restoration, and delivery settings. | Use a common typed progress envelope and keep run state separate from alert lifecycle. |
+| [Cockpit](https://cockpit-project.org/guide/latest/feature-systemd.html) | A per-user bridge delegates service state and execution to D-Bus/systemd and displays journald rather than mirroring logs. | Let native Linux services own schedules, processes, and logs. |
+| [Proxmox](https://pbs.proxmox.com/docs/notifications.html) | Notification events carry severity and metadata; matchers route them to independent targets. | Add routing after the alert lifecycle, with matching and delivery as separate concerns. |
+| [Unraid](https://docs.unraid.net/unraid-os/using-unraid-to/run-docker-containers/managing-and-customizing-containers/) | User Scripts exposes approachable cron schedules and integrates with a separate notification surface. | Preserve a simple scheduling UI, but use systemd timers rather than adding cron ownership to LinuxIO. |
 | [CasaOS](https://github.com/IceWhaleTech/CasaOS-Gateway) | Local services behind a route-registering gateway. | Service isolation is useful, but LinuxIO does not need another gateway layer. |
 | [ZimaOS](https://github.com/IceWhaleTech/ZimaOS) | OS-owned OTA and offline update delivery. | Treat it as deployment inspiration; its public repository does not establish a reusable Task recovery protocol. |
 
@@ -421,7 +561,10 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
   transport deletion.
 - `bridge_handler_patterns.md`: current handler style.
 - `transient-units-plan.md`: durable execution and recovery mechanics.
-- `notifications.md`: notification storage, API, Channel, and frontend behavior.
+- `notifications.md`: alert lifecycle, metadata storage, API, Channel, routing,
+  and frontend behavior.
+- `scheduled-execution.md`: schedule, systemd unit, run-summary, and journald
+  ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
 - `ToDo`: one short entry linking this roadmap.
 
@@ -438,7 +581,10 @@ This roadmap is complete when:
 - every Task has an explicit lifetime and owner scope;
 - session deletion cancels session Tasks in production;
 - the app-update durable pilot survives every event it claims to survive;
-- notifications have one persistent server owner and one frontend cache owner;
+- all Tasks expose uniform generic progress while route UIs retain typed detail;
+- alerts have one persistent server owner and one frontend cache owner;
+- scheduled scripts remain systemd-owned and their bounded run summaries link
+  to, rather than duplicate, journald logs;
 - no feature relies on a live event stream as its only recovery source;
 - measurements and fault tests meet the agreed gates;
 - the focused documents and `ToDo` match the implemented state.

@@ -64,11 +64,12 @@ func NoEndpoint() RouteSpecOption {
 	}
 }
 
-// WithTaskProgress declares the payload emitted by a task's progress frames.
-// The result contract remains the task's terminal payload.
-func WithTaskProgress[Progress any]() RouteSpecOption {
+// WithTaskProgress declares the route-specific detail carried by the common
+// TaskProgress envelope. The result contract remains the task's terminal
+// payload.
+func WithTaskProgress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
 	return func(spec *RouteSpec) {
-		spec.Progress = TypeOf[Progress]()
+		spec.Progress = TypeOf[Detail]()
 	}
 }
 

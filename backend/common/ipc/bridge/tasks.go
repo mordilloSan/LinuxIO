@@ -85,13 +85,35 @@ type TaskSnapshot struct {
 	Metadata   *TaskMetadata `json:"metadata,omitempty"`
 	Owner      TaskOwner     `json:"owner"`
 	State      TaskState     `json:"state"`
-	Progress   any           `json:"progress,omitempty"`
+	Progress   *TaskProgress `json:"progress,omitempty"`
 	Result     any           `json:"result,omitempty"`
 	Error      *Error        `json:"error,omitempty"`
 	CreatedAt  time.Time     `json:"created_at"`
 	StartedAt  *time.Time    `json:"started_at,omitempty"`
 	UpdatedAt  time.Time     `json:"updated_at"`
 	FinishedAt *time.Time    `json:"finished_at,omitempty"`
+}
+
+// TaskProgress is the common snapshot-retained progress envelope. Generic Task
+// consumers use the summary fields; route-specific consumers decode Detail
+// through the progress type declared by the route.
+type TaskProgress struct {
+	Percentage *int   `json:"percentage,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Detail     any    `json:"detail,omitempty"`
+}
+
+// ProgressDetail maps a route-owned detail value into the common envelope.
+// Implementations should place themselves in TaskProgress.Detail so the
+// generated route contract and the emitted value stay aligned.
+type ProgressDetail interface {
+	ProgressEnvelope() TaskProgress
+}
+
+// ProgressEnvelope lets callers report an already constructed envelope.
+func (p TaskProgress) ProgressEnvelope() TaskProgress {
+	return p
 }
 
 // TaskMetadata is the deliberately small public projection of a task request.
@@ -174,7 +196,7 @@ type Task struct {
 	metadata    *TaskMetadata
 	owner       TaskOwner
 	state       TaskState
-	progress    any
+	progress    *TaskProgress
 	progressLog []TaskEvent
 	// progressLogBytes tracks transient data payload bytes. Before the first
 	// replay subscriber, the event-count window covers the start/watch race;
@@ -589,21 +611,21 @@ func (j *Task) IsTerminal() bool {
 	return j.isTerminalLocked()
 }
 
-// ReportProgress updates the task's durable progress. The progress is broadcast
+// ReportProgress updates the task's retained progress. The progress is broadcast
 // to direct task subscribers and the service, and recorded for replay to future
 // direct subscribers.
-func (j *Task) ReportProgress(progress any) {
-	if isTaskDataProgress(progress) {
-		j.ReportTransientProgress(progress)
-		return
+func (j *Task) ReportProgress(detail ProgressDetail) {
+	progress := detail.ProgressEnvelope()
+	if progress.Percentage != nil {
+		percentage := min(max(*progress.Percentage, 0), 100)
+		progress.Percentage = &percentage
 	}
-
 	j.mu.Lock()
 	if j.isTerminalLocked() {
 		j.mu.Unlock()
 		return
 	}
-	j.progress = progress
+	j.progress = &progress
 	j.updatedAt = time.Now().UTC()
 	event := TaskEvent{
 		Type:     TaskEventProgress,

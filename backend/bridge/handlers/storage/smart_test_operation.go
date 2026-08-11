@@ -19,6 +19,15 @@ type SmartTestProgress struct {
 	Percentage *int   `json:"percentage,omitempty"`
 }
 
+func (p SmartTestProgress) ProgressEnvelope() bridgetasks.TaskProgress {
+	return bridgetasks.TaskProgress{
+		Percentage: p.Percentage,
+		Phase:      p.Status,
+		Message:    p.Message,
+		Detail:     p,
+	}
+}
+
 type SmartTestResult struct {
 	Success  bool   `json:"success"`
 	Device   string `json:"device"`

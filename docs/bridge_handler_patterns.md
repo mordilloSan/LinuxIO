@@ -56,8 +56,10 @@ Handlers do not receive a universal emitter. Calls use
 `func(context.Context, *bridgeipc.Task, Request) (Result, error)`; Channels use
 `func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
 The compiler checks each Call and Task terminal result against its route
-declaration. Task progress uses `task.ReportProgress()` with a declared
-`WithTaskProgress[T]`, and Task data uses the focused data-attachment Channel.
+declaration. `WithTaskProgress[T]` declares the route-specific detail carried by
+the common `TaskProgress<T>` envelope. Detail types implement
+`ProgressEnvelope()` and are passed to `task.ReportProgress()`; Task data uses
+the focused data-attachment Channel.
 
 ## Context
 

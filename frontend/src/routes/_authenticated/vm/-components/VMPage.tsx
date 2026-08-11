@@ -45,7 +45,15 @@ const VMPage = ({ children }: VMPageProps) => {
   const createMutation = linuxio.virt.create.useTaskStreamAction({
     closeMessage:
       "VM create connection closed before final result. Refresh the VM list to check whether creation completed.",
-    onProgress: (progress) => setCreateProgress(progress),
+    onProgress: (progress) => {
+      setCreateProgress(
+        progress.detail ?? {
+          message: progress.message ?? "Creating virtual machine",
+          phase: progress.phase ?? "running",
+          percent: progress.percentage,
+        },
+      );
+    },
     invalidates: (vm) => [
       linuxio.virt.list.queryKey,
       linuxio.virt.get({ name: vm.name }).queryKey,

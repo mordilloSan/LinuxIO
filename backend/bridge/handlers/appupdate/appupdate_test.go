@@ -100,6 +100,17 @@ func TestAppUpdateTaskIdentityRequiresCanonicalUUIDAndBindsVersion(t *testing.T)
 	}
 }
 
+func TestAppUpdateProgressDetailBuildsCommonEnvelope(t *testing.T) {
+	detail := AppUpdateProgressDetail{Phase: "installing", Message: "Installing update"}
+	progress := detail.ProgressEnvelope()
+	if progress.Phase != detail.Phase || progress.Message != detail.Message {
+		t.Fatalf("progress summary = %#v, want phase and message from detail", progress)
+	}
+	if progress.Detail != detail {
+		t.Fatalf("progress detail = %#v, want %#v", progress.Detail, detail)
+	}
+}
+
 func TestUpdaterUnitPropertiesUseNativeDBusTypesAndExplicitSandbox(t *testing.T) {
 	launch := updaterLaunch{
 		OperationID:   testOperationID,

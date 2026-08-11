@@ -36,6 +36,15 @@ type AppUpdateResult struct {
 	ExitCode int `json:"exit_code"`
 }
 
+type AppUpdateProgressDetail struct {
+	Phase   string `json:"phase,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+func (p AppUpdateProgressDetail) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Phase: p.Phase, Message: p.Message, Detail: p}
+}
+
 type appUpdateRequest struct {
 	operationID string
 	version     string
@@ -354,8 +363,14 @@ func observeAppUpdate(
 		case <-ctx.Done():
 			return cancelAppUpdate(store, executor, record)
 		case <-ticker.C:
+			if ctx.Err() != nil {
+				return cancelAppUpdate(store, executor, record)
+			}
 			current, getErr := store.Get(ctx, record.ID, record.UID)
 			if getErr != nil {
+				if ctx.Err() != nil {
+					return cancelAppUpdate(store, executor, record)
+				}
 				return AppUpdateResult{}, fmt.Errorf("reload durable app update: %w", getErr)
 			}
 			record = current
@@ -599,7 +614,7 @@ func updateAppUpdateProgress(
 		return nil
 	})
 	if err == nil && task != nil {
-		task.ReportProgress(map[string]any{"phase": phase, "message": message})
+		task.ReportProgress(AppUpdateProgressDetail{Phase: phase, Message: message})
 		task.ReportData(message + "\n")
 	}
 	return updated, err

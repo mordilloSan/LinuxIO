@@ -3,6 +3,7 @@ package apischema
 import (
 	"github.com/shirou/gopsutil/v4/load"
 
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -1154,6 +1155,8 @@ type TaskOwner struct {
 	UID      *int    `json:"uid,omitempty"`
 }
 
+type TaskProgress = bridgeipc.TaskProgress
+
 type TaskMetadata struct {
 	Action      *string  `json:"action,omitempty"`
 	Capability  *string  `json:"capability,omitempty"`
@@ -1173,7 +1176,7 @@ type TaskSnapshot struct {
 	ID         string        `json:"id"`
 	Owner      *TaskOwner    `json:"owner,omitempty"`
 	Metadata   *TaskMetadata `json:"metadata,omitempty"`
-	Progress   any           `json:"progress,omitempty"`
+	Progress   *TaskProgress `json:"progress,omitempty"`
 	Result     any           `json:"result,omitempty"`
 	StartedAt  *string       `json:"started_at,omitempty"`
 	State      TaskState     `json:"state"`
@@ -1182,11 +1185,11 @@ type TaskSnapshot struct {
 }
 
 type TaskEvent struct {
-	Error    *TaskError   `json:"error,omitempty"`
-	Task     TaskSnapshot `json:"task"`
-	Progress any          `json:"progress,omitempty"`
-	Result   any          `json:"result,omitempty"`
-	Type     string       `json:"type"`
+	Error    *TaskError    `json:"error,omitempty"`
+	Task     TaskSnapshot  `json:"task"`
+	Progress *TaskProgress `json:"progress,omitempty"`
+	Result   any           `json:"result,omitempty"`
+	Type     string        `json:"type"`
 }
 
 type Update struct {
@@ -1352,6 +1355,15 @@ type VMCreateProgress struct {
 	Message string `json:"message"`
 	Path    string `json:"path,omitempty"`
 	Percent *int   `json:"percent,omitempty"`
+}
+
+func (p VMCreateProgress) ProgressEnvelope() TaskProgress {
+	return TaskProgress{
+		Percentage: p.Percent,
+		Phase:      p.Phase,
+		Message:    p.Message,
+		Detail:     p,
+	}
 }
 
 type VMDeleteResult struct {

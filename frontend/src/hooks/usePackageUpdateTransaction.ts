@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isTerminalTaskState,
   linuxio,
+  type PkgUpdateProgress,
   type PackageUpdateRequest,
   type PackageUpdateResult,
   type TaskSnapshot,
@@ -16,14 +17,7 @@ import {
 } from "@/hooks/backgroundTasks/terminalTaskFeedback";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 
-export interface PackageUpdateProgress {
-  item_pct?: number;
-  message?: string;
-  package_id?: string;
-  percentage?: number;
-  status?: string;
-  type: "item_progress" | "package" | "status" | "percentage" | "message";
-}
+export type PackageUpdateProgress = PkgUpdateProgress;
 
 interface ActiveTransaction {
   cancelRequested: boolean;
@@ -89,42 +83,42 @@ export function usePackageUpdateTransaction({
     [accepts],
   );
 
-  const streamAction = linuxio.packages.update.useTaskStreamAction<
-    PackageUpdateResult,
-    PackageUpdateProgress
-  >({
-    closeMessage: "Update stream closed unexpectedly",
-    onTaskStart: (task, request) => {
-      if (!accepts(request)) return;
-      const transaction = transactionRef.current;
-      if (!transaction) return;
-      transaction.task = task;
-      setCanCancel(
-        !transaction.cancelRequested && !isTerminalTaskState(task.state),
-      );
-    },
-    onOpen: (stream, task, request) => {
-      const transaction = transactionRef.current;
-      if (
-        !accepts(request) ||
-        !transaction ||
-        transaction.task?.id !== task.id
-      ) {
-        stream.close();
-        return;
-      }
-      transaction.stream = stream;
-    },
-    onProgress: (progress, _task, request) => {
-      if (accepts(request)) onProgress(progress, request);
-    },
-    success: (_result, request) => {
-      if (settle(request)) onSuccess(request);
-    },
-    error: (error, request) => {
-      if (settle(request)) onError(error, request);
-    },
-  });
+  const streamAction =
+    linuxio.packages.update.useTaskStreamAction<PackageUpdateResult>({
+      closeMessage: "Update stream closed unexpectedly",
+      onTaskStart: (task, request) => {
+        if (!accepts(request)) return;
+        const transaction = transactionRef.current;
+        if (!transaction) return;
+        transaction.task = task;
+        setCanCancel(
+          !transaction.cancelRequested && !isTerminalTaskState(task.state),
+        );
+      },
+      onOpen: (stream, task, request) => {
+        const transaction = transactionRef.current;
+        if (
+          !accepts(request) ||
+          !transaction ||
+          transaction.task?.id !== task.id
+        ) {
+          stream.close();
+          return;
+        }
+        transaction.stream = stream;
+      },
+      onProgress: (progress, _task, request) => {
+        if (accepts(request) && progress.detail) {
+          onProgress(progress.detail, request);
+        }
+      },
+      success: (_result, request) => {
+        if (settle(request)) onSuccess(request);
+      },
+      error: (error, request) => {
+        if (settle(request)) onError(error, request);
+      },
+    });
 
   const start = useCallback(
     (request: PackageUpdateRequest): Promise<void> | null => {

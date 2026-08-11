@@ -18,6 +18,7 @@ func routeBindings() apischema.BindingSet {
 			routeAppUpdate,
 			apischema.NoEndpoint(),
 			apischema.DurableTask(),
+			apischema.WithTaskProgress[AppUpdateProgressDetail](),
 			apischema.WithTaskIdentity(appUpdateTaskIdentity),
 		).Run(runAppUpdateTask, policy),
 	)

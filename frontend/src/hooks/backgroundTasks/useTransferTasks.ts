@@ -2,11 +2,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  type FileProgress,
   isConnected,
   type TaskSnapshot,
+  type TaskProgress,
   linuxio,
   openTaskWatchStream,
-  type ProgressFrame,
 } from "@/api";
 import * as TaskTypes from "@/constants/backgroundTaskTypes";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -243,7 +244,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       onComplete?: () => void,
     ) => {
       const getSpeed = createProgressSpeedCalculator();
-      return runStreamResult<void>({
+      return runStreamResult<void, TaskProgress<FileProgress>>({
         open: () => openTaskWatchStream(id),
         signal: abortController.signal,
         closeOnAbort: "none",
@@ -256,8 +257,10 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           );
         },
         onProgress: (progress) => {
-          const percent = Math.min(99, progress.pct);
-          const speed = getSpeed(progress.bytes);
+          const detail = progress.detail;
+          if (!detail) return;
+          const percent = Math.min(99, progress.percentage ?? detail.pct);
+          const speed = getSpeed(detail.bytes);
           setTransfers((prev) =>
             prev.map((item) => {
               if (item.id !== id) return item;
@@ -267,8 +270,8 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
                 ...item,
                 progress: next,
                 label: progressLabel(descriptor, labelBase, next),
-                bytes: progress.bytes,
-                total: progress.total,
+                bytes: detail.bytes,
+                total: detail.total,
                 ...(speed !== undefined && { speed }),
               };
             }),
@@ -391,8 +394,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       const labelBase = descriptor.usesLabelAllocator
         ? allocateDownloadLabelBase(candidate, task.id)
         : candidate;
-      const progress = task.progress as ProgressFrame | undefined;
-      const initialPct = Math.min(99, progress?.pct ?? 0);
+      const progress = task.progress as TaskProgress<FileProgress> | undefined;
+      const detail = progress?.detail;
+      const initialPct = Math.min(99, progress?.percentage ?? detail?.pct ?? 0);
       const abortController = new AbortController();
 
       activeTransferIdsRef.current.add(task.id);
@@ -405,8 +409,8 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           abortController,
           progress: initialPct,
           label: progressLabel(descriptor, labelBase, initialPct),
-          bytes: progress?.bytes,
-          total: progress?.total,
+          bytes: detail?.bytes,
+          total: detail?.total,
         },
       ]);
       void watchTransfer(descriptor, task.id, labelBase, abortController);

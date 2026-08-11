@@ -12,9 +12,10 @@ LinuxIO exposes three deliberately different operation shapes:
   recovery. Seventeen routes are session-bound; `control.app_update` opts into
   a persistent UID-owned record and external executor.
 
-Task progress/data events are not persistent history. The current navbar keeps
-toast history in the browser; the planned server notification store is separate
-from Task snapshots.
+Task progress/data events are not persistent history. A Task snapshot retains
+only the latest common progress envelope; the current navbar keeps toast
+history in the browser, and the planned alert store is separate from Task
+snapshots.
 
 - Go owns route names, modes, request types, and result types. Route declarations live with each handler family's registration in `backend/bridge/handlers/<domain>/handlers.go`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
@@ -108,10 +109,11 @@ Every route has one schema kind:
 
 Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for no result payload. They are API contract marker types owned by `apischema`.
 
-Calls and Task runners are typed at their binding. Task progress uses
-`task.ReportProgress()` with a route-declared `WithTaskProgress[T]`; Task data
-uses the focused `tasks.data` attachment Channel. Ordinary handlers have no
-universal emitter surface.
+Calls and Task runners are typed at their binding. `WithTaskProgress[T]`
+declares the route-specific detail inside the common `TaskProgress<T>` envelope;
+the detail type implements `ProgressEnvelope()` and is passed to
+`task.ReportProgress()`. Task data uses the focused `tasks.data` attachment
+Channel. Ordinary handlers have no universal emitter surface.
 
 ## Frontend Shape
 
@@ -375,6 +377,33 @@ watch), completion waiting falls back to the explicitly retry-safe `tasks.get`
 Call; `useTaskStreamAction` instead fails fast because it promises live
 progress, and the recovered-Tasks stream can pick the Task up.
 
+### Task progress
+
+Snapshot-retained Task progress has one wire shape:
+
+```typescript
+interface TaskProgress<TDetail = unknown> {
+  percentage?: number;
+  phase?: string;
+  message?: string;
+  detail?: TDetail;
+}
+```
+
+`percentage` is clamped to 0 through 100 by `TaskService`; `phase` is a stable
+machine-readable stage; and `message` is concise presentation-ready status.
+Generic Task lists and recovery use only those fields. A generated route
+endpoint binds `detail` to its declared `WithTaskProgress[T]` type, so a
+feature-owned UI retains its concrete counters, paths, package state, or compose
+event without teaching the global Task UI every route shape.
+
+Retained progress reaches both `tasks.events` and `tasks.watch` in this envelope.
+`tasks.events` is the owner-wide discovery/lifecycle view and coalesces
+progress; `tasks.watch` follows one Task, replays its bounded progress window,
+and supplies its terminal result. Explicit transient output on `tasks.watch`
+and payload-specific `tasks.data` flow-control frames remain route protocols;
+they are not stored as Task progress or published on `tasks.events`.
+
 The app-update exception receives a canonical Web-Crypto UUID before start.
 That UUID is both its Task ID and persistent operation ID. The backend binds it
 to the UID, route, and a safe fingerprint of the requested version; repeating
@@ -400,9 +429,9 @@ Built-in Task routes:
 | `tasks.get` | Fetch one owned Task snapshot. |
 | `tasks.list` | List owned Tasks. |
 | `tasks.cancel` | Cancel one owned Task. |
-| `tasks.watch` | Progress/result stream. Closing detaches; aborting cancels. |
+| `tasks.watch` | Common progress envelope plus typed detail and terminal result. Closing detaches; aborting cancels. |
 | `tasks.data` | Upload/download/archive data stream. |
-| `tasks.events` | Lifecycle event stream. |
+| `tasks.events` | Owner-wide lifecycle events and coalesced common progress. |
 
 The `tasks.*` namespace is reserved by `bridgeipc`. The `tasks` handler family
 provides the generated route catalog, and its registration callback asks the

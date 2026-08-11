@@ -325,7 +325,7 @@ describe("Task React Query integration", () => {
       linuxio.docker.compose.useTaskStreamAction({
         invalidates: [],
         onProgress: (progress) => {
-          const message: ComposeTaskMessage = progress;
+          const message: ComposeTaskMessage | undefined = progress.detail;
           onProgress(message);
         },
       }),
@@ -335,9 +335,10 @@ describe("Task React Query integration", () => {
     await waitFor(() =>
       expect(openTaskWatchStream).toHaveBeenCalledWith("task-1"),
     );
-    const progress = { message: "Pulling image", type: "progress" } as const;
+    const detail = { message: "Pulling image", type: "progress" } as const;
+    const progress = { message: detail.message, detail } as const;
     act(() => stream.onProgress?.(progress as never));
-    expect(onProgress).toHaveBeenCalledWith(progress);
+    expect(onProgress).toHaveBeenCalledWith(detail);
 
     const complete = { message: "done", type: "complete" } as const;
     act(() => stream.onResult?.({ data: complete, status: "ok" }));

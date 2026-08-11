@@ -243,7 +243,7 @@ func TestTaskRoutesDeclareTerminalResultsAndProgress(t *testing.T) {
 		if route.Result.GoType == taskSnapshotType || route.Result.Void() {
 			t.Errorf("%s has placeholder terminal result %v", route.Route, route.Result.GoType)
 		}
-		if route.Route != "control.app_update" && route.Progress.GoType == nil {
+		if route.Progress.GoType == nil {
 			t.Errorf("%s reports progress but has no progress contract", route.Route)
 		}
 	}
@@ -417,7 +417,7 @@ func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
 	}()
 	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse](
 		"test.progress_call",
-		apischema.WithTaskProgress[apischema.MessageResponse](),
+		apischema.WithTaskProgress[apischema.VMCreateProgress](),
 	)
 }
 

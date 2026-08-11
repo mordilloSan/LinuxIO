@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  type FileProgress,
   isConnected,
   type TaskSnapshot,
+  type TaskProgress,
   linuxio,
   openTaskWatchStream,
   openTaskDataStream,
@@ -214,7 +216,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         // waiting_for_client).
         let dataStreamHasProgress = false;
         const getTaskSpeed = createProgressSpeedCalculator();
-        void runStreamResult({
+        void runStreamResult<void, TaskProgress<FileProgress>>({
           open: () => openTaskWatchStream(activeDownloadTask.id),
           signal: abortController.signal,
           closeOnAbort: "none",
@@ -224,9 +226,11 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
             if (dataStreamHasProgress) {
               return;
             }
-            const speed = getTaskSpeed(progress.bytes);
+            const detail = progress.detail;
+            if (!detail) return;
+            const speed = getTaskSpeed(detail.bytes);
             let phaseLabel: string;
-            switch (progress.phase) {
+            switch (progress.phase ?? detail.phase) {
               case "preparing":
                 phaseLabel = "Preparing";
                 break;
@@ -241,13 +245,14 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
                 phaseLabel = "Downloading";
                 break;
             }
+            const percentage = progress.percentage ?? detail.pct;
             updateDownload(reqId, {
-              progress: progress.pct,
+              progress: percentage,
               label: formatDownloadLabel(phaseLabel, {
-                percent: progress.pct,
+                percent: percentage,
               }),
-              bytes: progress.bytes,
-              total: progress.total,
+              bytes: detail.bytes,
+              total: detail.total,
               ...(speed !== undefined && { speed }),
             });
           },

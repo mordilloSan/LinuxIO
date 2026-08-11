@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Stream } from "@/api";
+import type { PkgUpdateProgress, Stream, TaskProgress } from "@/api";
 import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 const apiMocks = vi.hoisted(() => ({
@@ -89,6 +89,17 @@ function createStream(overrides: Partial<Stream> = {}): Stream {
   };
 }
 
+function packageTaskProgress(
+  detail: PkgUpdateProgress,
+): TaskProgress<PkgUpdateProgress> {
+  return {
+    percentage: detail.percentage,
+    phase: detail.status ?? detail.type,
+    message: detail.message ?? detail.status,
+    detail,
+  };
+}
+
 describe("usePackageUpdater", () => {
   beforeEach(() => {
     apiMocks.cancelTask.mockResolvedValue(undefined);
@@ -110,7 +121,9 @@ describe("usePackageUpdater", () => {
     });
     apiMocks.openTaskWatchStream.mockReturnValue(createStream());
     streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
-      handlers.onProgress({ type: "percentage", percentage: 40 });
+      handlers.onProgress(
+        packageTaskProgress({ type: "percentage", percentage: 40 }),
+      );
     });
     const { result } = renderHook(() => usePackageUpdater());
 
@@ -171,18 +184,24 @@ describe("usePackageUpdater", () => {
     });
     apiMocks.openTaskWatchStream.mockReturnValue(createStream());
     streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
-      handlers.onProgress({ type: "percentage", percentage: 40 });
-      handlers.onProgress({
-        type: "status",
-        status: "Installing packages",
-        percentage: 25,
-      });
-      handlers.onProgress({
-        type: "item_progress",
-        package_id: "nginx;1.24.0;amd64;ubuntu",
-        status: "Configuring",
-        item_pct: 10,
-      });
+      handlers.onProgress(
+        packageTaskProgress({ type: "percentage", percentage: 40 }),
+      );
+      handlers.onProgress(
+        packageTaskProgress({
+          type: "status",
+          status: "Installing packages",
+          percentage: 25,
+        }),
+      );
+      handlers.onProgress(
+        packageTaskProgress({
+          type: "item_progress",
+          package_id: "nginx;1.24.0;amd64;ubuntu",
+          status: "Configuring",
+          item_pct: 10,
+        }),
+      );
     });
     const { result } = renderHook(() => usePackageUpdater());
 
@@ -217,12 +236,14 @@ describe("usePackageUpdater", () => {
     streamMocks.runStream.mockImplementation(
       (_stream, handlers) =>
         new Promise<void>((resolve) => {
-          handlers.onProgress({
-            type: "message",
-            message:
-              "Failed to update curl. Continuing with remaining updates.",
-            percentage: 50,
-          });
+          handlers.onProgress(
+            packageTaskProgress({
+              type: "message",
+              message:
+                "Failed to update curl. Continuing with remaining updates.",
+              percentage: 50,
+            }),
+          );
           finishStream = resolve;
         }),
     );

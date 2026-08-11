@@ -104,7 +104,7 @@ func TestTaskServiceRejectsRegistrationOnDifferentRouter(t *testing.T) {
 func TestTaskCompletesAndSnapshotsResult(t *testing.T) {
 	registry := NewTaskService()
 	task, err := startTestTask(registry, "test.complete", nil, TaskOwner{}, func(ctx context.Context, task *Task, _ any) (any, error) {
-		task.ReportProgress(map[string]any{"pct": 50})
+		task.ReportProgress(testTaskProgress(50))
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {
@@ -121,6 +121,31 @@ func TestTaskCompletesAndSnapshotsResult(t *testing.T) {
 	}
 	if snapshot.Progress == nil {
 		t.Fatal("expected progress to be stored")
+	}
+	if snapshot.Progress.Percentage == nil || *snapshot.Progress.Percentage != 50 {
+		t.Fatalf("progress percentage = %#v, want 50", snapshot.Progress.Percentage)
+	}
+	detail, ok := snapshot.Progress.Detail.(map[string]any)
+	if !ok || detail["pct"] != 50 {
+		t.Fatalf("progress detail = %#v, want pct 50", snapshot.Progress.Detail)
+	}
+}
+
+func TestTaskProgressClampsPercentage(t *testing.T) {
+	registry := NewTaskService()
+	task, err := startTestTask(registry, "test.progress.clamp", nil, TaskOwner{}, func(_ context.Context, task *Task, _ any) (any, error) {
+		percentage := 125
+		task.ReportProgress(TaskProgress{Percentage: &percentage})
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+
+	waitForTaskState(t, task, TaskStateCompleted)
+	progress := task.Snapshot().Progress
+	if progress == nil || progress.Percentage == nil || *progress.Percentage != 100 {
+		t.Fatalf("progress = %#v, want percentage clamped to 100", progress)
 	}
 }
 
@@ -236,7 +261,7 @@ func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 		t.Fatalf("initial event: %v", err)
 	}
 	assertNoRequestLeak(t, initial.Payload)
-	task.ReportProgress(map[string]any{"pct": 1})
+	task.ReportProgress(testTaskProgress(1))
 	live, err := relay.ReadRelayFrame(eventClient)
 	if err != nil {
 		t.Fatalf("live event: %v", err)
@@ -294,7 +319,7 @@ func TestAttachReplayAndTerminalNeverExposeDecodedRequest(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	if !task.Start(func(_ context.Context, task *Task, _ any) (any, error) {
-		task.ReportProgress(map[string]any{"phase": "safe"})
+		task.ReportProgress(TaskProgress{Phase: "safe"})
 		return map[string]any{"ok": true}, nil
 	}) {
 		t.Fatal("Start returned false")
@@ -513,7 +538,7 @@ func TestTaskServiceSubscribeReceivesLiveEvents(t *testing.T) {
 	events, unsubscribe := registry.Subscribe(8)
 	defer unsubscribe()
 	task, err := startTestTask(registry, "test.events", nil, owner, func(ctx context.Context, task *Task, _ any) (any, error) {
-		task.ReportProgress(map[string]any{"pct": 50})
+		task.ReportProgress(testTaskProgress(50))
 		return map[string]any{"ok": true}, nil
 	})
 	if err != nil {
@@ -546,7 +571,7 @@ func TestSlowTaskServiceSubscriberStillReceivesTerminalEvent(t *testing.T) {
 
 	task, err := startTestTask(registry, "test.slow.registry", nil, owner, func(ctx context.Context, task *Task, _ any) (any, error) {
 		for i := range 20 {
-			task.ReportProgress(map[string]any{"pct": i})
+			task.ReportProgress(testTaskProgress(i))
 		}
 		return map[string]any{"ok": true}, nil
 	})
@@ -567,7 +592,7 @@ func TestSlowTaskSubscriberStillReceivesTerminalEvent(t *testing.T) {
 	task, err := startTestTask(registry, "test.slow.task", nil, TaskOwner{}, func(ctx context.Context, task *Task, _ any) (any, error) {
 		<-block
 		for i := range 20 {
-			task.ReportProgress(map[string]any{"pct": i})
+			task.ReportProgress(testTaskProgress(i))
 		}
 		return map[string]any{"ok": true}, nil
 	})
@@ -608,35 +633,6 @@ func TestReportDataDoesNotReachTaskServiceEvents(t *testing.T) {
 	}
 	if progress["type"] != "data" || progress["data"] != "line\n" {
 		t.Fatalf("progress = %#v, want data line", progress)
-	}
-	assertNoTaskEvent(t, registryEvents, task.ID(), TaskEventProgress)
-	if snapshot := task.Snapshot(); snapshot.Progress != nil {
-		t.Fatalf("snapshot progress = %#v, want nil for transient data", snapshot.Progress)
-	}
-}
-
-func TestDataProgressMapDoesNotReachTaskServiceEvents(t *testing.T) {
-	registry := NewTaskService()
-	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
-	registryEvents, registryUnsubscribe := registry.Subscribe(8)
-	defer registryUnsubscribe()
-
-	task, err := registry.CreateForOwner("logs.service.follow", nil, owner)
-	if err != nil {
-		t.Fatalf("CreateForOwner returned error: %v", err)
-	}
-	taskEvents, taskUnsubscribe := task.Subscribe(8)
-	defer taskUnsubscribe()
-
-	task.ReportProgress(map[string]any{"type": "data", "data": "legacy\n"})
-
-	event := waitForTaskEvent(t, taskEvents, task.ID(), TaskEventProgress)
-	progress, ok := event.Progress.(map[string]any)
-	if !ok {
-		t.Fatalf("progress = %#v, want map", event.Progress)
-	}
-	if progress["data"] != "legacy\n" {
-		t.Fatalf("progress data = %#v, want legacy line", progress["data"])
 	}
 	assertNoTaskEvent(t, registryEvents, task.ID(), TaskEventProgress)
 	if snapshot := task.Snapshot(); snapshot.Progress != nil {
@@ -1077,6 +1073,13 @@ func waitForTaskState(t *testing.T, task *Task, want TaskState) {
 				return
 			}
 		}
+	}
+}
+
+func testTaskProgress(percentage int) TaskProgress {
+	return TaskProgress{
+		Percentage: &percentage,
+		Detail:     map[string]any{"pct": percentage},
 	}
 }
 

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   isConnected,
   type TaskSnapshot,
+  type TaskProgress,
   linuxio,
   openTaskWatchStream,
 } from "@/api";
@@ -126,7 +127,7 @@ export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
 
       void runStreamResult<
         IndexerResultFrame | undefined,
-        IndexerProgressFrame
+        TaskProgress<IndexerProgressFrame>
       >({
         open: () => openTaskWatchStream(id),
         signal: abortController.signal,
@@ -140,9 +141,11 @@ export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
           );
         },
         onProgress: (progress) => {
+          const detail = progress.detail;
+          if (!detail) return;
           setIndexers((prev) =>
             prev.map((item) =>
-              item.id === id ? mergeIndexerProgress(item, progress) : item,
+              item.id === id ? mergeIndexerProgress(item, detail) : item,
             ),
           );
         },

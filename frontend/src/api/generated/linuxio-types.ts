@@ -1924,7 +1924,7 @@ export interface TaskError {
 export interface TaskEvent {
   error?: TaskError;
   task: TaskSnapshot;
-  progress?: unknown;
+  progress?: TaskProgress;
   result?: unknown;
   type: string;
 }
@@ -1954,6 +1954,13 @@ export interface TaskOwner {
   uid?: number;
 }
 
+export interface TaskProgress<TDetail = unknown> {
+  percentage?: number;
+  phase?: string;
+  message?: string;
+  detail?: TDetail;
+}
+
 export interface TaskSnapshot {
   created_at: string;
   error?: TaskError;
@@ -1961,7 +1968,7 @@ export interface TaskSnapshot {
   id: string;
   owner?: TaskOwner;
   metadata?: TaskMetadata;
-  progress?: unknown;
+  progress?: TaskProgress;
   result?: unknown;
   started_at?: string;
   state: TaskState;
@@ -2389,7 +2396,7 @@ export interface LinuxIOSchema {
       input: [request: DockerComposeRequest];
       request: DockerComposeRequest;
       result: ComposeTaskResult;
-      progress: ComposeTaskMessage;
+      progress: TaskProgress<ComposeTaskMessage>;
     };
     compose_down: {
       input: [projectName: string];
@@ -2553,31 +2560,31 @@ export interface LinuxIOSchema {
       input: [request: FileArchiveRequest];
       request: FileArchiveRequest;
       result: FileArchiveResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     chmod_batch: {
       input: [request: FileChmodBatchRequest];
       request: FileChmodBatchRequest;
       result: FileBatchResult;
-      progress: ChmodProgress;
+      progress: TaskProgress<ChmodProgress>;
     };
     compress: {
       input: [request: FileCompressRequest];
       request: FileCompressRequest;
       result: FileCompressResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     copy_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
       result: FileBatchResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     delete_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
       result: FileBatchResult;
-      progress: DeleteProgress;
+      progress: TaskProgress<DeleteProgress>;
     };
     dir_size: {
       input: [path: string];
@@ -2588,7 +2595,7 @@ export interface LinuxIOSchema {
       input: [path: string];
       request: PathRequest;
       result: FileDownloadResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     exists_batch: {
       input: [paths: string[]];
@@ -2599,20 +2606,20 @@ export interface LinuxIOSchema {
       input: [request: FileExtractRequest];
       request: FileExtractRequest;
       result: FileExtractResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     index: {
       input: [request: OptionalPathRequest];
       request: OptionalPathRequest;
       result: IndexerResult;
-      progress: IndexerProgress;
+      progress: TaskProgress<IndexerProgress>;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
       result: FileBatchResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     resource_get: {
       input: [request: FileResourceGetRequest];
@@ -2623,7 +2630,7 @@ export interface LinuxIOSchema {
       input: [request: ActionSourceDestinationRequest];
       request: ActionSourceDestinationRequest;
       result: FileOperationResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     resource_post: {
       input: [request: FileResourcePostRequest];
@@ -2649,13 +2656,13 @@ export interface LinuxIOSchema {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
       result: FileUploadResult;
-      progress: FileProgress;
+      progress: TaskProgress<FileProgress>;
     };
     upload_batch: {
       input: [request: FileUploadBatchRequest];
       request: FileUploadBatchRequest;
       result: FileUploadBatchResult;
-      progress: BatchUploadProgress;
+      progress: TaskProgress<BatchUploadProgress>;
     };
     users_groups: { input: []; request: void; result: UsersGroupsResponse };
   };
@@ -2767,7 +2774,7 @@ export interface LinuxIOSchema {
       input: [packageIds: string[]];
       request: PackageUpdateRequest;
       result: PackageUpdateResult;
-      progress: PkgUpdateProgress;
+      progress: TaskProgress<PkgUpdateProgress>;
     };
   };
 
@@ -2878,7 +2885,7 @@ export interface LinuxIOSchema {
       input: [request: DeviceTestTypeRequest];
       request: DeviceTestTypeRequest;
       result: SmartTestResult;
-      progress: SmartTestProgress;
+      progress: TaskProgress<SmartTestProgress>;
     };
     unmount_cifs: {
       input: [request: MountpointRemoveFstabRequest];
@@ -2942,7 +2949,7 @@ export interface LinuxIOSchema {
       input: [capability: string];
       request: CapabilityRequest;
       result: InstallCapabilityResult;
-      progress: InstallCapabilityProgress;
+      progress: TaskProgress<InstallCapabilityProgress>;
     };
     list_failed_login_events: {
       input: [request: FailedLoginEventsRequest];
@@ -3064,7 +3071,7 @@ export interface LinuxIOSchema {
       input: [request: VMCreateRequest];
       request: VMCreateRequest;
       result: VirtualMachine;
-      progress: VMCreateProgress;
+      progress: TaskProgress<VMCreateProgress>;
     };
     delete: {
       input: [request: VMDeleteRequest];

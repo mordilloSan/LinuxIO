@@ -426,6 +426,11 @@ async function renderVMPage(
   libvirtAvailable = true,
   queryClient = createTestQueryClient(),
 ) {
+  queryClient.setQueryData(linuxio.virt.list.queryKey, mocks.listVMs);
+  queryClient.setQueryData(
+    linuxio.virt.preflight({}).queryKey,
+    mocks.preflight,
+  );
   const result = renderWithTanStackRouter(
     <VMPage>
       <VMMachinesLayout />
@@ -439,7 +444,11 @@ async function renderVMPage(
       queryClient,
     },
   );
-  await waitFor(() => expect(document.body.textContent).not.toBe(""));
+  if (libvirtAvailable) {
+    await screen.findByRole("tab", { name: /virtual machines/i });
+  } else {
+    await screen.findByText(/libvirt unavailable/i);
+  }
   return { ...result, queryClient };
 }
 
@@ -524,9 +533,14 @@ beforeEach(() => {
   mocks.waitForStreamResult.mockReset();
   mocks.waitForStreamResult.mockImplementation(async (_stream, options) => {
     options?.onProgress?.({
-      message: "VM created",
-      percent: 100,
+      percentage: 100,
       phase: "complete",
+      message: "VM created",
+      detail: {
+        message: "VM created",
+        percent: 100,
+        phase: "complete",
+      },
     });
     return { ...mocks.alpha, name: "created" };
   });
@@ -872,10 +886,15 @@ describe("Virtual Machines page", () => {
     mocks.waitForStreamResult.mockImplementationOnce(
       async (_stream, options) => {
         options?.onProgress?.({
-          message: "Downloading Debian Server image (10.0 MiB / 100.0 MiB)",
-          path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-debian.qcow2.download",
-          percent: 10,
+          percentage: 10,
           phase: "download",
+          message: "Downloading Debian Server image (10.0 MiB / 100.0 MiB)",
+          detail: {
+            message: "Downloading Debian Server image (10.0 MiB / 100.0 MiB)",
+            path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-debian.qcow2.download",
+            percent: 10,
+            phase: "download",
+          },
         });
         return await new Promise((resolve) => {
           resolveCreate = resolve;

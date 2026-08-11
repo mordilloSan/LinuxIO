@@ -160,7 +160,7 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 				renderer.typeRef(route.ResultSpec()),
 			)
 			if progress, ok := route.ProgressSpec(); ok {
-				fmt.Fprintf(&schema, "; progress: %s", renderer.typeRef(progress))
+				fmt.Fprintf(&schema, "; progress: TaskProgress<%s>", renderer.typeRef(progress))
 			}
 			schema.WriteString(" };\n")
 		}
@@ -432,6 +432,17 @@ func (r *tsRenderer) addDefinition(t reflect.Type) {
 		return
 	}
 	if _, exists := r.defs[t.Name()]; exists {
+		return
+	}
+	if t.PkgPath() == "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge" && t.Name() == "TaskProgress" {
+		r.defs[t.Name()] = `export interface TaskProgress<TDetail = unknown> {
+  percentage?: number;
+  phase?: string;
+  message?: string;
+  detail?: TDetail;
+}
+
+`
 		return
 	}
 	r.defs[t.Name()] = ""

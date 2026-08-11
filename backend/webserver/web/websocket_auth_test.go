@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -97,12 +96,11 @@ func TestWebSocketAuthMiddlewareRejectsExpiredSessionCookieWithPolicyViolation(t
 }
 
 func TestCloseWebSocketForSessionSendsSessionExpiredPolicyViolation(t *testing.T) {
-	wsConnsBySession = sync.Map{}
-	defer func() { wsConnsBySession = sync.Map{} }()
-
 	ready := make(chan struct{})
 	done := make(chan struct{})
+	handlerDone := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(handlerDone)
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			t.Errorf("upgrade: %v", err)
@@ -128,6 +126,11 @@ func TestCloseWebSocketForSessionSendsSessionExpiredPolicyViolation(t *testing.T
 
 	CloseWebSocketForSession("session-1")
 	close(done)
+	select {
+	case <-handlerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("websocket handler did not exit")
+	}
 
 	_, _, err = conn.ReadMessage()
 	closeErr, ok := err.(*websocket.CloseError)

@@ -1,6 +1,10 @@
 package filebrowser
 
-import "time"
+import (
+	"time"
+
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+)
 
 const (
 	// progressReportIntervalBytes is how often file operations report progress.
@@ -66,6 +70,10 @@ type FileProgress struct {
 	Phase string `json:"phase,omitempty"` // Optional phase description
 }
 
+func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+}
+
 // BatchUploadProgress reports aggregate byte progress for a batch upload plus
 // how many manifest files have been fully processed. Bytes doubles as the
 // client's flow-control ack watermark, so it counts stream bytes consumed
@@ -79,6 +87,10 @@ type BatchUploadProgress struct {
 	FilesTotal int    `json:"filesTotal"`
 }
 
+func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+}
+
 // DeleteProgress represents item-count progress for delete tasks.
 type DeleteProgress struct {
 	Processed     int64  `json:"processed"`
@@ -88,10 +100,18 @@ type DeleteProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
+func (p DeleteProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+}
+
 // ChmodProgress represents entry-count progress for chmod batch tasks. The
 // per-entry total is unknown up front, so the count is indeterminate.
 type ChmodProgress struct {
 	Processed     int64  `json:"processed"`
 	Phase         string `json:"phase,omitempty"`
 	Indeterminate bool   `json:"indeterminate,omitempty"`
+}
+
+func (p ChmodProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
 }

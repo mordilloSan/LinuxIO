@@ -59,11 +59,29 @@ func TestRunDockerComposeTaskUsesResultAsOnlyTerminalSignal(t *testing.T) {
 		if len(replay) != 1 {
 			t.Fatalf("progress replay len = %d, want one stderr frame: %#v", len(replay), replay)
 		}
-		message, ok := replay[0].Progress.(ComposeTaskMessage)
-		if !ok || message.Type != "stderr" {
+		progress, ok := replay[0].Progress.(bridgetask.TaskProgress)
+		message, detailOK := progress.Detail.(ComposeTaskMessage)
+		if !ok || !detailOK || message.Type != "stderr" {
 			t.Fatalf("progress replay = %#v, want one non-terminal stderr frame", replay)
 		}
 	})
+}
+
+func TestComposeTaskMessageProgressEnvelopeUsesStablePhase(t *testing.T) {
+	detail := ComposeTaskMessage{
+		Type:     "progress",
+		Progress: &ComposeProgress{Percent: 37, Text: "Pulling image layer"},
+	}
+	progress := detail.ProgressEnvelope()
+	if progress.Percentage == nil || *progress.Percentage != 37 {
+		t.Fatalf("progress percentage = %#v, want 37", progress.Percentage)
+	}
+	if progress.Phase != detail.Type || progress.Message != detail.Progress.Text {
+		t.Fatalf("progress summary = %#v, want typed phase and progress text", progress)
+	}
+	if progress.Detail != detail {
+		t.Fatalf("progress detail = %#v, want %#v", progress.Detail, detail)
+	}
 }
 
 func installFakeDocker(t *testing.T, body string) {

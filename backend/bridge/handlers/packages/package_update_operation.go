@@ -42,6 +42,28 @@ type PkgUpdateProgress struct {
 	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
 }
 
+func (p PkgUpdateProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	var percentage *int
+	progressPercentage := p.Percentage
+	if progressPercentage == nil {
+		progressPercentage = p.ItemPct
+	}
+	if progressPercentage != nil && *progressPercentage <= 100 {
+		value := int(*progressPercentage)
+		percentage = &value
+	}
+	message := p.Message
+	if message == "" {
+		message = p.Status
+	}
+	return bridgetask.TaskProgress{
+		Percentage: percentage,
+		Phase:      p.Type,
+		Message:    message,
+		Detail:     p,
+	}
+}
+
 type PackageUpdateResult struct {
 	Updated int `json:"updated"`
 }

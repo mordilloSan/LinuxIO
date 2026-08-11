@@ -9,6 +9,7 @@ import {
   linuxio,
   type SmartTestResult,
   type Stream,
+  type TaskProgress,
   useCallMutation,
 } from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
@@ -96,13 +97,15 @@ const DriveDetails = ({
   // below). Drive-info refresh comes from the invalidation manifest.
   const smartTest = linuxio.storage.run_smart_test.useTaskStreamAction<
     SmartTestResult,
-    SmartTestProgressEvent
+    TaskProgress<SmartTestProgressEvent>
   >({
     closeMessage: "SMART self-test stream closed unexpectedly",
     onOpen: (stream) => {
       streamRef.current = stream;
     },
-    onProgress: (data, _task, variables) => {
+    onProgress: (progress, _task, variables) => {
+      const data = progress.detail;
+      if (!data) return;
       const testType: "short" | "long" =
         variables.testType === "long" ? "long" : "short";
       setTestProgress((prev) => ({

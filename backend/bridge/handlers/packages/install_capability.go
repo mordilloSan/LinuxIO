@@ -27,6 +27,20 @@ type InstallCapabilityProgress struct {
 	Percentage *uint32 `json:"percentage,omitempty"`
 }
 
+func (p InstallCapabilityProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	var percentage *int
+	if p.Percentage != nil {
+		value := int(*p.Percentage)
+		percentage = &value
+	}
+	return bridgetask.TaskProgress{
+		Percentage: percentage,
+		Phase:      p.Stage,
+		Message:    p.Message,
+		Detail:     p,
+	}
+}
+
 const (
 	stageResolve        = "resolve"
 	stageInstallAsset   = "install_asset"

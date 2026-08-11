@@ -1,138 +1,176 @@
-# Notifications
+# Alerts and notification delivery
 
-> **Status: Planned.** This is the target design; no part of the server-side
-> notification store or `notifications.watch` Channel is implemented yet.
+> **Status: Planned.** The server-side alert store, watch Channel, routing, and
+> delivery targets are not implemented yet.
 
-This plan describes durable, per-user notifications on the current Call,
-Channel, and Task architecture. The initial slice is deliberately small: a
-bounded JSON snapshot on disk and durable notifications for terminal Task
-outcomes. Broader event sources and user preferences are later phases.
+This plan defines LinuxIO's durable user-facing alert lifecycle. It deliberately
+separates alerts from live Tasks, scheduled-run records, journald logs, transient
+toasts, and external delivery. See the
+[API reliability roadmap](./api-reliability-roadmap.md) for dependency order and
+[Scheduled Execution](./scheduled-execution.md) for timer, run, and log
+ownership.
 
-See the [API reliability roadmap](./api-reliability-roadmap.md) for the related
-transport and recovery work.
+## Domain boundaries
 
-## MVP scope
+These records answer different questions:
 
-- One logical `NotificationStore` per user, with the persisted file as the
-  authority across that user's bridge processes. There is no database
-  dependency in the first implementation.
-- A bounded (approximately 200 item) JSON snapshot, written with the existing
-  file lock and atomic writer that fsyncs the temporary file and parent
-  directory.
-- Meaningful, durable events only. Progress updates, transient UI toasts, and
-  every low-level source event are not persisted.
-- A terminal Task notification is requested after the Task's terminal commit.
-  The stable Task ID is the dedupe key, so retries or reconnects cannot create
-  duplicates. The server never relies on a frontend recovered event to create
-  the notification.
+| Record | Question it answers | Authority |
+|---|---|---|
+| Task | What is this live API operation doing? | `TaskService` or its explicit durable executor |
+| Scheduled run | When and how did this timer-triggered execution finish? | systemd plus a bounded LinuxIO run summary |
+| Log | What diagnostic output did the executor produce? | journald |
+| Alert | What condition currently needs a user's attention? | LinuxIO alert store |
+| Delivery attempt | Was an alert transition sent to an external target? | LinuxIO delivery state |
 
-The initial release does not include notification preferences, a full-page
-notification experience, or global disk, Docker, and system sources. Those are
-follow-up phases once the store and delivery semantics are proven.
+A failed Task or scheduled run may raise an alert, but the alert does not copy
+the Task, run, or journal. Ordinary log lines never become alerts merely because
+they have warning or error priority.
 
-## Storage and data model
+## Alert lifecycle
 
-`NotificationStore` owns one user's persisted snapshot. Each bridge may keep a
-small in-memory view and subscriber set, but the file revision—not a process
-map—is authoritative across concurrent sessions. A notification
-contains only safe, presentation-ready metadata:
+An alert has stable source identity and explicit, independent state:
 
 ```text
-id, user_id, created_at, read_at (nullable)
-severity (info | warn | error)
-source (task | ...future sources...)
-title, message
-metadata (allow-listed labels and an internal route, when applicable)
+id, source, category, key
+severity (info | warning | error | critical)
+title, message, allow-listed metadata
+first_occurrence, last_occurrence, occurrence_count
+active, resolved_at (nullable)
+dismissed_at/dismissed_by (nullable)
 ```
 
-The store enforces ownership, validates fields, and keeps the newest bounded
-set (about 200 records). Inserts and read-state changes take the per-user file
-lock, update the snapshot, and atomically replace the file. A failed write does
-not publish a delta. Startup treats a missing file as empty; malformed or
-unreadable data is reported and kept from being served as a partial snapshot.
+`(source, key)` is the deduplication identity. Re-observing the same active
+condition updates `last_occurrence` and the count instead of inserting a new
+row. A source explicitly resolves the condition when it is no longer true.
+Resolution is source truth; dismissal is a user action and must not masquerade
+as recovery.
 
-Retention is count-bounded in the MVP. Future time-based retention or explicit
-expiry must preserve the same atomic-write and per-user isolation guarantees.
+Recurrence after resolution reactivates the same logical alert and starts a new
+active occurrence. Recurrence after dismissal follows an explicit source
+policy: materially new occurrences restore the alert by default, while noisy
+unchanged polling does not.
 
-## Calls
+Seen state is presentation state and is stored per authenticated numeric UID:
 
-Bounded operations are direct Calls, not Tasks or Channels:
+```text
+alert_id, uid, seen_at (nullable)
+```
 
-- `notifications.list` — return the authoritative newest snapshot (with unread
-  count and revision).
-- `notifications.mark_read` — mark selected IDs read.
-- `notifications.mark_unread` — mark selected IDs unread.
-- `notifications.mark_all_read` — mark all currently stored items read.
-- `notifications.clear` — remove the user's stored items.
+This lets two users observe the same system condition independently. Dismissal
+is initially a privileged system-wide action; if product requirements later
+need per-user dismissal, add it as a separate relation rather than overloading
+seen state.
 
-Each mutating Call updates the store before returning. The result includes the
-new persisted revision so a client can reconcile its cache with a subsequent
-watch.
+## Persistence
 
-## `notifications.watch` Channel
+Use a small service-owned SQLite database for alert lifecycle, per-user seen
+state, bounded run summaries, and delivery attempts. These requirements involve
+deduplication, concurrent bridge sessions, independent state transitions, and
+bounded queries; a relational metadata store is simpler and more honest than
+rewriting per-user JSON snapshots or replaying journal history.
 
-`notifications.watch` is a server-producing Channel. Opening it reads and sends
-one authoritative `snapshot` containing items, unread count, and persisted
-revision. Whenever that revision changes, the Channel sends a replacement
-snapshot; the frontend replaces the corresponding TanStack Query data.
+SQLite is not the scheduler or log store. Never persist raw journal output,
+every toast, Task progress frames, arbitrary requests, credentials, arbitrary
+HTML, or unvalidated external links. Apply schema migrations transactionally,
+use restrictive file permissions, enable foreign-key checks, and keep retention
+bounded. Active alerts are never removed by age-based pruning.
 
-Local writes publish a coalesced refresh signal through a bounded one-slot
-subscriber channel, so a slow client cannot block a writer or accumulate an
-unbounded delta queue. Because another bridge process cannot signal that memory
-channel, an open watcher also checks the persisted revision at a bounded
-interval (initially no more than once per second) and reloads only when it
-changes. File locking makes every reload coherent. This gives cross-session
-eventual live delivery without adding a notification daemon, filesystem-watch
-dependency, or replay log.
+The initial database tables are conceptually:
 
-A reconnect simply receives the latest snapshot; it does not depend on replaying
-a cursor. Closing the Channel removes the subscriber and timer, and no goroutine
-or file descriptor remains owned by a disconnected client.
+- `alerts` — source identity, lifecycle, severity, safe presentation fields;
+- `alert_seen` — per-UID seen timestamp;
+- `scheduled_runs` — bounded execution summaries defined in the scheduling
+  plan; and
+- later, `delivery_attempts` — target, transition, attempt time, outcome, and
+  bounded retry state.
 
-## Task integration
+Notification target secrets remain in a separately protected configuration
+surface; they do not belong in alert rows or delivery history.
 
-After a Task commits success, failure, or cancellation, the server upserts one
-notification for that stable Task ID in the owning user's store. Repeated
-handling is idempotent. Task truth does not depend on notification I/O: a
-notification write failure is logged and retried while that terminal Task is
-available. Durable-operation reconciliation also repairs a missing notification
-by stable operation ID after restart. The two files are intentionally eventually
-consistent rather than pretending to form one transaction.
+## API
 
-An in-memory session Task can still lose its notification if the bridge dies in
-the narrow interval after terminal commit and before a successful store write;
-the Task itself is not durable either. A connected watcher receives the next
-authoritative snapshot after persistence, while a later connection obtains it
-on open.
+Bounded mutations are direct Calls:
 
-## Frontend behavior
+- `alerts.list` — filtered authoritative snapshot plus revision and unseen
+  count;
+- `alerts.mark_seen` and `alerts.mark_unseen` — mutate the caller's seen state;
+- `alerts.mark_all_seen` — mark the current result set seen;
+- `alerts.dismiss` — privileged dismissal of an active alert;
+- `alerts.restore` — restore a dismissed alert without pretending its source
+  condition changed; and
+- `alerts.resolve` — internal/source-owned operation, not a general UI action.
 
-TanStack Query owns the server notification cache. `notifications.list` seeds
-the query and `notifications.watch` replaces it with newer snapshots through the
-same query update path. Sonner remains a presentation layer for newly received
-items; it does not become a second source of truth. At cutover, remove the
-current localStorage toast-history implementation rather than migrating it.
+The public model should use `alert`, not `notification`, for lifecycle APIs.
+“Notification” remains the product label for navbar presentation and external
+delivery.
 
-## Security, privacy, and failure behavior
+## `alerts.watch` Channel
 
-- Every Call and Channel is scoped to the authenticated user; IDs from another
-  user are ignored or rejected without revealing their existence.
-- Metadata is allow-listed. Do not persist raw requests, credentials, command
-  output, arbitrary HTML, or arbitrary external links. Internal routes must be
-  validated against the frontend route policy.
-- File permissions and lock ownership follow the existing per-user state-file
-  conventions. A crash during replacement leaves either the prior complete
-  snapshot or the new complete snapshot, never a partially written document.
-- Disk-full, permission, lock-timeout, and decode failures from notification
-  Calls are surfaced to the caller and logs with context. Background source
-  failures are logged and remain eligible for idempotent reconciliation. They do
-  not change the source Task outcome or publish an incomplete snapshot.
-- Clearing and retention are bounded operations; no unbounded history or
-  cross-user aggregation is introduced by this design.
+`alerts.watch` is a server-producing Channel. On open it sends an authoritative
+snapshot with a monotonically increasing revision, followed by coalesced
+revision changes. Reconnect always starts from a current snapshot; correctness
+does not depend on replaying every event.
 
-## Later phases
+TanStack Query owns the frontend alert cache. The initial list seeds it and the
+watch path replaces or invalidates that same cache. Sonner may present newly
+visible transitions, but it is never a history owner. Remove the current
+localStorage toast history only when the server-backed navbar cuts over.
 
-After the MVP has operational metrics and recovery tests, add preferences and
-toast policy, a full notifications page, and carefully selected disk, Docker,
-and system sources. Each source must emit meaningful, deduplicated events into
-the same per-user store; source-specific progress remains ephemeral.
+A slow watcher cannot block alert writes or accumulate an unbounded queue.
+Channel closure removes all subscriber resources. Multiple bridge processes
+observe database revision changes through a bounded reconciliation mechanism;
+an in-process subscriber map alone is not authoritative.
+
+## Sources
+
+The first source should prove the lifecycle with a meaningful, deduplicated
+condition. Candidate integrations after the core is tested include:
+
+- terminal failure or cancellation of selected Tasks;
+- failed or unknown scheduled runs;
+- SMART and storage-health conditions;
+- application or container update availability; and
+- failed systemd units that LinuxIO explicitly manages.
+
+Task or run completion remains authoritative if alert persistence fails. Source
+reconciliation retries an idempotent upsert by stable source key. Frontend Task
+recovery never manufactures alerts.
+
+## Routing and delivery
+
+External delivery is a later layer inspired by Proxmox's
+event/matcher/target split:
+
+1. An alert transition emits a delivery event containing severity, source,
+   type, timestamp, and allow-listed metadata.
+2. Matchers select events by severity and metadata. Calendar rules are added
+   only when users need quiet hours or time-based routing.
+3. Targets deliver through email, webhook, or another explicitly supported
+   adapter.
+
+Each target receives one delivery per matched transition even if multiple
+matchers select it. Frequency, grouping, and retry policy belong here, not in
+the alert lifecycle. Delivery failure may itself be surfaced as a bounded
+administrative alert without recursively routing forever.
+
+## Security and failure behavior
+
+- Every read and seen-state mutation is scoped to the authenticated UID.
+- Dismiss/restore and target configuration use explicit privilege checks.
+- Alert metadata and internal routes are allow-listed and length-bounded.
+- Database busy, full, migration, permission, and decode failures surface with
+  operation context and never publish an uncommitted revision.
+- A source outcome is not rolled back when alert creation or delivery fails.
+- Retention removes only terminal run summaries, resolved alerts allowed by
+  policy, and old delivery attempts; active alerts are preserved.
+
+## Initial completion criteria
+
+- The database schema and migrations have crash and concurrent-session tests.
+- Deduplication, recurrence, resolution, seen, dismissal, and restoration each
+  have explicit transition tests.
+- Reconnect obtains a complete snapshot before live changes.
+- The navbar has one server state owner and no local persistent history owner.
+- No logs or progress frames are copied into the alert database.
+- Routing and delivery remain a separate later slice unless the local lifecycle
+  is already proven.

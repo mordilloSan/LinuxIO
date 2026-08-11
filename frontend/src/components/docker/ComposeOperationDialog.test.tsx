@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ComposeTaskMessage, ComposeTaskResult } from "@/api";
+import type {
+  ComposeTaskMessage,
+  ComposeTaskResult,
+  TaskProgress,
+} from "@/api";
 import { act, render, screen } from "@/test/render";
 
 import ComposeOperationDialog from "./ComposeOperationDialog";
 
 interface TaskStreamConfig {
-  onProgress?: (message: ComposeTaskMessage) => void;
+  onProgress?: (message: TaskProgress<ComposeTaskMessage>) => void;
   success?: (message: ComposeTaskResult) => void;
 }
 
@@ -94,7 +98,12 @@ describe("ComposeOperationDialog", () => {
       type: "complete",
     } as const;
 
-    act(() => mocks.taskConfig?.onProgress?.(terminal));
+    act(() =>
+      mocks.taskConfig?.onProgress?.({
+        message: terminal.message,
+        detail: terminal,
+      }),
+    );
     expect(
       screen.queryByText("✓ operation completed successfully"),
     ).not.toBeInTheDocument();

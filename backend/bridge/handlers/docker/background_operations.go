@@ -20,6 +20,25 @@ type ComposeTaskMessage struct {
 	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
 }
 
+func (m ComposeTaskMessage) ProgressEnvelope() bridgetask.TaskProgress {
+	phase := m.Type
+	message := m.Message
+	var percentage *int
+	if m.Progress != nil {
+		value := m.Progress.Percent
+		percentage = &value
+		if message == "" {
+			message = m.Progress.Text
+		}
+	}
+	return bridgetask.TaskProgress{
+		Percentage: percentage,
+		Phase:      phase,
+		Message:    message,
+		Detail:     m,
+	}
+}
+
 // ComposeTaskResult is the terminal payload returned by a successful compose task.
 type ComposeTaskResult struct {
 	Type    string `json:"type"` // "complete".
@@ -84,7 +103,7 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 		msg := ComposeTaskMessage{Type: msgType, Message: message, Progress: progress}
 		// Compose output is non-terminal streaming progress. The runner's return
 		// value or error is the task's single authoritative terminal signal.
-		task.ReportTransientProgress(msg)
+		task.ReportTransientProgress(msg.ProgressEnvelope())
 		reportMu.Unlock()
 	}
 
