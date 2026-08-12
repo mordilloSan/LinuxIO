@@ -94,11 +94,9 @@ export const useFileMutations = ({
       if (createPending !== null) return;
       const path = joinPath(normalizedPath, fileName);
       setCreatePending("file");
-      try {
-        await createFileMutation.mutateAsync({ path });
-      } finally {
-        setCreatePending(null);
-      }
+      await createFileMutation
+        .mutateAsync({ path })
+        .finally(() => setCreatePending(null));
     },
     [createFileMutation, createPending, normalizedPath],
   );
@@ -120,11 +118,9 @@ export const useFileMutations = ({
       if (createPending !== null) return;
       const path = `${joinPath(normalizedPath, folderName)}/`;
       setCreatePending("folder");
-      try {
-        await createFolderMutation.mutateAsync({ path });
-      } finally {
-        setCreatePending(null);
-      }
+      await createFolderMutation
+        .mutateAsync({ path })
+        .finally(() => setCreatePending(null));
     },
     [createFolderMutation, createPending, normalizedPath],
   );
@@ -274,11 +270,9 @@ export const useFileMutations = ({
       };
       if (renamePending) return;
       setRenamePending(true);
-      try {
-        await renameMutation.mutateAsync(request);
-      } finally {
-        setRenamePending(false);
-      }
+      await renameMutation
+        .mutateAsync(request)
+        .finally(() => setRenamePending(false));
     },
     [renameMutation, renamePending],
   );
@@ -317,10 +311,10 @@ export const useFileMutations = ({
 
   const copyItems = useCallback(
     async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      if (!sourcePaths.length) {
+        throw new Error("No paths provided");
+      }
       try {
-        if (!sourcePaths.length) {
-          throw new Error("No paths provided");
-        }
         const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
         if (!plan) {
           return;
@@ -345,10 +339,10 @@ export const useFileMutations = ({
 
   const moveItems = useCallback(
     async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      if (!sourcePaths.length) {
+        throw new Error("No paths provided");
+      }
       try {
-        if (!sourcePaths.length) {
-          throw new Error("No paths provided");
-        }
         const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
         if (!plan) {
           return;
