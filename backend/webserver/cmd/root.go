@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
@@ -198,10 +200,11 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
 }
 
 func configureServerTLS(srv *http.Server) error {
-	cert, err := web.GenerateSelfSignedCert()
+	certificateDir := filepath.Join(version.WebserverStateDir, "certificates")
+	cert, err := web.LoadOrCreateSelfSignedCert(certificateDir)
 	if err != nil {
-		slog.Error("failed to generate certificate", "error", err)
-		return fmt.Errorf("generate self-signed certificate: %w", err)
+		slog.Error("failed to load managed certificate", "directory", certificateDir, "error", err)
+		return fmt.Errorf("load managed TLS certificate: %w", err)
 	}
 	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	return nil

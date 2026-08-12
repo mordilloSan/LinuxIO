@@ -8,6 +8,8 @@ After=linuxio-webserver.socket linuxio-auth.socket network-online.target
 [Service]
 DynamicUser=yes
 Group=linuxio-bridge-socket
+StateDirectory=linuxio/webserver
+StateDirectoryMode=0700
 ExecStart=/usr/local/bin/linuxio-webserver run
 Restart=on-failure
 RestartSec=5s

@@ -2,8 +2,9 @@ package version
 
 // Installation paths
 const (
-	BinDir  = "/usr/local/bin"
-	DataDir = "/var/lib/linuxio"
+	BinDir            = "/usr/local/bin"
+	DataDir           = "/var/lib/linuxio"
+	WebserverStateDir = DataDir + "/webserver"
 )
 
 // GitHub repository
