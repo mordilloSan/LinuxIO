@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -25,22 +24,19 @@ const (
 	dockerUpdateConfigVersion = 1
 	dockerUpdateUnitName      = "linuxio-docker-update.service"
 	dockerUpdateTimerName     = "linuxio-docker-update.timer"
+	dockerUpdateRunnerPath    = version.BinDir + "/linuxio-docker-update"
 	DockerUpdateConfigPath    = "/etc/linuxio/docker-update.json"
 	dockerUpdateUnitPath      = "/etc/systemd/system/" + dockerUpdateUnitName
 	dockerUpdateTimerPath     = "/etc/systemd/system/" + dockerUpdateTimerName
-	legacyWatchtowerEnvPath   = "/etc/linuxio/watchtower.env"
-	legacyWatchtowerTimerPath = "/etc/systemd/system/linuxio-watchtower.timer"
 	defaultDockerUpdateTime   = "04:00"
 )
 
 var dailyDockerUpdateTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):([0-5][0-9])$`)
 
 type containerAutoUpdateStore struct {
-	configPath      string
-	legacyEnvPath   string
-	legacyTimerPath string
-	timerPath       string
-	unitPath        string
+	configPath string
+	timerPath  string
+	unitPath   string
 }
 
 type containerUpdateSystemdOps struct {
@@ -63,11 +59,9 @@ type dockerUpdateScheduleDocument struct {
 
 var (
 	defaultContainerAutoUpdateStore = containerAutoUpdateStore{
-		configPath:      DockerUpdateConfigPath,
-		legacyEnvPath:   legacyWatchtowerEnvPath,
-		legacyTimerPath: legacyWatchtowerTimerPath,
-		timerPath:       dockerUpdateTimerPath,
-		unitPath:        dockerUpdateUnitPath,
+		configPath: DockerUpdateConfigPath,
+		timerPath:  dockerUpdateTimerPath,
+		unitPath:   dockerUpdateUnitPath,
 	}
 	defaultContainerUpdateSystemdOps = containerUpdateSystemdOps{
 		daemonReload:     systemd.DaemonReload,
@@ -163,30 +157,7 @@ func (s containerAutoUpdateStore) readOptions() (apischema.DockerContainerAutoUp
 	if !errors.Is(err, os.ErrNotExist) {
 		return defaultContainerAutoUpdateOptions(), fmt.Errorf("read %s: %w", s.configPath, err)
 	}
-	return s.readLegacyOptions()
-}
-
-func (s containerAutoUpdateStore) readLegacyOptions() (apischema.DockerContainerAutoUpdateOptions, error) {
-	opts := defaultContainerAutoUpdateOptions()
-	data, err := os.ReadFile(s.legacyEnvPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return opts, nil
-		}
-		return opts, fmt.Errorf("read %s: %w", s.legacyEnvPath, err)
-	}
-	assignments := parseLegacyEnvironment(data)
-	if legacyTruthy(assignments["WATCHTOWER_MONITOR_ONLY"]) {
-		opts.Mode = "check_only"
-	}
-	opts.Cleanup = legacyTruthy(assignments["WATCHTOWER_CLEANUP"])
-	opts.ContainerNames = parseLegacyContainerNames(assignments["LINUXIO_WATCHTOWER_CONTAINERS"])
-	if timerData, timerErr := os.ReadFile(s.legacyTimerPath); timerErr == nil {
-		opts.Time = parseDockerUpdateTimer(timerData)
-	} else if !errors.Is(timerErr, os.ErrNotExist) {
-		return opts, fmt.Errorf("read %s: %w", s.legacyTimerPath, timerErr)
-	}
-	return normalizeContainerAutoUpdateOptions(opts)
+	return defaultContainerAutoUpdateOptions(), nil
 }
 
 func (s containerAutoUpdateStore) writeOptions(opts apischema.DockerContainerAutoUpdateOptions) error {
@@ -273,14 +244,14 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%s/linuxio docker-update-runner --config %s
+ExecStart=%s run --config %s
 TimeoutStartSec=infinity
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
 ProtectSystem=strict
 ReadWritePaths=%s /run
-`, version.BinDir, DockerUpdateConfigPath, version.DataDir)
+`, dockerUpdateRunnerPath, DockerUpdateConfigPath, version.DataDir)
 }
 
 func renderDockerUpdateTimer(timeOfDay string) ([]byte, error) {
@@ -301,75 +272,13 @@ WantedBy=timers.target
 `, normalized.Time, dockerUpdateUnitName), nil
 }
 
-func parseDockerUpdateTimer(data []byte) string {
-	for line := range strings.SplitSeq(string(data), "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if !ok || key != "OnCalendar" {
-			continue
-		}
-		fields := strings.Fields(value)
-		if len(fields) == 2 {
-			value := strings.TrimSuffix(fields[1], ":00")
-			if dailyDockerUpdateTimePattern.MatchString(value) {
-				return value
-			}
-		}
-	}
-	return defaultDockerUpdateTime
-}
-
-func parseLegacyEnvironment(data []byte) map[string]string {
-	out := map[string]string{}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if ok {
-			out[strings.TrimSpace(key)] = strings.TrimSpace(value)
-		}
-	}
-	return out
-}
-
-func legacyTruthy(value string) bool {
-	return slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(strings.TrimSpace(value)))
-}
-
-func parseLegacyContainerNames(value string) []string {
-	var names []string
-	for token := range strings.FieldsSeq(value) {
-		if token == "" || token == "__linuxio_no_containers_selected__" {
-			continue
-		}
-		token = strings.ReplaceAll(token, `\\`, `\`)
-		var name strings.Builder
-		escaped := false
-		for _, character := range token {
-			switch {
-			case escaped:
-				name.WriteRune(character)
-				escaped = false
-			case character == '\\':
-				escaped = true
-			default:
-				name.WriteRune(character)
-			}
-		}
-		names = append(names, name.String())
-	}
-	return normalizeContainerNames(names)
-}
-
 func CheckDockerUpdateRunnerInstalled() (bool, error) {
-	path := filepath.Join(version.BinDir, "linuxio")
-	info, err := os.Stat(path)
+	info, err := os.Stat(dockerUpdateRunnerPath)
 	if err != nil {
-		return false, fmt.Errorf("stat %s: %w", path, err)
+		return false, fmt.Errorf("stat %s: %w", dockerUpdateRunnerPath, err)
 	}
 	if !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return false, fmt.Errorf("%s is not an executable regular file", path)
+		return false, fmt.Errorf("%s is not an executable regular file", dockerUpdateRunnerPath)
 	}
 	return true, nil
 }

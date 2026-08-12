@@ -200,6 +200,216 @@ func TestUpdateStandaloneContainerRollsBackStartFailure(t *testing.T) {
 	}
 }
 
+func TestUpdateStandaloneContainerStopsBeforeMutationWhenPreparationFails(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*fakeNativeUpdateClient, error)
+		wantCalls []string
+	}{
+		{
+			name: "pull request",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.pullErr = injected
+			},
+			wantCalls: []string{"list-containers", "pull:docker.io/library/nginx:latest"},
+		},
+		{
+			name: "pull response",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.pullWaitErr = injected
+			},
+			wantCalls: []string{"list-containers", "pull:docker.io/library/nginx:latest"},
+		},
+		{
+			name: "pull close",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.pullCloseErr = injected
+			},
+			wantCalls: []string{"list-containers", "pull:docker.io/library/nginx:latest"},
+		},
+		{
+			name: "pulled image inspection",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.imageInspectErr = injected
+			},
+			wantCalls: []string{
+				"list-containers",
+				"pull:docker.io/library/nginx:latest",
+				"inspect-image:docker.io/library/nginx:latest",
+			},
+		},
+		{
+			name: "stop",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.stopErr = injected
+			},
+			wantCalls: []string{
+				"list-containers",
+				"pull:docker.io/library/nginx:latest",
+				"inspect-image:docker.io/library/nginx:latest",
+				"stop:old-container",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			injected := errors.New("injected " + tc.name + " failure")
+			fake := newStandaloneUpdateFake()
+			tc.configure(fake, injected)
+
+			_, err := updateStandaloneContainer(
+				context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()),
+			)
+			if !errors.Is(err, injected) {
+				t.Fatalf("updateStandaloneContainer error = %v, want injected error", err)
+			}
+			if !reflect.DeepEqual(fake.calls, tc.wantCalls) {
+				t.Fatalf("calls = %#v, want %#v", fake.calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+func TestUpdateStandaloneContainerRestoresOriginalAfterMutationFailures(t *testing.T) {
+	backupName := standaloneBackupName("old-container")
+	tests := []struct {
+		name       string
+		configure  func(*fakeNativeUpdateClient, error)
+		wantSuffix []string
+	}{
+		{
+			name: "rename",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.renameErrors["old-container:"+backupName] = injected
+			},
+			wantSuffix: []string{
+				"rename:old-container:" + backupName,
+				"start:old-container",
+			},
+		},
+		{
+			name: "create",
+			configure: func(fake *fakeNativeUpdateClient, injected error) {
+				fake.createErr = injected
+			},
+			wantSuffix: []string{
+				"create:web",
+				"rename:old-container:web",
+				"start:old-container",
+			},
+		},
+		{
+			name: "verification",
+			configure: func(fake *fakeNativeUpdateClient, _ error) {
+				fake.inspectResults["replacement"] = container.InspectResponse{
+					ID:    "replacement",
+					State: &container.State{Status: container.StateExited},
+				}
+			},
+			wantSuffix: []string{
+				"inspect-container:replacement",
+				"remove:replacement:true",
+				"rename:old-container:web",
+				"start:old-container",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			injected := errors.New("injected " + tc.name + " failure")
+			fake := newStandaloneUpdateFake()
+			tc.configure(fake, injected)
+
+			_, err := updateStandaloneContainer(
+				context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()),
+			)
+			if tc.name == "verification" {
+				if err == nil || !strings.Contains(err.Error(), "verify replacement") {
+					t.Fatalf("updateStandaloneContainer error = %v, want verification error", err)
+				}
+			} else if !errors.Is(err, injected) {
+				t.Fatalf("updateStandaloneContainer error = %v, want injected error", err)
+			}
+			if len(fake.calls) < len(tc.wantSuffix) || !reflect.DeepEqual(fake.calls[len(fake.calls)-len(tc.wantSuffix):], tc.wantSuffix) {
+				t.Fatalf("calls = %#v, want suffix %#v", fake.calls, tc.wantSuffix)
+			}
+		})
+	}
+}
+
+func TestUpdateStandaloneContainerReportsRollbackFailures(t *testing.T) {
+	primaryErr := errors.New("replacement start failed")
+	removeErr := errors.New("replacement removal failed")
+	restoreErr := errors.New("original rename failed")
+	fake := newStandaloneUpdateFake()
+	fake.startErrors["replacement"] = primaryErr
+	fake.removeErrors["replacement"] = removeErr
+	fake.renameErrors["old-container:web"] = restoreErr
+
+	_, err := updateStandaloneContainer(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()),
+	)
+	for _, want := range []error{primaryErr, removeErr, restoreErr} {
+		if !errors.Is(err, want) {
+			t.Fatalf("updateStandaloneContainer error = %v, want %v", err, want)
+		}
+	}
+	wantSuffix := []string{
+		"start:replacement",
+		"remove:replacement:true",
+		"rename:old-container:web",
+	}
+	if len(fake.calls) < len(wantSuffix) || !reflect.DeepEqual(fake.calls[len(fake.calls)-len(wantSuffix):], wantSuffix) {
+		t.Fatalf("calls = %#v, want suffix %#v", fake.calls, wantSuffix)
+	}
+}
+
+func TestUpdateStandaloneContainerReportsRollbackStartFailure(t *testing.T) {
+	primaryErr := errors.New("replacement create failed")
+	restoreErr := errors.New("original start failed")
+	fake := newStandaloneUpdateFake()
+	fake.createErr = primaryErr
+	fake.startErrors["old-container"] = restoreErr
+
+	_, err := updateStandaloneContainer(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()),
+	)
+	if !errors.Is(err, primaryErr) || !errors.Is(err, restoreErr) {
+		t.Fatalf("updateStandaloneContainer error = %v, want primary and rollback errors", err)
+	}
+}
+
+func TestUpdateStandaloneContainerReportsBackupCleanupFailure(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	cleanupErr := errors.New("backup removal failed")
+	fake := newStandaloneUpdateFake()
+	fake.removeErrors["old-container"] = cleanupErr
+
+	result, err := updateStandaloneContainer(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()),
+	)
+	if !errors.Is(err, cleanupErr) {
+		t.Fatalf("updateStandaloneContainer error = %v, want cleanup error", err)
+	}
+	if !result.Updated || result.ContainerID != "replacement" {
+		t.Fatalf("result = %+v, want active replacement", result)
+	}
+}
+
+func newStandaloneUpdateFake() *fakeNativeUpdateClient {
+	return &fakeNativeUpdateClient{
+		pulledImage: client.ImageInspectResult{InspectResponse: image.InspectResponse{ID: "sha256:new"}},
+		inspectResults: map[string]container.InspectResponse{
+			"replacement": readyContainer("replacement", "sha256:new"),
+		},
+		startErrors:  make(map[string]error),
+		renameErrors: make(map[string]error),
+		removeErrors: make(map[string]error),
+	}
+}
+
 func standaloneTestInspect() container.InspectResponse {
 	return container.InspectResponse{
 		ID:    "old-container",
@@ -252,13 +462,18 @@ func (f *fakeImagePullResponse) JSONMessages(context.Context) iter.Seq2[jsonstre
 }
 
 type fakeNativeUpdateClient struct {
-	calls          []string
-	pulledImage    client.ImageInspectResult
-	pullErr        error
-	pullWaitErr    error
-	inspectResults map[string]container.InspectResponse
-	startErrors    map[string]error
-	createErr      error
+	calls           []string
+	pulledImage     client.ImageInspectResult
+	pullErr         error
+	pullWaitErr     error
+	pullCloseErr    error
+	imageInspectErr error
+	inspectResults  map[string]container.InspectResponse
+	startErrors     map[string]error
+	renameErrors    map[string]error
+	removeErrors    map[string]error
+	stopErr         error
+	createErr       error
 }
 
 func (f *fakeNativeUpdateClient) ImageInspect(
@@ -267,7 +482,7 @@ func (f *fakeNativeUpdateClient) ImageInspect(
 	_ ...client.ImageInspectOption,
 ) (client.ImageInspectResult, error) {
 	f.calls = append(f.calls, "inspect-image:"+imageRef)
-	return f.pulledImage, nil
+	return f.pulledImage, f.imageInspectErr
 }
 
 func (f *fakeNativeUpdateClient) DistributionInspect(
@@ -287,7 +502,7 @@ func (f *fakeNativeUpdateClient) ImagePull(
 	if f.pullErr != nil {
 		return nil, f.pullErr
 	}
-	return &fakeImagePullResponse{waitErr: f.pullWaitErr}, nil
+	return &fakeImagePullResponse{waitErr: f.pullWaitErr, closeErr: f.pullCloseErr}, nil
 }
 
 func (f *fakeNativeUpdateClient) ContainerInspect(
@@ -317,7 +532,7 @@ func (f *fakeNativeUpdateClient) ContainerStop(
 	_ client.ContainerStopOptions,
 ) (client.ContainerStopResult, error) {
 	f.calls = append(f.calls, "stop:"+containerID)
-	return client.ContainerStopResult{}, nil
+	return client.ContainerStopResult{}, f.stopErr
 }
 
 func (f *fakeNativeUpdateClient) ContainerRename(
@@ -326,7 +541,7 @@ func (f *fakeNativeUpdateClient) ContainerRename(
 	options client.ContainerRenameOptions,
 ) (client.ContainerRenameResult, error) {
 	f.calls = append(f.calls, "rename:"+containerID+":"+options.NewName)
-	return client.ContainerRenameResult{}, nil
+	return client.ContainerRenameResult{}, f.renameErrors[containerID+":"+options.NewName]
 }
 
 func (f *fakeNativeUpdateClient) ContainerCreate(
@@ -360,7 +575,7 @@ func (f *fakeNativeUpdateClient) ContainerRemove(
 	} else {
 		f.calls[len(f.calls)-1] = "remove:" + containerID + ":false"
 	}
-	return client.ContainerRemoveResult{}, nil
+	return client.ContainerRemoveResult{}, f.removeErrors[containerID]
 }
 
 func boolInt(value bool) int {

@@ -19,7 +19,7 @@ type scheduledComposeTarget struct {
 }
 
 // RunScheduledContainerUpdates executes one configured check or update pass.
-// It is called by the short-lived linuxio CLI systemd service; no updater
+// It is called by the short-lived Docker update worker; no updater
 // daemon remains resident between timer activations.
 func RunScheduledContainerUpdates(ctx context.Context, configPath string) error {
 	store := defaultContainerAutoUpdateStore

@@ -1,8 +1,8 @@
 # Native Docker Update Engine Plan
 
-Status: implementation complete; Batches 1 through 4 are in the tree. Real
-Docker/Compose integration coverage and runtime upgrade validation remain
-release gates.
+Status: implementation and automated coverage complete; Batches 1 through 4
+are in the tree. The real Docker/Compose update path is covered by the opt-in
+`make test-docker-update-integration` target.
 
 ## Goal
 
@@ -75,7 +75,7 @@ are immutable and never report an update.
 - [x] Pull selected services, then reconcile them with Docker Compose using the
   project's recorded configuration.
 - [x] Record per-container outcomes and refresh status only after reconciliation.
-- [ ] Add integration coverage against a real Docker daemon and Compose plugin.
+- [x] Add integration coverage against a real Docker daemon and Compose plugin.
 
 ### Batch 3: managed standalone updates
 
@@ -87,18 +87,20 @@ are immutable and never report an update.
   resource constraints, and required security settings.
 - [x] Refuse Swarm tasks, Compose containers, unsafe dependency relationships,
   static addressing, auto-remove, and configurations LinuxIO cannot safely reproduce.
-- [ ] Complete failure-injection coverage for pull, stop, rename, create,
-  verification, and rollback; start failure and rollback are covered.
+- [x] Complete failure-injection coverage for pull, stop, rename, create,
+  verification, cleanup, and rollback failures.
 
 ### Batch 4: scheduling and Watchtower removal
 
 - [x] Run checks and updates from a short-lived LinuxIO systemd oneshot service.
+- [x] Execute scheduled runs through the dedicated `linuxio-docker-update`
+  worker; the general `linuxio` service CLI does not embed Docker update commands.
 - [x] Make scheduled selection and policy LinuxIO-owned.
 - [x] Correlate run summaries with journald and persistent status records.
-- [x] Migrate existing Watchtower settings without silently broadening update
-  scope.
+- [x] Keep Watchtower migration out of the product; any previous schedule or
+  artifacts are handled manually.
 - [x] Remove the Watchtower binary, parser, service, timer, installer paths, and
-  build dependency only after all call sites use the native engine.
+  build dependency.
 
 ## Safety rules
 
@@ -122,5 +124,7 @@ are immutable and never report an update.
   and persistent status shape.
 - Scheduled runs are systemd-owned and remain visible through journald across
   UI connection loss.
-- Unit and race tests pass. Real Docker/Compose integration, upgrade migration,
-  and the remaining failure-injection matrix must pass before release.
+- The installed worker exposes only the scheduled `run` operation; manual
+  Docker actions continue to use the typed bridge API.
+- Unit and race tests pass. The opt-in real Docker/Compose integration target
+  must pass before release.

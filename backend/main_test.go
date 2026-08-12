@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"slices"
 	"testing"
 )
@@ -149,21 +148,6 @@ func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
 	}
 	if containsSubstring(got, "abc123") || containsSubstring(got, "component=") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
-	}
-}
-
-func TestDockerUpdateRunnerRejectsInvalidArguments(t *testing.T) {
-	if code := runDockerUpdateRunner(context.Background(), []string{"--unknown"}); code != 2 {
-		t.Fatalf("runDockerUpdateRunner invalid args code = %d, want 2", code)
-	}
-	if code := runDockerUpdateRunner(context.Background(), []string{"--config"}); code != 2 {
-		t.Fatalf("runDockerUpdateRunner missing config code = %d, want 2", code)
-	}
-}
-
-func TestDockerUpdateMigrationRejectsArguments(t *testing.T) {
-	if code := runDockerUpdateMigration(context.Background(), []string{"unexpected"}); code != 2 {
-		t.Fatalf("runDockerUpdateMigration invalid args code = %d, want 2", code)
 	}
 }
 

@@ -648,6 +648,13 @@ test-updater: ensure-go
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
 	    "$(GO_BIN)" test ./bridge/handlers/control -run TestInstallScriptDryRunWithSystemdSandbox -v
 
+test-docker-update-integration: ensure-go
+	@echo "🐳 Running native Docker update integration test..."
+	@cd "$(BACKEND_DIR)" && \
+	  LINUXIO_RUN_DOCKER_INTEGRATION=1 \
+	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
+	  "$(GO_BIN)" test ./bridge/handlers/docker -run '^TestDockerUpdateComposeIntegration$$' -count=1 -v
+
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
@@ -874,7 +881,7 @@ build-bridge: $(GO_BUILD_PREREQ)
 		-s -w \
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
@@ -950,6 +957,18 @@ build-cli: $(GO_BUILD_PREREQ)
 	echo "   Path: $(PWD)/linuxio" && \
 	echo "   Size: $$(du -h ../linuxio | cut -f1)"
 
+build-docker-update: $(GO_BUILD_PREREQ)
+	@echo ""
+	@echo "🏗️  Building Docker update worker..."
+	@cd "$(BACKEND_DIR)" && \
+	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
+	"$(GO_BIN)" build -trimpath \
+	-ldflags "-s -w" \
+	-o ../linuxio-docker-update ./cmd/linuxio-docker-update && \
+	echo "✅ Docker update worker built successfully!" && \
+	echo "   Path: $(PWD)/linuxio-docker-update" && \
+	echo "   Size: $$(du -h ../linuxio-docker-update | cut -f1)"
+
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/webserver/web/frontend/assets"
@@ -1019,7 +1038,7 @@ dev: setup dev-prep
 	@echo "📋 Tailing LinuxIO logs (last $(DEV_LOG_LINES) lines)..."
 	@linuxio logs $(DEV_LOG_LINES)
 
-# Internal target: build backend + auth + cli (requires bridge already built)
+# Internal target: build backend + auth + command binaries (requires bridge already built)
 _build-binaries: ensure-go check-c-build-deps
 	@echo ""
 	@echo "🔑 Capturing bridge hash for backend build..."
@@ -1028,6 +1047,7 @@ _build-binaries: ensure-go check-c-build-deps
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-docker-update SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 
@@ -1044,6 +1064,7 @@ clean:
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -f ./linuxio-auth || true
+	@rm -f ./linuxio-docker-update || true
 	@rm -f $(VITE_DEV_PID) $(VITE_DEV_LOG) $(SCRIPT_SERVER_PID) || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
@@ -1097,6 +1118,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-docker-update-integration$(COLOR_RESET) Run the opt-in real Docker/Compose update test"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-metrics   $(COLOR_RESET) Report frontend bundle sizes after a Vite build (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
@@ -1117,6 +1139,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-docker-update$(COLOR_RESET) Build the scheduled Docker update worker"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
@@ -1134,8 +1157,8 @@ cloc:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps \
-  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli build-docker-update check-c-build-deps \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc

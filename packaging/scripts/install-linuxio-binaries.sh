@@ -96,6 +96,7 @@ download_binaries() {
         "linuxio-webserver"
         "linuxio-bridge"
         "linuxio-auth"
+        "linuxio-docker-update"
         "SHA256SUMS"
     )
 
@@ -154,6 +155,7 @@ install_binaries() {
         ["linuxio-webserver"]="0755"
         ["linuxio-bridge"]="0755"
         ["linuxio-auth"]="0755"
+        ["linuxio-docker-update"]="0755"
     )
 
     for binary in "${!binaries[@]}"; do
@@ -457,6 +459,12 @@ verify_installation() {
         Show 3 "linuxio-auth: not executable"
     fi
 
+    if "${BIN_DIR}/linuxio-docker-update" help >/dev/null 2>&1; then
+        Show 0 "linuxio-docker-update: working"
+    else
+        Show 3 "linuxio-docker-update did not run successfully"
+    fi
+
     if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
         Show 0 "linuxio.target is enabled"
     else
@@ -600,13 +608,6 @@ main() {
     if ! install_systemd_files; then
         Show 1 "Systemd installation failed"
     fi
-    if [[ $skip_binaries -eq 0 ]]; then
-        Show 2 "Migrating legacy Docker update schedule..."
-        if ! /usr/local/bin/linuxio docker-update-migrate; then
-            Show 1 "Docker update schedule migration failed"
-        fi
-        Show 0 "Docker update schedule is native"
-    fi
     if ! enable_services; then
         Show 3 "Some services may not be enabled"
     fi
@@ -669,7 +670,7 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update
   - Systemd:      /etc/systemd/system/linuxio*.service, linuxio*.socket, linuxio.target
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio

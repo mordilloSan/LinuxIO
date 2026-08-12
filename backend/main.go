@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -50,10 +49,6 @@ func runCLI(args []string) int {
 	switch cmd {
 	case "status":
 		return runStatus(ctx)
-	case "docker-update-runner":
-		return runDockerUpdateRunner(ctx, cmdArgs)
-	case "docker-update-migrate":
-		return runDockerUpdateMigration(ctx, cmdArgs)
 	case "logs":
 		return runLogs(cmdArgs)
 	case "start":
@@ -84,8 +79,6 @@ Usage: linuxio <command> [options]
 
 Commands:
   status      Show status of all LinuxIO services
-  docker-update-runner  Run one configured Docker update pass (systemd)
-  docker-update-migrate Migrate the legacy Docker update schedule
   logs        Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
@@ -143,41 +136,6 @@ func showVersion(args []string) {
 		fmt.Println("linuxio-auth: not found or error")
 	}
 
-}
-
-func runDockerUpdateRunner(ctx context.Context, args []string) int {
-	configPath := docker.DockerUpdateConfigPath
-	for len(args) > 0 {
-		switch args[0] {
-		case "--config":
-			if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
-				fmt.Fprintln(os.Stderr, "docker-update-runner: --config requires a path")
-				return 2
-			}
-			configPath = args[1]
-			args = args[2:]
-		default:
-			fmt.Fprintf(os.Stderr, "docker-update-runner: unknown argument %q\n", args[0])
-			return 2
-		}
-	}
-	if err := docker.RunScheduledContainerUpdates(ctx, configPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Docker update run failed: %v\n", err)
-		return 1
-	}
-	return 0
-}
-
-func runDockerUpdateMigration(ctx context.Context, args []string) int {
-	if len(args) != 0 {
-		fmt.Fprintf(os.Stderr, "docker-update-migrate: unexpected arguments: %s\n", strings.Join(args, " "))
-		return 2
-	}
-	if err := docker.MigrateLegacyContainerUpdateSchedule(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Docker update migration failed: %v\n", err)
-		return 1
-	}
-	return 0
 }
 
 func runStatus(parent context.Context) int {
