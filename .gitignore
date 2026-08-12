@@ -10,6 +10,7 @@ tsconfig.tsbuildinfo
 /linuxio-webserver
 /linuxio-auth
 /linuxio-bridge
+/linuxio-docker-update
 
 # Logs and misc
 *.log
