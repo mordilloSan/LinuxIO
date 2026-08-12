@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   linuxio,
@@ -65,10 +65,18 @@ export const useContainerAutoUpdateState = () => {
   const containerNames =
     query.data?.options?.container_names ??
     DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
-  const selectedNames = new Set(containerNames);
-  const pendingNames = diffNames(
-    confirmedOptions?.container_names ?? containerNames,
-    containerNames,
+  // Both sets are consumed as memo dependencies by the table's column builder.
+  // A fresh identity per render rebuilds the columns, and rebuilt columns
+  // remount every cell — including an action button with a click already in
+  // flight over it, which swallows the click outright.
+  const selectedNames = useMemo(
+    () => new Set(containerNames),
+    [containerNames],
+  );
+  const confirmedNames = confirmedOptions?.container_names;
+  const pendingNames = useMemo(
+    () => diffNames(confirmedNames ?? containerNames, containerNames),
+    [confirmedNames, containerNames],
   );
   const disabled = query.isPending || !query.data?.available;
   const reason = query.isPending
@@ -115,7 +123,7 @@ export const useContainerAutoUpdateState = () => {
     };
   }, []);
 
-  const runQueuedSave = () => {
+  const runQueuedSave = useCallback(() => {
     if (!mountedRef.current) return;
     if (saveLoopRunningRef.current) return;
 
@@ -189,68 +197,77 @@ export const useContainerAutoUpdateState = () => {
       saveLoopRunningRef.current = false;
       if (mountedRef.current) setIsSaving(false);
     });
-  };
+  }, [autoUpdateKey, queryClient, saveAutoUpdateOptions, toast]);
 
-  const scheduleSave = (options: DockerContainerAutoUpdateOptions) => {
-    if (!mountedRef.current) return;
-    queuedOptionsRef.current = normalizeOptions(options);
-    if (saveLoopRunningRef.current) return;
+  const scheduleSave = useCallback(
+    (options: DockerContainerAutoUpdateOptions) => {
+      if (!mountedRef.current) return;
+      queuedOptionsRef.current = normalizeOptions(options);
+      if (saveLoopRunningRef.current) return;
 
-    if (flushTimerRef.current !== undefined) {
-      window.clearTimeout(flushTimerRef.current);
-    }
-    flushTimerRef.current = window.setTimeout(() => {
-      flushTimerRef.current = undefined;
-      runQueuedSave();
-    }, SAVE_DEBOUNCE_MS);
-  };
+      if (flushTimerRef.current !== undefined) {
+        window.clearTimeout(flushTimerRef.current);
+      }
+      flushTimerRef.current = window.setTimeout(() => {
+        flushTimerRef.current = undefined;
+        runQueuedSave();
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [runQueuedSave],
+  );
 
-  const toggleContainer = (name: string) => {
-    if (!mountedRef.current) return;
-    const state =
-      queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
-    if (!state) return;
-    const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
+  const toggleContainer = useCallback(
+    (name: string) => {
+      if (!mountedRef.current) return;
+      const state =
+        queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
+      if (!state) return;
+      const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
 
-    const nextNames = new Set(options.container_names ?? []);
-    const enabling = !nextNames.has(name);
-    if (enabling) {
-      nextNames.add(name);
-    } else {
-      nextNames.delete(name);
-    }
-    const nextOptions = normalizeOptions({
-      ...options,
-      container_names: Array.from(nextNames),
-    });
+      const nextNames = new Set(options.container_names ?? []);
+      const enabling = !nextNames.has(name);
+      if (enabling) {
+        nextNames.add(name);
+      } else {
+        nextNames.delete(name);
+      }
+      const nextOptions = normalizeOptions({
+        ...options,
+        container_names: Array.from(nextNames),
+      });
 
-    desiredOptionsRef.current = nextOptions;
-    void queryClient.cancelQueries({ queryKey: autoUpdateKey });
-    queryClient.setQueryData(
-      autoUpdateKey,
-      stateWithOptions(state, nextOptions),
-    );
-    scheduleSave(nextOptions);
-  };
-
-  // Explicit whole-form save (settings dialog): optimistic like the toggles,
-  // but flushed immediately instead of waiting out the toggle debounce.
-  const saveOptions = (options: DockerContainerAutoUpdateOptions) => {
-    if (!mountedRef.current) return;
-    const nextOptions = normalizeOptions(options);
-    desiredOptionsRef.current = nextOptions;
-    const current =
-      queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
-    if (current) {
+      desiredOptionsRef.current = nextOptions;
       void queryClient.cancelQueries({ queryKey: autoUpdateKey });
       queryClient.setQueryData(
         autoUpdateKey,
-        stateWithOptions(current, nextOptions),
+        stateWithOptions(state, nextOptions),
       );
-    }
-    queuedOptionsRef.current = nextOptions;
-    runQueuedSave();
-  };
+      scheduleSave(nextOptions);
+    },
+    [autoUpdateKey, queryClient, scheduleSave],
+  );
+
+  // Explicit whole-form save (settings dialog): optimistic like the toggles,
+  // but flushed immediately instead of waiting out the toggle debounce.
+  const saveOptions = useCallback(
+    (options: DockerContainerAutoUpdateOptions) => {
+      if (!mountedRef.current) return;
+      const nextOptions = normalizeOptions(options);
+      desiredOptionsRef.current = nextOptions;
+      const current =
+        queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
+      if (current) {
+        void queryClient.cancelQueries({ queryKey: autoUpdateKey });
+        queryClient.setQueryData(
+          autoUpdateKey,
+          stateWithOptions(current, nextOptions),
+        );
+      }
+      queuedOptionsRef.current = nextOptions;
+      runQueuedSave();
+    },
+    [autoUpdateKey, queryClient, runQueuedSave],
+  );
 
   return {
     disabled,

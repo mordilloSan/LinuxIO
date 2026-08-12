@@ -55,6 +55,26 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 // still re-render in place when the expanded set changes.
 const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
 
+// Scheduled auto-update state travels the same way, and for the same reason:
+// it settles a beat after the rows first paint (the capability query resolves,
+// then the confirmed options land), so keeping it in the column closures would
+// remount every action button right when the table first becomes clickable.
+interface ContainerAutoUpdateCellState {
+  disabled: boolean;
+  pendingNames: ReadonlySet<string>;
+  reason?: string;
+  selectedNames: ReadonlySet<string>;
+  toggle: (name: string) => void;
+}
+
+const EMPTY_AUTO_UPDATE_NAMES: ReadonlySet<string> = new Set();
+const ContainerAutoUpdateContext = createContext<ContainerAutoUpdateCellState>({
+  disabled: true,
+  pendingNames: EMPTY_AUTO_UPDATE_NAMES,
+  selectedNames: EMPTY_AUTO_UPDATE_NAMES,
+  toggle: () => {},
+});
+
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
 
@@ -412,46 +432,47 @@ const UpdateCell = memo(function UpdateCell({
   );
 });
 
-interface AutoUpdateCellProps {
-  autoUpdateDisabled: boolean;
-  autoUpdatePending: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected: boolean;
-  name: string;
-  onToggleAutoUpdate: (name: string) => void;
+/** Per-row view of the shared auto-update state, resolved from context. */
+function useContainerAutoUpdate(name: string) {
+  const { disabled, pendingNames, reason, selectedNames, toggle } = useContext(
+    ContainerAutoUpdateContext,
+  );
+  const pending = pendingNames.has(name);
+  const selected = selectedNames.has(name);
+  const tooltip = disabled
+    ? (reason ?? "Scheduled auto-update unavailable")
+    : pending
+      ? "Saving auto-update setting"
+      : selected
+        ? "Scheduled auto-update enabled"
+        : "Scheduled auto-update disabled";
+
+  return { disabled, pending, selected, toggle, tooltip };
 }
 
 const AutoUpdateCell = memo(function AutoUpdateCell({
-  autoUpdateDisabled,
-  autoUpdatePending,
-  autoUpdateReason,
-  autoUpdateSelected,
   name,
-  onToggleAutoUpdate,
-}: AutoUpdateCellProps) {
+}: {
+  name: string;
+}) {
   const theme = useAppTheme();
   const [autoTooltipKey, setAutoTooltipKey] = useState(0);
-  const tooltip = autoUpdateDisabled
-    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-    : autoUpdatePending
-      ? "Saving auto-update setting"
-      : autoUpdateSelected
-        ? "Scheduled auto-update enabled"
-        : "Scheduled auto-update disabled";
+  const { disabled, pending, selected, toggle, tooltip } =
+    useContainerAutoUpdate(name);
 
   return (
     <AppTooltip key={autoTooltipKey} title={tooltip}>
       <span>
         <AppActionIconButton
-          color={autoUpdateSelected ? theme.palette.primary.main : undefined}
-          disabled={autoUpdateDisabled || autoUpdatePending}
+          color={selected ? theme.palette.primary.main : undefined}
+          disabled={disabled || pending}
           icon="mdi:timer-cog-outline"
           iconSize={16}
           label={tooltip}
-          loading={autoUpdatePending}
+          loading={pending}
           onClick={() => {
             setAutoTooltipKey((key) => key + 1);
-            onToggleAutoUpdate(name);
+            toggle(name);
           }}
           tooltip={false}
         />
@@ -817,10 +838,6 @@ interface ContainerAction {
 }
 
 interface ActionsCellProps {
-  autoUpdateDisabled: boolean;
-  autoUpdatePending: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected: boolean;
   // Below md only Name and Actions remain, and a seven-icon strip leaves the
   // name barely legible — so the same actions collapse into one menu, which
   // also swallows the auto-update toggle that sits beside the strip.
@@ -829,28 +846,23 @@ interface ActionsCellProps {
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
-  onToggleAutoUpdate: (name: string) => void;
   pending?: boolean;
   state: string;
   url?: string;
 }
 
 const ActionsCell = memo(function ActionsCell({
-  autoUpdateDisabled,
-  autoUpdatePending,
-  autoUpdateReason,
-  autoUpdateSelected,
   compact,
   containerId,
   name,
   onOpenLogs,
   onOpenTerminal,
-  onToggleAutoUpdate,
   pending = false,
   state,
   url,
 }: ActionsCellProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const autoUpdate = useContainerAutoUpdate(name);
   const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
     linuxio.docker.start_container,
     {
@@ -980,21 +992,17 @@ const ActionsCell = memo(function ActionsCell({
           ))}
           <AppDivider />
           <AppMenuItem
-            disabled={autoUpdateDisabled || autoUpdatePending}
+            disabled={autoUpdate.disabled || autoUpdate.pending}
             endAdornment={
-              autoUpdateSelected ? <Icon icon="mdi:check" width={16} /> : null
+              autoUpdate.selected ? <Icon icon="mdi:check" width={16} /> : null
             }
             onClick={() => {
               setMenuAnchor(null);
-              onToggleAutoUpdate(name);
+              autoUpdate.toggle(name);
             }}
-            selected={autoUpdateSelected}
+            selected={autoUpdate.selected}
             startAdornment={<Icon icon="mdi:timer-cog-outline" width={18} />}
-            title={
-              autoUpdateDisabled
-                ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-                : undefined
-            }
+            title={autoUpdate.disabled ? autoUpdate.tooltip : undefined}
           >
             Auto-update
           </AppMenuItem>
@@ -1317,27 +1325,13 @@ const ContainerTable = ({
           const name = getContainerName(container);
           return (
             <>
-              {!compactActions && (
-                <AutoUpdateCell
-                  autoUpdateDisabled={autoUpdateDisabled}
-                  autoUpdatePending={autoUpdatePendingNames.has(name)}
-                  autoUpdateReason={autoUpdateReason}
-                  autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-                  name={name}
-                  onToggleAutoUpdate={onToggleAutoUpdate}
-                />
-              )}
+              {!compactActions && <AutoUpdateCell name={name} />}
               <ActionsCell
-                autoUpdateDisabled={autoUpdateDisabled}
-                autoUpdatePending={autoUpdatePendingNames.has(name)}
-                autoUpdateReason={autoUpdateReason}
-                autoUpdateSelected={autoUpdateSelectedNames.has(name)}
                 compact={compactActions}
                 containerId={container.Id}
                 name={name}
                 onOpenLogs={openLogs}
                 onOpenTerminal={openTerminal}
-                onToggleAutoUpdate={onToggleAutoUpdate}
                 pending={stoppingContainerIds.has(container.Id)}
                 state={container.State}
                 url={container.url}
@@ -1357,57 +1351,69 @@ const ContainerTable = ({
           // A compact row holds nothing but the menu button, so the rest of the
           // track goes back to the name.
           width: compactActions ? "56px" : "215px",
+          // Auto-update state is deliberately absent: the cells read it from
+          // context, which re-renders them past this memo without touching the
+          // column identity.
           getCellRenderKey: (row) => {
             const container = asContainer(row);
-            const name = getContainerName(container);
             return [
               container.Id,
-              name,
+              getContainerName(container),
               container.State,
               container.url,
               stoppingContainerIds.has(container.Id),
-              autoUpdateDisabled,
-              autoUpdatePendingNames.has(name),
-              autoUpdateReason,
-              autoUpdateSelectedNames.has(name),
             ];
           },
         },
       },
     ],
     [
-      autoUpdateDisabled,
-      autoUpdatePendingNames,
-      autoUpdateReason,
-      autoUpdateSelectedNames,
       checkingUpdates,
       compactActions,
       openLogs,
       openTerminal,
-      onToggleAutoUpdate,
       stoppingContainerIds,
       toggleExpanded,
     ],
   );
   const editMode = dnd?.editing ?? false;
+  const autoUpdateState = useMemo<ContainerAutoUpdateCellState>(
+    () => ({
+      disabled: autoUpdateDisabled,
+      pendingNames: autoUpdatePendingNames,
+      reason: autoUpdateReason,
+      selectedNames: autoUpdateSelectedNames,
+      toggle: onToggleAutoUpdate,
+    }),
+    [
+      autoUpdateDisabled,
+      autoUpdatePendingNames,
+      autoUpdateReason,
+      autoUpdateSelectedNames,
+      onToggleAutoUpdate,
+    ],
+  );
 
   return (
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
-        <AppDataTable
-          ariaLabel="Docker containers"
-          columns={columns}
-          data={containers}
-          dnd={dnd}
-          emptyMessage="No containers found."
-          enableSorting={false}
-          getRowId={(container) => container.Id}
-          // Dragging rows is the point of edit mode; selecting one there would
-          // fight the drag and immediately swap the table for a detail view.
-          onRowClick={
-            onSelectContainer && !editMode ? handleRowClick : undefined
-          }
-        />
+        <ContainerAutoUpdateContext.Provider value={autoUpdateState}>
+          <AppDataTable
+            ariaLabel="Docker containers"
+            columns={columns}
+            data={containers}
+            dnd={dnd}
+            emptyMessage="No containers found."
+            enableSorting={false}
+            getRowId={(container) => container.Id}
+            // Dragging rows is the point of edit mode; selecting one there
+            // would fight the drag and immediately swap the table for a detail
+            // view.
+            onRowClick={
+              onSelectContainer && !editMode ? handleRowClick : undefined
+            }
+          />
+        </ContainerAutoUpdateContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
         {logsTarget && (
