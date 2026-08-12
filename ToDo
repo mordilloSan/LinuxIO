@@ -52,20 +52,15 @@ file.
 Define and complete the intended division of coverage between Vitest and
 Playwright.
 
-### Docker update-status persistence
+### Native Docker update engine
 
-Complete the missing scheduled producer for the existing bridge-side
-reader/store:
+Follow the phased
+[`Native Docker Update Engine Plan`](docs/docker-update-engine-plan.md):
 
-- Keep Watchtower as a one-shot process: `--run-once --porcelain v1`.
-- Reuse `backend/bridge/internal/watchtower/porcelain.go` to parse the structured
-  output and write `/var/lib/linuxio/docker-update-status.json`.
-- Have the systemd timer/service run that producer and exit; do not require a
-  resident Watchtower HTTP API.
-- Keep the bridge primarily responsible for reading and displaying the JSON
-  artifact.
-- Treat a Watchtower upgrade as separate work; it is not required to complete
-  this producer.
+1. [x] Replace Watchtower-based checks with native Docker registry digest checks.
+2. [x] Update Compose-managed containers through their Compose project.
+3. [x] Recreate opted-in standalone containers transactionally with rollback.
+4. [x] Move scheduled execution to a LinuxIO systemd runner and remove Watchtower.
 
 ## Completed or closed
 

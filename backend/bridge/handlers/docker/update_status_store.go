@@ -39,6 +39,8 @@ type imageUpdateStatus struct {
 	ImageID         string    `json:"image_id,omitempty"`
 	ImageRef        string    `json:"image_ref,omitempty"`
 	UpdateAvailable bool      `json:"update_available"`
+	LocalDigest     string    `json:"local_digest,omitempty"`
+	RemoteDigest    string    `json:"remote_digest,omitempty"`
 	CheckedAt       time.Time `json:"checked_at"`
 	Err             string    `json:"error,omitempty"`
 }

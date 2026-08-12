@@ -17,7 +17,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
 )
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -47,7 +46,6 @@ type InstallSpec struct {
 const (
 	OptionalComponentIndexer    = "indexer"
 	OptionalComponentMonitoring = "monitoring"
-	OptionalComponentWatchtower = "watchtower"
 )
 
 const monitoringHealthTimeout = 5 * time.Second
@@ -68,14 +66,10 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 	},
 	{
-		Name:    "watchtower",
-		LogName: "Watchtower",
+		Name:    "docker_updates",
+		LogName: "Docker updates",
 		Detect: func(_ context.Context) (bool, string) {
-			return checkedCapability(watchtower.CheckInstalled())
-		},
-		Install: &InstallSpec{
-			OptionalComponent: OptionalComponentWatchtower,
-			RequiresDocker:    true,
+			return checkedCapability(docker.CheckDockerUpdateRunnerInstalled())
 		},
 	},
 	{
@@ -309,8 +303,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	switch name {
 	case "docker":
 		out.DockerAvailable, out.DockerError = ok, errPtr
-	case "watchtower":
-		out.WatchtowerAvailable, out.WatchtowerError = ok, errPtr
+	case "docker_updates":
+		out.DockerUpdatesAvailable, out.DockerUpdatesError = ok, errPtr
 	case "indexer":
 		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "monitoring":

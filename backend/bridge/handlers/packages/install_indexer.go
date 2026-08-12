@@ -64,7 +64,7 @@ func downloadIndexerInstallScript(ctx context.Context, client *http.Client) ([]b
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readWatchtowerErrorBody(resp.Body))
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readHTTPErrorBody(resp.Body))
 	}
 	if resp.ContentLength > indexerInstallScriptMaxBytes {
 		return nil, fmt.Errorf("installer exceeds %d bytes", indexerInstallScriptMaxBytes)

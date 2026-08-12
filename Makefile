@@ -29,14 +29,6 @@ GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' "$(BACKEND_DIR)/go.mod")
 NODE_VERSION ?= $(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('frontend/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null)
 CC ?= cc
 
-# Pinned external component versions
-WATCHTOWER_REPO ?= nicholas-fedor/watchtower
-WATCHTOWER_VERSION ?= 1.20.3
-WATCHTOWER_UPDATE_CHECK ?= 1
-ifneq ($(WATCHTOWER_UPDATE_CHECK),0)
-RELEASE_PRE_PR_TARGETS += check-watchtower-update-for-pr
-endif
-
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 GO_TOOLS_DIR ?= $(HOME)/.go
@@ -234,8 +226,7 @@ print-toolchain-versions:
 	  exit 1; \
 	fi; \
 	echo "go=$(GO_VERSION)"; \
-	echo "node=$(NODE_VERSION)"; \
-	echo "watchtower=$(WATCHTOWER_VERSION)"
+	echo "node=$(NODE_VERSION)"
 
 ensure-node:
 	@echo ""
@@ -884,7 +875,6 @@ build-bridge: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)' \
-		-X '$(MODULE_PATH)/common/version.WatchtowerVersion=$(WATCHTOWER_VERSION)'" \
 	$(GO_BUILD_TAGS_FLAG) \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
@@ -960,36 +950,6 @@ build-cli: $(GO_BUILD_PREREQ)
 	echo "   Path: $(PWD)/linuxio" && \
 	echo "   Size: $$(du -h ../linuxio | cut -f1)"
 
-check-watchtower-update-for-pr:
-	@set -euo pipefail; \
-	PINNED="$$(printf '%s' "$(WATCHTOWER_VERSION)" | sed -E 's/^v//')"; \
-	echo "Checking Watchtower pin ($$PINNED)..."; \
-	LATEST="$$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$(WATCHTOWER_REPO)/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"; \
-	if [ "$$LATEST" = "$$PINNED" ]; then \
-	  echo "Watchtower pin is current ($$PINNED)."; \
-	  exit 0; \
-	fi; \
-	echo "Watchtower update available: pinned $$PINNED, latest $$LATEST"; \
-	ANSWER="$${WATCHTOWER_UPDATE_RESPONSE:-}"; \
-	if [ -z "$$ANSWER" ]; then \
-	  if [ ! -r /dev/tty ]; then \
-	    echo "No interactive terminal available. Set WATCHTOWER_UPDATE_RESPONSE=yes or no."; \
-	    exit 1; \
-	  fi; \
-	  printf "Upgrade WATCHTOWER_VERSION to $$LATEST now? [y/N] " > /dev/tty; \
-	  read -r ANSWER < /dev/tty; \
-	fi; \
-	case "$$ANSWER" in \
-	  [Yy]|[Yy][Ee][Ss]) \
-	    python3 -c 'import pathlib,re,sys; p=pathlib.Path("Makefile"); s=p.read_text(); ns,n=re.subn(r"(?m)^WATCHTOWER_VERSION[ \t]*\?=.*$$", "WATCHTOWER_VERSION ?= " + sys.argv[1], s, count=1); p.write_text(ns) if n == 1 else sys.exit("WATCHTOWER_VERSION assignment not found")' "$$LATEST"; \
-	    echo "Updated WATCHTOWER_VERSION to $$LATEST in Makefile."; \
-	    echo "Commit that change, then rerun make open-pr."; \
-	    exit 1; \
-	    ;; \
-	  *) \
-	    echo "Continuing with pinned Watchtower $$PINNED."; \
-	    ;; \
-	esac
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/webserver/web/frontend/assets"
@@ -1174,7 +1134,7 @@ cloc:
 
 .PHONY: \
   default help clean run \
-  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
+  build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \

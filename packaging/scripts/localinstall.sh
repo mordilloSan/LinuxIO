@@ -93,6 +93,12 @@ for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
 done
 Show 0 "Systemd files installed"
 
+Show 2 "Migrating legacy Docker update schedule..."
+if ! /usr/local/bin/linuxio docker-update-migrate; then
+    Show 1 "Docker update schedule migration failed"
+fi
+Show 0 "Docker update schedule is native"
+
 # Tmpfiles
 Show 2 "Installing tmpfiles.d configuration..."
 mkdir -p /usr/lib/tmpfiles.d

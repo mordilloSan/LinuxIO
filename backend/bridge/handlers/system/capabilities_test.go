@@ -109,9 +109,9 @@ func TestBuildCapabilitiesResponseDetectsCapabilitiesConcurrently(t *testing.T) 
 			},
 		},
 		{
-			Name: "watchtower",
+			Name: "docker_updates",
 			Detect: func(context.Context) (bool, string) {
-				started <- "watchtower"
+				started <- "docker_updates"
 				<-release
 				return false, "not installed"
 			},
@@ -154,11 +154,11 @@ func TestBuildCapabilitiesResponseDetectsCapabilitiesConcurrently(t *testing.T) 
 		if !completed.response.DockerAvailable {
 			t.Error("docker capability reported unavailable")
 		}
-		if completed.response.WatchtowerAvailable {
-			t.Error("watchtower capability reported available")
+		if completed.response.DockerUpdatesAvailable {
+			t.Error("docker_updates capability reported available")
 		}
-		if completed.response.WatchtowerError == nil || *completed.response.WatchtowerError != "not installed" {
-			t.Errorf("watchtower error = %v, want %q", completed.response.WatchtowerError, "not installed")
+		if completed.response.DockerUpdatesError == nil || *completed.response.DockerUpdatesError != "not installed" {
+			t.Errorf("docker_updates error = %v, want %q", completed.response.DockerUpdatesError, "not installed")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("capability detections did not complete after release")
@@ -167,7 +167,7 @@ func TestBuildCapabilitiesResponseDetectsCapabilitiesConcurrently(t *testing.T) 
 	assertCapabilityTimingEvent(t, logs.String(),
 		"capabilities_us",
 		"capabilities_docker_us",
-		"capabilities_watchtower_us",
+		"capabilities_docker_updates_us",
 	)
 }
 

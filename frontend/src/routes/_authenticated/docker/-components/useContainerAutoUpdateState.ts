@@ -75,7 +75,7 @@ export const useContainerAutoUpdateState = () => {
     ? "Loading scheduled auto-update settings..."
     : (query.error?.message ??
       query.data?.error ??
-      (!query.data?.available ? "Watchtower is unavailable." : undefined));
+      (!query.data?.available ? "Docker updates are unavailable." : undefined));
 
   useEffect(() => {
     if (!query.data?.options) return;

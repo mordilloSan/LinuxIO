@@ -7,8 +7,8 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 export function useDockerUpdateCheck() {
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
-    useCapability("watchtowerAvailable");
+  const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
+    useCapability("dockerUpdatesAvailable");
   const { mutate: checkUpdates, isPending: isCheckingUpdates } =
     useCallMutation(linuxio.docker.check_updates, {
       success: (result) => {
@@ -26,10 +26,10 @@ export function useDockerUpdateCheck() {
     button: (
       <AppActionIconButton
         ariaLabel="Check container updates"
-        disabled={!watchtowerEnabled}
+        disabled={!dockerUpdatesEnabled}
         icon="mdi:refresh"
         iconSize={20}
-        label={watchtowerEnabled ? "Check Updates" : watchtowerReason}
+        label={dockerUpdatesEnabled ? "Check Updates" : dockerUpdatesReason}
         loading={isCheckingUpdates}
         onClick={() => checkUpdates()}
       />

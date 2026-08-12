@@ -600,6 +600,13 @@ main() {
     if ! install_systemd_files; then
         Show 1 "Systemd installation failed"
     fi
+    if [[ $skip_binaries -eq 0 ]]; then
+        Show 2 "Migrating legacy Docker update schedule..."
+        if ! /usr/local/bin/linuxio docker-update-migrate; then
+            Show 1 "Docker update schedule migration failed"
+        fi
+        Show 0 "Docker update schedule is native"
+    fi
     if ! enable_services; then
         Show 3 "Some services may not be enabled"
     fi

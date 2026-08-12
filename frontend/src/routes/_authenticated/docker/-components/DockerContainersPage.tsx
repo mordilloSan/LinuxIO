@@ -14,8 +14,8 @@ import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 const DockerContainersPage = () => {
   const { button: checkUpdatesButton, isCheckingUpdates } =
     useDockerUpdateCheck();
-  const { isEnabled: watchtowerEnabled, reason: watchtowerReason } =
-    useCapability("watchtowerAvailable");
+  const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
+    useCapability("dockerUpdatesAvailable");
   const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
   const containerAutoUpdate = useContainerAutoUpdateState();
   const [containerView, setContainerView] = useViewMode(
@@ -27,13 +27,13 @@ const DockerContainersPage = () => {
       {checkUpdatesButton}
       <AppActionIconButton
         ariaLabel="Container auto-update settings"
-        disabled={!watchtowerEnabled}
+        disabled={!dockerUpdatesEnabled}
         icon="mdi:cog"
         iconSize={20}
         label={
-          watchtowerEnabled
+          dockerUpdatesEnabled
             ? "Container auto-update settings"
-            : watchtowerReason
+            : dockerUpdatesReason
         }
         onClick={() => setAutoUpdateDialogOpen(true)}
       />
@@ -57,8 +57,8 @@ const DockerContainersPage = () => {
         autoUpdate={containerAutoUpdate}
         onClose={() => setAutoUpdateDialogOpen(false)}
         open={autoUpdateDialogOpen}
-        watchtowerEnabled={watchtowerEnabled}
-        watchtowerReason={watchtowerReason}
+        dockerUpdatesEnabled={dockerUpdatesEnabled}
+        dockerUpdatesReason={dockerUpdatesReason}
       />
     </>
   );

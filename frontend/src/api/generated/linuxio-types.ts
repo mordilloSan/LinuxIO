@@ -262,7 +262,7 @@ export interface CaddyStatusResponse {
 
 export interface CapabilitiesResponse {
   docker_available: boolean;
-  watchtower_available: boolean;
+  docker_updates_available: boolean;
   indexer_available: boolean;
   monitoring_available: boolean;
   lm_sensors_available: boolean;
@@ -278,7 +278,7 @@ export interface CapabilitiesResponse {
   wireguard_available: boolean;
   libvirt_available: boolean;
   docker_error?: string;
-  watchtower_error?: string;
+  docker_updates_error?: string;
   indexer_error?: string;
   monitoring_error?: string;
   lm_sensors_error?: string;

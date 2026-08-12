@@ -31,16 +31,16 @@ interface ContainerAutoUpdateDialogProps {
   autoUpdate: ContainerAutoUpdateController;
   onClose: () => void;
   open: boolean;
-  watchtowerEnabled: boolean;
-  watchtowerReason?: string;
+  dockerUpdatesEnabled: boolean;
+  dockerUpdatesReason?: string;
 }
 
 const ContainerAutoUpdateDialog = ({
   autoUpdate,
   onClose,
   open,
-  watchtowerEnabled,
-  watchtowerReason,
+  dockerUpdatesEnabled,
+  dockerUpdatesReason,
 }: ContainerAutoUpdateDialogProps) => {
   const theme = useAppTheme();
   const [draftOverrides, setDraftOverrides] =
@@ -68,13 +68,15 @@ const ContainerAutoUpdateDialog = ({
   const saving = autoUpdate.isSaving;
   const unavailable =
     !loading &&
-    (!watchtowerEnabled || !serverState?.available || !!autoUpdate.queryError);
+    (!dockerUpdatesEnabled ||
+      !serverState?.available ||
+      !!autoUpdate.queryError);
   const controlsDisabled = loading || saving || unavailable;
   const unavailableReason =
     autoUpdate.queryError ??
     serverState?.error ??
-    watchtowerReason ??
-    "Watchtower is unavailable.";
+    dockerUpdatesReason ??
+    "Docker updates are unavailable.";
 
   const updateDraft = <K extends keyof DockerContainerAutoUpdateOptions>(
     key: K,
@@ -161,7 +163,7 @@ const ContainerAutoUpdateDialog = ({
         )}
         {unavailable && (
           <AppAlert severity="warning">
-            <AppAlertTitle>Watchtower unavailable</AppAlertTitle>
+            <AppAlertTitle>Docker updates unavailable</AppAlertTitle>
             {unavailableReason}
           </AppAlert>
         )}

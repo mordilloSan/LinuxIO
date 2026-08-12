@@ -25,6 +25,8 @@ func TestUpdateStatusStoreRoundTrip(t *testing.T) {
 			ImageID:         "sha256:image-1",
 			ImageRef:        "nginx:latest",
 			UpdateAvailable: true,
+			LocalDigest:     "sha256:local",
+			RemoteDigest:    "sha256:remote",
 			CheckedAt:       checkedAt,
 		},
 	}); err != nil {
@@ -38,6 +40,9 @@ func TestUpdateStatusStoreRoundTrip(t *testing.T) {
 	}
 	if !status.UpdateAvailable || !status.CheckedAt.Equal(checkedAt) {
 		t.Fatalf("container status = %+v", status)
+	}
+	if status.LocalDigest != "sha256:local" || status.RemoteDigest != "sha256:remote" {
+		t.Fatalf("container digests = %+v", status)
 	}
 	imageStatus, ok := snap.forImage(image.Summary{ID: "sha256:image-1"})
 	if !ok || !imageStatus.UpdateAvailable {

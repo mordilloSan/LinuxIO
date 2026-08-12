@@ -68,7 +68,7 @@ func assertResponseFields(t *testing.T, resp map[string]any, fields map[string]a
 }
 
 var capabilityJSONKeys = []string{
-	"docker_available", "watchtower_available", "indexer_available", "monitoring_available",
+	"docker_available", "docker_updates_available", "indexer_available", "monitoring_available",
 	"lm_sensors_available", "memory_inventory_available", "smartmontools_available",
 	"packagekit_available", "nfs_client_available", "nfs_server_available", "samba_server_available",
 	"samba_client_available", "tuned_available", "avahi_available", "wireguard_available", "libvirt_available",
