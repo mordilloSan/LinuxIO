@@ -62,13 +62,14 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 	}
 
 	updated, err := updateStandaloneContainer(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result)
-	if err != nil {
-		if ctxErr := s.ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		s.recordCandidateError(candidate.inspect, err)
-		return nil
-	}
+	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
+}
+
+func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
+	before container.InspectResponse,
+	updated apischema.DockerContainerUpdateResult,
+	updateErr error,
+) error {
 	if updated.Updated {
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
 		slog.Info("updated standalone Docker container",
@@ -76,6 +77,21 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 			"container", updated.ContainerName,
 			"old_image", updated.PreviousImageID,
 			"new_image", updated.NewImageID)
+	}
+	if updateErr != nil {
+		if ctxErr := s.ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if updated.Updated {
+			s.errs = append(s.errs, updateErr)
+			slog.Warn("failed to remove standalone Docker rollback container after successful update",
+				"component", "docker-update",
+				"container", updated.ContainerName,
+				"error", updateErr)
+			return nil
+		}
+		s.recordCandidateError(before, updateErr)
+		return nil
 	}
 	return nil
 }
