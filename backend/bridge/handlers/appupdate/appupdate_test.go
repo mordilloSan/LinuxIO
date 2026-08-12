@@ -156,6 +156,15 @@ func TestUpdaterUnitPropertiesUseNativeDBusTypesAndExplicitSandbox(t *testing.T)
 	}
 }
 
+func TestUpdaterUnitRunnerDerivesResultDirectoryAtRuntime(t *testing.T) {
+	if !strings.Contains(updaterUnitRunner, `result_dir=$(dirname -- "$result_path")`) {
+		t.Fatal("updater unit runner does not derive result_dir with dirname at runtime")
+	}
+	if strings.Contains(updaterUnitRunner, `${result_path%/*}`) {
+		t.Fatal("updater unit runner uses shell parameter expansion that systemd may evaluate")
+	}
+}
+
 func TestRunAppUpdateTaskPersistsAndReturnsTypedResult(t *testing.T) {
 	executor := &fakeUpdaterExecutor{inspectState: updaterUnitState{ActiveState: "active", SubState: "running"}}
 	restore := configureAppUpdateTest(t, executor)

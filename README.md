@@ -74,6 +74,12 @@ curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/
 
 Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered during dependency setup), you can also reach the box from any LAN device at `https://<your-hostname>.local:8090`.
 
+On first startup, LinuxIO creates a managed self-signed certificate in
+`/var/lib/linuxio/webserver/certificates`. It covers localhost, the system
+hostname, `<hostname>.local`, and the host's current IP addresses. The same
+certificate is reused across restarts, reboots, and updates until it enters its
+30-day renewal window.
+
 <details>
 <summary><strong>What gets installed?</strong></summary>
 
@@ -248,7 +254,7 @@ make clean             # Remove build artifacts
 - Session-based auth with secure cookies
 - Socket-activated auth worker (no setuid)
 - Isolated bridge processes per user
-- TLS support with self-signed certificates
+- Persistent managed TLS certificate with a private systemd state directory
 
 See [SECURITY.md](SECURITY.md) for details.
 

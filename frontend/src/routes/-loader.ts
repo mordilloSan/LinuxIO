@@ -13,7 +13,12 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 
-import { ensureLoaderRequestReady, getStreamMux, LinuxIOError } from "@/api";
+import {
+  ensureLoaderRequestReady,
+  getStreamMux,
+  subscribeRequestAvailability,
+} from "@/api";
+import { subscribeLiveUpdateBlocked } from "@/contexts/UpdateContext";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 
 /** Heterogeneous queryOptions accepted by a route-level batch. */
@@ -94,8 +99,8 @@ export function startRouteQueryPrefetches(
   }: Pick<RouteQueryLoadOptions, "context" | "preload" | "signal">,
   queryOptions: readonly LoaderQueryOptions[],
 ): void {
-  assertRouteLoadingAllowed(context.isUpdateBlocked);
   throwIfAborted(signal);
+  if (routeLoadingBlocked(context.isUpdateBlocked)) return;
 
   for (const options of queryOptions) {
     const prepared = {
@@ -138,11 +143,9 @@ async function prepareRouteLoading(
   isUpdateBlocked: () => boolean,
   signal?: AbortSignal,
 ): Promise<void> {
-  assertRouteLoadingAllowed(isUpdateBlocked);
-  throwIfAborted(signal);
+  await waitForRouteLoadingAllowed(isUpdateBlocked, signal);
   await ensureLoaderRequestReady(undefined, signal);
-  throwIfAborted(signal);
-  assertRouteLoadingAllowed(isUpdateBlocked);
+  await waitForRouteLoadingAllowed(isUpdateBlocked, signal);
 }
 
 async function loadRouteQuery(
@@ -299,13 +302,53 @@ function abortSignalError(signal: AbortSignal): Error {
   return error;
 }
 
-function assertRouteLoadingAllowed(isUpdateBlocked: () => boolean): void {
+function routeLoadingBlocked(isUpdateBlocked: () => boolean): boolean {
   // UpdateProvider mounts below the Router, so the live mux flag closes the
   // first-navigation window before the context getter has observed the event.
-  if (!isUpdateBlocked() && getStreamMux()?.isUpdating !== true) return;
+  return isUpdateBlocked() || getStreamMux()?.isUpdating === true;
+}
 
-  throw new LinuxIOError(
-    "Cannot load route data while an update is in progress",
-    "update_in_progress",
-  );
+function waitForRouteLoadingAllowed(
+  isUpdateBlocked: () => boolean,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfAborted(signal);
+  if (!routeLoadingBlocked(isUpdateBlocked)) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let unsubscribeLiveUpdate: () => void = () => undefined;
+    let unsubscribeRequestAvailability: () => void = () => undefined;
+
+    const cleanup = () => {
+      signal?.removeEventListener("abort", handleAbort);
+      unsubscribeLiveUpdate();
+      unsubscribeRequestAvailability();
+    };
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const handleAbort = () => {
+      if (signal) settle(() => reject(abortSignalError(signal)));
+    };
+    const resolveIfAllowed = () => {
+      if (!routeLoadingBlocked(isUpdateBlocked)) settle(resolve);
+    };
+
+    unsubscribeLiveUpdate = subscribeLiveUpdateBlocked(resolveIfAllowed);
+    unsubscribeRequestAvailability =
+      subscribeRequestAvailability(resolveIfAllowed);
+
+    // Recheck after subscribing so a release between the initial check and
+    // listener registration cannot leave the navigation waiting indefinitely.
+    if (signal?.aborted) {
+      handleAbort();
+    } else {
+      signal?.addEventListener("abort", handleAbort, { once: true });
+      resolveIfAllowed();
+    }
+  });
 }

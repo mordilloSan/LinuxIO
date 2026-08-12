@@ -9,7 +9,7 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 // loader IS the prefetch: hovering a link runs the loader chain. Each suspense
 // endpoint must be declared there as either critical awaited work or a deferred
 // best-effort prefetch. Both paths first wait for yamux transport readiness and
-// apply the update-in-progress hard stop; deferred widgets then own local
+// defer while an app update blocks requests; deferred widgets then own local
 // Suspense and error boundaries. This guard verifies declaration coverage, not
 // that conditional deferred work necessarily runs for hidden/collapsed UI.
 // See docs/tanstack-router.md ("Who owns which data", and the loader /
