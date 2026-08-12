@@ -117,6 +117,11 @@ function AppVirtualGrid<TItem>({
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rowCount,
+    // The virtualizer owns the row wrappers' transform and the rowgroup
+    // height — scroll and remeasure updates are written straight to the DOM
+    // instead of re-rendering. The outer padding rides along as
+    // paddingStart/paddingEnd so row starts already include it.
+    directDomUpdates: true,
     estimateSize: () => estimateItemHeight + gap,
     getItemKey: (rowIndex) => {
       const firstItemIndex = rowIndex * columnCount;
@@ -125,6 +130,8 @@ function AppVirtualGrid<TItem>({
     },
     getScrollElement: () => scrollRef.current,
     overscan,
+    paddingEnd: padding,
+    paddingStart: padding,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
@@ -168,9 +175,9 @@ function AppVirtualGrid<TItem>({
         </div>
       ) : (
         <div
+          ref={virtualizer.containerRef}
           role="rowgroup"
           style={{
-            height: virtualizer.getTotalSize() + padding * 2,
             minWidth: 0,
             position: "relative",
           }}
@@ -193,7 +200,6 @@ function AppVirtualGrid<TItem>({
                   position: "absolute",
                   right: padding,
                   top: 0,
-                  transform: `translateY(${virtualRow.start + padding}px)`,
                 }}
               >
                 {Array.from({ length: columnCount }, (_, columnIndex) => {

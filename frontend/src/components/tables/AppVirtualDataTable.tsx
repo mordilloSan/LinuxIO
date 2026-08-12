@@ -305,7 +305,6 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
   ) => void;
   row: Row<AppTableFeatures, TData>;
   rowIndex: number;
-  start: number;
   virtualIndex: number;
 }
 
@@ -324,7 +323,6 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   onRowDoubleClick,
   row,
   rowIndex,
-  start,
   virtualIndex,
 }: AppVirtualDataTableBodyRowProps<TData>) {
   const rowAttributes = getRowAttributes?.(row);
@@ -344,7 +342,6 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
       className="app-vdt__virtual-row"
       data-index={virtualIndex}
       ref={measureElement}
-      style={{ transform: `translateY(${start}px)` }}
     >
       <div
         {...reorderListeners}
@@ -598,6 +595,11 @@ function AppVirtualDataTable<TData extends RowData>({
 
   const virtualizer = useVirtualizer({
     count: virtualEntries.length,
+    // The virtualizer owns the row wrappers' transform and the body height —
+    // scroll and remeasure updates (including the detail-row height animation,
+    // which calls resizeItem every frame) are written straight to the DOM
+    // instead of re-rendering. Rows must not set their own translateY.
+    directDomUpdates: true,
     estimateSize: (index) => {
       const entry = virtualEntries[index];
       if (entry?.kind === "detail") {
@@ -948,8 +950,8 @@ function AppVirtualDataTable<TData extends RowData>({
       >
         <div
           className="app-vdt__body"
+          ref={virtualizer.containerRef}
           role="rowgroup"
-          style={{ height: virtualizer.getTotalSize() }}
         >
           {virtualItems.map((virtualRow) => {
             const entry = virtualEntries[virtualRow.index];
@@ -963,7 +965,6 @@ function AppVirtualDataTable<TData extends RowData>({
                   data-index={virtualRow.index}
                   key={entry.key}
                   ref={virtualizer.measureElement}
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
                 >
                   <div
                     className="app-vdt__detail"
@@ -1012,7 +1013,6 @@ function AppVirtualDataTable<TData extends RowData>({
                 onRowDoubleClick={onRowDoubleClick}
                 row={row}
                 rowIndex={entry.rowIndex}
-                start={virtualRow.start}
                 virtualIndex={virtualRow.index}
               />
             );

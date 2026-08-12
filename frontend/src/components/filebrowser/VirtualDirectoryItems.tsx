@@ -203,6 +203,11 @@ const VirtualDirectoryItems = ({
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length,
+    // The virtualizer owns the row wrappers' transform and the container
+    // height — scroll and remeasure updates are written straight to the DOM
+    // instead of re-rendering. The outer padding rides along as
+    // paddingStart/paddingEnd so row starts already include it.
+    directDomUpdates: true,
     estimateSize: (index) => {
       const row = rows[index];
       if (row?.type === "sectionHeader") {
@@ -215,6 +220,8 @@ const VirtualDirectoryItems = ({
     getItemKey: (index) => rows[index]?.key ?? index,
     getScrollElement: () => containerRef.current,
     overscan: 6,
+    paddingEnd: horizontalPadding,
+    paddingStart: horizontalPadding,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
@@ -255,8 +262,8 @@ const VirtualDirectoryItems = ({
       }}
     >
       <div
+        ref={virtualizer.containerRef}
         style={{
-          height: virtualizer.getTotalSize() + horizontalPadding * 2,
           minWidth: 0,
           position: "relative",
         }}
@@ -277,7 +284,6 @@ const VirtualDirectoryItems = ({
                 position: "absolute",
                 right: horizontalPadding,
                 top: 0,
-                transform: `translateY(${virtualRow.start + horizontalPadding}px)`,
               }}
             >
               {row.type === "sectionHeader" ? (
