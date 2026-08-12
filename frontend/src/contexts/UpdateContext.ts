@@ -31,16 +31,32 @@ UpdateNavigationContext.displayName = "UpdateNavigationContext";
 
 let liveUpdateBlockerOwner: object | null = null;
 let liveUpdateBlocked = false;
+const liveUpdateBlockerListeners = new Set<() => void>();
 
 export const isLiveUpdateBlocked = () => liveUpdateBlocked;
 
+export const subscribeLiveUpdateBlocked = (
+  listener: () => void,
+): (() => void) => {
+  liveUpdateBlockerListeners.add(listener);
+  return () => {
+    liveUpdateBlockerListeners.delete(listener);
+  };
+};
+
+const setLiveUpdateBlocked = (blocked: boolean) => {
+  if (liveUpdateBlocked === blocked) return;
+  liveUpdateBlocked = blocked;
+  liveUpdateBlockerListeners.forEach((listener) => listener());
+};
+
 export const publishLiveUpdateBlocked = (owner: object, blocked: boolean) => {
   liveUpdateBlockerOwner = owner;
-  liveUpdateBlocked = blocked;
+  setLiveUpdateBlocked(blocked);
 
   return () => {
     if (liveUpdateBlockerOwner !== owner) return;
     liveUpdateBlockerOwner = null;
-    liveUpdateBlocked = false;
+    setLiveUpdateBlocked(false);
   };
 };

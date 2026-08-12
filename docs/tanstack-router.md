@@ -264,15 +264,15 @@ argument only when it needs a different named freshness policy:
 
 `loadRouteQueries` then does the following:
 
-1. Throws `LinuxIOError(…, "update_in_progress")` if either the router-context
-   getter or the live stream mux reports an update. The mux check covers the
-   first-load window before `UpdateProvider` mounts.
+1. Waits while either the router-context getter or the live stream mux reports
+   an update. The mux check covers the first-load window before
+   `UpdateProvider` mounts, and navigation cancellation aborts the wait.
 2. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
    reconnecting. This happens before cache inspection even when every required
    Query entry already contains usable data: route transitions require a live
    backend and cached data is not an offline-navigation contract.
-3. **Re-checks** the update state, closing the race where an update starts
-   during the transport wait.
+3. **Re-checks** and, if necessary, waits for the update state again, closing
+   the race where an update starts during the transport wait.
 4. Runs the selected QueryClient operation in parallel, deduped by query key.
 5. Tags initial and intent-preload failures `silent`, so the route boundary is
    their single visible error owner. A stale background failure remains eligible
@@ -941,8 +941,9 @@ derived, a new route is covered the moment you add it.
 While a live application update is running, two independent mechanisms stop
 traffic — the doc-level distinction matters when debugging:
 
-1. **Loaders hard-fail.** `loadRouteQueries` / `loadRouteTransport` throw
-   `LinuxIOError(…, "update_in_progress")` before and after transport readiness.
+1. **Loaders wait.** `loadRouteQueries` / `loadRouteTransport` defer new
+   route work while the update is active and resume when it finishes. Router
+   cancellation aborts a superseded wait.
 2. **Mounted queries pause.** `UpdateContext` flips the stream multiplexer's
    updating flag; `isRequestAvailable()` goes false; `query-client.tsx` feeds that
    into `onlineManager`, so React Query treats the app as offline. The
@@ -960,8 +961,9 @@ Intent-prefetched queries are tagged `silent`, so an unreliable hover preload
 during an update does not produce a toast.
 
 The loader gate checks both `context.isUpdateBlocked()` and the live
-`getStreamMux()?.isUpdating` flag before and after readiness. The latter closes
-the initial-load gap before `UpdateProvider` has published context state.
+`getStreamMux()?.isUpdating` flag before and after readiness, subscribing to
+both owners while it waits. The mux flag closes the initial-load gap before
+`UpdateProvider` has published context state.
 
 ## Adding A Route — Checklist
 

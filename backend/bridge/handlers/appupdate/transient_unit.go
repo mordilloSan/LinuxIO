@@ -99,7 +99,7 @@ if [ "$exit_code" -ne 0 ]; then
   error_message="updater exited with status $exit_code"
 fi
 finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-result_dir=${result_path%/*}
+result_dir=$(dirname -- "$result_path")
 tmp=$(mktemp "$result_dir/.executor-result-XXXXXX")
 trap 'rm -f -- "$tmp"' EXIT
 printf '{"id":"%s","state":"%s","exit_code":%d,"finished_at":"%s","error":"%s"}\n' \
