@@ -468,6 +468,9 @@ func preserveInspectedMounts(hostConfig *container.HostConfig, mounts []containe
 }
 
 func mountTargetConfigured(hostConfig *container.HostConfig, target string) bool {
+	if _, ok := hostConfig.Tmpfs[target]; ok {
+		return true
+	}
 	for _, configured := range hostConfig.Mounts {
 		if configured.Target == target {
 			return true

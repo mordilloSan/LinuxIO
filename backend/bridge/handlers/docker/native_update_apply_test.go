@@ -139,6 +139,27 @@ func TestStandaloneCreateOptionsCopiesRuntimeConfiguration(t *testing.T) {
 	}
 }
 
+func TestStandaloneCreateOptionsPreservesTmpfs(t *testing.T) {
+	inspect := standaloneTestInspect()
+	inspect.HostConfig.Tmpfs = map[string]string{"/run": "rw,size=64m"}
+	inspect.Mounts = []container.MountPoint{{
+		Type:        mount.TypeTmpfs,
+		Destination: "/run",
+		RW:          true,
+	}}
+
+	options, err := standaloneCreateOptions(inspect, "docker.io/library/nginx:latest", "web")
+	if err != nil {
+		t.Fatalf("standaloneCreateOptions: %v", err)
+	}
+	if !reflect.DeepEqual(options.HostConfig.Tmpfs, inspect.HostConfig.Tmpfs) {
+		t.Fatalf("tmpfs configuration = %#v, want %#v", options.HostConfig.Tmpfs, inspect.HostConfig.Tmpfs)
+	}
+	if len(options.HostConfig.Mounts) != 0 {
+		t.Fatalf("tmpfs was duplicated as a structured mount: %#v", options.HostConfig.Mounts)
+	}
+}
+
 func TestUpdateStandaloneContainerRecreatesAndKeepsRollbackUntilReady(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	before := standaloneTestInspect()
