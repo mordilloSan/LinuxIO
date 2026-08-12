@@ -244,6 +244,20 @@ func TestStoreRefusesSymlinkedRecordsAndUnsafeArtifactNames(t *testing.T) {
 	}
 }
 
+func TestReadRegularFileRejectsPathsOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "record.json")
+	if err := os.WriteFile(outside, []byte(`{}`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	for _, name := range []string{"../record.json", outside} {
+		if _, err := readRegularFile(root, name, maxRecordBytes); err == nil {
+			t.Errorf("readRegularFile(%q) accepted a path outside its root", name)
+		}
+	}
+}
+
 func TestStoreRejectsMalformedRecord(t *testing.T) {
 	store := newTestStore(t)
 	claim := testClaim(7, 1000, "v1.2.3")

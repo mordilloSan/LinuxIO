@@ -317,11 +317,11 @@ func (s *Store) ExecutorResultPath(id string) (string, error) {
 }
 
 func (s *Store) ReadExecutorResult(id string) (ExecutorResult, error) {
-	path, err := s.ExecutorResultPath(id)
-	if err != nil {
+	if err := ValidateID(id); err != nil {
 		return ExecutorResult{}, err
 	}
-	data, err := readRegularFile(path, maxResultBytes)
+	name := filepath.Join("artifacts", id, "executor-result.json")
+	data, err := readRegularFile(s.root, name, maxResultBytes)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return ExecutorResult{}, ErrNotFound
@@ -377,7 +377,7 @@ func (s *Store) withLock(ctx context.Context, fn func() error) error {
 }
 
 func (s *Store) readRecord(id string) (Record, error) {
-	data, err := readRegularFile(s.recordPath(id), maxRecordBytes)
+	data, err := readRegularFile(s.root, id+".json", maxRecordBytes)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return Record{}, ErrNotFound
@@ -592,15 +592,24 @@ func validateRecordPayload(record Record) error {
 	return nil
 }
 
-func readRegularFile(path string, limit int64) ([]byte, error) {
-	info, err := os.Lstat(path)
+func readRegularFile(root, name string, limit int64) ([]byte, error) {
+	if !filepath.IsLocal(name) {
+		return nil, fmt.Errorf("invalid durable operation relative path %q", name)
+	}
+	rootDir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer rootDir.Close()
+
+	info, err := rootDir.Lstat(name)
 	if err != nil {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Mode()&(os.ModeSymlink|os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
-		return nil, fmt.Errorf("refusing to read non-regular durable operation file %q", path)
+		return nil, fmt.Errorf("refusing to read non-regular durable operation file %q", name)
 	}
-	file, err := os.Open(path)
+	file, err := rootDir.Open(name)
 	if err != nil {
 		return nil, err
 	}
