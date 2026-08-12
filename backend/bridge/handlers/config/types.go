@@ -15,12 +15,11 @@ type configAppSettingsPayload struct {
 	ThemeColors             *configThemeColorsByModePayload       `json:"themeColors"`
 	SidebarCollapsed        *bool                                 `json:"sidebarCollapsed"`
 	ShowHiddenFiles         *bool                                 `json:"showHiddenFiles"`
-	DashboardOrder          []string                              `json:"dashboardOrder"`
 	HiddenCards             []string                              `json:"hiddenCards"`
-	ContainerOrder          []string                              `json:"containerOrder"`
 	DockerDashboardSections *bridgeconfig.DockerDashboardSections `json:"dockerDashboardSections"`
 	HardwareSections        *bridgeconfig.HardwareSections        `json:"hardwareSections"`
 	ViewModes               map[string]string                     `json:"viewModes"`
+	LayoutOrders            map[string][]string                   `json:"layoutOrders"`
 	ChunkSizeMB             *int                                  `json:"chunkSizeMB"`
 }
 

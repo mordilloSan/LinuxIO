@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
-import { openDockerLogsStream } from "@/api";
+import { openChannel } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
@@ -44,7 +44,8 @@ const LogsDialog = ({
     resetState,
   } = useLogStream({
     open,
-    createStream: (tail) => openDockerLogsStream(containerId, tail),
+    createStream: (tail) =>
+      openChannel("docker.logs.follow", { containerId, tail }),
     initialTail: tailLines,
   });
 
@@ -57,7 +58,7 @@ const LogsDialog = ({
   }, [logs, search]);
 
   const handleCopy = () => {
-    if (filtered) navigator.clipboard.writeText(filtered);
+    if (filtered) void navigator.clipboard.writeText(filtered);
   };
 
   const handleDownload = () => {

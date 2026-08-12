@@ -9,9 +9,10 @@ import {
   type MouseEvent,
 } from "react";
 
-import { type AccountUserLogin, linuxio } from "@/api";
+import { type AccountUserLogin, linuxio, useCallMutation } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -46,6 +47,7 @@ interface HealthItem {
     ariaLabel?: string;
     onClick: (event: MouseEvent) => void;
     disabled?: boolean;
+    loading?: boolean;
   };
   spaceBefore?: boolean;
   text: string;
@@ -105,17 +107,16 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const theme = useAppTheme();
   const { user: currentUser } = useAuth();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    linuxio.system.dismiss_unclean_shutdown.useAction();
+    useCallMutation(linuxio.system.dismiss_unclean_shutdown);
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useAction();
+    useCallMutation(linuxio.system.dismiss_failed_login_alert);
 
   const items: HealthItem[] = [];
   const failedLoginAlert = health?.failedLoginAlert;
@@ -157,8 +158,11 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       secondaryAction: {
         label: "Dismiss",
         icon: "mdi:close",
-        ariaLabel: "Dismiss failed login alert",
+        ariaLabel: dismissingFailedLogin
+          ? "Dismissing failed login alert"
+          : "Dismiss failed login alert",
         disabled: dismissingFailedLogin,
+        loading: dismissingFailedLogin,
         onClick: (event) => {
           event.stopPropagation();
           dismissFailedLoginAlert({ alertId: failedLoginAlert.id });
@@ -198,8 +202,11 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
         ? {
             label: "Dismiss",
             icon: "mdi:close",
-            ariaLabel: "Dismiss unclean shutdown alert",
+            ariaLabel: dismissingUnclean
+              ? "Dismissing unclean shutdown alert"
+              : "Dismiss unclean shutdown alert",
             disabled: dismissingUnclean,
+            loading: dismissingUnclean,
             onClick: (event) => {
               event.stopPropagation();
               dismissUncleanShutdown({ bootId });
@@ -338,23 +345,20 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
         {content}
         {item.secondaryAction?.icon ? (
-          <AppIconButton
-            aria-label={
-              item.secondaryAction.ariaLabel ?? item.secondaryAction.label
-            }
-            color="inherit"
-            disabled={item.secondaryAction.disabled}
-            onClick={item.secondaryAction.onClick}
-            size="small"
-            style={{
-              marginLeft: theme.spacing(0.5),
-              color: "#fff",
-              opacity: item.secondaryAction.disabled ? 0.5 : 0.85,
-              flexShrink: 0,
-            }}
-          >
-            <Icon height={18} icon={item.secondaryAction.icon} width={18} />
-          </AppIconButton>
+          <span style={{ marginLeft: theme.spacing(0.5), flexShrink: 0 }}>
+            <AppActionIconButton
+              ariaLabel={
+                item.secondaryAction.ariaLabel ?? item.secondaryAction.label
+              }
+              color="inherit"
+              disabled={item.secondaryAction.disabled}
+              icon={item.secondaryAction.icon}
+              label={item.secondaryAction.label}
+              loading={item.secondaryAction.loading}
+              onClick={item.secondaryAction.onClick}
+              size="small"
+            />
+          </span>
         ) : item.secondaryAction ? (
           <AppButton
             color="inherit"
@@ -423,11 +427,10 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const theme = useAppTheme();
   const navigate = useNavigate();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const failedLoginAlert = health?.failedLoginAlert;
 
@@ -453,7 +456,7 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       onOpenFailedLogins();
       return;
     }
-    navigate({ to: iconLink });
+    void navigate({ to: iconLink });
   };
 
   return (
@@ -480,29 +483,24 @@ interface FailedLoginsDialogProps {
 const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
   const theme = useAppTheme();
 
-  const { data: health } = useSuspenseQuery(
-    linuxio.system.get_health_summary.queryOptions({
-      refetchInterval: HEALTH_REFETCH_MS,
-    }),
-  );
+  const { data: health } = useSuspenseQuery({
+    ...linuxio.system.get_health_summary,
+    refetchInterval: HEALTH_REFETCH_MS,
+  });
 
   const {
     data: failedLoginEvents = [],
     isLoading: failedLoginEventsLoading,
     isError: failedLoginEventsError,
     error: failedLoginEventsErrorValue,
-  } = useQuery(
-    linuxio.system.list_failed_login_events.queryOptions(
-      { limit: "24" },
-      {
-        enabled: open,
-        refetchInterval: open ? 30000 : false,
-      },
-    ),
-  );
+  } = useQuery({
+    ...linuxio.system.list_failed_login_events({ limit: "24" }),
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    linuxio.system.dismiss_failed_login_alert.useAction({
+    useCallMutation(linuxio.system.dismiss_failed_login_alert, {
       success: () => {
         onClose();
       },

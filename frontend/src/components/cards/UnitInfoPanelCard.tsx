@@ -76,15 +76,6 @@ export function UnitInfoPanel({
   title = "Unit file & dependencies",
   renderInfoRows,
 }: UnitInfoPanelProps) {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(unitName, {
-      refetchInterval: 2000,
-    }),
-  );
-
-  const fragmentPath = String(info?.FragmentPath ?? "");
-  const extraRows = renderInfoRows?.(info) ?? [];
-
   return (
     <FrostedCard
       style={{
@@ -136,69 +127,85 @@ export function UnitInfoPanel({
         </AppIconButton>
       </div>
 
-      <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
-        <div style={{ minWidth: "max-content" }}>
-          <DetailRow label="Path" noBorder>
-            <AppTypography
-              component="span"
-              fontSize="0.8rem"
-              fontWeight={500}
-              noWrap
-              title={fragmentPath || "—"}
-              variant="body2"
-            >
-              {fragmentPath || "—"}
-            </AppTypography>
-          </DetailRow>
-
-          {extraRows
-            .filter((row) => !row.hidden)
-            .map((row) => (
-              <DetailRow
-                key={row.label}
-                label={row.label}
-                noBorder={row.noBorder}
-              >
-                <AppTypography
-                  component="span"
-                  fontSize="0.75rem"
-                  fontWeight={500}
-                  noWrap
-                  title={
-                    typeof row.value === "string" ||
-                    typeof row.value === "number"
-                      ? String(row.value)
-                      : undefined
-                  }
-                  variant="body2"
-                >
-                  {row.value}
-                </AppTypography>
-              </DetailRow>
-            ))}
-
-          {depFields.map(({ label, key }) => {
-            const items = toStringArray(info?.[key]);
-            if (!items.length) return null;
-            return (
-              <DetailRow key={label} label={label}>
-                <AppTypography
-                  component="span"
-                  fontSize="0.75rem"
-                  fontWeight={500}
-                  noWrap
-                  title={items.join(", ")}
-                  variant="body2"
-                >
-                  {items.join(", ")}
-                </AppTypography>
-              </DetailRow>
-            );
-          })}
-        </div>
-      </div>
+      <UnitInfoPanelLive renderInfoRows={renderInfoRows} unitName={unitName} />
     </FrostedCard>
   );
 }
+
+const UnitInfoPanelLive = ({
+  unitName,
+  renderInfoRows,
+}: Pick<UnitInfoPanelProps, "unitName" | "renderInfoRows">) => {
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName }),
+    refetchInterval: 2000,
+  });
+
+  const fragmentPath = info?.FragmentPath ?? "";
+  const extraRows = renderInfoRows?.(info) ?? [];
+
+  return (
+    <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
+      <div style={{ minWidth: "max-content" }}>
+        <DetailRow label="Path" noBorder>
+          <AppTypography
+            component="span"
+            fontSize="0.8rem"
+            fontWeight={500}
+            noWrap
+            title={fragmentPath || "—"}
+            variant="body2"
+          >
+            {fragmentPath || "—"}
+          </AppTypography>
+        </DetailRow>
+
+        {extraRows
+          .filter((row) => !row.hidden)
+          .map((row) => (
+            <DetailRow
+              key={row.label}
+              label={row.label}
+              noBorder={row.noBorder}
+            >
+              <AppTypography
+                component="span"
+                fontSize="0.75rem"
+                fontWeight={500}
+                noWrap
+                title={
+                  typeof row.value === "string" || typeof row.value === "number"
+                    ? String(row.value)
+                    : undefined
+                }
+                variant="body2"
+              >
+                {row.value}
+              </AppTypography>
+            </DetailRow>
+          ))}
+
+        {depFields.map(({ label, key }) => {
+          const items = toStringArray(info?.[key]);
+          if (!items.length) return null;
+          return (
+            <DetailRow key={label} label={label}>
+              <AppTypography
+                component="span"
+                fontSize="0.75rem"
+                fontWeight={500}
+                noWrap
+                title={items.join(", ")}
+                variant="body2"
+              >
+                {items.join(", ")}
+              </AppTypography>
+            </DetailRow>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 export default UnitInfoPanel;

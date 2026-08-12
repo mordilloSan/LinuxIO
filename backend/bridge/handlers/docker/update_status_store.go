@@ -19,6 +19,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -28,7 +29,7 @@ const (
 )
 
 var (
-	updateStatusPath = "/var/lib/linuxio/docker-update-status.json"
+	updateStatusPath = filepath.Join(version.DataDir, "docker-update-status.json")
 	updateStatusMu   sync.Mutex
 )
 

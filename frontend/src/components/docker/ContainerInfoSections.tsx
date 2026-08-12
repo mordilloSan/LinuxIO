@@ -207,7 +207,10 @@ const ContainerInfoSections = ({
                     key={`${port.PrivatePort}-${port.PublicPort ?? "private"}-${port.Type}`}
                     label={formatPort(port)}
                     size="small"
-                    style={{ fontFamily: "monospace", fontSize: "0.72rem" }}
+                    style={{
+                      fontFamily: "var(--app-font-mono)",
+                      fontSize: "0.72rem",
+                    }}
                     variant="soft"
                   />
                 ))}

@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  CACHE_TTL_MS,
   linuxio,
+  useCallMutation,
   type DockerContainerAutoUpdateOptions,
+  type DockerContainerAutoUpdateState,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -33,7 +34,8 @@ export type ContainerAutoUpdateController = ReturnType<
  */
 export const useContainerAutoUpdateState = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const autoUpdateCache = linuxio.docker.get_container_auto_update.useCache();
+  const queryClient = useQueryClient();
+  const autoUpdateKey = linuxio.docker.get_container_auto_update.queryKey;
   const [confirmedOptions, setConfirmedOptions] =
     useState<DockerContainerAutoUpdateOptions | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -49,15 +51,16 @@ export const useContainerAutoUpdateState = () => {
   const saveLoopRunningRef = useRef(false);
   const mountedRef = useRef(true);
   const flushTimerRef = useRef<number | undefined>(undefined);
-  const query = useQuery(
-    linuxio.docker.get_container_auto_update.queryOptions({
-      staleTime: CACHE_TTL_MS.TWO_SECONDS,
-    }),
-  );
+  const query = useQuery({
+    ...linuxio.docker.get_container_auto_update,
+    staleTime: 2000,
+  });
   // This hook reconciles the cache itself (optimistic setQueryData + save
   // loop), so opt out of the manifest invalidation.
-  const { mutateAsync: saveAutoUpdateOptions } =
-    linuxio.docker.set_container_auto_update.useAction({ invalidates: [] });
+  const { mutateAsync: saveAutoUpdateOptions } = useCallMutation(
+    linuxio.docker.set_container_auto_update,
+    { invalidates: [] },
+  );
 
   const containerNames =
     query.data?.options?.container_names ??
@@ -93,9 +96,12 @@ export const useContainerAutoUpdateState = () => {
       desiredOptions &&
       optionsKey(query.data.options) !== optionsKey(desiredOptions)
     ) {
-      autoUpdateCache.set(stateWithOptions(query.data, desiredOptions));
+      queryClient.setQueryData(
+        autoUpdateKey,
+        stateWithOptions(query.data, desiredOptions),
+      );
     }
-  }, [autoUpdateCache, query.data]);
+  }, [autoUpdateKey, query.data, queryClient]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -133,7 +139,8 @@ export const useContainerAutoUpdateState = () => {
 
           confirmedOptionsRef.current = savedOptions;
           setConfirmedOptions(savedOptions);
-          autoUpdateCache.set(
+          queryClient.setQueryData(
+            autoUpdateKey,
             optionsKey(savedOptions) === optionsKey(desiredOptions)
               ? savedState
               : stateWithOptions(savedState, desiredOptions),
@@ -156,9 +163,15 @@ export const useContainerAutoUpdateState = () => {
           const confirmed =
             confirmedOptionsRef.current ?? DEFAULT_AUTO_UPDATE_OPTIONS;
           desiredOptionsRef.current = confirmed;
-          const current = autoUpdateCache.get();
+          const current =
+            queryClient.getQueryData<DockerContainerAutoUpdateState>(
+              autoUpdateKey,
+            );
           if (current) {
-            autoUpdateCache.set(stateWithOptions(current, confirmed));
+            queryClient.setQueryData(
+              autoUpdateKey,
+              stateWithOptions(current, confirmed),
+            );
           }
           toast.error(
             getMutationErrorMessage(
@@ -188,13 +201,14 @@ export const useContainerAutoUpdateState = () => {
     }
     flushTimerRef.current = window.setTimeout(() => {
       flushTimerRef.current = undefined;
-      void runQueuedSave();
+      runQueuedSave();
     }, SAVE_DEBOUNCE_MS);
   };
 
   const toggleContainer = (name: string) => {
     if (!mountedRef.current) return;
-    const state = autoUpdateCache.get();
+    const state =
+      queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
     if (!state) return;
     const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
 
@@ -211,8 +225,11 @@ export const useContainerAutoUpdateState = () => {
     });
 
     desiredOptionsRef.current = nextOptions;
-    void autoUpdateCache.cancel();
-    autoUpdateCache.set(stateWithOptions(state, nextOptions));
+    void queryClient.cancelQueries({ queryKey: autoUpdateKey });
+    queryClient.setQueryData(
+      autoUpdateKey,
+      stateWithOptions(state, nextOptions),
+    );
     scheduleSave(nextOptions);
   };
 
@@ -222,13 +239,17 @@ export const useContainerAutoUpdateState = () => {
     if (!mountedRef.current) return;
     const nextOptions = normalizeOptions(options);
     desiredOptionsRef.current = nextOptions;
-    const current = autoUpdateCache.get();
+    const current =
+      queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
     if (current) {
-      void autoUpdateCache.cancel();
-      autoUpdateCache.set(stateWithOptions(current, nextOptions));
+      void queryClient.cancelQueries({ queryKey: autoUpdateKey });
+      queryClient.setQueryData(
+        autoUpdateKey,
+        stateWithOptions(current, nextOptions),
+      );
     }
     queuedOptionsRef.current = nextOptions;
-    void runQueuedSave();
+    runQueuedSave();
   };
 
   return {

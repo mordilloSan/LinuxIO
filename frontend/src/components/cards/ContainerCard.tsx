@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
-import { linuxio, type ContainerInfo } from "@/api";
+import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -55,13 +56,43 @@ interface ContainerCardProps {
   autoUpdatePending?: boolean;
   autoUpdateReason?: string;
   autoUpdateSelected?: boolean;
-  container: ContainerInfo;
+  containerId: string;
   onSelect?: () => void;
   onToggleAutoUpdate?: (name: string) => void;
   selected?: boolean;
 }
 
-const ContainerCard = ({
+type ContainerCardLiveProps = Omit<ContainerCardProps, "selected"> & {
+  selected: boolean;
+};
+
+const ContainerCardLive = ({
+  containerId,
+  ...props
+}: ContainerCardLiveProps) => {
+  const selectContainer = useCallback(
+    (containers: ContainerInfo[]) =>
+      containers.find((item) => item.Id === containerId),
+    [containerId],
+  );
+  // Cards consume the list cache by identity. The page owns the sole polling
+  // observer; this observer only receives fresh values from that shared cache.
+  const { data: container } = useQuery({
+    ...linuxio.docker.list_containers,
+    refetchOnMount: false,
+    select: selectContainer,
+  });
+
+  if (!container) return null;
+
+  return <ContainerCardBody {...props} container={container} />;
+};
+
+type ContainerCardBodyProps = Omit<ContainerCardLiveProps, "containerId"> & {
+  container: ContainerInfo;
+};
+
+const ContainerCardBody = ({
   actionPending = false,
   autoUpdateDisabled = false,
   autoUpdatePending = false,
@@ -70,8 +101,8 @@ const ContainerCard = ({
   container,
   onSelect,
   onToggleAutoUpdate,
-  selected = false,
-}: ContainerCardProps) => {
+  selected,
+}: ContainerCardBodyProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
@@ -89,36 +120,40 @@ const ContainerCard = ({
   );
 
   // ---- actions (start/stop/restart/remove) ----
-  const { mutate: startContainer, isPending: isStartPending } =
-    linuxio.docker.start_container.useAction({
+  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
+    linuxio.docker.start_container,
+    {
       success: `Container ${name} started successfully`,
       error: `Failed to start container ${name}`,
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
-  const { mutate: stopContainer, isPending: isStopPending } =
-    linuxio.docker.stop_container.useAction({
+  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
+    linuxio.docker.stop_container,
+    {
       success: `Container ${name} stopped successfully`,
       error: `Failed to stop container ${name}`,
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   const { mutate: restartContainer, isPending: isRestartPending } =
-    linuxio.docker.restart_container.useAction({
+    useCallMutation(linuxio.docker.restart_container, {
       success: `Container ${name} restarted successfully`,
       error: `Failed to restart container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
-    linuxio.docker.remove_container.useAction({
+    useCallMutation(linuxio.docker.remove_container, {
       success: `Container ${name} removed successfully`,
       error: `Failed to remove container ${name}`,
       toast: DOCKER_TOAST_META,
     });
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useAction({
+    useCallMutation(linuxio.docker.update_container, {
       success: (result) => {
         toast.success(
           result.updated
@@ -213,41 +248,54 @@ const ContainerCard = ({
       }}
     >
       {container.State === "running" ? (
-        <AppButton
-          color="error"
-          disabled={isActionPending}
-          onClick={() => handleAction("stop")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
-          variant="outlined"
-        >
-          Stop
-        </AppButton>
+        <AppTooltip arrow placement="top" title="Stop Container">
+          <span>
+            <AppButton
+              color="error"
+              disabled={isActionPending}
+              onClick={() => handleAction("stop")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:stop-circle" width={16} />}
+              variant="outlined"
+            >
+              Stop
+            </AppButton>
+          </span>
+        </AppTooltip>
       ) : (
-        <AppButton
-          color="success"
-          disabled={isActionPending}
-          onClick={() => handleAction("start")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:play" width={16} />}
-          variant="outlined"
-        >
-          Start
-        </AppButton>
+        <AppTooltip arrow placement="top" title="Start Container">
+          <span>
+            <AppButton
+              color="success"
+              disabled={isActionPending}
+              onClick={() => handleAction("start")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:play" width={16} />}
+              variant="outlined"
+            >
+              Start
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
-      <AppButton
-        disabled={isActionPending}
-        onClick={() => handleAction("restart")}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
-        variant="outlined"
-      >
-        Restart
-      </AppButton>
+      <AppTooltip arrow placement="top" title="Restart Container">
+        <span>
+          <AppButton
+            disabled={isActionPending}
+            onClick={() => handleAction("restart")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:restart" width={16} />}
+            variant="outlined"
+          >
+            Restart
+          </AppButton>
+        </span>
+      </AppTooltip>
       {onToggleAutoUpdate && (
         <AppTooltip
           arrow
           key={`selected-${autoTooltipKey}`}
+          placement="top"
           title={autoUpdateTooltip}
         >
           <span>
@@ -267,64 +315,67 @@ const ContainerCard = ({
         </AppTooltip>
       )}
       {container.updateAvailable && (
-        <AppButton
-          color="warning"
-          disabled={isActionPending}
-          onClick={handleUpdateClick}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:update" width={16} />}
-          variant="outlined"
-        >
-          Update
-        </AppButton>
+        <AppTooltip arrow placement="top" title="Update Container">
+          <span>
+            <AppButton
+              color="warning"
+              disabled={isActionPending}
+              onClick={handleUpdateClick}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:update" width={16} />}
+              variant="outlined"
+            >
+              Update
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
-      <AppButton
-        color="error"
-        disabled={isActionPending}
-        onClick={() => handleAction("remove")}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
-        variant="outlined"
-      >
-        Remove
-      </AppButton>
-      <AppButton
-        disabled={isActionPending}
-        onClick={handleTerminalClick}
-        size="small"
-        startIcon={<Icon height={16} icon="mdi:console" width={16} />}
-        variant="outlined"
-      >
-        Terminal
-      </AppButton>
+      <AppTooltip arrow placement="top" title="Remove Container">
+        <span>
+          <AppButton
+            color="error"
+            disabled={isActionPending}
+            onClick={() => handleAction("remove")}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:delete" width={16} />}
+            variant="outlined"
+          >
+            Remove
+          </AppButton>
+        </span>
+      </AppTooltip>
+      <AppTooltip arrow placement="top" title="Open Terminal">
+        <span>
+          <AppButton
+            disabled={isActionPending}
+            onClick={handleTerminalClick}
+            size="small"
+            startIcon={<Icon height={16} icon="mdi:console" width={16} />}
+            variant="outlined"
+          >
+            Terminal
+          </AppButton>
+        </span>
+      </AppTooltip>
       {container.url && (
-        <AppButton
-          onClick={() => window.open(container.url, "_blank", "noopener")}
-          size="small"
-          startIcon={<Icon height={16} icon="mdi:open-in-new" width={16} />}
-          variant="outlined"
-        >
-          Open
-        </AppButton>
+        <AppTooltip arrow placement="top" title="Open App">
+          <span>
+            <AppButton
+              onClick={() => window.open(container.url, "_blank", "noopener")}
+              size="small"
+              startIcon={<Icon height={16} icon="mdi:open-in-new" width={16} />}
+              variant="outlined"
+            >
+              Open
+            </AppButton>
+          </span>
+        </AppTooltip>
       )}
     </div>
   );
 
   return (
-    <FrostedCard
-      hoverLift={!selected}
-      style={{
-        padding: 12,
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        width: "100%",
-        minWidth: 0,
-        position: "relative",
-        border: "none",
-        transition: "transform 0.2s, box-shadow 0.2s",
-      }}
-    >
+    <>
       {/* Loading overlay */}
       {isActionPending && (
         <div
@@ -675,8 +726,27 @@ const ContainerCard = ({
           </div>
         </>
       )}
-    </FrostedCard>
+    </>
   );
 };
+
+const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
+  <FrostedCard
+    hoverLift={!selected}
+    style={{
+      padding: 12,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      width: "100%",
+      minWidth: 0,
+      position: "relative",
+      border: "none",
+      transition: "transform 0.2s, box-shadow 0.2s",
+    }}
+  >
+    <ContainerCardLive {...props} selected={selected} />
+  </FrostedCard>
+);
 
 export default ContainerCard;

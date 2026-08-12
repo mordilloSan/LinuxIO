@@ -2,17 +2,18 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { memo, Suspense, useCallback, useRef, useState } from "react";
 
 import {
-  CACHE_TTL_MS,
+  call,
   linuxio,
   LinuxIOError,
   uploadContent,
   type ComposeProject,
+  useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
-import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
+import type { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
 import DeleteStackDialog, {
   type DeleteOption,
 } from "@/components/docker/DeleteStackDialog";
@@ -25,7 +26,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import { markTerminalFeedbackEmitted } from "@/hooks/backgroundJobs/terminalJobFeedback";
+import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
 import { useConfig } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -88,31 +89,33 @@ const ComposeStacksPage = ({
     useState<ComposeProject | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const { data: rawProjects, refetch } = useSuspenseQuery(
-    linuxio.docker.list_compose_projects.queryOptions({
-      refetchInterval: 5000,
-    }),
-  );
+  const { data: rawProjects, refetch } = useSuspenseQuery({
+    ...linuxio.docker.list_compose_projects,
+    refetchInterval: 5000,
+  });
   const projects = rawProjects;
 
   // Success/error toasts are composed per delete option in handleDeleteConfirm.
-  const { mutateAsync: deleteStack } = linuxio.docker.delete_stack.useAction();
+  const { mutateAsync: deleteStack } = useCallMutation(
+    linuxio.docker.delete_stack,
+  );
 
   // Loader-style read: the file content feeds the editor, fetched fresh on
   // every open (no cache entry wanted).
-  const fetchComposeFile = linuxio.filebrowser.resource_get.useFetcher();
   // Event-driven commands behind the editor flow; error handling stays with
   // the calling workflow, so no declarative toast config here.
-  const { mutateAsync: validateCompose } =
-    linuxio.docker.validate_compose.useAction();
-  const { mutateAsync: resolveComposeFilePath } =
-    linuxio.docker.get_compose_file_path.useAction();
+  const { mutateAsync: validateCompose } = useCallMutation(
+    linuxio.docker.validate_compose,
+  );
+  const { mutateAsync: resolveComposeFilePath } = useCallMutation(
+    linuxio.docker.get_compose_file_path,
+  );
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
     setOperationDialogOpen(false);
     // Refresh projects after operation completes
-    refetch();
+    void refetch();
   }, [refetch]);
 
   const startProject = useCallback((projectName: string, filePath?: string) => {
@@ -227,10 +230,11 @@ const ComposeStacksPage = ({
   const openStackEditor = useCallback(
     async (projectName: string, configPath: string) => {
       try {
-        const result = await fetchComposeFile(
-          { path: configPath, unused: "", getContent: "true" },
-          { staleTime: CACHE_TTL_MS.NONE, gcTime: CACHE_TTL_MS.NONE },
-        );
+        const result = await call(linuxio.filebrowser.resource_get.route, {
+          path: configPath,
+          unused: "",
+          getContent: "true",
+        });
 
         if (result && result.content) {
           setEditorMode("edit");
@@ -247,7 +251,7 @@ const ComposeStacksPage = ({
         );
       }
     },
-    [fetchComposeFile, toast],
+    [toast],
   );
 
   const handleEditStack = useCallback(
@@ -290,16 +294,16 @@ const ComposeStacksPage = ({
       await uploadContent(filePath, contentBytes, {
         chunkSize,
         // handleSave owns the outcome (overwrite dialog on 409, toasts
-        // otherwise), so the global background-jobs watcher must not also
-        // report this job's failure.
-        onJobStart: (job) => markTerminalFeedbackEmitted(job.id),
+        // otherwise), so the global background-tasks watcher must not also
+        // report this task's failure.
+        onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
         overwrite: override || undefined,
       });
 
       toast.success("Compose file saved successfully");
 
       // Invalidate queries
-      refetch();
+      void refetch();
 
       // Close editor
       setEditorOpen(false);
@@ -340,7 +344,7 @@ const ComposeStacksPage = ({
         await performSave(content, stackName, filePath, false);
         return true;
       } catch (error) {
-        // The upload job reports an existing destination as a structured 409.
+        // The upload task reports an existing destination as a structured 409.
         if (error instanceof LinuxIOError && error.code === 409) {
           // Store pending save data and show confirmation dialog
           setPendingSaveData({ content, stackName, filePath });

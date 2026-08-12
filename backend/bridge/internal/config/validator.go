@@ -29,6 +29,7 @@ func repairConfig(cfgPath, base string) error {
 	changed = repairInvalidConfigValues(&cfg, defaults) || changed
 	changed = repairMissingDefaultValues(raw, &cfg, defaults) || changed
 	changed = repairDockerFolderPaths(&cfg, defaults) || changed
+	changed = migrateLegacyLayoutOrders(&cfg.AppSettings) || changed
 
 	if changed {
 		return writeConfigFrom(cfgPath, cfg)
@@ -121,14 +122,44 @@ func repairMissingDefaultValues(raw []byte, cfg *Settings, defaults *Settings) b
 	return changed
 }
 
+// migrateLegacyLayoutOrders folds the pre-LayoutOrders dashboardOrder and
+// containerOrder keys into LayoutOrders so an existing install keeps the layout
+// its owner arranged. The legacy fields are cleared, which drops them from the
+// file on the rewrite this migration asks for.
+func migrateLegacyLayoutOrders(app *PersistedAppSettings) bool {
+	legacy := []struct {
+		order   *[]string
+		surface string
+	}{
+		{order: &app.DashboardOrder, surface: "dashboard"},
+		{order: &app.ContainerOrder, surface: "docker.containers"},
+	}
+
+	changed := false
+	for _, entry := range legacy {
+		order := *entry.order
+		*entry.order = nil
+		if len(order) == 0 {
+			// A present-but-empty legacy key still has to disappear from the file.
+			changed = changed || order != nil
+			continue
+		}
+		changed = true
+		if _, taken := app.LayoutOrders[entry.surface]; taken {
+			continue
+		}
+		if app.LayoutOrders == nil {
+			app.LayoutOrders = map[string][]string{}
+		}
+		app.LayoutOrders[entry.surface] = order
+	}
+	return changed
+}
+
 func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, defaults *Settings) bool {
 	changed := false
 	if !hasMapKey(appSettings, "themeColors") {
 		cfg.AppSettings.ThemeColors = cloneThemeColorsByMode(defaults.AppSettings.ThemeColors)
-		changed = true
-	}
-	if !hasMapKey(appSettings, "dashboardOrder") {
-		cfg.AppSettings.DashboardOrder = slices.Clone(defaults.AppSettings.DashboardOrder)
 		changed = true
 	}
 	if !hasMapKey(appSettings, "dockerDashboardSections") {

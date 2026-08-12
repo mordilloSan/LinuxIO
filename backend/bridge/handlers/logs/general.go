@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 // journaldFieldMatch matches journald-style KEY=VALUE operands. The key must
@@ -55,10 +57,8 @@ const (
 	followFlushInterval = 150 * time.Millisecond
 	// flushChunkBytes flushes a frame early once it grows past this size.
 	flushChunkBytes = 64 * 1024
-	// maxBacklogBytes bounds both the temporary backlog slice and the number of
-	// replay frames produced before jobs.attach subscribes. At 64 KiB per frame,
-	// 16 MiB remains below the generic 1024-event replay window even in the
-	// worst-case next-fit packing pattern, where frames are only half full.
+	// maxBacklogBytes bounds the temporary in-memory backlog before it is written
+	// to the Channel.
 	maxBacklogBytes = 16 * 1024 * 1024
 	// entryLookupTimeout bounds the one-shot cursor lookup for logs.general_entry.
 	entryLookupTimeout = 10 * time.Second
@@ -95,18 +95,19 @@ type generalLogsRequest struct {
 	afterCursor  string
 }
 
-// runGeneralLogsJob streams general journal logs through the bridge job
+// streamGeneralLogsChannel streams general journal logs through a direct channel
 // lifecycle in two phases, mirroring Cockpit's journal viewer: a bounded
 // one-shot backlog query (newest-first, killed at maxBacklogLines) followed by
 // a live tail anchored at the newest cursor. The split gives a deterministic
 // "backlog_complete" signal even when zero entries match, and keeps "All in
 // window" from streaming an unbounded journal.
-func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Job, request apischema.GeneralLogsFollowRequest) (any, error) {
+func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime.Runtime, request apischema.GeneralLogsFollowRequest) error {
+	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
+	defer cleanup()
 	req := parseGeneralLogsRequest(request)
-	slog.Debug("starting general log job",
+	slog.Debug("starting general log channel",
 		"component", "logs",
 		"route", streamTypeGeneralLogs,
-		"job_id", job.ID(),
 		"lines", req.lines,
 		"time_period", req.timePeriod,
 		"priority", req.priority,
@@ -115,7 +116,7 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 		"follow", req.follow)
 
 	if req.afterCursor != "" && !isValidJournalCursor(req.afterCursor) {
-		return nil, errors.New("invalid journal cursor")
+		return writeLogError(stream, errors.New("invalid journal cursor"))
 	}
 
 	var newestCursor string
@@ -125,32 +126,56 @@ func runGeneralLogsJob(ctx context.Context, _ runtime.Runtime, job *bridgeipc.Jo
 		newestCursor = req.afterCursor
 	} else {
 		var err error
-		newestCursor, count, truncated, err = streamGeneralLogsBacklog(ctx, job, req)
+		newestCursor, count, truncated, err = streamGeneralLogsBacklog(ctx, stream, req)
 		if err != nil {
-			slog.Error("general log backlog failed",
+			// A canceled context is the routine end of a client-closed stream
+			// (filter change, live toggle, navigating away) landing mid-backlog,
+			// not a failure.
+			level, message := slog.LevelError, "general log backlog failed"
+			if errors.Is(err, context.Canceled) {
+				level, message = slog.LevelDebug, "general log backlog canceled"
+			}
+			slog.Log(ctx, level, message,
 				"component", "logs",
 				"route", streamTypeGeneralLogs,
-				"job_id", job.ID(),
 				"error", err)
-			return nil, err
+			return writeLogErrorUnlessCanceled(ctx, stream, err)
 		}
 	}
 
-	job.ReportTransientProgress(map[string]any{
+	if err := relay.WriteProgress(stream, 0, map[string]any{
 		"type":      "backlog_complete",
 		"count":     count,
 		"truncated": truncated,
 		"resumed":   req.afterCursor != "",
-	})
+	}); err != nil {
+		return err
+	}
 
 	if !req.follow {
-		return map[string]any{"status": "completed", "count": count, "truncated": truncated}, nil
+		return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "completed", "count": count, "truncated": truncated})
 	}
 
-	if err := streamGeneralLogsFollow(ctx, job, req, newestCursor); err != nil {
-		return nil, err
+	if err := streamGeneralLogsFollow(ctx, stream, req, newestCursor); err != nil {
+		return writeLogErrorUnlessCanceled(ctx, stream, err)
 	}
-	return map[string]any{"status": "stopped"}, nil
+	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
+}
+
+func writeLogError(stream net.Conn, err error) error {
+	code := 500
+	var bridgeErr *bridgeipc.Error
+	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
+		code = bridgeErr.Code
+	}
+	return relay.WriteResultErrorAndClose(stream, 0, err.Error(), code)
+}
+
+func writeLogErrorUnlessCanceled(ctx context.Context, stream net.Conn, err error) error {
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		return relay.WriteStreamClose(stream, 0)
+	}
+	return writeLogError(stream, err)
 }
 
 func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) generalLogsRequest {
@@ -388,53 +413,61 @@ func (backlog *generalLogsBacklog) reachedLimit() bool {
 }
 
 type journalDataBatch struct {
-	job *bridgeipc.Job
-	buf strings.Builder
+	stream net.Conn
+	buf    strings.Builder
 }
 
-func (batch *journalDataBatch) append(line string) {
+func (batch *journalDataBatch) append(line string) error {
 	lineBytes := len(line) + 1
 	if batch.buf.Len() > 0 && batch.buf.Len()+lineBytes > flushChunkBytes {
-		batch.flush()
+		if err := batch.flush(); err != nil {
+			return err
+		}
 	}
 	batch.buf.WriteString(line)
 	batch.buf.WriteByte('\n')
 	if batch.buf.Len() >= flushChunkBytes {
-		batch.flush()
+		return batch.flush()
 	}
+	return nil
 }
 
-func (batch *journalDataBatch) flush() {
+func (batch *journalDataBatch) flush() error {
 	if batch.buf.Len() == 0 {
-		return
+		return nil
 	}
-	batch.job.ReportData(batch.buf.String())
+	err := relay.WriteRelayFrame(batch.stream, &relay.StreamFrame{Opcode: relay.OpStreamData, StreamID: 0, Payload: []byte(batch.buf.String())})
 	batch.buf.Reset()
+	return err
 }
 
-func (batch *journalDataBatch) drain(lines <-chan string) {
+func (batch *journalDataBatch) drain(lines <-chan string) error {
 	for {
 		select {
 		case line := <-lines:
-			batch.append(line)
+			if err := batch.append(line); err != nil {
+				return err
+			}
 		default:
-			return
+			return nil
 		}
 	}
 }
 
-func emitGeneralLogsBacklog(job *bridgeipc.Job, lines []string) {
-	batch := journalDataBatch{job: job}
+func emitGeneralLogsBacklog(stream net.Conn, lines []string) error {
+	batch := journalDataBatch{stream: stream}
 	for _, line := range slices.Backward(lines) {
-		batch.append(line)
+		if err := batch.append(line); err != nil {
+			return err
+		}
 	}
-	batch.flush()
+	return batch.flush()
 }
 
 // streamGeneralLogsBacklog runs the one-shot newest-first query, emits the
 // matched entries in chronological order as batched frames, and returns the
 // newest entry's cursor for the follow phase to anchor on.
-func streamGeneralLogsBacklog(ctx context.Context, job *bridgeipc.Job, req generalLogsRequest) (newestCursor string, count int, truncated bool, err error) {
+func streamGeneralLogsBacklog(ctx context.Context, stream net.Conn, req generalLogsRequest) (newestCursor string, count int, truncated bool, err error) {
 	command, err := startJournalCommand(ctx, backlogArgs(req))
 	if err != nil {
 		return "", 0, false, err
@@ -448,7 +481,9 @@ func streamGeneralLogsBacklog(ctx context.Context, job *bridgeipc.Job, req gener
 
 	// journalctl --reverse produced newest-first; the frontend consumes
 	// chronological batches.
-	emitGeneralLogsBacklog(job, backlog.lines)
+	if err := emitGeneralLogsBacklog(stream, backlog.lines); err != nil {
+		return "", 0, false, err
+	}
 	return backlog.newestCursor, len(backlog.lines), backlog.truncated, nil
 }
 
@@ -491,8 +526,12 @@ func cancelGeneralLogsFollow(
 ) error {
 	killLogsProcess(command.cmd)
 	<-readDone
-	batch.drain(lines)
-	batch.flush()
+	if err := batch.drain(lines); err != nil {
+		return err
+	}
+	if err := batch.flush(); err != nil {
+		return err
+	}
 	_ = command.cmd.Wait()
 	return ctx.Err()
 }
@@ -504,8 +543,12 @@ func finishGeneralLogsFollow(
 	batch *journalDataBatch,
 	lines <-chan string,
 ) error {
-	batch.drain(lines)
-	batch.flush()
+	if err := batch.drain(lines); err != nil {
+		return err
+	}
+	if err := batch.flush(); err != nil {
+		return err
+	}
 	if err := command.finish(ctx, readErr, false); err != nil {
 		return err
 	}
@@ -516,7 +559,7 @@ func finishGeneralLogsFollow(
 
 // streamGeneralLogsFollow tails the journal from just after newestCursor,
 // coalescing lines into batched frames on a size/interval policy.
-func streamGeneralLogsFollow(ctx context.Context, job *bridgeipc.Job, req generalLogsRequest, afterCursor string) error {
+func streamGeneralLogsFollow(ctx context.Context, stream net.Conn, req generalLogsRequest, afterCursor string) error {
 	command, err := startJournalCommand(ctx, followArgs(req, afterCursor))
 	if err != nil {
 		return err
@@ -525,16 +568,20 @@ func streamGeneralLogsFollow(ctx context.Context, job *bridgeipc.Job, req genera
 	lines, readDone := startJournalLineReader(ctx, command.stdout)
 	ticker := time.NewTicker(followFlushInterval)
 	defer ticker.Stop()
-	batch := journalDataBatch{job: job}
+	batch := journalDataBatch{stream: stream}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return cancelGeneralLogsFollow(ctx, command, readDone, &batch, lines)
 		case line := <-lines:
-			batch.append(line)
+			if err := batch.append(line); err != nil {
+				return err
+			}
 		case <-ticker.C:
-			batch.flush()
+			if err := batch.flush(); err != nil {
+				return err
+			}
 		case readErr := <-readDone:
 			return finishGeneralLogsFollow(ctx, command, readErr, &batch, lines)
 		}

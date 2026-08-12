@@ -524,6 +524,25 @@ func TestPackageInfoNameMapsPackageKitInfoCodes(t *testing.T) {
 	}
 }
 
+func TestPkgUpdateProgressEnvelopeUsesItemPercentageFallback(t *testing.T) {
+	itemPercentage := uint32(42)
+	detail := PkgUpdateProgress{
+		Type:    "item_progress",
+		Status:  "Installing",
+		ItemPct: &itemPercentage,
+	}
+	progress := detail.ProgressEnvelope()
+	if progress.Percentage == nil || *progress.Percentage != 42 {
+		t.Fatalf("progress percentage = %#v, want 42", progress.Percentage)
+	}
+	if progress.Phase != detail.Type || progress.Message != detail.Status {
+		t.Fatalf("progress summary = %#v, want typed phase and status message", progress)
+	}
+	if progress.Detail != detail {
+		t.Fatalf("progress detail = %#v, want %#v", progress.Detail, detail)
+	}
+}
+
 func TestApplyOfflineUpdatesTriggersPreparedUpdate(t *testing.T) {
 	service := setupFakePackageKit(t, true)
 

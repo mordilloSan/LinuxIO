@@ -9,9 +9,7 @@ import {
   type CapabilitiesResponse,
   type CapabilityDef,
   type CapabilityErrorKey,
-  type CapabilityKey,
   type CapabilityValueKey,
-  type InstallCapabilityResult,
   linuxio,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -27,13 +25,6 @@ import {
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
-
-interface InstallCapabilityProgress {
-  message: string;
-  /** Single global 0-100 percentage that only moves forward across stages. */
-  percentage?: number;
-  stage: string;
-}
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -66,13 +57,10 @@ const CapabilityManagerSection = () => {
   const [installPercent, setInstallPercent] = useState<number | null>(null);
   const mountedRef = useRef(true);
   // Progress is rendered locally, but the completion toast and app-wide
-  // capability refresh stay owned by the global background-job handler
-  // (useRecoveredJobs) so they still fire if this panel closes mid-install.
+  // capability refresh stay owned by the global background-task handler
+  // (useRecoveredTasks) so they still fire if this panel closes mid-install.
   const { mutateAsync: installCapability } =
-    linuxio.system.install_capability.useJobStreamAction<
-      InstallCapabilityResult,
-      InstallCapabilityProgress
-    >({
+    linuxio.system.install_capability.useTaskStreamAction({
       onProgress: (progress) => {
         if (!mountedRef.current) return;
         if (typeof progress?.percentage === "number") {
@@ -94,14 +82,14 @@ const CapabilityManagerSection = () => {
       CAPABILITIES.map((item) => {
         const valueKey = `${item.wire}_available` as CapabilityValueKey;
         const errorKey = `${item.wire}_error` as CapabilityErrorKey;
-        const authValue = auth[item.state as CapabilityKey];
+        const authValue = auth[item.state];
         const value = latest?.[valueKey] ?? authValue;
         const status = getCapabilityStatus(value);
         const detail =
           latest?.[errorKey] ||
           (status === "available"
             ? item.readyText
-            : getCapabilityReason(item.state as CapabilityKey, status));
+            : getCapabilityReason(item.state, status));
         const installable = (item as CapabilityDef).installable;
 
         return {
@@ -156,7 +144,7 @@ const CapabilityManagerSection = () => {
         if (!mountedRef.current) return;
         // Optimistically reflect the result while the panel is open. The
         // completion toast and app-wide capability refresh are owned by the
-        // global background-job handler (useRecoveredJobs) so they still fire
+        // global background-task handler (useRecoveredTasks) so they still fire
         // if this dialog has been closed mid-install.
         setLatest((previous) => ({
           ...(previous ?? ({} as CapabilitiesResponse)),
@@ -165,7 +153,7 @@ const CapabilityManagerSection = () => {
         }));
         setLastChecked(new Date());
       } catch {
-        // The global background-job handler owns the install error toast.
+        // The global background-task handler owns the install error toast.
       } finally {
         if (mountedRef.current) {
           setInstallingWire(null);
@@ -177,12 +165,12 @@ const CapabilityManagerSection = () => {
     [installCapability],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

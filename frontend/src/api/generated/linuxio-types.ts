@@ -136,11 +136,10 @@ export interface AppConfig {
 
 export interface AppSettings {
   chunkSizeMB?: number;
-  containerOrder?: string[];
-  dashboardOrder?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
+  layoutOrders?: Record<string, string[]>;
   primaryColor: string;
   showHiddenFiles: boolean;
   sidebarCollapsed: boolean;
@@ -193,6 +192,15 @@ export interface BatchTransferRequest {
   sources: string[];
   destination: string;
   overwrite?: boolean;
+}
+
+export interface BatchUploadProgress {
+  bytes: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  filesDone: number;
+  filesTotal: number;
 }
 
 export interface BootIDRequest {
@@ -296,6 +304,12 @@ export interface ChangePasswordRequest {
   password: string;
 }
 
+export interface ChmodProgress {
+  processed: number;
+  phase?: string;
+  indeterminate?: boolean;
+}
+
 export interface ComposeActionResult {
   message: string;
   output: string;
@@ -305,18 +319,6 @@ export interface ComposeFilePathResponse {
   path: string;
   exists: boolean;
   directory: string;
-}
-
-export interface ComposeJobMessage {
-  type: string;
-  message: string;
-  code?: number;
-  progress?: ComposeProgress;
-}
-
-export interface ComposeJobResult {
-  type: string;
-  message: string;
 }
 
 export interface ComposeProgress {
@@ -353,18 +355,29 @@ export interface ComposeService {
   url?: string;
 }
 
+export interface ComposeTaskMessage {
+  type: string;
+  message: string;
+  code?: number;
+  progress?: ComposeProgress;
+}
+
+export interface ComposeTaskResult {
+  type: string;
+  message: string;
+}
+
 export interface ConfigAppSettingsPayload {
   theme?: string;
   primaryColor?: string;
   themeColors?: ConfigThemeColorsByModePayload;
   sidebarCollapsed?: boolean;
   showHiddenFiles?: boolean;
-  dashboardOrder?: string[];
   hiddenCards?: string[];
-  containerOrder?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   viewModes?: Record<string, string>;
+  layoutOrders?: Record<string, string[]>;
   chunkSizeMB?: number;
 }
 
@@ -543,6 +556,14 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
+}
+
+export interface DeleteProgress {
+  processed: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  indeterminate?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -867,6 +888,23 @@ export interface FileArchiveRequest {
   paths: string[];
 }
 
+export interface FileArchiveResult {
+  archiveName: string;
+  size: number;
+  format: string;
+}
+
+export interface FileBatchItemFailure {
+  path: string;
+  error: string;
+}
+
+export interface FileBatchResult {
+  total: number;
+  succeeded: number;
+  failed: FileBatchItemFailure[];
+}
+
 export interface FileChmodBatchRequest {
   paths: string[];
   mode: string;
@@ -881,9 +919,36 @@ export interface FileCompressRequest {
   paths: string[];
 }
 
+export interface FileCompressResult {
+  path: string;
+  size: number;
+  format: string;
+}
+
+export interface FileDownloadResult {
+  path: string;
+  size: number;
+  fileName: string;
+}
+
 export interface FileExtractRequest {
   archivePath: string;
   destination?: string;
+}
+
+export interface FileExtractResult {
+  destination: string;
+}
+
+export interface FileOperationResult {
+  message: string;
+}
+
+export interface FileProgress {
+  bytes: number;
+  total: number;
+  pct: number;
+  phase?: string;
 }
 
 export interface FileResourceGetRequest {
@@ -925,10 +990,23 @@ export interface FileUploadBatchRequest {
   overwrite?: boolean;
 }
 
+export interface FileUploadBatchResult {
+  total: number;
+  succeeded: number;
+  failed: FileBatchItemFailure[];
+  destination: string;
+  size: number;
+}
+
 export interface FileUploadRequest {
   targetPath: string;
   size: string;
   overwrite?: boolean;
+}
+
+export interface FileUploadResult {
+  path: string;
+  size: number;
 }
 
 export interface FilesystemInfo {
@@ -1136,6 +1214,31 @@ export interface IndexerDaemonStatus {
 
 export type IndexerIntegrityCheck = "full" | "quick" | "off";
 
+export interface IndexerProgress {
+  status?: string;
+  operation?: string;
+  state?: string;
+  message?: string;
+  path?: string;
+  files_indexed?: number;
+  dirs_indexed?: number;
+  bytes_indexed?: number;
+  current_path?: string;
+  phase?: string;
+}
+
+export interface IndexerResult {
+  status?: string;
+  operation?: string;
+  path: string;
+  files_indexed: number;
+  dirs_indexed: number;
+  total_size: number;
+  duration_ms: number;
+  deleted_indexes?: number;
+  deleted_entries?: number;
+}
+
 export interface IndexerStatusResponse {
   dirs_indexed: number;
   fts_active: boolean;
@@ -1151,6 +1254,12 @@ export interface IndexerTimerSetResult {
   config: IndexerConfig;
   interval: string;
   timer_unit: string;
+}
+
+export interface InstallCapabilityProgress {
+  stage: string;
+  message: string;
+  percentage?: number;
 }
 
 export interface InstallCapabilityResult {
@@ -1194,50 +1303,6 @@ export interface IntervalRequest {
   interval: string;
 }
 
-export interface JobDataRequest {
-  jobId: string;
-  offset?: string;
-}
-
-export interface JobError {
-  code?: number;
-  message: string;
-}
-
-export interface JobEvent {
-  error?: JobError;
-  job: JobSnapshot;
-  progress?: unknown;
-  result?: unknown;
-  type: string;
-}
-
-export interface JobIDRequest {
-  jobId: string;
-}
-
-export interface JobListRequest {
-  status?: string;
-}
-
-export interface JobMetadata {
-  action?: string;
-  capability?: string;
-  device?: string;
-  identity?: string[];
-  label?: string;
-  packageIds?: string[];
-  path?: string;
-  projectName?: string;
-  testType?: string;
-}
-
-export interface JobOwner {
-  session_id?: string;
-  username?: string;
-  uid?: number;
-}
-
 export interface JobSettings {
   archiveCompressionWorkers: number;
   archiveExtractWorkers: number;
@@ -1246,28 +1311,6 @@ export interface JobSettings {
   progressMinBytesMB: number;
   progressMinIntervalMs: number;
 }
-
-export interface JobSnapshot {
-  created_at: string;
-  error?: JobError;
-  finished_at?: string;
-  id: string;
-  owner?: JobOwner;
-  metadata?: JobMetadata;
-  progress?: unknown;
-  result?: unknown;
-  started_at?: string;
-  state: JobState;
-  type: string;
-  updated_at: string;
-}
-
-export type JobState =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "canceled";
 
 export interface LogicalVolume {
   attributes: string;
@@ -1517,9 +1560,7 @@ export interface NetworkInterface {
   gateway: string;
   ipv4: string[];
   ipv4_method?: string;
-  ipv6: string[];
   mac: string;
-  mtu: number;
   name: string;
   rx_speed: number;
   speed: string;
@@ -1550,6 +1591,10 @@ export interface PackageIDRequest {
 
 export interface PackageUpdateRequest {
   packageIds: string[];
+}
+
+export interface PackageUpdateResult {
+  updated: number;
 }
 
 export interface PathRequest {
@@ -1583,6 +1628,18 @@ export interface PhysicalVolume {
   name: string;
   size: number;
   vgName: string;
+}
+
+export interface PkgUpdateProgress {
+  type: string;
+  package_id?: string;
+  package_summary?: string;
+  status?: string;
+  message?: string;
+  status_code?: number;
+  info_code?: number;
+  percentage?: number;
+  item_pct?: number;
 }
 
 export interface PowerStatus {
@@ -1728,6 +1785,24 @@ export interface ShareUpdateSambaRequest {
   properties: Record<string, string>;
 }
 
+export interface SmartTestProgress {
+  type: string;
+  device?: string;
+  test_type?: string;
+  status?: string;
+  message?: string;
+  percentage?: number;
+}
+
+export interface SmartTestResult {
+  success: boolean;
+  device: string;
+  test: string;
+  status: string;
+  message: string;
+  duration?: number;
+}
+
 export interface Socket {
   active_enter_timestamp: number;
   active_state: string;
@@ -1835,6 +1910,78 @@ export interface SystemLastLogin {
 }
 
 export type TableCardViewMode = "card" | "table";
+
+export interface TaskDataRequest {
+  taskId: string;
+  offset?: string;
+}
+
+export interface TaskError {
+  code?: number;
+  message: string;
+}
+
+export interface TaskEvent {
+  error?: TaskError;
+  task: TaskSnapshot;
+  progress?: TaskProgress;
+  result?: unknown;
+  type: string;
+}
+
+export interface TaskIDRequest {
+  taskId: string;
+}
+
+export interface TaskListRequest {
+  status?: string;
+}
+
+export interface TaskMetadata {
+  action?: string;
+  capability?: string;
+  device?: string;
+  identity?: string[];
+  label?: string;
+  packageIds?: string[];
+  path?: string;
+  projectName?: string;
+  testType?: string;
+}
+
+export interface TaskOwner {
+  username?: string;
+  uid?: number;
+}
+
+export interface TaskProgress<TDetail = unknown> {
+  percentage?: number;
+  phase?: string;
+  message?: string;
+  detail?: TDetail;
+}
+
+export interface TaskSnapshot {
+  created_at: string;
+  error?: TaskError;
+  finished_at?: string;
+  id: string;
+  owner?: TaskOwner;
+  metadata?: TaskMetadata;
+  progress?: TaskProgress;
+  result?: unknown;
+  started_at?: string;
+  state: TaskState;
+  type: string;
+  updated_at: string;
+}
+
+export type TaskState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export interface TerminalOpenRequest {
   cols: number;
@@ -2248,8 +2395,8 @@ export interface LinuxIOSchema {
     compose: {
       input: [request: DockerComposeRequest];
       request: DockerComposeRequest;
-      result: ComposeJobResult;
-      progress: ComposeJobMessage;
+      result: ComposeTaskResult;
+      progress: TaskProgress<ComposeTaskMessage>;
     };
     compose_down: {
       input: [projectName: string];
@@ -2412,27 +2559,32 @@ export interface LinuxIOSchema {
     archive: {
       input: [request: FileArchiveRequest];
       request: FileArchiveRequest;
-      result: JobSnapshot;
+      result: FileArchiveResult;
+      progress: TaskProgress<FileProgress>;
     };
     chmod_batch: {
       input: [request: FileChmodBatchRequest];
       request: FileChmodBatchRequest;
-      result: JobSnapshot;
+      result: FileBatchResult;
+      progress: TaskProgress<ChmodProgress>;
     };
     compress: {
       input: [request: FileCompressRequest];
       request: FileCompressRequest;
-      result: JobSnapshot;
+      result: FileCompressResult;
+      progress: TaskProgress<FileProgress>;
     };
     copy_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: JobSnapshot;
+      result: FileBatchResult;
+      progress: TaskProgress<FileProgress>;
     };
     delete_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
-      result: JobSnapshot;
+      result: FileBatchResult;
+      progress: TaskProgress<DeleteProgress>;
     };
     dir_size: {
       input: [path: string];
@@ -2442,7 +2594,8 @@ export interface LinuxIOSchema {
     download: {
       input: [path: string];
       request: PathRequest;
-      result: JobSnapshot;
+      result: FileDownloadResult;
+      progress: TaskProgress<FileProgress>;
     };
     exists_batch: {
       input: [paths: string[]];
@@ -2452,18 +2605,21 @@ export interface LinuxIOSchema {
     extract: {
       input: [request: FileExtractRequest];
       request: FileExtractRequest;
-      result: JobSnapshot;
+      result: FileExtractResult;
+      progress: TaskProgress<FileProgress>;
     };
     index: {
       input: [request: OptionalPathRequest];
       request: OptionalPathRequest;
-      result: JobSnapshot;
+      result: IndexerResult;
+      progress: TaskProgress<IndexerProgress>;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
-      result: JobSnapshot;
+      result: FileBatchResult;
+      progress: TaskProgress<FileProgress>;
     };
     resource_get: {
       input: [request: FileResourceGetRequest];
@@ -2473,7 +2629,8 @@ export interface LinuxIOSchema {
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
       request: ActionSourceDestinationRequest;
-      result: void;
+      result: FileOperationResult;
+      progress: TaskProgress<FileProgress>;
     };
     resource_post: {
       input: [request: FileResourcePostRequest];
@@ -2498,12 +2655,14 @@ export interface LinuxIOSchema {
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
-      result: JobSnapshot;
+      result: FileUploadResult;
+      progress: TaskProgress<FileProgress>;
     };
     upload_batch: {
       input: [request: FileUploadBatchRequest];
       request: FileUploadBatchRequest;
-      result: JobSnapshot;
+      result: FileUploadBatchResult;
+      progress: TaskProgress<BatchUploadProgress>;
     };
     users_groups: { input: []; request: void; result: UsersGroupsResponse };
   };
@@ -2528,20 +2687,6 @@ export interface LinuxIOSchema {
       input: [interval: string];
       request: IntervalRequest;
       result: IndexerTimerSetResult;
-    };
-  };
-
-  jobs: {
-    cancel: {
-      input: [jobId: string];
-      request: JobIDRequest;
-      result: JobSnapshot;
-    };
-    get: { input: [jobId: string]; request: JobIDRequest; result: JobSnapshot };
-    list: {
-      input: [request: JobListRequest];
-      request: JobListRequest;
-      result: JobSnapshot[];
     };
   };
 
@@ -2600,6 +2745,7 @@ export interface LinuxIOSchema {
       request: InterfaceRequest;
       result: void;
     };
+    get_interface_stats: { input: []; request: void; result: InterfaceStats[] };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
     set_ipv4: {
       input: [request: InterfaceMethodRequest];
@@ -2627,7 +2773,8 @@ export interface LinuxIOSchema {
     update: {
       input: [packageIds: string[]];
       request: PackageUpdateRequest;
-      result: JobSnapshot;
+      result: PackageUpdateResult;
+      progress: TaskProgress<PkgUpdateProgress>;
     };
   };
 
@@ -2737,7 +2884,8 @@ export interface LinuxIOSchema {
     run_smart_test: {
       input: [request: DeviceTestTypeRequest];
       request: DeviceTestTypeRequest;
-      result: JobSnapshot;
+      result: SmartTestResult;
+      progress: TaskProgress<SmartTestProgress>;
     };
     unmount_cifs: {
       input: [request: MountpointRemoveFstabRequest];
@@ -2789,7 +2937,6 @@ export interface LinuxIOSchema {
     get_memory_info: { input: []; request: void; result: MemoryInfoResponse };
     get_memory_modules: { input: []; request: void; result: MemoryModule[] };
     get_motherboard_info: { input: []; request: void; result: MotherboardInfo };
-    get_network_info: { input: []; request: void; result: InterfaceStats[] };
     get_pci_devices: { input: []; request: void; result: PCIDevice[] };
     get_processes: { input: []; request: void; result: ProcessInfo[] };
     get_sensor_info: { input: []; request: void; result: SensorGroup[] };
@@ -2801,7 +2948,8 @@ export interface LinuxIOSchema {
     install_capability: {
       input: [capability: string];
       request: CapabilityRequest;
-      result: JobSnapshot;
+      result: InstallCapabilityResult;
+      progress: TaskProgress<InstallCapabilityProgress>;
     };
     list_failed_login_events: {
       input: [request: FailedLoginEventsRequest];
@@ -2866,6 +3014,24 @@ export interface LinuxIOSchema {
     };
   };
 
+  tasks: {
+    cancel: {
+      input: [taskId: string];
+      request: TaskIDRequest;
+      result: TaskSnapshot;
+    };
+    get: {
+      input: [taskId: string];
+      request: TaskIDRequest;
+      result: TaskSnapshot;
+    };
+    list: {
+      input: [request: TaskListRequest];
+      request: TaskListRequest;
+      result: TaskSnapshot[];
+    };
+  };
+
   terminal: {
     list_shells: {
       input: [containerId: string];
@@ -2905,6 +3071,7 @@ export interface LinuxIOSchema {
       input: [request: VMCreateRequest];
       request: VMCreateRequest;
       result: VirtualMachine;
+      progress: TaskProgress<VMCreateProgress>;
     };
     delete: {
       input: [request: VMDeleteRequest];
@@ -2986,6 +3153,419 @@ export interface LinuxIOSchema {
   };
 }
 
+/** Type-only contracts for migrated Call routes. */
+export interface LinuxIOCallSchema {
+  "accounts.change_password": { request: ChangePasswordRequest; result: void };
+  "accounts.create_group": { request: CreateGroupRequest; result: void };
+  "accounts.create_user": { request: CreateUserRequest; result: void };
+  "accounts.delete_group": { request: GroupNameRequest; result: void };
+  "accounts.delete_user": { request: UsernameRequest; result: void };
+  "accounts.get_user_details": {
+    request: UsernameRequest;
+    result: AccountUserDetails;
+  };
+  "accounts.list_groups": { request: void; result: AccountGroup[] };
+  "accounts.list_shells": { request: void; result: string[] };
+  "accounts.list_user_logins": {
+    request: UsernameRequest;
+    result: AccountUserLogin[];
+  };
+  "accounts.list_users": { request: void; result: AccountUser[] };
+  "accounts.lock_user": { request: UsernameRequest; result: void };
+  "accounts.modify_group_members": {
+    request: ModifyGroupMembersRequest;
+    result: void;
+  };
+  "accounts.modify_user": { request: ModifyUserRequest; result: void };
+  "accounts.terminate_session": {
+    request: TerminateSessionRequest;
+    result: void;
+  };
+  "accounts.unlock_user": { request: UsernameRequest; result: void };
+  "config.get": { request: void; result: AppConfig };
+  "config.set": { request: ConfigSetPayload; result: ConfigSetResult };
+  "control.logoff": { request: SessionIDRequest; result: void };
+  "control.power_off": { request: void; result: void };
+  "control.reboot": { request: void; result: void };
+  "control.version": { request: void; result: VersionResponse };
+  "datetime.get_ntp_servers": { request: void; result: string[] };
+  "datetime.get_ntp_status": { request: void; result: boolean };
+  "datetime.get_timezone": { request: void; result: string };
+  "datetime.set_ntp": { request: EnabledRequest; result: void };
+  "datetime.set_ntp_servers": { request: NTPServersRequest; result: void };
+  "datetime.set_server_time": { request: ISOTimeRequest; result: void };
+  "datetime.set_timezone": { request: TimezoneRequest; result: void };
+  "docker.check_container_update": {
+    request: ContainerIDRequest;
+    result: DockerUpdateCheckResult;
+  };
+  "docker.check_updates": { request: void; result: DockerUpdateCheckResult };
+  "docker.clear_icon_cache": { request: void; result: MessageResponse };
+  "docker.compose_down": {
+    request: ProjectNameRequest;
+    result: ComposeActionResult;
+  };
+  "docker.compose_restart": {
+    request: ProjectNameRequest;
+    result: ComposeActionResult;
+  };
+  "docker.compose_stop": {
+    request: ProjectNameRequest;
+    result: ComposeActionResult;
+  };
+  "docker.compose_up": {
+    request: ProjectNameRequest;
+    result: ComposeActionResult;
+  };
+  "docker.connect_to_proxy": {
+    request: ContainerIDRequest;
+    result: MessageResponse;
+  };
+  "docker.create_network": { request: NameRequest; result: void };
+  "docker.create_volume": { request: NameRequest; result: void };
+  "docker.delete_image": { request: ImageIDRequest; result: void };
+  "docker.delete_network": { request: IDRequest; result: void };
+  "docker.delete_stack": {
+    request: DeleteStackRequest;
+    result: DeleteStackResult;
+  };
+  "docker.delete_volume": { request: NameRequest; result: void };
+  "docker.disable_caddy": { request: void; result: MessageResponse };
+  "docker.enable_caddy": { request: void; result: MessageResponse };
+  "docker.get_caddy_status": { request: void; result: CaddyStatusResponse };
+  "docker.get_compose_file_path": {
+    request: StackNameRequest;
+    result: ComposeFilePathResponse;
+  };
+  "docker.get_compose_project": {
+    request: ProjectNameRequest;
+    result: ComposeProject;
+  };
+  "docker.get_container_auto_update": {
+    request: void;
+    result: DockerContainerAutoUpdateState;
+  };
+  "docker.get_docker_folders": { request: void; result: DockerFoldersResponse };
+  "docker.get_docker_info": { request: void; result: DockerSystemInfo };
+  "docker.get_icon": {
+    request: IdentifierRequest;
+    result: DockerIconDataResponse;
+  };
+  "docker.get_icon_info": {
+    request: IdentifierRequest;
+    result: DockerIconInfoResponse;
+  };
+  "docker.get_icon_uri": {
+    request: IdentifierRequest;
+    result: DockerIconURIResponse;
+  };
+  "docker.list_compose_projects": { request: void; result: ComposeProject[] };
+  "docker.list_containers": { request: void; result: ContainerInfo[] };
+  "docker.list_images": { request: void; result: DockerImage[] };
+  "docker.list_networks": { request: void; result: DockerNetwork[] };
+  "docker.list_volumes": { request: void; result: DockerVolume[] };
+  "docker.reload_caddy": { request: void; result: MessageResponse };
+  "docker.remove_container": { request: ContainerIDRequest; result: void };
+  "docker.restart_container": { request: ContainerIDRequest; result: void };
+  "docker.set_container_auto_update": {
+    request: DockerContainerAutoUpdateOptions;
+    result: DockerContainerAutoUpdateState;
+  };
+  "docker.start_all_stopped": {
+    request: void;
+    result: DockerStartedFailedResponse;
+  };
+  "docker.start_container": { request: ContainerIDRequest; result: void };
+  "docker.stop_all_running": {
+    request: void;
+    result: DockerStoppedFailedResponse;
+  };
+  "docker.stop_container": { request: ContainerIDRequest; result: void };
+  "docker.system_prune": {
+    request: DockerSystemPruneRequest;
+    result: DockerSystemPruneResponse;
+  };
+  "docker.update_container": {
+    request: ContainerIDRequest;
+    result: DockerContainerUpdateResult;
+  };
+  "docker.validate_compose": {
+    request: ContentRequest;
+    result: ValidateComposeResponse;
+  };
+  "docker.validate_stack_directory": {
+    request: DirPathRequest;
+    result: DirectoryValidationResult;
+  };
+  "filebrowser.dir_size": { request: PathRequest; result: DirectorySizeData };
+  "filebrowser.exists_batch": {
+    request: BatchPathRequest;
+    result: ExistsBatchResponse;
+  };
+  "filebrowser.indexer_status": {
+    request: void;
+    result: IndexerStatusResponse;
+  };
+  "filebrowser.resource_get": {
+    request: FileResourceGetRequest;
+    result: ExtendedFileInfo;
+  };
+  "filebrowser.resource_post": {
+    request: FileResourcePostRequest;
+    result: void;
+  };
+  "filebrowser.resource_stat": {
+    request: PathRequest;
+    result: ResourceStatData;
+  };
+  "filebrowser.search": { request: FileSearchRequest; result: SearchResponse };
+  "filebrowser.subfolders": {
+    request: PathRequest;
+    result: SubfoldersResponse;
+  };
+  "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
+  "hostname.set_hostname": { request: HostnameRequest; result: void };
+  "indexer.get_config": { request: void; result: IndexerConfig };
+  "indexer.get_status": { request: void; result: IndexerDaemonStatus };
+  "indexer.set_config": {
+    request: IndexerConfigPatch;
+    result: IndexerConfigSetResult;
+  };
+  "indexer.set_timer_interval": {
+    request: IntervalRequest;
+    result: IndexerTimerSetResult;
+  };
+  "logs.general_entry": {
+    request: GeneralLogEntryRequest;
+    result: Record<string, unknown>;
+  };
+  "logs.general_page": {
+    request: GeneralLogsPageRequest;
+    result: GeneralLogsPageResponse;
+  };
+  "monitoring.get_config": { request: void; result: MonitoringConfig };
+  "monitoring.get_cpu_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringCPUHistoryPoint[];
+  };
+  "monitoring.get_diskio_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringDiskIOHistoryPoint[];
+  };
+  "monitoring.get_memory_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringMemoryHistoryPoint[];
+  };
+  "monitoring.get_network_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringNetworkHistoryPoint[];
+  };
+  "monitoring.get_status": { request: void; result: MonitoringStatus };
+  "monitoring.restart": { request: void; result: void };
+  "monitoring.set_config": {
+    request: MonitoringConfigPatch;
+    result: MonitoringConfigSetResult;
+  };
+  "network.disable_connection": { request: InterfaceRequest; result: void };
+  "network.enable_connection": { request: InterfaceRequest; result: void };
+  "network.get_interface_stats": { request: void; result: InterfaceStats[] };
+  "network.get_network_info": { request: void; result: NetworkInterface[] };
+  "network.set_ipv4": { request: InterfaceMethodRequest; result: void };
+  "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
+  "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
+  "network.set_mtu": { request: InterfaceMTURequest; result: void };
+  "power.disable": { request: void; result: PowerStatus };
+  "power.get_status": { request: void; result: PowerStatus };
+  "power.set_profile": { request: ProfileRequest; result: PowerStatus };
+  "power.start": { request: void; result: PowerStatus };
+  "shares.create_nfs_share": {
+    request: ShareNFSRequest;
+    result: SuccessPathResponse;
+  };
+  "shares.create_samba_share": {
+    request: ShareSambaRequest;
+    result: SuccessNameResponse;
+  };
+  "shares.delete_nfs_share": { request: PathRequest; result: SuccessResponse };
+  "shares.delete_samba_share": {
+    request: NameRequest;
+    result: SuccessResponse;
+  };
+  "shares.list_nfs_shares": { request: void; result: NFSExport[] };
+  "shares.list_samba_shares": { request: void; result: SambaShare[] };
+  "shares.update_nfs_share": {
+    request: ShareNFSRequest;
+    result: SuccessPathResponse;
+  };
+  "shares.update_samba_share": {
+    request: ShareUpdateSambaRequest;
+    result: SuccessNameResponse;
+  };
+  "storage.create_btrfs_subvolume": {
+    request: MountpointNameRequest;
+    result: StoragePathResult;
+  };
+  "storage.create_lv": {
+    request: CreateLogicalVolumeRequest;
+    result: StorageCreateLVResult;
+  };
+  "storage.delete_lv": {
+    request: VolumeGroupLogicalVolumeRequest;
+    result: SuccessResponse;
+  };
+  "storage.get_drive_info": { request: void; result: ApiDisk[] };
+  "storage.list_cifs_mounts": { request: void; result: CIFSMount[] };
+  "storage.list_cifs_shares": { request: ServerRequest; result: string[] };
+  "storage.list_lvs": { request: void; result: LogicalVolume[] };
+  "storage.list_nfs_exports": { request: ServerRequest; result: string[] };
+  "storage.list_nfs_mounts": { request: void; result: NFSMount[] };
+  "storage.list_pvs": { request: void; result: PhysicalVolume[] };
+  "storage.list_vgs": { request: void; result: VolumeGroup[] };
+  "storage.mount_cifs": {
+    request: CIFSMountRequest;
+    result: StorageMountResult;
+  };
+  "storage.mount_nfs": {
+    request: ServerExportMountOptionsPersistRequest;
+    result: StorageMountResult;
+  };
+  "storage.remount_cifs": {
+    request: MountpointOptionsUpdateFstabRequest;
+    result: StorageMountResult;
+  };
+  "storage.remount_nfs": {
+    request: MountpointOptionsUpdateFstabRequest;
+    result: StorageMountResult;
+  };
+  "storage.resize_lv": {
+    request: ResizeLogicalVolumeRequest;
+    result: SuccessResponse;
+  };
+  "storage.unmount_cifs": {
+    request: MountpointRemoveFstabRequest;
+    result: StorageWarningResult;
+  };
+  "storage.unmount_filesystem": {
+    request: MountpointRequest;
+    result: StorageMountResult;
+  };
+  "storage.unmount_nfs": {
+    request: MountpointRemoveFstabRequest;
+    result: StorageWarningResult;
+  };
+  "system.dismiss_failed_login_alert": {
+    request: AlertIDRequest;
+    result: MessageResponse;
+  };
+  "system.dismiss_unclean_shutdown": {
+    request: BootIDRequest;
+    result: MessageResponse;
+  };
+  "system.get_capabilities": { request: void; result: CapabilitiesResponse };
+  "system.get_cpu_info": { request: void; result: CPUInfoResponse };
+  "system.get_disk_throughput": {
+    request: void;
+    result: DiskThroughputResponse;
+  };
+  "system.get_fs_info": { request: void; result: FilesystemInfo[] };
+  "system.get_gpu_info": { request: void; result: GpuDevice[] };
+  "system.get_health_summary": { request: void; result: SystemHealthSummary };
+  "system.get_host_info": { request: void; result: HostInfo };
+  "system.get_memory_info": { request: void; result: MemoryInfoResponse };
+  "system.get_memory_modules": { request: void; result: MemoryModule[] };
+  "system.get_motherboard_info": { request: void; result: MotherboardInfo };
+  "system.get_pci_devices": { request: void; result: PCIDevice[] };
+  "system.get_processes": { request: void; result: ProcessInfo[] };
+  "system.get_sensor_info": { request: void; result: SensorGroup[] };
+  "system.get_server_time": { request: void; result: string };
+  "system.get_system_info": { request: void; result: SystemInfo };
+  "system.get_timezones": { request: void; result: string[] };
+  "system.get_updates_fast": { request: void; result: UpdatesFastResponse };
+  "system.get_uptime": { request: void; result: number };
+  "system.list_failed_login_events": {
+    request: FailedLoginEventsRequest;
+    result: AccountUserLogin[];
+  };
+  "systemd.disable_service": { request: ServiceNameRequest; result: void };
+  "systemd.enable_service": { request: ServiceNameRequest; result: void };
+  "systemd.get_unit_info": { request: UnitNameRequest; result: UnitInfo };
+  "systemd.list_services": { request: void; result: Service[] };
+  "systemd.list_sockets": { request: void; result: Socket[] };
+  "systemd.list_timers": { request: void; result: Timer[] };
+  "systemd.mask_service": { request: ServiceNameRequest; result: void };
+  "systemd.reload_service": { request: ServiceNameRequest; result: void };
+  "systemd.reset_failed_service": { request: ServiceNameRequest; result: void };
+  "systemd.restart_service": { request: ServiceNameRequest; result: void };
+  "systemd.start_service": { request: ServiceNameRequest; result: void };
+  "systemd.stop_service": { request: ServiceNameRequest; result: void };
+  "systemd.unmask_service": { request: ServiceNameRequest; result: void };
+  "tasks.cancel": { request: TaskIDRequest; result: TaskSnapshot };
+  "tasks.get": { request: TaskIDRequest; result: TaskSnapshot };
+  "tasks.list": { request: TaskListRequest; result: TaskSnapshot[] };
+  "terminal.list_shells": { request: ContainerIDRequest; result: string[] };
+  "updates.apply_offline_updates": {
+    request: void;
+    result: OfflineUpdatesResponse;
+  };
+  "updates.get_auto_updates": { request: void; result: AutoUpdateState };
+  "updates.get_update_detail": { request: PackageIDRequest; result: Update };
+  "updates.get_update_history": { request: void; result: UpdateHistoryRow[] };
+  "updates.get_updates_basic": { request: void; result: Update[] };
+  "updates.refresh_cache": { request: void; result: SuccessResponse };
+  "updates.set_auto_updates": {
+    request: UpdatesSetAutoUpdatesRequest;
+    result: AutoUpdateState;
+  };
+  "virt.delete": { request: VMDeleteRequest; result: VMDeleteResult };
+  "virt.force_off": { request: NameRequest; result: void };
+  "virt.get": { request: NameRequest; result: VirtualMachine };
+  "virt.list": { request: void; result: VirtualMachine[] };
+  "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
+  "virt.reboot": { request: NameRequest; result: void };
+  "virt.resume": { request: NameRequest; result: void };
+  "virt.shutdown": { request: NameRequest; result: void };
+  "virt.start": { request: NameRequest; result: void };
+  "virt.suspend": { request: NameRequest; result: void };
+  "wireguard.add_interface": {
+    request: WireGuardAddInterfaceRequest;
+    result: void;
+  };
+  "wireguard.add_peer": { request: InterfaceNameRequest; result: void };
+  "wireguard.disable_interface": { request: NameRequest; result: void };
+  "wireguard.down_interface": { request: NameRequest; result: void };
+  "wireguard.enable_interface": { request: NameRequest; result: void };
+  "wireguard.list_interfaces": { request: void; result: WireGuardInterface[] };
+  "wireguard.list_peers": { request: InterfaceNameRequest; result: Peer[] };
+  "wireguard.peer_config_download": {
+    request: InterfaceNamePeerNameRequest;
+    result: PeerConfigDownload;
+  };
+  "wireguard.peer_qrcode": {
+    request: InterfaceNamePeerNameRequest;
+    result: QRCodeResponse;
+  };
+  "wireguard.remove_interface": { request: NameRequest; result: void };
+  "wireguard.remove_peer": {
+    request: InterfaceNamePeerNameRequest;
+    result: void;
+  };
+  "wireguard.up_interface": { request: NameRequest; result: void };
+}
+
+export type CallRoute = keyof LinuxIOCallSchema;
+
+export type CallRequest<R extends CallRoute> = LinuxIOCallSchema[R]["request"];
+
+export type CallResult<R extends CallRoute> = LinuxIOCallSchema[R]["result"];
+
+export type NoRequestCallRoute = {
+  [R in CallRoute]: CallRequest<R> extends void ? R : never;
+}[CallRoute];
+
+export type RequestCallRoute = {
+  [R in CallRoute]: CallRequest<R> extends void ? never : R;
+}[CallRoute];
+
 /** Extract handler names from schema */
 export type HandlerName = keyof LinuxIOSchema;
 
@@ -3012,15 +3592,15 @@ export type CommandResult<
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { result: infer R } ? R : never;
 
-/** Extract a declared job progress type, or never when the route has none */
+/** Extract a declared Task progress type, or never when the route has none */
 export type CommandProgress<
   H extends HandlerName,
   C extends CommandName<H>,
 > = LinuxIOSchema[H][C] extends { progress: infer P } ? P : never;
 
 /**
- * Wire request contracts for stream-consumed routes: duplex opens and job
- * routes attached via job data streams (routes with no query/job endpoint).
+ * Wire request contracts for stream-consumed routes: duplex opens and Task
+ * routes attached via Task data streams (routes with no query/Task endpoint).
  * `void` marks routes opened without a request payload.
  */
 export interface LinuxIOStreamSchema {
@@ -3029,12 +3609,12 @@ export interface LinuxIOStreamSchema {
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.normalize_compose": ContentRequest;
-  "jobs.attach": JobIDRequest;
-  "jobs.data": JobDataRequest;
-  "jobs.events": void;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;
   "system.get_services": void;
+  "tasks.data": TaskDataRequest;
+  "tasks.events": void;
+  "tasks.watch": TaskIDRequest;
   "terminal.open": TerminalOpenRequest;
   "virt.console_open": NameRequest;
 }

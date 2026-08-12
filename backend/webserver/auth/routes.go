@@ -24,9 +24,9 @@ func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, verbose bool) {
 	// public
 	mux.HandleFunc("POST /auth/login", h.Login)
 	mux.HandleFunc("GET /api/version", h.Version)
-	mux.HandleFunc("GET /api/update-status", h.UpdateStatus)
 
 	// private (wrapped with session middleware)
 	mux.Handle("GET /auth/logout", sm.RequireSession(http.HandlerFunc(h.Logout)))
 	mux.Handle("GET /api/update-info", sm.RequireSession(http.HandlerFunc(h.UpdateInfo)))
+	mux.Handle("GET /api/update-status", sm.RequireSession(http.HandlerFunc(h.UpdateStatus)))
 }

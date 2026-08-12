@@ -2,37 +2,38 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { ROUTE_MODES } from "@/api/generated/route-metadata";
 import { relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 
-// Feature code talks to the backend through centralized endpoint options:
-// render-driven reads via `useQuery(endpoint.queryOptions(...))`, event-driven
-// commands and writes via `endpoint.useAction`, progress work via
-// `useJobAction`/`useJobStreamAction` or the background-jobs layer;
-// imperative loader/effect reads via `endpoint.useFetcher()`, and cache surgery
-// via `endpoint.useCache()`. Bare `linuxio.<handler>.<command>()` promise
-// calls, raw mutations, and direct query-client access stay in the API layer.
-// See docs/api-contract.md ("Every generated endpoint exposes").
+// Feature code talks to the backend through centralized descriptors. Migrated
+// Calls pass their descriptor directly to TanStack Query or `useCallMutation`.
+// Progress work uses `useTaskAction`/`useTaskStreamAction` or the
+// background-tasks layer. Imperative cache reads and cache surgery use the
+// QueryClient directly; transport-only work uses typed `call()`.
 
 // Directories that ARE the primitive layer.
-const SANCTIONED_DIR_PREFIXES = ["api/", "hooks/backgroundJobs/"];
+const SANCTIONED_DIR_PREFIXES = ["api/", "hooks/backgroundTasks/"];
 
-// Files allowed to call `linuxio.<handler>.<command>(...)` directly.
-// Shrink this list over time; never grow it without a structural reason.
-const ALLOWED_BARE_CALL_FILES = new Set([
-  // AuthProvider mounts above AppQueryClientProvider, so no query client exists
-  // for its capability bootstrap.
-  "contexts/AuthContext.tsx",
-]);
-
-// Matches `linuxio.<handler>.<command>(` — a bare endpoint invocation. Member
-// access like `linuxio.docker.list_images.queryOptions(` does not match
-// because a third property follows instead of a call.
-const BARE_ENDPOINT_CALL = /\blinuxio\.\w+\.\w+\(/;
+// Matches `linuxio.<handler>.<command>(`. A migrated request-bearing Call uses
+// exactly that syntax to create a query descriptor, so only Task
+// routes are forbidden here. A Call value can no longer be invoked as a
+// Promise; imperative Call transport is the separate typed `call()` function.
+const BARE_ENDPOINT_CALL = /\blinuxio\.(\w+)\.(\w+)\(/g;
 const ENDPOINT_QUERY_WRAPPER = /\blinuxio\.\w+\.\w+\.useQuer(?:y|ies)\s*\(/;
+const LEGACY_QUERY_ENDPOINT_METHOD =
+  /\blinuxio\.\w+\.\w+\.(?:queryOptions|useAction|useFetcher|useCache)\s*\(/;
 
-// Byte/mux-level transport primitives. Feature code talks streams through
-// the stream openers (openTerminalStream, ...) and the lifecycle hooks; only
-// the sanctioned low-level consumers below may import these from @/api.
+function hasForbiddenBareEndpointCall(source: string): boolean {
+  for (const match of source.matchAll(BARE_ENDPOINT_CALL)) {
+    const route = `${match[1]}.${match[2]}` as keyof typeof ROUTE_MODES;
+    if (ROUTE_MODES[route] !== "call") return true;
+  }
+  return false;
+}
+
+// Byte/mux-level transport primitives. Feature code opens typed Channels and
+// uses the lifecycle hooks; only the sanctioned low-level consumers below may
+// import these from @/api.
 const STREAM_PRIMITIVES = [
   "initStreamMux",
   "closeStreamMux",
@@ -92,17 +93,62 @@ function importedStreamPrimitives(source: string): string[] {
 const USE_MUTATION_IMPORT =
   /import\s*(?:type\s*)?{[^}]*\buseMutation\b[^}]*}\s*from\s*["']@tanstack\/react-query["']/;
 
-// Direct query-client fetches; feature code uses `endpoint.useFetcher()`.
-const IMPERATIVE_QUERY_CLIENT_CALL = /\.(?:fetchQuery|ensureQueryData)\(/;
-
-const IMPERATIVE_QUERY_CLIENT_ALLOWED_PREFIXES = [...SANCTIONED_DIR_PREFIXES];
-const IMPERATIVE_QUERY_CLIENT_ALLOWED_FILES = new Set(["routes/-loader.ts"]);
-
 function isSanctioned(rel: string): boolean {
   return SANCTIONED_DIR_PREFIXES.some((prefix) => rel.startsWith(prefix));
 }
 
 describe("API layering guard", () => {
+  it("keeps the Call query layer independent of Tasks", () => {
+    const source = readFileSync(
+      `${process.cwd()}/src/api/call-react-query.ts`,
+      "utf8",
+    );
+    const forbidden = [
+      '"./task-react-query"',
+      '"./tasks"',
+      "TaskEndpoint",
+      "TaskSnapshot",
+      "openTaskWatchStream",
+      "useTaskAction",
+      "useTaskStreamAction",
+      "waitForTaskCompletion",
+      "waitForTaskStreamAction",
+      "waitForStreamResult",
+    ];
+
+    expect(
+      forbidden.filter((token) => source.includes(token)),
+      "Cached Call descriptors must not acquire Task lifecycle dependencies",
+    ).toEqual([]);
+  });
+
+  it("opens migrated log routes directly instead of starting Tasks", () => {
+    const apiSource = readFileSync(
+      `${process.cwd()}/src/api/linuxio.ts`,
+      "utf8",
+    );
+    for (const legacyOpener of [
+      "openDockerLogsStream",
+      "openGeneralLogsStream",
+      "openServiceLogsStream",
+    ]) {
+      expect(apiSource).not.toContain(legacyOpener);
+    }
+
+    const directConsumers = [
+      ["components/docker/LogsDialog.tsx", "docker.logs.follow"],
+      [
+        "routes/_authenticated/logs/-components/GeneralLogsPage.tsx",
+        "logs.general.follow",
+      ],
+      ["components/cards/UnitLogsCard.tsx", "logs.service.follow"],
+    ] as const;
+    for (const [path, route] of directConsumers) {
+      const source = readFileSync(`${process.cwd()}/src/${path}`, "utf8");
+      expect(source).toContain(`openChannel("${route}"`);
+    }
+  });
+
   it("keeps endpoint query-hook wrappers out of feature code", () => {
     const violations = sourceFiles()
       .map(relativeToSrc)
@@ -114,8 +160,24 @@ describe("API layering guard", () => {
 
     expect(
       violations,
-      "Render-driven reads use TanStack Query directly with " +
-        "useQuery(endpoint.queryOptions(...)) or useQueries.",
+      "Render-driven reads use TanStack Query directly with a Call descriptor " +
+        "rather than endpoint-owned hooks.",
+    ).toEqual([]);
+  });
+
+  it("keeps removed Query endpoint methods out of source code", () => {
+    const violations = sourceFiles()
+      .map(relativeToSrc)
+      .filter((rel) =>
+        LEGACY_QUERY_ENDPOINT_METHOD.test(
+          readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
+        ),
+      );
+
+    expect(
+      violations,
+      "Use Call descriptors, useCallMutation, call(), or QueryClient directly; " +
+        "the generated endpoint must not own React Query methods.",
     ).toEqual([]);
   });
 
@@ -125,8 +187,7 @@ describe("API layering guard", () => {
       .filter(
         (rel) =>
           !isSanctioned(rel) &&
-          !ALLOWED_BARE_CALL_FILES.has(rel) &&
-          BARE_ENDPOINT_CALL.test(
+          hasForbiddenBareEndpointCall(
             readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
           ),
       );
@@ -134,32 +195,10 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Feature code must not call linuxio endpoints as bare promises. " +
-        "Reads go through useQuery(endpoint.queryOptions(...)) or " +
-        "queryClient.fetchQuery(endpoint.queryOptions(...)); writes go " +
-        "through endpoint.useAction / useJobAction / useJobStreamAction or the " +
-        "background-jobs layer.",
-    ).toEqual([]);
-  });
-
-  it("keeps imperative query-client fetches out of feature code", () => {
-    const violations = sourceFiles()
-      .map(relativeToSrc)
-      .filter(
-        (rel) =>
-          !IMPERATIVE_QUERY_CLIENT_ALLOWED_PREFIXES.some((prefix) =>
-            rel.startsWith(prefix),
-          ) &&
-          !IMPERATIVE_QUERY_CLIENT_ALLOWED_FILES.has(rel) &&
-          IMPERATIVE_QUERY_CLIENT_CALL.test(
-            readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
-          ),
-      );
-
-    expect(
-      violations,
-      "Feature code must not fetch through the query client directly. " +
-        "Use endpoint.useFetcher() for imperative loader/effect reads and " +
-        "endpoint.useAction() for event-driven commands.",
+        "Reads go through TanStack Query descriptors; writes go through " +
+        "useCallMutation / useTaskAction / " +
+        "useTaskStreamAction or the " +
+        "background-tasks layer.",
     ).toEqual([]);
   });
 
@@ -177,7 +216,8 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Mutations belong on the typed endpoint surface " +
-        "(useAction / useJobAction / useJobStreamAction), not raw useMutation.",
+        "(useCallMutation / useTaskAction / useTaskStreamAction), " +
+        "not raw useMutation.",
     ).toEqual([]);
   });
 
@@ -217,22 +257,6 @@ describe("API layering guard", () => {
     expect(
       stale,
       "Remove cleaned-up files from STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES",
-    ).toEqual([]);
-  });
-
-  it("bare-call allowlist entries still exist and still call endpoints", () => {
-    const stale = [...ALLOWED_BARE_CALL_FILES].filter((rel) => {
-      try {
-        return !BARE_ENDPOINT_CALL.test(
-          readFileSync(`${process.cwd()}/src/${rel}`, "utf8"),
-        );
-      } catch {
-        return true;
-      }
-    });
-    expect(
-      stale,
-      "Remove cleaned-up files from ALLOWED_BARE_CALL_FILES",
     ).toEqual([]);
   });
 });

@@ -9,21 +9,21 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic").Handle(handleGetUpdatesBasic),
-	apischema.Query[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail").Handle(handleGetUpdateDetail),
-	apischema.Query[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates").Handle(handleGetAutoUpdates),
-	apischema.Query[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
-	apischema.Query[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
-	apischema.Query[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
-	apischema.Query[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history").Handle(handleGetUpdateHistory),
+	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic", apischema.RetrySafe()).Handle(handleGetUpdatesBasic),
+	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail", apischema.RetrySafe()).Handle(handleGetUpdateDetail),
+	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates", apischema.RetrySafe()).Handle(handleGetAutoUpdates),
+	apischema.Call[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
+	apischema.Call[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
+	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
+	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabilityInstallRoutes)
 
 // RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterJobRoutes(router)
-	RegisterCapabilityJobRoutes(router)
+	RegisterTaskRoutes(router)
+	RegisterCapabilityTaskRoutes(router)
 
 	api.Register(router)
 }

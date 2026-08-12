@@ -1,34 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  isTerminalJobState,
+  isTerminalTaskState,
   linuxio,
-  type JobSnapshot,
+  type PkgUpdateProgress,
+  type PackageUpdateRequest,
+  type PackageUpdateResult,
+  type TaskSnapshot,
   type Stream,
+  useCallMutation,
 } from "@/api";
-import { JOB_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundJobTypes";
+import { TASK_TYPE_PACKAGE_UPDATE } from "@/constants/backgroundTaskTypes";
 import {
   claimTerminalFeedback,
   markTerminalFeedbackEmitted,
-} from "@/hooks/backgroundJobs/terminalJobFeedback";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+} from "@/hooks/backgroundTasks/terminalTaskFeedback";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 
-export interface PackageUpdateRequest {
-  packageIds: string[];
-}
-
-export interface PackageUpdateProgress {
-  item_pct?: number;
-  message?: string;
-  package_id?: string;
-  percentage?: number;
-  status?: string;
-  type: "item_progress" | "package" | "status" | "percentage" | "message";
-}
+export type PackageUpdateProgress = PkgUpdateProgress;
 
 interface ActiveTransaction {
   cancelRequested: boolean;
-  job: JobSnapshot | null;
+  task: TaskSnapshot | null;
   releaseFeedback: () => void;
   request: PackageUpdateRequest;
   stream: Stream | null;
@@ -65,8 +58,8 @@ export function usePackageUpdateTransaction({
     if (transactionRef.current) return false;
     transactionRef.current = {
       cancelRequested: false,
-      job: null,
-      releaseFeedback: claimTerminalFeedback(JOB_TYPE_PACKAGE_UPDATE),
+      task: null,
+      releaseFeedback: claimTerminalFeedback(TASK_TYPE_PACKAGE_UPDATE),
       request,
       stream: null,
     };
@@ -79,8 +72,8 @@ export function usePackageUpdateTransaction({
       if (!accepts(request)) return false;
       const transaction = transactionRef.current;
       if (!transaction) return false;
-      if (transaction.job) {
-        markTerminalFeedbackEmitted(transaction.job.id);
+      if (transaction.task) {
+        markTerminalFeedbackEmitted(transaction.task.id);
       }
       transactionRef.current = null;
       setCanCancel(false);
@@ -90,43 +83,47 @@ export function usePackageUpdateTransaction({
     [accepts],
   );
 
-  const streamAction = linuxio.packages.update.useJobStreamAction<
-    void,
-    PackageUpdateProgress
-  >({
-    closeMessage: "Update stream closed unexpectedly",
-    onJobStart: (job, request) => {
-      if (!accepts(request)) return;
-      const transaction = transactionRef.current;
-      if (!transaction) return;
-      transaction.job = job;
-      setCanCancel(
-        !transaction.cancelRequested && !isTerminalJobState(job.state),
-      );
-    },
-    onOpen: (stream, job, request) => {
-      const transaction = transactionRef.current;
-      if (!accepts(request) || !transaction || transaction.job?.id !== job.id) {
-        stream.close();
-        return;
-      }
-      transaction.stream = stream;
-    },
-    onProgress: (progress, _job, request) => {
-      if (accepts(request)) onProgress(progress, request);
-    },
-    success: (_result, request) => {
-      if (settle(request)) onSuccess(request);
-    },
-    error: (error, request) => {
-      if (settle(request)) onError(error, request);
-    },
-  });
+  const streamAction =
+    linuxio.packages.update.useTaskStreamAction<PackageUpdateResult>({
+      closeMessage: "Update stream closed unexpectedly",
+      onTaskStart: (task, request) => {
+        if (!accepts(request)) return;
+        const transaction = transactionRef.current;
+        if (!transaction) return;
+        transaction.task = task;
+        setCanCancel(
+          !transaction.cancelRequested && !isTerminalTaskState(task.state),
+        );
+      },
+      onOpen: (stream, task, request) => {
+        const transaction = transactionRef.current;
+        if (
+          !accepts(request) ||
+          !transaction ||
+          transaction.task?.id !== task.id
+        ) {
+          stream.close();
+          return;
+        }
+        transaction.stream = stream;
+      },
+      onProgress: (progress, _task, request) => {
+        if (accepts(request) && progress.detail) {
+          onProgress(progress.detail, request);
+        }
+      },
+      success: (_result, request) => {
+        if (settle(request)) onSuccess(request);
+      },
+      error: (error, request) => {
+        if (settle(request)) onError(error, request);
+      },
+    });
 
   const start = useCallback(
     (request: PackageUpdateRequest): Promise<void> | null => {
       if (!begin(request)) return null;
-      // Claim before submission so a very fast terminal job cannot be reported
+      // Claim before submission so a very fast terminal task cannot be reported
       // by the global events path before this page receives its snapshot.
       return streamAction.mutateAsync(request).then(
         () => undefined,
@@ -136,27 +133,27 @@ export function usePackageUpdateTransaction({
     [begin, streamAction],
   );
 
-  const attach = useCallback(
-    (job: JobSnapshot): boolean => {
-      const packageIds = job.metadata?.packageIds ?? [];
+  const watch = useCallback(
+    (task: TaskSnapshot): boolean => {
+      const packageIds = task.metadata?.packageIds ?? [];
       const request = { packageIds };
       if (!begin(request)) return false;
       onRecover(request);
-      streamAction.attach(job, request);
+      streamAction.watch(task, request);
       return true;
     },
     [begin, onRecover, streamAction],
   );
 
-  const { mutateAsync: requestCancel } = linuxio.jobs.cancel.useAction();
+  const { mutateAsync: requestCancel } = useCallMutation(linuxio.tasks.cancel);
   const cancel = useCallback(() => {
     const transaction = transactionRef.current;
-    const job = transaction?.job;
+    const task = transaction?.task;
     if (
       !transaction ||
-      !job ||
+      !task ||
       transaction.cancelRequested ||
-      isTerminalJobState(job.state)
+      isTerminalTaskState(task.state)
     ) {
       return false;
     }
@@ -165,10 +162,10 @@ export function usePackageUpdateTransaction({
     // not this click, is the authority that settles the UI.
     transaction.cancelRequested = true;
     setCanCancel(false);
-    void requestCancel({ jobId: job.id }).catch(() => {
+    void requestCancel({ taskId: task.id }).catch(() => {
       if (
         accepts(transaction.request) &&
-        transactionRef.current?.job?.id === job.id
+        transactionRef.current?.task?.id === task.id
       ) {
         transaction.cancelRequested = false;
         setCanCancel(true);
@@ -177,11 +174,11 @@ export function usePackageUpdateTransaction({
     return true;
   }, [accepts, requestCancel]);
 
-  const recovery = useActiveJobRecovery({
-    type: JOB_TYPE_PACKAGE_UPDATE,
+  const recovery = useActiveTaskRecovery({
+    type: TASK_TYPE_PACKAGE_UPDATE,
     scanKey: "package-update-controller",
     match: () => true,
-    onRecover: attach,
+    onRecover: watch,
   });
 
   useEffect(() => {
@@ -194,7 +191,7 @@ export function usePackageUpdateTransaction({
   }, []);
 
   return {
-    attach,
+    watch,
     cancel,
     canCancel,
     isScanning: recovery.isScanning,

@@ -29,7 +29,7 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
-  it("refreshes every compose-owned Docker summary after compose jobs", () => {
+  it("refreshes every compose-owned Docker summary after compose tasks", () => {
     const expected = [
       ["linuxio", "docker", "list_compose_projects"],
       ["linuxio", "docker", "list_containers"],
@@ -82,15 +82,15 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ).toEqual([["linuxio", "accounts", "list_groups"], ...expected]);
   });
 
-  it("maps only action or job routes", () => {
+  it("maps only Call or Task routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
-      expect(["query", "job"], `${route} is not an operation route`).toContain(
+      expect(["call", "task"], `${route} is not an operation route`).toContain(
         MODES[route],
       );
     }
   });
 
-  it("invalidates only real query routes or handler prefixes", () => {
+  it("invalidates only cacheable Call routes or handler prefixes", () => {
     for (const [route, keys] of Object.entries(OPERATION_QUERY_INVALIDATIONS)) {
       for (const queryKey of keys) {
         expect(queryKey[0], `${route}: keys must start with "linuxio"`).toBe(
@@ -104,7 +104,9 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 
         if (queryKey.length === 3) {
           const target = `${String(queryKey[1])}.${String(queryKey[2])}`;
-          expect(MODES[target], `${route} -> ${target}`).toBe("query");
+          expect(["call"], `${route} -> ${target} is not cacheable`).toContain(
+            MODES[target],
+          );
         } else {
           const handler = String(queryKey[1]);
           expect(
@@ -119,14 +121,17 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 
 // Files allowed to call queryClient.invalidateQueries directly. Everything
 // else must declare invalidations in OPERATION_QUERY_INVALIDATIONS (applied by
-// useAction/useJobAction/useJobStreamAction and the recovered-jobs stream) or
-// pass an explicit `invalidates` config. Shrink this list over time; never grow
-// it without a reason a manifest entry cannot express.
+// useCallMutation/useTaskAction/useTaskStreamAction and the
+// recovered-tasks stream) or pass an explicit `invalidates` config. Shrink this
+// list over time; never grow it without a reason a manifest entry cannot express.
 const ALLOWED_INVALIDATE_FILES = new Set([
-  // Core invalidation appliers. Feature code that needs path-precise
-  // invalidation uses `endpoint.useCache().invalidate(...)` instead.
-  "api/react-query.ts",
-  "hooks/backgroundJobs/useRecoveredJobs.ts",
+  // Shared mutation lifecycle and recovered Task terminal handling.
+  "api/call-react-query.ts",
+  "hooks/backgroundTasks/useRecoveredTasks.ts",
+  // File Browser owns path-precise cache invalidation that cannot be expressed
+  // as a static operation manifest entry.
+  "hooks/filebrowser/useFileBrowserEditorActions.ts",
+  "hooks/filebrowser/useListingInvalidation.ts",
 ]);
 
 describe("invalidation guard", () => {
@@ -144,7 +149,8 @@ describe("invalidation guard", () => {
     expect(
       violations,
       "Operation query invalidations belong in api/operation-query-invalidations.ts " +
-        "(applied automatically by useAction/useJobAction and the recovered-jobs stream) " +
+        "(applied automatically by useCallMutation/useTaskAction " +
+        "and the recovered-tasks stream) " +
         "or in an action `invalidates` config — not in ad-hoc " +
         "queryClient.invalidateQueries calls.",
     ).toEqual([]);

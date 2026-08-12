@@ -32,34 +32,35 @@ const CpuTempBadge = () => {
     undefined,
   );
 
-  const { data: badge } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (CPUInfo: CPUInfoResponse) => {
-          const temperatures = CPUInfo?.temperature ?? {};
-          const keys = Object.keys(temperatures);
-          const defaultSensor =
-            temperatures["package"] !== undefined ? "package" : keys[0];
-          const effectiveSensor =
-            selectedSensor && temperatures[selectedSensor] !== undefined
-              ? selectedSensor
-              : defaultSensor;
+  const selectBadge = useCallback(
+    (CPUInfo: CPUInfoResponse) => {
+      const temperatures = CPUInfo?.temperature ?? {};
+      const keys = Object.keys(temperatures);
+      const defaultSensor =
+        temperatures["package"] !== undefined ? "package" : keys[0];
+      const effectiveSensor =
+        selectedSensor && temperatures[selectedSensor] !== undefined
+          ? selectedSensor
+          : defaultSensor;
 
-          return {
-            sensorKeys: keys,
-            selected: effectiveSensor,
-            text:
-              effectiveSensor !== undefined &&
-              temperatures[effectiveSensor] !== undefined
-                ? `${temperatures[effectiveSensor].toFixed(1)}°C`
-                : "--°C",
-          };
-        },
-        [selectedSensor],
-      ),
-    }),
+      return {
+        sensorKeys: keys,
+        selected: effectiveSensor,
+        text:
+          effectiveSensor !== undefined &&
+          temperatures[effectiveSensor] !== undefined
+            ? `${temperatures[effectiveSensor].toFixed(1)}°C`
+            : "--°C",
+      };
+    },
+    [selectedSensor],
   );
+
+  const { data: badge } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectBadge,
+  });
 
   if (!lmSensorsAvailable) {
     return <CardBadge icon="mdi:thermometer" text="N/A" />;
@@ -80,11 +81,10 @@ const CpuTempBadge = () => {
 };
 
 const CpuStats = () => {
-  const { data: CPUInfo } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-    }),
-  );
+  const { data: CPUInfo } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  });
 
   const averageCpuUsage = selectAverageUsage(CPUInfo);
   const peakCpuUsage = Math.max(...(CPUInfo?.perCoreUsage || [0]));
@@ -111,12 +111,11 @@ const CpuStats = () => {
 };
 
 const CpuUsageGraph = () => {
-  const { data: usage } = useSuspenseQuery(
-    linuxio.system.get_cpu_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectAverageUsage,
-    }),
-  );
+  const { data: usage } = useSuspenseQuery({
+    ...linuxio.system.get_cpu_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectAverageUsage,
+  });
 
   return <ProcessorGraph usage={usage} />;
 };

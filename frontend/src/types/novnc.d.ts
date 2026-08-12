@@ -10,7 +10,8 @@ declare module "@novnc/novnc" {
   export default class RFB extends EventTarget {
     constructor(
       target: HTMLElement,
-      urlOrChannel: string | unknown,
+      // URL to connect to, or a WebSocket-like channel object (e.g. StreamMessageChannel).
+      urlOrChannel: string | object,
       options?: RFBOptions,
     );
 

@@ -99,6 +99,21 @@ function formatValue(value, indentLevel = 0) {
   return lines.join("\n");
 }
 
+// Skipping identical rewrites keeps output mtimes stable, so a build running
+// next to a live dev server does not trigger a spurious watcher reload.
+function writeIfChanged(filePath, content) {
+  let existing;
+  try {
+    existing = readFileSync(filePath, "utf-8");
+  } catch {
+    existing = null;
+  }
+
+  if (existing !== content) {
+    writeFileSync(filePath, content);
+  }
+}
+
 function walkFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
     left.name.localeCompare(right.name),
@@ -177,17 +192,17 @@ function createRequestedIconMap(availablePrefixes) {
   return new Map([...availablePrefixes].map((prefix) => [prefix, new Set()]));
 }
 
-function collectRequestedIcons(availablePrefixes, shouldIncludeFile = () => true) {
-  const requested = new Map(
-    [...availablePrefixes].map((prefix) => [prefix, new Set()]),
-  );
+function collectIcons(availablePrefixes) {
+  const all = createRequestedIconMap(availablePrefixes);
+  const shell = createRequestedIconMap(availablePrefixes);
 
   for (const filePath of walkFiles(sourceDir)) {
-    if (GENERATED_OUTPUTS.has(filePath) || !shouldIncludeFile(filePath)) {
+    if (GENERATED_OUTPUTS.has(filePath)) {
       continue;
     }
 
     const source = readFileSync(filePath, "utf-8");
+    const targets = isShellSource(filePath) ? [all, shell] : [all];
 
     for (const match of source.matchAll(ICON_PATTERN)) {
       const [, prefix, name] = match;
@@ -196,11 +211,13 @@ function collectRequestedIcons(availablePrefixes, shouldIncludeFile = () => true
         continue;
       }
 
-      requested.get(prefix).add(name);
+      for (const target of targets) {
+        target.get(prefix).add(name);
+      }
     }
   }
 
-  return requested;
+  return { all, shell };
 }
 
 function addExtraIcons(requested) {
@@ -312,13 +329,10 @@ addCollection({
 export function generateIcons() {
   const collections = loadCollections();
   const availablePrefixes = new Set(collections.keys());
-  const requestedIcons = collectRequestedIcons(availablePrefixes);
+  const { all: requestedIcons, shell: shellRequestedIcons } =
+    collectIcons(availablePrefixes);
   addExtraIcons(requestedIcons);
 
-  const shellRequestedIcons = collectRequestedIcons(
-    availablePrefixes,
-    isShellSource,
-  );
   const routeRequestedIcons = subtractRequestedIcons(
     requestedIcons,
     shellRequestedIcons,
@@ -336,8 +350,8 @@ export function generateIcons() {
   );
 
   mkdirSync(resolve(frontendDir, "src/icons"), { recursive: true });
-  writeFileSync(shellOutputPath, shellResult.output);
-  writeFileSync(outputPath, routeResult.output);
+  writeIfChanged(shellOutputPath, shellResult.output);
+  writeIfChanged(outputPath, routeResult.output);
 
   console.log(
     `[icons] Generated ${shellResult.totalIcons} shell icon${shellResult.totalIcons !== 1 ? "s" : ""} from ${shellResult.collectionCount} collection${shellResult.collectionCount !== 1 ? "s" : ""}.`,

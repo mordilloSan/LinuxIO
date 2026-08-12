@@ -22,12 +22,10 @@ type NetworkInterfaceInfo struct {
 	Name         string   `json:"name"`
 	Type         string   `json:"type"`
 	MAC          string   `json:"mac"`
-	MTU          uint32   `json:"mtu"`
 	Speed        string   `json:"speed"`
 	Duplex       string   `json:"duplex"`
 	State        uint32   `json:"state"`
 	IP4Addresses []string `json:"ipv4"`
-	IP6Addresses []string `json:"ipv6"`
 	RxSpeed      float64  `json:"rx_speed"`
 	TxSpeed      float64  `json:"tx_speed"`
 	DNS          []string `json:"dns"`
@@ -191,22 +189,16 @@ func liveInterfaceInfo(
 	interval int64,
 ) NetworkInterfaceInfo {
 	addrs, _ := iface.Addrs()
-	ip4s, ip6s := collectAddresses(addrs)
-	mtu := uint32(0)
-	if iface.MTU > 0 {
-		mtu = uint32(iface.MTU)
-	}
+	ip4s := collectIPv4Addresses(addrs)
 	rxSpeed, txSpeed := networkInterfaceSpeed(iface.Name, snapshotMap, interval)
 	return NetworkInterfaceInfo{
 		Name:         iface.Name,
 		Type:         interfaceType(iface.Name),
 		MAC:          iface.HardwareAddr.String(),
-		MTU:          mtu,
 		Speed:        networkInterfaceLinkSpeed(iface.Name),
 		Duplex:       networkInterfaceDuplex(iface.Name),
 		State:        interfaceState(iface),
 		IP4Addresses: ip4s,
-		IP6Addresses: ip6s,
 		RxSpeed:      rxSpeed,
 		TxSpeed:      txSpeed,
 		DNS:          append([]string(nil), defaultDNS...),
@@ -215,9 +207,8 @@ func liveInterfaceInfo(
 	}
 }
 
-func collectAddresses(addrs []stdnet.Addr) ([]string, []string) {
+func collectIPv4Addresses(addrs []stdnet.Addr) []string {
 	var ip4s []string
-	var ip6s []string
 	for _, addr := range addrs {
 		value := addr.String()
 		ip, _, err := stdnet.ParseCIDR(value)
@@ -226,11 +217,9 @@ func collectAddresses(addrs []stdnet.Addr) ([]string, []string) {
 		}
 		if ip.To4() != nil {
 			ip4s = append(ip4s, value)
-			continue
 		}
-		ip6s = append(ip6s, value)
 	}
-	return ip4s, ip6s
+	return ip4s
 }
 
 func interfaceType(name string) string {
@@ -346,17 +335,11 @@ func networkInterfaceSpeed(name string, snapshotMap map[string]net.IOCountersSta
 
 func mergeConfiguredState(info *NetworkInterfaceInfo, cfg networkbackend.InterfaceConfig) {
 	info.IPv4Method = cfg.IPv4Method
-	if cfg.MTU != nil {
-		info.MTU = *cfg.MTU
-	}
 	if cfg.IPv4Method == "manual" && len(cfg.IPv4Addresses) > 0 {
 		info.IP4Addresses = append([]string(nil), cfg.IPv4Addresses...)
 	}
 	if len(info.IP4Addresses) == 0 && len(cfg.IPv4Addresses) > 0 {
 		info.IP4Addresses = append([]string(nil), cfg.IPv4Addresses...)
-	}
-	if len(info.IP6Addresses) == 0 && len(cfg.IPv6Addresses) > 0 {
-		info.IP6Addresses = append([]string(nil), cfg.IPv6Addresses...)
 	}
 	if cfg.IPv4Method == "manual" && len(cfg.DNS) > 0 {
 		info.DNS = append([]string(nil), cfg.DNS...)

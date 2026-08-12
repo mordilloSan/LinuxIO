@@ -3,8 +3,8 @@ import { toast } from "sonner";
 
 import {
   CACHE_TTL_MS,
+  isConnectionLossError,
   isRequestAvailable,
-  LinuxIOError,
   subscribeRequestAvailability,
 } from "@/api";
 
@@ -32,9 +32,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 function retryQuery(failureCount: number, error: unknown): boolean {
-  // Read endpoints already retry a closed connection once inside the transport.
-  // Starting a second Query attempt would multiply the same recovery policy.
-  if (error instanceof LinuxIOError && error.code === "connection_closed") {
+  // Endpoints with an explicit connection-loss policy already retry once inside
+  // the transport. Starting a second Query attempt would multiply that policy.
+  if (isConnectionLossError(error)) {
     return false;
   }
   return failureCount < 1;

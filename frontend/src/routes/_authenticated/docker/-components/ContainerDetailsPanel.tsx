@@ -2,9 +2,8 @@ import { Icon } from "@iconify/react";
 
 import type { ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import ContainerInfoSections, {
-  ContainerInfoSection,
-} from "@/components/docker/ContainerInfoSections";
+import type { ContainerInfoSection } from "@/components/docker/ContainerInfoSections";
+import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";

@@ -1,8 +1,7 @@
-import { Icon } from "@iconify/react";
 import { useCallback, useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
-import AppButton from "@/components/ui/AppButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -28,14 +27,13 @@ const DockerImagesPage = () => {
         viewMode={imagesView}
       />
       {createImageHandler && (
-        <AppButton
+        <AppActionIconButton
+          ariaLabel="Add Image"
+          icon="mdi:plus"
+          iconSize={20}
+          label="Add Image"
           onClick={createImageHandler}
-          size="small"
-          startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-          variant="contained"
-        >
-          Add Image
-        </AppButton>
+        />
       )}
     </>
   );

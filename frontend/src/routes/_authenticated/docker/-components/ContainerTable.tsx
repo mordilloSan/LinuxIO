@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useState,
+  type MouseEvent,
 } from "react";
 
 import {
@@ -16,6 +17,7 @@ import {
   type ContainerInfo,
   type ContainerMount,
   type ContainerPort,
+  useCallMutation,
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -24,18 +26,21 @@ import type {
   AppDataTableDndOptions,
 } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
-import AppIconButton from "@/components/ui/AppIconButton";
+import AppDivider from "@/components/ui/AppDivider";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formaters";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
+
+import "./container-table.css";
 
 const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
@@ -70,44 +75,66 @@ const getImageVersion = (image: string) => {
   return parts[parts.length - 1] || "-";
 };
 
+// Docker merges the image's labels into the container's, so a well-behaved
+// image tells us what "latest" currently resolves to.
+const VERSION_LABEL_KEYS = [
+  "org.opencontainers.image.version",
+  "org.label-schema.version",
+  "version",
+];
+
+const getLabelVersion = (labels?: Record<string, string>) => {
+  if (!labels) return undefined;
+  for (const key of VERSION_LABEL_KEYS) {
+    const value = labels[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+};
+
+// A floating tag says nothing about what is actually running, so pair it with
+// the labelled version when the image publishes one.
+const getVersionDisplay = (container: ContainerInfo) => {
+  const tag = getImageVersion(container.Image);
+  const labelVersion = getLabelVersion(container.Labels);
+
+  if (!labelVersion || labelVersion === tag) return tag;
+  if (tag === "-") return labelVersion;
+  if (tag === "latest") return `${tag} (${labelVersion})`;
+  return tag;
+};
+
 type ContainerUpdateStatusInput = Pick<
   ContainerInfo,
   "updateAvailable" | "updateCheckedAt" | "updateError"
 >;
 
+// `label` is the visible second line of the Version cell; `detail` is the
+// tooltip's first line — how old the verdict is, which the label deliberately
+// does not claim, since a scan is only as current as when it last ran.
 const getUpdateStatus = ({
   updateAvailable,
   updateCheckedAt,
   updateError,
 }: ContainerUpdateStatusInput) => {
+  const detail = updateCheckedAt
+    ? `Scanned ${formatRelativeAge(updateCheckedAt)}`
+    : "Never scanned";
+
   if (updateError) {
     return {
-      color: "error",
-      label: "Error",
-      title: updateError,
+      color: "error" as const,
+      detail: updateError,
+      label: "Scan failed",
     };
   }
   if (updateAvailable === true) {
-    return {
-      color: "warning",
-      label: "Update",
-      title: "Update available",
-    };
+    return { color: "warning" as const, detail, label: "Update available" };
   }
   if (updateAvailable === false || updateCheckedAt) {
-    return {
-      color: "success",
-      label: "Current",
-      title: updateCheckedAt
-        ? `Checked ${new Date(updateCheckedAt).toLocaleString()}`
-        : "No update available",
-    };
+    return { color: "success" as const, detail, label: "Up to date" };
   }
-  return {
-    color: "default",
-    label: "Unknown",
-    title: "Not checked",
-  };
+  return { color: "inherit" as const, detail, label: "Not scanned" };
 };
 
 const formatUptime = (createdUnix: number) => {
@@ -137,6 +164,17 @@ const getDedupedPorts = (container: ContainerInfo) => {
       (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
     );
 };
+
+// A collapsed ports/volumes cell renders two entries plus a "+N more" caption,
+// which is exactly the height an untruncated three-entry list takes. Collapsing
+// only buys space from the fourth entry on, so three entries stay fully visible
+// and the row offers no expander.
+const COLLAPSED_ENTRIES = 2;
+
+const isCollapsible = (total: number) => total > COLLAPSED_ENTRIES + 1;
+
+const getVisibleEntries = (total: number) =>
+  isCollapsible(total) ? COLLAPSED_ENTRIES : total;
 
 const getMounts = (container: ContainerInfo) =>
   (container.Mounts ?? []).filter(
@@ -184,6 +222,10 @@ const getContainerTableSignature = (container: ContainerInfo) => {
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 
+// AppTooltip marks its click-to-copy triggers with this class; a click on one
+// copies a value and must not double as a row selection.
+const INTERACTIVE_CELL_SELECTOR = ".app-tooltip-trigger--copy";
+
 const areStringSetsEqual = (
   left: ReadonlySet<string>,
   right: ReadonlySet<string>,
@@ -228,7 +270,7 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
       />
       <DockerIcon alt={name} identifier={container.icon} size={24} />
       <AppTypography
-        fontWeight={700}
+        fontWeight={600}
         noWrap
         title={name}
         toastMeta={DOCKER_TOAST_META}
@@ -240,17 +282,12 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
   );
 }
 
-function VersionCell({ image }: { image: string }) {
-  const version = getImageVersion(image);
-
+function VersionCell({ version }: { version: string }) {
   return (
     <AppTypography
+      className="container-table__version-text"
       color="text.secondary"
       noWrap
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-      }}
       title={version}
       toastMeta={DOCKER_TOAST_META}
       variant="body2"
@@ -284,7 +321,7 @@ const UpdateCell = memo(function UpdateCell({
     updateError,
   });
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
-    linuxio.docker.check_container_update.useAction({
+    useCallMutation(linuxio.docker.check_container_update, {
       success: (result) => {
         const updates = result?.updates ?? 0;
         toast.success(
@@ -297,7 +334,7 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useAction({
+    useCallMutation(linuxio.docker.update_container, {
       success: (result) => {
         toast.success(
           result.updated
@@ -309,17 +346,15 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
 
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        gap: 4,
-        minWidth: 0,
-      }}
-    >
+  const checking = isCheckingUpdate || checkingUpdates;
+
+  // An actionable row gets the chip instead of a dot: it is both the amber
+  // state and the way to apply the update, and re-checking a container that
+  // already has one pending buys nothing.
+  if (updateAvailable === true) {
+    return (
       <Chip
-        color={updateStatus.color}
+        color="warning"
         disabled={isUpdatePending}
         label={
           isUpdatePending ? (
@@ -334,29 +369,46 @@ const UpdateCell = memo(function UpdateCell({
               Updating
             </span>
           ) : (
-            updateStatus.label
+            "Update"
           )
         }
-        onClick={
-          updateAvailable ? () => updateContainer({ containerId }) : undefined
-        }
+        onClick={() => updateContainer({ containerId })}
         size="small"
-        title={updateAvailable ? "Apply update" : updateStatus.title}
+        title="Apply update"
         variant="soft"
       />
-      <AppTooltip title="Check for updates">
-        <span>
-          <AppActionIconButton
-            icon="mdi:magnify"
-            iconSize={16}
-            label="Check for updates"
-            loading={isCheckingUpdate || checkingUpdates}
-            onClick={() => checkContainerUpdate({ containerId })}
-            tooltip={false}
-          />
-        </span>
-      </AppTooltip>
-    </div>
+    );
+  }
+
+  return (
+    <AppTooltip
+      title={
+        <>
+          <div>{updateStatus.detail}</div>
+          <div className="container-table__update-hint">
+            {checking ? "Scanning…" : "Click to re-scan"}
+          </div>
+        </>
+      }
+    >
+      <span>
+        <AppButton
+          aria-label={`Re-scan ${name} for updates`}
+          className={[
+            "container-table__update-label",
+            updateStatus.color === "inherit" &&
+              "container-table__update-label--muted",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          color={updateStatus.color}
+          disabled={checking}
+          onClick={() => checkContainerUpdate({ containerId })}
+        >
+          {checking ? "Scanning…" : updateStatus.label}
+        </AppButton>
+      </span>
+    </AppTooltip>
   );
 });
 
@@ -412,11 +464,7 @@ function UptimeCell({ created }: { created: number }) {
   return (
     <AppTypography
       color="text.secondary"
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-        fontVariantNumeric: "tabular-nums",
-      }}
+      style={{ fontVariantNumeric: "tabular-nums" }}
       variant="body2"
     >
       {formatUptime(created)}
@@ -447,10 +495,6 @@ function NetworkCell({
       color="text.secondary"
       copyText={networkNamesText}
       noWrap
-      style={{
-        fontFamily: "monospace",
-        fontSize: "0.78rem",
-      }}
       title={networkNamesText}
       toastMeta={DOCKER_TOAST_META}
       tooltipOnlyWhenTruncated={networks.length === 1}
@@ -495,7 +539,7 @@ function NetworkAddressCell({
     <AppTypography
       copyText={networkAddressesText}
       noWrap
-      style={{ fontFamily: "monospace", fontSize: "0.78rem" }}
+      style={{ fontFamily: "var(--app-font-mono)" }}
       title={networkAddressesText}
       toastMeta={DOCKER_TOAST_META}
       tooltipOnlyWhenTruncated={networks.length === 1}
@@ -506,26 +550,64 @@ function NetworkAddressCell({
   );
 }
 
+interface StackToggleProps {
+  containerId: string;
+  expanded: boolean;
+  hiddenCount: number;
+  onToggleExpanded: (containerId: string) => void;
+}
+
+// The "+N more" line is the row's expander: it only exists on rows that have
+// something to reveal, and it sits next to the entries it is counting.
+function StackToggle({
+  containerId,
+  expanded,
+  hiddenCount,
+  onToggleExpanded,
+}: StackToggleProps) {
+  return (
+    <button
+      aria-expanded={expanded}
+      className="container-table__stack-toggle"
+      onClick={() => onToggleExpanded(containerId)}
+      type="button"
+    >
+      {expanded ? "Show less" : `+${hiddenCount} more`}
+      <Icon
+        className="container-table__stack-chevron"
+        height={14}
+        icon="mdi:chevron-down"
+        width={14}
+      />
+    </button>
+  );
+}
+
 interface PortsCellProps {
   containerId: string;
+  onToggleExpanded: (containerId: string) => void;
   ports: ContainerPort[];
 }
 
-function PortsCell({ containerId, ports }: PortsCellProps) {
+function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
   const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (ports.length === 0) {
     return (
-      <AppTypography color="text.disabled" variant="body2">
-        -
-      </AppTypography>
+      <div className="container-table__stack">
+        <AppTypography color="text.disabled" variant="body2">
+          -
+        </AppTypography>
+      </div>
     );
   }
 
+  const visible = getVisibleEntries(ports.length);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {ports.slice(0, 2).map((port) => {
+    <div className="container-table__stack">
+      {ports.slice(0, visible).map((port) => {
         const text = `${port.PrivatePort}/${port.Type} -> ${
           port.PublicPort ?? "-"
         }`;
@@ -533,10 +615,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
           <AppTypography
             key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
             noWrap
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-            }}
+            style={{ fontFamily: "var(--app-font-mono)" }}
             title={text}
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
@@ -559,8 +638,8 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
         );
       })}
       <AppCollapse in={expanded}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {ports.slice(2).map((port) => {
+        <div className="container-table__stack-group">
+          {ports.slice(visible).map((port) => {
             const text = `${port.PrivatePort}/${port.Type} -> ${
               port.PublicPort ?? "-"
             }`;
@@ -568,10 +647,7 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
               <AppTypography
                 key={`${port.PrivatePort}-${port.PublicPort ?? "none"}-${port.Type}`}
                 noWrap
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                }}
+                style={{ fontFamily: "var(--app-font-mono)" }}
                 title={text}
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
@@ -595,19 +671,13 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
           })}
         </div>
       </AppCollapse>
-      {ports.length > 2 && (
-        <AppCollapse in={!expanded}>
-          <AppTypography
-            color="text.disabled"
-            style={{
-              opacity: expanded ? 0 : 1,
-              transition: `opacity ${TRANSITION_SLOW_CSS}`,
-            }}
-            variant="caption"
-          >
-            +{ports.length - 2} more
-          </AppTypography>
-        </AppCollapse>
+      {isCollapsible(ports.length) && (
+        <StackToggle
+          containerId={containerId}
+          expanded={expanded}
+          hiddenCount={ports.length - visible}
+          onToggleExpanded={onToggleExpanded}
+        />
       )}
     </div>
   );
@@ -616,32 +686,38 @@ function PortsCell({ containerId, ports }: PortsCellProps) {
 interface VolumesCellProps {
   containerId: string;
   mounts: ContainerMount[];
+  onToggleExpanded: (containerId: string) => void;
 }
 
-function VolumesCell({ containerId, mounts }: VolumesCellProps) {
+function VolumesCell({
+  containerId,
+  mounts,
+  onToggleExpanded,
+}: VolumesCellProps) {
   const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (mounts.length === 0) {
     return (
-      <AppTypography color="text.disabled" variant="body2">
-        -
-      </AppTypography>
+      <div className="container-table__stack">
+        <AppTypography color="text.disabled" variant="body2">
+          -
+        </AppTypography>
+      </div>
     );
   }
 
+  const visible = getVisibleEntries(mounts.length);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {mounts.slice(0, 2).map((mount) => {
+    <div className="container-table__stack">
+      {mounts.slice(0, visible).map((mount) => {
         const text = `${mount.Destination} -> ${mount.Source}`;
         return (
           <AppTypography
             key={`${mount.Destination}-${mount.Source}`}
             noWrap
-            style={{
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-            }}
+            style={{ fontFamily: "var(--app-font-mono)" }}
             title={text}
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
@@ -664,17 +740,14 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
         );
       })}
       <AppCollapse in={expanded}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {mounts.slice(2).map((mount) => {
+        <div className="container-table__stack-group">
+          {mounts.slice(visible).map((mount) => {
             const text = `${mount.Destination} -> ${mount.Source}`;
             return (
               <AppTypography
                 key={`${mount.Destination}-${mount.Source}`}
                 noWrap
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                }}
+                style={{ fontFamily: "var(--app-font-mono)" }}
                 title={text}
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
@@ -698,19 +771,13 @@ function VolumesCell({ containerId, mounts }: VolumesCellProps) {
           })}
         </div>
       </AppCollapse>
-      {mounts.length > 2 && (
-        <AppCollapse in={!expanded}>
-          <AppTypography
-            color="text.disabled"
-            style={{
-              opacity: expanded ? 0 : 1,
-              transition: `opacity ${TRANSITION_SLOW_CSS}`,
-            }}
-            variant="caption"
-          >
-            +{mounts.length - 2} more
-          </AppTypography>
-        </AppCollapse>
+      {isCollapsible(mounts.length) && (
+        <StackToggle
+          containerId={containerId}
+          expanded={expanded}
+          hiddenCount={mounts.length - visible}
+          onToggleExpanded={onToggleExpanded}
+        />
       )}
     </div>
   );
@@ -725,11 +792,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
       <AppTypography
         color="text.secondary"
         noWrap
-        style={{
-          fontFamily: "monospace",
-          fontSize: "0.78rem",
-          fontVariantNumeric: "tabular-nums",
-        }}
+        style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
         {cpuPercent.toFixed(1)}%
@@ -737,11 +800,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
       <AppTypography
         color="text.secondary"
         noWrap
-        style={{
-          fontFamily: "monospace",
-          fontSize: "0.78rem",
-          fontVariantNumeric: "tabular-nums",
-        }}
+        style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
         {formatFileSize(memUsage)}
@@ -750,179 +809,227 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
   );
 }
 
+interface ContainerAction {
+  icon: string;
+  label: string;
+  loading?: boolean;
+  onClick: () => void;
+}
+
 interface ActionsCellProps {
+  autoUpdateDisabled: boolean;
+  autoUpdatePending: boolean;
+  autoUpdateReason?: string;
+  autoUpdateSelected: boolean;
+  // Below md only Name and Actions remain, and a seven-icon strip leaves the
+  // name barely legible — so the same actions collapse into one menu, which
+  // also swallows the auto-update toggle that sits beside the strip.
+  compact: boolean;
   containerId: string;
-  hasExpandableDetails: boolean;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
-  onToggleExpanded: (containerId: string) => void;
+  onToggleAutoUpdate: (name: string) => void;
   pending?: boolean;
   state: string;
   url?: string;
 }
 
 const ActionsCell = memo(function ActionsCell({
+  autoUpdateDisabled,
+  autoUpdatePending,
+  autoUpdateReason,
+  autoUpdateSelected,
+  compact,
   containerId,
-  hasExpandableDetails,
   name,
   onOpenLogs,
   onOpenTerminal,
-  onToggleExpanded,
+  onToggleAutoUpdate,
   pending = false,
   state,
   url,
 }: ActionsCellProps) {
-  const expanded = useContext(ExpandedContainersContext).has(containerId);
-  const { mutate: startContainer } = linuxio.docker.start_container.useAction({
-    success: `Container ${name} started`,
-    error: `Failed to start ${name}`,
-    toast: DOCKER_TOAST_META,
-  });
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useAction({
-    success: `Container ${name} stopped`,
-    error: `Failed to stop ${name}`,
-    toast: DOCKER_TOAST_META,
-  });
-  const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useAction({
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
+    linuxio.docker.start_container,
+    {
+      success: `Container ${name} started`,
+      error: `Failed to start ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
+    linuxio.docker.stop_container,
+    {
+      success: `Container ${name} stopped`,
+      error: `Failed to stop ${name}`,
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: restartContainer, isPending: isRestartPending } =
+    useCallMutation(linuxio.docker.restart_container, {
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: removeContainer } = linuxio.docker.remove_container.useAction(
-    {
+  const { mutate: removeContainer, isPending: isRemovePending } =
+    useCallMutation(linuxio.docker.remove_container, {
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,
       toast: DOCKER_TOAST_META,
+    });
+  const rowBusy =
+    pending ||
+    isStartPending ||
+    isStopPending ||
+    isRestartPending ||
+    isRemovePending;
+  const pendingActionLabel =
+    pending || isStopPending
+      ? "Stopping"
+      : isStartPending
+        ? "Starting"
+        : isRestartPending
+          ? "Restarting"
+          : isRemovePending
+            ? "Removing"
+            : undefined;
+
+  const actions: ContainerAction[] = [
+    state === "running"
+      ? {
+          icon: "mdi:stop",
+          label: "Stop",
+          loading: pending || isStopPending,
+          onClick: () => stopContainer({ containerId }),
+        }
+      : {
+          icon: "mdi:play",
+          label: "Start",
+          loading: isStartPending,
+          onClick: () => startContainer({ containerId }),
+        },
+    {
+      icon: "mdi:restart",
+      label: "Restart",
+      loading: isRestartPending,
+      onClick: () => restartContainer({ containerId }),
     },
-  );
+    {
+      icon: "mdi:delete",
+      label: "Remove",
+      loading: isRemovePending,
+      onClick: () => removeContainer({ containerId }),
+    },
+    {
+      icon: "mdi:file-document-outline",
+      label: "Logs",
+      onClick: () => onOpenLogs(containerId, name),
+    },
+    {
+      icon: "mdi:console",
+      label: "Terminal",
+      onClick: () => onOpenTerminal(containerId, name),
+    },
+    ...(url
+      ? [
+          {
+            icon: "mdi:open-in-new",
+            label: "Open App",
+            onClick: () => window.open(url, "_blank", "noopener"),
+          },
+        ]
+      : []),
+  ];
+
+  if (compact) {
+    return (
+      <>
+        <AppActionIconButton
+          ariaLabel={
+            pendingActionLabel
+              ? `${pendingActionLabel} ${name}`
+              : `Actions for ${name}`
+          }
+          disabled={rowBusy}
+          icon="mdi:dots-vertical"
+          iconSize={20}
+          loading={rowBusy}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          tooltip={false}
+        />
+        <AppMenu
+          anchorEl={menuAnchor}
+          minWidth={160}
+          onClose={() => setMenuAnchor(null)}
+          open={Boolean(menuAnchor)}
+        >
+          {actions.map((action) => (
+            <AppMenuItem
+              disabled={rowBusy}
+              key={action.label}
+              onClick={() => {
+                setMenuAnchor(null);
+                action.onClick();
+              }}
+              startAdornment={<Icon icon={action.icon} width={18} />}
+            >
+              {action.label}
+            </AppMenuItem>
+          ))}
+          <AppDivider />
+          <AppMenuItem
+            disabled={autoUpdateDisabled || autoUpdatePending}
+            endAdornment={
+              autoUpdateSelected ? <Icon icon="mdi:check" width={16} /> : null
+            }
+            onClick={() => {
+              setMenuAnchor(null);
+              onToggleAutoUpdate(name);
+            }}
+            selected={autoUpdateSelected}
+            startAdornment={<Icon icon="mdi:timer-cog-outline" width={18} />}
+            title={
+              autoUpdateDisabled
+                ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
+                : undefined
+            }
+          >
+            Auto-update
+          </AppMenuItem>
+        </AppMenu>
+      </>
+    );
+  }
 
   return (
-    <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: 2,
-        }}
-      >
-        {state !== "running" && (
-          <AppTooltip title="Start">
-            <span>
-              <AppActionIconButton
-                disabled={pending}
-                icon="mdi:play"
-                iconSize={16}
-                label="Start"
-                onClick={() => startContainer({ containerId })}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        {state === "running" && (
-          <AppTooltip title="Stop">
-            <span>
-              <AppActionIconButton
-                icon="mdi:stop"
-                iconSize={16}
-                label="Stop"
-                loading={pending}
-                onClick={() => stopContainer({ containerId })}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        <AppTooltip title="Restart">
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap: 2,
+      }}
+    >
+      {actions.map((action) => (
+        // The outer tooltip wraps a span because a disabled button emits no
+        // hover events of its own.
+        <AppTooltip key={action.label} title={action.label}>
           <span>
             <AppActionIconButton
-              disabled={pending}
-              icon="mdi:restart"
+              disabled={rowBusy && !action.loading}
+              icon={action.icon}
               iconSize={16}
-              label="Restart"
-              onClick={() => restartContainer({ containerId })}
+              label={action.label}
+              loading={action.loading}
+              onClick={action.onClick}
               tooltip={false}
             />
           </span>
         </AppTooltip>
-        <AppTooltip title="Remove">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:delete"
-              iconSize={16}
-              label="Remove"
-              onClick={() => removeContainer({ containerId })}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-        <AppTooltip title="Logs">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:file-document-outline"
-              iconSize={16}
-              label="Logs"
-              onClick={() => onOpenLogs(containerId, name)}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-        <AppTooltip title="Terminal">
-          <span>
-            <AppActionIconButton
-              disabled={pending}
-              icon="mdi:console"
-              iconSize={16}
-              label="Terminal"
-              onClick={() => onOpenTerminal(containerId, name)}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-        {url && (
-          <AppTooltip title="Open App">
-            <span>
-              <AppActionIconButton
-                disabled={pending}
-                icon="mdi:open-in-new"
-                iconSize={16}
-                label="Open App"
-                onClick={() => window.open(url, "_blank", "noopener")}
-                tooltip={false}
-              />
-            </span>
-          </AppTooltip>
-        )}
-        <AppIconButton
-          aria-label={
-            expanded ? "Collapse container details" : "Expand container details"
-          }
-          aria-expanded={expanded}
-          className="container-expand-toggle"
-          onClick={() => onToggleExpanded(containerId)}
-          size="small"
-          style={{
-            marginLeft: 2,
-            visibility: hasExpandableDetails ? "visible" : "hidden",
-          }}
-        >
-          <Icon
-            height={20}
-            icon="mdi:chevron-down"
-            style={{
-              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-              transition: `transform ${TRANSITION_SLOW_CSS}`,
-            }}
-            width={20}
-          />
-        </AppIconButton>
-      </div>
-    </>
+      ))}
+    </div>
   );
 });
 
@@ -933,7 +1040,9 @@ interface ContainerTableProps {
   autoUpdateSelectedNames: Set<string>;
   checkingUpdates?: boolean;
   containers: ContainerInfo[];
-  editMode?: boolean;
+  /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
+  dnd?: AppDataTableDndOptions<ContainerInfo>;
+  onSelectContainer?: (containerId: string) => void;
   onToggleAutoUpdate: (name: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
 }
@@ -950,10 +1059,15 @@ const ContainerTable = ({
   autoUpdateSelectedNames,
   checkingUpdates = false,
   containers,
-  editMode = false,
+  dnd,
+  onSelectContainer,
   onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
+  const theme = useAppTheme();
+  // Same breakpoint the Version and Uptime columns hide at, so the strip
+  // collapses exactly when Actions starts crowding the name.
+  const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -982,44 +1096,68 @@ const ContainerTable = ({
     },
     [],
   );
+  const handleRowClick = useCallback(
+    (row: { original: ContainerInfo }, event: MouseEvent) => {
+      // A row is a container of controls before it is a link: the action
+      // buttons, the "+N more" expander, the update dot and the copy-on-click
+      // cells all bubble up to here and must not navigate.
+      if (
+        (event.target as HTMLElement).closest(
+          `button, a, input, ${INTERACTIVE_CELL_SELECTOR}`,
+        )
+      ) {
+        return;
+      }
+      onSelectContainer?.(row.original.Id);
+    },
+    [onSelectContainer],
+  );
   const columns = useMemo<AppDataTableColumnDef<ContainerInfo>[]>(
     () => [
       {
         id: "name",
         header: "Name",
         cell: ({ row }) => <ContainerNameCell container={row.original} />,
-        meta: { align: "left" },
-      },
-      {
-        id: "version",
-        header: "Version",
-        cell: ({ row }) => <VersionCell image={row.original.Image} />,
         meta: {
-          hideBelow: "md",
-          width: "160px",
-        },
-      },
-      {
-        id: "update",
-        header: "Update",
-        cell: ({ row }) => {
-          const container = row.original;
-          return (
-            <UpdateCell
-              checkingUpdates={checkingUpdates}
-              containerId={container.Id}
-              name={getContainerName(container)}
-              updateAvailable={container.updateAvailable}
-              updateCheckedAt={container.updateCheckedAt}
-              updateError={container.updateError}
-            />
-          );
-        },
-        meta: {
+          align: "left",
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
               container.Id,
+              getContainerName(container),
+              getDisplayState(container),
+              container.icon,
+            ];
+          },
+          width: "minmax(0, 1.6fr)",
+        },
+      },
+      {
+        id: "version",
+        header: "Version",
+        cell: ({ row }) => {
+          const container = row.original;
+          return (
+            <div className="container-table__version-stack">
+              <VersionCell version={getVersionDisplay(container)} />
+              <UpdateCell
+                checkingUpdates={checkingUpdates}
+                containerId={container.Id}
+                name={getContainerName(container)}
+                updateAvailable={container.updateAvailable}
+                updateCheckedAt={container.updateCheckedAt}
+                updateError={container.updateError}
+              />
+            </div>
+          );
+        },
+        meta: {
+          align: "center",
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              getVersionDisplay(container),
               getContainerName(container),
               container.updateAvailable,
               container.updateCheckedAt,
@@ -1028,38 +1166,7 @@ const ContainerTable = ({
             ];
           },
           hideBelow: "md",
-          width: "140px",
-        },
-      },
-      {
-        id: "auto",
-        header: "Auto",
-        cell: ({ row }) => {
-          const name = getContainerName(row.original);
-          return (
-            <AutoUpdateCell
-              autoUpdateDisabled={autoUpdateDisabled}
-              autoUpdatePending={autoUpdatePendingNames.has(name)}
-              autoUpdateReason={autoUpdateReason}
-              autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-              name={name}
-              onToggleAutoUpdate={onToggleAutoUpdate}
-            />
-          );
-        },
-        meta: {
-          align: "center",
-          getCellRenderKey: (row) => {
-            const name = getContainerName(asContainer(row));
-            return [
-              name,
-              autoUpdateDisabled,
-              autoUpdatePendingNames.has(name),
-              autoUpdateReason,
-              autoUpdateSelectedNames.has(name),
-            ];
-          },
-          width: "60px",
+          width: "170px",
         },
       },
       {
@@ -1078,7 +1185,18 @@ const ContainerTable = ({
             )}
           />
         ),
-        meta: { hideBelow: "lg" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              Object.keys(container.NetworkSettings?.Networks ?? {})
+                .sort()
+                .join("|"),
+            ];
+          },
+          hideBelow: "lg",
+        },
       },
       {
         id: "ip",
@@ -1090,20 +1208,41 @@ const ContainerTable = ({
             )}
           />
         ),
-        meta: { hideBelow: "lg" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              Object.entries(container.NetworkSettings?.Networks ?? {})
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(
+                  ([networkName, endpoint]) =>
+                    `${networkName}:${endpoint.IPAddress || "-"}`,
+                )
+                .join("|"),
+            ];
+          },
+          hideBelow: "lg",
+          width: "130px",
+        },
       },
       {
         id: "ports",
-        header: "Ports (Container->Host)",
+        header: () => (
+          <AppTooltip placement="top" title="Container -> Host">
+            <span>Ports</span>
+          </AppTooltip>
+        ),
         cell: ({ row }) => (
           <PortsCell
             containerId={row.original.Id}
+            onToggleExpanded={toggleExpanded}
             ports={getDedupedPorts(row.original)}
           />
         ),
         meta: {
           hideBelow: "xl",
-          width: "160px",
+          width: "minmax(130px, 155px)",
           cellStyle: { alignItems: "flex-start" },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
@@ -1121,16 +1260,22 @@ const ContainerTable = ({
       },
       {
         id: "volumes",
-        header: "Volumes (App->Host)",
+        header: () => (
+          <AppTooltip placement="top" title="App -> Host">
+            <span>Volumes</span>
+          </AppTooltip>
+        ),
         cell: ({ row }) => (
           <VolumesCell
             containerId={row.original.Id}
             mounts={getMounts(row.original)}
+            onToggleExpanded={toggleExpanded}
           />
         ),
         meta: {
           hideBelow: "xl",
-          cellStyle: { maxWidth: 280, alignItems: "flex-start" },
+          width: "minmax(0, 2.2fr)",
+          cellStyle: { alignItems: "flex-start" },
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
@@ -1151,6 +1296,14 @@ const ContainerTable = ({
         cell: ({ row }) => <MetricsCell container={row.original} />,
         meta: {
           align: "center",
+          getCellRenderKey: (row) => {
+            const container = asContainer(row);
+            return [
+              container.Id,
+              (container.metrics?.cpu_percent ?? 0).toFixed(1),
+              formatFileSize(container.metrics?.mem_usage ?? 0),
+            ];
+          },
           hideBelow: "xl",
           width: "110px",
         },
@@ -1161,38 +1314,64 @@ const ContainerTable = ({
         enableSorting: false,
         cell: ({ row }) => {
           const container = row.original;
-          const ports = getDedupedPorts(row.original);
-          const mounts = getMounts(row.original);
+          const name = getContainerName(container);
           return (
-            <ActionsCell
-              containerId={container.Id}
-              hasExpandableDetails={ports.length > 2 || mounts.length > 2}
-              name={getContainerName(container)}
-              onOpenLogs={openLogs}
-              onOpenTerminal={openTerminal}
-              onToggleExpanded={toggleExpanded}
-              pending={stoppingContainerIds.has(container.Id)}
-              state={container.State}
-              url={container.url}
-            />
+            <>
+              {!compactActions && (
+                <AutoUpdateCell
+                  autoUpdateDisabled={autoUpdateDisabled}
+                  autoUpdatePending={autoUpdatePendingNames.has(name)}
+                  autoUpdateReason={autoUpdateReason}
+                  autoUpdateSelected={autoUpdateSelectedNames.has(name)}
+                  name={name}
+                  onToggleAutoUpdate={onToggleAutoUpdate}
+                />
+              )}
+              <ActionsCell
+                autoUpdateDisabled={autoUpdateDisabled}
+                autoUpdatePending={autoUpdatePendingNames.has(name)}
+                autoUpdateReason={autoUpdateReason}
+                autoUpdateSelected={autoUpdateSelectedNames.has(name)}
+                compact={compactActions}
+                containerId={container.Id}
+                name={name}
+                onOpenLogs={openLogs}
+                onOpenTerminal={openTerminal}
+                onToggleAutoUpdate={onToggleAutoUpdate}
+                pending={stoppingContainerIds.has(container.Id)}
+                state={container.State}
+                url={container.url}
+              />
+            </>
           );
         },
         meta: {
           align: "right",
+          // The buttons fill the column, so a right-aligned label reads as
+          // hanging off the end of the strip rather than titling it.
+          headerStyle: { justifyContent: "center" },
+          // Tighter than the default 16px so the seven-button strip fits the
+          // track without clipping, and gap: 2 matches the strip's own spacing
+          // across the auto-update toggle sitting beside it.
+          cellStyle: { gap: 2, paddingInline: 8 },
+          // A compact row holds nothing but the menu button, so the rest of the
+          // track goes back to the name.
+          width: compactActions ? "56px" : "215px",
           getCellRenderKey: (row) => {
             const container = asContainer(row);
-            const ports = getDedupedPorts(container);
-            const mounts = getMounts(container);
+            const name = getContainerName(container);
             return [
               container.Id,
-              getContainerName(container),
+              name,
               container.State,
               container.url,
-              ports.length > 2 || mounts.length > 2,
               stoppingContainerIds.has(container.Id),
+              autoUpdateDisabled,
+              autoUpdatePendingNames.has(name),
+              autoUpdateReason,
+              autoUpdateSelectedNames.has(name),
             ];
           },
-          width: "200px",
         },
       },
     ],
@@ -1202,6 +1381,7 @@ const ContainerTable = ({
       autoUpdateReason,
       autoUpdateSelectedNames,
       checkingUpdates,
+      compactActions,
       openLogs,
       openTerminal,
       onToggleAutoUpdate,
@@ -1209,17 +1389,7 @@ const ContainerTable = ({
       toggleExpanded,
     ],
   );
-  const dnd = useMemo<AppDataTableDndOptions<ContainerInfo> | undefined>(
-    () =>
-      editMode
-        ? {
-            getItemId: (row) => row.original.Id,
-            handleAriaLabel: "Reorder container",
-            handleColumnWidth: 28,
-          }
-        : undefined,
-    [editMode],
-  );
+  const editMode = dnd?.editing ?? false;
 
   return (
     <>
@@ -1232,6 +1402,11 @@ const ContainerTable = ({
           emptyMessage="No containers found."
           enableSorting={false}
           getRowId={(container) => container.Id}
+          // Dragging rows is the point of edit mode; selecting one there would
+          // fight the drag and immediately swap the table for a detail view.
+          onRowClick={
+            onSelectContainer && !editMode ? handleRowClick : undefined
+          }
         />
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
@@ -1263,7 +1438,8 @@ const areContainerTablePropsEqual = (
   previous.autoUpdateDisabled === next.autoUpdateDisabled &&
   previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&
-  previous.editMode === next.editMode &&
+  previous.dnd === next.dnd &&
+  previous.onSelectContainer === next.onSelectContainer &&
   previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
   areStringSetsEqual(
     previous.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,

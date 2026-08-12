@@ -3,7 +3,15 @@ import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { type ApiDisk, type FilesystemInfo, linuxio, type Stream } from "@/api";
+import {
+  type ApiDisk,
+  type FilesystemInfo,
+  linuxio,
+  type SmartTestResult,
+  type Stream,
+  type TaskProgress,
+  useCallMutation,
+} from "@/api";
 import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import TabSelector from "@/components/tabbar/TabSelector";
@@ -11,8 +19,8 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { JOB_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundJobTypes";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
@@ -25,12 +33,7 @@ import {
   SmartAttributesTab,
   TabPanel,
 } from "./components";
-import type {
-  DriveInfo,
-  SmartData,
-  SmartTestProgressEvent,
-  SmartTestResult,
-} from "./types";
+import type { DriveInfo, SmartData, SmartTestProgressEvent } from "./types";
 import { parseSizeToBytes } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
@@ -90,17 +93,19 @@ const DriveDetails = ({
     useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
   // One config drives both lifecycles: fresh runs via smartTest.mutate() and
-  // page-reload recovery via smartTest.attach() (see useActiveJobRecovery
+  // page-reload recovery via smartTest.watch() (see useActiveTaskRecovery
   // below). Drive-info refresh comes from the invalidation manifest.
-  const smartTest = linuxio.storage.run_smart_test.useJobStreamAction<
+  const smartTest = linuxio.storage.run_smart_test.useTaskStreamAction<
     SmartTestResult,
-    SmartTestProgressEvent
+    TaskProgress<SmartTestProgressEvent>
   >({
     closeMessage: "SMART self-test stream closed unexpectedly",
     onOpen: (stream) => {
       streamRef.current = stream;
     },
-    onProgress: (data, _job, variables) => {
+    onProgress: (progress, _task, variables) => {
+      const data = progress.detail;
+      if (!data) return;
       const testType: "short" | "long" =
         variables.testType === "long" ? "long" : "short";
       setTestProgress((prev) => ({
@@ -119,7 +124,10 @@ const DriveDetails = ({
         type: "status",
         status: finalStatus as SmartTestProgressEvent["status"],
         message: data?.message ?? prev?.message,
-        test_type: data?.test_type ?? prev?.test_type ?? testType,
+        test_type:
+          data.test === "short" || data.test === "long"
+            ? data.test
+            : (prev?.test_type ?? testType),
         device: data?.device ?? prev?.device ?? variables.device,
       }));
       const label = testType === "short" ? "Short" : "Extended";
@@ -167,22 +175,20 @@ const DriveDetails = ({
     };
   }, []);
 
-  // Refresh recovery: if a SMART self-test job for this drive is already running
+  // Refresh recovery: if a SMART self-test task for this drive is already running
   // (e.g. user refreshed the page mid-test), adopt it into the same action —
   // progress, toasts, and cleanup all come from the shared config above.
-  useActiveJobRecovery({
-    type: JOB_TYPE_STORAGE_SMART_TEST,
+  useActiveTaskRecovery({
+    type: TASK_TYPE_STORAGE_SMART_TEST,
     scanKey: rawDrive?.name ?? null,
-    match: (job) => {
-      const metadata = job.metadata as { device?: string } | undefined;
-      return metadata?.device === rawDrive?.name;
+    match: (task) => {
+      return task.metadata?.device === rawDrive?.name;
     },
-    onRecover: (job) => {
+    onRecover: (task) => {
       const deviceName = rawDrive?.name;
       if (!deviceName) return;
-      const metadata = job.metadata as { testType?: string } | undefined;
       const testType: "short" | "long" =
-        metadata?.testType === "long" ? "long" : "short";
+        task.metadata?.testType === "long" ? "long" : "short";
       setStartPending(testType);
       setTestProgress({
         type: "status",
@@ -191,7 +197,7 @@ const DriveDetails = ({
         device: deviceName,
         message: "Resuming SMART self-test",
       });
-      smartTest.attach(job, { device: deviceName, testType });
+      smartTest.watch(task, { device: deviceName, testType });
     },
   });
 
@@ -217,6 +223,7 @@ const DriveDetails = ({
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
   const smart = (rawDrive?.smart ?? drive.smart) as SmartData | undefined;
   const power = drive.power;
   const isNvme =
@@ -326,15 +333,9 @@ const DiskOverview = () => {
     { data: nfsMountsData },
   ] = useSuspenseQueries({
     queries: [
-      linuxio.storage.get_drive_info.queryOptions({
-        refetchInterval: 30000,
-      }),
-      linuxio.system.get_fs_info.queryOptions({
-        refetchInterval: 10000,
-      }),
-      linuxio.storage.list_nfs_mounts.queryOptions({
-        refetchInterval: 10000,
-      }),
+      { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
+      { ...linuxio.system.get_fs_info, refetchInterval: 10000 },
+      { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
     ],
   });
   const rawDrives = useMemo(
@@ -350,10 +351,10 @@ const DiskOverview = () => {
     [nfsMountsData],
   );
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    linuxio.storage.unmount_filesystem.useAction({
+    useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
         toast.success("Filesystem unmounted");
-        navigate({
+        void navigate({
           to: "/storage",
           search: (previous) => ({
             ...previous,
@@ -365,7 +366,7 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    linuxio.storage.create_btrfs_subvolume.useAction({
+    useCallMutation(linuxio.storage.create_btrfs_subvolume, {
       success: (result) => {
         if (result.path) {
           toast.success(`Created subvolume at ${result.path}`);
@@ -388,7 +389,7 @@ const DiskOverview = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        navigate({
+        void navigate({
           to: "/storage",
           search: (previous) => ({
             ...previous,
@@ -403,7 +404,7 @@ const DiskOverview = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
   const handleToggle = (driveName: string) => {
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,
@@ -421,6 +422,7 @@ const DiskOverview = () => {
         vendor: d.vendor,
         serial: d.serial,
         ro: d.ro,
+        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
         smart: d.smart as SmartData | undefined,
         power: d.power,
       })),
@@ -449,7 +451,7 @@ const DiskOverview = () => {
   );
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     setCreatingSubvolumeMountpoint(null);
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,
@@ -461,13 +463,13 @@ const DiskOverview = () => {
     });
   };
   const handleBrowseFilesystem = (mountpoint: string) => {
-    navigate({
+    void navigate({
       to: "/filebrowser/$",
       params: { _splat: mountpoint.replace(/^\/+/, "") },
     });
   };
   const handleInspectDrive = (driveName: string) => {
-    navigate({
+    void navigate({
       to: "/storage",
       search: (previous) => ({
         ...previous,

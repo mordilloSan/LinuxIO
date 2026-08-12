@@ -6,8 +6,6 @@ import {
   UpdateNavigationContext,
 } from "@/contexts/UpdateContext";
 
-export type { UpdatePhase, UpdateContextValue } from "@/contexts/UpdateContext";
-
 export const useLinuxIOUpdater = (): UpdateContextValue => {
   const context = useContext(UpdateContext);
   if (!context) {

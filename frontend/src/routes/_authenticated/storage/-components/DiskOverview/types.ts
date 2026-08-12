@@ -55,11 +55,3 @@ export interface SmartTestProgressEvent {
   test_type?: "short" | "long";
   type: "status" | "progress";
 }
-
-export interface SmartTestResult {
-  device?: string;
-  duration_ms?: number;
-  message?: string;
-  status?: string;
-  test_type?: "short" | "long";
-}

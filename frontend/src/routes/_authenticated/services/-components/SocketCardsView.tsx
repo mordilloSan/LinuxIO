@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import {
   DetailRow,
@@ -17,6 +18,7 @@ interface SocketCardsViewProps {
   onExpand: (name: string | null) => void;
   renderDetailPanel: (socket: Socket) => ReactNode;
   sockets: Socket[];
+  surface: ReorderableSurface<Socket>;
 }
 
 const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
@@ -30,11 +32,10 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
 );
 
 const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
+    refetchInterval: 2000,
+  });
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
 
   return (
@@ -64,11 +65,10 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
 };
 
 const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(socket.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
+    refetchInterval: 2000,
+  });
   return (
     <UnitCardActions
       activeState={socket.active_state}
@@ -84,11 +84,13 @@ const SocketCardsView = ({
   expanded,
   onExpand,
   renderDetailPanel,
+  surface,
 }: SocketCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No sockets found."
     expanded={expanded}
     items={sockets}
+    surface={surface}
     onExpand={onExpand}
     renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
     renderBottomPanel={(socket) => (

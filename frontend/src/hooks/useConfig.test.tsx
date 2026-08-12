@@ -10,9 +10,8 @@ import type { ConfigContextType } from "@/types/config";
 const config: AppConfig = {
   appSettings: {
     chunkSizeMB: 1,
-    containerOrder: [],
-    dashboardOrder: ["overview"],
     hiddenCards: [],
+    layoutOrders: { dashboard: ["overview"] },
     primaryColor: "#2196f3",
     showHiddenFiles: true,
     sidebarCollapsed: false,

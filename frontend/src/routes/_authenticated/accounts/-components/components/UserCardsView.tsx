@@ -2,8 +2,11 @@ import { motion } from "motion/react";
 
 import type { AccountUser } from "@/api";
 import UserCard from "@/components/cards/UserCard";
+import type { UserLockAction } from "@/components/cards/UserCard";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import {
@@ -15,26 +18,32 @@ import {
 
 interface UserCardsViewProps {
   currentUsername?: string;
-  isLocking: boolean;
-  isUnlocking: boolean;
   onChangePassword: (user: AccountUser) => void;
   onEdit: (user: AccountUser) => void;
   onSelect: (username: string | null) => void;
   onToggleLock: (user: AccountUser) => void;
+  pendingLockActions: ReadonlyMap<string, UserLockAction>;
   selectedUser: AccountUser | null;
+  /** Reorder wiring for the collapsed card grid. */
+  surface: ReorderableSurface<AccountUser>;
   users: AccountUser[];
 }
 
+const getUsername = (user: AccountUser) => user.username;
+
+// A press in layout mode belongs to the drag, not to opening the user.
+const noopOpen = () => {};
+
 const UserCardsView = ({
+  surface,
   users,
   selectedUser,
   currentUsername,
-  isLocking,
-  isUnlocking,
   onSelect,
   onEdit,
   onChangePassword,
   onToggleLock,
+  pendingLockActions,
 }: UserCardsViewProps) => {
   const theme = useAppTheme();
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
@@ -56,22 +65,23 @@ const UserCardsView = ({
 
   if (!selectedUser) {
     return (
-      <AppGrid container spacing={2}>
-        {users.map((user) => (
-          <AppGrid key={user.username} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-            <UserCard
-              currentUsername={currentUsername}
-              isLocking={isLocking}
-              isUnlocking={isUnlocking}
-              onChangePassword={() => onChangePassword(user)}
-              onEdit={() => onEdit(user)}
-              onOpen={() => onSelect(user.username)}
-              onToggleLock={() => onToggleLock(user)}
-              user={user}
-            />
-          </AppGrid>
-        ))}
-      </AppGrid>
+      <ReorderableCardGrid
+        getId={getUsername}
+        items={users}
+        renderItem={(user) => (
+          <UserCard
+            currentUsername={currentUsername}
+            onChangePassword={() => onChangePassword(user)}
+            onEdit={() => onEdit(user)}
+            onOpen={surface.editMode ? noopOpen : () => onSelect(user.username)}
+            onToggleLock={() => onToggleLock(user)}
+            pendingLockAction={pendingLockActions.get(user.username)}
+            user={user}
+          />
+        )}
+        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+        surface={surface}
+      />
     );
   }
 
@@ -80,13 +90,12 @@ const UserCardsView = ({
       <AppGrid size={{ xs: 12, lg: 4 }} style={{ display: "flex" }}>
         <UserCard
           currentUsername={currentUsername}
-          isLocking={isLocking}
           isSelected
-          isUnlocking={isUnlocking}
           onChangePassword={() => onChangePassword(selectedUser)}
           onEdit={() => onEdit(selectedUser)}
           onOpen={() => onSelect(null)}
           onToggleLock={() => onToggleLock(selectedUser)}
+          pendingLockAction={pendingLockActions.get(selectedUser.username)}
           user={selectedUser}
         />
       </AppGrid>

@@ -18,7 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -34,8 +34,8 @@ type uploadAttributes struct {
 	hasExisting bool
 }
 
-type uploadTransferJob struct {
-	job          *bridgejobs.Job
+type uploadTransferTask struct {
+	task         *bridgetasks.Task
 	path         string
 	expectedSize int64
 	done         chan transferOutcome
@@ -51,8 +51,8 @@ type uploadTransferJob struct {
 	attrs    uploadAttributes
 }
 
-type downloadTransferJob struct {
-	job      *bridgejobs.Job
+type downloadTransferTask struct {
+	task     *bridgetasks.Task
 	path     string
 	realRel  string
 	fileName string
@@ -67,8 +67,8 @@ type downloadTransferJob struct {
 	active     net.Conn
 }
 
-type archiveTransferJob struct {
-	job         *bridgejobs.Job
+type archiveTransferTask struct {
+	task        *bridgetasks.Task
 	format      string
 	paths       []string
 	archive     string
@@ -88,13 +88,13 @@ type archiveTransferJob struct {
 	readyErr    error
 }
 
-var fileTransferJobs sync.Map
+var fileTransferTasks sync.Map
 
-// transferIdleTimeout bounds how long a transfer job may sit with no client
+// transferIdleTimeout bounds how long a transfer task may sit with no client
 // progress before it is abandoned. Uploads/downloads/archives park in
 // waiting_for_client on a stream error (so the client can resume) instead of
 // failing; without this backstop a client that never reconnects — tab closed,
-// crash, network loss — would hold a limited transfer job slot indefinitely.
+// crash, network loss — would hold a limited transfer task slot indefinitely.
 const transferIdleTimeout = 5 * time.Minute
 
 // signalActivity records forward progress on a transfer without blocking. The
@@ -133,9 +133,9 @@ func awaitTransferOutcome(ctx context.Context, done <-chan transferOutcome, acti
 			}
 			timer.Reset(transferIdleTimeout)
 		case <-timer.C:
-			slog.Warn("transfer abandoned by client; cancelling job", "idle_timeout", transferIdleTimeout)
+			slog.Warn("transfer abandoned by client; cancelling task", "idle_timeout", transferIdleTimeout)
 			cancel()
-			return nil, bridgejobs.NewError("transfer abandoned: client idle", 408)
+			return nil, bridgetasks.NewError("transfer abandoned: client idle", 408)
 		}
 	}
 }
@@ -192,10 +192,10 @@ func notifyUploadedFile(path string, info os.FileInfo) {
 	})
 }
 
-func runUploadJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUploadRequest) (any, error) {
+func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest) (any, error) {
 	path, expectedSize, overwrite, err := parseUploadRequest(req)
 	if err != nil {
-		return nil, bridgejobs.NewError(err.Error(), 400)
+		return nil, bridgetasks.NewError(err.Error(), 400)
 	}
 
 	// Uploads never overwrite unless explicitly told to: fail the conflict
@@ -203,34 +203,34 @@ func runUploadJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUp
 	if !overwrite {
 		root, rootErr := fsroot.Open()
 		if rootErr != nil {
-			return nil, bridgejobs.NewError("failed to access filesystem", 500)
+			return nil, bridgetasks.NewError("failed to access filesystem", 500)
 		}
 		_, statErr := root.Root.Stat(fsroot.ToRel(filepath.Clean(path)))
 		if closeErr := root.Close(); closeErr != nil {
 			slog.Debug("failed to close filesystem root", "error", closeErr)
 		}
 		if statErr == nil {
-			return nil, bridgejobs.NewError("destination already exists", 409)
+			return nil, bridgetasks.NewError("destination already exists", 409)
 		}
 	}
 
-	transfer := &uploadTransferJob{
-		job:          job,
+	transfer := &uploadTransferTask{
+		task:         task,
 		path:         filepath.Clean(path),
 		expectedSize: expectedSize,
 		done:         make(chan transferOutcome, 1),
 		activity:     make(chan struct{}, 1),
 	}
-	fileTransferJobs.Store(job.ID(), transfer)
-	defer fileTransferJobs.Delete(job.ID())
+	fileTransferTasks.Store(task.ID(), transfer)
+	defer fileTransferTasks.Delete(task.ID())
 
 	transfer.reportProgress("waiting_for_client")
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.PathRequest) (any, error) {
+func runDownloadTask(ctx context.Context, task *bridgetasks.Task, req apischema.PathRequest) (any, error) {
 	if req.Path == "" {
-		return nil, bridgejobs.NewError("missing file path", 400)
+		return nil, bridgetasks.NewError("missing file path", 400)
 	}
 
 	path := filepath.Clean(req.Path)
@@ -243,14 +243,14 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.Path
 	realRel := fsroot.ToRel(path)
 	stat, err := root.Root.Stat(realRel)
 	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("file not found: %v", err), 404)
+		return nil, bridgetasks.NewError(fmt.Sprintf("file not found: %v", err), 404)
 	}
 	if stat.IsDir() {
-		return nil, bridgejobs.NewError("path is a directory, use archive download instead", 400)
+		return nil, bridgetasks.NewError("path is a directory, use archive download instead", 400)
 	}
 
-	transfer := &downloadTransferJob{
-		job:      job,
+	transfer := &downloadTransferTask{
+		task:     task,
 		path:     path,
 		realRel:  realRel,
 		fileName: filepath.Base(path),
@@ -258,32 +258,32 @@ func runDownloadJob(ctx context.Context, job *bridgejobs.Job, req apischema.Path
 		done:     make(chan transferOutcome, 1),
 		activity: make(chan struct{}, 1),
 	}
-	fileTransferJobs.Store(job.ID(), transfer)
-	defer fileTransferJobs.Delete(job.ID())
+	fileTransferTasks.Store(task.ID(), transfer)
+	defer fileTransferTasks.Delete(task.ID())
 
 	transfer.reportProgress("waiting_for_client")
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
+func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
 	if req.Format == "" || len(req.Paths) == 0 {
-		return nil, bridgejobs.NewError("missing format or paths", 400)
+		return nil, bridgetasks.NewError("missing format or paths", 400)
 	}
 
 	paths := append([]string(nil), req.Paths...)
 	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgejobs.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
+		return nil, bridgetasks.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
-	settings := jobSettingsForJob(ctx, job, store)
+	settings := taskSettingsForTask(ctx, task, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
 	if err != nil {
 		return nil, context.Canceled
 	}
 	defer release()
 
-	transfer := &archiveTransferJob{
-		job:         job,
+	transfer := &archiveTransferTask{
+		task:        task,
 		format:      req.Format,
 		paths:       paths,
 		archiveName: archiveNameForPaths(paths, extension),
@@ -292,12 +292,12 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 		activity:    make(chan struct{}, 1),
 		ready:       make(chan struct{}),
 	}
-	fileTransferJobs.Store(job.ID(), transfer)
-	defer fileTransferJobs.Delete(job.ID())
+	fileTransferTasks.Store(task.ID(), transfer)
+	defer fileTransferTasks.Delete(task.ID())
 	defer transfer.cleanupArchive()
 
 	transfer.reportProgress("preparing")
-	tempFile, err := os.CreateTemp("", "linuxio-job-archive-*"+extension)
+	tempFile, err := os.CreateTemp("", "linuxio-task-archive-*"+extension)
 	if err != nil {
 		return nil, fmt.Errorf("create temp archive: %w", err)
 	}
@@ -312,7 +312,7 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 	transfer.archive = tempPath
 	transfer.mu.Unlock()
 
-	callbacks := newArchiveJobCallbacks(ctx, transfer, store)
+	callbacks := newArchiveTaskCallbacks(ctx, transfer, store)
 	err = createArchive(req.Format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
 	if err != nil {
 		transfer.setReadyError(err)
@@ -333,31 +333,31 @@ func runArchiveJob(ctx context.Context, job *bridgejobs.Job, store *config.UserS
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func attachFileTransferData(ctx context.Context, job *bridgejobs.Job, stream net.Conn, request any) error {
-	req, ok := request.(bridgejobs.JobDataAttachRequest)
+func attachFileTransferData(ctx context.Context, task *bridgetasks.Task, stream net.Conn, request any) error {
+	req, ok := request.(bridgetasks.TaskDataAttachRequest)
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, "invalid transfer request", 400)
 	}
-	transfer, ok := waitForFileTransferJob(ctx, job.ID())
+	transfer, ok := waitForFileTransferTask(ctx, task.ID())
 	if !ok {
-		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("transfer job not ready: %s", job.ID()), 404)
+		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("transfer task not ready: %s", task.ID()), 404)
 	}
 
 	switch active := transfer.(type) {
-	case *uploadTransferJob:
+	case *uploadTransferTask:
 		return active.attach(stream, req)
-	case *uploadBatchTransferJob:
+	case *uploadBatchTransferTask:
 		return active.attach(stream, req)
-	case *downloadTransferJob:
+	case *downloadTransferTask:
 		return active.attach(stream, req)
-	case *archiveTransferJob:
+	case *archiveTransferTask:
 		return active.attach(stream, req)
 	default:
-		return ipc.WriteResultErrorAndClose(stream, 0, "unsupported transfer job", 400)
+		return ipc.WriteResultErrorAndClose(stream, 0, "unsupported transfer task", 400)
 	}
 }
 
-func waitForFileTransferJob(ctx context.Context, jobID string) (any, bool) {
+func waitForFileTransferTask(ctx context.Context, taskID string) (any, bool) {
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 
@@ -365,7 +365,7 @@ func waitForFileTransferJob(ctx context.Context, jobID string) (any, bool) {
 	defer ticker.Stop()
 
 	for {
-		if transfer, ok := fileTransferJobs.Load(jobID); ok {
+		if transfer, ok := fileTransferTasks.Load(taskID); ok {
 			return transfer, true
 		}
 		select {
@@ -378,7 +378,7 @@ func waitForFileTransferJob(ctx context.Context, jobID string) (any, bool) {
 	}
 }
 
-func parseTransferOffset(req bridgejobs.JobDataAttachRequest) (int64, error) {
+func parseTransferOffset(req bridgetasks.TaskDataAttachRequest) (int64, error) {
 	if req.Offset == nil || *req.Offset == "" {
 		return 0, nil
 	}
@@ -410,8 +410,8 @@ func archiveNameForPaths(paths []string, extension string) string {
 	return "download" + extension
 }
 
-func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, store *config.UserStore) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(jobSettingsForJob(ctx, transfer.job, store), transfer.total)
+func newArchiveTaskCallbacks(ctx context.Context, transfer *archiveTransferTask, store *config.UserStore) *ipc.OperationCallbacks {
+	limiter := newProgressLimiter(taskSettingsForTask(ctx, transfer.task, store), transfer.total)
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {
 			return ctx.Err() != nil
@@ -429,7 +429,7 @@ func newArchiveJobCallbacks(ctx context.Context, transfer *archiveTransferJob, s
 	}
 }
 
-func (t *uploadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+func (t *uploadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -465,7 +465,7 @@ func (t *uploadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttach
 	return t.receiveUpload(stream, root, file, newTransferProgressGate(uploadProgressAckIntervalBytes))
 }
 
-func (t *uploadTransferJob) receiveUpload(stream net.Conn, root *fsroot.FSRoot, file *os.File, progressGate *transferProgressGate) error {
+func (t *uploadTransferTask) receiveUpload(stream net.Conn, root *fsroot.FSRoot, file *os.File, progressGate *transferProgressGate) error {
 	for {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil {
@@ -496,7 +496,7 @@ func (t *uploadTransferJob) receiveUpload(stream net.Conn, root *fsroot.FSRoot, 
 	}
 }
 
-func (t *uploadTransferJob) beginAttach(stream net.Conn, offset int64) error {
+func (t *uploadTransferTask) beginAttach(stream net.Conn, offset int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -515,7 +515,7 @@ func (t *uploadTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	return nil
 }
 
-func (t *uploadTransferJob) endAttach(stream net.Conn) {
+func (t *uploadTransferTask) endAttach(stream net.Conn) {
 	t.mu.Lock()
 	if t.active == stream {
 		t.attached = false
@@ -524,7 +524,7 @@ func (t *uploadTransferJob) endAttach(stream net.Conn) {
 	t.mu.Unlock()
 }
 
-func (t *uploadTransferJob) prepare(root *fsroot.FSRoot) error {
+func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Lock()
 	if t.tempRel != "" {
 		t.mu.Unlock()
@@ -543,7 +543,7 @@ func (t *uploadTransferJob) prepare(root *fsroot.FSRoot) error {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
 
-	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.job.ID() + ".part"
+	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.task.ID() + ".part"
 	tempRel := filepath.Join(filepath.Dir(realRel), partName)
 	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
 	if err != nil {
@@ -561,7 +561,7 @@ func (t *uploadTransferJob) prepare(root *fsroot.FSRoot) error {
 	return nil
 }
 
-func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, payload []byte, progressGate *transferProgressGate) error {
+func (t *uploadTransferTask) writeUploadChunk(stream net.Conn, file *os.File, payload []byte, progressGate *transferProgressGate) error {
 	n, err := file.Write(payload)
 	if err != nil {
 		return t.fail(stream, fmt.Sprintf("write error: %v", err), 500, err)
@@ -586,13 +586,13 @@ func (t *uploadTransferJob) writeUploadChunk(stream net.Conn, file *os.File, pay
 	return nil
 }
 
-func (t *uploadTransferJob) isComplete() bool {
+func (t *uploadTransferTask) isComplete() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.expectedSize >= 0 && t.bytes == t.expectedSize
 }
 
-func (t *uploadTransferJob) complete(stream net.Conn, root *fsroot.FSRoot, file *os.File) error {
+func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file *os.File) error {
 	t.mu.Lock()
 	bytes := t.bytes
 	total := t.expectedSize
@@ -620,15 +620,15 @@ func (t *uploadTransferJob) complete(stream net.Conn, root *fsroot.FSRoot, file 
 		notifyUploadedFile(path, finalInfo)
 	}
 
-	result := map[string]any{"path": path, "size": bytes}
+	result := FileUploadResult{Path: path, Size: bytes}
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
-	slog.Info("upload complete", "path", path, "size", bytes, "job_id", t.job.ID())
+	slog.Info("upload complete", "path", path, "size", bytes, "task_id", t.task.ID())
 	return nil
 }
 
-func (t *uploadTransferJob) writeProgress(stream net.Conn, phase string) {
+func (t *uploadTransferTask) writeProgress(stream net.Conn, phase string) {
 	t.mu.Lock()
 	progress := FileProgress{
 		Bytes: t.bytes,
@@ -638,11 +638,11 @@ func (t *uploadTransferJob) writeProgress(stream net.Conn, phase string) {
 	}
 	t.mu.Unlock()
 
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
 }
 
-func (t *uploadTransferJob) reportProgress(phase string) {
+func (t *uploadTransferTask) reportProgress(phase string) {
 	t.mu.Lock()
 	progress := FileProgress{
 		Bytes: t.bytes,
@@ -651,27 +651,27 @@ func (t *uploadTransferJob) reportProgress(phase string) {
 		Phase: phase,
 	}
 	t.mu.Unlock()
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 }
 
-func (t *uploadTransferJob) markWaiting() {
+func (t *uploadTransferTask) markWaiting() {
 	t.reportProgress("waiting_for_client")
 }
 
-func (t *uploadTransferJob) fail(stream net.Conn, message string, code int, err error) error {
+func (t *uploadTransferTask) fail(stream net.Conn, message string, code int, err error) error {
 	t.cleanupPartial()
-	jobErr := bridgejobs.NewError(message, code)
+	taskErr := bridgetasks.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}
-	t.finish(nil, jobErr)
+	t.finish(nil, taskErr)
 	if err != nil {
 		return err
 	}
-	return jobErr
+	return taskErr
 }
 
-func (t *uploadTransferJob) cancel() {
+func (t *uploadTransferTask) cancel() {
 	t.mu.Lock()
 	active := t.active
 	t.mu.Unlock()
@@ -682,7 +682,7 @@ func (t *uploadTransferJob) cancel() {
 	t.finish(nil, context.Canceled)
 }
 
-func (t *uploadTransferJob) cleanupPartial() {
+func (t *uploadTransferTask) cleanupPartial() {
 	t.mu.Lock()
 	tempRel := t.tempRel
 	t.mu.Unlock()
@@ -701,13 +701,13 @@ func (t *uploadTransferJob) cleanupPartial() {
 	}
 }
 
-func (t *uploadTransferJob) finish(result any, err error) {
+func (t *uploadTransferTask) finish(result any, err error) {
 	t.finishOnce.Do(func() {
 		t.done <- transferOutcome{result: result, err: err}
 	})
 }
 
-func (t *downloadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+func (t *downloadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -739,19 +739,15 @@ func (t *downloadTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAtta
 		return err
 	}
 
-	result := map[string]any{
-		"path":     t.path,
-		"size":     t.total,
-		"fileName": t.fileName,
-	}
+	result := FileDownloadResult{Path: t.path, Size: t.total, FileName: t.fileName}
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
-	slog.Info("download complete", "path", t.path, "size", t.total, "job_id", t.job.ID())
+	slog.Info("download complete", "path", t.path, "size", t.total, "task_id", t.task.ID())
 	return nil
 }
 
-func (t *downloadTransferJob) beginAttach(stream net.Conn, offset int64) error {
+func (t *downloadTransferTask) beginAttach(stream net.Conn, offset int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.attached {
@@ -770,7 +766,7 @@ func (t *downloadTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	return nil
 }
 
-func (t *downloadTransferJob) endAttach(stream net.Conn) {
+func (t *downloadTransferTask) endAttach(stream net.Conn) {
 	t.mu.Lock()
 	if t.active == stream {
 		t.attached = false
@@ -779,7 +775,7 @@ func (t *downloadTransferJob) endAttach(stream net.Conn) {
 	t.mu.Unlock()
 }
 
-func (t *downloadTransferJob) streamChunks(stream net.Conn, file io.Reader) error {
+func (t *downloadTransferTask) streamChunks(stream net.Conn, file io.Reader) error {
 	buf := make([]byte, progressReportIntervalBytes)
 	progressGate := newTransferProgressGate(transferProgressMaxBytes)
 
@@ -817,7 +813,7 @@ func (t *downloadTransferJob) streamChunks(stream net.Conn, file io.Reader) erro
 	return nil
 }
 
-func (t *downloadTransferJob) writeProgress(stream net.Conn, phase string) {
+func (t *downloadTransferTask) writeProgress(stream net.Conn, phase string) {
 	t.mu.Lock()
 	progress := FileProgress{
 		Bytes: t.bytes,
@@ -827,11 +823,11 @@ func (t *downloadTransferJob) writeProgress(stream net.Conn, phase string) {
 	}
 	t.mu.Unlock()
 
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
 }
 
-func (t *downloadTransferJob) reportProgress(phase string) {
+func (t *downloadTransferTask) reportProgress(phase string) {
 	t.mu.Lock()
 	progress := FileProgress{
 		Bytes: t.bytes,
@@ -840,26 +836,26 @@ func (t *downloadTransferJob) reportProgress(phase string) {
 		Phase: phase,
 	}
 	t.mu.Unlock()
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 }
 
-func (t *downloadTransferJob) markWaiting() {
+func (t *downloadTransferTask) markWaiting() {
 	t.reportProgress("waiting_for_client")
 }
 
-func (t *downloadTransferJob) fail(stream net.Conn, message string, code int, err error) error {
-	jobErr := bridgejobs.NewError(message, code)
+func (t *downloadTransferTask) fail(stream net.Conn, message string, code int, err error) error {
+	taskErr := bridgetasks.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}
-	t.finish(nil, jobErr)
+	t.finish(nil, taskErr)
 	if err != nil {
 		return err
 	}
-	return jobErr
+	return taskErr
 }
 
-func (t *downloadTransferJob) cancel() {
+func (t *downloadTransferTask) cancel() {
 	t.mu.Lock()
 	active := t.active
 	t.mu.Unlock()
@@ -869,13 +865,13 @@ func (t *downloadTransferJob) cancel() {
 	t.finish(nil, context.Canceled)
 }
 
-func (t *downloadTransferJob) finish(result any, err error) {
+func (t *downloadTransferTask) finish(result any, err error) {
 	t.finishOnce.Do(func() {
 		t.done <- transferOutcome{result: result, err: err}
 	})
 }
 
-func (t *archiveTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+func (t *archiveTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -912,21 +908,17 @@ func (t *archiveTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttac
 	}
 
 	t.mu.Lock()
-	result := map[string]any{
-		"archiveName": t.archiveName,
-		"size":        t.archiveSize,
-		"format":      t.format,
-	}
+	result := FileArchiveResult{ArchiveName: t.archiveName, Size: t.archiveSize, Format: t.format}
 	t.mu.Unlock()
 
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
-	slog.Info("archive download complete", "count", len(t.paths), "size", t.archiveSize, "format", t.format, "job_id", t.job.ID())
+	slog.Info("archive download complete", "count", len(t.paths), "size", t.archiveSize, "format", t.format, "task_id", t.task.ID())
 	return nil
 }
 
-func (t *archiveTransferJob) beginAttach(stream net.Conn, offset int64) error {
+func (t *archiveTransferTask) beginAttach(stream net.Conn, offset int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.attached {
@@ -945,7 +937,7 @@ func (t *archiveTransferJob) beginAttach(stream net.Conn, offset int64) error {
 	return nil
 }
 
-func (t *archiveTransferJob) endAttach(stream net.Conn) {
+func (t *archiveTransferTask) endAttach(stream net.Conn) {
 	t.mu.Lock()
 	if t.active == stream {
 		t.attached = false
@@ -954,7 +946,7 @@ func (t *archiveTransferJob) endAttach(stream net.Conn) {
 	t.mu.Unlock()
 }
 
-func (t *archiveTransferJob) streamChunks(stream net.Conn, file io.Reader) error {
+func (t *archiveTransferTask) streamChunks(stream net.Conn, file io.Reader) error {
 	buf := make([]byte, progressReportIntervalBytes)
 	progressGate := newTransferProgressGate(transferProgressMaxBytes)
 
@@ -992,7 +984,7 @@ func (t *archiveTransferJob) streamChunks(stream net.Conn, file io.Reader) error
 	return nil
 }
 
-func (t *archiveTransferJob) writeProgress(stream net.Conn, phase string) {
+func (t *archiveTransferTask) writeProgress(stream net.Conn, phase string) {
 	t.mu.Lock()
 	progress := FileProgress{
 		Bytes: t.bytes,
@@ -1002,11 +994,11 @@ func (t *archiveTransferJob) writeProgress(stream net.Conn, phase string) {
 	}
 	t.mu.Unlock()
 
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
 }
 
-func (t *archiveTransferJob) reportProgress(phase string) {
+func (t *archiveTransferTask) reportProgress(phase string) {
 	t.mu.Lock()
 	total := t.total
 	if phase == "streaming" || phase == "waiting_for_client" || phase == "completed" {
@@ -1019,14 +1011,14 @@ func (t *archiveTransferJob) reportProgress(phase string) {
 		Phase: phase,
 	}
 	t.mu.Unlock()
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 }
 
-func (t *archiveTransferJob) markWaiting() {
+func (t *archiveTransferTask) markWaiting() {
 	t.reportProgress("waiting_for_client")
 }
 
-func (t *archiveTransferJob) setReady(size int64) {
+func (t *archiveTransferTask) setReady(size int64) {
 	t.mu.Lock()
 	t.archiveSize = size
 	t.bytes = 0
@@ -1036,7 +1028,7 @@ func (t *archiveTransferJob) setReady(size int64) {
 	})
 }
 
-func (t *archiveTransferJob) setReadyError(err error) {
+func (t *archiveTransferTask) setReadyError(err error) {
 	t.mu.Lock()
 	t.readyErr = err
 	t.mu.Unlock()
@@ -1045,19 +1037,19 @@ func (t *archiveTransferJob) setReadyError(err error) {
 	})
 }
 
-func (t *archiveTransferJob) fail(stream net.Conn, message string, code int, err error) error {
-	jobErr := bridgejobs.NewError(message, code)
+func (t *archiveTransferTask) fail(stream net.Conn, message string, code int, err error) error {
+	taskErr := bridgetasks.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}
-	t.finish(nil, jobErr)
+	t.finish(nil, taskErr)
 	if err != nil {
 		return err
 	}
-	return jobErr
+	return taskErr
 }
 
-func (t *archiveTransferJob) cancel() {
+func (t *archiveTransferTask) cancel() {
 	t.mu.Lock()
 	active := t.active
 	t.mu.Unlock()
@@ -1068,7 +1060,7 @@ func (t *archiveTransferJob) cancel() {
 	t.finish(nil, context.Canceled)
 }
 
-func (t *archiveTransferJob) cleanupArchive() {
+func (t *archiveTransferTask) cleanupArchive() {
 	t.mu.Lock()
 	archivePath := t.archive
 	t.mu.Unlock()
@@ -1076,11 +1068,11 @@ func (t *archiveTransferJob) cleanupArchive() {
 		return
 	}
 	if err := os.Remove(archivePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		slog.Debug("failed to remove job archive", "path", archivePath, "job_id", t.job.ID(), "error", err)
+		slog.Debug("failed to remove task archive", "path", archivePath, "task_id", t.task.ID(), "error", err)
 	}
 }
 
-func (t *archiveTransferJob) finish(result any, err error) {
+func (t *archiveTransferTask) finish(result any, err error) {
 	t.finishOnce.Do(func() {
 		t.done <- transferOutcome{result: result, err: err}
 	})

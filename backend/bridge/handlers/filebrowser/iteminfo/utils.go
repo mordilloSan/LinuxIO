@@ -44,7 +44,7 @@ func (info *FileInfo) SortItems() {
 func ResolveSymlinks(path string) (string, bool, error) {
 	root, err := fsroot.Open()
 	if err != nil {
-		return path, false, fmt.Errorf("could not open filesystem root: %v", err)
+		return path, false, fmt.Errorf("could not open filesystem root: %w", err)
 	}
 	defer root.Close()
 
@@ -60,13 +60,13 @@ func ResolveSymlinks(path string) (string, bool, error) {
 		relPath := fsroot.ToRel(cleanPath)
 		info, err := root.Root.Lstat(relPath)
 		if err != nil {
-			return cleanPath, false, fmt.Errorf("could not stat path: %s, %v", cleanPath, err)
+			return cleanPath, false, fmt.Errorf("could not stat path %s: %w", cleanPath, err)
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := root.Root.Readlink(relPath)
 			if err != nil {
-				return cleanPath, false, fmt.Errorf("could not read symlink: %s, %v", cleanPath, err)
+				return cleanPath, false, fmt.Errorf("could not read symlink %s: %w", cleanPath, err)
 			}
 
 			if filepath.IsAbs(target) {

@@ -1,11 +1,11 @@
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
   useRef,
   useState,
+  type Ref,
 } from "react";
 import ReactAce from "react-ace";
 
@@ -26,6 +26,10 @@ interface FileEditorProps {
   onDirtyChange?: (isDirty: boolean) => void;
   onSave: (content: string) => Promise<boolean | void>;
   readOnly?: boolean;
+  // Taken as a plain prop rather than through forwardRef: useEffectEvent does
+  // not track props inside a forwardRef render function, which silently froze
+  // the Ctrl+S handler on the content this editor mounted with.
+  ref?: Ref<FileEditorHandle>;
 }
 
 export interface FileEditorHandle {
@@ -119,224 +123,214 @@ const stateForSource = (
   return state;
 };
 
-const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
-  (
-    {
-      filePath,
-      fileName,
-      initialContent,
-      onSave,
-      isSaving = false,
-      readOnly = false,
-      onDirtyChange,
+const FileEditor = ({
+  filePath,
+  fileName,
+  initialContent,
+  onSave,
+  isSaving = false,
+  readOnly = false,
+  onDirtyChange,
+  ref,
+}: FileEditorProps) => {
+  const [editorState, setEditorState] = useState<EditorState>(() =>
+    createEditorState(filePath, initialContent),
+  );
+  const normalizedState = stateForSource(editorState, filePath, initialContent);
+  const { content, isDirty } = normalizedState;
+  const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
+  const theme = useAppTheme();
+  const isDarkMode = theme.palette.mode === "dark";
+  const language = getLanguageMode(fileName);
+  const aceTheme = isDarkMode ? "monokai" : "github";
+  const [, forceAssetRefresh] = useState(0);
+  const isEditorAssetsReady =
+    (!aceModeLoaders[language] ||
+      loadedAceModes.has(language) ||
+      failedAceModes.has(language)) &&
+    (!aceThemeLoaders[aceTheme] ||
+      loadedAceThemes.has(aceTheme) ||
+      failedAceThemes.has(aceTheme));
+
+  const updateEditorState = useCallback(
+    (updater: (state: EditorState) => EditorState) => {
+      setEditorState((prev) => {
+        const current = stateForSource(prev, filePath, initialContent);
+        return updater(current);
+      });
     },
-    ref,
-  ) => {
-    const [editorState, setEditorState] = useState<EditorState>(() =>
-      createEditorState(filePath, initialContent),
-    );
-    const normalizedState = stateForSource(
-      editorState,
-      filePath,
-      initialContent,
-    );
-    const { content, isDirty } = normalizedState;
-    const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
-    const theme = useAppTheme();
-    const isDarkMode = theme.palette.mode === "dark";
-    const language = getLanguageMode(fileName);
-    const aceTheme = isDarkMode ? "monokai" : "github";
-    const [, forceAssetRefresh] = useState(0);
-    const isEditorAssetsReady =
-      (!aceModeLoaders[language] ||
-        loadedAceModes.has(language) ||
-        failedAceModes.has(language)) &&
-      (!aceThemeLoaders[aceTheme] ||
-        loadedAceThemes.has(aceTheme) ||
-        failedAceThemes.has(aceTheme));
+    [filePath, initialContent],
+  );
 
-    const updateEditorState = useCallback(
-      (updater: (state: EditorState) => EditorState) => {
-        setEditorState((prev) => {
-          const current = stateForSource(prev, filePath, initialContent);
-          return updater(current);
-        });
-      },
-      [filePath, initialContent],
-    );
+  const handleSave = useCallback(async () => {
+    try {
+      const saved = await onSave(content);
+      if (saved === false) return false;
 
-    const handleSave = useCallback(async () => {
-      try {
-        const saved = await onSave(content);
-        if (saved === false) return false;
-
-        updateEditorState((state) => ({
-          ...state,
-          baseContent: state.content,
-          isDirty: false,
-        }));
-        if (isDirty) {
-          onDirtyChange?.(false);
-        }
-        return true;
-      } catch {
-        // Error is handled by parent component
-        return false;
-      }
-    }, [onSave, content, isDirty, onDirtyChange, updateEditorState]);
-
-    // Add Ctrl+S keyboard shortcut
-    const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        if (!isSaving && !readOnly) {
-          void handleSave();
-        }
-      }
-    });
-
-    useEffect(() => {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }, []);
-
-    useEffect(() => {
-      let isCancelled = false;
-      const pendingLoads: Promise<unknown>[] = [];
-
-      const loadMode = aceModeLoaders[language];
-      if (
-        loadMode &&
-        !loadedAceModes.has(language) &&
-        !failedAceModes.has(language)
-      ) {
-        const existingModeLoad = loadingAceModes.get(language);
-        if (existingModeLoad) {
-          pendingLoads.push(existingModeLoad);
-        } else {
-          const modeLoad = loadMode()
-            .then(() => {
-              loadedAceModes.add(language);
-              return;
-            })
-            .catch((error) => {
-              failedAceModes.add(language);
-              console.error(`Failed to load Ace mode "${language}":`, error);
-            })
-            .finally(() => {
-              loadingAceModes.delete(language);
-            });
-          loadingAceModes.set(language, modeLoad);
-          pendingLoads.push(modeLoad);
-        }
-      }
-
-      const loadTheme = aceThemeLoaders[aceTheme];
-      if (
-        loadTheme &&
-        !loadedAceThemes.has(aceTheme) &&
-        !failedAceThemes.has(aceTheme)
-      ) {
-        const existingThemeLoad = loadingAceThemes.get(aceTheme);
-        if (existingThemeLoad) {
-          pendingLoads.push(existingThemeLoad);
-        } else {
-          const themeLoad = loadTheme()
-            .then(() => {
-              loadedAceThemes.add(aceTheme);
-              return;
-            })
-            .catch((error) => {
-              failedAceThemes.add(aceTheme);
-              console.error(`Failed to load Ace theme "${aceTheme}":`, error);
-            })
-            .finally(() => {
-              loadingAceThemes.delete(aceTheme);
-            });
-          loadingAceThemes.set(aceTheme, themeLoad);
-          pendingLoads.push(themeLoad);
-        }
-      }
-
-      if (pendingLoads.length === 0) {
-        return;
-      }
-
-      Promise.allSettled(pendingLoads)
-        .finally(() => {
-          if (!isCancelled) {
-            forceAssetRefresh((version) => version + 1);
-          }
-        })
-        .catch(() => {});
-
-      return () => {
-        isCancelled = true;
-      };
-    }, [language, aceTheme]);
-
-    const handleContentChange = (newValue: string) => {
-      const nextDirty = newValue !== normalizedState.baseContent;
-      if (nextDirty !== isDirty) {
-        onDirtyChange?.(nextDirty);
-      }
       updateEditorState((state) => ({
         ...state,
-        content: newValue,
-        isDirty: nextDirty,
+        baseContent: state.content,
+        isDirty: false,
       }));
-    };
+      if (isDirty) {
+        onDirtyChange?.(false);
+      }
+      return true;
+    } catch {
+      // Error is handled by parent component
+      return false;
+    }
+  }, [onSave, content, isDirty, onDirtyChange, updateEditorState]);
 
-    useImperativeHandle(ref, () => ({
-      save: handleSave,
-      getContent: () => content,
-      isDirty: () => isDirty,
-    }));
+  // Add Ctrl+S keyboard shortcut
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      if (!isSaving && !readOnly) {
+        void handleSave();
+      }
+    }
+  });
 
-    if (!isEditorAssetsReady) {
-      return (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ComponentLoader />
-        </div>
-      );
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const pendingLoads: Promise<unknown>[] = [];
+
+    const loadMode = aceModeLoaders[language];
+    if (
+      loadMode &&
+      !loadedAceModes.has(language) &&
+      !failedAceModes.has(language)
+    ) {
+      const existingModeLoad = loadingAceModes.get(language);
+      if (existingModeLoad) {
+        pendingLoads.push(existingModeLoad);
+      } else {
+        const modeLoad = loadMode()
+          .then(() => {
+            loadedAceModes.add(language);
+            return;
+          })
+          .catch((error) => {
+            failedAceModes.add(language);
+            console.error(`Failed to load Ace mode "${language}":`, error);
+          })
+          .finally(() => {
+            loadingAceModes.delete(language);
+          });
+        loadingAceModes.set(language, modeLoad);
+        pendingLoads.push(modeLoad);
+      }
     }
 
-    return (
-      <AceEditor
-        editorProps={{
-          $blockScrolling: true,
-        }}
-        fontSize={14}
-        mode={language}
-        name="file-editor"
-        onChange={handleContentChange}
-        readOnly={isSaving || readOnly}
-        ref={editorRef}
-        setOptions={{
-          useWorker: true,
-          enableBasicAutocompletion: true,
-          enableLiveAutocompletion: true,
-          enableSnippets: true,
-          showLineNumbers: true,
-          tabSize: 2,
-        }}
-        showPrintMargin={false}
-        style={{ width: "100%", height: "100%" }}
-        theme={aceTheme}
-        value={content}
-      />
-    );
-  },
-);
+    const loadTheme = aceThemeLoaders[aceTheme];
+    if (
+      loadTheme &&
+      !loadedAceThemes.has(aceTheme) &&
+      !failedAceThemes.has(aceTheme)
+    ) {
+      const existingThemeLoad = loadingAceThemes.get(aceTheme);
+      if (existingThemeLoad) {
+        pendingLoads.push(existingThemeLoad);
+      } else {
+        const themeLoad = loadTheme()
+          .then(() => {
+            loadedAceThemes.add(aceTheme);
+            return;
+          })
+          .catch((error) => {
+            failedAceThemes.add(aceTheme);
+            console.error(`Failed to load Ace theme "${aceTheme}":`, error);
+          })
+          .finally(() => {
+            loadingAceThemes.delete(aceTheme);
+          });
+        loadingAceThemes.set(aceTheme, themeLoad);
+        pendingLoads.push(themeLoad);
+      }
+    }
 
-FileEditor.displayName = "FileEditor";
+    if (pendingLoads.length === 0) {
+      return;
+    }
+
+    Promise.allSettled(pendingLoads)
+      .finally(() => {
+        if (!isCancelled) {
+          forceAssetRefresh((version) => version + 1);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [language, aceTheme]);
+
+  const handleContentChange = (newValue: string) => {
+    const nextDirty = newValue !== normalizedState.baseContent;
+    if (nextDirty !== isDirty) {
+      onDirtyChange?.(nextDirty);
+    }
+    updateEditorState((state) => ({
+      ...state,
+      content: newValue,
+      isDirty: nextDirty,
+    }));
+  };
+
+  useImperativeHandle(ref, () => ({
+    save: handleSave,
+    getContent: () => content,
+    isDirty: () => isDirty,
+  }));
+
+  if (!isEditorAssetsReady) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ComponentLoader />
+      </div>
+    );
+  }
+
+  return (
+    <AceEditor
+      editorProps={{
+        $blockScrolling: true,
+      }}
+      fontSize={14}
+      mode={language}
+      name="file-editor"
+      onChange={handleContentChange}
+      readOnly={isSaving || readOnly}
+      ref={editorRef}
+      setOptions={{
+        useWorker: true,
+        enableBasicAutocompletion: true,
+        enableLiveAutocompletion: true,
+        enableSnippets: true,
+        showLineNumbers: true,
+        tabSize: 2,
+      }}
+      showPrintMargin={false}
+      style={{ width: "100%", height: "100%" }}
+      theme={aceTheme}
+      value={content}
+    />
+  );
+};
 
 export default FileEditor;

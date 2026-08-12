@@ -2,9 +2,10 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio, type DockerNetworkContainer } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -17,13 +18,14 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -67,8 +69,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -82,8 +83,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -97,8 +97,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"
@@ -113,8 +112,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"
@@ -129,8 +127,7 @@ const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] 
       cell: ({ row }) => (
         <span
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
         >
@@ -157,15 +154,17 @@ const CreateNetworkDialog = ({
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
 
-  const { mutate: createNetwork, isPending: isCreating } =
-    linuxio.docker.create_network.useAction({
+  const { mutate: createNetwork, isPending: isCreating } = useCallMutation(
+    linuxio.docker.create_network,
+    {
       success: () => {
         toast.success(`Network "${networkName}" created successfully`);
         handleClose();
       },
       error: "Failed to create network",
       toast: DOCKER_TOAST_META,
-    });
+    },
+  );
 
   const nameTaken = networkName && existingNames.includes(networkName);
   const isValidName = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(networkName);
@@ -269,8 +268,9 @@ const DeleteNetworkDialog = ({
   const toast = useScopedToast(DOCKER_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork, isPending: isDeleting } =
-    linuxio.docker.delete_network.useAction();
+  const { mutateAsync: deleteNetwork, isPending: isDeleting } = useCallMutation(
+    linuxio.docker.delete_network,
+  );
 
   const handleDelete = async () => {
     // Delete networks sequentially
@@ -353,16 +353,19 @@ const DeleteNetworkDialog = ({
   );
 };
 
+const getNetworkId = (network: { Id: string }) => network.Id;
+
 const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: NetworkListProps) => {
   const theme = useAppTheme();
-  const { data: rawNetworks } = useSuspenseQuery(
-    linuxio.docker.list_networks.queryOptions({
+  const { data: rawNetworks } = useSuspenseQuery({
+    ...linuxio.docker.list_networks,
+    ...{
       refetchInterval: 10000,
-    }),
-  );
+    },
+  });
   const networks = rawNetworks;
 
   const [search, setSearch] = useState("");
@@ -370,7 +373,16 @@ const NetworkList = ({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const filtered = networks.filter((net) =>
+  const surface = useReorderableSurface({
+    getId: getNetworkId,
+    items: networks,
+    surface: "docker.networks",
+  });
+  const tableDnd = useReorderableTableDnd<
+    (typeof networks)[number],
+    (typeof networks)[number]
+  >({ handleAriaLabel: "Reorder network", surface });
+  const filtered = surface.items.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -591,8 +603,7 @@ const NetworkList = ({
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...responsiveTextStyles,
           }}
           variant="body2"
@@ -648,17 +659,19 @@ const NetworkList = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((network) => (
-              <AppGrid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <NetworkCard
-                  network={network}
-                  onSelect={(checked) => handleSelectOne(network.Id, checked)}
-                  selected={effectiveSelected.has(network.Id)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getNetworkId}
+            items={filtered}
+            renderItem={(network) => (
+              <NetworkCard
+                network={network}
+                onSelect={(checked) => handleSelectOne(network.Id, checked)}
+                selected={effectiveSelected.has(network.Id)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            surface={surface}
+          />
         ) : (
           <div
             style={{
@@ -677,6 +690,7 @@ const NetworkList = ({
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
@@ -878,19 +892,16 @@ const NetworkList = ({
                     <AppDataTable
                       ariaLabel="Connected containers"
                       columns={connectedContainerColumns}
-                      data={Object.entries(
-                        network.Containers as Record<
-                          string,
-                          DockerNetworkContainer
-                        >,
-                      ).map(([id, info]) => ({
-                        endpointId: info.EndpointID || "",
-                        id,
-                        ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
-                        ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
-                        mac: info.MacAddress || "-",
-                        name: info.Name || "-",
-                      }))}
+                      data={Object.entries(network.Containers).map(
+                        ([id, info]) => ({
+                          endpointId: info.EndpointID || "",
+                          id,
+                          ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
+                          ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
+                          mac: info.MacAddress || "-",
+                          name: info.Name || "-",
+                        }),
+                      )}
                       density="compact"
                       getRowId={(container) => container.id}
                       maxHeight={240}

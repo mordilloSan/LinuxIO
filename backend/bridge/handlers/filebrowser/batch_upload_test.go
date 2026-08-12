@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -59,25 +59,25 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 	}
 }
 
-// startUploadBatchJob runs runUploadBatchJob on a fresh registry job and
-// returns the job. The runner parks until a data stream drives it.
-func startUploadBatchJob(t *testing.T, req apischema.FileUploadBatchRequest) *bridgejobs.Job {
+// startUploadBatchTask runs runUploadBatchTask on a fresh registry task and
+// returns the task. The runner parks until a data stream drives it.
+func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgetasks.Task {
 	t.Helper()
-	registry := bridgejobs.NewRegistry()
-	job, err := registry.Create(routeUploadBatch, req)
+	registry := bridgetasks.NewTaskService()
+	task, err := registry.Create(routeUploadBatch, req)
 	if err != nil {
-		t.Fatalf("create job: %v", err)
+		t.Fatalf("create task: %v", err)
 	}
-	job.Start(func(ctx context.Context, j *bridgejobs.Job, _ any) (any, error) {
-		return runUploadBatchJob(ctx, j, req)
+	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
+		return runUploadBatchTask(ctx, j, req)
 	})
-	return job
+	return task
 }
 
-// attachUploadBatchStream connects a client pipe to the job's data attacher
+// attachUploadBatchStream connects a client pipe to the task's data attacher
 // and drains server frames in the background. It returns the client conn, a
 // channel of received result frames, and a channel with the attacher's error.
-func attachUploadBatchStream(t *testing.T, job *bridgejobs.Job, offset string) (net.Conn, <-chan ipc.ResultFrame, <-chan error) {
+func attachUploadBatchStream(t *testing.T, task *bridgetasks.Task, offset string) (net.Conn, <-chan ipc.ResultFrame, <-chan error) {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()
 	t.Cleanup(func() {
@@ -87,11 +87,11 @@ func attachUploadBatchStream(t *testing.T, job *bridgejobs.Job, offset string) (
 
 	attachErr := make(chan error, 1)
 	go func() {
-		req := bridgejobs.JobDataAttachRequest{}
+		req := bridgetasks.TaskDataAttachRequest{}
 		if offset != "" {
 			req.Offset = &offset
 		}
-		attachErr <- attachFileTransferData(context.Background(), job, serverConn, req)
+		attachErr <- attachFileTransferData(context.Background(), task, serverConn, req)
 	}()
 
 	results := make(chan ipc.ResultFrame, 4)
@@ -127,14 +127,14 @@ func waitResult(t *testing.T, results <-chan ipc.ResultFrame) ipc.ResultFrame {
 	return ipc.ResultFrame{}
 }
 
-func waitJobDone(t *testing.T, job *bridgejobs.Job) bridgejobs.Snapshot {
+func waitTaskDone(t *testing.T, task *bridgetasks.Task) bridgetasks.TaskSnapshot {
 	t.Helper()
 	select {
-	case <-job.Done():
+	case <-task.Done():
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for job to finish")
+		t.Fatal("timed out waiting for task to finish")
 	}
-	return job.Snapshot()
+	return task.Snapshot()
 }
 
 func writeData(t *testing.T, conn net.Conn, payload []byte) {
@@ -186,8 +186,8 @@ func TestUploadBatchSingleStreamLandsAllFiles(t *testing.T) {
 		Directories: []string{"emptydir/inner"},
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 
 	// All bytes in one frame: exercises boundary splitting inside one payload,
 	// including the zero-size file between boundaries.
@@ -206,9 +206,9 @@ func TestUploadBatchSingleStreamLandsAllFiles(t *testing.T) {
 		t.Fatalf("size = %d, want 305", decoded.Size)
 	}
 
-	snapshot := waitJobDone(t, job)
-	if snapshot.State != bridgejobs.StateCompleted {
-		t.Fatalf("job state = %q", snapshot.State)
+	snapshot := waitTaskDone(t, task)
+	if snapshot.State != bridgetasks.TaskStateCompleted {
+		t.Fatalf("task state = %q", snapshot.State)
 	}
 
 	for path, want := range map[string][]byte{
@@ -247,8 +247,8 @@ func TestUploadBatchDirectoriesOnlyCompletesWithoutBytes(t *testing.T) {
 		Directories: []string{"only/dirs", "second"},
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeClose(t, conn)
 
 	result := waitResult(t, results)
@@ -265,7 +265,7 @@ func TestUploadBatchDirectoriesOnlyCompletesWithoutBytes(t *testing.T) {
 			t.Fatalf("directory %s missing: %v", dir, err)
 		}
 	}
-	waitJobDone(t, job)
+	waitTaskDone(t, task)
 }
 
 func TestUploadBatchSkipsFailedItemAndContinues(t *testing.T) {
@@ -284,8 +284,8 @@ func TestUploadBatchSkipsFailedItemAndContinues(t *testing.T) {
 		},
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("XXXXok"))
 	writeClose(t, conn)
 
@@ -309,7 +309,7 @@ func TestUploadBatchSkipsFailedItemAndContinues(t *testing.T) {
 	if err != nil || !info.IsDir() {
 		t.Fatal("blocked directory was replaced")
 	}
-	waitJobDone(t, job)
+	waitTaskDone(t, task)
 }
 
 func TestUploadBatchResumesAcrossAttaches(t *testing.T) {
@@ -321,11 +321,11 @@ func TestUploadBatchResumesAcrossAttaches(t *testing.T) {
 		},
 	}
 
-	job := startUploadBatchJob(t, req)
+	task := startUploadBatchTask(t, req)
 
-	conn, _, attachErr := attachUploadBatchStream(t, job, "")
+	conn, _, attachErr := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("0123"))
-	// Drop the connection without a close frame: the job parks in
+	// Drop the connection without a close frame: the task parks in
 	// waiting_for_client instead of failing.
 	_ = conn.Close()
 	select {
@@ -337,14 +337,14 @@ func TestUploadBatchResumesAcrossAttaches(t *testing.T) {
 		t.Fatal("timed out waiting for first attach to detach")
 	}
 
-	// A stale offset must be rejected without disturbing the parked job.
-	_, staleResults, _ := attachUploadBatchStream(t, job, "0")
+	// A stale offset must be rejected without disturbing the parked task.
+	_, staleResults, _ := attachUploadBatchStream(t, task, "0")
 	stale := waitResult(t, staleResults)
 	if stale.Status != "error" || !strings.Contains(stale.Error, "offset mismatch") {
 		t.Fatalf("stale attach result = %+v", stale)
 	}
 
-	conn2, results, _ := attachUploadBatchStream(t, job, "4")
+	conn2, results, _ := attachUploadBatchStream(t, task, "4")
 	writeData(t, conn2, []byte("456789"))
 	writeClose(t, conn2)
 
@@ -356,7 +356,7 @@ func TestUploadBatchResumesAcrossAttaches(t *testing.T) {
 	if err != nil || string(got) != "0123456789" {
 		t.Fatalf("resume.txt = %q, err %v", got, err)
 	}
-	waitJobDone(t, job)
+	waitTaskDone(t, task)
 }
 
 func TestUploadBatchDoesNotOverwriteByDefault(t *testing.T) {
@@ -373,8 +373,8 @@ func TestUploadBatchDoesNotOverwriteByDefault(t *testing.T) {
 		},
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("XXXnew"))
 	writeClose(t, conn)
 
@@ -398,7 +398,7 @@ func TestUploadBatchDoesNotOverwriteByDefault(t *testing.T) {
 	if err != nil || string(got) != "new" {
 		t.Fatalf("new.txt = %q, err %v", got, err)
 	}
-	waitJobDone(t, job)
+	waitTaskDone(t, task)
 }
 
 func TestUploadBatchOverwriteReplacesExisting(t *testing.T) {
@@ -416,8 +416,8 @@ func TestUploadBatchOverwriteReplacesExisting(t *testing.T) {
 		Overwrite: &overwrite,
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("XXX"))
 	writeClose(t, conn)
 
@@ -434,7 +434,7 @@ func TestUploadBatchOverwriteReplacesExisting(t *testing.T) {
 	if err != nil || string(got) != "XXX" {
 		t.Fatalf("exists.txt = %q, err %v", got, err)
 	}
-	waitJobDone(t, job)
+	waitTaskDone(t, task)
 }
 
 func TestUploadBatchRejectsExcessBytes(t *testing.T) {
@@ -446,8 +446,8 @@ func TestUploadBatchRejectsExcessBytes(t *testing.T) {
 		},
 	}
 
-	job := startUploadBatchJob(t, req)
-	conn, results, _ := attachUploadBatchStream(t, job, "")
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("12345"))
 
 	result := waitResult(t, results)
@@ -455,13 +455,13 @@ func TestUploadBatchRejectsExcessBytes(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
-	snapshot := waitJobDone(t, job)
-	if snapshot.State != bridgejobs.StateFailed {
-		t.Fatalf("job state = %q, want failed", snapshot.State)
+	snapshot := waitTaskDone(t, task)
+	if snapshot.State != bridgetasks.TaskStateFailed {
+		t.Fatalf("task state = %q, want failed", snapshot.State)
 	}
 }
 
-func TestUploadBatchMissingDestinationFailsJob(t *testing.T) {
+func TestUploadBatchMissingDestinationFailsTask(t *testing.T) {
 	req := apischema.FileUploadBatchRequest{
 		Destination: filepath.Join(t.TempDir(), "does-not-exist"),
 		Files: []apischema.FileUploadBatchEntry{
@@ -469,12 +469,12 @@ func TestUploadBatchMissingDestinationFailsJob(t *testing.T) {
 		},
 	}
 
-	job := startUploadBatchJob(t, req)
-	snapshot := waitJobDone(t, job)
-	if snapshot.State != bridgejobs.StateFailed {
-		t.Fatalf("job state = %q, want failed", snapshot.State)
+	task := startUploadBatchTask(t, req)
+	snapshot := waitTaskDone(t, task)
+	if snapshot.State != bridgetasks.TaskStateFailed {
+		t.Fatalf("task state = %q, want failed", snapshot.State)
 	}
 	if snapshot.Error == nil || snapshot.Error.Code != 404 {
-		t.Fatalf("job error = %+v, want 404", snapshot.Error)
+		t.Fatalf("task error = %+v, want 404", snapshot.Error)
 	}
 }

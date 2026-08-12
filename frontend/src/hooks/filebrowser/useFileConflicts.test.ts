@@ -3,6 +3,7 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
+  call: vi.fn(),
   exists_batch: vi.fn(),
 }));
 
@@ -10,17 +11,21 @@ vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   return {
     ...actual,
+    call: apiMocks.call,
     linuxio: {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        exists_batch: Object.assign(apiMocks.exists_batch, {
-          useFetcher: () => (paths: string[]) => apiMocks.exists_batch(paths),
-        }),
+        exists_batch: { route: "filebrowser.exists_batch" },
       },
     },
   };
 });
+
+apiMocks.call.mockImplementation(
+  (_route: string, request: { paths: string[] }) =>
+    apiMocks.exists_batch(request),
+);
 
 const { useFileConflictResolution } =
   await import("@/hooks/filebrowser/useFileConflicts");
@@ -54,10 +59,9 @@ describe("useFileConflictResolution", () => {
       );
     });
 
-    expect(apiMocks.exists_batch).toHaveBeenCalledWith([
-      "/dest/a.txt",
-      "/dest/sub/b.txt",
-    ]);
+    expect(apiMocks.exists_batch).toHaveBeenCalledWith({
+      paths: ["/dest/a.txt", "/dest/sub/b.txt"],
+    });
     expect(resolution).toEqual({ kept: items, overwrite: false });
     expect(result.current.conflictPrompt).toBeNull();
   });

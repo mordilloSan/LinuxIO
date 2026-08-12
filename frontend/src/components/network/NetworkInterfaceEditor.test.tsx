@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   enableConnection: vi.fn(),
   setIPv4: vi.fn(),
   setIPv4Manual: vi.fn(),
+  useCallMutation: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
@@ -16,34 +17,25 @@ vi.mock("@/api", async (importOriginal) => {
 
   return {
     ...actual,
+    useCallMutation: mocks.useCallMutation,
     linuxio: {
       ...actual.linuxio,
       network: {
         ...actual.linuxio.network,
-        disable_connection: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.disableConnection,
-          }),
-        },
-        enable_connection: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.enableConnection,
-          }),
-        },
-        set_ipv4: {
-          useAction: () => ({ isPending: false, mutate: mocks.setIPv4 }),
-        },
-        set_ipv4_manual: {
-          useAction: () => ({
-            isPending: false,
-            mutate: mocks.setIPv4Manual,
-          }),
-        },
       },
     },
   };
+});
+
+mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
+  const mutate = endpoint.route.endsWith("disable_connection")
+    ? mocks.disableConnection
+    : endpoint.route.endsWith("enable_connection")
+      ? mocks.enableConnection
+      : endpoint.route.endsWith("set_ipv4_manual")
+        ? mocks.setIPv4Manual
+        : mocks.setIPv4;
+  return { isPending: false, mutate };
 });
 
 const manualInterface = (
@@ -54,9 +46,7 @@ const manualInterface = (
   gateway: "192.168.1.1",
   ipv4: ["192.168.1.25/24"],
   ipv4_method: "manual",
-  ipv6: [],
   mac: "00:11:22:33:44:55",
-  mtu: 1500,
   name: "eth0",
   rx_speed: 0,
   speed: "1000",
@@ -178,4 +168,58 @@ describe("NetworkInterfaceEditor", () => {
       iface: "eth0",
     });
   });
+
+  it.each([
+    ["enables", 0, "enable_connection", "Enabling connection"],
+    ["disables", 100, "disable_connection", "Disabling connection"],
+  ] as const)(
+    "requests the correct action and blocks duplicate toggles while %s",
+    async (_action, state, endpoint, progressLabel) => {
+      let pending = false;
+      mocks.useCallMutation.mockImplementation(
+        (mutationEndpoint: { route: string }) => {
+          const mutate = mutationEndpoint.route.endsWith("disable_connection")
+            ? mocks.disableConnection
+            : mutationEndpoint.route.endsWith("enable_connection")
+              ? mocks.enableConnection
+              : mutationEndpoint.route.endsWith("set_ipv4_manual")
+                ? mocks.setIPv4Manual
+                : mocks.setIPv4;
+          return {
+            isPending: pending && mutationEndpoint.route.endsWith(endpoint),
+            mutate,
+          };
+        },
+      );
+
+      const { rerender, user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface({ state })}
+          onClose={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("checkbox"));
+      const expectedMutation =
+        endpoint === "enable_connection"
+          ? mocks.enableConnection
+          : mocks.disableConnection;
+      expect(expectedMutation).toHaveBeenCalledWith({ iface: "eth0" });
+
+      pending = true;
+      rerender(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface({ state })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByRole("progressbar", { name: progressLabel }),
+      ).toBeVisible();
+      expect(screen.getByRole("checkbox")).toBeDisabled();
+      await user.click(screen.getByRole("checkbox"));
+      expect(expectedMutation).toHaveBeenCalledTimes(1);
+    },
+  );
 });

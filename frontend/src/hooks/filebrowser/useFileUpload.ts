@@ -1,6 +1,6 @@
 import { useMemo, useReducer, useRef, type RefObject } from "react";
 
-import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import { mergeDroppedEntries } from "@/utils/fileUpload";
 
 interface UploadSummary {

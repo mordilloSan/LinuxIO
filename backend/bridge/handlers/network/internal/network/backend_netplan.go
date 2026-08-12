@@ -51,8 +51,8 @@ func detectNetplanBackend(env Environment, iface string) (ConfigBackend, error) 
 		return nil, ambiguousf(iface, "netplan", matches)
 	}
 	return &netplanBackend{
-		baseBackend: baseBackend{env: env, iface: iface, path: matches[0]},
-		kind:        kinds[0],
+		env: env, iface: iface, path: matches[0],
+		kind: kinds[0],
 	}, nil
 }
 

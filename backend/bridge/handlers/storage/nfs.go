@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -21,7 +23,7 @@ const (
 	nfsUnmountCommandTimeout = 15 * time.Second
 )
 
-var nfsMountStore = &managedMountStore{path: "/var/lib/linuxio/nfs-mounts.json"}
+var nfsMountStore = &managedMountStore{path: filepath.Join(version.DataDir, "nfs-mounts.json")}
 
 var requiredNFSClientCommands = []string{"showmount", "mount.nfs"}
 

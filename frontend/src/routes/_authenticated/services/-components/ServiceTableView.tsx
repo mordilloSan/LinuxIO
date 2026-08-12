@@ -1,5 +1,9 @@
+import { useCallback } from "react";
+
 import type { Service } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import UnitStatusDot from "./UnitStatusDot";
 import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
@@ -9,6 +13,7 @@ interface ServiceTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   services: Service[];
+  surface: ReorderableSurface<Service>;
 }
 
 const desktopColumns = [
@@ -46,51 +51,73 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
+const getServiceRowKey = (service: Service) => service.name;
+
+const renderServiceMainRow = (service: Service, isMobile: boolean) => (
+  <>
+    <AppTableCell style={{ paddingLeft: 8 }}>
+      <UnitStatusDot activeState={service.active_state} />
+      {service.active_state}
+    </AppTableCell>
+    <AppTableCell>{service.name}</AppTableCell>
+    {!isMobile && (
+      <>
+        <AppTableCell>{service.load_state}</AppTableCell>
+        <AppTableCell>{service.sub_state}</AppTableCell>
+        <AppTableCell>{service.description || "-"}</AppTableCell>
+      </>
+    )}
+  </>
+);
+
+const renderServiceMobileExpandedContent = (service: Service) => (
+  <MobileExpandedDetails
+    rows={[
+      { label: "Load", value: service.load_state },
+      { label: "Sub", value: service.sub_state },
+      { label: "Description", value: service.description || "—" },
+    ]}
+  />
+);
+
 const ServiceTableView = ({
+  surface,
   services,
   selected,
   onSelect,
   onDoubleClick,
-}: ServiceTableViewProps) => (
-  <UnitTableView
-    data={services}
-    desktopColumns={desktopColumns}
-    emptyMessage="No services found."
-    getRowKey={(service) => service.name}
-    mobileColumns={mobileColumns}
-    onDoubleClick={(key) => {
+}: ServiceTableViewProps) => {
+  const handleDoubleClick = useCallback(
+    (key: string | number) => {
       if (typeof key === "string") {
         onDoubleClick?.(key);
       }
-    }}
-    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
-    renderMainRow={(service, isMobile) => (
-      <>
-        <AppTableCell style={{ paddingLeft: 8 }}>
-          <UnitStatusDot activeState={service.active_state} />
-          {service.active_state}
-        </AppTableCell>
-        <AppTableCell>{service.name}</AppTableCell>
-        {!isMobile && (
-          <>
-            <AppTableCell>{service.load_state}</AppTableCell>
-            <AppTableCell>{service.sub_state}</AppTableCell>
-            <AppTableCell>{service.description || "-"}</AppTableCell>
-          </>
-        )}
-      </>
-    )}
-    renderMobileExpandedContent={(service) => (
-      <MobileExpandedDetails
-        rows={[
-          { label: "Load", value: service.load_state },
-          { label: "Sub", value: service.sub_state },
-          { label: "Description", value: service.description || "—" },
-        ]}
-      />
-    )}
-    selected={selected}
-  />
-);
+    },
+    [onDoubleClick],
+  );
+  const handleSelect = useCallback(
+    (key: string | number | null) =>
+      onSelect?.(typeof key === "string" ? key : null),
+    [onSelect],
+  );
+
+  const dnd = useVirtualReorderableTableDnd<Service, Service>({ surface });
+
+  return (
+    <UnitTableView
+      dnd={dnd}
+      data={services}
+      desktopColumns={desktopColumns}
+      emptyMessage="No services found."
+      getRowKey={getServiceRowKey}
+      mobileColumns={mobileColumns}
+      onDoubleClick={handleDoubleClick}
+      onSelect={handleSelect}
+      renderMainRow={renderServiceMainRow}
+      renderMobileExpandedContent={renderServiceMobileExpandedContent}
+      selected={selected}
+    />
+  );
+};
 
 export default ServiceTableView;

@@ -9,19 +9,19 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.Timer]("systemd.list_timers").Handle(handleListTimers),
-	apischema.Query[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets").Handle(handleListSockets),
-	apischema.Query[apischema.NoRequest, []apischema.Service]("systemd.list_services").Handle(handleListServices),
-	apischema.Query[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info").Handle(handleGetUnitInfo),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").HandleVoid(handleStartService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").HandleVoid(handleStopService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").HandleVoid(handleRestartService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reload_service").HandleVoid(handleReloadService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.enable_service").HandleVoid(handleEnableService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.disable_service").HandleVoid(handleDisableService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.mask_service").HandleVoid(handleMaskService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.unmask_service").HandleVoid(handleUnmaskService),
-	apischema.Query[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reset_failed_service").HandleVoid(handleResetFailedService),
+	apischema.Call[apischema.NoRequest, []apischema.Timer]("systemd.list_timers", apischema.RetrySafe()).Handle(handleListTimers),
+	apischema.Call[apischema.NoRequest, []apischema.Socket]("systemd.list_sockets", apischema.RetrySafe()).Handle(handleListSockets),
+	apischema.Call[apischema.NoRequest, []apischema.Service]("systemd.list_services", apischema.RetrySafe()).Handle(handleListServices),
+	apischema.Call[apischema.UnitNameRequest, apischema.UnitInfo]("systemd.get_unit_info", apischema.RetrySafe()).Handle(handleGetUnitInfo),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.start_service").HandleVoid(handleStartService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.stop_service").HandleVoid(handleStopService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.restart_service").HandleVoid(handleRestartService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reload_service").HandleVoid(handleReloadService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.enable_service").HandleVoid(handleEnableService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.disable_service").HandleVoid(handleDisableService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.mask_service").HandleVoid(handleMaskService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.unmask_service").HandleVoid(handleUnmaskService),
+	apischema.Call[apischema.ServiceNameRequest, apischema.NoResponse]("systemd.reset_failed_service").HandleVoid(handleResetFailedService),
 )
 
 var Routes = api.Routes()

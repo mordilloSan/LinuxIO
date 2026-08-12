@@ -8,6 +8,8 @@ import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import {
   type VMAction,
@@ -45,21 +47,23 @@ const rowActionsStyle: CSSProperties = {
   gap: 6,
 };
 
+const getVirtualMachineId = (vm: VirtualMachine) => vm.name;
+
 export default function VMListTable({
-  actionPending,
   effectiveSelectedName,
   onDelete,
   onOpenConsole,
   onRunAction,
   onSelect,
+  pendingActions,
   vms,
 }: {
-  actionPending: boolean;
   effectiveSelectedName: string | null;
   onDelete: (vm: VirtualMachine) => void;
   onOpenConsole: (vm: VirtualMachine) => void;
   onRunAction: (action: VMAction, vm: VirtualMachine) => void;
   onSelect: (name: string) => void;
+  pendingActions: ReadonlyMap<string, VMAction>;
   vms: VirtualMachine[];
 }) {
   const columns = useMemo<AppDataTableColumnDef<VirtualMachine>[]>(
@@ -126,54 +130,64 @@ export default function VMListTable({
           const vm = row.original;
           const running = vm.state === "running";
           const paused = vm.state === "paused";
+          const pendingAction = pendingActions.get(vm.name);
+          const rowBusy = Boolean(pendingAction);
           return (
             <div
+              aria-busy={rowBusy}
               onClick={(event) => event.stopPropagation()}
               style={rowActionsStyle}
             >
               <AppActionIconButton
-                disabled={actionPending || running}
+                disabled={rowBusy || running}
                 icon="mdi:play"
                 label="Start"
+                loading={pendingAction === "start"}
                 onClick={() => onRunAction("start", vm)}
               />
               <AppActionIconButton
-                disabled={actionPending || !running}
+                disabled={rowBusy || !running}
                 icon="mdi:stop"
                 label="Shutdown"
+                loading={pendingAction === "shutdown"}
                 onClick={() => onRunAction("shutdown", vm)}
               />
               <AppActionIconButton
-                disabled={actionPending || !running}
+                disabled={rowBusy || !running}
                 icon="mdi:restart"
                 label="Reboot"
+                loading={pendingAction === "reboot"}
                 onClick={() => onRunAction("reboot", vm)}
               />
               <AppActionIconButton
-                disabled={actionPending || (!running && !paused)}
+                disabled={rowBusy || (!running && !paused)}
                 icon="mdi:power"
                 label="Force off"
+                loading={pendingAction === "force_off"}
                 onClick={() => onRunAction("force_off", vm)}
               />
               <AppActionIconButton
-                disabled={actionPending || !running}
+                disabled={rowBusy || !running}
                 icon="mdi:pause"
                 label="Suspend"
+                loading={pendingAction === "suspend"}
                 onClick={() => onRunAction("suspend", vm)}
               />
               <AppActionIconButton
-                disabled={actionPending || !paused}
+                disabled={rowBusy || !paused}
                 icon="mdi:play-pause"
                 label="Resume"
+                loading={pendingAction === "resume"}
                 onClick={() => onRunAction("resume", vm)}
               />
               <AppActionIconButton
-                disabled={!running || !vm.hasGraphics}
+                disabled={rowBusy || !running || !vm.hasGraphics}
                 icon="mdi:monitor"
                 label="Console"
                 onClick={() => onOpenConsole(vm)}
               />
               <AppActionIconButton
+                disabled={rowBusy}
                 icon="mdi:trash-can-outline"
                 label="Delete"
                 onClick={() => onDelete(vm)}
@@ -184,15 +198,25 @@ export default function VMListTable({
         meta: { align: "right", width: "minmax(320px, 1.4fr)" },
       },
     ],
-    [actionPending, onDelete, onOpenConsole, onRunAction, onSelect],
+    [onDelete, onOpenConsole, onRunAction, onSelect, pendingActions],
   );
+  const surface = useReorderableSurface({
+    getId: getVirtualMachineId,
+    items: vms,
+    surface: "vm.list",
+  });
+  const tableDnd = useReorderableTableDnd<VirtualMachine, VirtualMachine>({
+    handleAriaLabel: "Reorder virtual machine",
+    surface,
+  });
 
   return (
     <FrostedCard style={listPanelStyle}>
       <AppDataTable
         ariaLabel="Virtual machines"
         columns={columns}
-        data={vms}
+        data={surface.items}
+        dnd={tableDnd}
         emptyMessage="No virtual machines."
         enableSorting={false}
         getRowId={(vm) => vm.name}

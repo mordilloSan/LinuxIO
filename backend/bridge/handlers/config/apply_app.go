@@ -19,12 +19,11 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *con
 	}
 	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
-	applyOptionalStringSlice(&app.DashboardOrder, payload.DashboardOrder)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
-	applyOptionalStringSlice(&app.ContainerOrder, payload.ContainerOrder)
 	applyOptionalDockerDashboardSections(app, payload.DockerDashboardSections)
 	applyOptionalHardwareSections(app, payload.HardwareSections)
 	applyViewModes(app, payload.ViewModes)
+	applyLayoutOrders(app, payload.LayoutOrders)
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
@@ -147,6 +146,35 @@ func applyViewModes(app *bridgeconfig.PersistedAppSettings, viewModes map[string
 		normalized[normalizedKey] = normalizedMode
 	}
 	app.ViewModes = normalized
+}
+
+// applyLayoutOrders replaces the whole per-surface order map, dropping surfaces
+// whose order is empty: an absent surface already means "natural order", so
+// storing the empty case would only grow the config file.
+func applyLayoutOrders(app *bridgeconfig.PersistedAppSettings, layoutOrders map[string][]string) {
+	if layoutOrders == nil {
+		return
+	}
+	normalized := make(map[string][]string, len(layoutOrders))
+	for surface, order := range layoutOrders {
+		normalizedSurface := strings.TrimSpace(surface)
+		if normalizedSurface == "" {
+			continue
+		}
+		items := make([]string, 0, len(order))
+		for _, item := range order {
+			normalizedItem := strings.TrimSpace(item)
+			if normalizedItem == "" {
+				continue
+			}
+			items = append(items, normalizedItem)
+		}
+		if len(items) == 0 {
+			continue
+		}
+		normalized[normalizedSurface] = items
+	}
+	app.LayoutOrders = normalized
 }
 
 func applyChunkSizeSetting(app *bridgeconfig.PersistedAppSettings, chunkSize *int) error {

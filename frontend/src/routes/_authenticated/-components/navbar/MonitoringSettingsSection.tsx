@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import {
   type MonitoringConfig,
   type MonitoringConfigPatch,
   type MonitoringListener,
+  useCallMutation,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -228,7 +229,7 @@ const getConfigSchemaError = (config: MonitoringConfig): string | null => {
 
 const MonitoringSettingsSection = () => {
   const theme = useAppTheme();
-  const monitoringConfigCache = linuxio.monitoring.get_config.useCache();
+  const queryClient = useQueryClient();
   const {
     isEnabled: monitoringEnabled,
     status: monitoringStatus,
@@ -241,23 +242,21 @@ const MonitoringSettingsSection = () => {
     error,
     refetch,
     isFetching,
-  } = useQuery(
-    linuxio.monitoring.get_config.queryOptions({
-      enabled: monitoringEnabled,
-      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.monitoring.get_config,
+    enabled: monitoringEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+  });
   const {
     data: agentStatus,
     error: statusError,
     refetch: refetchStatus,
     isFetching: isStatusFetching,
-  } = useQuery(
-    linuxio.monitoring.get_status.queryOptions({
-      enabled: monitoringEnabled,
-      staleTime: CACHE_TTL_MS.FIVE_SECONDS,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.monitoring.get_status,
+    enabled: monitoringEnabled,
+    staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+  });
 
   const configSchemaError = config ? getConfigSchemaError(config) : null;
   const savedDraft = useMemo(
@@ -279,9 +278,12 @@ const MonitoringSettingsSection = () => {
     mergeMonitoringDraft,
   );
 
-  const setConfigMutation = linuxio.monitoring.set_config.useAction({
+  const setConfigMutation = useCallMutation(linuxio.monitoring.set_config, {
     success: (result) => {
-      monitoringConfigCache.set(result.config);
+      queryClient.setQueryData(
+        linuxio.monitoring.get_config.queryKey,
+        result.config,
+      );
       setDraftPatch({});
       setErrors({});
       setRestartRequired(result.restart_required);
@@ -293,7 +295,7 @@ const MonitoringSettingsSection = () => {
     },
     error: "Failed to save monitoring settings",
   });
-  const restartMutation = linuxio.monitoring.restart.useAction({
+  const restartMutation = useCallMutation(linuxio.monitoring.restart, {
     success: () => {
       setRestartRequired(false);
       toast.success("go-monitoring restarted");

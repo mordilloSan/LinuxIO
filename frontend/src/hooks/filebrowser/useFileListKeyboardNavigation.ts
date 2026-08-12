@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, type RefObject } from "react";
 
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
-import { FileItem } from "@/types/filebrowser";
+import type { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
   allItems: FileItem[];
@@ -141,7 +141,7 @@ export const useFileListKeyboardNavigation = ({
     }
   }, [global, containerRef]);
 
-  // Revealing the focused item is the virtualizer's job (VirtualDirectoryItems
+  // Revealing the focused item is the virtualizer's task (VirtualDirectoryItems
   // scrolls by row index). Doing it here by indexing the rendered cards would
   // resolve to the wrong element, since only the virtual window is in the DOM.
 };

@@ -2,32 +2,32 @@ package appupdate
 
 import (
 	"context"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-var Routes = routeBindings(runtime.Runtime{}).Routes()
+var Routes = routeBindings().Routes()
 
-func routeBindings(rt runtime.Runtime) apischema.BindingSet {
-	policy := bridgeipc.SingletonSystem
-	policy.Timeout = 30 * time.Minute
+func routeBindings() apischema.BindingSet {
+	policy := bridgeipc.TaskSingletonSystem
 	return apischema.Bindings(
-		apischema.Query[apischema.NoRequest, apischema.VersionResponse]("control.version").Handle(handleVersion),
-		apischema.Runner[apischema.AppUpdateRequest, apischema.NoResponse](routeAppUpdate, apischema.NoEndpoint()).Run(
-			func(ctx context.Context, job *bridgeipc.Job, req apischema.AppUpdateRequest) (any, error) {
-				return runAppUpdateJob(ctx, rt, job, req)
-			},
-			policy,
-		),
+		apischema.Call[apischema.NoRequest, apischema.VersionResponse]("control.version", apischema.RetrySafe()).Handle(handleVersion),
+		apischema.TaskRunner[apischema.AppUpdateRequest, AppUpdateResult](
+			routeAppUpdate,
+			apischema.NoEndpoint(),
+			apischema.DurableTask(),
+			apischema.WithTaskProgress[AppUpdateProgressDetail](),
+			apischema.WithTaskIdentity(appUpdateTaskIdentity),
+		).Run(runAppUpdateTask, policy),
 	)
 }
 
 // RegisterHandlers registers app update handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	routeBindings(rt).Register(router)
+	routeBindings().Register(router)
+	recoverAppUpdates(rt, router)
 }
 
 func handleVersion(ctx context.Context, _ apischema.NoRequest) (apischema.VersionResponse, error) {

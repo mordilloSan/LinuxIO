@@ -17,34 +17,35 @@ const MotherboardTempBadge = () => {
     undefined,
   );
 
-  const { data: badge } = useSuspenseQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (motherboardInfo: MotherboardInfo) => {
-          const sensors = motherboardInfo?.temperatures?.sensors ?? {};
-          const keys = Object.keys(sensors);
-          const defaultMbSensor =
-            keys.find((k) => k.startsWith("mb")) ?? keys[0];
-          const effectiveSensor =
-            selectedSensor && sensors[selectedSensor] !== undefined
-              ? selectedSensor
-              : defaultMbSensor;
+  const selectBadge = useCallback(
+    (motherboardInfo: MotherboardInfo) => {
+      const sensors = motherboardInfo?.temperatures?.sensors ?? {};
+      const keys = Object.keys(sensors);
+      const defaultMbSensor =
+        keys.find((key) => key.startsWith("mb")) ?? keys[0];
+      const effectiveSensor =
+        selectedSensor && sensors[selectedSensor] !== undefined
+          ? selectedSensor
+          : defaultMbSensor;
 
-          return {
-            sensorKeys: keys,
-            selected: effectiveSensor,
-            text:
-              effectiveSensor !== undefined &&
-              sensors[effectiveSensor] !== undefined
-                ? `${sensors[effectiveSensor]}°C`
-                : "--°C",
-          };
-        },
-        [selectedSensor],
-      ),
-    }),
+      return {
+        sensorKeys: keys,
+        selected: effectiveSensor,
+        text:
+          effectiveSensor !== undefined &&
+          sensors[effectiveSensor] !== undefined
+            ? `${sensors[effectiveSensor]}°C`
+            : "--°C",
+      };
+    },
+    [selectedSensor],
   );
+
+  const { data: badge } = useSuspenseQuery({
+    ...linuxio.system.get_motherboard_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectBadge,
+  });
 
   if (!lmSensorsAvailable) {
     return <CardBadge icon="mdi:thermometer" text="N/A" />;
@@ -65,11 +66,10 @@ const MotherboardTempBadge = () => {
 };
 
 const MotherboardStats = () => {
-  const { data: motherboardInfo } = useSuspenseQuery(
-    linuxio.system.get_motherboard_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-    }),
-  );
+  const { data: motherboardInfo } = useSuspenseQuery({
+    ...linuxio.system.get_motherboard_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  });
 
   if (!motherboardInfo) {
     return (

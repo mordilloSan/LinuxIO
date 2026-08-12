@@ -1,18 +1,30 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
   linuxio,
   type NFSClient,
   type NFSExport,
   type SambaShare,
+  useCallMutation,
 } from "@/api";
 import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type {
+  AppDataTableColumnDef,
+  AppDataTableProps,
+} from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -24,7 +36,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
@@ -32,6 +43,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -108,7 +121,13 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
         {row.original.name}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.name];
+      },
+    },
   },
   {
     accessorKey: "comment",
@@ -118,7 +137,13 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
         {row.original.comment || "-"}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.comment];
+      },
+    },
   },
   {
     id: "smb",
@@ -131,6 +156,10 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     ),
     meta: {
       align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, getSambaAccessLabel(group.samba)];
+      },
       width: "110px",
     },
   },
@@ -145,6 +174,10 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     ),
     meta: {
       align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, getNFSAccessLabel(group.nfs)];
+      },
       width: "110px",
     },
   },
@@ -152,13 +185,24 @@ const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
     accessorKey: "path",
     header: "Path",
     cell: ({ row }) => (
-      <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
+      <AppTypography
+        style={{ fontFamily: "var(--app-font-mono)" }}
+        variant="body2"
+      >
         {row.original.path}
       </AppTypography>
     ),
-    meta: { align: "left" },
+    meta: {
+      align: "left",
+      getCellRenderKey: (row) => {
+        const group = row as ShareGroup;
+        return [group.id, group.path];
+      },
+    },
   },
 ];
+
+const getShareGroupId = (group: ShareGroup) => group.id;
 
 function normalizeSharePath(path: string): string {
   if (!path || path === "/") {
@@ -437,8 +481,8 @@ const CreateFolderShareDialog = ({
   });
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
+  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
+  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
 
   const isPending = sambaCreate.isPending || nfsCreate.isPending;
   const resolvedName = sambaName.trim() || inferShareName(path);
@@ -518,7 +562,7 @@ const CreateFolderShareDialog = ({
       handleClose();
     } catch (error) {
       const message = getMutationErrorMessage(
-        error as Error,
+        error,
         "Failed to create folder share",
       );
 
@@ -697,12 +741,12 @@ const EditFolderShareDialog = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const sambaCreate = linuxio.shares.create_samba_share.useAction();
-  const sambaUpdate = linuxio.shares.update_samba_share.useAction();
-  const sambaDelete = linuxio.shares.delete_samba_share.useAction();
-  const nfsCreate = linuxio.shares.create_nfs_share.useAction();
-  const nfsUpdate = linuxio.shares.update_nfs_share.useAction();
-  const nfsDelete = linuxio.shares.delete_nfs_share.useAction();
+  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
+  const sambaUpdate = useCallMutation(linuxio.shares.update_samba_share);
+  const sambaDelete = useCallMutation(linuxio.shares.delete_samba_share);
+  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
+  const nfsUpdate = useCallMutation(linuxio.shares.update_nfs_share);
+  const nfsDelete = useCallMutation(linuxio.shares.delete_nfs_share);
 
   const isPending =
     sambaCreate.isPending ||
@@ -799,7 +843,7 @@ const EditFolderShareDialog = ({
       onClose();
     } catch (error) {
       const message = getMutationErrorMessage(
-        error as Error,
+        error,
         "Failed to update folder share",
       );
 
@@ -1120,45 +1164,60 @@ const SharesPage = () => {
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
 
-  const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery(
-    linuxio.shares.list_nfs_shares.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
-  const { data: sambaShares, refetch: refetchSamba } = useSuspenseQuery(
-    linuxio.shares.list_samba_shares.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery({
+    ...linuxio.shares.list_nfs_shares,
+    refetchInterval: 10000,
+  });
+  const { data: sambaShares, refetch: refetchSamba } = useSuspenseQuery({
+    ...linuxio.shares.list_samba_shares,
+    refetchInterval: 10000,
+  });
 
-  const shareGroups = buildShareGroups(
-    Array.isArray(sambaShares) ? sambaShares : [],
-    Array.isArray(nfsShares) ? nfsShares : [],
+  const shareGroups = useMemo(
+    () =>
+      buildShareGroups(
+        Array.isArray(sambaShares) ? sambaShares : [],
+        Array.isArray(nfsShares) ? nfsShares : [],
+      ),
+    [nfsShares, sambaShares],
+  );
+  const sharesSurface = useReorderableSurface({
+    getId: getShareGroupId,
+    items: shareGroups,
+    surface: "shares",
+  });
+  const sharesTableDnd = useReorderableTableDnd<ShareGroup, ShareGroup>({
+    handleAriaLabel: "Reorder share",
+    surface: sharesSurface,
+  });
+  const renderShareExpandedContent = useCallback<
+    NonNullable<AppDataTableProps<ShareGroup>["renderExpandedContent"]>
+  >(
+    ({ original: group }) =>
+      renderExpandedContent(
+        group,
+        setEditingShare,
+        setDeletingSamba,
+        setDeletingNFS,
+      ),
+    [],
   );
 
   const sharesActions = (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-        flexWrap: "wrap",
-      }}
-    >
+    <>
       <ViewModeToggle
         alternateMode="table"
         onViewModeChange={setViewMode}
         viewMode={viewMode}
       />
-      <AppButton
+      <AppActionIconButton
+        ariaLabel="Add Share"
+        icon="mdi:plus"
+        iconSize={20}
+        label="Add Share"
         onClick={() => setCreateDialogOpen(true)}
-        size="small"
-        startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-        variant="contained"
-      >
-        Add Share
-      </AppButton>
-    </div>
+      />
+    </>
   );
 
   const content = (
@@ -1173,26 +1232,27 @@ const SharesPage = () => {
     >
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {shareGroups.map((group) => (
-              <AppGrid key={group.id} size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
-                <FolderShareCard
-                  actions={
-                    <FolderShareCardActions
-                      group={group}
-                      onDeleteNFS={(share) => setDeletingNFS(share)}
-                      onDeleteSamba={(share) => setDeletingSamba(share)}
-                      onEditShare={(shareGroup) => setEditingShare(shareGroup)}
-                    />
-                  }
-                  comment={group.comment}
-                  name={group.name}
-                  path={group.path}
-                  protocolSummary={renderProtocolSummary(group)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getShareGroupId}
+            renderItem={(group) => (
+              <FolderShareCard
+                actions={
+                  <FolderShareCardActions
+                    group={group}
+                    onDeleteNFS={(share) => setDeletingNFS(share)}
+                    onDeleteSamba={(share) => setDeletingSamba(share)}
+                    onEditShare={(shareGroup) => setEditingShare(shareGroup)}
+                  />
+                }
+                comment={group.comment}
+                name={group.name}
+                path={group.path}
+                protocolSummary={renderProtocolSummary(group)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            surface={sharesSurface}
+          />
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 24 }}>
             <AppTypography color="text.secondary" variant="body2">
@@ -1204,18 +1264,12 @@ const SharesPage = () => {
         <AppDataTable
           ariaLabel="Folder shares"
           columns={tableColumns}
-          data={shareGroups}
+          data={sharesSurface.items}
+          dnd={sharesTableDnd}
           emptyMessage="No shares configured. Add a folder share to get started."
           fillAvailable
-          getRowId={(group) => group.id}
-          renderExpandedContent={({ original: group }) =>
-            renderExpandedContent(
-              group,
-              setEditingShare,
-              setDeletingSamba,
-              setDeletingNFS,
-            )
-          }
+          getRowId={getShareGroupId}
+          renderExpandedContent={renderShareExpandedContent}
         />
       )}
     </div>
@@ -1237,8 +1291,8 @@ const SharesPage = () => {
       <CreateFolderShareDialog
         onClose={() => setCreateDialogOpen(false)}
         onSuccess={() => {
-          refetchSamba();
-          refetchNFS();
+          void refetchSamba();
+          void refetchNFS();
         }}
         open={createDialogOpen}
       />
@@ -1247,8 +1301,8 @@ const SharesPage = () => {
         key={editingShare?.id ?? "no-share"}
         onClose={() => setEditingShare(null)}
         onSuccess={() => {
-          refetchSamba();
-          refetchNFS();
+          void refetchSamba();
+          void refetchNFS();
         }}
         open={editingShare !== null}
       />

@@ -36,24 +36,25 @@ const NetworkHeader = ({
   onSelect,
   selected,
 }: InterfaceSelectionProps & { onSelect: (name: string) => void }) => {
-  const { data: header } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (interfaces: InterfaceStats[]) => {
-          const filtered = filterInterfaces(interfaces);
-          const current = resolveInterface(filtered, selected);
+  const selectHeader = useCallback(
+    (interfaces: InterfaceStats[]) => {
+      const filtered = filterInterfaces(interfaces);
+      const current = resolveInterface(filtered, selected);
 
-          return {
-            names: filtered.map((iface) => iface.name),
-            online: Boolean(current?.ipv4?.length),
-            selectedName: current?.name ?? "",
-          };
-        },
-        [selected],
-      ),
-    }),
+      return {
+        names: filtered.map((iface) => iface.name),
+        online: Boolean(current?.ipv4?.length),
+        selectedName: current?.name ?? "",
+      };
+    },
+    [selected],
   );
+
+  const { data: header } = useSuspenseQuery({
+    ...linuxio.network.get_interface_stats,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectHeader,
+  });
 
   return (
     <>
@@ -68,28 +69,26 @@ const NetworkHeader = ({
 };
 
 const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
-  const { data: details } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (interfaces: InterfaceStats[]) => {
-          const current = resolveInterface(
-            filterInterfaces(interfaces),
-            selected,
-          );
+  const selectDetails = useCallback(
+    (interfaces: InterfaceStats[]) => {
+      const current = resolveInterface(filterInterfaces(interfaces), selected);
 
-          return current
-            ? {
-                ipv4: current.ipv4?.length ? current.ipv4.join(", ") : "None",
-                mac: current.mac,
-                speed: current.speed,
-              }
-            : null;
-        },
-        [selected],
-      ),
-    }),
+      return current
+        ? {
+            ipv4: current.ipv4?.length ? current.ipv4.join(", ") : "None",
+            mac: current.mac,
+            speed: current.speed,
+          }
+        : null;
+    },
+    [selected],
   );
+
+  const { data: details } = useSuspenseQuery({
+    ...linuxio.network.get_interface_stats,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectDetails,
+  });
 
   if (!details) {
     return (
@@ -109,24 +108,26 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
 };
 
 const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
-  const { data: throughput } = useSuspenseQuery(
-    linuxio.system.get_network_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: useCallback(
-        (interfaces: InterfaceStats[]) => {
-          const current = resolveInterface(
-            filterInterfaces(interfaces),
-            selected,
-          );
+  const selectThroughput = useCallback(
+    (interfaces: InterfaceStats[]) => {
+      const current = resolveInterface(filterInterfaces(interfaces), selected);
 
-          return current
-            ? { name: current.name, rx: current.rx_speed, tx: current.tx_speed }
-            : null;
-        },
-        [selected],
-      ),
-    }),
+      return current
+        ? {
+            name: current.name,
+            rx: current.rx_speed / 1024,
+            tx: current.tx_speed / 1024,
+          }
+        : null;
+    },
+    [selected],
   );
+
+  const { data: throughput } = useSuspenseQuery({
+    ...linuxio.network.get_interface_stats,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectThroughput,
+  });
 
   if (!throughput) {
     return <AppTypography variant="body2">No graph data.</AppTypography>;

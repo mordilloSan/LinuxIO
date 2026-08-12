@@ -17,11 +17,9 @@ export const Route = createFileRoute("/_authenticated/services/timers")({
   loaderDeps: ({ search }) => ({ timer: search.timer }),
   loader: (loaderArgs) => {
     const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [
-      linuxio.systemd.list_timers.queryOptions(),
-    ];
+    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_timers];
     if (deps.timer) {
-      queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.timer));
+      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.timer }));
     }
     return loadRouteQueries(loaderArgs, queries);
   },

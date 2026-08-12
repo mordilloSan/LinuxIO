@@ -1,7 +1,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import { CACHE_TTL_MS, linuxio, type CIFSMount } from "@/api";
+import { CACHE_TTL_MS, linuxio, type CIFSMount, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -26,6 +26,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -81,22 +83,23 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
     serverToBrowse ? 500 : 0,
   );
 
-  const { mutate: mountCIFS, isPending: isMounting } =
-    linuxio.storage.mount_cifs.useAction({
+  const { mutate: mountCIFS, isPending: isMounting } = useCallMutation(
+    linuxio.storage.mount_cifs,
+    {
       success: `SMB share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount SMB share",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => handleClose() },
-    });
+    },
+  );
 
   // Browsing is best-effort; on error the field falls back to free text.
-  const sharesQuery = useQuery(
-    linuxio.storage.list_cifs_shares.queryOptions(browseServer, {
-      enabled: browseServer !== "",
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-    }),
-  );
+  const sharesQuery = useQuery({
+    ...linuxio.storage.list_cifs_shares({ server: browseServer }),
+    enabled: browseServer !== "",
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
   const shares = sharesQuery.data ?? [];
   const loadingShares = browseServer !== "" && sharesQuery.isLoading;
 
@@ -262,14 +265,16 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
 };
 
 const RemoveCIFSDialog = ({ open, onClose, mount }: RemoveCIFSDialogProps) => {
-  const { mutate: removeEntry, isPending: isRemoving } =
-    linuxio.storage.unmount_cifs.useAction({
+  const { mutate: removeEntry, isPending: isRemoving } = useCallMutation(
+    linuxio.storage.unmount_cifs,
+    {
       success: `Removed ${mount?.mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
 
   const handleRemove = () => {
     if (!mount) {
@@ -330,14 +335,16 @@ const EditCIFSForm = ({
     (mount.options ?? []).filter((o) => o !== "ro" && o !== "rw").join(","),
   );
 
-  const { mutate: remountCIFS, isPending: isSaving } =
-    linuxio.storage.remount_cifs.useAction({
+  const { mutate: remountCIFS, isPending: isSaving } = useCallMutation(
+    linuxio.storage.remount_cifs,
+    {
       success: "SMB mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    });
+    },
+  );
 
   const handleSave = () => {
     const opts: string[] = [readOnly ? "ro" : "rw"];
@@ -416,6 +423,9 @@ const EditCIFSForm = ({
   );
 };
 
+const getCIFSMountId = (mount: CIFSMount) => mount.mountpoint;
+type PendingMountAction = "mount" | "unmount";
+
 const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
   const { reason: cifsReason, status: cifsStatus } = useCapability(
@@ -427,32 +437,40 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<CIFSMount | null>(null);
+  const [pendingActionByMountpoint, setPendingActionByMountpoint] = useState<
+    ReadonlyMap<string, PendingMountAction>
+  >(() => new Map());
 
-  const { data: mounts } = useSuspenseQuery(
-    linuxio.storage.list_cifs_mounts.queryOptions({
-      refetchInterval: 10000,
-    }),
+  const { data: mounts } = useSuspenseQuery({
+    ...linuxio.storage.list_cifs_mounts,
+    refetchInterval: 10000,
+  });
+
+  const { mutateAsync: mountExisting } = useCallMutation(
+    linuxio.storage.mount_cifs,
+    {
+      success: "SMB entry mounted",
+      warning: (result) => result.warning,
+      error: "Failed to mount SMB entry",
+      toast: STORAGE_TOAST_META,
+    },
   );
 
-  const { mutate: mountExisting } = linuxio.storage.mount_cifs.useAction({
-    success: "SMB entry mounted",
-    warning: (result) => result.warning,
-    error: "Failed to mount SMB entry",
-    toast: STORAGE_TOAST_META,
-  });
-
-  const { mutate: unmountEntry } = linuxio.storage.unmount_cifs.useAction({
-    // The message needs `variables`, so the toast stays in a callback; the
-    // warning affordance still owns the warning case.
-    success: (result, variables) => {
-      if (!result.warning) {
-        toast.success(`Unmounted ${variables.mountpoint}`);
-      }
+  const { mutateAsync: unmountEntry } = useCallMutation(
+    linuxio.storage.unmount_cifs,
+    {
+      // The message needs `variables`, so the toast stays in a callback; the
+      // warning affordance still owns the warning case.
+      success: (result, variables) => {
+        if (!result.warning) {
+          toast.success(`Unmounted ${variables.mountpoint}`);
+        }
+      },
+      warning: (result) => result.warning,
+      error: "Failed to unmount",
+      toast: STORAGE_TOAST_META,
     },
-    warning: (result) => result.warning,
-    error: "Failed to unmount",
-    toast: STORAGE_TOAST_META,
-  });
+  );
 
   const handleCreate = useCallback(() => {
     if (cifsUnavailable) {
@@ -463,169 +481,314 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
   }, [cifsUnavailable, cifsReason, toast]);
   useRegisterCreateHandler(onMountCreateHandler, handleCreate);
 
+  const runMountAction = useCallback(
+    (
+      mountpoint: string,
+      action: PendingMountAction,
+      run: () => Promise<unknown>,
+    ) => {
+      if (pendingActionByMountpoint.has(mountpoint)) return;
+
+      setPendingActionByMountpoint((current) =>
+        new Map(current).set(mountpoint, action),
+      );
+      void run()
+        .catch(() => undefined)
+        .finally(() => {
+          setPendingActionByMountpoint((current) => {
+            if (current.get(mountpoint) !== action) return current;
+            const next = new Map(current);
+            next.delete(mountpoint);
+            return next;
+          });
+        });
+    },
+    [pendingActionByMountpoint],
+  );
+
   // Re-activate an inactive fstab entry — the backend mounts it from fstab
   // using the stored credentials, so no password is needed.
-  const handleMountExisting = (mount: CIFSMount) => {
-    if (cifsUnavailable) {
-      toast.error(cifsReason);
-      return;
-    }
-    mountExisting({
-      server: mount.server,
-      share: mount.share,
-      mountpoint: mount.mountpoint,
-      username: "",
-      password: "",
-      domain: "",
-      options: [],
-    });
-  };
+  const handleMountExisting = useCallback(
+    (mount: CIFSMount) => {
+      if (cifsUnavailable) {
+        toast.error(cifsReason);
+        return;
+      }
+      runMountAction(mount.mountpoint, "mount", () =>
+        mountExisting({
+          server: mount.server,
+          share: mount.share,
+          mountpoint: mount.mountpoint,
+          username: "",
+          password: "",
+          domain: "",
+          options: [],
+        }),
+      );
+    },
+    [cifsReason, cifsUnavailable, mountExisting, runMountAction, toast],
+  );
+
+  const handleUnmount = useCallback(
+    (mount: CIFSMount) => {
+      runMountAction(mount.mountpoint, "unmount", () =>
+        unmountEntry({
+          mountpoint: mount.mountpoint,
+          removeFstab: "false",
+        }),
+      );
+    },
+    [runMountAction, unmountEntry],
+  );
 
   const mountsList = Array.isArray(mounts) ? mounts : [];
+  const surface = useReorderableSurface({
+    getId: getCIFSMountId,
+    items: mountsList,
+    surface: "shares.mounts.cifs",
+  });
+  const tableDnd = useReorderableTableDnd<CIFSMount, CIFSMount>({
+    handleAriaLabel: "Reorder SMB mount",
+    surface,
+  });
 
-  const columns: AppDataTableColumnDef<CIFSMount>[] = [
-    {
-      accessorKey: "source",
-      header: "SMB Share",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.source}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "mountpoint",
-      header: "Mount Point",
-      cell: ({ row }) => (
-        <AppTypography style={{ fontFamily: "monospace" }} variant="body2">
-          {row.original.mountpoint}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "auth",
-      header: "Auth",
-      accessorFn: (mount) => getAuthLabel(mount),
-      cell: ({ row }) => (
-        <Chip label={getAuthLabel(row.original)} size="small" variant="soft" />
-      ),
-      meta: { align: "left", width: "140px" },
-    },
-    {
-      id: "status",
-      header: "Status",
-      accessorFn: (mount) => getStatusLabel(mount),
-      cell: ({ row }) => (
-        <Chip
-          label={getStatusLabel(row.original)}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: { align: "left", width: "120px" },
-    },
-    {
-      accessorKey: "usedPct",
-      header: "Usage",
-      cell: ({ row }) => {
-        const mount = row.original;
-        return mount.mounted ? (
-          <div style={{ width: "100%" }}>
-            <AppLinearProgress
-              color={
-                mount.usedPct > 90
-                  ? "error"
-                  : mount.usedPct > 70
-                    ? "warning"
-                    : "primary"
-              }
-              style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
-              value={mount.usedPct}
-              variant="determinate"
-            />
-            <AppTypography color="text.secondary" variant="caption">
-              {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-            </AppTypography>
-          </div>
-        ) : (
-          <AppTypography color="text.secondary" variant="caption">
-            Not mounted
-          </AppTypography>
-        );
-      },
-      meta: { align: "left", hideBelow: "sm", width: "200px" },
-    },
-    {
-      id: "actions",
-      header: "",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const mount = row.original;
-        return (
-          <div
-            style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}
-            onClick={(e) => e.stopPropagation()}
+  const columns = useMemo<AppDataTableColumnDef<CIFSMount>[]>(
+    () => [
+      {
+        accessorKey: "source",
+        header: "SMB Share",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{ fontFamily: "var(--app-font-mono)" }}
+            variant="body2"
           >
-            {!mount.mounted && (
-              <AppTooltip title={cifsUnavailable ? cifsReason : "Mount"}>
-                <span>
-                  <AppActionIconButton
-                    ariaLabel="Mount"
-                    disabled={cifsUnavailable}
-                    icon="mdi:play"
-                    onClick={() => handleMountExisting(mount)}
-                  />
-                </span>
-              </AppTooltip>
-            )}
-            {mount.mounted && (
-              <AppTooltip title="Unmount">
-                <span>
-                  <AppActionIconButton
-                    ariaLabel="Unmount"
-                    icon="mdi:eject"
-                    onClick={() =>
-                      unmountEntry({
-                        mountpoint: mount.mountpoint,
-                        removeFstab: "false",
-                      })
-                    }
-                  />
-                </span>
-              </AppTooltip>
-            )}
-            <AppTooltip title="Edit options">
-              <span>
-                <AppActionIconButton
-                  ariaLabel="Edit options"
-                  icon="mdi:pencil"
-                  onClick={() => {
-                    setSelectedMount(mount);
-                    setEditDialogOpen(true);
-                  }}
-                />
-              </span>
-            </AppTooltip>
-            <AppTooltip title="Remove">
-              <span>
-                <AppActionIconButton
-                  ariaLabel="Remove"
-                  icon="mdi:delete"
-                  onClick={() => {
-                    setSelectedMount(mount);
-                    setRemoveDialogOpen(true);
-                  }}
-                />
-              </span>
-            </AppTooltip>
-          </div>
-        );
+            {row.original.source}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, mount.source];
+          },
+        },
       },
-      meta: { align: "right", width: "180px" },
-    },
-  ];
+      {
+        accessorKey: "mountpoint",
+        header: "Mount Point",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{ fontFamily: "var(--app-font-mono)" }}
+            variant="body2"
+          >
+            {row.original.mountpoint}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => (row as CIFSMount).mountpoint,
+        },
+      },
+      {
+        id: "auth",
+        header: "Auth",
+        accessorFn: (mount) => getAuthLabel(mount),
+        cell: ({ row }) => (
+          <Chip
+            label={getAuthLabel(row.original)}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, getAuthLabel(mount)];
+          },
+          width: "140px",
+        },
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessorFn: (mount) => getStatusLabel(mount),
+        cell: ({ row }) => (
+          <Chip
+            label={getStatusLabel(row.original)}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [mount.mountpoint, getStatusLabel(mount)];
+          },
+          width: "120px",
+        },
+      },
+      {
+        accessorKey: "usedPct",
+        header: "Usage",
+        cell: ({ row }) => {
+          const mount = row.original;
+          return mount.mounted ? (
+            <div style={{ width: "100%" }}>
+              <AppLinearProgress
+                color={
+                  mount.usedPct > 90
+                    ? "error"
+                    : mount.usedPct > 70
+                      ? "warning"
+                      : "primary"
+                }
+                style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
+                value={mount.usedPct}
+                variant="determinate"
+              />
+              <AppTypography color="text.secondary" variant="caption">
+                {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+              </AppTypography>
+            </div>
+          ) : (
+            <AppTypography color="text.secondary" variant="caption">
+              Not mounted
+            </AppTypography>
+          );
+        },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              mount.usedPct,
+              mount.used,
+              mount.size,
+            ];
+          },
+          hideBelow: "sm",
+          width: "200px",
+        },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const mount = row.original;
+          const pendingAction = pendingActionByMountpoint.get(mount.mountpoint);
+          const isPending = Boolean(pendingAction);
+          return (
+            <div
+              aria-busy={isPending}
+              aria-label={`Actions for ${mount.mountpoint}`}
+              role="group"
+              style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {!mount.mounted && (
+                <AppTooltip
+                  title={
+                    cifsUnavailable
+                      ? cifsReason
+                      : pendingAction === "mount"
+                        ? "Mounting..."
+                        : "Mount"
+                  }
+                >
+                  <span>
+                    <AppActionIconButton
+                      ariaLabel={
+                        pendingAction === "mount"
+                          ? `Mounting ${mount.mountpoint}`
+                          : "Mount"
+                      }
+                      disabled={cifsUnavailable || isPending}
+                      icon="mdi:play"
+                      loading={isPending}
+                      onClick={() => handleMountExisting(mount)}
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              {mount.mounted && (
+                <AppTooltip
+                  title={
+                    pendingAction === "unmount" ? "Unmounting..." : "Unmount"
+                  }
+                >
+                  <span>
+                    <AppActionIconButton
+                      ariaLabel={
+                        pendingAction === "unmount"
+                          ? `Unmounting ${mount.mountpoint}`
+                          : "Unmount"
+                      }
+                      disabled={isPending}
+                      icon="mdi:eject"
+                      loading={isPending}
+                      onClick={() => handleUnmount(mount)}
+                    />
+                  </span>
+                </AppTooltip>
+              )}
+              <AppTooltip title="Edit options">
+                <span>
+                  <AppActionIconButton
+                    ariaLabel="Edit options"
+                    disabled={isPending}
+                    icon="mdi:pencil"
+                    onClick={() => {
+                      setSelectedMount(mount);
+                      setEditDialogOpen(true);
+                    }}
+                  />
+                </span>
+              </AppTooltip>
+              <AppTooltip title="Remove">
+                <span>
+                  <AppActionIconButton
+                    ariaLabel="Remove"
+                    disabled={isPending}
+                    icon="mdi:delete"
+                    onClick={() => {
+                      setSelectedMount(mount);
+                      setRemoveDialogOpen(true);
+                    }}
+                  />
+                </span>
+              </AppTooltip>
+            </div>
+          );
+        },
+        meta: {
+          align: "right",
+          getCellRenderKey: (row) => {
+            const mount = row as CIFSMount;
+            return [
+              mount.mountpoint,
+              mount.mounted,
+              cifsUnavailable,
+              cifsReason,
+              pendingActionByMountpoint.get(mount.mountpoint),
+            ];
+          },
+          width: "180px",
+        },
+      },
+    ],
+    [
+      cifsReason,
+      cifsUnavailable,
+      handleMountExisting,
+      handleUnmount,
+      pendingActionByMountpoint,
+    ],
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -636,7 +799,8 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
       <AppDataTable
         ariaLabel="SMB mounts"
         columns={columns}
-        data={mountsList}
+        data={surface.items}
+        dnd={tableDnd}
         emptyMessage="No SMB entries found. Click 'Mount SMB' to add one."
         getRowId={(mount) => mount.mountpoint}
         renderExpandedContent={({ original: mount }) => (

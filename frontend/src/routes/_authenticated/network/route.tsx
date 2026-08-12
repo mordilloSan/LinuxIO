@@ -14,9 +14,7 @@ export const Route = createFileRoute("/_authenticated/network")({
     ...optionalString(search, "tab"),
   }),
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [
-      linuxio.network.get_network_info.queryOptions(),
-    ]),
+    loadRouteQueries(loaderArgs, [linuxio.network.get_network_info]),
   component: NetworkInterfaceList,
   staticData: {
     navigation: {

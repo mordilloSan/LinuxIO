@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -26,6 +27,14 @@ const UPDATE_TIMEOUT_MS = 20 * 60 * 1000;
 const POLL_START_DELAY_MS = 2000;
 const POLL_INTERVAL_MS = 2000;
 const VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
+const UPDATE_STORAGE_KEY = "linuxio.active-app-update";
+const CANONICAL_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+interface StoredUpdate {
+  runId: string;
+  targetVersion: string | null;
+}
 
 const buildUpdateRunId = () => {
   if (
@@ -34,7 +43,44 @@ const buildUpdateRunId = () => {
   ) {
     return crypto.randomUUID();
   }
-  return `update-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  throw new Error("This browser cannot create a secure update operation ID");
+};
+
+const readStoredUpdate = (): StoredUpdate | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(UPDATE_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<StoredUpdate>;
+    if (
+      typeof value.runId !== "string" ||
+      !CANONICAL_UUID_RE.test(value.runId) ||
+      (value.targetVersion !== null && typeof value.targetVersion !== "string")
+    ) {
+      window.localStorage.removeItem(UPDATE_STORAGE_KEY);
+      return null;
+    }
+    return { runId: value.runId, targetVersion: value.targetVersion ?? null };
+  } catch {
+    window.localStorage.removeItem(UPDATE_STORAGE_KEY);
+    return null;
+  }
+};
+
+const writeStoredUpdate = (value: StoredUpdate) => {
+  try {
+    window.localStorage.setItem(UPDATE_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // The durable backend record remains authoritative if browser storage is unavailable.
+  }
+};
+
+const clearStoredUpdate = () => {
+  try {
+    window.localStorage.removeItem(UPDATE_STORAGE_KEY);
+  } catch {
+    // Nothing else is required; terminal state is already persisted by the backend.
+  }
 };
 
 interface UpdateStatusResponse {
@@ -64,18 +110,27 @@ export const UpdateProvider = ({ children }: { children: ReactNode }) => {
 };
 
 const useUpdateController = (): UpdateContextValue => {
-  const [phase, setPhase] = useState<UpdatePhase>("idle");
-  const [status, setStatus] = useState<string>("");
-  const [progress, setProgress] = useState(0);
+  const [storedUpdate] = useState(readStoredUpdate);
+  const [phase, setPhase] = useState<UpdatePhase>(
+    storedUpdate ? "verifying" : "idle",
+  );
+  const [status, setStatus] = useState<string>(
+    storedUpdate ? "Recovering update status..." : "",
+  );
+  const [progress, setProgress] = useState(storedUpdate ? 60 : 0);
   const [output, setOutput] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [targetVersion, setTargetVersion] = useState<string | null>(null);
+  const [targetVersion, setTargetVersion] = useState<string | null>(
+    storedUpdate?.targetVersion ?? null,
+  );
 
   const streamRef = useRef<Stream | null>(null);
   const unbindStreamHandlersRef = useRef<(() => void) | null>(null);
-  const updateStartedRef = useRef(false);
-  const updateRunIdRef = useRef<string | null>(null);
-  const targetVersionRef = useRef<string | null>(null);
+  const updateStartedRef = useRef(storedUpdate !== null);
+  const updateRunIdRef = useRef<string | null>(storedUpdate?.runId ?? null);
+  const targetVersionRef = useRef<string | null>(
+    storedUpdate?.targetVersion ?? null,
+  );
   const timersRef = useRef<Set<number>>(new Set());
 
   const isUpdating =
@@ -127,6 +182,7 @@ const useUpdateController = (): UpdateContextValue => {
     setOutput([]);
     setError(null);
     setTargetVersion(null);
+    clearStoredUpdate();
     // Re-enable API requests
     getStreamMux()?.setUpdating(false);
   };
@@ -139,6 +195,7 @@ const useUpdateController = (): UpdateContextValue => {
     }
     streamRef.current = null;
     updateRunIdRef.current = null;
+    clearStoredUpdate();
     setPhase("failed");
     setError(message);
     setStatus("Update failed");
@@ -250,6 +307,7 @@ const useUpdateController = (): UpdateContextValue => {
       if (updateStatus?.status === "ok" && (versionMatch || serverResponding)) {
         clearTimers();
         updateRunIdRef.current = null;
+        clearStoredUpdate();
         setPhase("done");
         setStatus("Update complete");
         setProgress(100);
@@ -319,7 +377,15 @@ const useUpdateController = (): UpdateContextValue => {
     if (phase !== "idle") return;
 
     const target = version ?? null;
-    const runId = buildUpdateRunId();
+    let runId: string;
+    try {
+      runId = buildUpdateRunId();
+    } catch (cause) {
+      failUpdate(
+        cause instanceof Error ? cause.message : "Failed to create update ID",
+      );
+      return;
+    }
     targetVersionRef.current = target;
     updateStartedRef.current = false;
     updateRunIdRef.current = runId;
@@ -340,6 +406,7 @@ const useUpdateController = (): UpdateContextValue => {
 
     // Disable all API requests during update
     mux.setUpdating(true);
+    writeStoredUpdate({ runId, targetVersion: target });
 
     const stream = openAppUpdateStream(runId, target ?? undefined);
     if (!stream) {
@@ -413,6 +480,16 @@ const useUpdateController = (): UpdateContextValue => {
       },
     });
   };
+
+  const resumeStoredUpdate = useEffectEvent(() => {
+    if (!storedUpdate || updateRunIdRef.current !== storedUpdate.runId) return;
+    getStreamMux()?.setUpdating(true);
+    beginVerification();
+  });
+
+  useEffect(() => {
+    resumeStoredUpdate();
+  }, []);
 
   // Unmount-only cleanup. Self-contained over refs (instead of calling
   // clearTimers/detachStreamHandlers) so the dependency array can stay empty:

@@ -1,6 +1,6 @@
+import type { HTMLAttributes } from "react";
 import {
   forwardRef,
-  HTMLAttributes,
   type CSSProperties,
   type ElementType,
   type Ref,
@@ -8,7 +8,7 @@ import {
 
 import "./app-grid.css";
 
-type GridSize =
+export type GridSize =
   | number
   | {
       xs?: number;

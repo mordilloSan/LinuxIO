@@ -19,7 +19,8 @@ interface ReviewedException {
 const nativeControlExceptions: ReviewedException[] = [
   {
     file: "components/cards/FileCard.tsx",
-    pattern: /<input\s+onBlur=\{handleRenameBlur\}/,
+    pattern:
+      /<input\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
@@ -37,7 +38,8 @@ const nativeControlExceptions: ReviewedException[] = [
   },
   {
     file: "components/filebrowser/FileListRow.tsx",
-    pattern: /<input\s+onBlur=\{handleRenameBlur\}/,
+    pattern:
+      /<input\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
@@ -58,6 +60,14 @@ const nativeControlExceptions: ReviewedException[] = [
     pattern: /<button\s+className="app-vdt__sort-button"/,
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",
+  },
+  {
+    file: "routes/_authenticated/docker/-components/ContainerTable.tsx",
+    pattern:
+      /<button\s+aria-expanded=\{expanded\}\s+className="container-table__stack-toggle"/,
+    reason: 'the ports/volumes "+N more" count line is itself the row expander',
+    protects:
+      "caption-sized inline text and chevron that must sit in the stack's line box, which no shared button offers",
   },
   {
     file: "routes/_authenticated/-components/navbar/ThemeColorsSection.tsx",

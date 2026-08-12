@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ComposeJobMessage, ComposeJobResult } from "@/api";
+import type {
+  ComposeTaskMessage,
+  ComposeTaskResult,
+  TaskProgress,
+} from "@/api";
 import { act, render, screen } from "@/test/render";
 
 import ComposeOperationDialog from "./ComposeOperationDialog";
 
-interface JobStreamConfig {
-  onProgress?: (message: ComposeJobMessage) => void;
-  success?: (message: ComposeJobResult) => void;
+interface TaskStreamConfig {
+  onProgress?: (message: TaskProgress<ComposeTaskMessage>) => void;
+  success?: (message: ComposeTaskResult) => void;
 }
 
 interface RecoveryConfig {
@@ -15,8 +19,8 @@ interface RecoveryConfig {
 }
 
 const mocks = vi.hoisted(() => ({
-  attach: vi.fn(),
-  jobConfig: null as JobStreamConfig | null,
+  watch: vi.fn(),
+  taskConfig: null as TaskStreamConfig | null,
   mutate: vi.fn(),
   recoveryConfig: null as RecoveryConfig | null,
   toastError: vi.fn(),
@@ -37,9 +41,9 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.docker,
         compose: {
           ...actual.linuxio.docker.compose,
-          useJobStreamAction: (config: JobStreamConfig) => {
-            mocks.jobConfig = config;
-            return { attach: mocks.attach, mutate: mocks.mutate };
+          useTaskStreamAction: (config: TaskStreamConfig) => {
+            mocks.taskConfig = config;
+            return { watch: mocks.watch, mutate: mocks.mutate };
           },
         },
       },
@@ -48,8 +52,8 @@ vi.mock("@/api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/backgroundJobs/useActiveJobRecovery", () => ({
-  useActiveJobRecovery: (config: RecoveryConfig) => {
+vi.mock("@/hooks/backgroundTasks/useActiveTaskRecovery", () => ({
+  useActiveTaskRecovery: (config: RecoveryConfig) => {
     mocks.recoveryConfig = config;
     return { isScanning: false, status: "missed" };
   },
@@ -64,8 +68,8 @@ vi.mock("@/hooks/useScopedToast", () => ({
 
 describe("ComposeOperationDialog", () => {
   beforeEach(() => {
-    mocks.attach.mockReset();
-    mocks.jobConfig = null;
+    mocks.watch.mockReset();
+    mocks.taskConfig = null;
     mocks.mutate.mockReset();
     mocks.recoveryConfig = null;
     mocks.toastError.mockReset();
@@ -94,12 +98,17 @@ describe("ComposeOperationDialog", () => {
       type: "complete",
     } as const;
 
-    act(() => mocks.jobConfig?.onProgress?.(terminal));
+    act(() =>
+      mocks.taskConfig?.onProgress?.({
+        message: terminal.message,
+        detail: terminal,
+      }),
+    );
     expect(
       screen.queryByText("✓ operation completed successfully"),
     ).not.toBeInTheDocument();
 
-    act(() => mocks.jobConfig?.success?.(terminal));
+    act(() => mocks.taskConfig?.success?.(terminal));
     expect(
       screen.getByText("✓ operation completed successfully"),
     ).toBeInTheDocument();

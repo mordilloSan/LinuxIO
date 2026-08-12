@@ -141,7 +141,7 @@ const AppTypography = forwardRef<HTMLElement, AppTypographyProps>(
 
     const merged: CSSProperties = {
       ...(resolvedColor && { color: resolvedColor }),
-      ...(fontWeight != null && { fontWeight: fontWeight as number }),
+      ...(fontWeight != null && { fontWeight: fontWeight }),
       ...(fontSize != null && { fontSize }),
       ...(align && { textAlign: align }),
       ...style,

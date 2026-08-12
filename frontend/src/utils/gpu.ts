@@ -74,7 +74,7 @@ export const getGpuVendorLabel = (gpu?: Partial<GpuDevice> | null): string => {
     return "AMD";
   }
 
-  const modelText = `${gpu.model ?? ""}`.toLowerCase();
+  const modelText = (gpu.model ?? "").toLowerCase();
   if (
     matchesAny(modelText, [
       "intel",

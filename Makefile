@@ -162,6 +162,9 @@ MODERNIZE             := $(GO_TOOLS_DIR)/bin/modernize
 DEADCODE_MODULE       := golang.org/x/tools/cmd/deadcode
 DEADCODE_VERSION      ?= latest
 DEADCODE              := $(GO_TOOLS_DIR)/bin/deadcode
+GOVULNCHECK_MODULE    := golang.org/x/vuln/cmd/govulncheck
+GOVULNCHECK_VERSION   ?= latest
+GOVULNCHECK           := $(GO_TOOLS_DIR)/bin/govulncheck
 GO_BUILD_PREREQ := ensure-go
 ifeq ($(SKIP_ENSURE_GO),1)
 GO_BUILD_PREREQ :=
@@ -338,9 +341,15 @@ ensure-golint: ensure-go
 
 ensure-deadcode: ensure-go
 	@{ set -euo pipefail; \
-	   bin="$(DEADCODE)"; \
-	   if [ ! -x "$$bin" ]; then \
+	   bin="$(DEADCODE)"; need=1; \
+	   if [ -x "$$bin" ]; then \
+	     build_info="$$( $(GO_CMD_ENV) "$(GO_BIN)" version -m "$$bin" 2>/dev/null || true )"; \
+	     tool_go_version="$$(printf '%s\n' "$$build_info" | sed -n '1s/.*: go\([^ ]*\).*/\1/p')"; \
+	     if [ "$$tool_go_version" = "$(GO_VERSION)" ] && "$$bin" -h >/dev/null 2>&1; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing deadcode $(DEADCODE_VERSION) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
 	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(DEADCODE_MODULE)@$(DEADCODE_VERSION)"; \
 	   fi; \
@@ -350,14 +359,38 @@ ensure-deadcode: ensure-go
 
 ensure-modernize: ensure-go
 	@{ set -euo pipefail; \
-	   bin="$(MODERNIZE)"; \
-	   if [ ! -x "$$bin" ]; then \
+	   bin="$(MODERNIZE)"; need=1; \
+	   if [ -x "$$bin" ]; then \
+	     build_info="$$( $(GO_CMD_ENV) "$(GO_BIN)" version -m "$$bin" 2>/dev/null || true )"; \
+	     tool_go_version="$$(printf '%s\n' "$$build_info" | sed -n '1s/.*: go\([^ ]*\).*/\1/p')"; \
+	     if [ "$$tool_go_version" = "$(GO_VERSION)" ] && "$$bin" -h >/dev/null 2>&1; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing modernize $(MODERNIZE_VERSION) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
 	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)"; \
 	   fi; \
 	   "$$bin" -h >/dev/null 2>&1 || { echo "❌ modernize is installed but not runnable"; exit 1; }; \
 	   echo "✅ modernize ready."; \
+	}
+
+ensure-govulncheck: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(GOVULNCHECK)"; need=1; \
+	   if [ -x "$$bin" ]; then \
+	     build_info="$$( $(GO_CMD_ENV) "$(GO_BIN)" version -m "$$bin" 2>/dev/null || true )"; \
+	     tool_go_version="$$(printf '%s\n' "$$build_info" | sed -n '1s/.*: go\([^ ]*\).*/\1/p')"; \
+	     if [ "$$tool_go_version" = "$(GO_VERSION)" ] && "$$bin" -h >/dev/null 2>&1; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
+	     echo "📥 Installing govulncheck $(GOVULNCHECK_VERSION) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
+	     $(GO_CMD_ENV) GOBIN="$(GO_TOOLS_DIR)/bin" GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(GOVULNCHECK_MODULE)@$(GOVULNCHECK_VERSION)"; \
+	   fi; \
+	   "$$bin" -h >/dev/null 2>&1 || { echo "❌ govulncheck is installed but not runnable"; exit 1; }; \
+	   echo "✅ govulncheck ready."; \
 	}
 
 setup:
@@ -411,10 +444,10 @@ lint: ensure-node setup
 tsc: ensure-node setup
 	@$(MAKE) --no-print-directory tsc-only
 
-golint: ensure-golint ensure-modernize
+golint: ensure-golint ensure-modernize ensure-govulncheck
 	@$(MAKE) --no-print-directory golint-only
 
-test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup dev-prep
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
@@ -422,23 +455,23 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode setup
 	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/golint"; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/golint"; \
 	$(MAKE) --no-print-directory lint-only   > "$$TMPDIR_JOBS/lint"   2>&1 & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only    > "$$TMPDIR_JOBS/tsc"    2>&1 & PID_TSC=$$!; \
 	$(MAKE) --no-print-directory golint-only > "$$TMPDIR_JOBS/golint" 2>&1 & PID_GOLINT=$$!; \
-	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
-	follow "$$TMPDIR_JOBS/tsc"    $$PID_TSC    || ST=1; \
+	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	$(PRINTC) ""; \
-	touch "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	touch "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	$(MAKE) --no-print-directory tsc-only                        > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
 	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
+	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
+	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/fe"   $$PID_FE   || ST=1; \
-	$(PRINTC) ""; \
-	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
@@ -459,13 +492,14 @@ check-frontend: ensure-node setup
 	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/tsc"; \
-	$(MAKE) --no-print-directory lint-only > "$$TMPDIR_JOBS/lint" 2>&1 & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory tsc-only  > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
-	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
-	follow "$$TMPDIR_JOBS/lint" $$PID_LINT || ST=1; \
+	$(MAKE) --no-print-directory lint-only || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory test-frontend-only || ST=1; \
+	touch "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/fe"; \
+	$(MAKE) --no-print-directory tsc-only           > "$$TMPDIR_JOBS/tsc" 2>&1 & PID_TSC=$$!; \
+	$(MAKE) --no-print-directory test-frontend-only > "$$TMPDIR_JOBS/fe"  2>&1 & PID_FE=$$!; \
+	follow "$$TMPDIR_JOBS/tsc" $$PID_TSC || ST=1; \
+	$(PRINTC) ""; \
+	follow "$$TMPDIR_JOBS/fe"  $$PID_FE  || ST=1; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  Frontend checks completed with $$FRONTEND_LINT_WARNINGS lint warning(s).$(COLOR_RESET)"; \
@@ -477,7 +511,7 @@ check-frontend: ensure-node setup
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ Frontend checks passed!$(COLOR_RESET)"
 
-check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
+check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode
 	@set -uo pipefail; \
 	ST=0; \
 	$(MAKE) --no-print-directory golint-only || ST=1; \
@@ -488,9 +522,9 @@ check-backend: ensure-go ensure-golint ensure-modernize ensure-deadcode
 	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
 	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
-	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
-	$(PRINTC) ""; \
 	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	$(PRINTC) ""; \
+	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -508,7 +542,7 @@ setup-frontend-browser: ensure-node setup
 test-frontend-browser: ensure-node setup
 	@set -e
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
-	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts'
+	@bash -c 'cd frontend && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native'
 	@echo "🌐 Running frontend browser tests..."
 	@bash -c 'cd frontend && ./node_modules/.bin/playwright test --config config/playwright.config.ts'
 	@echo "✅ Frontend browser tests passed!"
@@ -630,7 +664,7 @@ lint-only:
 	  cd frontend; \
 	  lint_output="$$(mktemp)"; \
 	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config/browser.vite.config.ts config/playwright.config.ts scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
+	  	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
 	  status=$${PIPESTATUS[0]}; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print count ? count : fallback }'\'' "$$lint_output")"; \
 	  if [ -n "$$warning_count" ]; then \
@@ -638,7 +672,7 @@ lint-only:
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
 	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
-	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/browser.vite.config.ts" "config/oxlint.config.mts" "config/playwright.config.ts" "scripts/run-browser-fixture.mjs"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/**/*.ts" "scripts/run-browser-fixture.mjs"; \
 	  status=$$?; \
 	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
 	'
@@ -664,6 +698,13 @@ endif
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(MODERNIZE)" -fix ./... )
+	@echo "   Running govulncheck..."
+	@cd "$(BACKEND_DIR)" && \
+		if ! vuln_out="$$( $(GO_CMD_ENV) "$(GOVULNCHECK)" ./... 2>&1 )"; then \
+			$(PRINTC) "$(COLOR_RED)❌ govulncheck found vulnerabilities reachable from this code:$(COLOR_RESET)"; \
+			printf '%s\n' "$$vuln_out"; \
+			exit 1; \
+		fi
 	@echo "   Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
@@ -785,22 +826,18 @@ analyze: ensure-node setup
 	@echo "🔬 Building frontend bundle analysis..."
 	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
-# Debug-only binaries for goroutine leak hunting. Compiled with
-# GOEXPERIMENT=goroutineleakprofile and the pprofdebug build tag, which serves
+# Debug-only binaries for goroutine leak hunting. Serves
 # net/http/pprof on localhost only (webserver :6060, bridge :6061). The leak
 # report lives at /debug/pprof/goroutineleak. The endpoint has no auth (it is
-# loopback-bound) and the GOEXPERIMENT is not production-stable — never ship
-# these binaries; rebuild with `make build` afterwards.
+# loopback-bound). Rebuild with `make build` afterwards.
 build-leak-profile:
 	@echo ""
 	@echo "🕵️  Building DEBUG binaries with pprof + goroutine leak profile..."
 	@$(MAKE) --no-print-directory build-bridge \
-		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
 		GO_BUILD_TAGS="pprofdebug"
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Bridge hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1 \
-		GO_BUILD_EXTRA_ENV="GOEXPERIMENT=goroutineleakprofile" \
 		GO_BUILD_TAGS="pprofdebug"
 	@echo ""
 	@echo "   Webserver pprof: http://127.0.0.1:6060/debug/pprof/  (leaks: /debug/pprof/goroutineleak)"
@@ -1006,7 +1043,7 @@ dev: setup dev-prep
 	  echo "  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
 	  rm -f "$(VITE_DEV_PID)"; \
-	  nohup bash -c 'cd frontend && exec npx vite --config config/vite.config.ts --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  nohup bash -c 'cd frontend && exec ./node_modules/.bin/vite --config config/vite.config.ts --configLoader native --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
 	  echo $$! > "$(VITE_DEV_PID)"; \
 	  STARTED_VITE=1; \
 	fi
@@ -1080,13 +1117,14 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-deadcode  $(COLOR_RESET) Install deadcode (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-govulncheck $(COLOR_RESET) Install govulncheck (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies (keeps oxc-transform at 0.136.0)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + golangci-lint (backend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + modernize + govulncheck + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
@@ -1138,6 +1176,6 @@ cloc:
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli check-c-build-deps check-watchtower-update-for-pr \
   dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
-  ensure-node ensure-go ensure-golint ensure-modernize ensure-deadcode \
+  ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc

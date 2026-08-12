@@ -1,18 +1,3 @@
-import {
-  closestCenter,
-  DndContext,
-  DragEndEvent,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  rectSortingStrategy,
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "motion/react";
@@ -26,14 +11,14 @@ import {
   useState,
 } from "react";
 
-import { linuxio, openDockerLogsStream } from "@/api";
+import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
-import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
-import AppGrid from "@/components/ui/AppGrid";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useConfigValue } from "@/hooks/useConfig";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_EMPHASIZED,
@@ -44,6 +29,30 @@ import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
 import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
 
+// Card mode only needs identity/display fields in this parent.  Keeping the
+// volatile metrics out of the selected result means a metrics-only poll can
+// update the per-card observers without rebuilding the grid shells.
+const selectContainerSearchStatus = (container: ContainerInfo): string => {
+  const status = container.Status.toLowerCase();
+  if (status.includes("unhealthy")) return "unhealthy";
+  if (status.includes("healthy")) return "healthy";
+  return container.State;
+};
+
+const selectCardContainers = (
+  containers: readonly ContainerInfo[],
+): ContainerInfo[] =>
+  containers.map((container) => ({
+    Created: container.Created,
+    Id: container.Id,
+    Image: container.Image,
+    Names: container.Names,
+    State: container.State,
+    Status: selectContainerSearchStatus(container),
+  }));
+
+const selectAllContainers = (containers: ContainerInfo[]) => containers;
+
 interface ContainerListProps {
   checkingUpdates?: boolean;
   /**
@@ -51,18 +60,17 @@ interface ContainerListProps {
    * both surfaces write through one save queue.
    */
   containerAutoUpdate: ContainerAutoUpdateController;
-  editMode: boolean;
   stoppingContainerIds?: ReadonlySet<string>;
   viewMode?: "card" | "table";
 }
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 const dockerRouteApi = getRouteApi("/_authenticated/docker/containers");
+const getContainerId = (container: { Id: string }) => container.Id;
 
 const ContainerList = ({
   checkingUpdates = false,
   containerAutoUpdate,
-  editMode,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
@@ -71,19 +79,24 @@ const ContainerList = ({
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
-  const { data: rawContainers } = useSuspenseQuery(
-    linuxio.docker.list_containers.queryOptions({
-      refetchInterval: 5000,
-    }),
-  );
-  const containers = rawContainers;
   const selectedContainerId =
     typeof searchParams.container === "string"
       ? searchParams.container
       : undefined;
+  // The selected layout and table need the complete row. The collapsed card
+  // grid needs only stable identity/display fields; each card reads its live
+  // values from the same cache below the query-free shell.
+  const selectContainers =
+    viewMode === "card" && !selectedContainerId
+      ? selectCardContainers
+      : selectAllContainers;
+  const { data: rawContainers } = useSuspenseQuery({
+    ...linuxio.docker.list_containers,
+    select: selectContainers,
+    refetchInterval: 5000,
+  });
+  const containers = rawContainers;
   const [search, setSearch] = useState("");
-
-  const [containerOrder, setContainerOrder] = useConfigValue("containerOrder");
 
   const isAutoUpdateSelected = useCallback(
     (container: (typeof containers)[number]) =>
@@ -95,7 +108,7 @@ const ContainerList = ({
 
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
-      navigate({
+      void navigate({
         to: "/docker/containers",
         search: (previous) => ({
           ...previous,
@@ -106,41 +119,21 @@ const ContainerList = ({
     [navigate],
   );
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 2000, tolerance: 5 },
-    }),
-  );
+  const surface = useReorderableSurface({
+    getId: getContainerId,
+    items: containers,
+    surface: "docker.containers",
+  });
+  const { editMode, items: orderedContainers } = surface;
+  const tableDnd = useReorderableTableDnd<
+    ContainerInfo,
+    (typeof containers)[number]
+  >({
+    handleAriaLabel: "Reorder container",
+    handleColumnWidth: 28,
+    surface,
+  });
 
-  // Merge saved order with live containers:
-  // - containers removed from Docker are dropped automatically
-  // - new containers (not yet in the saved order) are appended at the end
-  const orderedContainers = useMemo(() => {
-    if (!containerOrder?.length) return containers;
-
-    const containerMap = new Map(containers.map((c) => [c.Id, c]));
-    const ordered: typeof containers = [];
-
-    for (const id of containerOrder) {
-      const c = containerMap.get(id);
-      if (c) {
-        ordered.push(c);
-        containerMap.delete(id);
-      }
-    }
-
-    for (const c of containerMap.values()) {
-      ordered.push(c);
-    }
-
-    return ordered;
-  }, [containers, containerOrder]);
-
-  const containerIds = useMemo(
-    () => orderedContainers.map((c) => c.Id),
-    [orderedContainers],
-  );
   const filteredContainers = useMemo(() => {
     const searchText = search.trim().toLowerCase();
     if (!searchText) return orderedContainers;
@@ -162,18 +155,6 @@ const ContainerList = ({
         (container) => container.Id === selectedContainerId,
       ) ?? null,
     [orderedContainers, selectedContainerId],
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-
-      const oldIndex = containerIds.indexOf(active.id as string);
-      const newIndex = containerIds.indexOf(over.id as string);
-      setContainerOrder(arrayMove(containerIds, oldIndex, newIndex));
-    },
-    [containerIds, setContainerOrder],
   );
 
   const clearSelectedContainer = useEffectEvent(() => {
@@ -203,116 +184,18 @@ const ContainerList = ({
     );
   };
 
-  if (viewMode === "table") {
-    const table = (
-      <ContainerTable
-        autoUpdateDisabled={containerAutoUpdate.disabled}
-        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
-        autoUpdateReason={containerAutoUpdate.reason}
-        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
-        checkingUpdates={checkingUpdates}
-        containers={orderedContainers}
-        editMode={editMode}
-        stoppingContainerIds={stoppingContainerIds}
-        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-      />
-    );
-
+  // Selecting a container replaces whichever list you came from with the same
+  // detail layout, so the table gets the card view's detail for free.
+  if (selectedContainer) {
     return (
       <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        {editMode ? (
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            sensors={sensors}
-          >
-            <SortableContext
-              items={containerIds}
-              strategy={verticalListSortingStrategy}
-            >
-              {table}
-            </SortableContext>
-          </DndContext>
-        ) : (
-          table
-        )}
-      </Suspense>
-    );
-  }
-
-  if (editMode) {
-    return (
-      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        <div>
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            sensors={sensors}
-          >
-            <SortableContext
-              items={containerIds}
-              strategy={rectSortingStrategy}
-            >
-              <AppGrid container spacing={2}>
-                {orderedContainers.map((container) => (
-                  <AppGrid
-                    key={container.Id}
-                    size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
-                  >
-                    <SortableCard editMode id={container.Id}>
-                      <ContainerCard
-                        actionPending={stoppingContainerIds.has(container.Id)}
-                        autoUpdateDisabled={containerAutoUpdate.disabled}
-                        autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                          container.Names?.[0]?.replace("/", "") ?? "",
-                        )}
-                        autoUpdateReason={containerAutoUpdate.reason}
-                        autoUpdateSelected={isAutoUpdateSelected(container)}
-                        container={container}
-                        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-                      />
-                    </SortableCard>
-                  </AppGrid>
-                ))}
-              </AppGrid>
-            </SortableContext>
-          </DndContext>
-        </div>
-      </Suspense>
-    );
-  }
-
-  return (
-    <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-      {!selectedContainer && (
-        <div
-          style={{
-            marginBottom: theme.spacing(2),
-            display: "flex",
-            alignItems: "center",
-            gap: theme.spacing(2),
+        <motion.div
+          layout="position"
+          transition={{
+            duration: detailTransitionDurationSeconds,
+            ease: EASING_EMPHASIZED,
           }}
         >
-          <AppSearchField
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search containers…"
-            style={{ width: 320 }}
-            value={search}
-          />
-          <AppTypography fontWeight={700}>
-            {filteredContainers.length} shown
-          </AppTypography>
-        </div>
-      )}
-
-      <motion.div
-        layout="position"
-        transition={{
-          duration: detailTransitionDurationSeconds,
-          ease: EASING_EMPHASIZED,
-        }}
-      >
-        {selectedContainer ? (
           <div
             style={{
               display: "flex",
@@ -358,7 +241,7 @@ const ContainerList = ({
                   )}
                   autoUpdateReason={containerAutoUpdate.reason}
                   autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
-                  container={selectedContainer}
+                  containerId={selectedContainer.Id}
                   onSelect={() => handleSelectContainer(selectedContainer.Id)}
                   onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                   selected
@@ -424,45 +307,105 @@ const ContainerList = ({
               <UnitLogsCard
                 key={selectedContainer.Id}
                 createStream={(tail) =>
-                  openDockerLogsStream(selectedContainer.Id, tail)
+                  openChannel("docker.logs.follow", {
+                    containerId: selectedContainer.Id,
+                    tail,
+                  })
                 }
                 title="Container Logs"
               />
             </motion.div>
           </div>
-        ) : (
-          <div>
-            {filteredContainers.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 0" }}>
-                <AppTypography color="text.secondary" variant="body2">
-                  No containers found.
-                </AppTypography>
-              </div>
-            ) : (
-              <AppGrid container spacing={2}>
-                {filteredContainers.map((container) => (
-                  <AppGrid
-                    key={container.Id}
-                    size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
-                  >
-                    <ContainerCard
-                      actionPending={stoppingContainerIds.has(container.Id)}
-                      autoUpdateDisabled={containerAutoUpdate.disabled}
-                      autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                        container.Names?.[0]?.replace("/", "") ?? "",
-                      )}
-                      autoUpdateReason={containerAutoUpdate.reason}
-                      autoUpdateSelected={isAutoUpdateSelected(container)}
-                      container={container}
-                      onSelect={() => handleSelectContainer(container.Id)}
-                      onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
-                    />
-                  </AppGrid>
-                ))}
-              </AppGrid>
-            )}
-          </div>
-        )}
+        </motion.div>
+      </Suspense>
+    );
+  }
+
+  if (viewMode === "table") {
+    const table = (
+      <ContainerTable
+        autoUpdateDisabled={containerAutoUpdate.disabled}
+        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
+        autoUpdateReason={containerAutoUpdate.reason}
+        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
+        checkingUpdates={checkingUpdates}
+        containers={orderedContainers}
+        dnd={tableDnd}
+        onSelectContainer={updateSelectedContainer}
+        stoppingContainerIds={stoppingContainerIds}
+        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+      />
+    );
+
+    return (
+      <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+        {table}
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
+      <div
+        style={{
+          marginBottom: theme.spacing(2),
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+        }}
+      >
+        <AppSearchField
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search containers…"
+          style={{ width: 320 }}
+          value={search}
+        />
+        <AppTypography fontWeight={700}>
+          {filteredContainers.length} shown
+        </AppTypography>
+      </div>
+
+      <motion.div
+        layout="position"
+        transition={{
+          duration: detailTransitionDurationSeconds,
+          ease: EASING_EMPHASIZED,
+        }}
+      >
+        <div>
+          {filteredContainers.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <AppTypography color="text.secondary" variant="body2">
+                No containers found.
+              </AppTypography>
+            </div>
+          ) : (
+            <ReorderableCardGrid
+              getId={getContainerId}
+              items={filteredContainers}
+              renderItem={(container) => (
+                <ContainerCard
+                  actionPending={stoppingContainerIds.has(container.Id)}
+                  autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdatePending={containerAutoUpdate.pendingNames.has(
+                    container.Names?.[0]?.replace("/", "") ?? "",
+                  )}
+                  autoUpdateReason={containerAutoUpdate.reason}
+                  autoUpdateSelected={isAutoUpdateSelected(container)}
+                  containerId={container.Id}
+                  onSelect={
+                    editMode
+                      ? undefined
+                      : () => handleSelectContainer(container.Id)
+                  }
+                  onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
+                />
+              )}
+              size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+              surface={surface}
+            />
+          )}
+        </div>
       </motion.div>
     </Suspense>
   );

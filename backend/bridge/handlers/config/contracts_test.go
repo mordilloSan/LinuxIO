@@ -17,9 +17,11 @@ func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
 			PrimaryColor:     bridgeconfig.CSSColor("#abcdef"),
 			SidebarCollapsed: true,
 			ShowHiddenFiles:  true,
-			DashboardOrder:   []string{"system", "docker"},
 			HiddenCards:      []string{"updates"},
-			ContainerOrder:   []string{"alpha", "beta"},
+			LayoutOrders: map[string][]string{
+				"dashboard":         {"system", "docker"},
+				"docker.containers": {"alpha", "beta"},
+			},
 			DockerDashboardSections: &bridgeconfig.DockerDashboardSections{
 				Overview: true, Daemon: false, Resources: true,
 			},

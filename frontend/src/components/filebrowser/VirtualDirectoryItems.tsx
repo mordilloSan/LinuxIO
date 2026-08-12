@@ -9,12 +9,14 @@ import {
   type RefObject,
 } from "react";
 
-import FileCard from "@/components/cards/FileCard";
-import FileListRow from "@/components/filebrowser/FileListRow";
+import type { SubfolderData } from "@/api";
 import SelectionBox from "@/components/filebrowser/SelectionBox";
-import { SubfolderData } from "@/hooks/filebrowser/useFileSubfolders";
+import {
+  DirectoryItem,
+  SectionHeader,
+} from "@/components/filebrowser/VirtualDirectoryRows";
 import { useAppTheme } from "@/theme";
-import { FileItem, ViewMode } from "@/types/filebrowser";
+import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
 
 const CARD_MIN_WIDTH = 260;
@@ -70,30 +72,11 @@ interface VirtualDirectoryItemsProps {
   onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
+  renamePendingPath?: string | null;
   /** Item index to scroll into view, or -1 to leave the viewport alone. */
   revealIndex: number;
   selectedPaths: Set<string>;
   selectionBox: SelectionBoxState | null;
-  subfoldersMap: Map<string, SubfolderData>;
-  viewMode: ViewMode;
-}
-
-interface DirectoryItemProps {
-  cutPaths: Set<string>;
-  disableHover: boolean;
-  isLoadingSubfolders: boolean;
-  item: FileItem;
-  itemKind: "file" | "folder";
-  onCancelRename: () => void;
-  onConfirmRename: (path: string, newName: string) => void;
-  onDownloadFile: (item: FileItem) => void;
-  onFileClick: (event: MouseEvent, path: string) => void;
-  onFileContextMenu: (event: MouseEvent, path: string) => void;
-  onFolderClick: (event: MouseEvent, path: string) => void;
-  onFolderContextMenu: (event: MouseEvent, path: string) => void;
-  onOpenDirectory: (path: string) => void;
-  renamingPath: string | null;
-  selectedPaths: Set<string>;
   subfoldersMap: Map<string, SubfolderData>;
   viewMode: ViewMode;
 }
@@ -149,122 +132,10 @@ function buildRows({
   return rows;
 }
 
-const SectionHeader = memo<{ label: string; viewMode: ViewMode }>(
-  ({ label, viewMode }) => (
-    <h6
-      style={{
-        color: "inherit",
-        fontSize: "15px",
-        fontWeight: 600,
-        margin: viewMode === "list" ? "4px 0" : "4px 0",
-        paddingLeft: "4px",
-        paddingRight: "4px",
-      }}
-    >
-      {label}
-    </h6>
-  ),
-);
-
-SectionHeader.displayName = "VirtualDirectorySectionHeader";
-
-const DirectoryItem = memo<DirectoryItemProps>(
-  ({
-    item,
-    itemKind,
-    selectedPaths,
-    cutPaths,
-    viewMode,
-    onFileClick,
-    onDownloadFile,
-    onFileContextMenu,
-    onFolderClick,
-    onOpenDirectory,
-    onFolderContextMenu,
-    renamingPath,
-    onConfirmRename,
-    onCancelRename,
-    disableHover,
-    subfoldersMap,
-    isLoadingSubfolders,
-  }) => {
-    const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
-
-    if (itemKind === "file") {
-      return (
-        <ItemComponent
-          disableHover={disableHover}
-          hidden={item.hidden}
-          isCut={cutPaths.has(item.path)}
-          isDirectory={false}
-          isRenaming={renamingPath === item.path}
-          isSymlink={item.symlink}
-          modTime={item.modTime}
-          name={item.name}
-          onCancelRename={onCancelRename}
-          onClick={(event) => onFileClick(event, item.path)}
-          onConfirmRename={(newName) => onConfirmRename(item.path, newName)}
-          onContextMenu={(event) => onFileContextMenu(event, item.path)}
-          onDoubleClick={() => onDownloadFile(item)}
-          path={item.path}
-          selected={selectedPaths.has(item.path)}
-          showFullPath={item.showFullPath}
-          size={item.size}
-          type={item.type}
-        />
-      );
-    }
-
-    const isSearchResult = item.showFullPath === true;
-    const normalizedPath = stripTrailingSlash(item.path);
-    const subfolderData = item.symlink
-      ? null
-      : subfoldersMap.get(normalizedPath);
-    const size = isSearchResult
-      ? typeof item.size === "number"
-        ? item.size
-        : null
-      : subfolderData
-        ? subfolderData.size
-        : null;
-    const shouldShowSize = !item.symlink;
-    const sizeIsLoading = shouldShowSize && isLoadingSubfolders;
-    const sizeIsUnavailable =
-      shouldShowSize && !isLoadingSubfolders && size === null;
-
-    return (
-      <ItemComponent
-        directorySizeError={null}
-        directorySizeLoading={sizeIsLoading}
-        directorySizeUnavailable={sizeIsUnavailable}
-        disableHover={disableHover}
-        hidden={item.hidden}
-        isCut={cutPaths.has(item.path)}
-        isDirectory={true}
-        isRenaming={renamingPath === item.path}
-        isSymlink={item.symlink}
-        modTime={item.modTime}
-        name={item.name}
-        onCancelRename={onCancelRename}
-        onClick={(event) => onFolderClick(event, item.path)}
-        onConfirmRename={(newName) => onConfirmRename(item.path, newName)}
-        onContextMenu={(event) => onFolderContextMenu(event, item.path)}
-        onDoubleClick={() => onOpenDirectory(item.path)}
-        path={item.path}
-        selected={selectedPaths.has(item.path)}
-        showFullPath={item.showFullPath}
-        size={item.symlink ? undefined : size === null ? undefined : size}
-        type={item.type}
-      />
-    );
-  },
-);
-
-DirectoryItem.displayName = "VirtualDirectoryItem";
-
-// React Compiler skips this component: TanStack Virtual's API returns
-// unstable functions it cannot memoize. Manual memoization stays load-bearing.
-// oxlint-disable-next-line react/react-compiler
+// React Compiler skips this whole module: TanStack Virtual's `useVirtualizer()`
+// returns unstable functions it refuses to memoize, and the bail is file-wide.
+// Manual memoization here stays load-bearing, and anything memo-worthy belongs
+// in VirtualDirectoryRows.tsx rather than in this file.
 const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
@@ -283,6 +154,7 @@ const VirtualDirectoryItems = ({
   onMarqueeMouseDown,
   onOpenDirectory,
   renamingPath,
+  renamePendingPath,
   revealIndex,
   selectedPaths,
   selectionBox,
@@ -425,9 +297,11 @@ const VirtualDirectoryItems = ({
                 >
                   {row.items.map(({ item }) => (
                     <DirectoryItem
-                      cutPaths={cutPaths}
                       disableHover={isMarqueeSelecting}
+                      isCut={cutPaths.has(item.path)}
                       isLoadingSubfolders={isLoadingSubfolders}
+                      isRenaming={renamingPath === item.path}
+                      isRenamePending={renamePendingPath === item.path}
                       item={item}
                       itemKind={row.itemKind}
                       key={`${item.path}-${item.name}`}
@@ -439,9 +313,12 @@ const VirtualDirectoryItems = ({
                       onFolderClick={onFolderClick}
                       onFolderContextMenu={onFolderContextMenu}
                       onOpenDirectory={onOpenDirectory}
-                      renamingPath={renamingPath}
-                      selectedPaths={selectedPaths}
-                      subfoldersMap={subfoldersMap}
+                      selected={selectedPaths.has(item.path)}
+                      subfolderData={
+                        row.itemKind === "folder" && !item.symlink
+                          ? subfoldersMap.get(stripTrailingSlash(item.path))
+                          : undefined
+                      }
                       viewMode={viewMode}
                     />
                   ))}

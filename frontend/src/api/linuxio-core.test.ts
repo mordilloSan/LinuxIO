@@ -50,7 +50,7 @@ function createStream(overrides: Partial<Stream> = {}): Stream {
   };
 }
 
-function createMux(stream = createStream()) {
+function createMux(stream: Stream | null = createStream()) {
   const openStream = vi.fn((type: string, initialPayload?: Uint8Array) => {
     void type;
     void initialPayload;
@@ -114,6 +114,19 @@ describe("linuxio-core request", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("classifies a failed initial SYN as connection_unavailable", async () => {
+    const mux = createMux(null);
+    muxMocks.getStreamMux.mockReturnValue(mux);
+
+    await expect(request("system", "get_info")).rejects.toMatchObject({
+      code: "connection_unavailable",
+      message: "Connection unavailable before request was sent",
+    });
+
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
+    expect(streamHelperMocks.waitForStreamResult).not.toHaveBeenCalled();
   });
 
   it("initializes an absent mux and waits for it to open for loader readiness", async () => {
@@ -181,8 +194,8 @@ describe("linuxio-core request", () => {
     muxMocks.getStreamMux.mockReturnValue(null);
 
     await expect(request("system", "get_info")).rejects.toMatchObject({
-      code: "not_initialized",
-      message: "StreamMux not initialized",
+      code: "connection_unavailable",
+      message: "Connection unavailable before request was sent",
     });
     expect(muxMocks.initStreamMux).not.toHaveBeenCalled();
   });
@@ -217,21 +230,21 @@ describe("linuxio-core request", () => {
     expect(openMux.openStream.mock.calls[0][0]).toBe("system.get_info");
   });
 
-  it("throws connection_closed when the mux does not become ready", async () => {
+  it("throws connection_unavailable when loader readiness times out", async () => {
     muxMocks.getStreamMux.mockReturnValue(createMux());
     muxMocks.waitForStreamMux.mockResolvedValue(false);
 
     await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
-      code: "connection_closed",
+      code: "connection_unavailable",
     });
   });
 
-  it("throws connection_closed when an ordinary request mux does not become ready", async () => {
+  it("throws connection_unavailable when request readiness times out", async () => {
     muxMocks.getStreamMux.mockReturnValue(createMux());
     muxMocks.waitForStreamMux.mockResolvedValue(false);
 
     await expect(request("system", "get_info")).rejects.toMatchObject({
-      code: "connection_closed",
+      code: "connection_unavailable",
     });
   });
 
@@ -240,8 +253,8 @@ describe("linuxio-core request", () => {
     muxMocks.waitForStreamMux.mockRejectedValue(new Error("socket failed"));
 
     await expect(ensureLoaderRequestReady(5000)).rejects.toMatchObject({
-      code: "connection_closed",
-      message: "Connection closed before receiving result",
+      code: "connection_unavailable",
+      message: "Connection unavailable before request was sent",
     });
   });
 
@@ -268,6 +281,58 @@ describe("linuxio-core request", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     await expectation;
+  });
+
+  it("keeps one deadline across a connection-loss retry", async () => {
+    vi.useFakeTimers();
+    const stream = createStream();
+    const mux = createMux(stream);
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    streamHelperMocks.waitForStreamResult
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            setTimeout(
+              () =>
+                reject(
+                  new LinuxIOError(
+                    "Connection closed before receiving result",
+                    "connection_closed",
+                  ),
+                ),
+              60,
+            );
+          }),
+      )
+      .mockImplementationOnce(
+        (_stream: Stream, options: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => {
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      );
+
+    const promise = request(
+      "system",
+      "slow",
+      {},
+      {
+        retryPolicy: "connection_loss",
+        timeout: 100,
+      },
+    );
+    const expectation = expect(promise).rejects.toMatchObject({
+      code: "timeout",
+      message: "Request timeout",
+    });
+    await vi.advanceTimersByTimeAsync(60);
+    await vi.advanceTimersByTimeAsync(40);
+
+    await expectation;
+    expect(mux.openStream).toHaveBeenCalledTimes(2);
   });
 
   it("propagates a caller abort without converting it to a timeout", async () => {
@@ -315,7 +380,7 @@ describe("linuxio-core request", () => {
     expect(mux.openStream).not.toHaveBeenCalled();
   });
 
-  it("retries connection-closed errors only when the retry policy allows it", async () => {
+  it("retries post-SYN connection loss only when the policy allows it", async () => {
     const stream = createStream();
     const mux = createMux(stream);
     muxMocks.getStreamMux.mockReturnValue(mux);
@@ -329,13 +394,41 @@ describe("linuxio-core request", () => {
       .mockResolvedValueOnce("retried");
 
     await expect(
-      request("system", "get_info", {}, { retryPolicy: "connection_closed" }),
+      request("system", "get_info", {}, { retryPolicy: "connection_loss" }),
     ).resolves.toBe("retried");
 
     expect(mux.openStream).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry connection-closed errors by default", async () => {
+  it("retries a failed initial SYN only when the policy allows it", async () => {
+    const stream = createStream();
+    const mux = createMux(null);
+    mux.openStream.mockReturnValueOnce(null).mockReturnValueOnce(stream);
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    streamHelperMocks.waitForStreamResult.mockResolvedValue("retried");
+
+    await expect(
+      request("system", "get_info", {}, { retryPolicy: "connection_loss" }),
+    ).resolves.toBe("retried");
+
+    expect(mux.openStream).toHaveBeenCalledTimes(2);
+    expect(streamHelperMocks.waitForStreamResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves numeric backend errors without retrying them", async () => {
+    const backendError = new LinuxIOError("Conflict", 409);
+    const mux = createMux();
+    muxMocks.getStreamMux.mockReturnValue(mux);
+    streamHelperMocks.waitForStreamResult.mockRejectedValue(backendError);
+
+    await expect(
+      request("system", "get_info", {}, { retryPolicy: "connection_loss" }),
+    ).rejects.toBe(backendError);
+
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports post-SYN connection loss as outcome_unknown without retrying by default", async () => {
     const mux = createMux();
     muxMocks.getStreamMux.mockReturnValue(mux);
     streamHelperMocks.waitForStreamResult.mockRejectedValue(
@@ -346,7 +439,8 @@ describe("linuxio-core request", () => {
     );
 
     await expect(request("system", "get_info")).rejects.toMatchObject({
-      code: "connection_closed",
+      code: "outcome_unknown",
+      message: "Connection closed before the server confirmed the outcome",
     });
     expect(mux.openStream).toHaveBeenCalledTimes(1);
   });

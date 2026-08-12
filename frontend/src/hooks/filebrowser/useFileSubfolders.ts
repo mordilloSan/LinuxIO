@@ -12,8 +12,6 @@ import {
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
-export type { SubfolderData };
-
 interface UseSubfoldersResult {
   error: Error | null;
   isLoading: boolean;
@@ -24,7 +22,6 @@ interface UseSubfoldersResult {
 
 /**
  * Hook to fetch all direct child folders with their sizes for a given path.
- * This replaces making multiple individual dir-size calls.
  *
  * @param path - The parent directory path
  * @param enabled - Whether the query should run
@@ -44,12 +41,11 @@ export const useFileSubfolders = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = useQuery(
-    linuxio.filebrowser.subfolders.queryOptions(path, {
-      enabled: queryEnabled,
-      ...getDirectorySizeQueryOptions(),
-    }),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.filebrowser.subfolders({ path }),
+    enabled: queryEnabled,
+    ...getDirectorySizeQueryOptions(),
+  });
 
   // Create a stable array reference (avoid new empty array on each render)
   const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);

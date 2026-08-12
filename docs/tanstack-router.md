@@ -169,10 +169,11 @@ That is what makes speculative hover preloads quiet — see
 [Loaders](#loaders).
 
 The default Query retry handles one ordinary transient failure, but does not
-retry a `connection_closed` error after the RPC transport has already applied
-its own bounded reconnect attempt. Route loaders are stricter still and default
-their Query-layer attempt to `retry: false`. A component may opt into a local
-retry policy when its UX benefits from one, but that is an explicit exception.
+retry `connection_unavailable` or `outcome_unknown` after the Call transport
+has applied its route-owned bounded policy. Route loaders are stricter still
+and default their Query-layer attempt to `retry: false`. A component may opt
+into a local retry policy when its UX benefits from one, but that is an explicit
+exception.
 
 ## The Shared Route Toolkit
 
@@ -199,7 +200,7 @@ export const Route = createFileRoute("/_authenticated/wireguard")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.wireguard.list_interfaces.queryOptions(),
+      linuxio.wireguard.list_interfaces,
     ]),
   component: WireguardPage,
   staticData: {
@@ -248,7 +249,7 @@ never calls QueryClient loading primitives directly.
 
 ```ts
 loadRouteQueries(loaderArgs, [
-  /* endpoint.queryOptions(...) */
+  /* generated Call descriptor */
 ]): Promise<void>
 ```
 
@@ -279,7 +280,7 @@ argument only when it needs a different named freshness policy:
 6. Defaults the Query-layer attempt to `retry: false`; the RPC transport retains
    its own bounded reconnect retry, so the two layers do not multiply attempts.
 
-Query route loaders pass Router's loader arguments directly. The helper derives
+Call descriptor loaders pass Router's loader arguments directly. The helper derives
 `abortController.signal`, so cancellation reaches transport readiness and the
 endpoint request without a repeated per-route signal field. Loader consumers
 are ref-counted per query key: an abandoned navigation cancels a loader-started
@@ -292,9 +293,10 @@ does not cancel its siblings. Those requests finish and warm the shared cache,
 so a route retry need not repeat successful members. Router cancellation still
 aborts an abandoned batch through the normal ref-counted path.
 
-On the bridge, ordinary Query routes and the synchronous `jobs.get`,
-`jobs.list`, and `jobs.cancel` primitives consume explicit stream-abort frames.
-Long-lived job attach/events/data streams retain their separate lifecycle.
+On the bridge, bounded Calls, including the synchronous `tasks.get`,
+`tasks.list`, and `tasks.cancel` primitives, consume explicit stream-abort
+frames. Long-lived Task watch/events/data Channels retain their separate
+lifecycle.
 
 ```ts
 loadRouteTransport(context, abortController.signal): Promise<void>
@@ -345,15 +347,16 @@ attaches an observer:
 // wireguard/route.tsx
 loader: (loaderArgs) =>
   loadRouteQueries(loaderArgs, [
-    linuxio.wireguard.list_interfaces.queryOptions(),
+    linuxio.wireguard.list_interfaces,
   ]),
 ```
 
 ```tsx
 // wireguard/-components/WireguardPage.tsx
-const { data: interfaces } = useSuspenseQuery(
-  linuxio.wireguard.list_interfaces.queryOptions({ refetchInterval: 10000 }),
-);
+const { data: interfaces } = useSuspenseQuery({
+  ...linuxio.wireguard.list_interfaces,
+  refetchInterval: 10000,
+});
 ```
 
 A loader plus a mounted observer is not a hybrid architecture — they coordinate
@@ -373,12 +376,10 @@ mounted throughout), and each child observes only what it needs — `VMImagesPag
 takes preflight alone, so the 5-second list poll does not re-render it:
 
 ```tsx
-const { data: preflight } = useSuspenseQuery(
-  linuxio.virt.preflight.queryOptions(
-    {},
-    { refetchOnMount: false },
-  ),
-);
+const { data: preflight } = useSuspenseQuery({
+  ...linuxio.virt.preflight({}),
+  refetchOnMount: false,
+});
 ```
 
 Because the always-mounted parent declares `refetchInterval`, children omit it
@@ -395,7 +396,7 @@ Single query — `network/route.tsx`:
 ```ts
 loader: (loaderArgs) =>
   loadRouteQueries(loaderArgs, [
-    linuxio.network.get_network_info.queryOptions(),
+    linuxio.network.get_network_info,
   ]),
 ```
 
@@ -410,7 +411,7 @@ loader: async ({ abortController, context, preload }) => {
   const hiddenCards = new Set(cachedConfig.appSettings?.hiddenCards ?? []);
   const queries: LoaderQueryOptions[] = [];
   if (!hiddenCards.has("overview")) {
-    queries.push(linuxio.system.get_host_info.queryOptions());
+    queries.push(linuxio.system.get_host_info);
   }
   // Add the other visible card queries, plus Docker queries when capable.
   startRouteQueryPrefetches(
@@ -437,10 +438,12 @@ loaderDeps: ({ search }) => ({ socket: search.socket }),
 loader: (loaderArgs) => {
   const { deps } = loaderArgs;
   const queries: LoaderQueryOptions[] = [
-    linuxio.systemd.list_sockets.queryOptions(),
+    linuxio.systemd.list_sockets,
   ];
   if (deps.socket) {
-    queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.socket));
+    queries.push(
+      linuxio.systemd.get_unit_info({ unitName: deps.socket }),
+    );
   }
   return loadRouteQueries(loaderArgs, queries);
 },
@@ -455,7 +458,7 @@ Path param — `vm/machines/$name.tsx`:
 ```ts
 loader: (loaderArgs) =>
   loadRouteQueries(loaderArgs, [
-    linuxio.virt.get.queryOptions(loaderArgs.params.name),
+    linuxio.virt.get({ name: loaderArgs.params.name }),
   ]),
 ```
 
@@ -468,10 +471,10 @@ loader: (loaderArgs) => {
   return loadRouteQueries(
     loaderArgs,
     [
-      linuxio.filebrowser.resource_get.queryOptions(
-        { path },
-        fileBrowserListingQueryOptions,
-      ),
+      {
+        ...linuxio.filebrowser.resource_get({ path }),
+        ...fileBrowserListingQueryOptions,
+      },
     ],
     LOADER_FRESHNESS.BACKGROUND,
   );
@@ -499,7 +502,7 @@ loader: (loaderArgs) => {
   const { context } = loaderArgs;
   if (context.access.packageKitAvailable !== true) return;
   return loadRouteQueries(loaderArgs, [
-    linuxio.updates.get_updates_basic.queryOptions(),
+    linuxio.updates.get_updates_basic,
   ]);
 },
 ```
@@ -590,8 +593,9 @@ Dashboard card boundaries use `DashboardCardSkeleton` fallbacks with the same
 frosted frame and stats-only or split/chart geometry as the resolved cards.
 `WidgetLoader` remains the generic fallback for non-card Hardware sections.
 
-For the endpoint layer itself — `queryOptions`, `queryKey`, `useFetcher`,
-`useAction`, `useJobAction`, and the invalidation manifest — see
+For the endpoint layer itself — Call descriptors, `useCallMutation`, remaining
+`queryOptions`/`useFetcher`/`useAction`, `useTaskAction`, and the invalidation
+manifest — see
 [API Contract](./api-contract.md#frontend-shape). Do not add parallel
 `queryOptions` factories, duplicate query-key constants, or `useSomethingQuery`
 wrappers that only hide an observer.
@@ -739,6 +743,12 @@ The pieces live in `components/tabbar/RoutedTabContainer.tsx`:
 | `RoutedTabLayout` | The same layout as a component, for when the parent must wrap or render alongside the `Outlet`. |
 | `RoutedTabActions` | Lets a child route portal toolbar buttons into the parent's tab strip. |
 | `RoutedTab` | The tab manifest type. |
+
+The tab selector is a memoized sibling of the routed panel. Polling or local
+state updates inside the active child route therefore do not rebuild the tab
+links, while each TanStack `Link` still observes location changes so real
+navigation updates the selected pill. Portaled route actions can update inside
+the persistent selector without invalidating its links.
 
 Tab manifests live at `<group>/-components/<group>Tabs.ts`:
 
@@ -998,7 +1008,7 @@ export const Route = createFileRoute("/_authenticated/backups")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.list_repositories.queryOptions(),
+      linuxio.backups.list_repositories,
     ]),
   component: BackupsLayout,
   staticData: {
@@ -1019,7 +1029,7 @@ export const Route = createFileRoute("/_authenticated/backups/snapshots")({
   loaderDeps: ({ search }) => ({ tag: search.tag }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.list_snapshots.queryOptions({
+      linuxio.backups.list_snapshots({
         tag: loaderArgs.deps.tag,
       }),
     ]),
@@ -1034,7 +1044,7 @@ are already deps:
 export const Route = createFileRoute("/_authenticated/backups/snapshots/$id")({
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.get_snapshot.queryOptions(loaderArgs.params.id),
+      linuxio.backups.get_snapshot({ id: loaderArgs.params.id }),
     ]),
   component: SnapshotDetail,
 });
@@ -1042,7 +1052,7 @@ export const Route = createFileRoute("/_authenticated/backups/snapshots/$id")({
 function SnapshotDetail() {
   const { id } = Route.useParams();
   const { data: snapshot } = useSuspenseQuery(
-    linuxio.backups.get_snapshot.queryOptions(id),
+    linuxio.backups.get_snapshot({ id }),
   );
   return <SnapshotPanel snapshot={snapshot} />;
 }

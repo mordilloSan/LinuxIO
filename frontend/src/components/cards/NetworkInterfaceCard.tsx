@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
-import { useId } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { memo, useCallback, useId } from "react";
 
-import { type NetworkInterface } from "@/api";
+import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import AppButton from "@/components/ui/AppButton";
@@ -32,26 +33,83 @@ const formatBps = (bps?: number) =>
 
 export interface NetworkInterfaceCardProps {
   expanded: boolean;
-  iface: NetworkInterface;
+  name: string;
   onClose: () => void;
-  onToggle: () => void;
+  onToggle: (name: string) => void;
+  type: string;
 }
 
-const NetworkInterfaceCard = ({
-  iface,
+const selectNetworkInterface =
+  (name: string) => (interfaces: NetworkInterface[]) =>
+    interfaces.find((iface) => iface.name === name);
+
+const NetworkInterfaceIcon = memo(function NetworkInterfaceIcon({
+  color,
+  type,
+}: {
+  color: string;
+  type: string;
+}) {
+  return (
+    <div
+      style={{
+        width: 44,
+        height: 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 6,
+      }}
+    >
+      <Icon
+        color={color}
+        height={36}
+        icon={getInterfaceIcon(type)}
+        width={36}
+      />
+    </div>
+  );
+});
+
+const NetworkInterfaceTitle = memo(function NetworkInterfaceTitle({
+  name,
+}: {
+  name: string;
+}) {
+  return (
+    <AppTypography fontWeight={600} noWrap variant="subtitle1">
+      {name}
+    </AppTypography>
+  );
+});
+
+interface NetworkInterfaceCardContentProps extends NetworkInterfaceCardProps {
+  editorId: string;
+}
+
+const NetworkInterfaceCardContent = ({
+  editorId,
   expanded,
-  onToggle,
+  name,
   onClose,
-}: NetworkInterfaceCardProps) => {
+  onToggle,
+  type,
+}: NetworkInterfaceCardContentProps) => {
   const theme = useAppTheme();
+  const handleToggle = useCallback(() => onToggle(name), [name, onToggle]);
+  const { data: rawInterface } = useQuery({
+    ...linuxio.network.get_network_info,
+    refetchOnMount: false,
+    select: selectNetworkInterface(name),
+  });
+
+  if (!rawInterface) return null;
+
+  const iface = { ...rawInterface, type };
   const primaryColor = theme.palette.primary.main;
-  const editorId = useId();
 
   return (
-    <FrostedCard
-      hoverLift={!expanded}
-      style={{ padding: 8, position: "relative" }}
-    >
+    <>
       <StatusDot
         absolute
         color={
@@ -72,7 +130,7 @@ const NetworkInterfaceCard = ({
         aria-controls={editorId}
         aria-expanded={expanded}
         color="inherit"
-        onClick={onToggle}
+        onClick={handleToggle}
         style={{
           appearance: "none",
           background: "none",
@@ -87,27 +145,9 @@ const NetworkInterfaceCard = ({
           width: "100%",
         }}
       >
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: 6,
-          }}
-        >
-          <Icon
-            color={primaryColor}
-            height={36}
-            icon={getInterfaceIcon(iface.type)}
-            width={36}
-          />
-        </div>
+        <NetworkInterfaceIcon color={primaryColor} type={type} />
         <div style={{ flexGrow: 1 }}>
-          <AppTypography fontWeight={600} noWrap variant="subtitle1">
-            {iface.name}
-          </AppTypography>
+          <NetworkInterfaceTitle name={name} />
           <AppTypography color="text.secondary" noWrap variant="body2">
             IPv4: {Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "N/A"}
           </AppTypography>
@@ -132,6 +172,32 @@ const NetworkInterfaceCard = ({
           onClose={onClose}
         />
       </div>
+    </>
+  );
+};
+
+const NetworkInterfaceCard = ({
+  expanded,
+  name,
+  onToggle,
+  onClose,
+  type,
+}: NetworkInterfaceCardProps) => {
+  const editorId = useId();
+
+  return (
+    <FrostedCard
+      hoverLift={!expanded}
+      style={{ padding: 8, position: "relative" }}
+    >
+      <NetworkInterfaceCardContent
+        editorId={editorId}
+        expanded={expanded}
+        name={name}
+        onClose={onClose}
+        onToggle={onToggle}
+        type={type}
+      />
     </FrostedCard>
   );
 };

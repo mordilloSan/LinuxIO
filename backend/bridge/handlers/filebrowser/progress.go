@@ -1,6 +1,10 @@
 package filebrowser
 
-import "time"
+import (
+	"time"
+
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+)
 
 const (
 	// progressReportIntervalBytes is how often file operations report progress.
@@ -58,12 +62,16 @@ func (g *transferProgressGate) record(bytes int64, at time.Time) {
 	g.lastAt = at
 }
 
-// FileProgress represents progress for file transfer and file job operations.
+// FileProgress represents progress for file transfer and file task operations.
 type FileProgress struct {
 	Bytes int64  `json:"bytes"`           // Bytes transferred so far
 	Total int64  `json:"total"`           // Total bytes (0 if unknown)
 	Pct   int    `json:"pct"`             // Percentage (0-100)
 	Phase string `json:"phase,omitempty"` // Optional phase description
+}
+
+func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
 // BatchUploadProgress reports aggregate byte progress for a batch upload plus
@@ -79,7 +87,11 @@ type BatchUploadProgress struct {
 	FilesTotal int    `json:"filesTotal"`
 }
 
-// DeleteProgress represents item-count progress for delete jobs.
+func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+}
+
+// DeleteProgress represents item-count progress for delete tasks.
 type DeleteProgress struct {
 	Processed     int64  `json:"processed"`
 	Total         int64  `json:"total"`
@@ -88,10 +100,18 @@ type DeleteProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
-// ChmodProgress represents entry-count progress for chmod batch jobs. The
+func (p DeleteProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+}
+
+// ChmodProgress represents entry-count progress for chmod batch tasks. The
 // per-entry total is unknown up front, so the count is indeterminate.
 type ChmodProgress struct {
 	Processed     int64  `json:"processed"`
 	Phase         string `json:"phase,omitempty"`
 	Indeterminate bool   `json:"indeterminate,omitempty"`
+}
+
+func (p ChmodProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	return bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
 }

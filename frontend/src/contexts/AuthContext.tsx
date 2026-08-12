@@ -12,17 +12,16 @@ import { toast } from "sonner";
 import {
   type CapabilitiesResponse,
   type CapabilityState,
+  call,
   capabilityStateFromWire,
   closeStreamMux,
   emptyCapabilityState,
   initStreamMux,
-  linuxio,
   type MuxStatus,
   parseCapabilityState,
   pickCapabilityState,
 } from "@/api";
-import {
-  AUTH_ACTIONS,
+import type {
   AuthActions,
   AuthContextType,
   AuthProviderProps,
@@ -32,6 +31,7 @@ import {
   LoginErrorResponse,
   LoginResponse,
 } from "@/types/auth";
+import { AUTH_ACTIONS } from "@/types/auth";
 import { clearConfigCache } from "@/utils/configCache";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
@@ -183,7 +183,7 @@ function AuthProvider({ children }: AuthProviderProps) {
   const refreshCapabilities =
     useCallback(async (): Promise<CapabilitiesResponse> => {
       const generation = authGeneration.current;
-      const data = await linuxio.system.get_capabilities();
+      const data = await call("system.get_capabilities");
       if (
         mounted.current &&
         state.isAuthenticated &&
@@ -262,7 +262,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   // Init on mount
   useEffect(() => {
-    initialize();
+    void initialize();
   }, [initialize]);
 
   // Cross-tab logout via localStorage
@@ -297,7 +297,7 @@ function AuthProvider({ children }: AuthProviderProps) {
         if (refresh?.identity !== identity) {
           refresh = {
             identity,
-            promise: linuxio.system.get_capabilities(),
+            promise: call("system.get_capabilities"),
             applied: false,
           };
           capabilityRefresh.current = refresh;

@@ -57,7 +57,7 @@ func isIndexerEnabled() bool {
 }
 
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
-// that should outlive the request/job which already completed the filesystem change.
+// that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -143,7 +143,7 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 		return nil, err
 	}
 	if req.Path == "" {
-		return nil, fmt.Errorf("bad_request:missing path")
+		return nil, bridgeipc.NewError("missing path", 400)
 	}
 
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
@@ -152,12 +152,18 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 	})
 	if err != nil {
 		slog.Debug("error getting file stat info", "path", req.Path, "error", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, bridgeipc.NewError("path not found", 404)
+		}
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
 	statData, err := iteminfo.CollectStatInfo(fileInfo.RealPath)
 	if err != nil {
 		slog.Debug("error collecting stat info", "path", fileInfo.RealPath, "error", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, bridgeipc.NewError("path not found", 404)
+		}
 		return nil, fmt.Errorf("error collecting stat info: %w", err)
 	}
 
@@ -503,51 +509,6 @@ func moveFileOptions(size computedTransferSize) services.MoveFileOptions {
 	}
 }
 
-func newPatchCallbacks(ctx context.Context, emit bridgeipc.Events, action string, totalSize int64) *ipc.OperationCallbacks {
-	var bytesProcessed int64
-	var lastProgress int64
-	const progressInterval = int64(2 * 1024 * 1024)
-
-	return &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize <= 0 || (bytesProcessed-lastProgress < progressInterval && bytesProcessed < totalSize) {
-				return
-			}
-
-			phase := "copying"
-			if action == "move" || action == "rename" {
-				phase = "moving"
-			}
-			pct := min(int(bytesProcessed*100/totalSize), 100)
-			slog.Debug("filebrowser operation progress",
-				"action", action,
-				"bytes", bytesProcessed,
-				"total", totalSize,
-				"pct", pct,
-				"phase", phase)
-			if err := emit.Progress(FileProgress{
-				Bytes: bytesProcessed,
-				Total: totalSize,
-				Pct:   pct,
-				Phase: phase,
-			}); err != nil {
-				slog.Debug("failed to write filebrowser progress update", "action", action, "error", err)
-				return
-			}
-			lastProgress = bytesProcessed
-		},
-		Cancel: func() bool {
-			select {
-			case <-ctx.Done():
-				return true
-			default:
-				return false
-			}
-		},
-	}
-}
-
 func executeResourcePatch(req resourcePatchRequest, opts *ipc.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
 	case "copy":
@@ -608,27 +569,27 @@ func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest) (a
 }
 
 // resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, emit bridgeipc.Events) (any, error) {
+func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (FileOperationResult, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
-		return nil, err
+		return FileOperationResult{}, err
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+		return FileOperationResult{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
 	patchReq, err = prepareResourcePatch(root, patchReq)
 	if err != nil {
-		return nil, err
+		return FileOperationResult{}, err
 	}
 
 	srcInfo, err := root.Root.Lstat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
 		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
-		return nil, fmt.Errorf("bad_request:source not found")
+		return FileOperationResult{}, fmt.Errorf("bad_request:source not found")
 	}
 	_, destStatErr := root.Root.Lstat(fsroot.ToRel(patchReq.realDest))
 	destExisted := destStatErr == nil
@@ -640,21 +601,35 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 		"source", patchReq.realSrc,
 		"destination", patchReq.realDest,
 		"size", size.total)
-	if err := emit.Progress(FileProgress{
+	task.ReportProgress(FileProgress{
 		Total: size.total,
 		Phase: "preparing",
-	}); err != nil {
-		return nil, fmt.Errorf("write progress: %w", err)
-	}
+	})
 
-	opts := newPatchCallbacks(ctx, emit, patchReq.action, size.total)
+	opts := newPatchTaskCallbacks(ctx, task, patchReq.action, size.total)
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
+		return FileOperationResult{}, fmt.Errorf("bad_request:%v", err)
 	}
 
 	notifyIndexerAfterPatch(ctx, root, patchReq, size, destExisted)
-	return map[string]any{"message": "operation completed"}, nil
+	return FileOperationResult{Message: "operation completed"}, nil
+}
+
+func newPatchTaskCallbacks(ctx context.Context, task *bridgeipc.Task, action string, totalSize int64) *ipc.OperationCallbacks {
+	var bytesProcessed, lastProgress int64
+	return &ipc.OperationCallbacks{Progress: func(n int64) {
+		bytesProcessed += n
+		if totalSize <= 0 || (bytesProcessed-lastProgress < 2*1024*1024 && bytesProcessed < totalSize) {
+			return
+		}
+		phase := "copying"
+		if action == "move" || action == "rename" {
+			phase = "moving"
+		}
+		task.ReportProgress(FileProgress{Bytes: bytesProcessed, Total: totalSize, Pct: min(int(bytesProcessed*100/totalSize), 100), Phase: phase})
+		lastProgress = bytesProcessed
+	}, Cancel: func() bool { return ctx.Err() != nil }}
 }
 
 // generateUniquePath generates a unique path by appending a suffix like " (copy)" or " (copy 2)"
@@ -1591,4 +1566,4 @@ func getAllGroups(ctx context.Context) ([]string, error) {
 }
 
 // NOTE: fileUploadFromTemp, fileUpdateFromTemp, fileDownloadToTemp, archiveDownloadSetup removed.
-// These operations now use durable jobs plus built-in jobs.data streams.
+// These operations now use durable tasks plus built-in tasks.data streams.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -11,49 +12,109 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
-func TestQueryExplicitAbortCancelsHandlerContext(t *testing.T) {
-	router := NewRouter(NewRegistry())
+func TestReceiveOnlyChannelContextClientEndCancels(t *testing.T) {
+	tests := []struct {
+		name   string
+		opcode byte
+	}{
+		{name: "abort", opcode: relay.OpStreamAbort},
+		{name: "close", opcode: relay.OpStreamClose},
+		{name: "disconnect"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := net.Pipe()
+			ctx, cleanup := ReceiveOnlyChannelContext(context.Background(), server)
+			defer cleanup()
+			defer client.Close()
+			if tc.opcode == 0 {
+				_ = client.Close()
+			} else if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: tc.opcode}); err != nil {
+				t.Fatalf("write client frame: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+				t.Fatal("receive-only Channel context did not cancel")
+			}
+		})
+	}
+}
+
+func TestReceiveOnlyChannelContextAbortInterruptsBlockedWrite(t *testing.T) {
+	server, client := net.Pipe()
+	ctx, cleanup := ReceiveOnlyChannelContext(context.Background(), server)
+	defer cleanup()
+	defer client.Close()
+
+	writeStarted := make(chan struct{})
+	writeDone := make(chan error, 1)
+	go func() {
+		close(writeStarted)
+		writeDone <- relay.WriteRelayFrame(server, &relay.StreamFrame{
+			Opcode:  relay.OpStreamData,
+			Payload: []byte("blocked until the client reads"),
+		})
+	}()
+
+	waitForSignal(t, writeStarted, "channel write did not start")
+	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamAbort}); err != nil {
+		t.Fatalf("WriteRelayFrame(abort): %v", err)
+	}
+	waitForSignal(t, ctx.Done(), "channel abort did not cancel the context")
+	select {
+	case err := <-writeDone:
+		if err == nil {
+			t.Fatal("blocked channel write completed without an error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("channel abort did not interrupt the blocked write")
+	}
+}
+
+func TestCallExplicitAbortCancelsHandlerContext(t *testing.T) {
+	router := NewRouter(NewTaskService())
 	started := make(chan struct{})
 	canceled := make(chan struct{})
-	router.Query("test.query.abort", func(ctx context.Context, _ any, _ Events) error {
+	router.Call("test.call.abort", func(ctx context.Context, _ Request) (any, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
-		return ctx.Err()
+		return nil, ctx.Err()
 	})
 
 	server, client := net.Pipe()
 	dispatchDone := make(chan error, 1)
 	go func() {
 		defer server.Close()
-		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.query.abort"})
+		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.call.abort"})
 	}()
 
-	waitForSignal(t, started, "query handler did not start")
+	waitForSignal(t, started, "call handler did not start")
 	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamAbort}); err != nil {
 		t.Fatalf("WriteRelayFrame(abort): %v", err)
 	}
-	waitForSignal(t, canceled, "explicit abort did not cancel the query context")
-
+	waitForSignal(t, canceled, "explicit abort did not cancel the call context")
 	_ = client.Close()
 	if err := <-dispatchDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf("Dispatch error = %v, want context.Canceled", err)
 	}
 }
 
-func TestQueryDisconnectDoesNotCancelHandlerContext(t *testing.T) {
-	router := NewRouter(NewRegistry())
+func TestCallDisconnectDoesNotCancelHandlerContext(t *testing.T) {
+	router := NewRouter(NewTaskService())
 	started := make(chan struct{})
 	release := make(chan struct{})
 	canceled := make(chan struct{})
-	router.Query("test.query.disconnect", func(ctx context.Context, _ any, _ Events) error {
+	router.Call("test.call.disconnect", func(ctx context.Context, _ Request) (any, error) {
 		close(started)
 		select {
 		case <-ctx.Done():
 			close(canceled)
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-release:
-			return nil
+			return nil, nil
 		}
 	})
 
@@ -61,60 +122,27 @@ func TestQueryDisconnectDoesNotCancelHandlerContext(t *testing.T) {
 	dispatchDone := make(chan error, 1)
 	go func() {
 		defer server.Close()
-		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.query.disconnect"})
+		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.call.disconnect"})
 	}()
 
-	waitForSignal(t, started, "query handler did not start")
+	waitForSignal(t, started, "call handler did not start")
 	_ = client.Close()
-	assertNoSignal(t, canceled, "ordinary disconnect canceled the query context")
+	assertNoSignal(t, canceled, "ordinary disconnect canceled the call context")
 	close(release)
-	if err := <-dispatchDone; err != nil {
-		t.Fatalf("Dispatch error = %v, want nil", err)
+	if err := <-dispatchDone; !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("Dispatch error = %v, want io.ErrClosedPipe", err)
 	}
 }
 
-func TestJobQueryPrimitiveExplicitAbortCancelsHandlerContext(t *testing.T) {
-	router := NewRouter(NewRegistry())
-	started := make(chan struct{})
-	canceled := make(chan struct{})
-	handler := func(ctx context.Context, _ net.Conn, _ Request) error {
-		close(started)
-		<-ctx.Done()
-		close(canceled)
-		return ctx.Err()
-	}
-
-	server, client := net.Pipe()
-	dispatchDone := make(chan error, 1)
-	go func() {
-		defer server.Close()
-		dispatchDone <- router.dispatchJobQueryPrimitive(
-			context.Background(),
-			server,
-			Request{Route: "jobs.get"},
-			handler,
-		)
-	}()
-
-	waitForSignal(t, started, "job query primitive handler did not start")
-	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamAbort}); err != nil {
-		t.Fatalf("WriteRelayFrame(abort): %v", err)
-	}
-	waitForSignal(t, canceled, "explicit abort did not cancel the primitive context")
-	_ = client.Close()
-	if err := <-dispatchDone; !errors.Is(err, context.Canceled) {
-		t.Fatalf("dispatchJobQueryPrimitive error = %v, want context.Canceled", err)
-	}
-}
-
-func TestJobQueryPrimitivesHonorCanceledContext(t *testing.T) {
-	for _, route := range []string{"jobs.get", "jobs.list", "jobs.cancel"} {
+func TestTaskCallPrimitivesHonorCanceledContext(t *testing.T) {
+	for _, route := range []string{"tasks.get", "tasks.list", "tasks.cancel"} {
 		t.Run(route, func(t *testing.T) {
-			registry := NewRegistry()
+			registry := NewTaskService()
 			router := NewRouter(registry)
-			owner := Owner{Username: "alice", UID: 1000}
-			job, err := registry.CreateForOwner(
-				"test.job.primitive.abort",
+			registry.RegisterRoutes(router)
+			owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+			task, err := registry.CreateForOwner(
+				"test.task.primitive.abort",
 				nil,
 				owner,
 			)
@@ -123,40 +151,39 @@ func TestJobQueryPrimitivesHonorCanceledContext(t *testing.T) {
 			}
 
 			rawRequest := json.RawMessage(`{}`)
-			if route != "jobs.list" {
-				rawRequest = json.RawMessage(`{"jobId":"` + job.ID() + `"}`)
+			if route != "tasks.list" {
+				rawRequest = json.RawMessage(`{"taskId":"` + task.ID() + `"}`)
 			}
 
-			server, client := net.Pipe()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			if err := router.dispatchJobPrimitive(
-				ctx,
-				server,
-				Request{Route: route, RawRequest: rawRequest, Owner: owner},
-			); !errors.Is(err, context.Canceled) {
-				_ = server.Close()
-				_ = client.Close()
-				t.Fatalf("dispatchJobPrimitive error = %v, want context.Canceled", err)
+			routeSpec, ok := router.lookup(route)
+			if !ok {
+				t.Fatalf("route %q is not registered", route)
 			}
-			_ = server.Close()
-			_ = client.Close()
-			if route == "jobs.cancel" && job.Snapshot().State != StateQueued {
-				t.Fatalf("aborted jobs.cancel changed state to %q", job.Snapshot().State)
+			decoded, err := routeSpec.Decode(rawRequest)
+			if err != nil {
+				t.Fatalf("decode %s: %v", route, err)
+			}
+			if _, err := routeSpec.Call(ctx, Request{Route: route, DecodedValue: decoded, Owner: owner}); !errors.Is(err, context.Canceled) {
+				t.Fatalf("task service call error = %v, want context.Canceled", err)
+			}
+			if route == "tasks.cancel" && task.Snapshot().State != TaskStateQueued {
+				t.Fatalf("aborted tasks.cancel changed state to %q", task.Snapshot().State)
 			}
 		})
 	}
 }
 
-func TestJobStartDisconnectDoesNotCancelJobContext(t *testing.T) {
-	registry := NewRegistry()
+func TestTaskStartDisconnectDoesNotCancelTaskContext(t *testing.T) {
+	registry := NewTaskService()
 	router := NewRouter(registry)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	canceled := make(chan struct{})
-	router.JobRunner(
-		"test.job.disconnect",
-		func(ctx context.Context, _ *Job, _ any) (any, error) {
+	router.TaskRunner(
+		"test.task.disconnect",
+		func(ctx context.Context, _ *Task, _ any) (any, error) {
 			close(started)
 			select {
 			case <-ctx.Done():
@@ -166,25 +193,25 @@ func TestJobStartDisconnectDoesNotCancelJobContext(t *testing.T) {
 				return nil, nil
 			}
 		},
-		ActionDefault,
+		TaskDefault,
 	)
 
 	server, client := net.Pipe()
 	dispatchDone := make(chan error, 1)
 	go func() {
 		defer server.Close()
-		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.job.disconnect"})
+		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.task.disconnect"})
 	}()
 
-	waitForSignal(t, started, "job runner did not start")
+	waitForSignal(t, started, "task runner did not start")
 	_ = client.Close()
-	assertNoSignal(t, canceled, "job-start disconnect canceled the detached job")
+	assertNoSignal(t, canceled, "task-start disconnect canceled the detached task")
 	close(release)
 
 	select {
 	case <-dispatchDone:
 	case <-time.After(time.Second):
-		t.Fatal("Dispatch did not return after the detached job completed")
+		t.Fatal("Dispatch did not return after the detached task completed")
 	}
 }
 

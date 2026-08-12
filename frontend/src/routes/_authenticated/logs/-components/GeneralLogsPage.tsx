@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
@@ -15,12 +15,7 @@ import {
 } from "react";
 
 import type { Service } from "@/api";
-import {
-  CACHE_TTL_MS,
-  linuxio,
-  openGeneralLogsStream,
-  useStreamMux,
-} from "@/api";
+import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
@@ -71,17 +66,19 @@ const UNIT_STATUS_FILTERS_REQUIRING_SERVICES = new Set([
   "inactive",
 ]);
 
-// Log priority levels (syslog standard)
-enum LogPriority {
-  EMERGENCY = 0,
-  ALERT = 1,
-  CRITICAL = 2,
-  ERROR = 3,
-  WARNING = 4,
-  NOTICE = 5,
-  INFO = 6,
-  DEBUG = 7,
-}
+// Log priority levels (syslog standard). Const object rather than a TS enum
+// so the file stays within erasableSyntaxOnly.
+const LogPriority = {
+  EMERGENCY: 0,
+  ALERT: 1,
+  CRITICAL: 2,
+  ERROR: 3,
+  WARNING: 4,
+  NOTICE: 5,
+  INFO: 6,
+  DEBUG: 7,
+} as const;
+type LogPriority = (typeof LogPriority)[keyof typeof LogPriority];
 
 interface LogEntry {
   /** Stable row identity: the journal cursor, or a synthetic fallback. */
@@ -105,7 +102,7 @@ const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 });
 
-// Progress frames emitted by the general-logs job alongside data frames. The
+// Progress frames emitted by the general-logs Channel alongside data frames. The
 // backend sends backlog_complete once the one-shot history query finishes, so
 // "no matches" is distinguishable from "still loading" even though the follow
 // process never exits.
@@ -216,9 +213,9 @@ const resolveUnitTarget = (
   const raw = log.rawJson;
   const systemdUnit =
     typeof raw?._SYSTEMD_UNIT === "string" && raw._SYSTEMD_UNIT
-      ? (raw._SYSTEMD_UNIT as string)
+      ? raw._SYSTEMD_UNIT
       : typeof raw?.UNIT === "string" && raw.UNIT
-        ? (raw.UNIT as string)
+        ? raw.UNIT
         : null;
 
   let unit = systemdUnit;
@@ -374,15 +371,13 @@ const LogEntryDetails = ({
   onAddFieldFilter: (filter: string) => void;
 }) => {
   const theme = useAppTheme();
-  const { data: fullEntry, isError } = useQuery(
-    linuxio.logs.general_entry.queryOptions(log.cursor ?? "", {
-      enabled: log.cursor !== null,
-      staleTime: Infinity,
-    }),
-  );
+  const { data: fullEntry, isError } = useQuery({
+    ...linuxio.logs.general_entry({ cursor: log.cursor ?? "" }),
+    enabled: log.cursor !== null,
+    staleTime: Infinity,
+  });
 
-  const entry =
-    (fullEntry as Record<string, unknown> | undefined) ?? log.rawJson;
+  const entry = fullEntry ?? log.rawJson;
   const filterableEntries = collectFilterableFields(entry, fieldFilters);
 
   return (
@@ -414,7 +409,7 @@ const LogEntryDetails = ({
           style={{
             padding: 8,
             backgroundColor: theme.codeBlock.background,
-            fontFamily: "monospace",
+            fontFamily: "var(--app-font-mono)",
             fontSize: "0.85rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
@@ -445,7 +440,7 @@ const LogEntryDetails = ({
             style={{
               padding: 8,
               backgroundColor: theme.codeBlock.background,
-              fontFamily: "monospace",
+              fontFamily: "var(--app-font-mono)",
               fontSize: "0.75rem",
               maxHeight: 300,
               overflowY: "auto",
@@ -520,6 +515,7 @@ const GeneralLogsPage = () => {
   const pendingLogsRef = useRef<LogEntry[]>([]);
   const flushScheduledRef = useRef(false);
   const { streamRef, openStream, closeStream } = useLiveStream();
+  const queryClient = useQueryClient();
 
   // Keep the retention target in sync after a logs state commit. This belongs
   // outside state updater callbacks so those callbacks remain pure and safe
@@ -529,8 +525,6 @@ const GeneralLogsPage = () => {
   }, [logs]);
 
   const { isOpen: muxIsOpen } = useStreamMux();
-  const fetchLogsPage = linuxio.logs.general_page.useFetcher();
-
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current);
@@ -555,12 +549,11 @@ const GeneralLogsPage = () => {
   // Current systemd unit states, used by the unit-status filter below.
   const unitStatusNeedsServices =
     UNIT_STATUS_FILTERS_REQUIRING_SERVICES.has(unitStatusFilter);
-  const { data: services } = useQuery(
-    linuxio.systemd.list_services.queryOptions({
-      enabled: unitStatusNeedsServices,
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
-    }),
-  );
+  const { data: services } = useQuery({
+    ...linuxio.systemd.list_services,
+    enabled: unitStatusNeedsServices,
+    staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+  });
 
   // Set of unit names matching the selected status. `null` means the filter is
   // either "all" (no filter) or "no_unit" (which is handled by checking for an
@@ -691,7 +684,7 @@ const GeneralLogsPage = () => {
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
-    // One-shot (paused) jobs close normally after the backlog; only a live
+    // One-shot (paused) channels close normally after the backlog; only a live
     // follow stream dying warrants a reconnect.
     if (!liveMode || !muxIsOpen) return;
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) return;
@@ -716,15 +709,15 @@ const GeneralLogsPage = () => {
           : "";
     const opened = openStream<GeneralLogsProgress>({
       open: () =>
-        openGeneralLogsStream(
-          tail,
+        openChannel("logs.general.follow", {
+          lines: tail,
           timePeriod,
-          priorityFilter === "all" ? "" : priorityFilter,
-          backendIdentifier,
+          priority: priorityFilter === "all" ? "" : priorityFilter,
+          identifier: backendIdentifier,
           fieldFilters,
-          liveMode,
+          follow: liveMode,
           afterCursor,
-        ),
+        }),
       onOpenError: handleStreamOpenError,
       onText: handleStreamText,
       onProgress: handleStreamProgress,
@@ -928,22 +921,20 @@ const GeneralLogsPage = () => {
     setIsLoadingOlder(true);
     setPaginationError(null);
     try {
-      const page = await fetchLogsPage(
-        {
+      const page = await queryClient.fetchQuery({
+        ...linuxio.logs.general_page({
           cursor: boundaryCursor,
           lines: PAGE_SIZE,
           timePeriod,
           priority: priorityFilter === "all" ? "" : priorityFilter,
           identifier: backendIdentifier,
           fieldFilters,
-        },
-        {
-          // The parsed rows below are the source of truth. Do not retain a
-          // second raw copy of every history page in React Query's cache.
-          gcTime: CACHE_TTL_MS.NONE,
-          staleTime: CACHE_TTL_MS.NONE,
-        },
-      );
+        }),
+        // The parsed rows below are the source of truth. Do not retain a
+        // second raw copy of every history page in React Query's cache.
+        gcTime: CACHE_TTL_MS.NONE,
+        staleTime: CACHE_TTL_MS.NONE,
+      });
       if (generation !== paginationGenerationRef.current) return;
 
       const olderLogs = (Array.isArray(page.entries) ? page.entries : [])
@@ -981,7 +972,7 @@ const GeneralLogsPage = () => {
       }
     }
   }, [
-    fetchLogsPage,
+    queryClient,
     fieldFilters,
     hasMoreOlder,
     identifierFilter,
@@ -1026,11 +1017,8 @@ const GeneralLogsPage = () => {
         // `resolveUnitTarget` logic for the row-click → services navigation.
         const raw = log.rawJson;
         const systemdUnit =
-          typeof raw?._SYSTEMD_UNIT === "string"
-            ? (raw._SYSTEMD_UNIT as string)
-            : "";
-        const aboutUnit =
-          typeof raw?.UNIT === "string" ? (raw.UNIT as string) : "";
+          typeof raw?._SYSTEMD_UNIT === "string" ? raw._SYSTEMD_UNIT : "";
+        const aboutUnit = typeof raw?.UNIT === "string" ? raw.UNIT : "";
         if (unitStatusFilter === "no_unit") {
           return systemdUnit === "" && aboutUnit === "";
         }
@@ -1105,7 +1093,7 @@ const GeneralLogsPage = () => {
           `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
       )
       .join("\n");
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
   };
 
   const handleDownload = () => {
@@ -1146,17 +1134,17 @@ const GeneralLogsPage = () => {
       const target = resolveUnitTarget(log);
       if (!target) return;
       if (target.section === "timers") {
-        navigate({
+        void navigate({
           to: "/services/timers",
           search: { timer: target.unit },
         });
       } else if (target.section === "sockets") {
-        navigate({
+        void navigate({
           to: "/services/sockets",
           search: { socket: target.unit },
         });
       } else {
-        navigate({
+        void navigate({
           to: "/services",
           search: { service: target.unit },
         });
@@ -1175,14 +1163,20 @@ const GeneralLogsPage = () => {
         header: "",
         enableSorting: false,
         cell: ({ row }) => renderIcon(row.original),
-        meta: { width: "40px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.priority];
+          },
+          width: "40px",
+        },
       },
       {
         accessorKey: "priority",
         header: "Priority",
         cell: ({ row }) => (
           <Chip
-            color={getPriorityColor(row.original.priority) as any}
+            color={getPriorityColor(row.original.priority)}
             label={getPriorityLabel(row.original.priority)}
             size="small"
             style={{ fontSize: "0.7rem" }}
@@ -1190,6 +1184,10 @@ const GeneralLogsPage = () => {
           />
         ),
         meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.priority];
+          },
           hideBelow: "sm",
           width: "120px",
         },
@@ -1230,7 +1228,13 @@ const GeneralLogsPage = () => {
             </AppTypography>
           );
         },
-        meta: { width: "minmax(120px, 180px)" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.identifier, log.rawJson];
+          },
+          width: "minmax(120px, 180px)",
+        },
       },
       {
         accessorKey: "timestamp",
@@ -1245,7 +1249,13 @@ const GeneralLogsPage = () => {
             {row.original.timestamp}
           </AppTypography>
         ),
-        meta: { width: "120px" },
+        meta: {
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.timestamp];
+          },
+          width: "120px",
+        },
       },
       {
         accessorKey: "message",
@@ -1260,7 +1270,13 @@ const GeneralLogsPage = () => {
             {row.original.message}
           </AppTypography>
         ),
-        meta: { align: "left" },
+        meta: {
+          align: "left",
+          getCellRenderKey: (row) => {
+            const log = row as LogEntry;
+            return [log.id, log.message];
+          },
+        },
       },
     ],
     [renderIcon, handleIdentifierClick],

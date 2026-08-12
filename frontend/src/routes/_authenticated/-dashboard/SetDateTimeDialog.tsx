@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
@@ -59,39 +59,35 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     data: timezones,
     isLoading: timezonesLoading,
     isError: timezonesError,
-  } = useQuery(
-    linuxio.system.get_timezones.queryOptions({
-      enabled: open,
-      staleTime: 60 * 60 * 1000,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.system.get_timezones,
+    enabled: open,
+    staleTime: 60 * 60 * 1000,
+  });
   const {
     data: currentTimezone,
     isLoading: timezoneLoading,
     isError: timezoneError,
-  } = useQuery(linuxio.datetime.get_timezone.queryOptions({ enabled: open }));
+  } = useQuery({ ...linuxio.datetime.get_timezone, enabled: open });
   const {
     data: ntpStatus,
     isLoading: ntpStatusLoading,
     isError: ntpStatusError,
-  } = useQuery(linuxio.datetime.get_ntp_status.queryOptions({ enabled: open }));
+  } = useQuery({ ...linuxio.datetime.get_ntp_status, enabled: open });
   const {
     data: ntpServers,
     isLoading: ntpServersLoading,
     isError: ntpServersError,
-  } = useQuery(
-    linuxio.datetime.get_ntp_servers.queryOptions({ enabled: open }),
-  );
+  } = useQuery({ ...linuxio.datetime.get_ntp_servers, enabled: open });
   const {
     data: serverTime,
     isLoading: serverTimeLoading,
     isError: serverTimeError,
-  } = useQuery(
-    linuxio.system.get_server_time.queryOptions({
-      enabled: open,
-      staleTime: 0,
-    }),
-  );
+  } = useQuery({
+    ...linuxio.system.get_server_time,
+    enabled: open,
+    staleTime: 0,
+  });
 
   const settingsLoading =
     timezonesLoading ||
@@ -156,23 +152,31 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     setManualTime(toDatetimeLocal(serverTime));
   }
 
-  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useAction({
-    error: "Failed to set timezone",
-    toast: DASHBOARD_TOAST_META,
-  });
-  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useAction({
+  const { mutateAsync: setTz } = useCallMutation(
+    linuxio.datetime.set_timezone,
+    {
+      error: "Failed to set timezone",
+      toast: DASHBOARD_TOAST_META,
+    },
+  );
+  const { mutateAsync: setNtp } = useCallMutation(linuxio.datetime.set_ntp, {
     error: "Failed to update NTP",
     toast: DASHBOARD_TOAST_META,
   });
-  const { mutateAsync: setServers } =
-    linuxio.datetime.set_ntp_servers.useAction({
+  const { mutateAsync: setServers } = useCallMutation(
+    linuxio.datetime.set_ntp_servers,
+    {
       error: "Failed to set NTP servers",
       toast: DASHBOARD_TOAST_META,
-    });
-  const { mutateAsync: setTime } = linuxio.datetime.set_server_time.useAction({
-    error: "Failed to set server time",
-    toast: DASHBOARD_TOAST_META,
-  });
+    },
+  );
+  const { mutateAsync: setTime } = useCallMutation(
+    linuxio.datetime.set_server_time,
+    {
+      error: "Failed to set server time",
+      toast: DASHBOARD_TOAST_META,
+    },
+  );
 
   const [isSaving, setIsSaving] = useState(false);
 

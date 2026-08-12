@@ -58,6 +58,7 @@ export interface AppTypography {
   };
   caption: AppTypographyVariant;
   fontFamily: string;
+  fontFamilyMono: string;
   fontSize: number;
   fontWeightBold: number;
   fontWeightLight: number;
@@ -212,6 +213,18 @@ const FONT_FAMILY = [
   '"Segoe UI Emoji"',
   '"Segoe UI Symbol"',
 ].join(",");
+// The app bundles no mono face, so this is the platform-native stack. Bare
+// `monospace` resolves to whatever each OS picked decades ago (DejaVu Sans Mono
+// on most Linux desktops), which sits badly next to Inter; ui-monospace asks the
+// platform for the face its own UI uses for code.
+const FONT_FAMILY_MONO = [
+  "ui-monospace",
+  "SFMono-Regular",
+  '"SF Mono"',
+  "Menlo",
+  "Consolas",
+  "monospace",
+].join(",");
 
 const DEFAULT_STATUS_PALETTE = {
   error: "#da4453",
@@ -300,6 +313,7 @@ function createTypography(
 
   return {
     fontFamily,
+    fontFamilyMono: FONT_FAMILY_MONO,
     fontSize,
     fontWeightLight: 300,
     fontWeightRegular: 400,
@@ -562,6 +576,7 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
   return {
     "--app-color-scheme": theme.colorScheme,
     "--app-font-family": theme.typography.fontFamily,
+    "--app-font-mono": theme.typography.fontFamilyMono,
     "--app-radius-base": `${theme.shape.borderRadius}px`,
     ...MOTION_CSS_VARS,
     "--app-palette-primary-main": theme.palette.primary.main,

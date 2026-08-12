@@ -11,16 +11,17 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(handleGetNetworkInfo),
+	apischema.Call[apischema.NoRequest, []apischema.InterfaceStats]("network.get_interface_stats").Handle(handleGetInterfaceStats),
 	// NetworkManager owns an accepted configuration change. Applying it can
 	// sever this bridge, so transport loss is an expected ambiguous outcome and
 	// callers must not retry the mutation automatically.
-	apischema.Query[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(handleSetIPv4Manual),
-	apischema.Query[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(handleSetIPv4),
-	apischema.Query[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(handleSetIPv6),
-	apischema.Query[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(handleSetMTU),
-	apischema.Query[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(handleEnableConnection),
-	apischema.Query[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(handleDisableConnection),
+	apischema.Call[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(handleSetIPv4Manual),
+	apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(handleSetIPv4),
+	apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(handleSetIPv6),
+	apischema.Call[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(handleSetMTU),
+	apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(handleEnableConnection),
+	apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(handleDisableConnection),
 )
 
 var Routes = api.Routes()
@@ -32,6 +33,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
 	result, err := GetNetworkInfo(ctx)
 	return networkInterfacesToAPI(result), err
+}
+
+func handleGetInterfaceStats(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {
+	return FetchInterfaceStats(ctx)
 }
 
 func handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {

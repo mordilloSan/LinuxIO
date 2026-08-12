@@ -145,7 +145,7 @@ describe("useFileBrowserEditorActions", () => {
       expect(bytes).toHaveLength(5);
       expect(options).toEqual({
         chunkSize: 1024 * 1024,
-        onJobStart: expect.any(Function),
+        onTaskStart: expect.any(Function),
         overwrite: true,
       });
       expect(toastMocks.success).toHaveBeenCalledWith(

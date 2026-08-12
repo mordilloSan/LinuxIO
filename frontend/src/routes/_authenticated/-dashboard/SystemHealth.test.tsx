@@ -18,12 +18,13 @@ interface MockHealthState {
   };
   runningServicesCount: number;
   uncleanShutdown: boolean;
+  uncleanShutdownBootId?: string;
   upToDate: boolean;
   updatesAvailable: number;
 }
 
-const { dismissFailedLoginAlert, healthState, openNavigate } = vi.hoisted(
-  () => ({
+const { dismissFailedLoginAlert, healthState, openNavigate, pendingState } =
+  vi.hoisted(() => ({
     dismissFailedLoginAlert: vi.fn(),
     healthState: {
       failedLoginAlert: {
@@ -38,8 +39,11 @@ const { dismissFailedLoginAlert, healthState, openNavigate } = vi.hoisted(
       updatesAvailable: 1,
     } as MockHealthState,
     openNavigate: vi.fn(),
-  }),
-);
+    pendingState: {
+      "system.dismiss_failed_login_alert": false,
+      "system.dismiss_unclean_shutdown": false,
+    } as Record<string, boolean>,
+  }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
@@ -78,18 +82,24 @@ vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
+    useCallMutation: (endpoint: { route?: string }) => ({
+      mutate:
+        endpoint.route === "system.dismiss_failed_login_alert"
+          ? dismissFailedLoginAlert
+          : vi.fn(),
+      isPending: Boolean(endpoint.route && pendingState[endpoint.route]),
+    }),
     linuxio: {
       system: {
-        get_health_summary: { queryOptions: vi.fn(() => ({})) },
-        list_failed_login_events: { queryOptions: vi.fn(() => ({})) },
-        dismiss_unclean_shutdown: {
-          useAction: () => ({ mutate: vi.fn(), isPending: false }),
+        get_health_summary: {
+          queryKey: ["linuxio", "system", "get_health_summary"],
         },
+        list_failed_login_events: () => ({
+          queryKey: ["linuxio", "system", "list_failed_login_events"],
+        }),
+        dismiss_unclean_shutdown: { route: "system.dismiss_unclean_shutdown" },
         dismiss_failed_login_alert: {
-          useAction: () => ({
-            mutate: dismissFailedLoginAlert,
-            isPending: false,
-          }),
+          route: "system.dismiss_failed_login_alert",
         },
       },
     },
@@ -114,6 +124,10 @@ describe("SystemHealth interactions", () => {
   beforeEach(() => {
     dismissFailedLoginAlert.mockReset();
     openNavigate.mockReset();
+    Object.assign(pendingState, {
+      "system.dismiss_failed_login_alert": false,
+      "system.dismiss_unclean_shutdown": false,
+    });
     Object.assign(healthState, {
       failedLoginAlert: {
         id: "alert-1",
@@ -127,6 +141,7 @@ describe("SystemHealth interactions", () => {
       updatesAvailable: 1,
     });
     delete healthState.lastLogin;
+    delete healthState.uncleanShutdownBootId;
   });
 
   it("renders navigable rows as links", () => {
@@ -168,5 +183,29 @@ describe("SystemHealth interactions", () => {
     expect(openNavigate).not.toHaveBeenCalled();
     expect(row).toBeInTheDocument();
     expect(screen.queryByText(/^Failed logins$/)).not.toBeInTheDocument();
+  });
+
+  it("shows failed-login dismissal progress without removing the row", () => {
+    pendingState["system.dismiss_failed_login_alert"] = true;
+    render(<SystemHealth />);
+    expect(
+      screen.getByRole("button", { name: "Dismissing failed login alert" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /failed login attempts/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows unclean-shutdown dismissal progress independently", () => {
+    healthState.failedLoginAlert = undefined;
+    healthState.uncleanShutdown = true;
+    healthState.uncleanShutdownBootId = "boot-1";
+    pendingState["system.dismiss_unclean_shutdown"] = true;
+    render(<SystemHealth />);
+    expect(
+      screen.getByRole("button", { name: "Dismissing unclean shutdown alert" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });
 });

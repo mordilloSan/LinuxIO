@@ -1,10 +1,15 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
+  type ChmodProgress,
+  type DeleteProgress,
+  type FileBatchResult,
   type FileChmodBatchRequest,
   type FileExtractRequest,
+  type TaskProgress,
   linuxio,
+  useCallMutation,
 } from "@/api";
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -15,7 +20,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 import { joinPath } from "@/utils/path";
 
-import { useBackgroundJobActions } from "../backgroundJobs/useBackgroundJobActions";
+import { useBackgroundTaskActions } from "../backgroundTasks/useBackgroundTaskActions";
 
 const FILES_TOAST_META = {
   label: "Open files",
@@ -53,66 +58,87 @@ interface RenamePayload {
   from: string;
 }
 
-// Result returned by the batch copy/move/delete/chmod bridge jobs.
-interface BatchJobResult {
-  total?: number;
-  succeeded?: number;
-  failed?: { path: string; error: string }[];
-}
-
 export const useFileMutations = ({
   normalizedPath,
   onDeleteSuccess,
   resolveCollisions,
 }: UseFileMutationsParams) => {
+  const [createPending, setCreatePending] = useState<"file" | "folder" | null>(
+    null,
+  );
+  const [renamePending, setRenamePending] = useState(false);
+  const [deleteProgress, setDeleteProgress] =
+    useState<TaskProgress<DeleteProgress> | null>(null);
+  const [permissionsProgress, setPermissionsProgress] =
+    useState<TaskProgress<ChmodProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
-    useBackgroundJobActions();
+    useBackgroundTaskActions();
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
-  const createFileMutation = linuxio.filebrowser.resource_post.useAction({
-    success: () => {
-      invalidateListing();
-      toast.success("File created successfully");
+  const createFileMutation = useCallMutation(
+    linuxio.filebrowser.resource_post,
+    {
+      success: () => {
+        invalidateListing();
+        toast.success("File created successfully");
+      },
+      error: "Failed to create file",
+      toast: FILES_TOAST_META,
     },
-    error: "Failed to create file",
-    toast: FILES_TOAST_META,
-  });
+  );
 
   const createFile = useCallback(
-    (fileName: string) => {
+    async (fileName: string) => {
+      if (createPending !== null) return;
       const path = joinPath(normalizedPath, fileName);
-      createFileMutation.mutate({ path });
+      setCreatePending("file");
+      try {
+        await createFileMutation.mutateAsync({ path });
+      } finally {
+        setCreatePending(null);
+      }
     },
-    [createFileMutation, normalizedPath],
+    [createFileMutation, createPending, normalizedPath],
   );
 
-  const createFolderMutation = linuxio.filebrowser.resource_post.useAction({
-    success: () => {
-      invalidateListing();
-      toast.success("Folder created successfully");
+  const createFolderMutation = useCallMutation(
+    linuxio.filebrowser.resource_post,
+    {
+      success: () => {
+        invalidateListing();
+        toast.success("Folder created successfully");
+      },
+      error: "Failed to create folder",
+      toast: FILES_TOAST_META,
     },
-    error: "Failed to create folder",
-    toast: FILES_TOAST_META,
-  });
+  );
 
   const createFolder = useCallback(
-    (folderName: string) => {
+    async (folderName: string) => {
+      if (createPending !== null) return;
       const path = `${joinPath(normalizedPath, folderName)}/`;
-      createFolderMutation.mutate({ path });
+      setCreatePending("folder");
+      try {
+        await createFolderMutation.mutateAsync({ path });
+      } finally {
+        setCreatePending(null);
+      }
     },
-    [createFolderMutation, normalizedPath],
+    [createFolderMutation, createPending, normalizedPath],
   );
 
-  // One batch job deletes the whole selection; the bridge loops server-side
+  // One batch task deletes the whole selection; the bridge loops server-side
   // and reports per-item failures in the result.
   const deleteBatchAction =
-    linuxio.filebrowser.delete_batch.useJobStreamAction<BatchJobResult>({
-      closeMessage: "Delete job stream closed before completion",
+    linuxio.filebrowser.delete_batch.useTaskStreamAction({
+      closeMessage: "Delete task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
+      onProgress: setDeleteProgress,
       success: (result) => {
+        setDeleteProgress(null);
         const failed = result?.failed ?? [];
         if (failed.length > 0) {
           toast.error(
@@ -125,14 +151,16 @@ export const useFileMutations = ({
         toast.success("Items deleted successfully");
       },
       error: (error) => {
+        setDeleteProgress(null);
         toast.error(getMutationErrorMessage(error, "Failed to delete items"));
       },
     });
 
   const deleteItems = useCallback(
-    (paths: string[]) => {
-      if (!paths.length) return;
-      deleteBatchAction.mutate({ paths });
+    async (paths: string[]): Promise<FileBatchResult | undefined> => {
+      if (!paths.length || deleteBatchAction.isPending) return;
+      setDeleteProgress(null);
+      return deleteBatchAction.mutateAsync({ paths });
     },
     [deleteBatchAction],
   );
@@ -166,7 +194,7 @@ export const useFileMutations = ({
           onComplete: invalidateListing,
         });
       } catch (error) {
-        // Note: errors are also handled by BackgroundJobsContext
+        // Note: errors are also handled by BackgroundTasksContext
         toast.error(
           getMutationErrorMessage(error, "Failed to extract archive"),
         );
@@ -176,14 +204,16 @@ export const useFileMutations = ({
     [invalidateListing, startExtraction, toast],
   );
 
-  // One batch job changes permissions of the whole selection; the bridge
+  // One batch task changes permissions of the whole selection; the bridge
   // loops server-side and reports per-item failures in the result.
   const changePermissionsAction =
-    linuxio.filebrowser.chmod_batch.useJobStreamAction<BatchJobResult>({
-      closeMessage: "Permissions job stream closed before completion",
+    linuxio.filebrowser.chmod_batch.useTaskStreamAction({
+      closeMessage: "Permissions task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
+      onProgress: setPermissionsProgress,
       success: (result) => {
+        setPermissionsProgress(null);
         invalidateListing();
         const failed = result?.failed ?? [];
         if (failed.length > 0) {
@@ -195,6 +225,7 @@ export const useFileMutations = ({
         toast.success("Permissions changed successfully");
       },
       error: (error) => {
+        setPermissionsProgress(null);
         toast.error(
           getMutationErrorMessage(error, "Failed to change permissions"),
         );
@@ -216,12 +247,13 @@ export const useFileMutations = ({
         group: group || "",
         recursive: recursive || undefined,
       };
-      await changePermissionsAction.mutateAsync(request);
+      setPermissionsProgress(null);
+      return changePermissionsAction.mutateAsync(request);
     },
     [changePermissionsAction],
   );
 
-  const renameMutation = linuxio.filebrowser.resource_patch.useJobAction({
+  const renameMutation = linuxio.filebrowser.resource_patch.useTaskAction({
     success: () => {
       invalidateListing();
       toast.success("Item renamed successfully");
@@ -240,9 +272,15 @@ export const useFileMutations = ({
         src: from,
         dst: destination,
       };
-      await renameMutation.mutateAsync(request);
+      if (renamePending) return;
+      setRenamePending(true);
+      try {
+        await renameMutation.mutateAsync(request);
+      } finally {
+        setRenamePending(false);
+      }
     },
-    [renameMutation],
+    [renameMutation, renamePending],
   );
 
   // Transfers never overwrite silently: pre-check the landing paths and ask
@@ -287,7 +325,7 @@ export const useFileMutations = ({
         if (!plan) {
           return;
         }
-        // One batch job copies the whole selection into destinationDir; the
+        // One batch task copies the whole selection into destinationDir; the
         // bridge loops server-side and reports one aggregate progress bar.
         await startCopy({
           sources: plan.sources,
@@ -315,7 +353,7 @@ export const useFileMutations = ({
         if (!plan) {
           return;
         }
-        // One batch job moves the whole selection into destinationDir.
+        // One batch task moves the whole selection into destinationDir.
         await startMove({
           sources: plan.sources,
           destination: destinationDir,
@@ -334,13 +372,19 @@ export const useFileMutations = ({
 
   return {
     createFile,
+    createPending,
     createFolder,
     deleteItems,
+    deletePending: deleteBatchAction.isPending,
+    deleteProgress,
     compressItems,
     extractArchive,
     changePermissions,
+    permissionsPending: changePermissionsAction.isPending,
+    permissionsProgress,
     copyItems,
     moveItems,
     renameItem,
+    renamePending,
   };
 };

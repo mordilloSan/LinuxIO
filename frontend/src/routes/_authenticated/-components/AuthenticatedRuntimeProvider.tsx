@@ -1,6 +1,6 @@
 import { type PropsWithChildren, useMemo } from "react";
 
-import { BackgroundJobsProvider } from "@/contexts/BackgroundJobsContext";
+import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext";
 import { ComposeProviders, withProps } from "@/contexts/composeProviders";
 import { ConfigProvider } from "@/contexts/ConfigProvider";
 import { PowerActionProvider } from "@/contexts/PowerActionProvider";
@@ -37,7 +37,7 @@ export default function AuthenticatedRuntimeProvider({
         // key remounts config-scoped state (and everything below) when the
         // signed-in user changes, without dropping toast history above it.
         withProps(ConfigProvider, { key: userId ?? "anonymous" }),
-        BackgroundJobsProvider,
+        BackgroundTasksProvider,
         AuthedThemeShell,
         PowerActionProvider,
         UpdateProvider,

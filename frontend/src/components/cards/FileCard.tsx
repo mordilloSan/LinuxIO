@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
@@ -49,6 +50,7 @@ export interface FileCardProps {
   isCut?: boolean;
   isDirectory: boolean;
   isRenaming?: boolean;
+  isRenamePending?: boolean;
   isSymlink?: boolean;
   modTime?: string;
   name: string;
@@ -76,6 +78,7 @@ const FileCard = memo<FileCardProps>(
     hidden = false,
     isCut = false,
     isRenaming = false,
+    isRenamePending = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -117,6 +120,7 @@ const FileCard = memo<FileCardProps>(
 
     const handleRenameKeyDown = useCallback(
       (e: KeyboardEvent<HTMLInputElement>) => {
+        if (isRenamePending) return;
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -130,7 +134,7 @@ const FileCard = memo<FileCardProps>(
           onCancelRename?.();
         }
       },
-      [renameValue, name, onConfirmRename, onCancelRename],
+      [isRenamePending, name, onCancelRename, onConfirmRename, renameValue],
     );
 
     const handleRenameBlur = useCallback(() => {
@@ -254,28 +258,41 @@ const FileCard = memo<FileCardProps>(
           }}
         >
           {isRenaming ? (
-            <input
-              onBlur={handleRenameBlur}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => e.stopPropagation()}
-              onKeyDown={handleRenameKeyDown}
-              ref={inputRef}
+            <div
               style={{
-                fontWeight: 400,
-                fontSize: "0.90rem",
-                color: theme.palette.text.primary,
-                lineHeight: 1.2,
-                background: "transparent",
-                border: "none",
-                padding: 0,
-                outline: "none",
-                width: "100%",
-                boxSizing: "border-box",
+                alignItems: "center",
+                display: "flex",
+                gap: theme.spacing(1),
               }}
-              type="text"
-              value={renameValue}
-            />
+            >
+              <input
+                disabled={isRenamePending}
+                onBlur={isRenamePending ? undefined : handleRenameBlur}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onKeyDown={handleRenameKeyDown}
+                ref={inputRef}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  boxSizing: "border-box",
+                  color: theme.palette.text.primary,
+                  flex: 1,
+                  fontSize: "0.90rem",
+                  fontWeight: 400,
+                  lineHeight: 1.2,
+                  minWidth: 0,
+                  outline: "none",
+                  padding: 0,
+                }}
+                type="text"
+                value={renameValue}
+              />
+              {isRenamePending && (
+                <AppCircularProgress aria-label="Renaming" size={16} />
+              )}
+            </div>
           ) : (
             <AppTypography
               component="div"

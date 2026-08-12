@@ -2,7 +2,12 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
+import {
+  type AccountUser,
+  linuxio,
+  type ModifyUserRequest,
+  useCallMutation,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -43,25 +48,29 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   const isProtected =
     user.username === "root" || user.username === currentUser?.name;
 
-  const { data: shells = [], isLoading: shellsLoading } = useQuery(
-    linuxio.accounts.list_shells.queryOptions({ enabled: open }),
-  );
-  const { data: groups = [], isLoading: groupsLoading } = useQuery(
-    linuxio.accounts.list_groups.queryOptions({ enabled: open }),
-  );
+  const { data: shells = [], isLoading: shellsLoading } = useQuery({
+    ...linuxio.accounts.list_shells,
+    enabled: open,
+  });
+  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+    ...linuxio.accounts.list_groups,
+    enabled: open,
+  });
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
 
-  const { mutate: modifyUser, isPending } =
-    linuxio.accounts.modify_user.useAction({
+  const { mutate: modifyUser, isPending } = useCallMutation(
+    linuxio.accounts.modify_user,
+    {
       success: () => {
         toast.success(`User "${user.username}" updated successfully`);
         onClose();
       },
       error: "Failed to update user",
       toast: ACCOUNTS_TOAST_META,
-    });
+    },
+  );
 
   const handleSubmit = () => {
     const request: ModifyUserRequest = {

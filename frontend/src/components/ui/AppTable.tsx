@@ -1,9 +1,5 @@
-import {
-  forwardRef,
-  HTMLAttributes,
-  TdHTMLAttributes,
-  type TableHTMLAttributes,
-} from "react";
+import type { HTMLAttributes, TdHTMLAttributes } from "react";
+import { forwardRef, type TableHTMLAttributes } from "react";
 
 import "./app-table.css";
 

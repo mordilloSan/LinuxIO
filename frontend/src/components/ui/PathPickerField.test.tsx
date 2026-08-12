@@ -18,10 +18,13 @@ vi.mock("@/api", async (importOriginal) => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        resource_get: Object.assign(mocks.resourceGet, {
-          useFetcher: () => (request: { path: string }) =>
-            mocks.resourceGet(request),
-        }),
+        resource_get: Object.assign(
+          (request: { path: string }) => ({
+            queryKey: ["test", "resource-get", request],
+            queryFn: () => mocks.resourceGet(request),
+          }),
+          { route: actual.linuxio.filebrowser.resource_get.route },
+        ),
       },
     },
   };

@@ -11,6 +11,10 @@ import {
 import type { TableCardViewMode } from "@/api";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
+import {
+  useReorderableSurface,
+  type ReorderableSurface,
+} from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
@@ -24,6 +28,7 @@ interface UnitTableViewRenderProps<T> {
   onDoubleClick: (name: string) => void;
   onSelect: (name: string | null) => void;
   selected: string | null;
+  surface: ReorderableSurface<T>;
 }
 
 interface UnitCardsViewRenderProps<T> {
@@ -31,7 +36,10 @@ interface UnitCardsViewRenderProps<T> {
   items: T[];
   onExpand: (name: string | null) => void;
   renderDetailPanel: (item: T) => ReactNode;
+  surface: ReorderableSurface<T>;
 }
+
+const getUnitId = (unit: UnitListItem) => unit.name;
 
 interface UnitListTabProps<T extends UnitListItem> {
   compareItems: (a: T, b: T) => number;
@@ -44,6 +52,8 @@ interface UnitListTabProps<T extends UnitListItem> {
   searchPlaceholder: string;
   selected?: string;
   setViewMode: (next: TableCardViewMode) => void;
+  /** Surface id the manual order is stored under, e.g. "services.list". */
+  surfaceId: string;
   viewMode: TableCardViewMode;
 }
 
@@ -59,6 +69,7 @@ function UnitListTab<T extends UnitListItem>({
   renderDetailPanel,
   selected,
   onSelectedChange,
+  surfaceId,
 }: UnitListTabProps<T>) {
   const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
@@ -87,27 +98,43 @@ function UnitListTab<T extends UnitListItem>({
     return () => window.removeEventListener("keydown", handleEscapeKey);
   }, []);
 
+  // The alphabetical sort is only the starting order: a saved manual order wins
+  // over it, and anything the user never moved stays alphabetical.
+  const sorted = useMemo(
+    () => [...data].sort(compareItems),
+    [compareItems, data],
+  );
+  const surface = useReorderableSurface({
+    getId: getUnitId,
+    items: sorted,
+    surface: surfaceId,
+  });
+  const orderedItems = surface.items;
   const filtered = useMemo(() => {
     const searchText = search.trim().toLowerCase();
 
-    return data
-      .filter((item) => matchesSearch(item, searchText))
-      .sort(compareItems);
-  }, [compareItems, data, matchesSearch, search]);
+    return orderedItems.filter((item) => matchesSearch(item, searchText));
+  }, [matchesSearch, orderedItems, search]);
 
-  const handleCardExpand = (name: string | null) => {
-    setExpanded(name);
-    if (name === null && returnToTable) {
-      setViewMode("table");
-      setReturnToTable(false);
-    }
-  };
+  const handleCardExpand = useCallback(
+    (name: string | null) => {
+      setExpanded(name);
+      if (name === null && returnToTable) {
+        setViewMode("table");
+        setReturnToTable(false);
+      }
+    },
+    [returnToTable, setExpanded, setViewMode],
+  );
 
-  const handleOpenCardView = (name: string) => {
-    setViewMode("card");
-    setExpanded(name);
-    setReturnToTable(true);
-  };
+  const handleOpenCardView = useCallback(
+    (name: string) => {
+      setViewMode("card");
+      setExpanded(name);
+      setReturnToTable(true);
+    },
+    [setExpanded, setViewMode],
+  );
 
   const selectedItem = expanded
     ? (filtered.find((item) => item.name === expanded) ?? null)
@@ -159,6 +186,7 @@ function UnitListTab<T extends UnitListItem>({
             onExpand: handleCardExpand,
             renderDetailPanel: (item) =>
               renderDetailPanel(item, () => handleCardExpand(null)),
+            surface,
           })}
         </div>
       </div>
@@ -210,6 +238,7 @@ function UnitListTab<T extends UnitListItem>({
               selected: expanded ?? null,
               onSelect: setExpanded,
               onDoubleClick: handleOpenCardView,
+              surface,
             })}
           </AppGrid>
           {selectedItem && (

@@ -15,8 +15,9 @@ const mocks = vi.hoisted(() => {
   return {
     closeStream: vi.fn(),
     fetchPage: vi.fn(),
+    fetchQuery: vi.fn(),
     navigate: vi.fn(),
-    openGeneralLogsStream: vi.fn(() => ({})),
+    openChannel: vi.fn(() => ({})),
     openStream: vi.fn(),
     scrollMetrics: { clientHeight: 500, scrollHeight: 1000 },
     streamOptions: null as Record<string, any> | null,
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: [] }),
+  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -36,20 +38,23 @@ vi.mock("@/api", () => ({
   CACHE_TTL_MS: { NONE: 0, THIRTY_SECONDS: 30_000 },
   linuxio: {
     logs: {
-      general_entry: {
-        queryOptions: () => ({}),
-      },
-      general_page: {
-        useFetcher: () => mocks.fetchPage,
-      },
+      general_entry: (request: { cursor: string }) => ({
+        queryKey: ["linuxio", "logs", "general_entry", request],
+        queryFn: () => Promise.resolve(undefined),
+      }),
+      general_page: (request: unknown) => ({
+        queryKey: ["linuxio", "logs", "general_page", request],
+        queryFn: () => mocks.fetchPage(request),
+      }),
     },
     systemd: {
       list_services: {
-        queryOptions: () => ({}),
+        queryKey: ["linuxio", "systemd", "list_services"],
+        queryFn: () => Promise.resolve([]),
       },
     },
   },
-  openGeneralLogsStream: mocks.openGeneralLogsStream,
+  openChannel: mocks.openChannel,
   useStreamMux: () => ({ isOpen: true }),
 }));
 
@@ -128,7 +133,9 @@ describe("GeneralLogsPage cursor pagination", () => {
     mocks.scrollMetrics.clientHeight = 500;
     mocks.scrollMetrics.scrollHeight = 1000;
     mocks.fetchPage.mockReset();
-    mocks.openGeneralLogsStream.mockClear();
+    mocks.fetchQuery.mockReset();
+    mocks.fetchQuery.mockImplementation((options) => options.queryFn());
+    mocks.openChannel.mockClear();
     mocks.openStream.mockImplementation((options) => {
       mocks.streamOptions = options;
       options.open();
@@ -188,7 +195,6 @@ describe("GeneralLogsPage cursor pagination", () => {
           lines: "1000",
           timePeriod: "24h",
         }),
-        expect.objectContaining({ gcTime: 0, staleTime: 0 }),
       ),
     );
     await waitFor(() =>
@@ -202,14 +208,17 @@ describe("GeneralLogsPage cursor pagination", () => {
   it("resumes live mode strictly after the newest buffered cursor", async () => {
     render(<GeneralLogsPage />);
     await waitFor(() => expect(mocks.streamOptions).not.toBeNull());
-    expect(mocks.openGeneralLogsStream.mock.calls[0]).toEqual([
-      "500",
-      "24h",
-      "",
-      "",
-      [],
-      true,
-      "",
+    expect(mocks.openChannel.mock.calls[0]).toEqual([
+      "logs.general.follow",
+      {
+        afterCursor: "",
+        fieldFilters: [],
+        follow: true,
+        identifier: "",
+        lines: "500",
+        priority: "",
+        timePeriod: "24h",
+      },
     ]);
     expect(screen.queryByText("Lines")).not.toBeInTheDocument();
 
@@ -229,18 +238,16 @@ describe("GeneralLogsPage cursor pagination", () => {
     fireEvent.click(liveSwitch);
     fireEvent.click(liveSwitch);
 
-    await waitFor(() =>
-      expect(mocks.openGeneralLogsStream).toHaveBeenCalledTimes(2),
-    );
-    expect(mocks.openGeneralLogsStream).toHaveBeenLastCalledWith(
-      "0",
-      "24h",
-      "",
-      "",
-      [],
-      true,
-      "new",
-    );
+    await waitFor(() => expect(mocks.openChannel).toHaveBeenCalledTimes(2));
+    expect(mocks.openChannel).toHaveBeenLastCalledWith("logs.general.follow", {
+      afterCursor: "new",
+      fieldFilters: [],
+      follow: true,
+      identifier: "",
+      lines: "0",
+      priority: "",
+      timePeriod: "24h",
+    });
   });
 
   it("keeps pagination available when progress arrives before buffered rows flush", async () => {
@@ -279,8 +286,10 @@ describe("GeneralLogsPage cursor pagination", () => {
     await waitFor(() =>
       expect(mocks.fetchPage).toHaveBeenCalledWith(
         expect.objectContaining({ cursor: "old" }),
-        expect.objectContaining({ gcTime: 0, staleTime: 0 }),
       ),
+    );
+    expect(mocks.fetchQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ gcTime: 0, staleTime: 0 }),
     );
   });
 });

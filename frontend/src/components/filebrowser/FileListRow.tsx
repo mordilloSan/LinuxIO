@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
@@ -27,6 +28,7 @@ export interface FileListRowProps {
   isCut?: boolean;
   isDirectory: boolean;
   isRenaming?: boolean;
+  isRenamePending?: boolean;
   isSymlink?: boolean;
   modTime?: string;
   name: string;
@@ -57,6 +59,7 @@ const FileListRow = memo<FileListRowProps>(
     hidden = false,
     isCut = false,
     isRenaming = false,
+    isRenamePending = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -99,6 +102,7 @@ const FileListRow = memo<FileListRowProps>(
 
     const handleRenameKeyDown = useCallback(
       (e: KeyboardEvent<HTMLInputElement>) => {
+        if (isRenamePending) return;
         if (e.key === "Enter") {
           e.preventDefault();
           const trimmed = renameValue.trim();
@@ -112,7 +116,7 @@ const FileListRow = memo<FileListRowProps>(
           onCancelRename?.();
         }
       },
-      [renameValue, name, onConfirmRename, onCancelRename],
+      [isRenamePending, name, onCancelRename, onConfirmRename, renameValue],
     );
 
     const handleRenameBlur = useCallback(() => {
@@ -256,7 +260,8 @@ const FileListRow = memo<FileListRowProps>(
             >
               {isRenaming ? (
                 <input
-                  onBlur={handleRenameBlur}
+                  disabled={isRenamePending}
+                  onBlur={isRenamePending ? undefined : handleRenameBlur}
                   onChange={(e) => setRenameValue(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
@@ -290,6 +295,9 @@ const FileListRow = memo<FileListRowProps>(
                 >
                   {name}
                 </AppTypography>
+              )}
+              {isRenaming && isRenamePending && (
+                <AppCircularProgress aria-label="Renaming" size={16} />
               )}
               {showFullPath && (
                 <span

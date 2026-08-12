@@ -16,14 +16,12 @@ export const Route = createFileRoute("/_authenticated/accounts/")({
   loaderDeps: ({ search }) => ({ user: search.user }),
   loader: (loaderArgs) => {
     const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [
-      linuxio.accounts.list_users.queryOptions(),
-    ];
+    const queries: LoaderQueryOptions[] = [linuxio.accounts.list_users];
 
     if (deps.user) {
       queries.push(
-        linuxio.accounts.get_user_details.queryOptions(deps.user),
-        linuxio.accounts.list_user_logins.queryOptions(deps.user),
+        linuxio.accounts.get_user_details({ username: deps.user }),
+        linuxio.accounts.list_user_logins({ username: deps.user }),
       );
     }
 

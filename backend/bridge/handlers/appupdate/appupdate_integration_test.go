@@ -1,16 +1,16 @@
 package appupdate
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
+
+	"uuid"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
 )
 
 func TestInstallScriptDryRunWithSystemdSandbox(t *testing.T) {
@@ -20,30 +20,56 @@ func TestInstallScriptDryRunWithSystemdSandbox(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("systemd integration test requires root")
 	}
-	if _, err := exec.LookPath("systemd-run"); err != nil {
-		t.Skipf("systemd-run not available: %v", err)
-	}
-
 	scriptPath := installerScriptPath(t)
 	scriptBytes, err := os.ReadFile(scriptPath)
 	if err != nil {
 		t.Fatalf("read install script: %v", err)
 	}
 
-	unit := fmt.Sprintf("linuxio-updater-test-%d", time.Now().UnixNano())
+	operationID := uuid.New().String()
+	store := durabletask.NewStore(filepath.Join(t.TempDir(), "operations"))
+	storedScript, err := store.WriteArtifact(operationID, appUpdateInstallerName, scriptBytes, 0o700)
+	if err != nil {
+		t.Fatalf("write installer: %v", err)
+	}
+	resultPath, err := store.ExecutorResultPath(operationID)
+	if err != nil {
+		t.Fatalf("result path: %v", err)
+	}
+	unit := appUpdateUnitName(operationID)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "systemd-run", buildInstallCommandArgs(unit, "--dry-run")...)
-	cmd.Stdin = bytes.NewReader(scriptBytes)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("systemd dry run failed: %v\n%s", err, output)
+	executor := systemdUpdaterExecutor{}
+	if err := executor.Start(ctx, updaterLaunch{
+		OperationID:   operationID,
+		UID:           0,
+		Unit:          unit,
+		Description:   appUpdateUnitDescription(operationID, 0),
+		ScriptPath:    storedScript,
+		ResultPath:    resultPath,
+		InstallerArgs: []string{"--dry-run"},
+	}); err != nil {
+		t.Fatalf("start transient dry-run updater: %v", err)
 	}
+	defer executor.Collect(context.Background(), unit)
 
-	out := string(output)
-	if !strings.Contains(out, "Dry run completed successfully") {
-		t.Fatalf("unexpected dry-run output:\n%s", out)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		result, resultErr := store.ReadExecutorResult(operationID)
+		if resultErr == nil {
+			if result.State != durabletask.StateCompleted || result.ExitCode != 0 {
+				t.Fatalf("dry-run result = %+v", result)
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			state, _ := executor.Inspect(context.Background(), unit, appUpdateUnitDescription(operationID, 0))
+			t.Fatalf("timed out waiting for dry-run result: %v (unit=%+v)", resultErr, state)
+		case <-ticker.C:
+		}
 	}
 }
 

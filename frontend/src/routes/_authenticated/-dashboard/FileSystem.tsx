@@ -22,11 +22,10 @@ const isRelevantMount = (fs: FilesystemInfo): boolean => {
 };
 
 const FsStats = () => {
-  const { data: fsInfo } = useSuspenseQuery(
-    linuxio.system.get_fs_info.queryOptions({
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: fsInfo } = useSuspenseQuery({
+    ...linuxio.system.get_fs_info,
+    refetchInterval: 2000,
+  });
   const theme = useAppTheme();
 
   const renderFsProgressBars = () => {

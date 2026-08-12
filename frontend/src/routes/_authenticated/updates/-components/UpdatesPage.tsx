@@ -1,17 +1,12 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
 
 import { usePackageUpdateController } from "./PackageUpdateController";
@@ -42,13 +37,11 @@ const UpdatesPage = () => {
 };
 
 const AvailableUpdatesPage = () => {
-  const theme = useAppTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { data: rawUpdates, refetch } = useSuspenseQuery(
-    linuxio.updates.get_updates_basic.queryOptions({
-      refetchInterval: 50000,
-    }),
-  );
+  const { data: rawUpdates, refetch } = useSuspenseQuery({
+    ...linuxio.updates.get_updates_basic,
+    refetchInterval: 50000,
+  });
   const toast = useScopedToast(UPDATES_TOAST_META);
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
@@ -71,7 +64,7 @@ const AvailableUpdatesPage = () => {
     recoveryPending,
   } = usePackageUpdateController();
   const { mutate: refreshCache, isPending: isRefreshingCache } =
-    linuxio.updates.refresh_cache.useAction({
+    useCallMutation(linuxio.updates.refresh_cache, {
       success: async () => {
         await refetch();
         toast.success("Update sources refreshed");
@@ -82,49 +75,34 @@ const AvailableUpdatesPage = () => {
   const packageOperationPending =
     recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(1),
-      }}
-    >
-      <AppButton
+    <>
+      <AppActionIconButton
+        ariaLabel="Refresh Sources"
         disabled={packageOperationPending}
+        icon="mdi:database-refresh"
+        iconSize={20}
+        label={isRefreshingCache ? "Refreshing" : "Refresh Sources"}
+        loading={isRefreshingCache}
         onClick={() => refreshCache()}
-        size="small"
-        startIcon={
-          isRefreshingCache ? (
-            <AppCircularProgress color="inherit" size={16} />
-          ) : (
-            <Icon height={20} icon="mdi:database-refresh" width={20} />
-          )
-        }
-        variant="outlined"
-      >
-        {isRefreshingCache ? "Refreshing" : "Refresh Sources"}
-      </AppButton>
-      <AppTooltip title="Update settings">
-        <AppIconButton
-          aria-label="Open update settings"
-          onClick={() => setSettingsOpen(true)}
-          size="small"
-        >
-          <Icon height={20} icon="mdi:cog" width={20} />
-        </AppIconButton>
-      </AppTooltip>
+      />
+      <AppActionIconButton
+        ariaLabel="Open update settings"
+        icon="mdi:cog"
+        iconSize={20}
+        label="Update settings"
+        onClick={() => setSettingsOpen(true)}
+      />
       {actionableUpdates.length > 0 ? (
-        <AppButton
+        <AppActionIconButton
+          ariaLabel={`Update All (${actionableUpdates.length})`}
           disabled={packageOperationPending}
+          icon="mdi:refresh"
+          iconSize={20}
+          label={`Update All (${actionableUpdates.length})`}
           onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
-          size="small"
-          startIcon={<Icon height={20} icon="mdi:refresh" width={20} />}
-          variant="contained"
-        >
-          Update All ({actionableUpdates.length})
-        </AppButton>
+        />
       ) : null}
-    </div>
+    </>
   );
 
   return (

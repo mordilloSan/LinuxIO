@@ -1,0 +1,98 @@
+/* Ports and volumes stack up to three lines before the rest collapses behind the
+   row expander. Pinning the stack to those three lines — and every line inside
+   it to one shared line box, since the "+N more" caption is taller than an
+   entry — keeps a container with one port exactly as tall as one with three
+   instead of rendering a visibly shorter row. Expanded stacks grow past it.
+
+   No row gap on purpose: the collapsed AppCollapse wrappers are still flex
+   children at zero height, so a gap would count between them and make a
+   three-entry stack a couple of pixels taller than a one-entry one. The 18px
+   line box over body2's 13px already provides the leading. */
+.container-table__stack {
+  --container-table-line: 18px;
+
+  display: flex;
+  flex-direction: column;
+  /* Fewer than three lines sit centred in the reserved height, so they line up
+     with the single-line cells (IP, uptime) either side of them. */
+  justify-content: center;
+  min-height: calc(3 * var(--container-table-line));
+}
+
+.container-table__stack-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.container-table__stack .app-typo,
+.container-table__stack-toggle {
+  line-height: var(--container-table-line);
+}
+
+/* The row expander, styled as the caption it replaced rather than as a button. */
+.container-table__stack-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-palette-text-disabled);
+  font: inherit;
+  font-size: 0.6964rem;
+  cursor: pointer;
+}
+
+.container-table__stack-toggle:hover,
+.container-table__stack-toggle:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.container-table__stack-chevron {
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-standard);
+}
+
+.container-table__stack-toggle[aria-expanded="true"]
+  .container-table__stack-chevron {
+  transform: rotate(180deg);
+}
+
+/* Tag on top, update verdict under it. The row is three lines tall for the
+   ports/volumes stacks anyway, so the second line costs no height. */
+.container-table__version-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+}
+
+.container-table__version-text {
+  align-self: stretch;
+  min-width: 0;
+}
+
+/* AppButton supplies the semantic colour, hover tint, focus ring and disabled
+   handling; this only strips the chrome a 64px-wide form button brings so the
+   verdict reads as the caption it sits next to. */
+.container-table__update-label {
+  min-width: 0;
+  padding: 0 3px;
+  font-size: 0.6964rem;
+  line-height: 1.5;
+  /* Paler than the palette's status colour: this is a subtitle under the tag,
+     not an alert, and full-strength success green on every row shouts. */
+  opacity: 0.75;
+}
+
+.container-table__update-label--muted {
+  color: var(--app-palette-text-disabled);
+}
+
+/* Second tooltip line: the action, subordinate to the status above it. */
+.container-table__update-hint {
+  opacity: 0.7;
+}

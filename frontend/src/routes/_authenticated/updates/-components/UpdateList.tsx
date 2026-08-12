@@ -3,14 +3,17 @@ import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
 import UpdateCard from "@/components/cards/UpdateCard";
-import AppGrid from "@/components/ui/AppGrid";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 interface Props {
   currentPackage?: string | null;
   isUpdating?: boolean;
   onUpdateClick: (pkg: string) => void;
   updates: Update[];
 }
+const getUpdateId = (update: Update) => update.package_id;
+
 const UpdateList = ({
   updates,
   onUpdateClick,
@@ -26,13 +29,19 @@ const UpdateList = ({
     null,
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const changelogQuery = useQuery(
-    linuxio.updates.get_update_detail.queryOptions(changelogPackageId ?? "", {
-      enabled: changelogPackageId !== null,
-      staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-      select: (detail) => detail.changelog || "No changelog available",
+  const surface = useReorderableSurface({
+    getId: getUpdateId,
+    items: updates,
+    surface: "updates.list",
+  });
+  const changelogQuery = useQuery({
+    ...linuxio.updates.get_update_detail({
+      packageId: changelogPackageId ?? "",
     }),
-  );
+    enabled: changelogPackageId !== null,
+    staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+    select: (detail) => detail.changelog || "No changelog available",
+  });
   const changelog = changelogQuery.isError
     ? "Failed to load changelog"
     : changelogQuery.data;
@@ -71,16 +80,10 @@ const UpdateList = ({
     return null; // Hide list while updating; only the progress bar should show
   }
   return (
-    <AppGrid
-      container
-      ref={containerRef}
-      spacing={2}
-      style={{
-        paddingBottom: 16,
-      }}
-    >
-      {updates.map((update) => (
-        <AppGrid key={update.package_id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+    <div ref={containerRef} style={{ paddingBottom: 16 }}>
+      <ReorderableCardGrid
+        getId={getUpdateId}
+        renderItem={(update) => (
           <UpdateCard
             changelog={
               update.package_id === changelogPackageId ? changelog : undefined
@@ -96,9 +99,11 @@ const UpdateList = ({
             onUpdate={() => onUpdateClick(update.package_id)}
             update={update}
           />
-        </AppGrid>
-      ))}
-    </AppGrid>
+        )}
+        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+        surface={surface}
+      />
+    </div>
   );
 };
 export default UpdateList;

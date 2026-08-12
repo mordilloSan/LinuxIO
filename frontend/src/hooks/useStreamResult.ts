@@ -114,7 +114,7 @@ export function useStreamResult(): UseStreamResultReturn {
       }
     },
     [],
-  ) as RunStreamResultFn;
+  );
 
   const runChunked = useCallback(
     async <TResult = unknown, TProgress = ProgressFrame>(
@@ -186,7 +186,7 @@ export function useStreamResult(): UseStreamResultReturn {
       }
     },
     [],
-  ) as RunChunkedStreamResultFn;
+  );
 
   return { run, runChunked };
 }

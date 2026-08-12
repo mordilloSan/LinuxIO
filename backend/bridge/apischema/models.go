@@ -3,6 +3,7 @@ package apischema
 import (
 	"github.com/shirou/gopsutil/v4/load"
 
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -11,7 +12,7 @@ type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
 type IndexerIntegrityCheck string
-type JobState string
+type TaskState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
@@ -24,7 +25,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
-	"JobState":                      {"queued", "running", "completed", "failed", "canceled"},
+	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
@@ -41,7 +42,7 @@ const (
 
 var ExtraTypes = []TypeSpec{
 	TypeOf[InstallCapabilityResult](),
-	TypeOf[JobEvent](),
+	TypeOf[TaskEvent](),
 	TypeOf[VMCreateProgress](),
 }
 
@@ -298,9 +299,7 @@ type NetworkInterface struct {
 	Gateway    string   `json:"gateway"`
 	IPv4       []string `json:"ipv4"`
 	IPv4Method *string  `json:"ipv4_method,omitempty"`
-	IPv6       []string `json:"ipv6"`
 	MAC        string   `json:"mac"`
-	MTU        int      `json:"mtu"`
 	Name       string   `json:"name"`
 	RXSpeed    float64  `json:"rx_speed"`
 	Speed      string   `json:"speed"`
@@ -1146,18 +1145,19 @@ type DirectoryValidationResult struct {
 	Valid       bool   `json:"valid"`
 }
 
-type JobError struct {
+type TaskError struct {
 	Code    *int   `json:"code,omitempty"`
 	Message string `json:"message"`
 }
 
-type JobOwner struct {
-	SessionID *string `json:"session_id,omitempty"`
-	Username  *string `json:"username,omitempty"`
-	UID       *int    `json:"uid,omitempty"`
+type TaskOwner struct {
+	Username *string `json:"username,omitempty"`
+	UID      *int    `json:"uid,omitempty"`
 }
 
-type JobMetadata struct {
+type TaskProgress = bridgeipc.TaskProgress
+
+type TaskMetadata struct {
 	Action      *string  `json:"action,omitempty"`
 	Capability  *string  `json:"capability,omitempty"`
 	Device      *string  `json:"device,omitempty"`
@@ -1169,27 +1169,27 @@ type JobMetadata struct {
 	TestType    *string  `json:"testType,omitempty"`
 }
 
-type JobSnapshot struct {
-	CreatedAt  string       `json:"created_at"`
-	Error      *JobError    `json:"error,omitempty"`
-	FinishedAt *string      `json:"finished_at,omitempty"`
-	ID         string       `json:"id"`
-	Owner      *JobOwner    `json:"owner,omitempty"`
-	Metadata   *JobMetadata `json:"metadata,omitempty"`
-	Progress   any          `json:"progress,omitempty"`
-	Result     any          `json:"result,omitempty"`
-	StartedAt  *string      `json:"started_at,omitempty"`
-	State      JobState     `json:"state"`
-	Type       string       `json:"type"`
-	UpdatedAt  string       `json:"updated_at"`
+type TaskSnapshot struct {
+	CreatedAt  string        `json:"created_at"`
+	Error      *TaskError    `json:"error,omitempty"`
+	FinishedAt *string       `json:"finished_at,omitempty"`
+	ID         string        `json:"id"`
+	Owner      *TaskOwner    `json:"owner,omitempty"`
+	Metadata   *TaskMetadata `json:"metadata,omitempty"`
+	Progress   *TaskProgress `json:"progress,omitempty"`
+	Result     any           `json:"result,omitempty"`
+	StartedAt  *string       `json:"started_at,omitempty"`
+	State      TaskState     `json:"state"`
+	Type       string        `json:"type"`
+	UpdatedAt  string        `json:"updated_at"`
 }
 
-type JobEvent struct {
-	Error    *JobError   `json:"error,omitempty"`
-	Job      JobSnapshot `json:"job"`
-	Progress any         `json:"progress,omitempty"`
-	Result   any         `json:"result,omitempty"`
-	Type     string      `json:"type"`
+type TaskEvent struct {
+	Error    *TaskError    `json:"error,omitempty"`
+	Task     TaskSnapshot  `json:"task"`
+	Progress *TaskProgress `json:"progress,omitempty"`
+	Result   any           `json:"result,omitempty"`
+	Type     string        `json:"type"`
 }
 
 type Update struct {
@@ -1357,6 +1357,15 @@ type VMCreateProgress struct {
 	Percent *int   `json:"percent,omitempty"`
 }
 
+func (p VMCreateProgress) ProgressEnvelope() TaskProgress {
+	return TaskProgress{
+		Percentage: p.Percent,
+		Phase:      p.Phase,
+		Message:    p.Message,
+		Detail:     p,
+	}
+}
+
 type VMDeleteResult struct {
 	Removed   []string `json:"removed"`
 	Preserved []string `json:"preserved"`
@@ -1376,11 +1385,10 @@ type AppConfig struct {
 
 type AppSettings struct {
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
-	ContainerOrder          []string                        `json:"containerOrder,omitempty"`
-	DashboardOrder          []string                        `json:"dashboardOrder,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
+	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	PrimaryColor            string                          `json:"primaryColor"`
 	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`

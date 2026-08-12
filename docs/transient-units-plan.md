@@ -1,201 +1,192 @@
-# Bridge-Survivable Jobs via systemd Transient Units
+# Durable operations and transient units
 
 ## Summary
 
-Long-running jobs today live entirely inside the per-session bridge process as
-goroutines in a package-global registry ([`jobs.DefaultRegistry`](../backend/common/ipc/bridge/jobs.go)).
-When the bridge dies — session GC, websocket loss, `ReasonBridgeFailure` — every
-in-flight job dies with it. This is the open `ToDo` item #5:
+Most Tasks should remain session-bound. They represent an interactive request,
+and cancelling them when the bridge/session goes away is the least surprising
+behavior. Durability is an explicit opt-in for operations whose work and
+security model justify surviving a bridge restart or websocket loss.
 
-> if session dies bridge is orphaned doing work? Right now bridge dies and all
-> work is canceled.
+A durable operation has all of the following:
 
-The fix is **not** to build a bespoke process supervisor. systemd already is one.
-For the subset of jobs that must outlive a session, hand the work to a **systemd
-transient unit** via `org.freedesktop.systemd1.Manager.StartTransientUnit` (the
-same call `systemd-run` makes). systemd (PID 1) owns the process, so it survives
-the bridge; journald captures its output for free; reattachment becomes "find the
-unit again", not "keep a goroutine alive".
+- ownership by a numeric UID; the initiating session is used only for initial
+  authorization and its raw credential is not persisted,
+- a stable client-visible operation/Task ID, allocated before execution,
+- one atomically written persistent operation record, and
+- an external execution owner that can outlive the bridge.
 
-We can reach `StartTransientUnit` through the **existing** `dbusclient` — no new
-dependency is strictly required (decision below).
+The implemented first pilot is `control.app_update`. A systemd transient unit is one
+possible execution owner for subprocess work; it is not a universal Task
+framework. PackageKit transactions, drive jobs, or a daemon that already owns
+state may be the better recovery owner for other routes. See the related API
+contract and retry guidance in [`api-reliability-roadmap.md`](./api-reliability-roadmap.md).
 
-## Goals / Non-Goals
+## Goals and non-goals
 
 Goals:
-- Survivable execution for a *classified* set of job types (not all jobs).
-- A reattach contract: after a bridge restart, re-discover running units and
-  resume reporting progress/result to clients.
-- Central, durable job logs via journald.
-- Reuse the already-hash-validated `linuxio-bridge` binary; do not introduce new
-  binaries that need their own integrity validation
-  ([`validateBridgeHash`](../backend/webserver/bridge/bridge.go)).
 
-Non-Goals (for this effort):
-- Moving the job *control plane* into the webserver/session manager. That is a
-  separate, larger change; see "Relation to broader architecture".
-- Making every job survivable. Most jobs are tied to session intent and should
-  keep dying with the session.
-- Replacing the in-process `Registry` for short/interactive jobs.
+- Make the durable-vs-session-bound choice explicit per route.
+- Let a restarted bridge recover operation state and report a final result.
+- Preserve UID ownership and authorization across sessions and restarts.
+- Use existing `godbus`/`dbusclient` paths where systemd is selected.
+- Keep the first implementation small: one service-owned, one-record-per-operation
+  atomic JSON store, using existing file-lock and fsync patterns and no
+  database.
 
-## Background: how jobs run today
+Non-goals:
 
-- A request hits the bridge router, which builds an `Owner{SessionID, Username,
-  UID}` from the session ([`ownerFromSession`](../backend/common/ipc/bridge/router.go))
-  and calls `registry.CreateForOwner(...)` then `job.Start(runner)`.
-- `Start` launches `go j.run(ctx, runner)` with `ctx` derived from
-  `context.Background()` — detached from the request stream, but **bound to the
-  bridge process lifetime**.
-- Progress/result flow back over yamux to the webserver and out to the browser;
-  there is no durable store. The webserver does not own the registry (zero
-  references to it).
+- Moving every Task into a process supervisor or making every Task durable.
+- Treating a unit name, a journal entry, or an in-memory bridge map as the
+  source of truth.
+- Adding a new go-systemd dependency or a temporary dependency spike.
+- Making journald a typed progress/result protocol; journald is for logs.
 
-The registry already models per-session/user ownership, so the data model is
-ready for survivable + reattachable jobs; only the *execution substrate* is
-process-bound.
+## Implemented pilot
 
-## The crux: a transient unit runs a command, not a goroutine
+The 17 ordinary Task routes remain bridge goroutines with session lifetime and
+exact `SessionID` owner scope. `control.app_update` is the sole durable route:
+its stable UUID is claimed by numeric UID, its record is persisted before
+launch, and its external systemd unit can continue through bridge and
+WebSocket loss. `TaskOwner.SessionID` remains an internal authorization value
+and is never serialized in the public owner model or durable record.
 
-`StartTransientUnit` executes an `ExecStart` command line. That forces a clean
-boundary, and splits today's jobs into two shapes:
+For a durable route, `TaskOwner` must not mean “the session that happens to be
+connected now.” The durable owner is the authenticated numeric UID. The raw
+creating `SessionID` must not be retained in the durable record because it is a
+session-cookie credential; later sessions for the same UID may read or cancel
+the operation according to the route policy, while a different UID may not.
+Do not infer ownership from a transient unit name, and do not make a thin
+in-bridge map authoritative: either can be lost or forged independently of the
+operation record.
 
-1. **Already-subprocess jobs** — work that already shells out can be wrapped in a
-   unit directly. Candidates:
-   - app update (`control.app_update`) — already uses `cmd.Start()` with a 30-min
-     `SingletonSystem` policy ([appupdate](../backend/bridge/handlers/appupdate/handlers.go)).
-   - package install / offline updates ([packages](../backend/bridge/handlers/packages/handlers.go)).
-   - docker image pulls for compose up / container updates.
+## Durable operation record
 
-2. **In-process Go jobs** — work implemented against a library (compose via the
-   moby SDK, the indexer) has no command-line entry point. To make these
-   survivable they need a worker subcommand on the bridge binary, e.g.
-   `linuxio-bridge job-exec --type docker.compose --payload <file>`, which the
-   transient unit's `ExecStart` invokes. This is the disciplined version of the
-   earlier "each job a standalone process" idea — one validated binary, many
-   transient invocations, not N new binaries.
+Allocate a stable operation/Task ID before handing work to an external owner.
+The service-owned record is the recovery and authorization source of truth. A
+minimal JSON record contains:
 
-**Recommendation:** start with shape (1). It delivers the survivability win with
-no new execution path. Tackle shape (2) only after the reattach contract is
-proven, and only for job types that justify it.
+```text
+id, route, uid, created_at, updated_at,
+state (queued|launching|running|completed|failed|canceled|unknown),
+route-defined safe request fingerprint/idempotency key, executor kind and handle,
+started_at, finished_at, exit/error summary, and result reference
+```
 
-## Design
+Write exactly one record per operation through the existing atomic writer,
+which fsyncs the temporary file and parent directory, while holding the
+repository's existing lock. Persist `launching` with the deterministic executor
+name before starting work, then persist `running` after observing acceptance.
+If the bridge dies between those writes, recovery queries that exact executor
+name and adopts or fails the recorded operation; it never launches a second
+executor blindly. A missing or malformed record is an explicit recovery error,
+not permission to guess from unit names. The record contains no raw request,
+credential, environment secret, or command output.
 
-### Starting a unit
+The store is intentionally file-based and bounded for the pilot. Active records
+are never pruned. Retain terminal records for 30 days and at most the newest 200
+per UID, pruning only terminal records under the same lock. Introduce a database
+only when query volume or multi-process ownership demonstrates that need.
 
-Add a helper in a new `bridge/internal/systemdrun` (or extend `dbusclient`) that
-calls the manager interface already used by the systemd handlers
-([`SystemdManagerIface`](../backend/bridge/internal/dbusclient/interfaces.go),
-example call: `managerIface.CallStore(ctx, "StartUnit", ...)` in
-[systemd.go](../backend/bridge/handlers/systemd/systemd.go)):
+## External execution owners
 
-- Method: `StartTransientUnit(name string, mode string, properties a(sv), aux a(sa(sv)))`.
-- `name`: deterministic, owner-scoped, e.g. `linuxio-<jobtype>-<jobid>.service`.
-  Encode enough to re-discover after a restart (see reattach).
-- `mode`: `"fail"` (or `"replace"` for singletons).
-- Key properties:
-  - `Description` — human label.
-  - `ExecStart` — `a(sasb)`: the command (binary + argv + ignore-failure flag).
-  - `User` / `Group` — run as the session user. **Set these explicitly**: the
-    `dbusclient` talks to the *system* bus, so units are system units. Source
-    identity from the session (`rt.Session.User`), consistent with the
-    handler-layer `rt` convention.
-  - `StandardOutput=journal`, `StandardError=journal` — central logging.
-  - `RemainAfterExit=false`, `CollectMode=inactive-or-failed` — let systemd reap.
-  - Optional `Environment`, `WorkingDirectory`, resource limits.
+Choose an executor per operation class:
 
-### Capturing progress and result
+| Route/class | Durable? | Recovery owner | Notes |
+| --- | --- | --- | --- |
+| `control.app_update` (pilot) | Explicit opt-in | systemd transient unit wrapping the existing subprocess | Persist ID/UID/handle first; observe exit and report result. |
+| PackageKit transaction | Candidate, if PackageKit exposes stable recovery | PackageKit transaction/job state | Query PackageKit after bridge restart; do not duplicate its state in a unit. |
+| Drive or daemon-owned job | Route-dependent | Existing daemon/job API | Reattach by its typed job ID. |
+| Docker/compose SDK work | Usually session-bound initially | None (bridge Task) | A worker subcommand may be considered only after the pilot. |
+| Interactive reads or cancellable UI work | No | Bridge/session | Keep current semantics. |
 
-- **Logs:** read the unit's journal by name (`journalctl --unit=<name> --follow`
-  or sd-journal with a `_SYSTEMD_UNIT` match) and republish as job progress
-  events through the existing `Job.ReportProgress` / data path.
-- **Structured progress / result:** journald is line-oriented text. For typed
-  progress and a final result, have the worker write NDJSON to a known per-job
-  path (e.g. `/run/linuxio/jobs/<jobid>.ndjson`) or a unix socket the bridge
-  tails. The unit's exit code gives terminal success/failure as a fallback.
+Classification must record whether work is idempotent or resumable, what
+cancellation means, and which component can authoritatively report completion.
 
-### Tracking and reattachment
+## systemd transient units (one executor)
 
-- Keep a thin in-bridge record mapping `jobID -> unit name` (and the journal
-  cursor last published).
-- On bridge startup, list units matching the `linuxio-<jobtype>-*` pattern (or
-  filter by a custom unit property), rebuild job records for any still
-  active/failed-but-uncollected, and resume tailing from the stored cursor.
-- Owner is recoverable from the unit name / properties, so post-restart clients
-  can re-subscribe by `ListForOwner`.
+For subprocess-shaped work, call
+`org.freedesktop.systemd1.Manager.StartTransientUnit` through the existing
+[`dbusclient`](../backend/bridge/internal/dbusclient/interfaces.go) and
+`godbus` dependency. Do not add go-systemd for a spike. The unit handle is
+metadata in the operation record, never the operation identity.
 
-### Lifecycle and cancellation
+Persist the operation record (including UID, command policy, and deterministic
+unit name) in `launching` before starting the unit. Set `User=`/`Group=` from the
+route's execution policy, never automatically from the record owner. The app
+update pilot remains a privileged root operation; its initiating UID owns the
+record but cannot redefine the command or execution identity. Apply a bounded
+runtime limit, resource limits appropriate to the route, and a deterministic
+but non-authoritative unit name containing the operation ID. `CollectMode` and
+cleanup prevent leaks, but cleanup must not erase the operation record.
 
-- Cancel → `StopUnit(name, "replace")`.
-- Job TTL / cleanup → rely on `CollectMode=inactive-or-failed` plus an explicit
-  `ResetFailedUnit` sweep (already wrapped in
-  [systemd.go](../backend/bridge/handlers/systemd/systemd.go)).
-- Absolute caps still apply: a unit should carry `RuntimeMaxSec` so a wedged job
-  cannot run forever.
+The unit's exit status is a coarse terminal signal. Standard output/error goes
+to journald for diagnostics, but journald is not typed state. The pilot writes
+a bounded service-owned `executor-result.json` tied to the operation UUID; the
+record stores the typed terminal state, exit status, timestamp, and structured
+error after reconciliation.
 
-## Dependency decision
+## Lifecycle, cancellation, and restart
 
-`StartTransientUnit`'s property marshaling is the only real friction: `a(sv)`
-properties and the nested `ExecStart` `a(sasb)` are awkward to hand-build with
-`godbus/dbus/v5`.
+- **Create:** authorize UID, validate the Web-Crypto-generated canonical UUID
+  and route-defined safe request fingerprint, write `queued`, then write
+  `launching` with the deterministic executor name.
+  Start once with collision-safe semantics and record `running` only after
+  acceptance. None of these separate filesystem/D-Bus actions is described as
+  one atomic transaction.
+- **Observe:** poll/query the executor and update the record. Reconnects read
+  the record, not a bridge map. A missing executor is `unknown` until the
+  route-specific recovery policy resolves it.
+- **Complete:** persist `completed`/`failed`/`canceled` with a concise error or
+  result reference. Repeated completion observations must be idempotent.
+- **Cancel:** authorize the owning UID, mark cancellation intent, then invoke
+  the executor's typed cancellation operation (`StopUnit`, PackageKit cancel,
+  or daemon API). Do not claim cancellation until observed or explicitly mark
+  `unknown`.
+- **Bridge/session loss:** session-bound Tasks stop as today. Durable work
+  continues under its external owner; a new bridge reads records, reattaches a
+  UID-owned Task, and resumes observation. The reattached Task remains
+  cancelable and occupies route admission. A websocket disconnect never
+  deletes durable state.
+- **Host restart:** the pilot does not promise that a transient unit resumes
+  across reboot. If its record says `running` but neither a typed result nor the
+  exact unit exists, reconciliation records terminal `unknown` and never starts
+  a replacement automatically.
 
-- **Option A — extend existing `dbusclient` (godbus, current dep).** No new
-  dependency; one connection; consistent with the rest of the systemd code. Cost:
-  hand-marshal the transient-unit property structs once.
-- **Option B — add `github.com/coreos/go-systemd/v22/dbus`.** Provides
-  `StartTransientUnit(name, mode, props, ch)` with typed property helpers. Cost:
-  a second dbus connection + new dependency surface.
+Security requirements are part of the route contract: validate UID ownership on
+every read/cancel, restrict command and environment construction, prevent
+cross-user result paths, and ensure privileged operations use the existing
+capability/authorization checks. Runtime limits and bounded polling protect
+against wedged workers; they do not replace cancellation.
 
-**Recommendation:** spike with Option B to validate behavior fast (property
-helpers remove guesswork), then port the proven call into `dbusclient` (Option A)
-to avoid the standing dependency — unless the spike shows the marshaling is more
-trouble than the dep is worth.
+## Completed pilot and next steps
 
-## Job classification (decide before building)
+1. **Classify routes (complete).** Inventory Task routes and document durability,
+   idempotency/resume, cancellation, and recovery owner. Keep the default
+   session-bound.
+2. **Build the store (complete).** Implement the bounded service-owned JSON record with the
+   existing lock and fsync-capable atomic-write conventions, stable IDs, UID
+   checks, terminal retention, and tests for torn writes, duplicate completion,
+   malformed records, and crash recovery from `launching`.
+3. **Pilot `control.app_update` (complete).** Persist first; launch the existing update
+   subprocess as a systemd transient unit through `dbusclient`; capture typed
+   terminal state and retain journald only as logs. Do not rely on `--wait` or
+   `--pipe` for durability.
+4. **Reconcile and exercise failure (complete for the pilot).** Restart the bridge, disconnect clients,
+   cancel from a second session of the same UID, and test host-restart/unknown
+   outcomes. Verify authorization and idempotency.
+5. **Add executors selectively.** Prefer PackageKit or daemon job APIs where
+   they already own recovery. Consider a validated bridge worker subcommand for
+   an in-process route only after evidence from the pilot.
 
-Produce a short table of every `ModeJob` / runner route and mark each:
-`survivable?` / `idempotent or resumable?` / `already a subprocess?`. Only
-`survivable` types get a transient unit; everything else stays an in-process job.
-First candidates (survivable + already subprocess): app update, package
-install/offline updates, docker pulls.
+## Open questions and safeguards
 
-## Phasing
+- What exact app-update command/result schema is stable enough to persist?
+- Which routes may be started as a system unit, and which require a privileged
+  helper or existing daemon?
+- Do pilot measurements support the initial 30-day and 200-terminal-record
+  retention limits per UID without deleting useful audit evidence too early?
+- What state should clients see for `unknown`, and how does the API expose a
+  retry or reconciliation action?
 
-1. **Spike** — `StartTransientUnit` from a throwaway call (Option B): run `/bin/sleep`
-   as the session user, confirm it survives killing the bridge, and tail its
-   journal. Proves the substrate end to end.
-2. **One real job** — migrate app update (`control.app_update`): wrap the existing
-   command in a unit, stream journal as progress, map exit code to result.
-3. **Reattach** — implement unit re-discovery + journal-cursor resume on bridge
-   restart; verify a job started pre-restart finishes and reports post-restart.
-4. **Generalize** — extract a `RunAsTransientUnit(job, spec)` helper and migrate
-   the other shape-(1) candidates.
-5. **Worker subcommand (optional)** — add `linuxio-bridge job-exec` and migrate a
-   shape-(2) job (e.g. `docker.compose`) only if justified.
-
-## Risks / open questions
-
-- **systemd availability.** Containers/minimal hosts may lack a usable system
-  manager. Gate via the existing capability/availability checks
-  ([dbusclient availability](../backend/bridge/internal/dbusclient/availability.go))
-  and fall back to the current in-process job for non-survivable execution.
-- **Privilege.** System units running as `User=` need the bridge to have rights
-  to start them. Confirm against the existing privileged-route model
-  ([privilege_pattern.md](./privilege_pattern.md)).
-- **Unit name collisions / leaks.** Deterministic naming + `CollectMode` +
-  a `ResetFailed` sweep must prevent accumulation across restarts.
-- **Cross-session ownership.** With `SingleSessionPerUser = false`, two sessions
-  for one user could both see the same user-owned units. Reattach must filter by
-  `Owner.Matches`, not just username.
-- **Structured result transport.** Journald-only loses typed results; the NDJSON/
-  socket sidecar needs a small, well-defined schema.
-
-## Relation to broader architecture
-
-This plan covers the **data plane** (where survivable work executes). It composes
-with, but does not require, a future **control-plane** move that lets the
-webserver/session manager own a durable job index and central log. It also pairs
-with the [Session Activity Timeout Plan](./session-activity-timeout-plan.md):
-transient-unit jobs no longer need to inhibit bridge idle GC to stay alive,
-simplifying that design for survivable types. Prerequisite cleanup: `ToDo` #6
-("Total review of jobs code") should land first so this is built on understood
-foundations.
+The implementation should answer these in the pilot and update the API
+roadmap, while keeping the durable surface area deliberately narrow.

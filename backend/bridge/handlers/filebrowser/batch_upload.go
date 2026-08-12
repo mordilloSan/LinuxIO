@@ -16,7 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
@@ -29,16 +29,16 @@ type uploadBatchFile struct {
 	size    int64
 }
 
-// uploadBatchTransferJob receives many files over one data stream. The wire
+// uploadBatchTransferTask receives many files over one data stream. The wire
 // format needs no in-band framing: the manifest fixes the order and byte count
 // of every file, so the client streams raw file bytes back-to-back and the
 // bridge splits them on the manifest boundaries. Resume works like the
 // single-file upload — the global byte offset identifies both the current file
-// and the position inside it. Items are best-effort like the other batch jobs:
+// and the position inside it. Items are best-effort like the other batch tasks:
 // a file that cannot be written is recorded in failures and its remaining
 // stream bytes are discarded so the rest of the batch still lands.
-type uploadBatchTransferJob struct {
-	job         *bridgejobs.Job
+type uploadBatchTransferTask struct {
+	task        *bridgetasks.Task
 	destination string
 	files       []uploadBatchFile
 	directories []string
@@ -60,7 +60,7 @@ type uploadBatchTransferJob struct {
 	attrs     uploadAttributes
 	curFailed bool // current file failed; its remaining bytes are discarded
 	succeeded int
-	failures  []batchItemFailure
+	failures  []FileBatchItemFailure
 }
 
 // uploadBatchSession holds per-attach state: the filesystem root and the open
@@ -143,15 +143,15 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	return destination, files, directories, total, nil
 }
 
-func runUploadBatchJob(ctx context.Context, job *bridgejobs.Job, req apischema.FileUploadBatchRequest) (any, error) {
+func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
-		return nil, bridgejobs.NewError(err.Error(), 400)
+		return nil, bridgetasks.NewError(err.Error(), 400)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, bridgejobs.NewError("failed to access filesystem", 500)
+		return nil, bridgetasks.NewError("failed to access filesystem", 500)
 	}
 	destination, destErr := resolveBatchDestinationDir(root, destination)
 	closeErr := root.Close()
@@ -162,8 +162,8 @@ func runUploadBatchJob(ctx context.Context, job *bridgejobs.Job, req apischema.F
 		slog.Debug("failed to close filesystem root", "error", closeErr)
 	}
 
-	transfer := &uploadBatchTransferJob{
-		job:         job,
+	transfer := &uploadBatchTransferTask{
+		task:        task,
 		destination: destination,
 		files:       files,
 		directories: directories,
@@ -172,14 +172,14 @@ func runUploadBatchJob(ctx context.Context, job *bridgejobs.Job, req apischema.F
 		done:        make(chan transferOutcome, 1),
 		activity:    make(chan struct{}, 1),
 	}
-	fileTransferJobs.Store(job.ID(), transfer)
-	defer fileTransferJobs.Delete(job.ID())
+	fileTransferTasks.Store(task.ID(), transfer)
+	defer fileTransferTasks.Delete(task.ID())
 
 	transfer.reportProgress("waiting_for_client")
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func (t *uploadBatchTransferJob) attach(stream net.Conn, req bridgejobs.JobDataAttachRequest) error {
+func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -204,7 +204,7 @@ func (t *uploadBatchTransferJob) attach(stream net.Conn, req bridgejobs.JobDataA
 	return t.receive(stream, session, newTransferProgressGate(uploadProgressAckIntervalBytes))
 }
 
-func (t *uploadBatchTransferJob) beginAttach(stream net.Conn, offset int64) error {
+func (t *uploadBatchTransferTask) beginAttach(stream net.Conn, offset int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -223,7 +223,7 @@ func (t *uploadBatchTransferJob) beginAttach(stream net.Conn, offset int64) erro
 	return nil
 }
 
-func (t *uploadBatchTransferJob) endAttach(stream net.Conn) {
+func (t *uploadBatchTransferTask) endAttach(stream net.Conn) {
 	t.mu.Lock()
 	if t.active == stream {
 		t.attached = false
@@ -232,9 +232,9 @@ func (t *uploadBatchTransferJob) endAttach(stream net.Conn) {
 	t.mu.Unlock()
 }
 
-// prepareDirectories creates the manifest's explicit directories once per job.
+// prepareDirectories creates the manifest's explicit directories once per task.
 // Failures are per-item: they are recorded and the batch continues.
-func (t *uploadBatchTransferJob) prepareDirectories(root *fsroot.FSRoot) {
+func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 	t.mu.Lock()
 	if t.prepared {
 		t.mu.Unlock()
@@ -260,7 +260,7 @@ func (t *uploadBatchTransferJob) prepareDirectories(root *fsroot.FSRoot) {
 	}
 }
 
-func (t *uploadBatchTransferJob) receive(stream net.Conn, session *uploadBatchSession, progressGate *transferProgressGate) error {
+func (t *uploadBatchTransferTask) receive(stream net.Conn, session *uploadBatchSession, progressGate *transferProgressGate) error {
 	for {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil {
@@ -294,7 +294,7 @@ func (t *uploadBatchTransferJob) receive(stream net.Conn, session *uploadBatchSe
 
 // consume splits one stream payload on manifest boundaries: it may finish the
 // current file and start the next several times within a single frame.
-func (t *uploadBatchTransferJob) consume(stream net.Conn, session *uploadBatchSession, payload []byte, progressGate *transferProgressGate) error {
+func (t *uploadBatchTransferTask) consume(stream net.Conn, session *uploadBatchSession, payload []byte, progressGate *transferProgressGate) error {
 	for len(payload) > 0 {
 		t.settle(session)
 
@@ -332,7 +332,7 @@ func (t *uploadBatchTransferJob) consume(stream net.Conn, session *uploadBatchSe
 // settle finalizes the current file while it is fully received, advancing to
 // the next manifest entry. Zero-size files pass through here without ever
 // seeing a data chunk.
-func (t *uploadBatchTransferJob) settle(session *uploadBatchSession) {
+func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 	for {
 		t.mu.Lock()
 		if t.index >= len(t.files) || t.fileBytes < t.files[t.index].size {
@@ -369,7 +369,7 @@ func (t *uploadBatchTransferJob) settle(session *uploadBatchSession) {
 // ensurePrepared lazily creates the current file's temp buffer and captures
 // existing-file attributes. Idempotent across re-attaches: the temp survives a
 // dropped stream and is reused on resume.
-func (t *uploadBatchTransferJob) ensurePrepared(session *uploadBatchSession) error {
+func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) error {
 	t.mu.Lock()
 	if t.tempRel != "" {
 		t.mu.Unlock()
@@ -394,7 +394,7 @@ func (t *uploadBatchTransferJob) ensurePrepared(session *uploadBatchSession) err
 		return fmt.Errorf("create parent dir: %w", err)
 	}
 
-	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.job.ID(), index)
+	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.task.ID(), index)
 	tempRel := filepath.Join(filepath.Dir(finalRel), partName)
 	file, err := session.root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
 	if err != nil {
@@ -412,7 +412,7 @@ func (t *uploadBatchTransferJob) ensurePrepared(session *uploadBatchSession) err
 	return nil
 }
 
-func (t *uploadBatchTransferJob) writeChunk(session *uploadBatchSession, chunk []byte) error {
+func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk []byte) error {
 	t.mu.Lock()
 	failed := t.curFailed
 	t.mu.Unlock()
@@ -450,7 +450,7 @@ func (t *uploadBatchTransferJob) writeChunk(session *uploadBatchSession, chunk [
 
 // failCurrent marks the current file failed, records it, and drops its temp
 // buffer; the rest of its stream bytes will be discarded.
-func (t *uploadBatchTransferJob) failCurrent(session *uploadBatchSession, cause error) {
+func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause error) {
 	session.closeFile()
 
 	t.mu.Lock()
@@ -463,7 +463,7 @@ func (t *uploadBatchTransferJob) failCurrent(session *uploadBatchSession, cause 
 	t.cleanupCurrentTemp(session.root)
 }
 
-func (t *uploadBatchTransferJob) finalizeCurrent(session *uploadBatchSession, current uploadBatchFile) error {
+func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, current uploadBatchFile) error {
 	// Zero-size files never opened a buffer; create the (empty) temp now so
 	// every finalize is a rename of a fully-written buffer.
 	if err := t.ensurePrepared(session); err != nil {
@@ -487,13 +487,13 @@ func (t *uploadBatchTransferJob) finalizeCurrent(session *uploadBatchSession, cu
 	return nil
 }
 
-func (t *uploadBatchTransferJob) recordFailure(path, message string) {
+func (t *uploadBatchTransferTask) recordFailure(path, message string) {
 	t.mu.Lock()
-	t.failures = append(t.failures, batchItemFailure{Path: path, Error: message})
+	t.failures = append(t.failures, FileBatchItemFailure{Path: path, Error: message})
 	t.mu.Unlock()
 }
 
-func (t *uploadBatchTransferJob) cleanupCurrentTemp(root *fsroot.FSRoot) {
+func (t *uploadBatchTransferTask) cleanupCurrentTemp(root *fsroot.FSRoot) {
 	t.mu.Lock()
 	tempRel := t.tempRel
 	t.tempRel = ""
@@ -506,17 +506,19 @@ func (t *uploadBatchTransferJob) cleanupCurrentTemp(root *fsroot.FSRoot) {
 	}
 }
 
-func (t *uploadBatchTransferJob) isComplete() bool {
+func (t *uploadBatchTransferTask) isComplete() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.bytes == t.total && t.index >= len(t.files)
 }
 
-func (t *uploadBatchTransferJob) complete(stream net.Conn) error {
+func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	t.mu.Lock()
-	result := batchResult(len(t.directories)+len(t.files), t.succeeded, append([]batchItemFailure(nil), t.failures...))
-	result["destination"] = t.destination
-	result["size"] = t.bytes
+	result := FileUploadBatchResult{
+		FileBatchResult: batchResult(len(t.directories)+len(t.files), t.succeeded, append([]FileBatchItemFailure(nil), t.failures...)),
+		Destination:     t.destination,
+		Size:            t.bytes,
+	}
 	bytes := t.bytes
 	failed := len(t.failures)
 	t.mu.Unlock()
@@ -524,11 +526,11 @@ func (t *uploadBatchTransferJob) complete(stream net.Conn) error {
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
 	t.finish(result, nil)
-	slog.Info("batch upload complete", "destination", t.destination, "files", len(t.files), "directories", len(t.directories), "size", bytes, "failed", failed, "job_id", t.job.ID())
+	slog.Info("batch upload complete", "destination", t.destination, "files", len(t.files), "directories", len(t.directories), "size", bytes, "failed", failed, "task_id", t.task.ID())
 	return nil
 }
 
-func (t *uploadBatchTransferJob) progress(phase string) BatchUploadProgress {
+func (t *uploadBatchTransferTask) progress(phase string) BatchUploadProgress {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return BatchUploadProgress{
@@ -541,34 +543,34 @@ func (t *uploadBatchTransferJob) progress(phase string) BatchUploadProgress {
 	}
 }
 
-func (t *uploadBatchTransferJob) writeProgress(stream net.Conn, phase string) {
+func (t *uploadBatchTransferTask) writeProgress(stream net.Conn, phase string) {
 	progress := t.progress(phase)
-	t.job.ReportProgress(progress)
+	t.task.ReportProgress(progress)
 	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
 }
 
-func (t *uploadBatchTransferJob) reportProgress(phase string) {
-	t.job.ReportProgress(t.progress(phase))
+func (t *uploadBatchTransferTask) reportProgress(phase string) {
+	t.task.ReportProgress(t.progress(phase))
 }
 
-func (t *uploadBatchTransferJob) markWaiting() {
+func (t *uploadBatchTransferTask) markWaiting() {
 	t.reportProgress("waiting_for_client")
 }
 
-func (t *uploadBatchTransferJob) fail(stream net.Conn, message string, code int, err error) error {
+func (t *uploadBatchTransferTask) fail(stream net.Conn, message string, code int, err error) error {
 	t.cleanupPartial()
-	jobErr := bridgejobs.NewError(message, code)
+	taskErr := bridgetasks.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}
-	t.finish(nil, jobErr)
+	t.finish(nil, taskErr)
 	if err != nil {
 		return err
 	}
-	return jobErr
+	return taskErr
 }
 
-func (t *uploadBatchTransferJob) cancel() {
+func (t *uploadBatchTransferTask) cancel() {
 	t.mu.Lock()
 	active := t.active
 	t.mu.Unlock()
@@ -581,8 +583,8 @@ func (t *uploadBatchTransferJob) cancel() {
 
 // cleanupPartial removes the current file's temp buffer. Files already
 // finalized stay in place — a cancelled batch keeps what it landed, matching
-// the best-effort semantics of the other batch jobs.
-func (t *uploadBatchTransferJob) cleanupPartial() {
+// the best-effort semantics of the other batch tasks.
+func (t *uploadBatchTransferTask) cleanupPartial() {
 	t.mu.Lock()
 	tempRel := t.tempRel
 	t.tempRel = ""
@@ -602,7 +604,7 @@ func (t *uploadBatchTransferJob) cleanupPartial() {
 	}
 }
 
-func (t *uploadBatchTransferJob) finish(result any, err error) {
+func (t *uploadBatchTransferTask) finish(result any, err error) {
 	t.finishOnce.Do(func() {
 		t.done <- transferOutcome{result: result, err: err}
 	})

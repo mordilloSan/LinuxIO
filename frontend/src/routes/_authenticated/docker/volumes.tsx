@@ -7,6 +7,6 @@ import DockerVolumesPage from "./-components/DockerVolumesPage";
 
 export const Route = createFileRoute("/_authenticated/docker/volumes")({
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [linuxio.docker.list_volumes.queryOptions()]),
+    loadRouteQueries(loaderArgs, [linuxio.docker.list_volumes]),
   component: DockerVolumesPage,
 });

@@ -8,42 +8,61 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func TestRenderClientSkipsNonEndpointRoutes(t *testing.T) {
+func TestRenderClientEmitsCallsAndSkipsChannels(t *testing.T) {
 	out := renderClient()
 	for _, unexpected := range []string{
 		"logs.follow:",
 		"general.follow:",
 		"service.follow:",
 		"terminal.open",
-		"jobs.attach",
+		"tasks.watch",
 	} {
 		if strings.Contains(out, unexpected) {
 			t.Fatalf("generated client.ts contains non-endpoint route %q", unexpected)
 		}
 	}
-	if !strings.Contains(out, `get_cpu_info: createEndpoint("system", "get_cpu_info", { kind: "none" })`) {
-		t.Fatal("generated client.ts is missing a representative query endpoint")
+	for _, expected := range []string{
+		`get_cpu_info: defineCall("system.get_cpu_info")`,
+		`start_container: defineCallWithRequest("docker.start_container")`,
+		`list_containers: defineCall("docker.list_containers")`,
+		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
+	} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("generated client.ts is missing Call %s", expected)
+		}
 	}
 }
 
 func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 	out := renderClient()
 	for _, expected := range []string{
-		`import { createEndpoint } from "../react-query";`,
-		`start_container: createEndpoint("docker", "start_container", { kind: "field", field: "containerId" })`,
-		`system_prune: createEndpoint("docker", "system_prune", { kind: "object" })`,
-		`update_container: createEndpoint("docker", "update_container", {`,
-		`set_ntp_servers: createEndpoint("datetime", "set_ntp_servers", { kind: "field", field: "servers" })`,
-		`compose: createEndpoint("docker", "compose", { kind: "object" })`,
-		`archive: createEndpoint("filebrowser", "archive", { kind: "object" })`,
-		`validate_compose: createEndpoint("docker", "validate_compose", { kind: "field", field: "content" })`,
+		`import { createTaskEndpoint } from "../task-react-query";`,
+		`import type { TypedAPI } from "../endpoint-types";`,
+		`get_ntp_servers: defineCall("datetime.get_ntp_servers")`,
+		`get_ntp_status: defineCall("datetime.get_ntp_status")`,
+		`get_timezone: defineCall("datetime.get_timezone")`,
+		`set_ntp: defineCallWithRequest("datetime.set_ntp")`,
+		`set_ntp_servers: defineCallWithRequest("datetime.set_ntp_servers")`,
+		`set_server_time: defineCallWithRequest("datetime.set_server_time")`,
+		`set_timezone: defineCallWithRequest("datetime.set_timezone")`,
+		`start_container: defineCallWithRequest("docker.start_container")`,
+		`system_prune: defineCallWithRequest("docker.system_prune")`,
+		`update_container: defineCallWithRequest("docker.update_container")`,
+		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
+		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
+		`archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" })`,
+		`validate_compose: defineCallWithRequest("docker.validate_compose")`,
+		`import { defineCall, defineCallWithRequest } from "../call-react-query";`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated client.ts missing endpoint fragment %s", expected)
 		}
 	}
-
 	for _, unexpected := range []string{
+		"createEndpoint(",
+		"createQueryEndpoint(",
+		`from "../react-query"`,
+		"\n    get_cpu_info: createTaskEndpoint(",
 		"serialize" + "StringArg",
 		"serialize" + "OptionalStringArg",
 		"trimTrailing" + "Undefined",
@@ -58,14 +77,30 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	out := renderRouteMetadata()
 	for _, expected := range []string{
+		`export type RouteMode = "call" | "task" | "duplex";`,
 		"export type RouteName = keyof typeof ROUTE_MODES;",
+		"export const RETRY_SAFE_CALLS = {",
+		`"system.get_cpu_info": true`,
+		"export function isRetrySafeCall(route: string): boolean",
 		"export type RouteModeFor<R extends string> =",
 		`"terminal.open": "duplex"`,
-		`"jobs.attach": "duplex"`,
-		`"logs.general.follow": "job"`,
+		`"tasks.watch": "duplex"`,
+		`"docker.logs.follow": "duplex"`,
+		`"logs.general.follow": "duplex"`,
+		`"logs.service.follow": "duplex"`,
+		`"datetime.set_ntp": "call"`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated route metadata missing %s", expected)
+		}
+	}
+	for _, unexpected := range []string{
+		`"docker.start_container": true`,
+		`"docker.check_updates": true`,
+		`"tasks.watch": true`,
+	} {
+		if strings.Contains(out, unexpected) {
+			t.Fatalf("generated retry-safe policy unexpectedly contains %s", unexpected)
 		}
 	}
 }
@@ -73,15 +108,26 @@ func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 	out := renderTypes()
 	for _, expected := range []string{
+		`export interface LinuxIOCallSchema`,
+		`"datetime.get_timezone": { request: void; result: string };`,
+		`"datetime.set_timezone": { request: TimezoneRequest; result: void };`,
+		`"system.get_cpu_info": { request: void; result: CPUInfoResponse };`,
+		`"docker.start_container": { request: ContainerIDRequest; result: void };`,
+		"export type CallRoute = keyof LinuxIOCallSchema;",
+		"export type NoRequestCallRoute",
+		"export type RequestCallRoute",
 		"get_cpu_info: { input: []; request: void; result: CPUInfoResponse };",
 		"start_container: { input: [containerId: string]; request: ContainerIDRequest; result: void };",
 		"list_containers: { input: []; request: void; result: ContainerInfo[] };",
-		"jobs: {",
-		"list: { input: [request: JobListRequest]; request: JobListRequest; result: JobSnapshot[] };",
-		"compose: { input: [request: DockerComposeRequest]; request: DockerComposeRequest; result: ComposeJobResult; progress: ComposeJobMessage };",
+		"tasks: {",
+		"list: { input: [request: TaskListRequest]; request: TaskListRequest; result: TaskSnapshot[] };",
+		"compose: { input: [request: DockerComposeRequest]; request: DockerComposeRequest; result: ComposeTaskResult; progress: TaskProgress<ComposeTaskMessage> };",
 		"create_samba_share: {",
 		"input: [request: ShareSambaRequest]; request: ShareSambaRequest;",
-		"archive: { input: [request: FileArchiveRequest]; request: FileArchiveRequest; result: JobSnapshot };",
+		"archive: { input: [request: FileArchiveRequest]; request: FileArchiveRequest; result: FileArchiveResult; progress: TaskProgress<FileProgress> };",
+		"resource_patch: { input: [request: ActionSourceDestinationRequest]; request: ActionSourceDestinationRequest; result: FileOperationResult; progress: TaskProgress<FileProgress> };",
+		"create: { input: [request: VMCreateRequest]; request: VMCreateRequest; result: VirtualMachine; progress: TaskProgress<VMCreateProgress> };",
+		"export interface TaskProgress<TDetail = unknown>",
 		"system_prune: {",
 		"input: [request: DockerSystemPruneRequest]; request: DockerSystemPruneRequest;",
 		"export interface DockerContainerUpdateResult",
@@ -93,9 +139,9 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"validate_compose: {",
 		"input: [content: string]; request: ContentRequest;",
 		"export interface InstallCapabilityResult",
-		"export interface JobEvent",
-		"export interface ComposeJobMessage",
-		"export interface ComposeJobResult",
+		"export interface TaskEvent",
+		"export interface ComposeTaskMessage",
+		"export interface ComposeTaskResult",
 		"export interface ComposeProgress",
 		"export type CommandProgress<",
 	} {
@@ -106,7 +152,7 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 
 	for _, unexpected := range []string{
 		"terminal.open:",
-		"jobs.attach:",
+		"tasks.watch:",
 	} {
 		if strings.Contains(out, unexpected) {
 			t.Fatalf("generated endpoint types include duplex route %s", unexpected)
@@ -146,30 +192,30 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 		{
 			Kind:    apischema.KindHandler,
 			Route:   "golden.noop",
-			Mode:    bridgeipc.ModeQuery,
+			Mode:    bridgeipc.ModeCall,
 			Request: apischema.TypeOf[apischema.NoRequest](),
 			Result:  apischema.TypeOf[apischema.NoResponse](),
 		},
 		{
 			Kind:    apischema.KindHandler,
 			Route:   "golden.scalar",
-			Mode:    bridgeipc.ModeQuery,
+			Mode:    bridgeipc.ModeCall,
 			Request: apischema.TypeOf[GoldenScalarRequest](),
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
 		{
 			Kind:    apischema.KindHandler,
 			Route:   "golden.nested",
-			Mode:    bridgeipc.ModeJob,
+			Mode:    bridgeipc.ModeTask,
 			Request: apischema.TypeOf[GoldenNestedRequest](),
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
 		{
-			Kind:     apischema.KindRunner,
+			Kind:     apischema.KindTaskRunner,
 			Route:    "golden.runner",
-			Mode:     bridgeipc.ModeJob,
+			Mode:     bridgeipc.ModeTask,
 			Request:  apischema.TypeOf[apischema.NTPServersRequest](),
-			Result:   apischema.TypeOf[apischema.JobSnapshot](),
+			Result:   apischema.TypeOf[apischema.TaskSnapshot](),
 			Progress: apischema.TypeOf[GoldenProgress](),
 		},
 		{
@@ -191,7 +237,7 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 		"noop: { input: []; request: void; result: void };",
 		"scalar: { input: [request: GoldenScalarRequest]; request: GoldenScalarRequest; result: GoldenResponse };",
 		"nested: { input: [request: GoldenNestedRequest]; request: GoldenNestedRequest; result: GoldenResponse };",
-		"runner: { input: [servers: string[]]; request: NTPServersRequest; result: JobSnapshot; progress: GoldenProgress };",
+		"runner: { input: [servers: string[]]; request: NTPServersRequest; result: TaskSnapshot; progress: TaskProgress<GoldenProgress> };",
 		"export interface GoldenProgress",
 		"export interface LinuxIOStreamSchema",
 		"\"golden.stream\": void;",

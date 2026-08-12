@@ -2,7 +2,7 @@ import { useCallback, useMemo, type MouseEvent } from "react";
 
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
-import { useBackgroundJobActions } from "@/hooks/backgroundJobs/useBackgroundJobActions";
+import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useFileBrowserArchiveActions } from "@/hooks/filebrowser/useFileBrowserArchiveActions";
 import { useFileBrowserClipboardShortcuts } from "@/hooks/filebrowser/useFileBrowserClipboardShortcuts";
 import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserEditorActions";
@@ -88,7 +88,7 @@ export function useFileBrowserController(): FileBrowserController {
     cutPaths,
     selectedPaths,
   } = selection;
-  const { startDownload, startUpload } = useBackgroundJobActions();
+  const { startDownload, startUpload } = useBackgroundTaskActions();
   const { isEnabled: indexerEnabled, status: indexerStatus } =
     useCapability("indexerAvailable");
 
@@ -103,14 +103,20 @@ export function useFileBrowserController(): FileBrowserController {
 
   const {
     createFile,
+    createPending,
     createFolder,
     deleteItems,
+    deletePending,
+    deleteProgress,
     compressItems,
     extractArchive,
     changePermissions,
+    permissionsPending,
+    permissionsProgress,
     copyItems,
     moveItems,
     renameItem,
+    renamePending,
   } = useFileMutations({
     normalizedPath,
     onDeleteSuccess: selectionActions.clear,
@@ -184,13 +190,16 @@ export function useFileBrowserController(): FileBrowserController {
     unsupportedEditPath,
   } = useFileBrowserItemActions({
     changePermissions,
+    permissionsPending,
     createFile,
     createFolder,
     deleteItems,
+    deletePending,
     dialogs,
     editor,
     handleOpenDirectory,
     renameItem,
+    renamePending,
     resource,
     selectedItems,
     selectedPaths,
@@ -412,13 +421,16 @@ export function useFileBrowserController(): FileBrowserController {
   const createDialogs = useMemo(
     () => ({
       fileOpen: createFileDialog,
+      filePending: createPending === "file",
       folderOpen: createFolderDialog,
+      folderPending: createPending === "folder",
       onCloseFile: handleCloseCreateFileDialog,
       onCloseFolder: handleCloseCreateFolderDialog,
       onConfirmFile: handleConfirmCreateFile,
       onConfirmFolder: handleConfirmCreateFolder,
     }),
     [
+      createPending,
       createFileDialog,
       createFolderDialog,
       handleCloseCreateFileDialog,
@@ -433,10 +445,14 @@ export function useFileBrowserController(): FileBrowserController {
       onClose: handleCloseDeleteDialog,
       onConfirm: handleConfirmDelete,
       open: deleteDialog,
+      isPending: deletePending,
       pendingDeletePaths,
+      progress: deleteProgress,
     }),
     [
       deleteDialog,
+      deletePending,
+      deleteProgress,
       handleCloseDeleteDialog,
       handleConfirmDelete,
       pendingDeletePaths,
@@ -448,8 +464,16 @@ export function useFileBrowserController(): FileBrowserController {
       dialog: permissionsDialog,
       onClose: handleClosePermissionsDialog,
       onConfirm: handleConfirmPermissions,
+      isPending: permissionsPending,
+      progress: permissionsProgress,
     }),
-    [handleClosePermissionsDialog, handleConfirmPermissions, permissionsDialog],
+    [
+      handleClosePermissionsDialog,
+      handleConfirmPermissions,
+      permissionsDialog,
+      permissionsPending,
+      permissionsProgress,
+    ],
   );
 
   const uploadDialogs = useMemo(
@@ -584,6 +608,7 @@ export function useFileBrowserController(): FileBrowserController {
       onOpenDirectory: handleOpenDirectory,
       onSelectedPathsChange: selectionActions.select,
       onStartRename: handleStartInlineRename,
+      renamePendingPath: renamePending ? renamingPath : null,
       renamingPath,
       selectedPaths,
       showHiddenFiles,
@@ -601,6 +626,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleOpenDirectory,
       handleStartInlineRename,
       renamingPath,
+      renamePending,
       selectedPaths,
       selectionActions,
       showHiddenFiles,

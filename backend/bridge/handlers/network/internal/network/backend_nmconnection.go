@@ -51,7 +51,7 @@ func detectNMConnectionBackend(env Environment, iface string) (ConfigBackend, er
 		return nil, ambiguousf(iface, "nmconnection", matches)
 	}
 	return &nmConnectionBackend{
-		baseBackend:  baseBackend{env: env, iface: iface, path: matches[0]},
+		env: env, iface: iface, path: matches[0],
 		connectionID: ids[0],
 		uuid:         uuids[0],
 	}, nil

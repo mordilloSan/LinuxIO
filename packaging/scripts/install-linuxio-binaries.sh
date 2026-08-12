@@ -16,6 +16,7 @@ readonly BIN_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
+readonly DATA_DIR="/var/lib/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
@@ -487,7 +488,7 @@ verify_dry_run_targets() {
         "${SYSTEMD_DIR}"
         "/usr/lib/tmpfiles.d"
         "/usr/share/linuxio"
-        "/var/lib/linuxIO"
+        "${DATA_DIR}"
     )
 
     for target in "${targets[@]}"; do
@@ -663,7 +664,7 @@ Options:
 What gets installed:
   - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
   - Systemd:      /etc/systemd/system/linuxio*.service, linuxio*.socket, linuxio.target
-  - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
+  - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio
   - Config:       /etc/linuxio/disallowed-users
   - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)

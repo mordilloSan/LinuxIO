@@ -1,0 +1,65 @@
+/*
+ * Hold-to-reorder affordance. A 4s press with no feedback reads as a broken
+ * click, so the held item shows a ring that fills for exactly as long as the
+ * hold takes; --reorder-hold-ms comes from REORDER_HOLD_MS.
+ */
+.reorder-hold-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  border: 2px solid var(--reorder-hold-color);
+  border-radius: inherit;
+  opacity: 0;
+  animation: reorder-hold-fill var(--reorder-hold-ms) ease-out forwards;
+}
+
+@keyframes reorder-hold-fill {
+  0% {
+    opacity: 0;
+  }
+  60% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reorder-hold-ring {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.app-vdt__row--reordering {
+  cursor: grab;
+}
+
+.app-vdt__row--reordering:active {
+  cursor: grabbing;
+}
+
+/* Rows cannot host an absolutely positioned ring without breaking the grid
+ * template, so a held row is marked with an inset outline instead. */
+.app-vdt__row--reorder-pending {
+  outline: 2px solid var(--reorder-hold-color);
+  outline-offset: -2px;
+  animation: reorder-hold-row var(--reorder-hold-ms) ease-out forwards;
+}
+
+@keyframes reorder-hold-row {
+  0% {
+    outline-color: transparent;
+  }
+  100% {
+    outline-color: var(--reorder-hold-color);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-vdt__row--reorder-pending {
+    animation: none;
+  }
+}

@@ -1,8 +1,6 @@
 package appupdate
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,11 +13,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -41,61 +37,6 @@ func buildScriptURLs(ver string) (scriptURL, checksumURL string) {
 
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
-
-// outputTail keeps the last N lines of script output so we can include
-// them in the error returned when the installer fails silently.
-type outputTail struct {
-	mu    sync.Mutex
-	max   int
-	lines []string
-}
-
-func newOutputTail(max int) *outputTail {
-	return &outputTail{max: max}
-}
-
-func (t *outputTail) Add(line string) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.lines = append(t.lines, line)
-	if len(t.lines) > t.max {
-		t.lines = t.lines[len(t.lines)-t.max:]
-	}
-}
-
-func (t *outputTail) String() string {
-	if t == nil {
-		return ""
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return strings.Join(t.lines, "\n")
-}
-
-func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *outputTail) {
-	sc := bufio.NewScanner(r)
-	for sc.Scan() {
-		line := ansiRE.ReplaceAllString(sc.Text(), "")
-		if isInfo {
-			slog.Info(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
-		} else {
-			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
-		}
-		tail.Add(line)
-		if relay != nil {
-			// Best-effort relay; don't fail the update on write errors
-			_, _ = io.WriteString(relay, line+"\n")
-		}
-	}
-	if err := sc.Err(); err != nil {
-		slog.Error("log stream scanner error",
-			"component", "control", "subsystem", "app_update",
-			"mode", strings.TrimSpace(prefix), "error", err)
-	}
-}
 
 func getVersionInfo(ctx context.Context) (apischema.VersionResponse, error) {
 	currentVersion := getInstalledVersion(ctx)
@@ -137,11 +78,11 @@ func updaterWritablePaths() []updaterWritablePath {
 		{path: "/etc/motd.d", optional: true},
 		{path: "/usr/lib/tmpfiles.d"},
 		{path: "/usr/share/linuxio"},
-		{path: "/var/lib/linuxIO"},
+		{path: version.DataDir},
 	}
 }
 
-func systemdReadWritePathsProperty() string {
+func systemdReadWritePaths() []string {
 	paths := make([]string, 0, len(updaterWritablePaths()))
 	for _, entry := range updaterWritablePaths() {
 		path := entry.path
@@ -150,7 +91,7 @@ func systemdReadWritePathsProperty() string {
 		}
 		paths = append(paths, path)
 	}
-	return strings.Join(paths, " ")
+	return paths
 }
 
 func ensureUpdaterWritablePathDirs() error {
@@ -165,39 +106,13 @@ func ensureUpdaterWritablePathDirs() error {
 	return nil
 }
 
-func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
-	args := []string{
-		"--unit=" + unit,
-		"--property=Description=LinuxIO updater",
-		"--quiet",
-		"--collect",
-		"--wait",
-		"--pipe",
-		"--setenv=TERM=dumb",
-		"--setenv=NO_COLOR=1",
-		"--setenv=CLICOLOR=0",
-		"--setenv=LC_ALL=C.UTF-8",
-		"-p", "Type=exec",
-		"-p", "ProtectSystem=full",
-		"-p", "ReadWritePaths=" + systemdReadWritePathsProperty(),
-		"-p", "PrivateTmp=false",
-		"-p", "NoNewPrivileges=no",
-		"/bin/bash", "-s", "--",
-	}
-	if len(scriptArgs) > 0 {
-		args = append(args, scriptArgs...)
-	}
-	return args
-}
-
-// runInstallScript downloads the installer and runs it in a transient unit
-// with stdout/stderr piped back to this process (so logs appear in-order).
-// If relay is non-nil, output lines are also written to it.
-func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
+// downloadVerifiedInstallScript downloads and verifies the release installer.
+// Execution is owned separately by the transient-unit executor.
+func downloadVerifiedInstallScript(ctx context.Context, ver string) ([]byte, error) {
 	if ctx == nil {
-		return fmt.Errorf("nil context")
+		return nil, fmt.Errorf("nil context")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	client := &http.Client{Timeout: 20 * time.Second}
@@ -208,7 +123,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	slog.Debug("downloading checksum", "component", "control", "subsystem", "app_update", "path", checksumURL)
 	expectedChecksum, err := downloadChecksum(ctx, client, checksumURL)
 	if err != nil {
-		return fmt.Errorf("download checksum failed: %w", err)
+		return nil, fmt.Errorf("download checksum failed: %w", err)
 	}
 	slog.Info("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
 
@@ -216,7 +131,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	slog.Debug("downloading install script", "component", "control", "subsystem", "app_update", "path", scriptURL)
 	scriptBytes, err := downloadScript(ctx, client, scriptURL)
 	if err != nil {
-		return fmt.Errorf("download script failed: %w", err)
+		return nil, fmt.Errorf("download script failed: %w", err)
 	}
 	slog.Debug("downloaded install script", "component", "control", "subsystem", "app_update", "bytes", len(scriptBytes))
 
@@ -226,63 +141,10 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 
 	if actualChecksum != expectedChecksum {
 		slog.Error("install script checksum mismatch", "component", "control", "subsystem", "app_update", "expected_checksum", expectedChecksum, "actual_checksum", actualChecksum)
-		return fmt.Errorf("checksum verification failed: script integrity compromised")
+		return nil, fmt.Errorf("checksum verification failed: script integrity compromised")
 	}
 	slog.Info("checksum verified successfully")
-
-	// 4) Run a transient unit with unique name and feed script on STDIN
-	if tempUnitTestErr := ensureUpdaterWritablePathDirs(); tempUnitTestErr != nil {
-		return tempUnitTestErr
-	}
-
-	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
-	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
-	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
-
-	cmd := exec.CommandContext(ctx, "systemd-run", systemdRunArgs...)
-
-	// Connect streams BEFORE Start
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	cmd.Stdin = bytes.NewReader(scriptBytes) // Feed verified script
-
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start systemd-run (unit=%s): %w", unit, err)
-	}
-
-	// Stream logs in real-time and capture a bounded tail for error reporting.
-	tail := newOutputTail(40)
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		logStream(stdout, "", true, relay, tail)
-	})
-	wg.Go(func() {
-		logStream(stderr, "", false, relay, tail)
-	})
-
-	// Wait for command to complete
-	err = cmd.Wait()
-
-	// Wait for log goroutines to finish processing all output
-	wg.Wait()
-
-	if err != nil {
-		captured := tail.String()
-		journal := systemdUnitJournalTail(ctx, unit)
-		if journal != "" {
-			if captured != "" {
-				captured += "\n"
-			}
-			captured += "systemd journal:\n" + journal
-		}
-		if captured == "" {
-			return fmt.Errorf("installer failed (unit=%s, no script output captured): %w", unit, err)
-		}
-		return fmt.Errorf("installer failed (unit=%s): %w; last output:\n%s", unit, err, captured)
-	}
-
-	return nil
+	return scriptBytes, nil
 }
 
 func systemdUnitJournalTail(parent context.Context, unit string) string {
@@ -452,19 +314,4 @@ func readErrorBody(r io.Reader) string {
 		return err.Error()
 	}
 	return string(body)
-}
-
-func restartService(ctx context.Context) error {
-	slog.Info("restarting linuxio service")
-	var lastErr error
-	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
-		if err := systemdapi.RestartUnit(ctx, unit); err == nil {
-			slog.Info("service restarted successfully", "component", "control", "subsystem", "app_update", "unit", unit)
-			return nil
-		} else {
-			lastErr = err
-			slog.Debug("service restart attempt failed", "component", "control", "subsystem", "app_update", "unit", unit, "error", err)
-		}
-	}
-	return fmt.Errorf("restart failed: %w", lastErr)
 }

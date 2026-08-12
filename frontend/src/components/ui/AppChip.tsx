@@ -9,7 +9,8 @@ import {
 } from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
-import { AppTheme, useAppTheme } from "@/theme";
+import type { AppTheme } from "@/theme";
+import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
 import "./app-chip.css";

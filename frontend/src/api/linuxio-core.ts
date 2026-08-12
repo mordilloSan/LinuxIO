@@ -1,7 +1,7 @@
 /**
  * LinuxIO Core API - internal JSON request bridge.
  *
- * App code should use the generated endpoint queryOptions with TanStack Query,
+ * App code should use generated Call descriptors with TanStack Query,
  * or the endpoint action/fetch/cache hooks; see docs/api-contract.md.
  */
 
@@ -18,11 +18,11 @@ import {
  * LinuxIOError - structured error with code
  */
 export class LinuxIOError extends Error {
-  constructor(
-    message: string,
-    public code?: string | number,
-  ) {
+  code?: string | number;
+
+  constructor(message: string, code?: string | number) {
     super(message);
+    this.code = code;
     this.name = "LinuxIOError";
   }
 }
@@ -30,16 +30,41 @@ export class LinuxIOError extends Error {
 /**
  * RequestOptions for simple request/response calls
  */
+export type ConnectionLossCode = "connection_unavailable" | "outcome_unknown";
+export type RequestRetryPolicy = "connection_loss" | "none";
+
 export interface RequestOptions {
-  retryPolicy?: "connection_closed" | "none";
+  retryPolicy?: RequestRetryPolicy;
   signal?: AbortSignal;
   timeout?: number; // Timeout in milliseconds (default: 30000)
 }
 
 const MAX_REQUEST_ATTEMPTS = 2;
 
+function connectionUnavailableError(): LinuxIOError {
+  return new LinuxIOError(
+    "Connection unavailable before request was sent",
+    "connection_unavailable",
+  );
+}
+
+function outcomeUnknownError(): LinuxIOError {
+  return new LinuxIOError(
+    "Connection closed before the server confirmed the outcome",
+    "outcome_unknown",
+  );
+}
+
 function isConnectionClosedError(error: unknown): boolean {
   return error instanceof LinuxIOError && error.code === "connection_closed";
+}
+
+export function isConnectionLossError(error: unknown): boolean {
+  return (
+    error instanceof LinuxIOError &&
+    (error.code === "connection_unavailable" ||
+      error.code === "outcome_unknown")
+  );
 }
 
 /**
@@ -60,10 +85,7 @@ export async function ensureLoaderRequestReady(
     try {
       initStreamMux();
     } catch {
-      throw new LinuxIOError(
-        "Connection closed before receiving result",
-        "connection_closed",
-      );
+      throw connectionUnavailableError();
     }
   }
 
@@ -74,25 +96,16 @@ export async function ensureLoaderRequestReady(
       : await waitForStreamMux(timeoutMs);
   } catch {
     if (signal?.aborted) throw abortSignalError(signal);
-    throw new LinuxIOError(
-      "Connection closed before receiving result",
-      "connection_closed",
-    );
+    throw connectionUnavailableError();
   }
   throwIfAborted(signal);
   if (!ready) {
-    throw new LinuxIOError(
-      "Connection closed before receiving result",
-      "connection_closed",
-    );
+    throw connectionUnavailableError();
   }
 
   const mux = getStreamMux();
   if (!mux || mux.status !== "open") {
-    throw new LinuxIOError(
-      "Connection closed before receiving result",
-      "connection_closed",
-    );
+    throw connectionUnavailableError();
   }
 
   return mux;
@@ -117,29 +130,34 @@ async function ensureRequestMuxReady(timeoutMs: number, signal?: AbortSignal) {
   throwIfAborted(signal);
   const existingMux = getStreamMux();
   if (!existingMux) {
-    throw new LinuxIOError("StreamMux not initialized", "not_initialized");
+    throw connectionUnavailableError();
   }
 
   if (existingMux.status === "closed") {
-    initStreamMux();
+    try {
+      initStreamMux();
+    } catch {
+      throw connectionUnavailableError();
+    }
   }
 
-  const ready = signal
-    ? await waitForStreamMux(timeoutMs, signal)
-    : await waitForStreamMux(timeoutMs);
+  let ready: boolean;
+  try {
+    ready = signal
+      ? await waitForStreamMux(timeoutMs, signal)
+      : await waitForStreamMux(timeoutMs);
+  } catch {
+    if (signal?.aborted) throw abortSignalError(signal);
+    throw connectionUnavailableError();
+  }
+  throwIfAborted(signal);
   if (!ready) {
-    throw new LinuxIOError(
-      "Connection closed before receiving result",
-      "connection_closed",
-    );
+    throw connectionUnavailableError();
   }
 
   const mux = getStreamMux();
   if (!mux || mux.status !== "open") {
-    throw new LinuxIOError(
-      "Connection closed before receiving result",
-      "connection_closed",
-    );
+    throw connectionUnavailableError();
   }
 
   return mux;
@@ -170,6 +188,9 @@ async function executeRequestAttempt<T>(
     throw new LinuxIOError("Request timeout", "timeout");
   }
   const stream = mux.openStream(route, payload);
+  if (!stream) {
+    throw connectionUnavailableError();
+  }
 
   const controller = new AbortController();
   let abortSource: "caller" | "timeout" | null = null;
@@ -201,6 +222,9 @@ async function executeRequestAttempt<T>(
       abortSource === "timeout"
     ) {
       throw new LinuxIOError("Request timeout", "timeout");
+    }
+    if (isConnectionClosedError(error)) {
+      throw outcomeUnknownError();
     }
     throw error;
   } finally {
@@ -243,9 +267,9 @@ export async function request<T = unknown>(
       lastError = error;
 
       const canRetry =
-        retryPolicy === "connection_closed" &&
+        retryPolicy === "connection_loss" &&
         attempt < MAX_REQUEST_ATTEMPTS &&
-        isConnectionClosedError(error);
+        isConnectionLossError(error);
       if (!canRetry) {
         throw error;
       }

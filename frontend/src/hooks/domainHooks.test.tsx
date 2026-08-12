@@ -33,9 +33,9 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       docker: {
         ...actual.linuxio.docker,
-        get_icon_uri: {
-          queryOptions: apiMocks.getIconUriQueryOptions,
-        },
+        get_icon_uri: Object.assign(apiMocks.getIconUriQueryOptions, {
+          route: actual.linuxio.docker.get_icon_uri.route,
+        }),
       },
     },
   };
@@ -60,12 +60,11 @@ describe("useDockerIcon", () => {
   beforeEach(() => {
     queryClient.clear();
     apiMocks.getIconUriQueryOptions.mockImplementation(
-      (identifier: string, options: Record<string, unknown>) => ({
-        queryKey: ["test", "docker-icon", identifier],
+      (request: { identifier: string }) => ({
+        queryKey: ["test", "docker-icon", request.identifier],
         queryFn: () =>
           Promise.resolve({ uri: "data:image/svg+xml;base64,abc" }),
         initialData: { uri: "data:image/svg+xml;base64,abc" },
-        ...options,
       }),
     );
   });
@@ -76,13 +75,9 @@ describe("useDockerIcon", () => {
     });
 
     expect(result.current.iconUri).toBe("data:image/svg+xml;base64,abc");
-    expect(apiMocks.getIconUriQueryOptions).toHaveBeenCalledWith(
-      "si:nginx",
-      expect.objectContaining({
-        enabled: true,
-        retry: 1,
-      }),
-    );
+    expect(apiMocks.getIconUriQueryOptions).toHaveBeenCalledWith({
+      identifier: "si:nginx",
+    });
   });
 
   it("returns null and disables the query for missing or disabled identifiers", () => {
@@ -98,12 +93,10 @@ describe("useDockerIcon", () => {
       "data:image/svg+xml;base64,abc",
     );
     expect(apiMocks.getIconUriQueryOptions.mock.calls[0]).toEqual([
-      "",
-      expect.objectContaining({ enabled: false }),
+      { identifier: "" },
     ]);
     expect(apiMocks.getIconUriQueryOptions.mock.calls[1]).toEqual([
-      "si:nginx",
-      expect.objectContaining({ enabled: false }),
+      { identifier: "si:nginx" },
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
@@ -8,6 +8,7 @@ import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
@@ -15,6 +16,7 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { cardHeight } from "@/theme/constants";
 
 import {
@@ -23,6 +25,7 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
+  HistoryHoverProvider,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
@@ -37,34 +40,51 @@ import {
   resolvedHardwareSections,
 } from "./hardwareSections";
 
+export const selectVisibleSensorGroupIdentities = (groups: SensorGroup[]) =>
+  groups.flatMap((group, sourceIndex) => {
+    const visibleReadingCount = group.readings.filter(
+      isPrimarySensorReading,
+    ).length;
+
+    // Retain the raw index so filtering an empty adapter cannot make a live
+    // card observe a different source group.
+    return visibleReadingCount > 0
+      ? [{ adapter: group.adapter, sourceIndex, visibleReadingCount }]
+      : [];
+  });
+
+const SYSTEM_INFO_CARDS = [
+  { id: "motherboard", component: MotherboardInfoCard },
+  { id: "cpu-details", component: CPUDetailsCard },
+  { id: "bios", component: BIOSInfoCard },
+  { id: "gpu-details", component: GPUInfoCard },
+];
+
+const getSystemInfoCardId = (card: { id: string }) => card.id;
+
+const getSensorGroupId = (group: { adapter: string; sourceIndex: number }) =>
+  `${group.adapter}-${group.sourceIndex}`;
+
 function SensorReadings() {
-  const { data } = useSuspenseQuery(
-    linuxio.system.get_sensor_info.queryOptions({
-      ...hardwareSensorQueryOptions,
-      refetchInterval: 5_000,
-    }),
-  );
-  const sensorGroups = data as SensorGroup[];
-  const visibleSensorGroups = useMemo(
-    () =>
-      sensorGroups
-        .map((group) => ({
-          ...group,
-          readings: group.readings.filter(isPrimarySensorReading),
-        }))
-        .filter((group) => group.readings.length > 0),
-    [sensorGroups],
-  );
-  const sensorSummary = useMemo(
-    () => ({
-      adapters: visibleSensorGroups.length,
-      readings: visibleSensorGroups.reduce(
-        (sum, group) => sum + group.readings.length,
-        0,
-      ),
-    }),
-    [visibleSensorGroups],
-  );
+  const { data: visibleSensorGroups } = useSuspenseQuery({
+    ...linuxio.system.get_sensor_info,
+    ...hardwareSensorQueryOptions,
+    refetchInterval: 5_000,
+    select: selectVisibleSensorGroupIdentities,
+  });
+  const sensorSummary = {
+    adapters: visibleSensorGroups.length,
+    readings: visibleSensorGroups.reduce(
+      (sum, group) => sum + group.visibleReadingCount,
+      0,
+    ),
+  };
+
+  const sensorSurface = useReorderableSurface({
+    getId: getSensorGroupId,
+    items: visibleSensorGroups,
+    surface: "hardware.sensors",
+  });
 
   if (visibleSensorGroups.length === 0) return <SensorEmptyCard />;
 
@@ -84,29 +104,27 @@ function SensorReadings() {
           variant="soft"
         />
       </div>
-      <AppGrid
-        alignItems="stretch"
-        container
-        spacing={2}
-        style={{ marginBottom: 16 }}
-      >
-        {visibleSensorGroups.map((group, index) => (
-          <AppGrid
-            key={`${group.adapter}-${index}`}
-            size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
-          >
-            <SensorGroupCard group={group} />
-          </AppGrid>
-        ))}
-      </AppGrid>
+      <ReorderableCardGrid
+        getId={getSensorGroupId}
+        renderItem={({ adapter, sourceIndex, visibleReadingCount }) => (
+          <SensorGroupCard
+            adapter={adapter}
+            sourceIndex={sourceIndex}
+            visibleReadingCount={visibleReadingCount}
+          />
+        )}
+        size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}
+        surface={sensorSurface}
+      />
     </>
   );
 }
 
 function MemoryModulesTable() {
-  const { data: memoryModules } = useSuspenseQuery(
-    linuxio.system.get_memory_modules.queryOptions(hardwareStableQueryOptions),
-  );
+  const { data: memoryModules } = useSuspenseQuery({
+    ...linuxio.system.get_memory_modules,
+    ...hardwareStableQueryOptions,
+  });
   const memoryColumns: AppDataTableColumnDef<(typeof memoryModules)[number]>[] =
     [
       {
@@ -171,9 +189,10 @@ function MemoryModulesTable() {
 }
 
 function PciDevicesTable() {
-  const { data: pciDevices } = useSuspenseQuery(
-    linuxio.system.get_pci_devices.queryOptions(hardwareStableQueryOptions),
-  );
+  const { data: pciDevices } = useSuspenseQuery({
+    ...linuxio.system.get_pci_devices,
+    ...hardwareStableQueryOptions,
+  });
   const pciColumns: AppDataTableColumnDef<(typeof pciDevices)[number]>[] = [
     {
       accessorKey: "class",
@@ -196,7 +215,7 @@ function PciDevicesTable() {
       cell: ({ row }) => row.original.slot || "—",
       meta: {
         cellStyle: {
-          fontFamily: "monospace",
+          fontFamily: "var(--app-font-mono)",
           fontSize: "0.8rem",
         },
       },
@@ -225,7 +244,12 @@ const HardwarePage = () => {
   // ── history range & synchronized crosshair ──
   const [historyRange, setHistoryRange] =
     useState<HardwareHistoryRangeId>("1h");
-  const [historyHoverTime, setHistoryHoverTime] = useState<number | null>(null);
+
+  const systemInfoSurface = useReorderableSurface({
+    getId: getSystemInfoCardId,
+    items: SYSTEM_INFO_CARDS,
+    surface: "hardware.systemInfo",
+  });
 
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
@@ -259,27 +283,19 @@ const HardwarePage = () => {
       />
       <div id="hardware-system-info-panel">
         <AppCollapse in={sections.systemInfo} unmountOnExit>
-          <AppGrid
-            alignItems="stretch"
-            container
+          <ReorderableCardGrid
+            getId={getSystemInfoCardId}
+            renderItem={({ component: CardComponent }) => (
+              <ErrorBoundary>
+                <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
+                  <CardComponent />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+            size={{ xs: 12, md: 6, xl: 3 }}
             spacing={4}
-            style={{ marginBottom: 16 }}
-          >
-            {[
-              { id: "motherboard", component: MotherboardInfoCard },
-              { id: "cpu-details", component: CPUDetailsCard },
-              { id: "bios", component: BIOSInfoCard },
-              { id: "gpu-details", component: GPUInfoCard },
-            ].map(({ id, component: CardComponent }) => (
-              <AppGrid key={id} size={{ xs: 12, md: 6, xl: 3 }}>
-                <ErrorBoundary>
-                  <Suspense fallback={<WidgetLoader minHeight={cardHeight} />}>
-                    <CardComponent />
-                  </Suspense>
-                </ErrorBoundary>
-              </AppGrid>
-            ))}
-          </AppGrid>
+            surface={systemInfoSurface}
+          />
         </AppCollapse>
       </div>
 
@@ -292,53 +308,47 @@ const HardwarePage = () => {
       />
       <div id="hardware-hardware-panel">
         <AppCollapse in={sections.hardware} unmountOnExit>
-          <AppGrid
-            alignItems="stretch"
-            container
-            spacing={4}
-            style={{ marginBottom: 16 }}
-          >
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <CPUHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
+          <HistoryHoverProvider>
+            <AppGrid
+              alignItems="stretch"
+              container
+              spacing={4}
+              style={{ marginBottom: 16 }}
+            >
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <CPUHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <MemoryHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <DiskIOHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
+              <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
+                <ErrorBoundary>
+                  <NetworkHistoryCard
+                    onRangeChange={setHistoryRange}
+                    rangeId={historyRange}
+                  />
+                </ErrorBoundary>
+              </AppGrid>
             </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <MemoryHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <DiskIOHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>
-              <ErrorBoundary>
-                <NetworkHistoryCard
-                  hoverTime={historyHoverTime}
-                  onHoverTimeChange={setHistoryHoverTime}
-                  onRangeChange={setHistoryRange}
-                  rangeId={historyRange}
-                />
-              </ErrorBoundary>
-            </AppGrid>
-          </AppGrid>
+          </HistoryHoverProvider>
         </AppCollapse>
       </div>
 

@@ -20,8 +20,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { JOB_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundJobTypes";
-import { useActiveJobRecovery } from "@/hooks/backgroundJobs/useActiveJobRecovery";
+import { TASK_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundTaskTypes";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 
@@ -52,9 +52,9 @@ const ComposeOperationDialog = ({
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
   // Started-guard: one run per dialog open (reset on dialog exit). The abort
-  // controller is the run's detach handle — aborting closes the attach
-  // stream (closeOnAbort: "close") while the job keeps running server-side.
-  // It is dropped as soon as the job reports a terminal state: from then on
+  // controller is the run's detach handle — aborting closes the watch
+  // stream (closeOnAbort: "close") while the task keeps running server-side.
+  // It is dropped as soon as the task reports a terminal state: from then on
   // the stream is only waiting to deliver its result frame, and that frame is
   // what resolves the mutation and applies the route's invalidations. Cutting
   // it short rejects the mutation with an AbortError instead, so nothing would
@@ -85,7 +85,7 @@ const ComposeOperationDialog = ({
   }, [output, open, showLog]);
 
   // Detach from the stream when the dialog closes or unmounts; the compose
-  // job itself keeps running.
+  // task itself keeps running.
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort();
@@ -93,7 +93,7 @@ const ComposeOperationDialog = ({
   }, [open]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const composeOperation = linuxio.docker.compose.useJobStreamAction({
+  const composeOperation = linuxio.docker.compose.useTaskStreamAction({
     closeMessage: "Compose operation stream closed unexpectedly",
     closeOnAbort: "close",
     error: (streamError) => {
@@ -107,11 +107,13 @@ const ComposeOperationDialog = ({
       }
       toast.error(`Failed to ${action} stack: ${message}`);
     },
-    onProgress: (msg) => {
+    onProgress: (taskProgress) => {
       // A finished run stays attached until its result frame lands, so frames
       // can still arrive after the dialog was closed and reset. Writing them
       // back would leave the next open showing the previous run's state.
       if (!startedRef.current) return;
+      const msg = taskProgress.detail;
+      if (!msg) return;
       switch (msg.type) {
         case "progress": {
           const progress = msg.progress;
@@ -134,7 +136,7 @@ const ComposeOperationDialog = ({
           break;
       }
     },
-    openErrorMessage: "Failed to attach compose operation",
+    openErrorMessage: "Failed to watch compose operation",
     signal: () => abortRef.current?.signal,
     success: (msg) => {
       if (msg?.type === "complete" && startedRef.current) {
@@ -154,20 +156,18 @@ const ComposeOperationDialog = ({
     abortRef.current = new AbortController();
     run();
   };
-  useActiveJobRecovery({
-    type: JOB_TYPE_DOCKER_COMPOSE,
+  useActiveTaskRecovery({
+    type: TASK_TYPE_DOCKER_COMPOSE,
     scanKey: open && muxIsOpen ? `${action}:${projectName}` : null,
-    match: (job) => {
-      const metadata = job.metadata as
-        | { action?: string; projectName?: string }
-        | undefined;
+    match: (task) => {
+      const metadata = task.metadata;
       return (
         metadata?.action === action && metadata?.projectName === projectName
       );
     },
-    onRecover: (job) =>
+    onRecover: (task) =>
       beginRun(() =>
-        composeOperation.attach(job, { action, projectName, composePath }),
+        composeOperation.watch(task, { action, projectName, composePath }),
       ),
     onMiss: () =>
       beginRun(() =>

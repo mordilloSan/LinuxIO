@@ -1147,7 +1147,7 @@ func sanitizeStackName(name string) string {
 }
 
 // ValidateStackDirectory performs a read-only, advisory check that a directory is suitable
-// for creating a stack. The job that performs the eventual write remains authoritative.
+// for creating a stack. The Task that performs the eventual write remains authoritative.
 func ValidateStackDirectory(ctx context.Context, dirPath string) (apischema.DirectoryValidationResult, error) {
 	result := apischema.DirectoryValidationResult{}
 

@@ -1,22 +1,27 @@
 import { Icon } from "@iconify/react";
 import { motion } from "motion/react";
-import { RefObject, useState } from "react";
+import type { RefObject } from "react";
+import { type CSSProperties } from "react";
 
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppCardContent from "@/components/ui/AppCardContent";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import Chip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
-import InfoRow from "@/components/ui/InfoRow";
+import { getWireguardStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
-import {
-  getAccentCardHoverStyles,
-  getAccentCardStyles,
-} from "@/theme/surfaces";
+import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
 
-// Props type
+export type WireguardInterfaceAction =
+  | "add-peer"
+  | "delete"
+  | "disable"
+  | "down"
+  | "enable"
+  | "up";
+
 interface InterfaceCardProps {
   handleAddPeer: (name: string, peerData: any) => void;
   handleDelete: (name: string) => void;
@@ -24,10 +29,20 @@ interface InterfaceCardProps {
   handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
   handleToggleInterface: (name: string, status: "up" | "down") => void;
   iface: WireGuardInterface;
-  primaryColor?: string;
+  pendingAction?: WireguardInterfaceAction;
   selectedCardRef: RefObject<HTMLDivElement> | null;
   selectedInterface: string | null;
 }
+
+const cardStyle: CSSProperties = {
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  position: "relative",
+  borderBottomWidth: 2,
+  borderBottomStyle: "solid",
+};
 
 const InterfaceCard = ({
   iface,
@@ -38,17 +53,16 @@ const InterfaceCard = ({
   handleToggleBootPersistence,
   handleDelete,
   handleAddPeer,
+  pendingAction,
 }: InterfaceCardProps) => {
   const theme = useAppTheme();
-  const color = "primary";
-  const activeAccentColor =
-    theme.palette[color]?.main || theme.palette.primary.main;
-  const idleAccentColor =
-    theme.palette[color]?.dark || theme.palette.primary.dark;
-
-  const hoverStyles = getAccentCardHoverStyles(theme, activeAccentColor);
+  const isActive = iface.isConnected === "Active";
+  const statusColor = getWireguardStatusColor(iface.isConnected);
   const isSelected = iface.name === selectedInterface;
-  const [hovered, setHovered] = useState(false);
+  const actionBusy = Boolean(pendingAction);
+  const togglePending = pendingAction === "up" || pendingAction === "down";
+  const bootPending = pendingAction === "enable" || pendingAction === "disable";
+  const detailsId = `wg-card-${iface.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
   return (
     <motion.div
@@ -59,123 +73,175 @@ const InterfaceCard = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        hoverLift={!isSelected}
         ref={isSelected ? selectedCardRef : null}
         style={{
-          ...getAccentCardStyles(idleAccentColor),
-          transition:
-            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
-          ...((isSelected || hovered) && hoverStyles),
+          ...cardStyle,
+          borderBottomColor: isSelected
+            ? statusColor
+            : `color-mix(in srgb, ${statusColor}, transparent 70%)`,
+          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}`,
         }}
       >
-        <AppCardContent>
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <AppButton
-              aria-pressed={isSelected}
-              color="inherit"
-              onClick={() => handleSelectInterface(iface)}
-              style={{
-                appearance: "none",
-                background: "none",
-                border: 0,
-                color: "inherit",
-                cursor: "pointer",
-                display: "block",
-                flex: 1,
-                font: "inherit",
-                padding: 0,
-                textAlign: "left",
-              }}
+        {/* Status chip top-right */}
+        <div style={{ position: "absolute", top: 12, right: 12 }}>
+          <Chip
+            color={statusColor}
+            label={isActive ? "Active" : "Inactive"}
+            labelStyle={{ paddingInline: 6 }}
+            size="small"
+            style={{ fontSize: "0.65rem" }}
+            variant="soft"
+          />
+        </div>
+
+        <AppButton
+          aria-controls={detailsId}
+          aria-expanded={isSelected}
+          aria-label={`${isSelected ? "Collapse" : "Expand"} ${iface.name}`}
+          color="inherit"
+          fullWidth
+          onClick={() => handleSelectInterface(iface)}
+          style={{
+            alignItems: "stretch",
+            color: "inherit",
+            flexDirection: "column",
+            justifyContent: "flex-start",
+            padding: 0,
+            textAlign: "left",
+          }}
+        >
+          {/* Icon + name */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: GAP_SM,
+              paddingRight: 72,
+            }}
+          >
+            <Icon
+              color={statusColor}
+              height={32}
+              icon="mdi:shield-lock-outline"
+              width={32}
+            />
+            <AppTypography
+              fontWeight={600}
+              noWrap
+              title={iface.name}
+              variant="subtitle1"
             >
-              <AppTypography fontWeight={700} variant="subtitle1">
-                {iface.name}
+              {iface.name}
+            </AppTypography>
+          </div>
+
+          {/* Address + stats */}
+          <div id={detailsId} style={{ marginTop: GAP_SM }}>
+            <AppTypography
+              color="text.secondary"
+              noWrap
+              style={{
+                display: "block",
+                fontFamily: "var(--app-font-mono)",
+                fontSize: "0.8rem",
+              }}
+              variant="body2"
+            >
+              {iface.address}
+            </AppTypography>
+            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+              <AppTypography color="text.secondary" variant="body2">
+                Port {iface.port}
               </AppTypography>
-              <div style={{ marginTop: 6 }}>
-                <InfoRow label="Address" wrap>
-                  {iface.address}
-                </InfoRow>
-                <InfoRow label="Port">{iface.port}</InfoRow>
-                <InfoRow label="Peers" noBorder>
-                  {iface.peerCount}
-                </InfoRow>
-              </div>
-            </AppButton>
-            <div style={{ marginLeft: 8 }}>
-              <AppTooltip
-                title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
-              >
-                <AppIconButton
-                  aria-label={
-                    iface.isConnected === "Active"
-                      ? "Turn interface off"
-                      : "Turn interface on"
-                  }
-                  onClick={() => {
-                    handleToggleInterface(
-                      iface.name,
-                      iface.isConnected === "Active" ? "down" : "up",
-                    );
-                  }}
-                  style={{
-                    color:
-                      iface.isConnected === "Active"
-                        ? theme.palette.primary.light
-                        : theme.palette.text.disabled,
-                  }}
-                >
-                  <Icon height={22} icon="mdi:power" width={22} />
-                </AppIconButton>
-              </AppTooltip>
-              <AppTooltip
-                title={
-                  iface.isEnabled
-                    ? "Disable Boot Persistence"
-                    : "Enable Boot Persistence"
-                }
-              >
-                <AppIconButton
-                  aria-label={
-                    iface.isEnabled
-                      ? "Disable boot persistence"
-                      : "Enable boot persistence"
-                  }
-                  onClick={() => {
-                    handleToggleBootPersistence(iface.name, iface.isEnabled);
-                  }}
-                  style={{
-                    color: iface.isEnabled
-                      ? theme.palette.success.main
-                      : theme.palette.text.disabled,
-                  }}
-                >
-                  <Icon height={22} icon="mdi:restart" width={22} />
-                </AppIconButton>
-              </AppTooltip>
-              <AppTooltip title="Add Peer">
-                <AppIconButton
-                  aria-label="Add peer"
-                  onClick={() => {
-                    handleAddPeer(iface.name, {});
-                  }}
-                >
-                  <Icon height={22} icon="mdi:plus" width={22} />
-                </AppIconButton>
-              </AppTooltip>
-              <AppTooltip title="Delete Interface">
-                <AppIconButton
-                  aria-label="Delete interface"
-                  color="error"
-                  onClick={() => {
-                    handleDelete(iface.name);
-                  }}
-                >
-                  <Icon height={22} icon="mdi:delete" width={22} />
-                </AppIconButton>
-              </AppTooltip>
+              <AppTypography color="text.secondary" variant="body2">
+                {iface.peerCount} peer{iface.peerCount === 1 ? "" : "s"}
+              </AppTypography>
             </div>
           </div>
-        </AppCardContent>
+        </AppButton>
+
+        <AppDivider style={{ marginBlock: 12 }} />
+
+        {/* Actions */}
+        <div
+          aria-busy={actionBusy}
+          aria-label={`Actions for ${iface.name}`}
+          role="group"
+          style={{ display: "flex", gap: 2, marginTop: "auto" }}
+        >
+          <AppActionIconButton
+            ariaLabel={
+              togglePending
+                ? `${pendingAction === "up" ? "Turning interface on" : "Turning interface off"} ${iface.name}`
+                : isActive
+                  ? "Turn interface off"
+                  : "Turn interface on"
+            }
+            color={isActive ? statusColor : undefined}
+            disabled={actionBusy}
+            icon="mdi:power"
+            iconSize={20}
+            label={isActive ? "Turn Off" : "Turn On"}
+            loading={togglePending}
+            onClick={() => {
+              handleToggleInterface(iface.name, isActive ? "down" : "up");
+            }}
+          />
+          <AppActionIconButton
+            ariaLabel={
+              bootPending
+                ? `${pendingAction === "enable" ? "Enabling boot persistence" : "Disabling boot persistence"} ${iface.name}`
+                : iface.isEnabled
+                  ? "Disable boot persistence"
+                  : "Enable boot persistence"
+            }
+            color={iface.isEnabled ? theme.palette.primary.main : undefined}
+            disabled={actionBusy}
+            icon="mdi:restart"
+            iconSize={20}
+            label={
+              iface.isEnabled
+                ? "Disable Boot Persistence"
+                : "Enable Boot Persistence"
+            }
+            loading={bootPending}
+            onClick={() => {
+              handleToggleBootPersistence(iface.name, iface.isEnabled);
+            }}
+          />
+          <AppActionIconButton
+            ariaLabel={
+              pendingAction === "add-peer"
+                ? `Adding peer to ${iface.name}`
+                : "Add peer"
+            }
+            disabled={actionBusy}
+            icon="mdi:plus"
+            iconSize={20}
+            label="Add Peer"
+            loading={pendingAction === "add-peer"}
+            onClick={() => {
+              handleAddPeer(iface.name, {});
+            }}
+          />
+          <AppActionIconButton
+            ariaLabel={
+              pendingAction === "delete"
+                ? `Deleting interface ${iface.name}`
+                : "Delete interface"
+            }
+            color="var(--app-palette-error-main)"
+            disabled={actionBusy}
+            icon="mdi:delete"
+            iconSize={20}
+            label="Delete Interface"
+            loading={pendingAction === "delete"}
+            onClick={() => {
+              handleDelete(iface.name);
+            }}
+          />
+        </div>
       </FrostedCard>
     </motion.div>
   );

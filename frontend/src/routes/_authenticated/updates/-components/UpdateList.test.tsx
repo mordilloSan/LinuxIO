@@ -16,6 +16,12 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const getUpdateDetail = Object.assign(
+    (request: { packageId: string }) => ({
+      queryKey: ["linuxio", "updates", "get_update_detail", request],
+    }),
+    { route: "updates.get_update_detail" },
+  );
   return {
     ...actual,
     CACHE_TTL_MS: { ...actual.CACHE_TTL_MS, FIVE_MINUTES: 300_000 },
@@ -23,9 +29,7 @@ vi.mock("@/api", async (importOriginal) => {
       ...actual.linuxio,
       updates: {
         ...actual.linuxio.updates,
-        get_update_detail: {
-          queryOptions: () => ({}),
-        },
+        get_update_detail: getUpdateDetail,
       },
     },
   };

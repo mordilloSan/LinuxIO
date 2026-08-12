@@ -14,10 +14,18 @@ export const Flags = {
   DATA: 0x04, // Data frame
   FIN: 0x08, // Close stream
   RST: 0x10, // Abort stream
+  Activity: 0x20, // Explicit client activity marker (outer relay metadata)
 } as const;
 
 export type StreamStatus = "opening" | "open" | "closing" | "closed";
-export type StreamType = "terminal" | "container" | string;
+// Free-form by design: "terminal", "container", or a route name such as "tasks.watch".
+export type StreamType = string;
+
+const INTERACTIVE_STREAM_TYPES = new Set([
+  "terminal.open",
+  "container.open",
+  "virt.console_open",
+]);
 
 // Forward declare types used in Stream interface (full definitions below)
 export interface ProgressFrame {
@@ -30,7 +38,7 @@ export interface ProgressFrame {
 }
 
 export interface ResultFrame {
-  code?: number;
+  code?: string | number;
   data?: unknown;
   error?: string;
   status: "ok" | "error";
@@ -141,7 +149,10 @@ class CircularBuffer {
   private head = 0; // Start of valid data
   private len = 0; // Length of valid data
 
-  constructor(private capacity: number) {
+  private capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
     this.data = new Uint8Array(capacity);
   }
 
@@ -212,11 +223,14 @@ class StreamImpl implements Stream {
   private readonly detachedBufferBytes: number;
   private readonly scrollback: CircularBuffer;
 
-  constructor(
-    public readonly id: number,
-    public readonly type: StreamType,
-    private mux: StreamMultiplexer,
-  ) {
+  readonly id: number;
+  readonly type: StreamType;
+  private mux: StreamMultiplexer;
+
+  constructor(id: number, type: StreamType, mux: StreamMultiplexer) {
+    this.id = id;
+    this.type = type;
+    this.mux = mux;
     this.detachedBufferBytes = STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes;
     this.scrollback = new CircularBuffer(
       STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
@@ -276,7 +290,7 @@ class StreamImpl implements Stream {
     view.setUint32(1, this.id, false);
     view.setUint32(5, data.length, false);
     bridgeFrame.set(data, 9);
-    this.mux.sendFrame(this.id, Flags.DATA, bridgeFrame);
+    this.mux.sendStreamData(this.id, this.type, bridgeFrame);
   }
 
   resize(cols: number, rows: number): void {
@@ -490,6 +504,12 @@ export class StreamMultiplexer {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private shouldReconnect = true;
+  private activityLastSentAt = Number.NEGATIVE_INFINITY;
+  private static readonly ACTIVITY_THROTTLE_MS = 60_000;
+
+  private readonly handleUserActivity = () => {
+    this.sendDocumentActivity();
+  };
 
   // Rapid-close detection: when the server upgrades the WebSocket but
   // immediately closes it (e.g. expired session), the 1008 close frame
@@ -520,6 +540,8 @@ export class StreamMultiplexer {
         "visibilitychange",
         this.handleVisibilityChange,
       );
+      document.addEventListener("pointerdown", this.handleUserActivity);
+      document.addEventListener("keydown", this.handleUserActivity);
     }
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.handleOnline);
@@ -677,6 +699,37 @@ export class StreamMultiplexer {
     this.connect();
   }
 
+  private takeActivitySlot(): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    const now = Date.now();
+    if (now - this.activityLastSentAt < StreamMultiplexer.ACTIVITY_THROTTLE_MS)
+      return false;
+    this.activityLastSentAt = now;
+    return true;
+  }
+
+  private sendDocumentActivity(): void {
+    if (!this.takeActivitySlot()) return;
+    if (!this.sendFrame(0, Flags.Activity, new Uint8Array(0)))
+      this.activityLastSentAt = Number.NEGATIVE_INFINITY;
+  }
+
+  sendStreamData(
+    streamID: number,
+    streamType: StreamType,
+    payload: Uint8Array,
+  ): boolean {
+    const activity =
+      INTERACTIVE_STREAM_TYPES.has(streamType) && this.takeActivitySlot();
+    const sent = this.sendFrame(
+      streamID,
+      Flags.DATA | (activity ? Flags.Activity : 0),
+      payload,
+    );
+    if (!sent && activity) this.activityLastSentAt = Number.NEGATIVE_INFINITY;
+    return sent;
+  }
+
   private notifyStatusChange(status: MuxStatus): void {
     for (const listener of this.statusListeners) {
       listener(status);
@@ -738,7 +791,7 @@ export class StreamMultiplexer {
    * Open a new stream and send initial payload.
    * The payload is wrapped in a StreamFrame for the bridge.
    */
-  openStream(type: StreamType, initialPayload?: Uint8Array): Stream {
+  openStream(type: StreamType, initialPayload?: Uint8Array): Stream | null {
     // Only reuse persistent streams (terminal) - not request/response streams
     const isPersistent = StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
     if (isPersistent) {
@@ -771,19 +824,18 @@ export class StreamMultiplexer {
     // Send SYN with the StreamFrame as payload
     const sent = this.sendFrame(id, Flags.SYN, bridgeFrame);
     if (!sent) {
-      // Fail fast: keep API behavior deterministic when transport is not available.
+      // No SYN reached the WebSocket send queue, so callers can distinguish an
+      // unavailable connection from a stream that opened and later lost its
+      // result.
       this.streams.delete(id);
       if (isPersistent && this.streamsByType.get(type) === stream) {
         this.streamsByType.delete(type);
       }
       stream.setStatus("closed");
-      queueMicrotask(() => {
-        stream.handleClose();
-      });
-      return stream;
+      return null;
     }
 
-    // Mark as open immediately (server-side stream is created on SYN)
+    // The SYN is enqueued; server acceptance is not acknowledged separately.
     stream.setStatus("open");
 
     return stream;
@@ -804,8 +856,13 @@ export class StreamMultiplexer {
     frame[4] = flags;
     frame.set(payload, 5);
 
-    this.ws.send(frame);
-    return true;
+    try {
+      this.ws.send(frame);
+      return true;
+    } catch (error) {
+      console.warn("[StreamMux] Failed to send WebSocket frame", error);
+      return false;
+    }
   }
 
   /**
@@ -873,6 +930,8 @@ export class StreamMultiplexer {
         "visibilitychange",
         this.handleVisibilityChange,
       );
+      document.removeEventListener("pointerdown", this.handleUserActivity);
+      document.removeEventListener("keydown", this.handleUserActivity);
     }
     if (typeof window !== "undefined") {
       window.removeEventListener("online", this.handleOnline);

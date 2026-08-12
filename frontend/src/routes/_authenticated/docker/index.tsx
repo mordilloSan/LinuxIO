@@ -8,11 +8,11 @@ import DockerDashboardPage from "./-components/DockerDashboardPage";
 export const Route = createFileRoute("/_authenticated/docker/")({
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.docker.list_containers.queryOptions(),
-      linuxio.docker.list_images.queryOptions(),
-      linuxio.docker.list_networks.queryOptions(),
-      linuxio.docker.list_volumes.queryOptions(),
-      linuxio.docker.get_docker_info.queryOptions(),
+      linuxio.docker.list_containers,
+      linuxio.docker.list_images,
+      linuxio.docker.list_networks,
+      linuxio.docker.list_volumes,
+      linuxio.docker.get_docker_info,
     ]),
   component: DockerDashboardPage,
 });

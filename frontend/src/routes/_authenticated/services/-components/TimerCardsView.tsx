@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Timer } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import { formatUsec } from "./unitFormatters";
 import {
@@ -18,6 +19,7 @@ interface TimerCardsViewProps {
   onExpand: (name: string | null) => void;
   renderDetailPanel: (timer: Timer) => ReactNode;
   timers: Timer[];
+  surface: ReorderableSurface<Timer>;
 }
 
 const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
@@ -31,11 +33,10 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
 );
 
 const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
+    refetchInterval: 2000,
+  });
 
   return (
     <>
@@ -46,7 +47,7 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
       </DetailRow>
       <DetailRow label="Unit">
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-          {String(info?.Unit ?? timer.unit ?? "—")}
+          {info?.Unit ?? timer.unit ?? "—"}
         </span>
       </DetailRow>
       <DetailRow label="Next">
@@ -64,11 +65,10 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
 };
 
 const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery(
-    linuxio.systemd.get_unit_info.queryOptions(timer.name, {
-      refetchInterval: 2000,
-    }),
-  );
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
+    refetchInterval: 2000,
+  });
   return (
     <UnitCardActions
       activeState={timer.active_state}
@@ -84,11 +84,13 @@ const TimerCardsView = ({
   expanded,
   onExpand,
   renderDetailPanel,
+  surface,
 }: TimerCardsViewProps) => (
   <UnitCardsView
     emptyMessage="No timers found."
     expanded={expanded}
     items={timers}
+    surface={surface}
     onExpand={onExpand}
     renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
     renderBottomPanel={(timer) => (

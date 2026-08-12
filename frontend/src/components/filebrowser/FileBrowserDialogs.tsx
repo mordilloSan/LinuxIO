@@ -1,5 +1,6 @@
 import { memo, type ChangeEvent, type RefObject } from "react";
 
+import type { TaskProgress } from "@/api";
 import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -12,7 +13,7 @@ import type {
   ConflictPrompt,
 } from "@/hooks/filebrowser/useFileConflicts";
 import type { PermissionsDialogState } from "@/hooks/filebrowser/useFileDialogs";
-import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
 import type {
   FileResource,
@@ -99,12 +100,14 @@ export interface FileBrowserDetailsDialogsProps {
 }
 
 export interface FileBrowserCreateDialogsProps {
+  filePending?: boolean;
   fileOpen: boolean;
+  folderPending?: boolean;
   folderOpen: boolean;
   onCloseFile: () => void;
   onCloseFolder: () => void;
-  onConfirmFile: (fileName: string) => void;
-  onConfirmFolder: (folderName: string) => void;
+  onConfirmFile: (fileName: string) => Promise<void> | void;
+  onConfirmFolder: (folderName: string) => Promise<void> | void;
 }
 
 export interface FileBrowserDeleteDialogProps {
@@ -112,6 +115,8 @@ export interface FileBrowserDeleteDialogProps {
   onConfirm: () => void;
   open: boolean;
   pendingDeletePaths: string[];
+  isPending?: boolean;
+  progress?: TaskProgress | null;
 }
 
 export interface FileBrowserPermissionsDialogProps {
@@ -123,6 +128,8 @@ export interface FileBrowserPermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => Promise<void> | void;
+  isPending?: boolean;
+  progress?: TaskProgress | null;
 }
 
 export interface FileBrowserUploadDialogProps {
@@ -251,6 +258,7 @@ const FileBrowserDialogs = ({
       label="File Name"
       onClose={create.onCloseFile}
       onConfirm={create.onConfirmFile}
+      isPending={create.filePending}
       open={create.fileOpen}
       title="Create File"
     />
@@ -259,6 +267,7 @@ const FileBrowserDialogs = ({
       label="Folder Name"
       onClose={create.onCloseFolder}
       onConfirm={create.onConfirmFolder}
+      isPending={create.folderPending}
       open={create.folderOpen}
       title="Create Folder"
     />
@@ -270,6 +279,8 @@ const FileBrowserDialogs = ({
       onConfirm={deleteDialog.onConfirm}
       open={deleteDialog.open}
       title="Delete Items"
+      isPending={deleteDialog.isPending}
+      progress={deleteDialog.progress}
     />
 
     <ConfirmDialog
@@ -291,6 +302,8 @@ const FileBrowserDialogs = ({
         open
         owner={permissions.dialog.owner}
         pathLabel={permissions.dialog.pathLabel}
+        isPending={permissions.isPending}
+        progress={permissions.progress}
         selectionCount={permissions.dialog.selectionCount}
       />
     )}

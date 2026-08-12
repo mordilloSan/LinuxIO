@@ -7,10 +7,14 @@
 
 /* Truncated tooltip content is overflow:hidden — a click drops a text caret
    and the browser scrolls the hidden overflow to it, sliding the ellipsis away
-   ("renders the text") with no change in width. These are hover-to-read /
-   click-to-copy affordances, not selectable text, so block selection (and that
-   scroll). Covers both copyable and plain truncated values. */
-.app-tooltip-trigger > * {
+   ("renders the text") with no change in width. Those are click-to-copy
+   affordances, not selectable text, so block selection (and that scroll).
+
+   Scoped to --copy, which the trigger only carries once it has measured its
+   child as actually truncated. An untruncated value has no copy-on-click to
+   protect, and blocking selection there would leave no way at all to get the
+   text out. */
+.app-tooltip-trigger--copy > * {
   -webkit-user-select: none;
   user-select: none;
 }
@@ -24,6 +28,10 @@
 .app-tooltip {
   position: fixed;
   z-index: 1500;
+  /* max-content keeps a short tooltip hugging its text — the reason this rule
+     used to say nowrap — while max-width still caps a long one. nowrap plus a
+     max-width cannot both hold: the text simply overflowed the painted box. */
+  width: max-content;
   max-width: 300px;
   padding: 4px 8px;
   border-radius: 4px;
@@ -35,7 +43,9 @@
   font-weight: 500;
   line-height: 1.4;
   letter-spacing: 0.01071em;
-  white-space: nowrap;
+  /* anywhere, so an unbroken value (a long path, a container id) breaks rather
+     than spilling past the background. */
+  overflow-wrap: anywhere;
   pointer-events: none;
   /* Grow-like entrance: fade + subtle scale, matching MUI's Grow transition */
   animation: app-tooltip-in var(--app-transition-duration-medium)

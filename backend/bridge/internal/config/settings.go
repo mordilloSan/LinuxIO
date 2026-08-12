@@ -8,9 +8,7 @@ func DefaultAppSettings() PersistedAppSettings {
 		ThemeColors:      defaultThemeColors(),
 		SidebarCollapsed: false,
 		ShowHiddenFiles:  true,
-		DashboardOrder:   defaultDashboardOrder(),
 		HiddenCards:      []string{},
-		ContainerOrder:   []string{},
 		DockerDashboardSections: &DockerDashboardSections{
 			Overview:  true,
 			Daemon:    true,
@@ -25,13 +23,10 @@ func DefaultAppSettings() PersistedAppSettings {
 			PCIDevices:    true,
 			MemoryModules: true,
 		},
-		ViewModes:   defaultViewModes(),
-		ChunkSizeMB: 1,
+		ViewModes:    defaultViewModes(),
+		LayoutOrders: map[string][]string{},
+		ChunkSizeMB:  1,
 	}
-}
-
-func defaultDashboardOrder() []string {
-	return []string{"overview", "system", "cpu", "memory", "docker", "nic", "fs", "mb", "gpu", "drive"}
 }
 
 func defaultViewModes() map[string]string {

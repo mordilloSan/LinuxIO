@@ -25,18 +25,17 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
 }
 
 function useTimersQuery(viewMode: TableCardViewMode) {
-  return useSuspenseQuery(
-    linuxio.systemd.list_timers.queryOptions({
-      refetchInterval: viewMode === "card" ? false : 5000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.systemd.list_timers,
+    refetchInterval: viewMode === "card" ? false : 5000,
+  });
 }
 
 function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
   return [
     {
       label: "Unit",
-      value: String(info?.Unit ?? timer.unit ?? "—"),
+      value: info?.Unit ?? timer.unit ?? "—",
       hidden: !info && !timer.unit,
     },
     {
@@ -71,12 +70,19 @@ const TimersTab = ({
       data={data}
       matchesSearch={matchesTimerSearch}
       onSelectedChange={onSelectedChange}
-      renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
+      renderCardsView={({
+        items,
+        expanded,
+        onExpand,
+        renderDetailPanel,
+        surface,
+      }) => (
         <TimerCardsView
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
           timers={items}
+          surface={surface}
         />
       )}
       renderDetailPanel={(timer, onClose) => (
@@ -86,17 +92,25 @@ const TimersTab = ({
           unitName={timer.name}
         />
       )}
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+      renderTableView={({
+        items,
+        selected,
+        onSelect,
+        onDoubleClick,
+        surface,
+      }) => (
         <TimerTableView
           onDoubleClick={onDoubleClick}
           onSelect={onSelect}
           selected={selected}
           timers={items}
+          surface={surface}
         />
       )}
       searchPlaceholder="Search timers…"
       selected={selected}
       setViewMode={onViewModeChange}
+      surfaceId="timers.list"
       viewMode={viewMode}
     />
   );

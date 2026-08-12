@@ -9,19 +9,38 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-// ComposeJobMessage represents a message emitted by a Docker compose job.
-type ComposeJobMessage struct {
+// ComposeTaskMessage represents a message emitted by a Docker compose task.
+type ComposeTaskMessage struct {
 	Type     string           `json:"type"`    // "stdout", "stderr", or "progress".
 	Message  string           `json:"message"` // The actual message content (humanized for progress)
 	Code     int              `json:"code,omitempty"`
 	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
 }
 
-// ComposeJobResult is the terminal payload returned by a successful compose job.
-type ComposeJobResult struct {
+func (m ComposeTaskMessage) ProgressEnvelope() bridgetask.TaskProgress {
+	phase := m.Type
+	message := m.Message
+	var percentage *int
+	if m.Progress != nil {
+		value := m.Progress.Percent
+		percentage = &value
+		if message == "" {
+			message = m.Progress.Text
+		}
+	}
+	return bridgetask.TaskProgress{
+		Percentage: percentage,
+		Phase:      phase,
+		Message:    message,
+		Detail:     m,
+	}
+}
+
+// ComposeTaskResult is the terminal payload returned by a successful compose task.
+type ComposeTaskResult struct {
 	Type    string `json:"type"` // "complete".
 	Message string `json:"message"`
 }
@@ -41,28 +60,28 @@ type ComposeProgress struct {
 	Percent  int    `json:"percent,omitempty"`
 }
 
-var dockerJobRoutes = dockerJobBindings(runtime.Runtime{}).Routes()
+var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
-func dockerJobBindings(rt runtime.Runtime) apischema.BindingSet {
+func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.DockerComposeRequest, ComposeJobResult]("docker.compose", apischema.WithJobProgress[ComposeJobMessage](), apischema.WithJobMetadata(func(req apischema.DockerComposeRequest) bridgejobs.JobMetadata {
-			return bridgejobs.JobMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
+		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
+			return bridgetask.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
-			func(ctx context.Context, job *bridgejobs.Job, req apischema.DockerComposeRequest) (any, error) {
-				return runDockerComposeJob(ctx, job, rt.Username(), rt.Store, req)
+			func(ctx context.Context, task *bridgetask.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
 			},
-			bridgejobs.ActionDefault,
+			bridgetask.TaskDefault,
 		),
 	)
 }
 
-func RegisterJobRoutes(router *bridgejobs.Router, rt runtime.Runtime) {
-	dockerJobBindings(rt).Register(router)
+func RegisterTaskRoutes(router *bridgetask.Router, rt runtime.Runtime) {
+	dockerTaskBindings(rt).Register(router)
 }
 
-func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username string, store *config.UserStore, req apischema.DockerComposeRequest) (any, error) {
+func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username string, store *config.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 	if req.Action == "" || req.ProjectName == "" {
-		return nil, bridgejobs.NewError("missing required arguments: action, projectName", 400)
+		return ComposeTaskResult{}, bridgetask.NewError("missing required arguments: action, projectName", 400)
 	}
 
 	var composePath string
@@ -70,9 +89,9 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 		composePath = *req.ComposePath
 	}
 
-	configFile, workingDir, err := resolveComposeJobPaths(ctx, username, store, req.ProjectName, composePath)
+	configFile, workingDir, err := resolveComposeTaskPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
-		return nil, bridgejobs.NewError("compose file not found: "+err.Error(), 404)
+		return ComposeTaskResult{}, bridgetask.NewError("compose file not found: "+err.Error(), 404)
 	}
 
 	var reportMu sync.Mutex
@@ -81,10 +100,10 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 			return
 		}
 		reportMu.Lock()
-		msg := ComposeJobMessage{Type: msgType, Message: message, Progress: progress}
+		msg := ComposeTaskMessage{Type: msgType, Message: message, Progress: progress}
 		// Compose output is non-terminal streaming progress. The runner's return
-		// value or error is the job's single authoritative terminal signal.
-		job.ReportTransientProgress(msg)
+		// value or error is the task's single authoritative terminal signal.
+		task.ReportTransientProgress(msg.ProgressEnvelope())
 		reportMu.Unlock()
 	}
 
@@ -98,22 +117,22 @@ func runDockerComposeJob(ctx context.Context, job *bridgejobs.Job, username stri
 	case "restart":
 		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
-		return nil, bridgejobs.NewError("unsupported action: "+req.Action, 400)
+		return ComposeTaskResult{}, bridgetask.NewError("unsupported action: "+req.Action, 400)
 	}
 
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, context.Canceled
+			return ComposeTaskResult{}, context.Canceled
 		}
 		msg := "command failed: " + err.Error()
-		return nil, bridgejobs.NewError(msg, 500)
+		return ComposeTaskResult{}, bridgetask.NewError(msg, 500)
 	}
 
-	result := ComposeJobResult{Type: "complete", Message: "operation completed successfully"}
+	result := ComposeTaskResult{Type: "complete", Message: "operation completed successfully"}
 	return result, nil
 }
 
-func resolveComposeJobPaths(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
+func resolveComposeTaskPaths(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}

@@ -1,11 +1,11 @@
 package virt
 
 import (
-	"encoding/hex"
 	"encoding/xml"
-	"fmt"
 	"path/filepath"
 	"strings"
+
+	"uuid"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 	"libvirt.org/go/libvirtxml"
@@ -499,16 +499,12 @@ func vncSocketPath(name string) string {
 	return filepath.Join(vncSocketDir, managedDiskPrefix+name+".vnc")
 }
 
-func uuidString(uuid libvirt.UUID) string {
-	raw := uuid[:]
-	if len(raw) != 16 {
+func uuidString(value libvirt.UUID) string {
+	id := uuid.UUID(value)
+	if id == uuid.Nil() {
 		return ""
 	}
-	encoded := hex.EncodeToString(raw)
-	if encoded == "00000000000000000000000000000000" {
-		return ""
-	}
-	return fmt.Sprintf("%s-%s-%s-%s-%s", encoded[0:8], encoded[8:12], encoded[12:16], encoded[16:20], encoded[20:32])
+	return id.String()
 }
 
 func memoryToMB(value uint, unit string) int {

@@ -47,12 +47,16 @@ export const useFileBrowserNavigation = ({
   const handleOpenDirectory = useCallback(
     (path: string) => {
       if (path === "/") {
-        navigate({ to: "/filebrowser/$", params: { _splat: "" }, search: {} });
+        void navigate({
+          to: "/filebrowser/$",
+          params: { _splat: "" },
+          search: {},
+        });
         return;
       }
 
       const urlPath = path.split("/").filter(Boolean).join("/");
-      navigate({
+      void navigate({
         to: "/filebrowser/$",
         params: { _splat: urlPath },
         search: {},

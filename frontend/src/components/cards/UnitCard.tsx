@@ -106,21 +106,25 @@ function UnitCard<T extends UnitListItem>({
             >
               {item.name}
             </AppTypography>
-            {item.description && (
-              <AppTypography
-                component="div"
-                color="text.secondary"
-                fontSize="0.7rem"
-                noWrap
-                style={{
-                  marginTop: 2,
-                }}
-                title={item.description}
-                variant="caption"
-              >
-                {item.description}
-              </AppTypography>
-            )}
+            {/*
+              Always rendered, invisibly when the unit has no description, so a
+              description-less card keeps the same height as its neighbours.
+            */}
+            <AppTypography
+              aria-hidden={item.description ? undefined : true}
+              component="div"
+              color="text.secondary"
+              fontSize="0.7rem"
+              noWrap
+              style={{
+                marginTop: 2,
+                visibility: item.description ? undefined : "hidden",
+              }}
+              title={item.description}
+              variant="caption"
+            >
+              {item.description || " "}
+            </AppTypography>
           </div>
           <StatusDot color={statusColor} size={8} style={{ marginTop: 4 }} />
         </div>

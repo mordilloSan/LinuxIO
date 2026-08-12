@@ -4,7 +4,15 @@ import {
   useSuspenseQueries,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 
 import type { GpuDevice } from "@/api";
 import { linuxio } from "@/api";
@@ -33,6 +41,72 @@ import {
   hardwareGpuQueryOptions,
   hardwareStableQueryOptions,
 } from "./hardwareQueryOptions";
+
+type HistoryHoverListener = () => void;
+
+/** Scoped external store for the four history charts' synchronized crosshair. */
+export class HistoryHoverStore {
+  private hoverTime: number | null = null;
+  private readonly listeners = new Set<HistoryHoverListener>();
+
+  getSnapshot = (): number | null => this.hoverTime;
+
+  setHoverTime = (hoverTime: number | null): void => {
+    if (this.hoverTime === hoverTime) return;
+    this.hoverTime = hoverTime;
+    for (const listener of this.listeners) listener();
+  };
+
+  subscribe = (listener: HistoryHoverListener): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+}
+
+const HistoryHoverContext = createContext<HistoryHoverStore | null>(null);
+
+export const HistoryHoverProvider = ({ children }: { children: ReactNode }) => {
+  const [store] = useState(() => new HistoryHoverStore());
+  return (
+    <HistoryHoverContext.Provider value={store}>
+      {children}
+    </HistoryHoverContext.Provider>
+  );
+};
+
+const useHistoryHover = (): [number | null, (time: number | null) => void] => {
+  const store = useContext(HistoryHoverContext);
+  if (!store) {
+    throw new Error(
+      "History charts must be rendered inside HistoryHoverProvider",
+    );
+  }
+  const hoverTime = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
+  return [hoverTime, store.setHoverTime];
+};
+
+type SynchronizedHistoryAreaChartProps = Omit<
+  ComponentProps<typeof HistoryAreaChart>,
+  "hoverTime" | "onHoverTimeChange"
+>;
+
+/** Only this chart leaf subscribes to crosshair movement. */
+const SynchronizedHistoryAreaChart = (
+  props: SynchronizedHistoryAreaChartProps,
+) => {
+  const [hoverTime, onHoverTimeChange] = useHistoryHover();
+  return (
+    <HistoryAreaChart
+      {...props}
+      hoverTime={hoverTime}
+      onHoverTimeChange={onHoverTimeChange}
+    />
+  );
+};
 
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
@@ -68,10 +142,8 @@ export const MotherboardInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions(
-        hardwareStableQueryOptions,
-      ),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -114,8 +186,8 @@ export const CPUDetailsCard = () => {
   const theme = useAppTheme();
   const [{ data: cpuInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_cpu_info.queryOptions(hardwareStableQueryOptions),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -155,10 +227,8 @@ export const BIOSInfoCard = () => {
   const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
-      linuxio.system.get_motherboard_info.queryOptions(
-        hardwareStableQueryOptions,
-      ),
-      linuxio.system.get_system_info.queryOptions(hardwareStableQueryOptions),
+      { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
+      { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
     ],
   });
 
@@ -198,12 +268,11 @@ export const BIOSInfoCard = () => {
 export const GPUInfoCard = () => {
   const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
-  const { data: gpus } = useSuspenseQuery(
-    linuxio.system.get_gpu_info.queryOptions({
-      ...hardwareGpuQueryOptions,
-      refetchInterval: 15_000,
-    }),
-  );
+  const { data: gpus } = useSuspenseQuery({
+    ...linuxio.system.get_gpu_info,
+    ...hardwareGpuQueryOptions,
+    refetchInterval: 15_000,
+  });
 
   const primaryGpu = useMemo(
     () =>
@@ -353,14 +422,12 @@ const HistoryCardShell = ({
   title,
   avatarIcon,
   headerRight,
-  message,
   children,
 }: {
   title: string;
   avatarIcon: string;
   headerRight?: ReactNode;
-  message?: string;
-  children?: ReactNode;
+  children: ReactNode;
 }) => {
   const theme = useAppTheme();
 
@@ -388,27 +455,39 @@ const HistoryCardShell = ({
         style={{ marginBottom: 8 }}
         title={title}
       />
-      {message ? (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: theme.palette.text.secondary,
-            padding: 16,
-          }}
-        >
-          <AppTypography align="center" variant="body2">
-            {message}
-          </AppTypography>
-        </div>
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, padding: "0 4px 2px" }}>
-          {children}
-        </div>
-      )}
+      {children}
     </FrostedCard>
+  );
+};
+
+const HistoryCardBody = ({
+  children,
+  message,
+}: {
+  children: ReactNode;
+  message: string | null;
+}) => {
+  const theme = useAppTheme();
+
+  return message ? (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: theme.palette.text.secondary,
+        padding: 16,
+      }}
+    >
+      <AppTypography align="center" variant="body2">
+        {message}
+      </AppTypography>
+    </div>
+  ) : (
+    <div style={{ flex: 1, minHeight: 0, padding: "0 4px 2px" }}>
+      {children}
+    </div>
   );
 };
 
@@ -416,10 +495,9 @@ interface HistoryCardProps {
   /** Shared time range so the four cards stay synchronized. */
   rangeId: HardwareHistoryRangeId;
   onRangeChange: (id: HardwareHistoryRangeId) => void;
-  /** Shared crosshair timestamp so the four cards stay synchronized. */
-  hoverTime: number | null;
-  onHoverTimeChange: (t: number | null) => void;
 }
+
+type HistoryLiveProps = Pick<HistoryCardProps, "rangeId">;
 
 const historyCardMessage = (
   points: readonly unknown[] | undefined,
@@ -443,26 +521,20 @@ const historyCardMessage = (
   return null;
 };
 
-export const CPUHistoryCard = ({
-  rangeId,
-  onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryCardProps) => {
+const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_cpu_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_cpu_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
 
@@ -512,47 +584,34 @@ export const CPUHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="ph:cpu"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Processor"
-    >
-      <HistoryAreaChart
+    <HistoryCardBody message={message}>
+      <SynchronizedHistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
         formatValue={formatCoreValue}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         stacked={coreCount > 1}
         windowMs={range.windowMs}
         series={series}
         yMax={100}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const MemoryHistoryCard = ({
-  rangeId,
-  onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryCardProps) => {
+const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_memory_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_memory_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const zfsColor = theme.palette.success.main;
   const dockerColor = theme.chart.rx;
@@ -606,47 +665,34 @@ export const MemoryHistoryCard = ({
   }, [buffersColor, data, dockerColor, theme.palette.primary.main, zfsColor]);
 
   return (
-    <HistoryCardShell
-      avatarIcon="la:memory"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Memory"
-    >
-      <HistoryAreaChart
+    <HistoryCardBody message={message}>
+      <SynchronizedHistoryAreaChart
         formatTick={formatPercentTick}
         formatTimestamp={formatTimestamp}
         formatValue={formatPercent}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         stacked
         windowMs={range.windowMs}
         series={series}
         yMax={100}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const DiskIOHistoryCard = ({
-  rangeId,
-  onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryCardProps) => {
+const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_diskio_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_diskio_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const readColor = theme.chart.rx;
@@ -674,44 +720,31 @@ export const DiskIOHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="mdi:harddisk"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Disk I/O"
-    >
-      <HistoryAreaChart
+    <HistoryCardBody message={message}>
+      <SynchronizedHistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         windowMs={range.windowMs}
         series={series}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
 
-export const NetworkHistoryCard = ({
-  rangeId,
-  onRangeChange,
-  hoverTime,
-  onHoverTimeChange,
-}: HistoryCardProps) => {
+const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
-  const { data, isLoading, error } = useQuery(
-    linuxio.monitoring.get_network_history.queryOptions(
-      { resolution: range.resolution, limit: HISTORY_REQUEST_LIMIT },
-      {
-        enabled: isEnabled,
-        refetchInterval: range.refetchMs,
-        placeholderData: (previous) => previous,
-      },
-    ),
-  );
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.monitoring.get_network_history({
+      resolution: range.resolution,
+      limit: HISTORY_REQUEST_LIMIT,
+    }),
+    enabled: isEnabled,
+    refetchInterval: range.refetchMs,
+    placeholderData: (previous) => previous,
+  });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const rxColor = theme.chart.rx;
@@ -739,20 +772,65 @@ export const NetworkHistoryCard = ({
   );
 
   return (
-    <HistoryCardShell
-      avatarIcon="mdi:ethernet"
-      headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
-      message={message ?? undefined}
-      title="Network"
-    >
-      <HistoryAreaChart
+    <HistoryCardBody message={message}>
+      <SynchronizedHistoryAreaChart
         formatTimestamp={formatTimestamp}
         formatValue={formatThroughput}
-        hoverTime={hoverTime}
-        onHoverTimeChange={onHoverTimeChange}
         windowMs={range.windowMs}
         series={series}
       />
-    </HistoryCardShell>
+    </HistoryCardBody>
   );
 };
+
+export const CPUHistoryCard = ({
+  rangeId,
+  onRangeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="ph:cpu"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Processor"
+  >
+    <CPUHistoryLive rangeId={rangeId} />
+  </HistoryCardShell>
+);
+
+export const MemoryHistoryCard = ({
+  rangeId,
+  onRangeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="la:memory"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Memory"
+  >
+    <MemoryHistoryLive rangeId={rangeId} />
+  </HistoryCardShell>
+);
+
+export const DiskIOHistoryCard = ({
+  rangeId,
+  onRangeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="mdi:harddisk"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Disk I/O"
+  >
+    <DiskIOLive rangeId={rangeId} />
+  </HistoryCardShell>
+);
+
+export const NetworkHistoryCard = ({
+  rangeId,
+  onRangeChange,
+}: HistoryCardProps) => (
+  <HistoryCardShell
+    avatarIcon="mdi:ethernet"
+    headerRight={<RangeSelect onChange={onRangeChange} value={rangeId} />}
+    title="Network"
+  >
+    <NetworkHistoryLive rangeId={rangeId} />
+  </HistoryCardShell>
+);

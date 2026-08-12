@@ -300,11 +300,11 @@ func (m *signalManager) closeSubscriptionsFromDispatcher(raw <-chan *godbus.Sign
 }
 
 func splitSignalName(name string) (string, string) {
-	idx := strings.LastIndex(name, ".")
-	if idx < 0 {
+	iface, member, ok := strings.CutLast(name, ".")
+	if !ok {
 		return "", name
 	}
-	return name[:idx], name[idx+1:]
+	return iface, member
 }
 
 func pathInNamespace(path, namespace godbus.ObjectPath) bool {

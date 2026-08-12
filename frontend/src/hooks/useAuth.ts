@@ -1,7 +1,7 @@
 import { useContext } from "react";
 
 import { AuthContext } from "@/contexts/AuthContext";
-import { AuthContextType } from "@/types/auth";
+import type { AuthContextType } from "@/types/auth";
 
 /**
  * Hook to access authentication state and methods.

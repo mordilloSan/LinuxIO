@@ -21,10 +21,10 @@ export function useUploadChunkSize(): number {
 }
 
 /**
- * Identity-stable getter variant for BackgroundJobsProvider: reads the
+ * Identity-stable getter variant for BackgroundTasksProvider: reads the
  * current chunk size through the ref-backed config accessor at upload start,
  * so the provider (and the actions context identity) never rerenders on
- * config changes. Tolerates a missing ConfigProvider (the jobs provider can
+ * config changes. Tolerates a missing ConfigProvider (the tasks provider can
  * mount without one).
  */
 export function useUploadChunkSizeGetter(): () => number {

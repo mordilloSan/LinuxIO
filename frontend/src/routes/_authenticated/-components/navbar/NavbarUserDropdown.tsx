@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useState, type MouseEvent } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -30,13 +30,13 @@ function NavbarUserDropdown() {
 
   // Power actions: the server may die before responding, so errors are
   // expected and only logged.
-  const { mutate: reboot } = linuxio.control.reboot.useAction({
+  const { mutate: reboot } = useCallMutation(linuxio.control.reboot, {
     error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },
   });
 
-  const { mutate: powerOff } = linuxio.control.power_off.useAction({
+  const { mutate: powerOff } = useCallMutation(linuxio.control.power_off, {
     error: (error) => {
       console.warn("Power off error (may be expected):", error);
     },
@@ -56,7 +56,7 @@ function NavbarUserDropdown() {
   const handleSignOut = async () => {
     closeMenu();
     await signOut();
-    navigate({ to: "/sign-in", search: {} });
+    await navigate({ to: "/sign-in", search: {} });
   };
 
   const handleConfirmedAction = () => {

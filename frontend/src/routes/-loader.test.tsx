@@ -86,10 +86,8 @@ const fileBrowserListing = {
 
 function fileBrowserListingOptions(queryFn: () => Promise<ExtendedFileInfo>) {
   return {
-    ...linuxio.filebrowser.resource_get.queryOptions(
-      { path: fileBrowserListing.path },
-      fileBrowserListingQueryOptions,
-    ),
+    ...linuxio.filebrowser.resource_get({ path: fileBrowserListing.path }),
+    ...fileBrowserListingQueryOptions,
     queryFn,
   };
 }
@@ -102,12 +100,12 @@ describe("loadRouteQueries", () => {
     apiMocks.getStreamMux.mockReturnValue(null);
   });
 
-  it("accepts typed queryOptions from generated endpoints", async () => {
+  it("accepts typed Call descriptors from generated endpoints", async () => {
     const context = createRouterContext(createClient(), () => true);
 
     await expect(
       loadRouteQueries(createLoaderArgs(context), [
-        linuxio.system.get_host_info.queryOptions(),
+        linuxio.system.get_host_info,
       ]),
     ).rejects.toMatchObject({ code: "update_in_progress" });
   });

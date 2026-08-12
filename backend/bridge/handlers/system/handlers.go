@@ -13,29 +13,28 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := systemHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Query[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities").Handle(handleGetCapabilities),
-		apischema.Query[apischema.NoRequest, *apischema.CPUInfoResponse]("system.get_cpu_info").Handle(handleGetCPUInfo),
-		apischema.Query[apischema.NoRequest, []apischema.SensorGroup]("system.get_sensor_info").Handle(handleGetSensorInfo),
-		apischema.Query[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info").Handle(handleGetMotherboardInfo),
-		apischema.Query[apischema.NoRequest, *apischema.MemoryInfoResponse]("system.get_memory_info").Handle(handleGetMemoryInfo),
-		apischema.Query[apischema.NoRequest, apischema.HostInfo]("system.get_host_info").Handle(handleGetHostInfo),
-		apischema.Query[apischema.NoRequest, float64]("system.get_uptime").Handle(handleGetUptime),
-		apischema.Query[apischema.NoRequest, []apischema.FilesystemInfo]("system.get_fs_info").Handle(handleGetFilesystemInfo),
-		apischema.Query[apischema.NoRequest, []apischema.ProcessInfo]("system.get_processes").Handle(handleGetProcesses),
-		apischema.Query[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleVoid(handleGetServices),
-		apischema.Query[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info").Handle(handleGetGPUInfo),
-		apischema.Query[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
-		apischema.Query[apischema.NoRequest, []apischema.InterfaceStats]("system.get_network_info").Handle(handleGetNetworkInfo),
-		apischema.Query[apischema.NoRequest, apischema.DiskThroughputResponse]("system.get_disk_throughput").Handle(handleGetDiskThroughput),
-		apischema.Query[apischema.NoRequest, *apischema.SystemInfo]("system.get_system_info").Handle(handleGetSystemInfo),
-		apischema.Query[apischema.NoRequest, []apischema.PCIDevice]("system.get_pci_devices").Handle(handleGetPCIDevices),
-		apischema.Query[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules").Handle(handleGetMemoryModules),
-		apischema.Query[apischema.NoRequest, *apischema.SystemHealthSummary]("system.get_health_summary").Handle(handlers.handleGetHealthSummary),
-		apischema.Query[apischema.FailedLoginEventsRequest, []apischema.AccountUserLogin]("system.list_failed_login_events", apischema.Privileged()).Handle(handlers.handleListFailedLoginEvents),
-		apischema.Query[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
-		apischema.Query[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
-		apischema.Query[apischema.NoRequest, string]("system.get_server_time").Handle(handleGetServerTime),
-		apischema.Query[apischema.NoRequest, []string]("system.get_timezones").Handle(handleGetTimezones),
+		apischema.Call[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities", apischema.RetrySafe()).Handle(handleGetCapabilities),
+		apischema.Call[apischema.NoRequest, *apischema.CPUInfoResponse]("system.get_cpu_info", apischema.RetrySafe()).Handle(handleGetCPUInfo),
+		apischema.Call[apischema.NoRequest, []apischema.SensorGroup]("system.get_sensor_info", apischema.RetrySafe()).Handle(handleGetSensorInfo),
+		apischema.Call[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info", apischema.RetrySafe()).Handle(handleGetMotherboardInfo),
+		apischema.Call[apischema.NoRequest, *apischema.MemoryInfoResponse]("system.get_memory_info", apischema.RetrySafe()).Handle(handleGetMemoryInfo),
+		apischema.Call[apischema.NoRequest, apischema.HostInfo]("system.get_host_info", apischema.RetrySafe()).Handle(handleGetHostInfo),
+		apischema.Call[apischema.NoRequest, float64]("system.get_uptime", apischema.RetrySafe()).Handle(handleGetUptime),
+		apischema.Call[apischema.NoRequest, []apischema.FilesystemInfo]("system.get_fs_info", apischema.RetrySafe()).Handle(handleGetFilesystemInfo),
+		apischema.Call[apischema.NoRequest, []apischema.ProcessInfo]("system.get_processes", apischema.RetrySafe()).Handle(handleGetProcesses),
+		apischema.Call[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleVoid(handleGetServices),
+		apischema.Call[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info", apischema.RetrySafe()).Handle(handleGetGPUInfo),
+		apischema.Call[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
+		apischema.Call[apischema.NoRequest, apischema.DiskThroughputResponse]("system.get_disk_throughput").Handle(handleGetDiskThroughput),
+		apischema.Call[apischema.NoRequest, *apischema.SystemInfo]("system.get_system_info", apischema.RetrySafe()).Handle(handleGetSystemInfo),
+		apischema.Call[apischema.NoRequest, []apischema.PCIDevice]("system.get_pci_devices", apischema.RetrySafe()).Handle(handleGetPCIDevices),
+		apischema.Call[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules", apischema.RetrySafe()).Handle(handleGetMemoryModules),
+		apischema.Call[apischema.NoRequest, *apischema.SystemHealthSummary]("system.get_health_summary").Handle(handlers.handleGetHealthSummary),
+		apischema.Call[apischema.FailedLoginEventsRequest, []apischema.AccountUserLogin]("system.list_failed_login_events", apischema.RetrySafe(), apischema.Privileged()).Handle(handlers.handleListFailedLoginEvents),
+		apischema.Call[apischema.BootIDRequest, apischema.MessageResponse]("system.dismiss_unclean_shutdown").Handle(handlers.handleDismissUncleanShutdown),
+		apischema.Call[apischema.AlertIDRequest, apischema.MessageResponse]("system.dismiss_failed_login_alert").Handle(handlers.handleDismissFailedLoginAlert),
+		apischema.Call[apischema.NoRequest, string]("system.get_server_time", apischema.RetrySafe()).Handle(handleGetServerTime),
+		apischema.Call[apischema.NoRequest, []string]("system.get_timezones", apischema.RetrySafe()).Handle(handleGetTimezones),
 	)
 }
 
@@ -100,11 +99,6 @@ func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.G
 
 func handleGetUpdatesFast(ctx context.Context, _ apischema.NoRequest) (*apischema.UpdatesFastResponse, error) {
 	return GetUpdatesFast(ctx)
-}
-
-func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {
-	result, err := FetchNetworks(ctx)
-	return result, err
 }
 
 func handleGetDiskThroughput(ctx context.Context, _ apischema.NoRequest) (apischema.DiskThroughputResponse, error) {

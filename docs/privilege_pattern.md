@@ -8,10 +8,10 @@ Declare privileged operations in the relevant `backend/bridge/handlers/<domain>/
 
 ```go
 var api = apischema.Bindings(
-    apischema.Job[apischema.NoRequest, apischema.NoResponse](
-        "control.reboot",
+    apischema.Call[apischema.NoRequest, apischema.NoResponse](
+        "monitoring.restart",
         apischema.Privileged(),
-    ).Handle(handleReboot),
+    ).HandleVoid(handleRestart),
 )
 ```
 
@@ -40,7 +40,7 @@ Dispatcher tests should cover:
 
 - privileged route with unprivileged session returns forbidden
 - privileged route with privileged session runs
-- forbidden starts do not create jobs
+- forbidden starts do not create Tasks
 - forbidden starts are typed errors
 
 See [API Contract](./api-contract.md) for route declaration and registration details.

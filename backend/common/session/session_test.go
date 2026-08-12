@@ -107,7 +107,7 @@ func TestManager_NewSessionIDAndCreateSession(t *testing.T) {
 	}
 }
 
-func TestManager_WriteAndValidateCookie(t *testing.T) {
+func TestManager_WriteAndValidateCookieDoesNotRefresh(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
@@ -126,14 +126,18 @@ func TestManager_WriteAndValidateCookie(t *testing.T) {
 	cookieVal := firstCookieValue(rr.Header().Get("Set-Cookie"))
 	req.AddCookie(&http.Cookie{Name: m.CookieName(), Value: cookieVal})
 
-	before := s.Timing.IdleUntil
+	beforeIdle := s.Timing.IdleUntil
+	beforeAccess := s.Timing.LastAccess
 	time.Sleep(5 * time.Millisecond)
 	got, err := m.ValidateFromRequest(req)
 	if err != nil {
 		t.Fatalf("ValidateFromRequest unexpected error: %v", err)
 	}
-	if !got.Timing.IdleUntil.After(before) {
-		t.Fatalf("ValidateFromRequest should return refreshed timing")
+	if !got.Timing.IdleUntil.Equal(beforeIdle) {
+		t.Fatalf("ValidateFromRequest changed IdleUntil from %v to %v", beforeIdle, got.Timing.IdleUntil)
+	}
+	if !got.Timing.LastAccess.Equal(beforeAccess) {
+		t.Fatalf("ValidateFromRequest changed LastAccess from %v to %v", beforeAccess, got.Timing.LastAccess)
 	}
 }
 

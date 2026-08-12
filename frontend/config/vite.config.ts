@@ -1,61 +1,12 @@
-import { defineConfig, type PluginOption } from "vite";
-import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
-import { transform as oxcTransform } from "oxc-transform";
-import { compression } from "vite-plugin-compression2";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type PluginOption, type UserConfig } from "vite";
 import { analyzer } from "vite-bundle-analyzer";
+import { compression } from "vite-plugin-compression2";
 
-// React Compiler via the oxc Rust port. oxc-transform is pinned to 0.136.0 —
-// the last release shipping `reactCompiler` — because Rolldown/Vite withdrew
-// the integration in 0.137.0 over napi binary size while a leaner
-// implementation is upstreamed. Unpin once it returns to a current release.
-// The port passed 100% of the upstream conformance fixtures at that point.
-function oxcReactCompiler(): PluginOption {
-  return {
-    name: "oxc-react-compiler",
-    // "pre" is load-bearing: the compiler must see the original TSX, and
-    // rolldown's native TS/JSX lowering runs before normal-phase JS plugins.
-    enforce: "pre",
-    async transform(code, id) {
-      const filename = id.split("?")[0];
-      if (!/\.tsx?$/.test(filename) || filename.includes("/node_modules/")) {
-        return null;
-      }
-      const result = await oxcTransform(filename, code, {
-        // Defaults mirror reactCompilerPreset(): compilationMode "infer",
-        // panicThreshold "none" — components the compiler cannot memoize are
-        // skipped, not failed (oxlint's react/react-compiler rule lists them).
-        reactCompiler: { target: "19" },
-        target: "es2022",
-        // The production build emits no sourcemaps (build.sourcemap defaults
-        // to false), so generating them here is wasted work.
-        sourcemap: false,
-      });
-      const hardErrors = result.errors.filter(
-        (e) =>
-          e.severity === "Error" && !e.message.startsWith("[ReactCompiler]"),
-      );
-      if (hardErrors.length > 0) {
-        throw new Error(
-          `oxc-react-compiler: ${filename}\n` +
-            hardErrors.map((e) => e.message).join("\n"),
-        );
-      }
-      // On "[ReactCompiler] ..." errors (compiler invariant panics) the
-      // transform emits no code. Fall back to Vite's normal pipeline so the
-      // file ships unmemoized — the same skip semantics the Babel plugin had.
-      // oxlint's react/react-compiler rule surfaces these at lint time.
-      if (result.code.length === 0) {
-        return null;
-      }
-      // Output is fully lowered (TS stripped, JSX compiled), leaving nothing
-      // for Vite's own transform to do on these modules.
-      return { code: result.code, map: result.map ?? null };
-    },
-  };
-}
+import { oxcReactCompiler } from "./oxc-react-compiler.ts";
 
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command }): Promise<UserConfig> => {
   const { generateIcons } = await import("../scripts/generate-icons.mjs");
   generateIcons();
 
@@ -89,6 +40,11 @@ export default defineConfig(async ({ command }) => {
   return {
     base: "/",
     clearScreen: false,
+    css: {
+      // Rust CSS pipeline; ships inside Vite 8 (no postcss config exists to
+      // migrate). Targets are derived from build.target automatically.
+      transformer: "lightningcss",
+    },
     plugins,
     resolve: {
       tsconfigPaths: true,
@@ -115,6 +71,9 @@ export default defineConfig(async ({ command }) => {
       // instead. If you flip this on, also flip `sourcemap` in
       // oxcReactCompiler() above so compiled files keep complete maps.
       sourcemap: false,
+      // The compression plugin emits real .gz/.br artifacts below; the extra
+      // gzip pass behind this option only feeds the build-log size column.
+      reportCompressedSize: false,
       chunkSizeWarningLimit: 2000,
       manifest: true,
       outDir: "../backend/webserver/web/frontend",

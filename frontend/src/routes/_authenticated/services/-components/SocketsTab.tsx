@@ -24,11 +24,10 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
 }
 
 function useSocketsQuery(viewMode: TableCardViewMode) {
-  return useSuspenseQuery(
-    linuxio.systemd.list_sockets.queryOptions({
-      refetchInterval: viewMode === "card" ? false : 5000,
-    }),
-  );
+  return useSuspenseQuery({
+    ...linuxio.systemd.list_sockets,
+    refetchInterval: viewMode === "card" ? false : 5000,
+  });
 }
 
 function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
@@ -75,12 +74,19 @@ const SocketsTab = ({
       data={data}
       matchesSearch={matchesSocketSearch}
       onSelectedChange={onSelectedChange}
-      renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
+      renderCardsView={({
+        items,
+        expanded,
+        onExpand,
+        renderDetailPanel,
+        surface,
+      }) => (
         <SocketCardsView
           expanded={expanded}
           onExpand={onExpand}
           renderDetailPanel={renderDetailPanel}
           sockets={items}
+          surface={surface}
         />
       )}
       renderDetailPanel={(socket, onClose) => (
@@ -90,17 +96,25 @@ const SocketsTab = ({
           unitName={socket.name}
         />
       )}
-      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+      renderTableView={({
+        items,
+        selected,
+        onSelect,
+        onDoubleClick,
+        surface,
+      }) => (
         <SocketTableView
           onDoubleClick={onDoubleClick}
           onSelect={onSelect}
           selected={selected}
           sockets={items}
+          surface={surface}
         />
       )}
       searchPlaceholder="Search sockets…"
       selected={selected}
       setViewMode={onViewModeChange}
+      surfaceId="sockets.list"
       viewMode={viewMode}
     />
   );

@@ -13,7 +13,7 @@ import DriveGraph from "./DriveGraph";
 
 function parseSizeToBytes(input: string | undefined | null): number {
   if (!input) return 0;
-  const s = String(input).trim().toUpperCase();
+  const s = input.trim().toUpperCase();
 
   const m = s.match(/^([\d.]+)\s*([KMGTPE]?)(B)?$/);
   if (!m) return 0;
@@ -59,17 +59,18 @@ const DriveSelect = ({
   onSelect,
   selected,
 }: DriveSelectionProps & { onSelect: (name: string) => void }) => {
-  const { data: header } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({
-      select: useCallback(
-        (drives: ApiDisk[]) => ({
-          names: drives.map((drive) => drive.name),
-          selectedName: resolveDriveName(drives, selected),
-        }),
-        [selected],
-      ),
+  const selectHeader = useCallback(
+    (drives: ApiDisk[]) => ({
+      names: drives.map((drive) => drive.name),
+      selectedName: resolveDriveName(drives, selected),
     }),
+    [selected],
   );
+
+  const { data: header } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: selectHeader,
+  });
 
   return (
     <CardHeaderSelect
@@ -81,26 +82,27 @@ const DriveSelect = ({
 };
 
 const DriveStats = ({ selected }: DriveSelectionProps) => {
-  const { data: drive } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({
-      select: useCallback(
-        (drives: ApiDisk[]) => {
-          const name = resolveDriveName(drives, selected);
-          const raw = drives.find((d) => d.name === name);
+  const selectDrive = useCallback(
+    (drives: ApiDisk[]) => {
+      const name = resolveDriveName(drives, selected);
+      const raw = drives.find((drive) => drive.name === name);
 
-          return raw
-            ? {
-                model: raw.model,
-                sizeBytes: parseSizeToBytes(raw.size),
-                transport: raw.type ?? "unknown",
-                vendor: raw.vendor,
-              }
-            : null;
-        },
-        [selected],
-      ),
-    }),
+      return raw
+        ? {
+            model: raw.model,
+            sizeBytes: parseSizeToBytes(raw.size),
+            transport: raw.type ?? "unknown",
+            vendor: raw.vendor,
+          }
+        : null;
+    },
+    [selected],
   );
+
+  const { data: drive } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: selectDrive,
+  });
 
   if (!drive) {
     return <AppTypography variant="body2">No drives found.</AppTypography>;
@@ -123,17 +125,15 @@ const DriveStats = ({ selected }: DriveSelectionProps) => {
 };
 
 const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
+  const selectDriveName = useCallback(
+    (drives: ApiDisk[]) => resolveDriveName(drives, selected),
+    [selected],
+  );
+
   const [{ data: driveName }, { data: diskThroughput }] = useSuspenseQueries({
     queries: [
-      linuxio.storage.get_drive_info.queryOptions({
-        select: useCallback(
-          (drives: ApiDisk[]) => resolveDriveName(drives, selected),
-          [selected],
-        ),
-      }),
-      linuxio.system.get_disk_throughput.queryOptions({
-        refetchInterval: 1000,
-      }),
+      { ...linuxio.storage.get_drive_info, select: selectDriveName },
+      { ...linuxio.system.get_disk_throughput, refetchInterval: 1000 },
     ],
   });
 
@@ -152,9 +152,10 @@ const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
 
 const Drive = () => {
   const [selected, setSelected] = useState("");
-  const { data: hasDrives } = useSuspenseQuery(
-    linuxio.storage.get_drive_info.queryOptions({ select: hasAnyDrive }),
-  );
+  const { data: hasDrives } = useSuspenseQuery({
+    ...linuxio.storage.get_drive_info,
+    select: hasAnyDrive,
+  });
 
   return (
     <DashboardCard

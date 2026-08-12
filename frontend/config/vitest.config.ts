@@ -5,6 +5,8 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+import { oxcReactCompiler } from "./oxc-react-compiler.ts";
+
 const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(configDirectory, "..");
 
@@ -12,6 +14,7 @@ export default defineConfig({
   cacheDir: path.join(frontendRoot, "node_modules/.vite"),
   plugins: [
     tanstackRouter({ disableLogging: true, target: "react" }),
+    oxcReactCompiler({ excludeTests: true }),
     react(),
   ],
   resolve: {

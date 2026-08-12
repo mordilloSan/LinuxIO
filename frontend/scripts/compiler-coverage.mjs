@@ -2,8 +2,8 @@
 // Reports which src files the React Compiler (oxc-transform reactCompiler)
 // memoizes and which it skips. A skipped file compiles fine but ships fully
 // unmemoized: on any "[ReactCompiler]" error the pinned oxc-transform emits
-// no code and the vite plugin falls back to the plain pipeline (see
-// oxcReactCompiler() in vite.config.ts). For per-function reasons run:
+// no code and the Vite plugin falls back to the plain pipeline (see
+// config/oxc-react-compiler.ts). For per-function reasons run:
 //   npx oxlint -A all -W react/react-compiler src
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";

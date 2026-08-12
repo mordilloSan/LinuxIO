@@ -1,5 +1,5 @@
 export type FakeCloseEvent = Pick<CloseEvent, "code" | "reason">;
-type Bytes = Uint8Array<ArrayBufferLike>;
+type Bytes = Uint8Array;
 
 export class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -17,7 +17,10 @@ export class FakeWebSocket {
   readyState = FakeWebSocket.CONNECTING;
   sent: Bytes[] = [];
 
-  constructor(readonly url: string) {
+  readonly url: string;
+
+  constructor(url: string) {
+    this.url = url;
     FakeWebSocket.instances.push(this);
   }
 

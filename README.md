@@ -94,7 +94,7 @@ Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered
 
 ### Prerequisites
 
-- Go 1.26.3+
+- Go 1.27 RC2 or newer
 - Node.js 24+
 - Make
 
@@ -231,7 +231,7 @@ make clean             # Remove build artifacts
 
 ### Backend
 
-- **Go 1.26.3**
+- **Go 1.27 RC2**
 - **Gorilla WebSocket**
 - **PAM** authentication
 

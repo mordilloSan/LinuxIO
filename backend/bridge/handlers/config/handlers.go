@@ -14,8 +14,8 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := configHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Query[apischema.NoRequest, apischema.AppConfig]("config.get").Handle(handlers.handleGetConfig),
-		apischema.Query[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
+		apischema.Call[apischema.NoRequest, apischema.AppConfig]("config.get", apischema.RetrySafe()).Handle(handlers.handleGetConfig),
+		apischema.Call[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
 	)
 }
 

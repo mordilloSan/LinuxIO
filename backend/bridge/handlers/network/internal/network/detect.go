@@ -56,5 +56,5 @@ func detectIfcfgBackend(env Environment, iface string) (ConfigBackend, error) {
 		}
 		return nil, err
 	}
-	return &ifcfgBackend{baseBackend: baseBackend{env: env, iface: iface, path: path}}, nil
+	return &ifcfgBackend{env: env, iface: iface, path: path}, nil
 }

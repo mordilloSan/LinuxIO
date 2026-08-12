@@ -1,5 +1,5 @@
 import { createRouter } from "@tanstack/react-router";
-import type { ElementType } from "react";
+import type { ComponentType } from "react";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
@@ -9,7 +9,7 @@ import RouteError from "@/routes/-components/RouteError";
 import { routeTree } from "@/routeTree.gen";
 
 interface RouteNavigation {
-  icon: ElementType | string;
+  icon: ComponentType | string;
   params?: { _splat: string };
   position: number;
   title: string;

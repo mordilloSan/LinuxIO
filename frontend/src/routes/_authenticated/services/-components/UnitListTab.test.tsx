@@ -17,6 +17,7 @@ describe("UnitListTab", () => {
         renderTableView={() => <div data-testid="table-viewport" />}
         searchPlaceholder="Search units"
         setViewMode={vi.fn()}
+        surfaceId="services.list"
         viewMode="table"
       />,
     );

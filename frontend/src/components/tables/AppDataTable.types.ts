@@ -14,13 +14,19 @@ import type { CSSProperties } from "react";
 
 export type AppDataTableBreakpoint = "sm" | "md" | "lg" | "xl";
 
-export type AppDataTableCellRenderKey = unknown | readonly unknown[];
+/** A single value compared with Object.is, or a readonly array compared element-wise. */
+export type AppDataTableCellRenderKey = unknown;
 
 export interface AppDataTableColumnMeta {
   align?: "left" | "center" | "right";
   cellClassName?: string;
   cellStyle?: CSSProperties;
   className?: string;
+  /**
+   * Narrows cell invalidation to the values the renderer reads. In the virtual
+   * table this is the complete render key, so include `rowIndex` when the cell
+   * renderer depends on its position.
+   */
   getCellRenderKey?: (
     row: unknown,
     rowIndex: number,
@@ -48,6 +54,7 @@ export const appTableFeatures = tableFeatures({
     datetime: sortFn_datetime,
     text: sortFn_text,
   },
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- load-bearing: this assertion is what carries AppDataTableColumnMeta into `typeof appTableFeatures`; removing it types the slot as `{}` and erases column meta everywhere.
   columnMeta: {} as AppDataTableColumnMeta,
 });
 

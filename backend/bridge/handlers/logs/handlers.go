@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -12,20 +13,18 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.Runner[apischema.GeneralLogsFollowRequest, apischema.NoResponse](streamTypeGeneralLogs, apischema.NoEndpoint()).Run(
-			func(ctx context.Context, job *bridgeipc.Job, req apischema.GeneralLogsFollowRequest) (any, error) {
-				return runGeneralLogsJob(ctx, rt, job, req)
+		apischema.DuplexRoute[apischema.GeneralLogsFollowRequest, apischema.NoResponse](streamTypeGeneralLogs, apischema.NoEndpoint()).Duplex(
+			func(ctx context.Context, stream net.Conn, req apischema.GeneralLogsFollowRequest) error {
+				return streamGeneralLogsChannel(ctx, stream, rt, req)
 			},
-			bridgeipc.StreamFollow,
 		),
-		apischema.Runner[apischema.ServiceLogsFollowRequest, apischema.NoResponse](streamTypeServiceLogs, apischema.NoEndpoint()).Run(
-			func(ctx context.Context, job *bridgeipc.Job, req apischema.ServiceLogsFollowRequest) (any, error) {
-				return runServiceLogsJob(ctx, rt, job, req)
+		apischema.DuplexRoute[apischema.ServiceLogsFollowRequest, apischema.NoResponse](streamTypeServiceLogs, apischema.NoEndpoint()).Duplex(
+			func(ctx context.Context, stream net.Conn, req apischema.ServiceLogsFollowRequest) error {
+				return streamServiceLogsChannel(ctx, stream, rt, req)
 			},
-			bridgeipc.StreamFollow,
 		),
-		apischema.Query[apischema.GeneralLogEntryRequest, map[string]any]("logs.general_entry").Handle(handleGeneralLogEntry),
-		apischema.Query[apischema.GeneralLogsPageRequest, apischema.GeneralLogsPageResponse]("logs.general_page").Handle(handleGeneralLogsPage),
+		apischema.Call[apischema.GeneralLogEntryRequest, map[string]any]("logs.general_entry", apischema.RetrySafe()).Handle(handleGeneralLogEntry),
+		apischema.Call[apischema.GeneralLogsPageRequest, apischema.GeneralLogsPageResponse]("logs.general_page", apischema.RetrySafe()).Handle(handleGeneralLogsPage),
 	)
 }
 

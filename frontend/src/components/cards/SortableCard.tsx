@@ -3,18 +3,31 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import type { CSSProperties, ReactNode } from "react";
 
+import { REORDER_HOLD_MS } from "@/constants/reorder";
 import { useAppTheme } from "@/theme";
 import { cardBorderRadius } from "@/theme/constants";
 
 import "./FrostedCard.css";
+import "../reorder/reorder.css";
 
 interface SortableCardProps {
   children: ReactNode;
+  /** Layout mode is open: the card shows its drag affordance and eats clicks. */
   editMode: boolean;
   id: string;
+  /** Unarms the card entirely — no hold, no drag. */
+  disabled?: boolean;
+  /** This card is being held, waiting for the hold to complete. */
+  pending?: boolean;
 }
 
-const SortableCard = ({ id, editMode, children }: SortableCardProps) => {
+const SortableCard = ({
+  children,
+  disabled = false,
+  editMode,
+  id,
+  pending = false,
+}: SortableCardProps) => {
   const theme = useAppTheme();
   const {
     attributes,
@@ -23,20 +36,37 @@ const SortableCard = ({ id, editMode, children }: SortableCardProps) => {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id, disabled: !editMode });
+  } = useSortable({ id, disabled });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     position: "relative",
+    borderRadius: cardBorderRadius,
+    // This wrapper sits between a stretched grid cell and a card that sizes
+    // itself with height:100%. Without its own height it collapses to the
+    // card's content and every card in the row stops matching its neighbours.
+    height: "100%",
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    // The listeners live on the card itself, not just on the edit-mode overlay:
+    // holding anywhere on a card is what opens layout mode in the first place.
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {pending && !editMode && (
+        <div
+          className="reorder-hold-ring"
+          style={
+            {
+              "--reorder-hold-color": theme.palette.primary.main,
+              "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
+            } as CSSProperties
+          }
+        />
+      )}
       {editMode && (
         <div
-          {...listeners}
           className="sc-drag-overlay"
           style={
             {

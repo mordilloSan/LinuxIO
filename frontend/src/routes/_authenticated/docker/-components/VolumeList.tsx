@@ -2,9 +2,10 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -16,10 +17,11 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import {
@@ -71,8 +73,9 @@ const DeleteVolumeDialog = ({
   const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteVolume, isPending: isDeleting } =
-    linuxio.docker.delete_volume.useAction();
+  const { mutateAsync: deleteVolume, isPending: isDeleting } = useCallMutation(
+    linuxio.docker.delete_volume,
+  );
   const handleDelete = async () => {
     // Delete volumes sequentially
     const failures: string[] = [];
@@ -157,16 +160,19 @@ const DeleteVolumeDialog = ({
     </GeneralDialog>
   );
 };
+const getVolumeId = (volume: { Name: string }) => volume.Name;
+
 const VolumeList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
-  const { data: rawVolumes } = useSuspenseQuery(
-    linuxio.docker.list_volumes.queryOptions({
+  const { data: rawVolumes } = useSuspenseQuery({
+    ...linuxio.docker.list_volumes,
+    ...{
       refetchInterval: 10000,
-    }),
-  );
+    },
+  });
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -181,7 +187,16 @@ const VolumeList = ({
   }, []);
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateVolume);
-  const filtered = volumesList.filter(
+  const surface = useReorderableSurface({
+    getId: getVolumeId,
+    items: volumesList,
+    surface: "docker.volumes",
+  });
+  const tableDnd = useReorderableTableDnd<
+    (typeof volumesList)[number],
+    (typeof volumesList)[number]
+  >({ handleAriaLabel: "Reorder volume", surface });
+  const filtered = surface.items.filter(
     (vol) =>
       vol.Name.toLowerCase().includes(search.toLowerCase()) ||
       vol.Driver.toLowerCase().includes(search.toLowerCase()) ||
@@ -293,8 +308,7 @@ const VolumeList = ({
       cell: ({ row }) => (
         <AppTypography
           style={{
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
+            fontFamily: "var(--app-font-mono)",
             ...longTextStyles,
           }}
           variant="body2"
@@ -390,25 +404,19 @@ const VolumeList = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((volume) => (
-              <AppGrid
-                key={volume.Name}
-                size={{
-                  xs: 12,
-                  sm: 6,
-                  md: 4,
-                  lg: 3,
-                }}
-              >
-                <VolumeCard
-                  onSelect={(checked) => handleSelectOne(volume.Name, checked)}
-                  selected={effectiveSelected.has(volume.Name)}
-                  volume={volume}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getVolumeId}
+            items={filtered}
+            renderItem={(volume) => (
+              <VolumeCard
+                onSelect={(checked) => handleSelectOne(volume.Name, checked)}
+                selected={effectiveSelected.has(volume.Name)}
+                volume={volume}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            surface={surface}
+          />
         ) : (
           <div
             style={{
@@ -427,6 +435,7 @@ const VolumeList = ({
           ariaLabel="Docker volumes"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}

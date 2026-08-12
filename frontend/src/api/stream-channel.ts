@@ -37,10 +37,10 @@ export class StreamMessageChannel {
     Set<ChannelEventListener>
   >();
 
-  constructor(
-    private readonly stream: Stream,
-    options: StreamMessageChannelOptions = {},
-  ) {
+  private readonly stream: Stream;
+
+  constructor(stream: Stream, options: StreamMessageChannelOptions = {}) {
+    this.stream = stream;
     this.readyState = stream.status === "closed" ? "closed" : "open";
     this.resultHandler = options.onResult ?? null;
     stream.onData = (data) => this.handleData(data);

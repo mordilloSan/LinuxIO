@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jaypipes/ghw/pkg/pci"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
@@ -14,7 +12,7 @@ func FetchPCIDevices(ctx context.Context) ([]apischema.PCIDevice, error) {
 		return nil, err
 	}
 	// ghw has no context support; ctx is accepted for consistent handler flow.
-	info, err := pci.New()
+	info, err := cachedPCIInfo()
 	if err != nil || info == nil {
 		return nil, fmt.Errorf("failed to retrieve PCI information: %w", err)
 	}

@@ -25,7 +25,7 @@ const ACCOUNT_USER_KEYS = [
 ];
 
 // Filebrowser listing caches. Fresh transfers refresh the listing via their
-// onComplete handlers; these entries cover jobs that finish after a page reload.
+// onComplete handlers; these entries cover tasks that finish after a page reload.
 const FILEBROWSER_LISTING_KEYS = [
   endpointQueryPrefix("filebrowser.resource_get"),
   endpointQueryPrefix("filebrowser.subfolders"),
@@ -61,10 +61,11 @@ const VM_KEYS = [
  * Single source of truth for which query caches a completed operation makes
  * stale, keyed by route.
  *
- * Consumed from direct and job lifecycles:
- * - `useAction`/`useJobAction`/`useJobStreamAction` use the entry as the
- *   default `invalidates` for operations started and awaited locally.
- * - `useRecoveredJobs` applies the entry when a job reaches a terminal state
+ * Consumed from direct and Task lifecycles:
+ * - `useCallMutation`/`useTaskAction`/`useTaskStreamAction` use the
+ *   entry as the default `invalidates` for operations started and awaited
+ *   locally.
+ * - `useRecoveredTasks` applies the entry when a task reaches a terminal state
  *   on the events stream. Repeating a local invalidation is intentionally
  *   harmless and preserves freshness when the local handler detached.
  *
@@ -73,7 +74,7 @@ const VM_KEYS = [
  */
 export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   // Package-update streams may detach when the Updates layout unmounts; the
-  // global jobs event owner performs this invalidation on terminal state.
+  // global tasks event owner performs this invalidation on terminal state.
   "packages.update": [endpointQueryPrefix("updates.get_updates_basic")],
 
   "filebrowser.index": INDEXER_KEYS,
@@ -141,13 +142,21 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "systemd.unmask_service": UNIT_KEYS,
   "systemd.reset_failed_service": UNIT_KEYS,
 
-  "network.set_ipv4": [endpointQueryPrefix("network.get_network_info")],
-  "network.set_ipv4_manual": [endpointQueryPrefix("network.get_network_info")],
+  "network.set_ipv4": [
+    endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
+  ],
+  "network.set_ipv4_manual": [
+    endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
+  ],
   "network.enable_connection": [
     endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
   ],
   "network.disable_connection": [
     endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("network.get_interface_stats"),
   ],
 
   "hostname.set_hostname": [endpointQueryPrefix("system.get_host_info")],

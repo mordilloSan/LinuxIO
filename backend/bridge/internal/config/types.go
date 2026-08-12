@@ -77,12 +77,20 @@ type PersistedAppSettings struct {
 	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
-	DashboardOrder          []string                 `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
-	ContainerOrder          []string                 `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
 	HardwareSections        *HardwareSections        `json:"hardwareSections,omitempty" yaml:"hardwareSections,omitempty"`
 	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
+	// LayoutOrders holds the user's drag-to-reorder result per surface, keyed by
+	// the same surface ids as ViewModes ("dashboard", "docker.containers", ...).
+	// A surface absent from the map renders in its natural order.
+	LayoutOrders map[string][]string `json:"layoutOrders,omitempty" yaml:"layoutOrders,omitempty"`
+	// DashboardOrder and ContainerOrder are the pre-LayoutOrders spellings of
+	// the two surfaces that had reordering first. They are read from existing
+	// config files and folded into LayoutOrders on load, then dropped on the
+	// next write; nothing else may use them.
+	DashboardOrder []string `json:"-" yaml:"dashboardOrder,omitempty"`
+	ContainerOrder []string `json:"-" yaml:"containerOrder,omitempty"`
 	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`
 }

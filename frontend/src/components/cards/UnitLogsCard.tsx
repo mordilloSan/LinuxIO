@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
+import type { ReactNode } from "react";
 
-import { openServiceLogsStream, type Stream } from "@/api";
+import { openChannel, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
@@ -17,17 +18,24 @@ interface UnitLogsCardProps {
   unitName?: string;
 }
 
-const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => {
+interface UnitLogsLiveContentProps {
+  createStream: (tail: string) => Stream | null;
+  titleContent: ReactNode;
+}
+
+const UnitLogsLiveContent = ({
+  createStream,
+  titleContent,
+}: UnitLogsLiveContentProps) => {
   const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({
       open: true,
-      createStream:
-        createStream ?? ((tail) => openServiceLogsStream(unitName ?? "", tail)),
+      createStream,
     });
 
   return (
-    <FrostedCard style={{ padding: 12 }}>
+    <>
       <div
         style={{
           display: "flex",
@@ -36,15 +44,7 @@ const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => {
           marginBottom: 12,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon
-            color="var(--app-palette-text-secondary)"
-            height={20}
-            icon="mdi:console"
-            width={20}
-          />
-          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
-        </div>
+        {titleContent}
         <AppTooltip
           title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
         >
@@ -114,8 +114,34 @@ const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => {
             ))}
         </div>
       </div>
-    </FrostedCard>
+    </>
   );
 };
+
+const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
+  <FrostedCard style={{ padding: 12 }}>
+    <UnitLogsLiveContent
+      createStream={
+        createStream ??
+        ((tail) =>
+          openChannel("logs.service.follow", {
+            serviceName: unitName ?? "",
+            lines: tail,
+          }))
+      }
+      titleContent={
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon
+            color="var(--app-palette-text-secondary)"
+            height={20}
+            icon="mdi:console"
+            width={20}
+          />
+          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
+        </div>
+      }
+    />
+  </FrostedCard>
+);
 
 export default UnitLogsCard;

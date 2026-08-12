@@ -7,25 +7,35 @@ import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import { render, screen } from "@/test/render";
 
+const mocks = vi.hoisted(() => ({
+  networkInterface: {
+    dns: [],
+    duplex: "full",
+    gateway: "",
+    ipv4: ["192.0.2.1"],
+    mac: "00:00:00:00:00:01",
+    name: "eth0",
+    rx_speed: 0,
+    speed: "1000",
+    state: 100,
+    tx_speed: 0,
+    type: "ethernet",
+  },
+}));
+
 vi.mock("@iconify/react", () => ({
   Icon: () => <span aria-hidden="true" />,
 }));
 
-const networkInterface: NetworkInterface = {
-  dns: [],
-  duplex: "full",
-  gateway: "",
-  ipv4: ["192.0.2.1"],
-  ipv6: [],
-  mac: "00:00:00:00:00:01",
-  mtu: 1500,
-  name: "eth0",
-  rx_speed: 0,
-  speed: "1000",
-  state: 100,
-  tx_speed: 0,
-  type: "ethernet",
-};
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQuery: () => ({ data: mocks.networkInterface }),
+  };
+});
+
+const networkInterface = mocks.networkInterface as NetworkInterface;
 
 const wireguardInterface: WireGuardInterface = {
   address: "10.0.0.1/24",
@@ -106,9 +116,10 @@ describe("interactive cards", () => {
     const { user } = render(
       <NetworkInterfaceCard
         expanded={false}
-        iface={networkInterface}
+        name={networkInterface.name}
         onClose={vi.fn()}
         onToggle={onToggle}
+        type={networkInterface.type}
       />,
     );
 

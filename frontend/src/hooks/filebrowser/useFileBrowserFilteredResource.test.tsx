@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SearchResult } from "@/api";
 import { useFileBrowserFilteredResource } from "@/hooks/filebrowser/useFileBrowserFilteredResource";
-import type { SearchResult } from "@/hooks/filebrowser/useFileSearch";
 import { renderHook } from "@/test/render";
 import type { FileResource } from "@/types/filebrowser";
 

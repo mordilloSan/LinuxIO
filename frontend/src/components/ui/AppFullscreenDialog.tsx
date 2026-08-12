@@ -8,6 +8,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
+import { acquireBodyScrollLock } from "./bodyScrollLock";
 
 import "./app-fullscreen-dialog.css";
 
@@ -34,19 +35,17 @@ const AppFullscreenDialog = ({
 }: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
-  const previousBodyOverflow = useRef<string>("");
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    previousBodyOverflow.current = document.body.style.overflow;
     lastFocusedElement.current = document.activeElement as HTMLElement | null;
-    document.body.style.overflow = "hidden";
+    const releaseBodyScrollLock = acquireBodyScrollLock();
 
     return () => {
-      document.body.style.overflow = previousBodyOverflow.current;
+      releaseBodyScrollLock();
       lastFocusedElement.current?.focus();
     };
   }, [open]);

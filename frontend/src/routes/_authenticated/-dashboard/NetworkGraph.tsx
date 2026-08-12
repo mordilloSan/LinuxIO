@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { SmoothieChart } from "smoothie";
 
@@ -5,7 +6,6 @@ import { CACHE_TTL_MS, linuxio } from "@/api";
 import LiveChartHover from "@/components/charts/LiveChartHover";
 import {
   appendLiveSample,
-  LIVE_MILLIS_PER_PIXEL,
   sampleLiveSeries,
 } from "@/components/charts/liveSeriesStore";
 import type { LiveTooltipRow } from "@/components/charts/liveTooltip";
@@ -13,6 +13,7 @@ import {
   type LiveSeriesPoint,
   useLiveSeries,
 } from "@/components/charts/useLiveSeries";
+import { LIVE_MILLIS_PER_PIXEL } from "@/constants/liveCharts";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 import { formatThroughput } from "@/utils/formaters";
@@ -29,9 +30,8 @@ const STREAM_DELAY_MS = 1000;
 
 const NetworkGraph = ({ interfaceName, rx, tx }: NetworkGraphProps) => {
   const theme = useAppTheme();
+  const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fetchNetworkHistory =
-    linuxio.monitoring.get_network_history.useFetcher();
   const rxId = `network:rx:${interfaceName}`;
   const txId = `network:tx:${interfaceName}`;
   // History arrives in bytes/s; the chart series (like the rx/tx props) are
@@ -39,7 +39,8 @@ const NetworkGraph = ({ interfaceName, rx, tx }: NetworkGraphProps) => {
   const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
     // One-shot backfill: the request carries a rolling from_ms, so caching
     // the entry would only pollute the cache.
-    const points = await fetchNetworkHistory(request, {
+    const points = await queryClient.fetchQuery({
+      ...linuxio.monitoring.get_network_history(request),
       staleTime: CACHE_TTL_MS.NONE,
       gcTime: CACHE_TTL_MS.NONE,
     });

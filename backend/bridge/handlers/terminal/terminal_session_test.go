@@ -10,6 +10,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -46,27 +47,27 @@ func TestHandleTerminalSessionReturnsWhenStreamCloses(t *testing.T) {
 		done <- HandleTerminalSession(context.Background(), rt, server, apischema.TerminalOpenRequest{Cols: 80, Rows: 24})
 	}()
 
-	// Drain output until the shell goes quiet: the hang this guards against
-	// only reproduces when the stream dies while the PTY relay sits in a read
-	// on an idle shell with nothing left to flush.
-	buf := make([]byte, 4096)
-	sawOutput := false
-	for {
-		_ = client.SetReadDeadline(time.Now().Add(1 * time.Second))
-		_, readErr := client.Read(buf)
-		if readErr == nil {
-			sawOutput = true
-			continue
-		}
-		if !sawOutput {
-			select {
-			case handlerErr := <-done:
-				t.Skipf("terminal unavailable in this environment: handler=%v read=%v", handlerErr, readErr)
-			case <-time.After(2 * time.Second):
-				t.Fatalf("no terminal output but handler still running: %v", readErr)
+	// A completed write proves that the handler has started its stream-to-PTY
+	// relay. Do not wait for unsolicited prompt output: a healthy interactive
+	// shell may remain alive without emitting any bytes under load.
+	_ = client.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	readyErr := ipc.WriteRelayFrame(client, &ipc.StreamFrame{
+		Opcode:   ipc.OpStreamResize,
+		StreamID: 1,
+		Payload:  []byte{0, 80, 0, 24},
+	})
+	_ = client.SetWriteDeadline(time.Time{})
+	if readyErr != nil {
+		_ = client.Close()
+		select {
+		case handlerErr := <-done:
+			if handlerErr != nil {
+				t.Skipf("terminal unavailable in this environment: handler=%v readiness=%v", handlerErr, readyErr)
 			}
+			t.Fatalf("terminal stream relay did not start before the handler returned: %v", readyErr)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("terminal stream relay did not start: %v", readyErr)
 		}
-		break
 	}
 
 	if closeErr := client.Close(); closeErr != nil {

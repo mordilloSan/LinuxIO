@@ -66,7 +66,7 @@ const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
     <AppTypography
       style={{
         marginBottom: 4,
-        fontFamily: "monospace",
+        fontFamily: "var(--app-font-mono)",
         fontSize: "0.8rem",
         ...longTextStyles,
       }}

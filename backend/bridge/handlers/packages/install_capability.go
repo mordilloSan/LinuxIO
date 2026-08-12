@@ -13,11 +13,11 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-// InstallCapabilityProgress is reported on the job event stream so the UI
+// InstallCapabilityProgress is reported on the task event stream so the UI
 // can show what stage we're in. Percentage is a single global 0-100 value that
 // only moves forward across stages (it never resets per stage). Frontend
 // mirrors this shape.
@@ -25,6 +25,20 @@ type InstallCapabilityProgress struct {
 	Stage      string  `json:"stage"`
 	Message    string  `json:"message"`
 	Percentage *uint32 `json:"percentage,omitempty"`
+}
+
+func (p InstallCapabilityProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	var percentage *int
+	if p.Percentage != nil {
+		value := int(*p.Percentage)
+		percentage = &value
+	}
+	return bridgetask.TaskProgress{
+		Percentage: percentage,
+		Phase:      p.Stage,
+		Message:    p.Message,
+		Detail:     p,
+	}
 }
 
 const (
@@ -40,7 +54,7 @@ const (
 // Global progress checkpoints (0-100). Each stage occupies a slice of the bar;
 // the package step is the only one with sub-progress, with PackageKit's 0-100
 // transaction percentage rescaled into [pctInstallStart, pctInstallEnd]. The
-// final jump to 100 is owned by the job result handler on the frontend.
+// final jump to 100 is owned by the task result handler on the frontend.
 const (
 	pctResolve      uint32 = 3
 	pctInstallStart uint32 = 5
@@ -60,39 +74,39 @@ const (
 var capabilityInstallRoutes = capabilityInstallBindings().Routes()
 
 func capabilityInstallBindings() apischema.BindingSet {
-	policy := bridgejobs.SingletonSystem
+	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 10 * time.Minute
 	return apischema.Bindings(
-		apischema.Runner[apischema.CapabilityRequest, apischema.JobSnapshot]("system.install_capability", apischema.Privileged(), apischema.WithJobMetadata(func(req apischema.CapabilityRequest) bridgejobs.JobMetadata {
-			return bridgejobs.JobMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
-		})).Run(runInstallCapabilityJob, policy),
+		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
+			return bridgetask.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
+		})).Run(runInstallCapabilityTask, policy),
 	)
 }
 
-// RegisterCapabilityJobRoutes attaches the install_capability runner. It
+// RegisterCapabilityTaskRoutes attaches the install_capability runner. It
 // streams per-stage progress events to the UI and is registered alongside
-// the other packages-package job runners from handlers.go.
-func RegisterCapabilityJobRoutes(router *bridgejobs.Router) {
+// the other packages-package task runners from handlers.go.
+func RegisterCapabilityTaskRoutes(router *bridgetask.Router) {
 	capabilityInstallBindings().Register(router)
 }
 
-func runInstallCapabilityJob(ctx context.Context, job *bridgejobs.Job, req apischema.CapabilityRequest) (any, error) {
+func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 	name := strings.TrimSpace(req.Capability)
 	if name == "" {
-		return nil, bridgejobs.NewError("capability name required", 400)
+		return apischema.InstallCapabilityResult{}, bridgetask.NewError("capability name required", 400)
 	}
 
-	result, err := installCapability(ctx, job, name)
+	result, err := installCapability(ctx, task, name)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, context.Canceled
+			return apischema.InstallCapabilityResult{}, context.Canceled
 		}
-		return nil, bridgejobs.NewError(err.Error(), 500)
+		return apischema.InstallCapabilityResult{}, bridgetask.NewError(err.Error(), 500)
 	}
 	return result, nil
 }
 
-func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (apischema.InstallCapabilityResult, error) {
+func installCapability(ctx context.Context, task *bridgetask.Task, name string) (apischema.InstallCapabilityResult, error) {
 	spec, ok := system.CapabilitySpecByName(name)
 	if !ok {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
@@ -105,67 +119,67 @@ func installCapability(ctx context.Context, job *bridgejobs.Job, name string) (a
 	pkg := pickByFamily(family, spec.Install.PackageDebian, spec.Install.PackageRHEL)
 	service := pickByFamily(family, spec.Install.ServiceDebian, spec.Install.ServiceRHEL)
 
-	if err := checkCapabilityInstallPrerequisites(ctx, job, spec); err != nil {
+	if err := checkCapabilityInstallPrerequisites(ctx, task, spec); err != nil {
 		return apischema.InstallCapabilityResult{}, err
 	}
 
 	if spec.Install.OptionalComponent != "" {
-		if err := installOptionalComponent(ctx, job, spec); err != nil {
+		if err := installOptionalComponent(ctx, task, spec); err != nil {
 			return apischema.InstallCapabilityResult{}, err
 		}
 	}
 
-	if err := installCapabilityPackages(ctx, job, name, pkg); err != nil {
+	if err := installCapabilityPackages(ctx, task, name, pkg); err != nil {
 		return apischema.InstallCapabilityResult{}, err
 	}
 
 	if service != "" {
 		if spec.Install.EnableService {
-			reportProgress(job, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
+			reportProgress(task, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
 			slog.Info("Enabling capability service.", "capability", name, "unit", service)
 			if err := systemd.EnableUnit(ctx, service); err != nil {
 				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
-		reportProgress(job, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
+		reportProgress(task, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
 		slog.Info("Starting capability service.", "capability", name, "unit", service)
 		if err := systemd.StartUnit(ctx, service); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
-		reportProgress(job, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service), pctWait)
+		reportProgress(task, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service), pctWait)
 		if err := waitUnitActive(ctx, service, serviceActiveTimeout); err != nil {
 			return apischema.InstallCapabilityResult{}, err
 		}
 	}
 
-	reportProgress(job, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
+	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
 	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
 }
 
-func installCapabilityPackages(ctx context.Context, job *bridgejobs.Job, capabilityName string, packageList string) error {
+func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capabilityName string, packageList string) error {
 	packages := strings.Fields(packageList)
 	if len(packages) == 0 {
 		return nil
 	}
-	reportProgress(job, stageResolve, fmt.Sprintf("Looking up %s", packageList), pctResolve)
+	reportProgress(task, stageResolve, fmt.Sprintf("Looking up %s", packageList), pctResolve)
 	for idx, packageName := range packages {
 		installStart, installEnd := packageInstallProgressRange(idx, len(packages))
-		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
+		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
 		slog.Info("Installing capability package.", "capability", capabilityName, "package", packageName)
-		if err := InstallByNameWithProgress(ctx, packageName, capabilityInstallReporter(job, packageName, installStart, installEnd)); err != nil {
+		if err := InstallByNameWithProgress(ctx, packageName, capabilityInstallReporter(task, packageName, installStart, installEnd)); err != nil {
 			return fmt.Errorf("install %s: %w", packageName, err)
 		}
-		reportProgress(job, stageInstallPackage, fmt.Sprintf("Installed %s", packageName), installEnd)
+		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed %s", packageName), installEnd)
 	}
 	return nil
 }
 
-func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
 	if !spec.Install.RequiresDocker {
 		return nil
 	}
-	reportProgress(job, stageResolve, "Checking Docker availability", pctResolve)
+	reportProgress(task, stageResolve, "Checking Docker availability", pctResolve)
 	available, err := docker.CheckDockerAvailability(ctx)
 	if err != nil {
 		return fmt.Errorf("docker is required to install %s: %w", spec.LogName, err)
@@ -176,24 +190,24 @@ func checkCapabilityInstallPrerequisites(ctx context.Context, job *bridgejobs.Jo
 	return nil
 }
 
-func installOptionalComponent(ctx context.Context, job *bridgejobs.Job, spec system.CapabilitySpec) error {
+func installOptionalComponent(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
 	switch spec.Install.OptionalComponent {
 	case system.OptionalComponentIndexer:
-		return installIndexer(ctx, job)
+		return installIndexer(ctx, task)
 	case system.OptionalComponentMonitoring:
-		return installMonitoring(ctx, job)
+		return installMonitoring(ctx, task)
 	case system.OptionalComponentWatchtower:
-		return installWatchtower(ctx, job)
+		return installWatchtower(ctx, task)
 	default:
 		return fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
 	}
 }
 
-func reportProgress(job *bridgejobs.Job, stage, message string, pct uint32) {
-	if job == nil {
+func reportProgress(task *bridgetask.Task, stage, message string, pct uint32) {
+	if task == nil {
 		return
 	}
-	job.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct})
+	task.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct})
 }
 
 func packageInstallProgressRange(index int, total int) (uint32, uint32) {
@@ -216,9 +230,9 @@ func scaleInstallPct(pkgPct, start, end uint32) uint32 {
 }
 
 // capabilityInstallReporter adapts PackageKit update-signal frames (emitted by
-// the shared awaitPackageUpdateSignals handlers) into the capability job's
+// the shared awaitPackageUpdateSignals handlers) into the capability task's
 // progress stream, carrying a single global percentage plus the current status.
-func capabilityInstallReporter(job *bridgejobs.Job, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
+func capabilityInstallReporter(task *bridgetask.Task, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
 	lastGlobal := installStart
 	lastStatus := ""
 	return func(p *PkgUpdateProgress) error {
@@ -238,13 +252,13 @@ func capabilityInstallReporter(job *bridgejobs.Job, pkg string, installStart uin
 		if lastStatus != "" {
 			msg = fmt.Sprintf("Installing %s (%s)", pkg, lastStatus)
 		}
-		reportProgress(job, stageInstallPackage, msg, lastGlobal)
+		reportProgress(task, stageInstallPackage, msg, lastGlobal)
 		return nil
 	}
 }
 
 // waitUnitActive polls systemd until the unit reports "active" or fails. The
-// systemd StartUnit job returns once the unit transitions, but for services
+// systemd StartUnit task returns once the unit transitions, but for services
 // whose readiness depends on something beyond systemd (e.g. avahi-daemon
 // claiming its D-Bus name) we still need this poll before re-detecting.
 func waitUnitActive(ctx context.Context, unit string, timeout time.Duration) error {

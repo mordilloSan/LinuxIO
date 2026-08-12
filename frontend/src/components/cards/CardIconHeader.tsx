@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
 import { GAP_SM } from "@/theme/constants";
@@ -9,10 +9,27 @@ export interface CardIconHeaderProps {
   right?: ReactNode;
   style?: CSSProperties;
   subtitle?: ReactNode;
-  title: ReactNode;
+  title: string;
   /** Content rendered inline, immediately after the title. */
   titleSuffix?: ReactNode;
 }
+
+const CardIconHeaderTitle = memo(function CardIconHeaderTitle({
+  title,
+}: {
+  title: string;
+}) {
+  return (
+    <AppTypography
+      fontWeight={700}
+      noWrap
+      style={{ lineHeight: 1.2 }}
+      variant="subtitle1"
+    >
+      {title}
+    </AppTypography>
+  );
+});
 
 const CardIconHeader = ({
   icon,
@@ -53,14 +70,7 @@ const CardIconHeader = ({
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
-          <AppTypography
-            fontWeight={700}
-            noWrap
-            style={{ lineHeight: 1.2 }}
-            variant="subtitle1"
-          >
-            {title}
-          </AppTypography>
+          <CardIconHeaderTitle title={title} />
           {titleSuffix}
         </div>
         {subtitle !== undefined && (

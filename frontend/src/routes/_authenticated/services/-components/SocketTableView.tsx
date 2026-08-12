@@ -1,6 +1,10 @@
+import { useCallback } from "react";
+
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppTheme } from "@/theme";
 
 import UnitStatusDot from "./UnitStatusDot";
@@ -11,6 +15,7 @@ interface SocketTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   sockets: Socket[];
+  surface: ReorderableSurface<Socket>;
 }
 
 const desktopColumns = [
@@ -48,71 +53,92 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
+const getSocketRowKey = (socket: Socket) => socket.name;
+
+function SocketListenAddresses({ socket }: { socket: Socket }) {
+  const theme = useAppTheme();
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: theme.spacing(0.5),
+        flexWrap: "wrap",
+      }}
+    >
+      {socket.listen.length > 0
+        ? socket.listen.map((addr) => (
+            <Chip key={addr} label={addr} size="small" variant="soft" />
+          ))
+        : "—"}
+    </div>
+  );
+}
+
+const renderSocketMainRow = (socket: Socket, isMobile: boolean) => (
+  <>
+    <AppTableCell style={{ paddingLeft: 8 }}>
+      <UnitStatusDot activeState={socket.active_state} />
+      {socket.active_state}
+    </AppTableCell>
+    <AppTableCell>{socket.name}</AppTableCell>
+    {!isMobile && (
+      <>
+        <AppTableCell>
+          <SocketListenAddresses socket={socket} />
+        </AppTableCell>
+        <AppTableCell align="right">{socket.n_connections}</AppTableCell>
+        <AppTableCell align="right">{socket.n_accepted}</AppTableCell>
+      </>
+    )}
+  </>
+);
+
+const renderSocketMobileExpandedContent = (socket: Socket) => (
+  <MobileExpandedDetails
+    rows={[
+      { label: "Listen", value: socket.listen.join(", ") || "—" },
+      { label: "Connections", value: String(socket.n_connections) },
+      { label: "Accepted", value: String(socket.n_accepted) },
+    ]}
+  />
+);
+
 const SocketTableView = ({
+  surface,
   sockets,
   selected,
   onSelect,
   onDoubleClick,
 }: SocketTableViewProps) => {
-  const theme = useAppTheme();
+  const handleDoubleClick = useCallback(
+    (key: string | number) => {
+      if (typeof key === "string") {
+        onDoubleClick?.(key);
+      }
+    },
+    [onDoubleClick],
+  );
+  const handleSelect = useCallback(
+    (key: string | number | null) =>
+      onSelect?.(typeof key === "string" ? key : null),
+    [onSelect],
+  );
+
+  const dnd = useVirtualReorderableTableDnd<Socket, Socket>({ surface });
 
   return (
     <UnitTableView
+      dnd={dnd}
       data={sockets}
       desktopColumns={desktopColumns}
       emptyMessage="No sockets found."
-      getRowKey={(socket) => socket.name}
+      getRowKey={getSocketRowKey}
       mobileColumns={mobileColumns}
-      onDoubleClick={(key) => {
-        if (typeof key === "string") {
-          onDoubleClick?.(key);
-        }
-      }}
-      onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
-      renderMainRow={(socket, isMobile) => (
-        <>
-          <AppTableCell style={{ paddingLeft: 8 }}>
-            <UnitStatusDot activeState={socket.active_state} />
-            {socket.active_state}
-          </AppTableCell>
-          <AppTableCell>{socket.name}</AppTableCell>
-          {!isMobile && (
-            <>
-              <AppTableCell>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: theme.spacing(0.5),
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {socket.listen.length > 0
-                    ? socket.listen.map((addr) => (
-                        <Chip
-                          key={addr}
-                          label={addr}
-                          size="small"
-                          variant="soft"
-                        />
-                      ))
-                    : "—"}
-                </div>
-              </AppTableCell>
-              <AppTableCell align="right">{socket.n_connections}</AppTableCell>
-              <AppTableCell align="right">{socket.n_accepted}</AppTableCell>
-            </>
-          )}
-        </>
-      )}
-      renderMobileExpandedContent={(socket) => (
-        <MobileExpandedDetails
-          rows={[
-            { label: "Listen", value: socket.listen.join(", ") || "—" },
-            { label: "Connections", value: String(socket.n_connections) },
-            { label: "Accepted", value: String(socket.n_accepted) },
-          ]}
-        />
-      )}
+      onDoubleClick={handleDoubleClick}
+      onSelect={handleSelect}
+      renderMainRow={renderSocketMainRow}
+      renderMobileExpandedContent={renderSocketMobileExpandedContent}
       selected={selected}
     />
   );

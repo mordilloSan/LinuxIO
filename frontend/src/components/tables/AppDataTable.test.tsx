@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { useState, type ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import { render, screen } from "@/test/render";
+import { act, render, screen } from "@/test/render";
 
 interface SelectableRow {
   id: string;
@@ -11,6 +11,76 @@ interface SelectableRow {
 }
 
 const rows: SelectableRow[] = [{ id: "bridge", name: "bridge" }];
+
+interface TableRow {
+  id: string;
+  name: string;
+  status: string;
+}
+
+const renderName = vi.fn(
+  ({ row }: { row: { original: TableRow } }) => row.original.name,
+);
+const renderStatus = vi.fn(
+  ({ row }: { row: { original: TableRow } }) => row.original.status,
+);
+const renderNameHeader = vi.fn(() => "Name");
+const getRowAttributes = vi.fn(() => ({}));
+
+const tableColumns: AppDataTableColumnDef<TableRow>[] = [
+  {
+    id: "name",
+    header: renderNameHeader,
+    cell: renderName,
+    meta: {
+      getCellRenderKey: (row) => {
+        const item = row as TableRow;
+        return [item.id, item.name];
+      },
+    },
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: renderStatus,
+    meta: {
+      getCellRenderKey: (row) => {
+        const item = row as TableRow;
+        return [item.id, item.status];
+      },
+    },
+  },
+];
+
+const tableRows: TableRow[] = [
+  { id: "one", name: "Alpha", status: "running" },
+  { id: "two", name: "Beta", status: "stopped" },
+];
+
+const getTableRowId = (row: TableRow) => row.id;
+
+function TestTable({
+  columns = tableColumns,
+  data = tableRows,
+  expandedContent,
+  selectedRowId,
+}: {
+  columns?: AppDataTableColumnDef<TableRow>[];
+  data?: TableRow[];
+  expandedContent?: (row: { original: TableRow }) => ReactNode;
+  selectedRowId?: string;
+}) {
+  return (
+    <AppDataTable
+      columns={columns}
+      data={data}
+      getRowAttributes={getRowAttributes}
+      getRowId={getTableRowId}
+      renderExpandedContent={expandedContent}
+      selectedRowId={selectedRowId}
+    />
+  );
+}
 
 function SelectableTable() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -60,6 +130,13 @@ function SelectableTable() {
 }
 
 describe("AppDataTable", () => {
+  beforeEach(() => {
+    getRowAttributes.mockClear();
+    renderName.mockClear();
+    renderNameHeader.mockClear();
+    renderStatus.mockClear();
+  });
+
   it("rerenders memoized cells when their render key changes", async () => {
     const { user } = render(<SelectableTable />);
     const checkbox = screen.getByRole("checkbox", { name: "Select bridge" });
@@ -69,5 +146,136 @@ describe("AppDataTable", () => {
     expect(checkbox).toBeChecked();
     await user.click(checkbox);
     expect(checkbox).not.toBeChecked();
+  });
+
+  it("isolates selection and field updates to affected rows and cells", () => {
+    const view = render(<TestTable />);
+
+    expect(getRowAttributes).toHaveBeenCalledTimes(2);
+    expect(renderName).toHaveBeenCalledTimes(2);
+    expect(renderNameHeader).toHaveBeenCalledTimes(1);
+    expect(renderStatus).toHaveBeenCalledTimes(2);
+
+    view.rerender(<TestTable selectedRowId="two" />);
+
+    expect(screen.getByText("Beta").closest('[role="row"]')).toHaveClass(
+      "app-vdt__row--selected",
+    );
+    // The row boundary updates selection chrome without re-running cell
+    // formatters; the compiler may also reuse pure row-attribute derivation.
+    expect(getRowAttributes).toHaveBeenCalledTimes(2);
+    expect(renderName).toHaveBeenCalledTimes(2);
+    expect(renderNameHeader).toHaveBeenCalledTimes(1);
+    expect(renderStatus).toHaveBeenCalledTimes(2);
+
+    view.rerender(
+      <TestTable
+        data={[tableRows[0], { ...tableRows[1], status: "running" }]}
+        selectedRowId="two"
+      />,
+    );
+
+    expect(renderName).toHaveBeenCalledTimes(2);
+    expect(renderStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retain a stale renderer when a column definition changes", () => {
+    const view = render(<TestTable />);
+    const replacementColumns: AppDataTableColumnDef<TableRow>[] = [
+      {
+        ...tableColumns[0],
+        header: "Renamed",
+        cell: ({ row }) => `renamed:${row.original.name}`,
+      },
+      tableColumns[1],
+    ];
+
+    view.rerender(<TestTable columns={replacementColumns} />);
+
+    expect(screen.getByText("renamed:Alpha")).toBeInTheDocument();
+    expect(screen.getByText("renamed:Beta")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Renamed" }),
+    ).toBeInTheDocument();
+  });
+
+  it("updates index-sensitive cells when stable rows are reordered", () => {
+    const indexedColumns: AppDataTableColumnDef<TableRow>[] = [
+      {
+        id: "name",
+        header: "Name",
+        cell: ({ row }) => `${row.index}:${row.original.name}`,
+        meta: {
+          getCellRenderKey: (row) => (row as TableRow).id,
+        },
+      },
+    ];
+    const view = render(<TestTable columns={indexedColumns} />);
+
+    expect(screen.getByText("0:Alpha")).toBeInTheDocument();
+    expect(screen.getByText("1:Beta")).toBeInTheDocument();
+
+    view.rerender(
+      <TestTable
+        columns={indexedColumns}
+        data={[tableRows[1], tableRows[0]]}
+      />,
+    );
+
+    expect(screen.getByText("0:Beta")).toBeInTheDocument();
+    expect(screen.getByText("1:Alpha")).toBeInTheDocument();
+  });
+
+  it("does not construct collapsed detail content", async () => {
+    const renderExpandedContent = vi.fn(
+      ({ original }: { original: TableRow }) => (
+        <div>{`Details for ${original.name}`}</div>
+      ),
+    );
+    const view = render(<TestTable expandedContent={renderExpandedContent} />);
+
+    expect(renderExpandedContent).not.toHaveBeenCalled();
+
+    await view.user.click(
+      screen.getAllByRole("button", { name: "Expand row" })[0],
+    );
+
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <TestTable expandedContent={renderExpandedContent} selectedRowId="two" />,
+    );
+
+    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps rows expanded when polled data is replaced", async () => {
+    const renderExpandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(<TestTable expandedContent={renderExpandedContent} />);
+
+    await view.user.click(
+      screen.getAllByRole("button", { name: "Expand row" })[0],
+    );
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+
+    // What a refetch looks like: same row ids, new array and row objects, one
+    // drifting field (Docker's "Up 4 minutes" status). TanStack's auto-reset
+    // runs in a queueMicrotask, so the collapse this guards against only shows
+    // up after the flush that the async act below performs.
+    await act(async () => {
+      view.rerender(
+        <TestTable
+          data={tableRows.map((row) =>
+            row.id === "one" ? { ...row, status: "running (2m)" } : { ...row },
+          )}
+          expandedContent={renderExpandedContent}
+        />,
+      );
+    });
+
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
   });
 });

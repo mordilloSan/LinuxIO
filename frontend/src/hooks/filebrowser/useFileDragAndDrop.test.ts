@@ -216,7 +216,7 @@ describe("useFileDragAndDrop", () => {
     expect(startUpload).toHaveBeenCalledWith([second], "/srv/target", true);
   });
 
-  it("does not start a job when every dropped item is skipped", async () => {
+  it("does not start a task when every dropped item is skipped", async () => {
     droppedEntriesMocks.extract.mockResolvedValue([droppedFile]);
     const resolveCollisions = vi.fn().mockResolvedValue({
       kept: [],

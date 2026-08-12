@@ -1,7 +1,7 @@
 // src/hooks/useConfig.ts
 import { useCallback, useContext } from "react";
 
-import type { AppConfig, AppSettings } from "@/api";
+import type { AppConfig } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import type { ConfigValueKey, ConfigValueMap } from "@/types/config";
 
@@ -15,7 +15,7 @@ const readConfigValue = <K extends ConfigValueKey>(
   config: AppConfig,
   key: K,
 ): ConfigValueMap[K] => {
-  return config.appSettings[key as keyof AppSettings] as ConfigValueMap[K];
+  return config.appSettings[key];
 };
 
 export function useConfigValue<K extends ConfigValueKey>(key: K) {

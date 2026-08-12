@@ -1,6 +1,6 @@
+import type { HTMLAttributes } from "react";
 import {
   forwardRef,
-  HTMLAttributes,
   useEffect,
   useEffectEvent,
   useRef,
@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+
+import { acquireBodyScrollLock } from "./bodyScrollLock";
 
 import "./app-dialog.css";
 
@@ -29,6 +31,8 @@ export type AppDialogCloseEvent =
   | MouseEvent<HTMLDivElement>;
 
 export interface AppDialogProps {
+  /** Reports an in-flight action owned by the mounted dialog. */
+  "aria-busy"?: boolean;
   /** Styles applied to the backdrop overlay */
   backdropStyle?: CSSProperties;
   children?: ReactNode;
@@ -56,6 +60,7 @@ export interface AppDialogProps {
 }
 
 export const AppDialog = ({
+  "aria-busy": ariaBusy,
   open,
   onClose,
   maxWidth = "sm",
@@ -78,20 +83,19 @@ export const AppDialog = ({
   useEffect(() => {
     if (open) {
       lastFocusedElement.current = document.activeElement as HTMLElement | null;
-      document.body.style.overflow = "hidden";
+      const releaseBodyScrollLock = acquireBodyScrollLock();
       _openDialogCount++;
       if (_openDialogCount === 1) document.body.classList.add("dialog-open");
-    } else if (lastFocusedElement.current) {
-      lastFocusedElement.current.focus();
-    }
-    return () => {
-      document.body.style.overflow = "";
-      if (open) {
+
+      return () => {
+        releaseBodyScrollLock();
         _openDialogCount--;
         if (_openDialogCount === 0)
           document.body.classList.remove("dialog-open");
-      }
-    };
+      };
+    } else if (lastFocusedElement.current) {
+      lastFocusedElement.current.focus();
+    }
   }, [open]);
 
   // fire transition callbacks
@@ -206,6 +210,7 @@ export const AppDialog = ({
         style={mergedBackdropStyle}
       />
       <div
+        aria-busy={ariaBusy || undefined}
         aria-modal="true"
         className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
         ref={dialogRef}

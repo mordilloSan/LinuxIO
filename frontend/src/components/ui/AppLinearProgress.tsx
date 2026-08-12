@@ -1,4 +1,5 @@
-import { forwardRef, HTMLAttributes, type CSSProperties } from "react";
+import type { HTMLAttributes } from "react";
+import { forwardRef, type CSSProperties } from "react";
 
 import "./app-linear-progress.css";
 

@@ -1,6 +1,6 @@
 import { useCallback, useReducer } from "react";
 
-import { isJobCancellationError } from "@/api";
+import { isTaskCancellationError, type PackageUpdateRequest } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
@@ -9,7 +9,6 @@ import {
 } from "./packageUpdateState";
 import {
   type PackageUpdateProgress,
-  type PackageUpdateRequest,
   usePackageUpdateTransaction,
 } from "./usePackageUpdateTransaction";
 
@@ -30,7 +29,7 @@ export const usePackageUpdater = () => {
 
   const finishError = useCallback(
     (error: unknown, request: PackageUpdateRequest) => {
-      if (isJobCancellationError(error)) {
+      if (isTaskCancellationError(error)) {
         dispatch({ type: "canceled" });
         return;
       }

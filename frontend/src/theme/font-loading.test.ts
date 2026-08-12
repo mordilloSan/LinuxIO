@@ -33,4 +33,21 @@ describe("font loading", () => {
     expect(entry).toContain('import "@fontsource-variable/inter/wght.css";');
     expect(typography).toContain("font-family: var(--app-font-family);");
   });
+
+  it("declares one mono stack in both the theme and the stylesheet", () => {
+    const theme = buildAppTheme("DARK");
+    const variables = readFrontendFile("src/theme/variables.css");
+
+    const cssFontMono = variables
+      .match(/--app-font-mono:\s*([^;]+);/)?.[1]
+      .replace(/\s+/g, "")
+      .trim();
+
+    expect(cssFontMono).toBe(
+      theme.typography.fontFamilyMono.replace(/\s+/g, ""),
+    );
+    // Bare `monospace` is the fallback of last resort, never the first choice:
+    // it resolves per-OS to a face that does not sit with Inter.
+    expect(cssFontMono?.startsWith("ui-monospace,")).toBe(true);
+  });
 });

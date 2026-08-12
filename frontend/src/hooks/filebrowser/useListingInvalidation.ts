@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { linuxio } from "@/api";
@@ -8,11 +9,15 @@ import { linuxio } from "@/api";
  * drop the cached subfolder sizes, which any change makes stale.
  */
 export function useListingInvalidation(normalizedPath: string) {
-  const resourceCache = linuxio.filebrowser.resource_get.useCache();
-  const subfoldersCache = linuxio.filebrowser.subfolders.useCache();
+  const queryClient = useQueryClient();
 
   return useCallback(() => {
-    void resourceCache.invalidate({ path: normalizedPath });
-    subfoldersCache.remove();
-  }, [normalizedPath, resourceCache, subfoldersCache]);
+    void queryClient.invalidateQueries({
+      queryKey: linuxio.filebrowser.resource_get({ path: normalizedPath })
+        .queryKey,
+    });
+    queryClient.removeQueries({
+      queryKey: ["linuxio", "filebrowser", "subfolders"],
+    });
+  }, [normalizedPath, queryClient]);
 }

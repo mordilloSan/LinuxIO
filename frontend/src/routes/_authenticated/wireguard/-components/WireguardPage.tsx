@@ -9,11 +9,10 @@ import WireGuardDashboard from "./WireguardDashboard";
 
 const WireguardPage = () => {
   const theme = useAppTheme();
-  const { data: interfaces } = useSuspenseQuery(
-    linuxio.wireguard.list_interfaces.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: interfaces } = useSuspenseQuery({
+    ...linuxio.wireguard.list_interfaces,
+    refetchInterval: 10000,
+  });
 
   return (
     <>
@@ -21,7 +20,6 @@ const WireguardPage = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           marginBottom: theme.spacing(2),
         }}
       >

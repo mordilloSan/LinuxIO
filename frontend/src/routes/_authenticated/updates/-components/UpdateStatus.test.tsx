@@ -23,7 +23,7 @@ describe("UpdateStatus", () => {
     );
 
     // recoveryPending is true on every entry into the section; reporting
-    // "Preparing…" before the scan finds a job invents an update.
+    // "Preparing…" before the scan finds a task invents an update.
     expect(screen.queryByText("Preparing...")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Cancel update" }),

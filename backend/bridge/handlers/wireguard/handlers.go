@@ -13,21 +13,21 @@ import (
 // output, `"removed"`, and in add_interface's case the generated *private key* —
 // onto routes whose generated TypeScript is `void`. Every consumer discards the
 // result (`success: (_result: void, variables) => ...`), so the payloads were
-// unreachable by design and, for job routes, sat in the job snapshot for
-// DefaultTerminalJobTTL where jobs.get/jobs.list could read them back.
+// unreachable by design and, for Task routes, sat in the Task snapshot for
+// DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces").Handle(handleListInterfaces),
-	apischema.Query[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
-	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
-	apischema.Query[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers").Handle(handleListPeers),
-	apischema.Query[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
-	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
-	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode").Handle(handlePeerQRCode),
-	apischema.Query[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download").Handle(handlePeerConfigDownload),
-	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
-	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
-	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
-	apischema.Query[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
+	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
+	apischema.Call[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
+	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
+	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe()).Handle(handleListPeers),
+	apischema.Call[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
+	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
+	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(handlePeerQRCode),
+	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(handlePeerConfigDownload),
+	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
+	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
+	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
+	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
 )
 
 var Routes = api.Routes()

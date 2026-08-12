@@ -15,6 +15,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // stripHeader drops the leading contiguous run of `#`-prefixed lines and a
@@ -63,7 +64,7 @@ func main() {
 		log.Fatalf("mkdir: %v", err)
 	}
 
-	data, err := yaml.Marshal(*config.DefaultSettings("/var/lib/linuxio"))
+	data, err := yaml.Marshal(*config.DefaultSettings(version.DataDir))
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
 	}

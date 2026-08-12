@@ -8,7 +8,6 @@ import {
 } from "@/api/capabilities";
 import useAuth from "@/hooks/useAuth";
 
-export type { CapabilityKey };
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
 export type AccessContext = CapabilityState & {
@@ -32,9 +31,7 @@ export const isCapabilityEnabled = (
   capability: boolean | null | undefined,
 ): boolean => capability === true;
 
-const capabilityByKey = new Map(
-  CAPABILITIES.map((c) => [c.state as CapabilityKey, c]),
-);
+const capabilityByKey = new Map(CAPABILITIES.map((c) => [c.state, c]));
 
 export const getCapabilityReason = (
   capability: CapabilityKey,

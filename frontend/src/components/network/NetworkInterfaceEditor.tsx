@@ -1,8 +1,13 @@
 import { useMemo, useState } from "react";
 
-import { linuxio, type NetworkInterface as BaseNI } from "@/api";
+import {
+  linuxio,
+  type NetworkInterface as BaseNI,
+  useCallMutation,
+} from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -166,17 +171,19 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   };
 
   // Mutations
-  const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.network.set_ipv4.useAction({
+  const { mutate: setIPv4, isPending: isSettingIPv4 } = useCallMutation(
+    linuxio.network.set_ipv4,
+    {
       success: () => {
         toast.success("Switched to DHCP mode");
         onClose();
       },
       error: "Failed to set DHCP configuration",
       toast: NETWORK_TOAST_META,
-    });
+    },
+  );
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.network.set_ipv4_manual.useAction({
+    useCallMutation(linuxio.network.set_ipv4_manual, {
       success: () => {
         toast.success("Manual configuration saved");
         onClose();
@@ -184,23 +191,28 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       error: "Failed to save network configuration",
       toast: NETWORK_TOAST_META,
     });
-  const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.network.enable_connection.useAction({
+  const { mutate: enableConnection, isPending: isEnabling } = useCallMutation(
+    linuxio.network.enable_connection,
+    {
       success: "Connection enabled",
       error: "Failed to enable connection",
       toast: NETWORK_TOAST_META,
-    });
-  const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.network.disable_connection.useAction({
+    },
+  );
+  const { mutate: disableConnection, isPending: isDisabling } = useCallMutation(
+    linuxio.network.disable_connection,
+    {
       success: "Connection disabled",
       error: "Failed to disable connection",
       toast: NETWORK_TOAST_META,
-    });
+    },
+  );
   const saving = isSettingIPv4 || isSettingIPv4Manual;
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
   const handleConnectionToggle = () => {
+    if (toggling) return;
     if (isConnected || isConnecting) {
       disableConnection({ iface: iface.name });
     } else {
@@ -322,24 +334,38 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
             marginBottom: theme.spacing(2),
           }}
         >
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={isConnected || isConnecting}
-                disabled={toggling}
-                onChange={handleConnectionToggle}
+          <div aria-busy={toggling || undefined}>
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={isConnected || isConnecting}
+                  disabled={toggling}
+                  onChange={handleConnectionToggle}
+                />
+              }
+              label={
+                toggling
+                  ? "Toggling..."
+                  : isConnected
+                    ? "Enabled"
+                    : isConnecting
+                      ? "Connecting..."
+                      : "Disabled"
+              }
+            />
+            {toggling ? (
+              <AppCircularProgress
+                aria-label={
+                  isEnabling ? "Enabling connection" : "Disabling connection"
+                }
+                size={16}
+                style={{
+                  marginLeft: theme.spacing(1),
+                  verticalAlign: "middle",
+                }}
               />
-            }
-            label={
-              toggling
-                ? "Toggling..."
-                : isConnected
-                  ? "Enabled"
-                  : isConnecting
-                    ? "Connecting..."
-                    : "Disabled"
-            }
-          />
+            ) : null}
+          </div>
           <Chip
             color="primary"
             label={

@@ -21,11 +21,10 @@ const selectRamUsagePercent = (memoryData: MemoryInfoResponse): number =>
     : 0;
 
 const MemoryStats = () => {
-  const { data: memoryData } = useSuspenseQuery(
-    linuxio.system.get_memory_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-    }),
-  );
+  const { data: memoryData } = useSuspenseQuery({
+    ...linuxio.system.get_memory_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  });
 
   const swapUsed = Math.max(
     (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0),
@@ -58,12 +57,11 @@ const MemoryStats = () => {
 
 const MemoryGauge = () => {
   const theme = useAppTheme();
-  const { data: ramUsagePercentage } = useSuspenseQuery(
-    linuxio.system.get_memory_info.queryOptions({
-      refetchInterval: REFETCH_INTERVAL_MS,
-      select: selectRamUsagePercent,
-    }),
-  );
+  const { data: ramUsagePercentage } = useSuspenseQuery({
+    ...linuxio.system.get_memory_info,
+    refetchInterval: REFETCH_INTERVAL_MS,
+    select: selectRamUsagePercent,
+  });
 
   return (
     <GradientCircularGauge

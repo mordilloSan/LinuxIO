@@ -4,9 +4,9 @@
 // builds. Production builds (without the pprofdebug tag) compile the no-op
 // variant, so no profiling endpoint ever ships.
 //
-// Built with GOEXPERIMENT=goroutineleakprofile (see `make build-leak-profile`),
-// the profile index additionally exposes /debug/pprof/goroutineleak, which
-// reports goroutines the runtime has proven can never unblock.
+// Go 1.27 exposes /debug/pprof/goroutineleak through the profile index; it
+// reports goroutines the runtime has proven can never unblock. See
+// `make build-leak-profile` for debug builds that serve it.
 package debugserver
 
 import (

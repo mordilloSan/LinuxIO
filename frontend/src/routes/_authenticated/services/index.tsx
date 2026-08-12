@@ -17,11 +17,9 @@ export const Route = createFileRoute("/_authenticated/services/")({
   loaderDeps: ({ search }) => ({ service: search.service }),
   loader: (loaderArgs) => {
     const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [
-      linuxio.systemd.list_services.queryOptions(),
-    ];
+    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_services];
     if (deps.service) {
-      queries.push(linuxio.systemd.get_unit_info.queryOptions(deps.service));
+      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.service }));
     }
     return loadRouteQueries(loaderArgs, queries);
   },

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -30,6 +31,13 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 		notifyDisconnect()
 		return
 	}
+
+	// Label before the session exists: NewYamuxServer starts its close watchdog
+	// on this goroutine, so that watchdog inherits the session identity too.
+	ctx = goroutinelabel.With(ctx,
+		"session_id", rt.Session.SessionID,
+		"user", rt.Session.User.Username,
+	)
 
 	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
@@ -80,6 +88,10 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 // Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
 func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, stream net.Conn, streamID string) {
 	sess := rt.Session
+	// Session identity is inherited from the accept loop; add the stream so the
+	// per-stream monitors spawned under Dispatch can be told apart.
+	ctx = goroutinelabel.With(ctx, "stream_id", streamID)
+
 	// Read the first frame to determine stream type.
 	_ = stream.SetReadDeadline(time.Now().Add(streamOpenReadTimeout))
 	frame, err := relay.ReadRelayFrameProgressive(stream)
@@ -103,6 +115,10 @@ func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeip
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
 		return
 	}
+
+	// The route is only known once the open frame is parsed. Adding it here
+	// means a goroutine blocked in a handler names the call it is serving.
+	ctx = goroutinelabel.With(ctx, "route", envelope.Route)
 
 	if err := router.Dispatch(ctx, stream, bridgeipc.Request{
 		Route:      envelope.Route,

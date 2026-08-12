@@ -7,8 +7,6 @@ import DockerComposePage from "./-components/DockerComposePage";
 
 export const Route = createFileRoute("/_authenticated/docker/compose")({
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [
-      linuxio.docker.list_compose_projects.queryOptions(),
-    ]),
+    loadRouteQueries(loaderArgs, [linuxio.docker.list_compose_projects]),
   component: DockerComposePage,
 });

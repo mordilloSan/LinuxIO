@@ -15,7 +15,8 @@ interface InputDialogProps {
   defaultValue?: string;
   label: string;
   onClose: () => void;
-  onConfirm: (value: string) => void;
+  onConfirm: (value: string) => Promise<void> | void;
+  isPending?: boolean;
   open: boolean;
   title: string;
 }
@@ -28,6 +29,7 @@ const InputDialog = ({
   onClose,
   onConfirm,
   confirmText = "Create",
+  isPending = false,
 }: InputDialogProps) => {
   const [dialogState, setDialogState] = useState({
     open,
@@ -40,6 +42,9 @@ const InputDialog = ({
       : open
         ? { open, defaultValue, value: defaultValue }
         : { open, defaultValue, value: dialogState.value };
+  if (dialogState !== normalizedState) {
+    setDialogState(normalizedState);
+  }
   const { value } = normalizedState;
   const setValue = useCallback(
     (nextValue: string) => {
@@ -56,28 +61,41 @@ const InputDialog = ({
     [open, defaultValue],
   );
 
-  const handleConfirm = () => {
-    if (value.trim()) {
-      onConfirm(value.trim());
-      onClose();
+  const handleConfirm = async () => {
+    if (value.trim() && !isPending) {
+      try {
+        await onConfirm(value.trim());
+        onClose();
+      } catch {
+        // Retain the dialog and draft for correction/retry.
+      }
     }
   };
 
   const handleKeyPress = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && value.trim()) {
-      handleConfirm();
+    if (e.key === "Enter" && value.trim() && !isPending) {
+      e.preventDefault();
+      void handleConfirm();
     }
   };
 
   return (
-    <FileBrowserDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
+    <FileBrowserDialog
+      aria-busy={isPending || undefined}
+      disableEscapeKeyDown={isPending}
+      fullWidth
+      maxWidth="xs"
+      onClose={isPending ? undefined : onClose}
+      open={open}
+    >
       <AppDialogTitle>{title}</AppDialogTitle>
       <AppDialogContent>
         <AppTextField
           autoFocus
+          disabled={isPending}
           fullWidth
           label={label}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => !isPending && setValue(e.target.value)}
           onKeyDown={handleKeyPress}
           type="text"
           value={value}
@@ -85,13 +103,15 @@ const InputDialog = ({
         />
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton disabled={isPending} onClick={onClose}>
+          Cancel
+        </AppButton>
         <AppButton
-          disabled={!value.trim()}
-          onClick={handleConfirm}
+          disabled={!value.trim() || isPending}
+          onClick={() => void handleConfirm()}
           variant="contained"
         >
-          {confirmText}
+          {isPending ? "Creating…" : confirmText}
         </AppButton>
       </AppDialogActions>
     </FileBrowserDialog>

@@ -8,7 +8,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
-import { MultiStatsItem } from "../../types/filebrowser";
+import type { MultiStatsItem } from "../../types/filebrowser";
 
 // Glow animation for loading states
 const glowAnimation = `

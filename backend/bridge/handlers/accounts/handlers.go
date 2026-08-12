@@ -10,21 +10,21 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, []apischema.AccountUser]("accounts.list_users").Handle(handleListUsers),
-	apischema.Query[apischema.UsernameRequest, apischema.AccountUserDetails]("accounts.get_user_details").Handle(handleGetUserDetails),
-	apischema.Query[apischema.UsernameRequest, []apischema.AccountUserLogin]("accounts.list_user_logins").Handle(handleListUserLogins),
-	apischema.Query[apischema.TerminateSessionRequest, apischema.NoResponse]("accounts.terminate_session").HandleVoid(handleTerminateSession),
-	apischema.Query[apischema.CreateUserRequest, apischema.NoResponse]("accounts.create_user").HandleVoid(CreateUser),
-	apischema.Query[apischema.UsernameRequest, apischema.NoResponse]("accounts.delete_user").HandleVoid(handleDeleteUser),
-	apischema.Query[apischema.ModifyUserRequest, apischema.NoResponse]("accounts.modify_user").HandleVoid(ModifyUser),
-	apischema.Query[apischema.ChangePasswordRequest, apischema.NoResponse]("accounts.change_password").HandleVoid(handleChangePassword),
-	apischema.Query[apischema.UsernameRequest, apischema.NoResponse]("accounts.lock_user").HandleVoid(handleLockUser),
-	apischema.Query[apischema.UsernameRequest, apischema.NoResponse]("accounts.unlock_user").HandleVoid(handleUnlockUser),
-	apischema.Query[apischema.NoRequest, []apischema.AccountGroup]("accounts.list_groups").Handle(handleListGroups),
-	apischema.Query[apischema.CreateGroupRequest, apischema.NoResponse]("accounts.create_group").HandleVoid(CreateGroup),
-	apischema.Query[apischema.GroupNameRequest, apischema.NoResponse]("accounts.delete_group").HandleVoid(handleDeleteGroup),
-	apischema.Query[apischema.ModifyGroupMembersRequest, apischema.NoResponse]("accounts.modify_group_members").HandleVoid(ModifyGroupMembers),
-	apischema.Query[apischema.NoRequest, []string]("accounts.list_shells").Handle(handleListShells),
+	apischema.Call[apischema.NoRequest, []apischema.AccountUser]("accounts.list_users", apischema.RetrySafe()).Handle(handleListUsers),
+	apischema.Call[apischema.UsernameRequest, apischema.AccountUserDetails]("accounts.get_user_details", apischema.RetrySafe()).Handle(handleGetUserDetails),
+	apischema.Call[apischema.UsernameRequest, []apischema.AccountUserLogin]("accounts.list_user_logins", apischema.RetrySafe()).Handle(handleListUserLogins),
+	apischema.Call[apischema.TerminateSessionRequest, apischema.NoResponse]("accounts.terminate_session").HandleVoid(handleTerminateSession),
+	apischema.Call[apischema.CreateUserRequest, apischema.NoResponse]("accounts.create_user").HandleVoid(CreateUser),
+	apischema.Call[apischema.UsernameRequest, apischema.NoResponse]("accounts.delete_user").HandleVoid(handleDeleteUser),
+	apischema.Call[apischema.ModifyUserRequest, apischema.NoResponse]("accounts.modify_user").HandleVoid(ModifyUser),
+	apischema.Call[apischema.ChangePasswordRequest, apischema.NoResponse]("accounts.change_password").HandleVoid(handleChangePassword),
+	apischema.Call[apischema.UsernameRequest, apischema.NoResponse]("accounts.lock_user").HandleVoid(handleLockUser),
+	apischema.Call[apischema.UsernameRequest, apischema.NoResponse]("accounts.unlock_user").HandleVoid(handleUnlockUser),
+	apischema.Call[apischema.NoRequest, []apischema.AccountGroup]("accounts.list_groups", apischema.RetrySafe()).Handle(handleListGroups),
+	apischema.Call[apischema.CreateGroupRequest, apischema.NoResponse]("accounts.create_group").HandleVoid(CreateGroup),
+	apischema.Call[apischema.GroupNameRequest, apischema.NoResponse]("accounts.delete_group").HandleVoid(handleDeleteGroup),
+	apischema.Call[apischema.ModifyGroupMembersRequest, apischema.NoResponse]("accounts.modify_group_members").HandleVoid(ModifyGroupMembers),
+	apischema.Call[apischema.NoRequest, []string]("accounts.list_shells", apischema.RetrySafe()).Handle(handleListShells),
 )
 
 var Routes = api.Routes()

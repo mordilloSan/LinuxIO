@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -104,7 +104,7 @@ const StackSetupDialog = ({
   };
   // Validate the directory with the backend, then proceed to the editor.
   const { mutate: validateWorkingDir, isPending: isValidating } =
-    linuxio.docker.validate_stack_directory.useAction({
+    useCallMutation(linuxio.docker.validate_stack_directory, {
       success: (result) => {
         if (!result.valid) {
           setErrors((prev) => ({

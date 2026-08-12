@@ -28,7 +28,7 @@ import type {
   ConflictDecision,
   ConflictPrompt,
 } from "@/hooks/filebrowser/useFileConflicts";
-import type { DroppedEntry } from "@/hooks/filebrowser/useFileDragAndDrop";
+import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
 import { useAppTheme } from "@/theme";
 import type {

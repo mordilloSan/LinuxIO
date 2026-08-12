@@ -43,22 +43,25 @@ describe("AppQueryClientProvider", () => {
     expect(createQueryClient()).not.toBe(createQueryClient());
   });
 
-  it("does not repeat the transport's closed-connection retry at Query level", async () => {
-    const queryFn = vi
-      .fn()
-      .mockRejectedValue(new LinuxIOError("offline", "connection_closed"));
+  it.each(["connection_unavailable", "outcome_unknown"] as const)(
+    "does not repeat the transport's %s retry at Query level",
+    async (code) => {
+      const queryFn = vi
+        .fn()
+        .mockRejectedValue(new LinuxIOError("offline", code));
 
-    await expect(
-      createQueryClient().fetchQuery({
-        networkMode: "always",
-        queryFn,
-        queryKey: ["closed-connection"],
-        retryDelay: 0,
-      }),
-    ).rejects.toMatchObject({ code: "connection_closed" });
+      await expect(
+        createQueryClient().fetchQuery({
+          networkMode: "always",
+          queryFn,
+          queryKey: ["connection-loss", code],
+          retryDelay: 0,
+        }),
+      ).rejects.toMatchObject({ code });
 
-    expect(queryFn).toHaveBeenCalledTimes(1);
-  });
+      expect(queryFn).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("retains one Query retry for errors without transport recovery", async () => {
     const queryFn = vi.fn().mockRejectedValue(new Error("temporary failure"));

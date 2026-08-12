@@ -1,40 +1,20 @@
-import {
-  closestCenter,
-  DndContext,
-  DragEndEvent,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  rectSortingStrategy,
-  SortableContext,
-} from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
-import {
-  ComponentType,
-  memo,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import type { ComponentType } from "react";
+import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import DashboardCardSkeleton, {
   type DashboardCardSkeletonLayout,
 } from "@/components/cards/DashboardCardSkeleton";
-import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppGrid from "@/components/ui/AppGrid";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
 
 import DockerInfo from "./Docker";
@@ -129,61 +109,29 @@ const allCards: DashboardCardDefinition[] = [
   },
 ];
 
+const getCardId = (card: DashboardCardDefinition) => card.id;
+
 const DashboardPage = () => {
   const theme = useAppTheme();
   const { dockerAvailable } = useAuth();
-  const [editMode, setEditMode] = useState(false);
-  const [dashboardOrder, setDashboardOrder] = useConfigValue("dashboardOrder");
   const [hiddenCards, setHiddenCards] = useConfigValue("hiddenCards");
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 2000, tolerance: 5 },
-    }),
-  );
 
   const availableCards = useMemo(
     () => allCards.filter((card) => card.id !== "docker" || dockerAvailable),
     [dockerAvailable],
   );
 
-  const cards = useMemo(() => {
+  const visibleCards = useMemo(() => {
     const hiddenSet = new Set(hiddenCards ?? []);
-    const visible = availableCards.filter((c) => !hiddenSet.has(c.id));
+    return availableCards.filter((card) => !hiddenSet.has(card.id));
+  }, [availableCards, hiddenCards]);
 
-    if (!dashboardOrder?.length) return visible;
-
-    const cardMap = new Map(visible.map((c) => [c.id, c]));
-    const ordered: typeof visible = [];
-
-    for (const id of dashboardOrder) {
-      const card = cardMap.get(id);
-      if (card) {
-        ordered.push(card);
-        cardMap.delete(id);
-      }
-    }
-
-    for (const card of cardMap.values()) {
-      ordered.push(card);
-    }
-
-    return ordered;
-  }, [dashboardOrder, hiddenCards, availableCards]);
-
-  const cardIds = useMemo(() => cards.map((c) => c.id), [cards]);
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = cardIds.indexOf(active.id as string);
-    const newIndex = cardIds.indexOf(over.id as string);
-    const newOrder = arrayMove(cardIds, oldIndex, newIndex);
-    setDashboardOrder(newOrder);
-  };
+  const surface = useReorderableSurface({
+    getId: getCardId,
+    items: visibleCards,
+    surface: "dashboard",
+  });
 
   const toggleCard = useCallback(
     (id: string) => {
@@ -212,16 +160,6 @@ const DashboardPage = () => {
             size="small"
           >
             <Icon height={20} icon="mdi:view-grid-outline" width={20} />
-          </AppIconButton>
-        </AppTooltip>
-        <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
-          <AppIconButton
-            aria-label={editMode ? "Lock layout" : "Edit layout"}
-            color={editMode ? "primary" : "default"}
-            onClick={() => setEditMode((prev) => !prev)}
-            size="small"
-          >
-            <Icon height={20} icon="mdi:drag" width={20} />
           </AppIconButton>
         </AppTooltip>
       </div>
@@ -258,36 +196,23 @@ const DashboardPage = () => {
         </div>
       </AppPopover>
 
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-        sensors={sensors}
-      >
-        <SortableContext items={cardIds} strategy={rectSortingStrategy}>
-          <AppGrid container spacing={4}>
-            {cards.map(
-              ({ id, label, component: CardComponent, skeletonLayout }) => (
-                <AppGrid key={id} size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}>
-                  <SortableCard editMode={editMode} id={id}>
-                    <ErrorBoundary>
-                      <Suspense
-                        fallback={
-                          <DashboardCardSkeleton
-                            layout={skeletonLayout}
-                            title={label}
-                          />
-                        }
-                      >
-                        <CardComponent />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </SortableCard>
-                </AppGrid>
-              ),
-            )}
-          </AppGrid>
-        </SortableContext>
-      </DndContext>
+      <ReorderableCardGrid
+        getId={getCardId}
+        renderItem={({ label, component: CardComponent, skeletonLayout }) => (
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <DashboardCardSkeleton layout={skeletonLayout} title={label} />
+              }
+            >
+              <CardComponent />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+        size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+        spacing={4}
+        surface={surface}
+      />
     </div>
   );
 };

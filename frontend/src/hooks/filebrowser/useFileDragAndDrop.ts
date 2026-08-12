@@ -2,11 +2,11 @@ import { useCallback, useState, type DragEvent } from "react";
 
 import type { ResolveCollisionsFn } from "@/hooks/filebrowser/useFileConflicts";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import type { BackgroundJobsContextValue } from "@/types/backgroundJobs";
-import { FileResource } from "@/types/filebrowser";
+import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
+import type { FileResource } from "@/types/filebrowser";
 import { joinPath } from "@/utils/path";
 
-import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
+import { useFileDroppedEntries } from "./useFileDroppedEntries";
 
 interface UseDragAndDropUploadParams {
   editingPath?: string | null;
@@ -14,7 +14,7 @@ interface UseDragAndDropUploadParams {
   onUploadComplete: () => void;
   resolveCollisions: ResolveCollisionsFn;
   resource?: FileResource | null;
-  startUpload: BackgroundJobsContextValue["startUpload"];
+  startUpload: BackgroundTasksContextValue["startUpload"];
 }
 
 interface UseDragAndDropUploadResult {
@@ -150,5 +150,3 @@ export const useFileDragAndDrop = ({
     handleDrop,
   };
 };
-
-export type { DroppedEntry };

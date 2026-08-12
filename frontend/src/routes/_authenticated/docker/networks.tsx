@@ -7,6 +7,6 @@ import DockerNetworksPage from "./-components/DockerNetworksPage";
 
 export const Route = createFileRoute("/_authenticated/docker/networks")({
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [linuxio.docker.list_networks.queryOptions()]),
+    loadRouteQueries(loaderArgs, [linuxio.docker.list_networks]),
   component: DockerNetworksPage,
 });

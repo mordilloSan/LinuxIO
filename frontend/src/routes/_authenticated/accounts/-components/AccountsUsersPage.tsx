@@ -1,9 +1,8 @@
-import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
-import AppButton from "@/components/ui/AppButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -27,14 +26,13 @@ const AccountsUsersPage = () => {
         viewMode={usersView}
       />
       {createUserHandler && (
-        <AppButton
+        <AppActionIconButton
+          ariaLabel="Add User"
+          icon="mdi:plus"
+          iconSize={20}
+          label="Add User"
           onClick={createUserHandler}
-          size="small"
-          startIcon={<Icon height={20} icon="mdi:plus" width={20} />}
-          variant="contained"
-        >
-          Add User
-        </AppButton>
+        />
       )}
     </>
   );

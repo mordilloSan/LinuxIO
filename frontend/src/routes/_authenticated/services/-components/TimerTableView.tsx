@@ -1,5 +1,9 @@
+import { useCallback } from "react";
+
 import type { Timer } from "@/api";
 import { AppTableCell } from "@/components/ui/AppTable";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import { formatUsec } from "./unitFormatters";
 import UnitStatusDot from "./UnitStatusDot";
@@ -10,6 +14,7 @@ interface TimerTableViewProps {
   onSelect?: (name: string | null) => void;
   selected?: string | null;
   timers: Timer[];
+  surface: ReorderableSurface<Timer>;
 }
 
 const desktopColumns = [
@@ -42,51 +47,73 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
+const getTimerRowKey = (timer: Timer) => timer.name;
+
+const renderTimerMainRow = (timer: Timer, isMobile: boolean) => (
+  <>
+    <AppTableCell style={{ paddingLeft: 8 }}>
+      <UnitStatusDot activeState={timer.active_state} />
+      {timer.active_state}
+    </AppTableCell>
+    <AppTableCell>{timer.name}</AppTableCell>
+    {!isMobile && (
+      <>
+        <AppTableCell>{timer.unit || "—"}</AppTableCell>
+        <AppTableCell>{formatUsec(timer.next_elapse_usec)}</AppTableCell>
+        <AppTableCell>{formatUsec(timer.last_trigger_usec)}</AppTableCell>
+      </>
+    )}
+  </>
+);
+
+const renderTimerMobileExpandedContent = (timer: Timer) => (
+  <MobileExpandedDetails
+    rows={[
+      { label: "Unit", value: timer.unit || "—" },
+      { label: "Next", value: formatUsec(timer.next_elapse_usec) },
+      { label: "Last", value: formatUsec(timer.last_trigger_usec) },
+    ]}
+  />
+);
+
 const TimerTableView = ({
+  surface,
   timers,
   selected,
   onSelect,
   onDoubleClick,
-}: TimerTableViewProps) => (
-  <UnitTableView
-    data={timers}
-    desktopColumns={desktopColumns}
-    emptyMessage="No timers found."
-    getRowKey={(timer) => timer.name}
-    mobileColumns={mobileColumns}
-    onDoubleClick={(key) => {
+}: TimerTableViewProps) => {
+  const handleDoubleClick = useCallback(
+    (key: string | number) => {
       if (typeof key === "string") {
         onDoubleClick?.(key);
       }
-    }}
-    onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
-    renderMainRow={(timer, isMobile) => (
-      <>
-        <AppTableCell style={{ paddingLeft: 8 }}>
-          <UnitStatusDot activeState={timer.active_state} />
-          {timer.active_state}
-        </AppTableCell>
-        <AppTableCell>{timer.name}</AppTableCell>
-        {!isMobile && (
-          <>
-            <AppTableCell>{timer.unit || "—"}</AppTableCell>
-            <AppTableCell>{formatUsec(timer.next_elapse_usec)}</AppTableCell>
-            <AppTableCell>{formatUsec(timer.last_trigger_usec)}</AppTableCell>
-          </>
-        )}
-      </>
-    )}
-    renderMobileExpandedContent={(timer) => (
-      <MobileExpandedDetails
-        rows={[
-          { label: "Unit", value: timer.unit || "—" },
-          { label: "Next", value: formatUsec(timer.next_elapse_usec) },
-          { label: "Last", value: formatUsec(timer.last_trigger_usec) },
-        ]}
-      />
-    )}
-    selected={selected}
-  />
-);
+    },
+    [onDoubleClick],
+  );
+  const handleSelect = useCallback(
+    (key: string | number | null) =>
+      onSelect?.(typeof key === "string" ? key : null),
+    [onSelect],
+  );
+
+  const dnd = useVirtualReorderableTableDnd<Timer, Timer>({ surface });
+
+  return (
+    <UnitTableView
+      dnd={dnd}
+      data={timers}
+      desktopColumns={desktopColumns}
+      emptyMessage="No timers found."
+      getRowKey={getTimerRowKey}
+      mobileColumns={mobileColumns}
+      onDoubleClick={handleDoubleClick}
+      onSelect={handleSelect}
+      renderMainRow={renderTimerMainRow}
+      renderMobileExpandedContent={renderTimerMobileExpandedContent}
+      selected={selected}
+    />
+  );
+};
 
 export default TimerTableView;

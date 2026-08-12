@@ -8,11 +8,11 @@ vi.mock("./IndexerDialog", () => ({ default: () => null }));
 vi.mock("@/hooks/useCapabilities", () => ({
   useCapability: () => ({ isEnabled: false, reason: "Unavailable" }),
 }));
-vi.mock("@/hooks/backgroundJobs/useIsIndexing", () => ({
+vi.mock("@/hooks/backgroundTasks/useIsIndexing", () => ({
   useIsIndexing: () => false,
 }));
-vi.mock("@/hooks/backgroundJobs/useBackgroundJobActions", () => ({
-  useBackgroundJobActions: () => ({
+vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
+  useBackgroundTaskActions: () => ({
     openIndexerDialog: vi.fn(),
     startIndexer: vi.fn(),
   }),

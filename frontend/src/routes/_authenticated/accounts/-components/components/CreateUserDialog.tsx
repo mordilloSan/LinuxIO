@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { type CreateUserRequest, linuxio } from "@/api";
+import { type CreateUserRequest, linuxio, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -37,25 +37,29 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [createHome, setCreateHome] = useState(true);
 
-  const { data: shells = [], isLoading: shellsLoading } = useQuery(
-    linuxio.accounts.list_shells.queryOptions({ enabled: open }),
-  );
-  const { data: groups = [], isLoading: groupsLoading } = useQuery(
-    linuxio.accounts.list_groups.queryOptions({ enabled: open }),
-  );
+  const { data: shells = [], isLoading: shellsLoading } = useQuery({
+    ...linuxio.accounts.list_shells,
+    enabled: open,
+  });
+  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+    ...linuxio.accounts.list_groups,
+    enabled: open,
+  });
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
 
-  const { mutate: createUser, isPending } =
-    linuxio.accounts.create_user.useAction({
+  const { mutate: createUser, isPending } = useCallMutation(
+    linuxio.accounts.create_user,
+    {
       success: () => {
         toast.success(`User "${username}" created successfully`);
         handleClose();
       },
       error: "Failed to create user",
       toast: ACCOUNTS_TOAST_META,
-    });
+    },
+  );
 
   const handleClose = () => {
     setUsername("");

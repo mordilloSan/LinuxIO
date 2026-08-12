@@ -9,14 +9,13 @@ import { CACHE_TTL_MS, linuxio } from "@/api";
  * @returns Object with icon data URI and query state
  */
 export function useDockerIcon(identifier: string | undefined, enabled = true) {
-  const query = useQuery(
-    linuxio.docker.get_icon_uri.queryOptions(identifier ?? "", {
-      enabled: enabled && !!identifier,
-      staleTime: CACHE_TTL_MS.ONE_DAY, // Icons rarely change
-      gcTime: CACHE_TTL_MS.ONE_DAY, // Keep in cache for 24 hours
-      retry: 1, // Only retry once for icons
-    }),
-  );
+  const query = useQuery({
+    ...linuxio.docker.get_icon_uri({ identifier: identifier ?? "" }),
+    enabled: enabled && !!identifier,
+    staleTime: CACHE_TTL_MS.ONE_DAY, // Icons rarely change
+    gcTime: CACHE_TTL_MS.ONE_DAY, // Keep in cache for 24 hours
+    retry: 1, // Only retry once for icons
+  });
 
   return {
     iconUri: identifier ? query.data?.uri : null,

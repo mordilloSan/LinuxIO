@@ -1,7 +1,5 @@
 {
   "$schema": "../node_modules/oxlint/configuration_schema.json",
-  // Native Rust plugins. `eslint` core rules are always on; `unicorn` is
-  // deliberately left out (not part of the previous ESLint setup).
   "plugins": ["typescript", "oxc", "react"],
   // ESLint plugins with no native oxc port yet, run via oxlint's JS-plugin
   // workers. Their startup (~1.7s) overlaps with tsgolint type-checking, so
@@ -31,40 +29,36 @@
         "argsIgnorePattern": "^_"
       }
     ],
-    // Suspicious-category rules the previous ESLint config never enforced.
     "no-shadow": "off",
     "no-underscore-dangle": "off",
 
     // --- typescript ---
     "typescript/no-empty-interface": "warn",
-    // Type-aware (requires --type-aware / oxlint-tsgolint).
     "typescript/no-deprecated": "warn",
-    // tsgolint auto-enables every type-aware rule in the categories above;
-    // these were not part of the ESLint config, so keep them off for parity.
-    // no-floating-promises (29 hits) is the one most worth turning on later.
-    "typescript/no-floating-promises": "off",
-    "typescript/unbound-method": "off",
+    "typescript/consistent-type-imports": [
+      "warn",
+      { "disallowTypeAnnotations": false }
+    ],
+    "typescript/consistent-type-exports": "warn",
+    "typescript/no-floating-promises": "warn",
+    "typescript/unbound-method": "warn",
     "typescript/consistent-return": "off",
     "typescript/no-unsafe-type-assertion": "off",
-    "typescript/no-unnecessary-type-assertion": "off",
-    "typescript/no-unnecessary-type-conversion": "off",
-    "typescript/no-unnecessary-type-arguments": "off",
-    "typescript/no-unnecessary-type-parameters": "off",
-    "typescript/no-unnecessary-template-expression": "off",
-    "typescript/no-redundant-type-constituents": "off",
-    "typescript/no-base-to-string": "off",
-    "typescript/no-meaningless-void-operator": "off",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-unnecessary-type-conversion": "warn",
+    "typescript/no-unnecessary-type-arguments": "warn",
+    "typescript/no-unnecessary-type-parameters": "warn",
+    "typescript/no-unnecessary-template-expression": "warn",
+    "typescript/no-redundant-type-constituents": "warn",
+    "typescript/no-base-to-string": "warn",
+    "typescript/no-meaningless-void-operator": "warn",
 
     // --- react ---
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
-    // Native port of the React Compiler diagnostics: flags code the compiler
-    // cannot memoize (the build really does skip those components).
     "react/react-compiler": "warn",
     "react/no-unescaped-entities": "warn",
     "react/react-in-jsx-scope": "off",
-    // Flags the idiomatic `createElement(X, { children })` in .ts files
-    // (src/theme/index.ts) where JSX is not available.
     "react/no-children-prop": "off",
     "react/no-unstable-nested-components": "off",
 
@@ -102,9 +96,17 @@
       }
     ]
   },
-  // The JS-plugin worker has no module resolver, so classify the "@/..."
-  // tsconfig alias as internal by pattern (ESLint got this via resolution).
   "settings": {
     "import-x/internal-regex": "^@/"
-  }
+  },
+  "overrides": [
+    {
+      // Passing a bare method to `expect(...)`/`vi.spyOn(...)` never invokes it,
+      // so the unbound `this` the rule warns about cannot be observed here.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "src/test/**"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    }
+  ]
 }

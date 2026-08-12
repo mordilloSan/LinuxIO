@@ -23,12 +23,16 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 // matches the plural form as one token, so plural sites are not counted twice.
 const SUSPENSE_HOOK_CALL = /(?<![A-Za-z0-9_$.])useSuspenseQuer(?:y|ies)\s*\(/g;
 
-// Matches `linuxio.<handler>.<command>.queryOptions(`. Coverage is compared at
-// handler.command granularity only, never on arguments or query keys: loaders
-// warm parameterized endpoints from loader deps (`get_unit_info(deps.service)`,
-// `get_user_details(deps.user)`, `virt.get(params.name)`) while the observers
-// pass component-derived values (`service.name`, `username`, `name`).
-const ENDPOINT_QUERY_OPTIONS = /\blinuxio\.(\w+)\.(\w+)\.queryOptions\s*\(/g;
+// Matches generated Call descriptors and request-bound descriptor factories:
+//
+//   linuxio.system.get_cpu_info
+//   linuxio.systemd.get_unit_info({ unit })
+//
+// Coverage is compared at handler.command granularity only, never on arguments
+// or query keys: loaders warm parameterized endpoints from loader deps while
+// observers may pass component-derived values.
+const ENDPOINT_QUERY_REFERENCE =
+  /\blinuxio\.(\w+)\.(\w+)(?:\s*\(|(?=\s*[,)}\]]))/g;
 
 // `createFileRoute("<id>")` / `createRootRouteWithContext` — the router's own
 // route id, preferred over deriving one from the file path.
@@ -210,7 +214,7 @@ function propertyValueRegion(code: string, start: number): string {
 }
 
 function endpointsIn(text: string): string[] {
-  return [...text.matchAll(ENDPOINT_QUERY_OPTIONS)].map(
+  return [...text.matchAll(ENDPOINT_QUERY_REFERENCE)].map(
     (match) => `${match[1]}.${match[2]}`,
   );
 }
@@ -471,7 +475,7 @@ function scanRouteCoverage(): CoverageScan {
           if (warmed.has(endpoint)) continue;
           violations.push(
             `${at} suspends on ${endpoint} for route ${route.id} — add ` +
-              `${endpoint}.queryOptions(...) to the loader for ${route.id}, ` +
+              `${endpoint}'s descriptor to the loader for ${route.id}, ` +
               `or switch to useQuery if it is intentionally lazy ` +
               `(loader chain: ${chain.join(" <- ")}; imported via ` +
               `${importChain.join(" -> ")})`,
@@ -545,8 +549,8 @@ describe("suspense loader coverage guard", () => {
 
     expect(
       opaque,
-      "Every suspense call currently passes a literal " +
-        "linuxio.<handler>.<command>.queryOptions(...). A call this scan " +
+      "Every suspense call must pass a literal linuxio endpoint descriptor " +
+        "(a Call value or factory). A call this scan " +
         "cannot read (a variable, a helper return, a prop, a spread) is " +
         "invisible to the coverage check above, so the indirection has to be " +
         "removed or this guard taught to follow it.",
@@ -571,7 +575,7 @@ describe("suspense loader coverage guard", () => {
           ? []
           : [
               `${owner.file}:${owner.endpoint} is not warmed for route ` +
-                `${routeId} — add ${owner.endpoint}.queryOptions(...) to the ` +
+                `${routeId} — add ${owner.endpoint}'s descriptor to the ` +
                 `loader for ${routeId}, or switch to useQuery if it is ` +
                 `intentionally lazy`,
             ];

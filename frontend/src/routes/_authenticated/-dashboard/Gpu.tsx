@@ -15,11 +15,10 @@ import {
 
 const GpuStats = () => {
   const theme = useAppTheme();
-  const { data: gpus } = useSuspenseQuery(
-    linuxio.system.get_gpu_info.queryOptions({
-      refetchInterval: 2_000,
-    }),
-  );
+  const { data: gpus } = useSuspenseQuery({
+    ...linuxio.system.get_gpu_info,
+    refetchInterval: 2_000,
+  });
 
   if (!gpus || gpus.length === 0) {
     return (

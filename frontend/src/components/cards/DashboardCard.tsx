@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
+  memo,
   useId,
   useState,
   type ChangeEvent,
@@ -234,6 +235,22 @@ export interface DashboardCardProps {
   contentLayout?: ContentLayout;
 }
 
+const DashboardCardTitle = memo(function DashboardCardTitle({
+  title,
+}: {
+  title: string;
+}) {
+  return (
+    <AppTypography
+      fontWeight={700}
+      style={{ transform: "translateY(-1px)" }}
+      variant="h5"
+    >
+      {title}
+    </AppTypography>
+  );
+});
+
 /**
  * Static card shell: it takes no data props and holds no polling state, so it
  * renders once and stays inert while data updates. Anything data-driven —
@@ -286,13 +303,7 @@ const DashboardCard = ({
         >
           {/* Title and optional extras */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <AppTypography
-              fontWeight={700}
-              style={{ transform: "translateY(-1px)" }}
-              variant="h5"
-            >
-              {title}
-            </AppTypography>
+            <DashboardCardTitle title={title} />
 
             {headerExtras}
           </div>

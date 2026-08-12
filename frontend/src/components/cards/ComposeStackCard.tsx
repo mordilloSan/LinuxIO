@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -21,6 +23,66 @@ interface ComposeStackCardProps {
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+}
+
+function areStringArraysEqual(previous: string[], next: string[]) {
+  return (
+    previous.length === next.length &&
+    previous.every((value, index) => value === next[index])
+  );
+}
+
+function areDisplayedServicesEqual(
+  previous: ComposeProject["services"],
+  next: ComposeProject["services"],
+) {
+  const previousEntries = Object.entries(previous);
+  if (previousEntries.length !== Object.keys(next).length) return false;
+
+  return previousEntries.every(([name, service]) => {
+    const nextService = next[name];
+    return (
+      nextService !== undefined &&
+      service.container_count === nextService.container_count &&
+      service.state === nextService.state
+    );
+  });
+}
+
+function areComposeStackCardPropsEqual(
+  previous: ComposeStackCardProps,
+  next: ComposeStackCardProps,
+) {
+  if (
+    previous.isLoading !== next.isLoading ||
+    previous.onDelete !== next.onDelete ||
+    previous.onEdit !== next.onEdit ||
+    previous.onRestart !== next.onRestart ||
+    previous.onStart !== next.onStart ||
+    previous.onStop !== next.onStop
+  ) {
+    return false;
+  }
+
+  const previousProject = previous.project;
+  const nextProject = next.project;
+  if (previousProject === nextProject) return true;
+
+  // Containers are intentionally excluded. Their status details feed the
+  // expanded table, while this card only renders the project summary below.
+  // The delete flow reads the compared name/config/location fields.
+  return (
+    previousProject.icon === nextProject.icon &&
+    previousProject.name === nextProject.name &&
+    previousProject.status === nextProject.status &&
+    previousProject.update_available === nextProject.update_available &&
+    previousProject.working_dir === nextProject.working_dir &&
+    areStringArraysEqual(
+      previousProject.config_files,
+      nextProject.config_files,
+    ) &&
+    areDisplayedServicesEqual(previousProject.services, nextProject.services)
+  );
 }
 
 const ComposeStackCard = ({
@@ -175,4 +237,4 @@ const ComposeStackCard = ({
   );
 };
 
-export default ComposeStackCard;
+export default memo(ComposeStackCard, areComposeStackCardPropsEqual);

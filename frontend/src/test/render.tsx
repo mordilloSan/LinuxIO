@@ -17,11 +17,14 @@ import {
   useContext,
 } from "react";
 
+import type { AppConfig } from "@/api";
 import { emptyCapabilityState } from "@/api/capabilities";
 import type { CapabilitiesResponse } from "@/api/capabilities";
 import { AuthContext } from "@/contexts/AuthContext";
+import { ConfigContext } from "@/contexts/ConfigContext";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import type { AuthContextType } from "@/types/auth";
+import type { ConfigContextType } from "@/types/config";
 
 export function createTestQueryClient() {
   return new QueryClient({
@@ -54,7 +57,43 @@ export function createAuthContextValue(
   };
 }
 
+// Anything rendering a list reads config now: reorderable surfaces read their
+// saved order from it. Tests get a real context with inert writes so they never
+// have to know that.
+export function createConfigContextValue(
+  overrides: Partial<AppConfig["appSettings"]> = {},
+): ConfigContextType {
+  return {
+    config: {
+      appSettings: {
+        primaryColor: "#2196f3",
+        showHiddenFiles: true,
+        sidebarCollapsed: false,
+        theme: "DARK",
+        ...overrides,
+      },
+      docker: {
+        folders: [],
+        proxy: { caddyEnabled: false },
+        requireMountsForFolders: false,
+      },
+      jobs: {
+        archiveCompressionWorkers: 0,
+        archiveExtractWorkers: 0,
+        heavyArchiveConcurrency: 1,
+        notificationMinIntervalMs: 1000,
+        progressMinBytesMB: 16,
+        progressMinIntervalMs: 250,
+      },
+    },
+    isLoaded: true,
+    setKey: () => {},
+    updateConfig: () => {},
+  };
+}
+
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
+  appSettings?: Partial<AppConfig["appSettings"]>;
   auth?: Partial<AuthContextType>;
   queryClient?: QueryClient;
 }
@@ -62,21 +101,25 @@ interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
 export function render(
   ui: ReactElement,
   {
+    appSettings,
     auth,
     queryClient = createTestQueryClient(),
     ...options
   }: AppRenderOptions = {},
 ) {
   const authValue = createAuthContextValue(auth);
+  const configValue = createConfigContextValue(appSettings);
   const user = userEvent.setup();
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={authValue}>
-          <AppThemeProvider value={buildAppTheme("DARK")}>
-            {children}
-          </AppThemeProvider>
+          <ConfigContext.Provider value={configValue}>
+            <AppThemeProvider value={buildAppTheme("DARK")}>
+              {children}
+            </AppThemeProvider>
+          </ConfigContext.Provider>
         </AuthContext.Provider>
       </QueryClientProvider>
     );
@@ -119,9 +162,11 @@ export function createTanStackRouterWrapper({
       <TanStackRouterTestChildren.Provider value={children}>
         <QueryClientProvider client={queryClient}>
           <AuthContext.Provider value={authValue}>
-            <AppThemeProvider value={buildAppTheme("DARK")}>
-              <RouterProvider router={router} />
-            </AppThemeProvider>
+            <ConfigContext.Provider value={createConfigContextValue()}>
+              <AppThemeProvider value={buildAppTheme("DARK")}>
+                <RouterProvider router={router} />
+              </AppThemeProvider>
+            </ConfigContext.Provider>
           </AuthContext.Provider>
         </QueryClientProvider>
       </TanStackRouterTestChildren.Provider>

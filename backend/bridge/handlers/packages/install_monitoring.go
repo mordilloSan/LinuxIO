@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -26,23 +26,23 @@ var (
 	monitoringInstallRunner     = runMonitoringInstallScript
 )
 
-func installMonitoring(ctx context.Context, job *bridgejobs.Job) error {
+func installMonitoring(ctx context.Context, task *bridgetask.Task) error {
 	ctx, cancel := context.WithTimeout(ctx, monitoringInstallTimeout)
 	defer cancel()
 
-	reportProgress(job, stageResolve, "Downloading go-monitoring installer", pctResolve)
+	reportProgress(task, stageResolve, "Downloading go-monitoring installer", pctResolve)
 	script, err := downloadMonitoringInstallScript(ctx, monitoringInstallHTTPClient)
 	if err != nil {
 		return fmt.Errorf("download go-monitoring installer: %w", err)
 	}
 
-	reportProgress(job, stageInstallAsset, "Running go-monitoring installer", pctInstallStart)
+	reportProgress(task, stageInstallAsset, "Running go-monitoring installer", pctInstallStart)
 	output, err := monitoringInstallRunner(ctx, script)
 	if err != nil {
 		return fmt.Errorf("run go-monitoring installer: %w", monitoringInstallCommandError(err, output))
 	}
 
-	reportProgress(job, stageInstallAsset, "Installed go-monitoring", pctInstallEnd)
+	reportProgress(task, stageInstallAsset, "Installed go-monitoring", pctInstallEnd)
 	return nil
 }
 

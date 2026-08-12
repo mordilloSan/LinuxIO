@@ -3,14 +3,16 @@ import { useCallback, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppGrid from "@/components/ui/AppGrid";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -22,15 +24,16 @@ interface GroupsTabProps {
   viewMode?: "table" | "card";
 }
 
+const getAccountGroupId = (group: AccountGroup) => group.name;
+
 const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
-  const { data: groups } = useSuspenseQuery(
-    linuxio.accounts.list_groups.queryOptions({
-      refetchInterval: 10000,
-    }),
-  );
+  const { data: groups } = useSuspenseQuery({
+    ...linuxio.accounts.list_groups,
+    refetchInterval: 10000,
+  });
 
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -47,7 +50,17 @@ const GroupsTab = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateGroup);
 
-  const filtered = groupsList.filter(
+  const surface = useReorderableSurface({
+    getId: getAccountGroupId,
+    items: groupsList,
+    surface: "accounts.groups",
+  });
+  const tableDnd = useReorderableTableDnd<AccountGroup, AccountGroup>({
+    handleAriaLabel: "Reorder group",
+    surface,
+  });
+
+  const filtered = surface.items.filter(
     (group) =>
       group.name.toLowerCase().includes(search.toLowerCase()) ||
       group.members.some((m) => m.toLowerCase().includes(search.toLowerCase())),
@@ -216,17 +229,19 @@ const GroupsTab = ({
       </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
-          <AppGrid container spacing={2}>
-            {filtered.map((group) => (
-              <AppGrid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <GroupCard
-                  group={group}
-                  onDelete={() => handleDelete(group)}
-                  onEditMembers={() => handleEditMembers(group)}
-                />
-              </AppGrid>
-            ))}
-          </AppGrid>
+          <ReorderableCardGrid
+            getId={getAccountGroupId}
+            items={filtered}
+            renderItem={(group) => (
+              <GroupCard
+                group={group}
+                onDelete={() => handleDelete(group)}
+                onEditMembers={() => handleEditMembers(group)}
+              />
+            )}
+            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            surface={surface}
+          />
         ) : (
           <div style={{ textAlign: "center", paddingBlock: 16 }}>
             <AppTypography color="text.secondary" variant="body2">
@@ -239,6 +254,7 @@ const GroupsTab = ({
           ariaLabel="Groups"
           columns={columns}
           data={filtered}
+          dnd={tableDnd}
           emptyMessage="No groups found."
           fillAvailable
           getRowId={(group) => group.name}

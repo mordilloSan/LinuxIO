@@ -38,7 +38,7 @@ const FolderShareCard = ({
     {/* Path */}
     <AppTypography
       color="text.secondary"
-      style={{ marginBottom: 6, fontFamily: "monospace" }}
+      style={{ marginBottom: 6, fontFamily: "var(--app-font-mono)" }}
       variant="body2"
     >
       {path}

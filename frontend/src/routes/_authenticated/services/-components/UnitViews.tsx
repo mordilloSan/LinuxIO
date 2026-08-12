@@ -5,25 +5,31 @@ import {
   Children,
   Fragment,
   isValidElement,
+  useCallback,
+  useMemo,
   type CSSProperties,
   type ReactNode,
 } from "react";
 
 import type { UnitInfo } from "@/api";
-import { linuxio } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
+import SortableCard from "@/components/cards/SortableCard";
 import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
+import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type {
   AppVirtualDataTableBreakpoint,
   AppVirtualDataTableColumnDef,
+  AppVirtualDataTableDndOptions,
 } from "@/components/tables/AppVirtualDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { getServiceStatusColor } from "@/constants/statusColors";
+import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
@@ -37,6 +43,9 @@ export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
 export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 
+// In layout mode a card press belongs to the drag, not to opening the unit.
+const noopExpand = () => {};
+
 const UNIT_CARD_GRID_GAP = 12;
 const UNIT_CARD_MIN_WIDTH = 360;
 const UNIT_CARD_ESTIMATE_HEIGHT = 150;
@@ -45,8 +54,9 @@ const SERVICES_TOAST_META = {
   to: "/services",
 } as const;
 
-interface UnitTableViewProps<T> {
+interface UnitTableViewProps<T extends RowData> {
   data: T[];
+  dnd?: AppVirtualDataTableDndOptions<T>;
   desktopColumns: UnitTableColumn[];
   emptyMessage: string;
   getRowKey: (row: T, index: number) => string | number;
@@ -69,6 +79,7 @@ interface UnitTableColumn {
 
 interface UnitCardsViewProps<T extends UnitListItem> {
   emptyMessage: string;
+  surface: ReorderableSurface<T>;
   expanded: string | null;
   items: T[];
   onExpand: (name: string | null) => void;
@@ -194,16 +205,23 @@ export function UnitStatusRows({
               </span>
             )}
           </span>
-          {timestamp !== "—" && (
-            <span
-              style={{
-                fontSize: "0.7rem",
-                color: "var(--app-palette-text-secondary)",
-              }}
-            >
-              {isActive ? "Active" : "Inactive"} since {timestamp}
-            </span>
-          )}
+          {/*
+            Units without a transition timestamp keep the line as an invisible
+            spacer: dropping it outright makes their card a line shorter than
+            its neighbours, which is what made the grid look ragged.
+          */}
+          <span
+            aria-hidden={timestamp === "—" ? true : undefined}
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--app-palette-text-secondary)",
+              visibility: timestamp === "—" ? "hidden" : undefined,
+            }}
+          >
+            {timestamp === "—"
+              ? " "
+              : `${isActive ? "Active" : "Inactive"} since ${timestamp}`}
+          </span>
         </div>
       </DetailRow>
       <AutoStartRow unitFileState={unitFileState} />
@@ -235,28 +253,47 @@ export const UnitCardActions = ({
     toast: SERVICES_TOAST_META,
   });
 
-  const { mutate: startService, isPending: isStarting } =
-    linuxio.systemd.start_service.useAction(actionConfig("started"));
-  const { mutate: stopService, isPending: isStopping } =
-    linuxio.systemd.stop_service.useAction(actionConfig("stopped"));
-  const { mutate: restartService, isPending: isRestarting } =
-    linuxio.systemd.restart_service.useAction(actionConfig("restarted"));
-  const { mutate: reloadService, isPending: isReloading } =
-    linuxio.systemd.reload_service.useAction(actionConfig("reloaded"));
-  const { mutate: enableService, isPending: isEnabling } =
-    linuxio.systemd.enable_service.useAction(actionConfig("enabled"));
-  const { mutate: disableService, isPending: isDisabling } =
-    linuxio.systemd.disable_service.useAction(actionConfig("disabled"));
-  const { mutate: maskService, isPending: isMasking } =
-    linuxio.systemd.mask_service.useAction(actionConfig("masked"));
-  const { mutate: unmaskService, isPending: isUnmasking } =
-    linuxio.systemd.unmask_service.useAction(actionConfig("unmasked"));
+  const { mutate: startService, isPending: isStarting } = useCallMutation(
+    linuxio.systemd.start_service,
+    actionConfig("started"),
+  );
+  const { mutate: stopService, isPending: isStopping } = useCallMutation(
+    linuxio.systemd.stop_service,
+    actionConfig("stopped"),
+  );
+  const { mutate: restartService, isPending: isRestarting } = useCallMutation(
+    linuxio.systemd.restart_service,
+    actionConfig("restarted"),
+  );
+  const { mutate: reloadService, isPending: isReloading } = useCallMutation(
+    linuxio.systemd.reload_service,
+    actionConfig("reloaded"),
+  );
+  const { mutate: enableService, isPending: isEnabling } = useCallMutation(
+    linuxio.systemd.enable_service,
+    actionConfig("enabled"),
+  );
+  const { mutate: disableService, isPending: isDisabling } = useCallMutation(
+    linuxio.systemd.disable_service,
+    actionConfig("disabled"),
+  );
+  const { mutate: maskService, isPending: isMasking } = useCallMutation(
+    linuxio.systemd.mask_service,
+    actionConfig("masked"),
+  );
+  const { mutate: unmaskService, isPending: isUnmasking } = useCallMutation(
+    linuxio.systemd.unmask_service,
+    actionConfig("unmasked"),
+  );
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    linuxio.systemd.reset_failed_service.useAction(actionConfig("reset"));
+    useCallMutation(
+      linuxio.systemd.reset_failed_service,
+      actionConfig("reset"),
+    );
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";
-  const liveUnitFileState = String(info?.UnitFileState ?? unitFileState ?? "");
+  const liveUnitFileState = info?.UnitFileState ?? unitFileState ?? "";
   const isEnabled =
     liveUnitFileState === "enabled" || liveUnitFileState === "enabled-runtime";
   const isMasked = liveUnitFileState === "masked";
@@ -450,6 +487,7 @@ function getRenderedCellContent(cell: ReactNode) {
 }
 
 export function UnitTableView<T extends RowData>({
+  dnd,
   data,
   desktopColumns,
   mobileColumns,
@@ -464,21 +502,33 @@ export function UnitTableView<T extends RowData>({
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
-  const renderedCellCache = new Map<string, ReactNode[]>();
-  const columns: AppVirtualDataTableColumnDef<T>[] = activeColumns.map(
-    (column, columnIndex) => ({
+  const columns = useMemo<AppVirtualDataTableColumnDef<T>[]>(() => {
+    const renderedCellCache = new Map<
+      string,
+      { cells: ReactNode[]; original: T; rowIndex: number }
+    >();
+
+    return activeColumns.map((column, columnIndex) => ({
       id: column.field,
       header: column.headerName,
       cell: ({ row }) => {
         const rowKey = String(getRowKey(row.original, row.index));
-        let cells = renderedCellCache.get(rowKey);
-        if (!cells) {
-          cells = flattenRenderedCells(
-            renderMainRow(row.original, isMobile, row.index),
-          );
-          renderedCellCache.set(rowKey, cells);
+        let cached = renderedCellCache.get(rowKey);
+        if (
+          !cached ||
+          cached.original !== row.original ||
+          cached.rowIndex !== row.index
+        ) {
+          cached = {
+            cells: flattenRenderedCells(
+              renderMainRow(row.original, isMobile, row.index),
+            ),
+            original: row.original,
+            rowIndex: row.index,
+          };
+          renderedCellCache.set(rowKey, cached);
         }
-        return getRenderedCellContent(cells[columnIndex]);
+        return getRenderedCellContent(cached.cells[columnIndex]);
       },
       meta: {
         align: column.align,
@@ -488,7 +538,29 @@ export function UnitTableView<T extends RowData>({
         hideBelow: getHideBelow(column.className),
         width: column.width,
       },
-    }),
+    }));
+  }, [activeColumns, getRowKey, isMobile, renderMainRow]);
+  const getTableRowId = useCallback(
+    (row: T, index: number) => String(getRowKey(row, index)),
+    [getRowKey],
+  );
+  const handleRowClick = useCallback(
+    ({ original, index }: { original: T; index: number }) => {
+      const rowKey = getRowKey(original, index);
+      onSelect?.(selected === rowKey ? null : rowKey);
+    },
+    [getRowKey, onSelect, selected],
+  );
+  const handleRowDoubleClick = useCallback(
+    ({ original, index }: { original: T; index: number }) => {
+      onDoubleClick?.(getRowKey(original, index));
+    },
+    [getRowKey, onDoubleClick],
+  );
+  const renderExpandedContent = useCallback(
+    ({ original, index }: { original: T; index: number }) =>
+      renderMobileExpandedContent?.(original, index),
+    [renderMobileExpandedContent],
   );
 
   return (
@@ -496,24 +568,15 @@ export function UnitTableView<T extends RowData>({
       ariaLabel="Units"
       columns={columns}
       data={data}
+      dnd={dnd}
       emptyMessage={emptyMessage}
       fillAvailable
-      getRowId={(row, index) => String(getRowKey(row, index))}
-      onRowClick={
-        isMobile
-          ? undefined
-          : ({ original, index }) => {
-              const rowKey = getRowKey(original, index);
-              onSelect?.(selected === rowKey ? null : rowKey);
-            }
-      }
-      onRowDoubleClick={({ original, index }) =>
-        onDoubleClick?.(getRowKey(original, index))
-      }
+      getRowId={getTableRowId}
+      onRowClick={isMobile ? undefined : handleRowClick}
+      onRowDoubleClick={handleRowDoubleClick}
       renderExpandedContent={
         isMobile && renderMobileExpandedContent
-          ? ({ original, index }) =>
-              renderMobileExpandedContent(original, index)
+          ? renderExpandedContent
           : undefined
       }
       selectedRowId={
@@ -524,6 +587,7 @@ export function UnitTableView<T extends RowData>({
 }
 
 export function UnitCardsView<T extends UnitListItem>({
+  surface,
   items,
   expanded,
   onExpand,
@@ -541,25 +605,35 @@ export function UnitCardsView<T extends UnitListItem>({
 
   if (!expandedItem) {
     return (
-      <AppVirtualGrid
-        ariaLabel="Units"
-        emptyMessage={emptyMessage}
-        estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
-        fillAvailable
-        gap={UNIT_CARD_GRID_GAP}
-        getItemKey={(item) => item.name}
-        items={items}
-        minItemWidth={UNIT_CARD_MIN_WIDTH}
-        padding={0}
-        renderItem={(item) => (
-          <UnitCard
-            isSelected={false}
-            item={item}
-            onExpand={onExpand}
-            renderSummaryRows={renderSummaryRows}
-          />
-        )}
-      />
+      // Only the cards the virtualizer has mounted are drop targets, so a long
+      // list is rearranged in steps, scrolling between drags.
+      <ReorderableArea surface={surface}>
+        <AppVirtualGrid
+          ariaLabel="Units"
+          emptyMessage={emptyMessage}
+          estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
+          fillAvailable
+          gap={UNIT_CARD_GRID_GAP}
+          getItemKey={(item) => item.name}
+          items={items}
+          minItemWidth={UNIT_CARD_MIN_WIDTH}
+          padding={0}
+          renderItem={(item) => (
+            <SortableCard
+              editMode={surface.editMode}
+              id={item.name}
+              pending={surface.pendingId === item.name}
+            >
+              <UnitCard
+                isSelected={false}
+                item={item}
+                onExpand={surface.editMode ? noopExpand : onExpand}
+                renderSummaryRows={renderSummaryRows}
+              />
+            </SortableCard>
+          )}
+        />
+      </ReorderableArea>
     );
   }
 

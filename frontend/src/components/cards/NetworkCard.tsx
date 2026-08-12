@@ -103,7 +103,7 @@ const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
       style={{
         marginTop: 4,
         marginBottom: 4,
-        fontFamily: "monospace",
+        fontFamily: "var(--app-font-mono)",
         fontSize: "0.78rem",
         ...longTextStyles,
       }}

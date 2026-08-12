@@ -19,7 +19,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/watchtower"
-	bridgejobs "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -38,7 +38,7 @@ type watchtowerAsset struct {
 	checksumURL string
 }
 
-func installWatchtower(ctx context.Context, job *bridgejobs.Job) error {
+func installWatchtower(ctx context.Context, task *bridgetask.Task) error {
 	watchtowerVersion, err := configuredWatchtowerVersion()
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func installWatchtower(ctx context.Context, job *bridgejobs.Job) error {
 		return err
 	}
 
-	reportProgress(job, stageResolve, fmt.Sprintf("Resolving Watchtower %s", watchtowerVersion), pctResolve)
+	reportProgress(task, stageResolve, fmt.Sprintf("Resolving Watchtower %s", watchtowerVersion), pctResolve)
 	slog.Info("Installing Watchtower.", "version", watchtowerVersion, "asset", asset.name)
 
 	client := &http.Client{Timeout: watchtowerHTTPTimeout}
@@ -59,35 +59,35 @@ func installWatchtower(ctx context.Context, job *bridgejobs.Job) error {
 		return fmt.Errorf("download Watchtower %s checksum: %w", watchtowerVersion, err)
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Downloading Watchtower %s", watchtowerVersion), pctInstallStart)
+	reportProgress(task, stageInstallAsset, fmt.Sprintf("Downloading Watchtower %s", watchtowerVersion), pctInstallStart)
 	archiveBytes, err := downloadWatchtowerAsset(ctx, client, asset)
 	if err != nil {
 		return fmt.Errorf("download Watchtower %s: %w", watchtowerVersion, err)
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Verifying Watchtower %s", watchtowerVersion), 70)
+	reportProgress(task, stageInstallAsset, fmt.Sprintf("Verifying Watchtower %s", watchtowerVersion), 70)
 	if verifyErr := verifyWatchtowerAsset(asset, archiveBytes, expectedSHA256); verifyErr != nil {
 		return verifyErr
 	}
 
-	reportProgress(job, stageInstallAsset, "Extracting Watchtower", 78)
+	reportProgress(task, stageInstallAsset, "Extracting Watchtower", 78)
 	binaryBytes, err := extractWatchtowerBinary(archiveBytes)
 	if err != nil {
 		return fmt.Errorf("extract Watchtower binary: %w", err)
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Installing %s", watchtower.BinaryName), 82)
+	reportProgress(task, stageInstallAsset, fmt.Sprintf("Installing %s", watchtower.BinaryName), 82)
 	installPath := watchtower.BinaryPath()
 	if err := utils.WriteFileAtomic(installPath, binaryBytes, 0o755); err != nil {
 		return fmt.Errorf("install %s: %w", installPath, err)
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Configuring %s", watchtower.TimerName), 84)
+	reportProgress(task, stageInstallAsset, fmt.Sprintf("Configuring %s", watchtower.TimerName), 84)
 	if err := writeWatchtowerServiceFiles(ctx); err != nil {
 		return err
 	}
 
-	reportProgress(job, stageInstallAsset, fmt.Sprintf("Installed Watchtower %s", watchtowerVersion), pctInstallEnd)
+	reportProgress(task, stageInstallAsset, fmt.Sprintf("Installed Watchtower %s", watchtowerVersion), pctInstallEnd)
 	slog.Info("Installed Watchtower.", "version", watchtowerVersion, "path", installPath, "unit", watchtower.UnitName, "timer", watchtower.TimerName)
 	return nil
 }

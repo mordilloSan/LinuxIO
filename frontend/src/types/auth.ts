@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
 

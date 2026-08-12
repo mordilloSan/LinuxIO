@@ -10,16 +10,17 @@ export const Route = createFileRoute("/_authenticated/vm/machines/$name")({
   // Path params are automatic loader deps, so no loaderDeps is needed.
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.virt.get.queryOptions(loaderArgs.params.name),
+      linuxio.virt.get({ name: loaderArgs.params.name }),
     ]),
   component: VMDetailRoute,
 });
 
 function VMDetailRoute() {
   const { name } = Route.useParams();
-  const { data: vm } = useSuspenseQuery(
-    linuxio.virt.get.queryOptions(name, { refetchInterval: 5000 }),
-  );
+  const { data: vm } = useSuspenseQuery({
+    ...linuxio.virt.get({ name }),
+    refetchInterval: 5000,
+  });
 
   return <VMDetailsPanel vm={vm} />;
 }

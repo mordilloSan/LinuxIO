@@ -1,21 +1,26 @@
 # Handler Patterns
 
-This document covers handler style and package organization. Route contracts, frontend shape, transport, modes, jobs, and endpoint creation live in the canonical [API Contract](./api-contract.md).
+This document covers handler style and package organization. Route contracts, frontend shape, transport, modes, Tasks, and endpoint creation live in the canonical [API Contract](./api-contract.md).
 
 ## `handlers.go` Layout
 
-`handlers.go` is only route wiring and IPC adapter code. It may contain:
+`handlers.go` is only route wiring and IPC adapter code. It may contain route
+binding variables/functions (`api`, `Routes`, `routeBindings`) in addition to:
 
 - `RegisterHandlers`
 - `handle*` adapter functions or methods
 
-It must not contain package state types, package variables, constants, helper functions, validators, parsers, or domain implementations. Put those in named files beside it, for example:
+It must not contain domain state, package variables/constants unrelated to route
+registration, helper functions, validators, parsers, or domain implementations.
+Put those in named files beside it, for example:
 
 - `handler_state.go` for small adapter state structs
-- `*_operation.go` for mutation/job orchestration
+- `*_operation.go` for mutation/Task orchestration
 - domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
 
-Every adapter in `handlers.go` receives a typed request and returns `(Result, error)`. The returned `Result` is emitted as the route result, and the compiler checks it against the type declared in the binding:
+Every Call adapter in `handlers.go` receives a typed request. A result-bearing
+adapter returns `(Result, error)`; the compiler checks `Result` against the type
+declared in the binding:
 
 ```go
 func handleListTimers(ctx context.Context, _ apischema.NoRequest) ([]apischema.Timer, error) {
@@ -27,11 +32,13 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apis
 }
 ```
 
-Void routes declare `apischema.NoResponse` and return through `apischema.Done`, which keeps the wire result null:
+Void routes declare `apischema.NoResponse` and use `HandleVoid`; the adapter
+returns the implementation error directly and the binding keeps the wire result
+null:
 
 ```go
-func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) (apischema.NoResponse, error) {
-    return apischema.Done(SetMTU(ctx, req.Iface, req.MTU))
+func handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) error {
+    return SetMTU(ctx, req.Iface, req.MTU)
 }
 ```
 
@@ -43,7 +50,16 @@ func ListTimers(ctx context.Context) ([]apischema.Timer, error) {
 }
 ```
 
-Handlers do not receive an emitter. The raw `func(ctx, req, emit bridgeipc.Events) error` shape exists only as `.HandleEvents`, reserved for the few handlers that emit progress frames before their result (`filebrowser.resource_patch`, `virt.create`); everything else binds with `.Handle`.
+Handlers do not receive a universal emitter. Calls use
+`func(context.Context, Request) (Result, error)` (or `error` with
+`HandleVoid`); Task runners use
+`func(context.Context, *bridgeipc.Task, Request) (Result, error)`; Channels use
+`func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
+The compiler checks each Call and Task terminal result against its route
+declaration. `WithTaskProgress[T]` declares the route-specific detail carried by
+the common `TaskProgress<T>` envelope. Detail types implement
+`ProgressEnvelope()` and are passed to `task.ReportProgress()`; Task data uses
+the focused data-attachment Channel.
 
 ## Context
 
@@ -111,7 +127,10 @@ D-Bus-backed operations still use domain namespaces:
 - `hostname.*` for hostname changes
 - `datetime.*` for time, timezone, and NTP operations
 
-The `jobs.*` namespace is reserved by `bridgeipc`.
+The `tasks.*` namespace is reserved by `bridgeipc`. Its public contracts live in
+the `tasks` handler family, while the router's `TaskService` registers and owns
+their implementations. Domain packages must not register routes in that
+namespace.
 
 ## File Naming
 
@@ -119,25 +138,52 @@ Handler packages should name files after the domain operation they implement, no
 
 | Location | Allowed naming | Avoid |
 |----------|----------------|-------|
-| `backend/common/ipc/bridge` | Framework terms such as `jobs.go`, `job_primitives.go`, `router.go` | Domain-specific handler code |
-| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `jobs.go`, `stream.go`, `rpc.go`, `handler.go` |
+| `backend/common/ipc/bridge` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
+| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
 
-Use `operation` for job-backed mutations or long-running work, `follow` for log/watch-style jobs, and `session` for true duplex routes. The route mode still lives in the route spec; the filename should help humans find the domain behavior without implying a second IPC subsystem.
+Use `operation` for Task-backed mutations or long-running work, `follow` for
+log/watch Channels, and `session` for bidirectional Channels. The route mode
+still lives in the route spec; the filename should help humans find the domain
+behavior without implying a second IPC subsystem.
 
 ## Request Validation
 
-Request JSON is decoded before the handler runs. Use typed fields directly:
+Request JSON is decoded before the handler runs. Normal route bindings and the
+reserved Task service use the same strict `encoding/json/v2.Unmarshal` path
+with `RejectUnknownMembers(true)`. Unknown or case-mismatched fields, duplicate
+names, invalid UTF-8, and trailing data are rejected; scalar type failures are
+`*json.SemanticError`. A missing or `null` request produces the typed zero
+value. Required fields remain domain validation because zero values alone
+cannot prove presence. Use typed fields directly:
 
 ```go
-func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) (apischema.NoResponse, error) {
+func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
     if req.ServiceName == "" {
-        return apischema.Done(bridgeipc.NewError("missing service name", 400))
+        return bridgeipc.NewError("missing service name", 400)
     }
-    return apischema.Done(StartUnit(ctx, req.ServiceName))
+    return StartUnit(ctx, req.ServiceName)
 }
 ```
 
 Return `bridgeipc.NewError(message, code)` for typed client errors.
+
+## Call Retry Safety
+
+Calls default to no retry. Add `apischema.RetrySafe()` only when repeating the
+Call after a lost result cannot cause a user-visible mutation:
+
+```go
+apischema.Call[apischema.NoRequest, apischema.SystemInfo](
+    "system.get_system_info",
+    apischema.RetrySafe(),
+).Handle(handleGetSystemInfo)
+```
+
+The Go option is emitted into generated route metadata; handlers and frontend
+call sites must not infer safety from `get_`, `list_`, or another route-name
+pattern. Task starts and mutating Calls remain no-retry. Return structured
+`bridgeipc.Error` codes when feature code must distinguish outcomes; human error
+messages are presentation, not control flow.
 
 ## Privilege
 

@@ -9,14 +9,14 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.Query[apischema.NoRequest, apischema.MonitoringConfig]("monitoring.get_config", apischema.Privileged()).Handle(handleGetConfig),
-	apischema.Query[apischema.NoRequest, apischema.MonitoringStatus]("monitoring.get_status", apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringCPUHistoryPoint]("monitoring.get_cpu_history", apischema.Privileged()).Handle(handleGetCPUHistory),
-	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringMemoryHistoryPoint]("monitoring.get_memory_history", apischema.Privileged()).Handle(handleGetMemoryHistory),
-	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringDiskIOHistoryPoint]("monitoring.get_diskio_history", apischema.Privileged()).Handle(handleGetDiskIOHistory),
-	apischema.Query[apischema.MonitoringHistoryRequest, []apischema.MonitoringNetworkHistoryPoint]("monitoring.get_network_history", apischema.Privileged()).Handle(handleGetNetworkHistory),
-	apischema.Query[apischema.MonitoringConfigPatch, apischema.MonitoringConfigSetResult]("monitoring.set_config", apischema.Privileged()).Handle(handleSetConfig),
-	apischema.Query[apischema.NoRequest, apischema.NoResponse]("monitoring.restart", apischema.Privileged()).HandleVoid(handleRestart),
+	apischema.Call[apischema.NoRequest, apischema.MonitoringConfig]("monitoring.get_config", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetConfig),
+	apischema.Call[apischema.NoRequest, apischema.MonitoringStatus]("monitoring.get_status", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetStatus),
+	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringCPUHistoryPoint]("monitoring.get_cpu_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetCPUHistory),
+	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringMemoryHistoryPoint]("monitoring.get_memory_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetMemoryHistory),
+	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringDiskIOHistoryPoint]("monitoring.get_diskio_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetDiskIOHistory),
+	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringNetworkHistoryPoint]("monitoring.get_network_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetNetworkHistory),
+	apischema.Call[apischema.MonitoringConfigPatch, apischema.MonitoringConfigSetResult]("monitoring.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Call[apischema.NoRequest, apischema.NoResponse]("monitoring.restart", apischema.Privileged()).HandleVoid(handleRestart),
 )
 
 var Routes = api.Routes()
