@@ -168,4 +168,58 @@ describe("NetworkInterfaceEditor", () => {
       iface: "eth0",
     });
   });
+
+  it.each([
+    ["enables", 0, "enable_connection", "Enabling connection"],
+    ["disables", 100, "disable_connection", "Disabling connection"],
+  ] as const)(
+    "requests the correct action and blocks duplicate toggles while %s",
+    async (_action, state, endpoint, progressLabel) => {
+      let pending = false;
+      mocks.useCallMutation.mockImplementation(
+        (mutationEndpoint: { route: string }) => {
+          const mutate = mutationEndpoint.route.endsWith("disable_connection")
+            ? mocks.disableConnection
+            : mutationEndpoint.route.endsWith("enable_connection")
+              ? mocks.enableConnection
+              : mutationEndpoint.route.endsWith("set_ipv4_manual")
+                ? mocks.setIPv4Manual
+                : mocks.setIPv4;
+          return {
+            isPending: pending && mutationEndpoint.route.endsWith(endpoint),
+            mutate,
+          };
+        },
+      );
+
+      const { rerender, user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface({ state })}
+          onClose={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole("checkbox"));
+      const expectedMutation =
+        endpoint === "enable_connection"
+          ? mocks.enableConnection
+          : mocks.disableConnection;
+      expect(expectedMutation).toHaveBeenCalledWith({ iface: "eth0" });
+
+      pending = true;
+      rerender(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface({ state })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByRole("progressbar", { name: progressLabel }),
+      ).toBeVisible();
+      expect(screen.getByRole("checkbox")).toBeDisabled();
+      await user.click(screen.getByRole("checkbox"));
+      expect(expectedMutation).toHaveBeenCalledTimes(1);
+    },
+  );
 });

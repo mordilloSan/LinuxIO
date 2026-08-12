@@ -61,6 +61,7 @@ export interface FileBrowserListingProps {
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
   renamingPath: string | null;
+  renamePendingPath?: string | null;
   selectedPaths: Set<string>;
   showHiddenFiles: boolean;
   sortField: SortField;
@@ -178,6 +179,7 @@ const FileBrowserContent = ({
                 onSelectedPathsChange={listing.onSelectedPathsChange}
                 onStartRename={listing.onStartRename}
                 renamingPath={listing.renamingPath}
+                renamePendingPath={listing.renamePendingPath}
                 resource={data.filteredResource}
                 selectedPaths={listing.selectedPaths}
                 showHiddenFiles={listing.showHiddenFiles}

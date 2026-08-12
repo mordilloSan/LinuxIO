@@ -1,6 +1,8 @@
 import type { KeyboardEventHandler, SubmitEventHandler } from "react";
 
+import type { TaskProgress } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 
@@ -13,6 +15,8 @@ interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   open: boolean;
+  isPending?: boolean;
+  progress?: TaskProgress | null;
   title: string;
 }
 
@@ -24,13 +28,14 @@ const ConfirmDialog = ({
   cancelText = "Cancel",
   onClose,
   onConfirm,
+  isPending = false,
+  progress,
 }: ConfirmDialogProps) => {
   const theme = useAppTheme();
 
   const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
-    onConfirm();
-    onClose();
+    if (!isPending) onConfirm();
   };
 
   const handleKeyDown: KeyboardEventHandler<HTMLFormElement> = (event) => {
@@ -40,12 +45,20 @@ const ConfirmDialog = ({
 
     event.preventDefault();
     event.stopPropagation();
-    onConfirm();
-    onClose();
+    if (!isPending) onConfirm();
   };
 
+  const progressText = progress?.message ?? progress?.phase ?? "Deleting items";
+
   return (
-    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
+    <GeneralDialog
+      aria-busy={isPending || undefined}
+      disableEscapeKeyDown={isPending}
+      fullWidth
+      maxWidth="xs"
+      onClose={isPending ? undefined : onClose}
+      open={open}
+    >
       <form
         onKeyDown={handleKeyDown}
         onSubmit={handleConfirm}
@@ -69,6 +82,19 @@ const ConfirmDialog = ({
         >
           {message}
         </AppTypography>
+        {isPending && (
+          <AppTypography
+            aria-live="polite"
+            color="text.secondary"
+            role="status"
+            variant="body2"
+          >
+            {progressText}
+            {progress?.percentage !== undefined
+              ? ` (${progress.percentage}%)`
+              : ""}
+          </AppTypography>
+        )}
 
         <div
           style={{
@@ -81,14 +107,25 @@ const ConfirmDialog = ({
         >
           <AppButton
             className="app-btn--dialog-action"
+            disabled={isPending}
             onClick={onClose}
             style={{ color: "var(--app-palette-text-secondary)" }}
             type="button"
           >
             {cancelText}
           </AppButton>
-          <AppButton autoFocus className="app-btn--dialog-action" type="submit">
-            {confirmText}
+          <AppButton
+            autoFocus
+            className="app-btn--dialog-action"
+            disabled={isPending}
+            startIcon={
+              isPending ? (
+                <AppCircularProgress color="inherit" size={14} />
+              ) : null
+            }
+            type="submit"
+          >
+            {isPending ? "Deleting…" : confirmText}
           </AppButton>
         </div>
       </form>

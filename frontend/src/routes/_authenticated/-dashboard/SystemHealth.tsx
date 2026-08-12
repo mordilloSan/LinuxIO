@@ -12,6 +12,7 @@ import {
 import { type AccountUserLogin, linuxio, useCallMutation } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -46,6 +47,7 @@ interface HealthItem {
     ariaLabel?: string;
     onClick: (event: MouseEvent) => void;
     disabled?: boolean;
+    loading?: boolean;
   };
   spaceBefore?: boolean;
   text: string;
@@ -156,8 +158,11 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       secondaryAction: {
         label: "Dismiss",
         icon: "mdi:close",
-        ariaLabel: "Dismiss failed login alert",
+        ariaLabel: dismissingFailedLogin
+          ? "Dismissing failed login alert"
+          : "Dismiss failed login alert",
         disabled: dismissingFailedLogin,
+        loading: dismissingFailedLogin,
         onClick: (event) => {
           event.stopPropagation();
           dismissFailedLoginAlert({ alertId: failedLoginAlert.id });
@@ -197,8 +202,11 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
         ? {
             label: "Dismiss",
             icon: "mdi:close",
-            ariaLabel: "Dismiss unclean shutdown alert",
+            ariaLabel: dismissingUnclean
+              ? "Dismissing unclean shutdown alert"
+              : "Dismiss unclean shutdown alert",
             disabled: dismissingUnclean,
+            loading: dismissingUnclean,
             onClick: (event) => {
               event.stopPropagation();
               dismissUncleanShutdown({ bootId });
@@ -337,23 +345,20 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
         {content}
         {item.secondaryAction?.icon ? (
-          <AppIconButton
-            aria-label={
-              item.secondaryAction.ariaLabel ?? item.secondaryAction.label
-            }
-            color="inherit"
-            disabled={item.secondaryAction.disabled}
-            onClick={item.secondaryAction.onClick}
-            size="small"
-            style={{
-              marginLeft: theme.spacing(0.5),
-              color: "#fff",
-              opacity: item.secondaryAction.disabled ? 0.5 : 0.85,
-              flexShrink: 0,
-            }}
-          >
-            <Icon height={18} icon={item.secondaryAction.icon} width={18} />
-          </AppIconButton>
+          <span style={{ marginLeft: theme.spacing(0.5), flexShrink: 0 }}>
+            <AppActionIconButton
+              ariaLabel={
+                item.secondaryAction.ariaLabel ?? item.secondaryAction.label
+              }
+              color="inherit"
+              disabled={item.secondaryAction.disabled}
+              icon={item.secondaryAction.icon}
+              label={item.secondaryAction.label}
+              loading={item.secondaryAction.loading}
+              onClick={item.secondaryAction.onClick}
+              size="small"
+            />
+          </span>
         ) : item.secondaryAction ? (
           <AppButton
             color="inherit"

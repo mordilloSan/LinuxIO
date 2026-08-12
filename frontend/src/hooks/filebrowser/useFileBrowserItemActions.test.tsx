@@ -123,11 +123,16 @@ function editorSlice(): EditorSlice {
 }
 
 function setup(overrides: Partial<Params> = {}) {
+  const successfulBatchResult = {
+    failed: [],
+    succeeded: 1,
+    total: 1,
+  };
   const params: Params = {
-    changePermissions: vi.fn().mockResolvedValue(undefined),
-    createFile: vi.fn(),
-    createFolder: vi.fn(),
-    deleteItems: vi.fn(),
+    changePermissions: vi.fn().mockResolvedValue(successfulBatchResult),
+    createFile: vi.fn().mockResolvedValue(undefined),
+    createFolder: vi.fn().mockResolvedValue(undefined),
+    deleteItems: vi.fn().mockResolvedValue(successfulBatchResult),
     dialogs: dialogsSlice(),
     editor: editorSlice(),
     handleOpenDirectory: vi.fn(),
@@ -252,7 +257,7 @@ describe("useFileBrowserItemActions", () => {
   });
 
   describe("create dialogs", () => {
-    it("opens and confirms the create-file flow", () => {
+    it("opens and confirms the create-file flow", async () => {
       const { result, params } = setup();
 
       act(() => result.current.handleCreateFile());
@@ -262,17 +267,17 @@ describe("useFileBrowserItemActions", () => {
       act(() => result.current.handleCloseCreateFileDialog());
       expect(params.dialogs.actions.closeCreateFile).toHaveBeenCalledTimes(1);
 
-      act(() => result.current.handleConfirmCreateFile("new.txt"));
+      await act(async () => result.current.handleConfirmCreateFile("new.txt"));
       expect(params.createFile).toHaveBeenCalledWith("new.txt");
     });
 
-    it("opens and confirms the create-folder flow", () => {
+    it("opens and confirms the create-folder flow", async () => {
       const { result, params } = setup();
 
       act(() => result.current.handleCreateFolder());
       expect(params.dialogs.actions.openCreateFolder).toHaveBeenCalledTimes(1);
 
-      act(() => result.current.handleConfirmCreateFolder("assets"));
+      await act(async () => result.current.handleConfirmCreateFolder("assets"));
       expect(params.createFolder).toHaveBeenCalledWith("assets");
     });
   });
@@ -302,25 +307,45 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
     });
 
-    it("confirms deletion of the pending paths", () => {
+    it("closes the delete dialog only after a successful batch settles", async () => {
       const { result, params } = setup({
         dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
       });
 
-      act(() => result.current.handleConfirmDelete());
+      await act(async () => result.current.handleConfirmDelete());
 
       expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
-      expect(params.dialogs.actions.clearPendingDelete).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores confirmation when there are no pending paths", () => {
+    it("retains the delete dialog after failure or a partial result", async () => {
+      const failedResult = {
+        failed: [{ error: "denied", path: "/srv/projects/a" }],
+        succeeded: 0,
+        total: 1,
+      };
+      const failed = setup({
+        deleteItems: vi.fn().mockRejectedValue(new Error("delete failed")),
+        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
+      });
+      const partial = setup({
+        deleteItems: vi.fn().mockResolvedValue(failedResult),
+        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
+      });
+
+      await act(async () => failed.result.current.handleConfirmDelete());
+      await act(async () => partial.result.current.handleConfirmDelete());
+
+      expect(failed.params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
+      expect(partial.params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
+    });
+
+    it("ignores confirmation when there are no pending paths", async () => {
       const { result, params } = setup({
         dialogs: dialogsSlice({ pendingDeletePaths: [] }),
       });
 
-      act(() => result.current.handleConfirmDelete());
+      await act(async () => result.current.handleConfirmDelete());
 
       expect(params.deleteItems).not.toHaveBeenCalled();
     });
@@ -386,6 +411,23 @@ describe("useFileBrowserItemActions", () => {
         destination: "/srv/projects/new/",
         from: "/srv/projects/old",
       });
+    });
+
+    it("retains the inline editor when rename fails", async () => {
+      const { result } = setup({
+        renameItem: vi.fn().mockRejectedValue(new Error("rename failed")),
+        selectedPaths: new Set(["/srv/projects/old.txt"]),
+      });
+
+      act(() => result.current.handleStartInlineRename());
+      await act(async () =>
+        result.current.handleConfirmInlineRename(
+          "/srv/projects/old.txt",
+          "new.txt",
+        ),
+      );
+
+      expect(result.current.renamingPath).toBe("/srv/projects/old.txt");
     });
 
     it("cancels a rename for a blank name without calling the mutation", async () => {
@@ -504,6 +546,44 @@ describe("useFileBrowserItemActions", () => {
         recursive: true,
       });
       expect(params.dialogs.actions.closePermissions).toHaveBeenCalledTimes(1);
+    });
+
+    it("retains permissions after failure or a partial result", async () => {
+      const permissionsDialog = {
+        isDirectory: false,
+        mode: "0644",
+        pathLabel: "one item",
+        paths: ["/srv/projects/a"],
+        selectionCount: 1,
+      };
+      const failed = setup({
+        changePermissions: vi
+          .fn()
+          .mockRejectedValue(new Error("permissions failed")),
+        dialogs: dialogsSlice({ permissionsDialog }),
+      });
+      const partial = setup({
+        changePermissions: vi.fn().mockResolvedValue({
+          failed: [{ error: "denied", path: "/srv/projects/a" }],
+          succeeded: 0,
+          total: 1,
+        }),
+        dialogs: dialogsSlice({ permissionsDialog }),
+      });
+
+      await act(async () =>
+        failed.result.current.handleConfirmPermissions("0600", false),
+      );
+      await act(async () =>
+        partial.result.current.handleConfirmPermissions("0600", false),
+      );
+
+      expect(
+        failed.params.dialogs.actions.closePermissions,
+      ).not.toHaveBeenCalled();
+      expect(
+        partial.params.dialogs.actions.closePermissions,
+      ).not.toHaveBeenCalled();
     });
 
     it("ignores a permissions confirmation with no open dialog", async () => {

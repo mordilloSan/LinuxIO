@@ -77,8 +77,6 @@ route-specific field names.
 
 The remaining reliability constraints are:
 
-- Docker and other entity-scoped mutation feedback are complete, while File
-  Browser, disabled-only, and consistency batches still gate persistent alerts;
 - server alerts are not implemented and the navbar history is local toast
   history only; and
 - future scheduled scripts need native timing, stable run identity, and log
@@ -407,7 +405,7 @@ use the progress opcode.
   guessing remains.
 - [x] Progress remains bounded and coalesced on the owner-wide event stream.
 
-## Phase 5.5: Mutation Feedback Consistency Gate
+## Phase 5.5: Mutation Feedback Consistency Gate (complete)
 
 Complete the [Mutation Feedback Audit](./mutation-feedback-audit.md) before
 starting the persistent alert implementation. Uniform Task progress does not
@@ -418,23 +416,24 @@ This is a frontend reliability gate, not notification infrastructure. It does
 not require a database, another Task type, a global mutation registry, or a
 Suspense boundary.
 
-Progress: Docker action surfaces (audit Batch 1) and the VM, WireGuard,
-NFS/CIFS, and account entity-scoped surfaces (audit Batch 2) were completed on
-2026-08-11 with delayed-mutation UI coverage. Batches 3 through 5 remain open,
-so the gate and all exit criteria below remain incomplete.
+Completed on 2026-08-12. Docker action surfaces (audit Batch 1) and the VM,
+WireGuard, NFS/CIFS, and account entity-scoped surfaces (audit Batch 2) were
+completed on 2026-08-11. File Browser lifecycle ownership (Batch 3), the
+remaining Network, TuneD, hostname, and health-card controls (Batch 4), and the
+accessibility/regression pass (Batch 5) were completed on 2026-08-12.
 
 ### Phase 5.5 exit criteria
 
-- [ ] Every directly activated mutation has a visible working state until the
+- [x] Every directly activated mutation has a visible working state until the
   mutation and its mapped invalidations settle.
-- [ ] Row and card feedback identifies the affected entity and action instead
+- [x] Row and card feedback identifies the affected entity and action instead
   of disabling an unrelated page or table without explanation.
-- [ ] Closing a menu or dialog never leaves active work with no visible owner.
-- [ ] Tasks with meaningful progress use the common Task envelope; bounded
+- [x] Closing a menu or dialog never leaves active work with no visible owner.
+- [x] Tasks with meaningful progress use the common Task envelope; bounded
   Calls remain bounded Calls.
-- [ ] Optimistic and self-severing actions retain their intentional specialized
+- [x] Optimistic and self-severing actions retain their intentional specialized
   feedback.
-- [ ] Repaired ownership boundaries have pending-state UI tests and pass
+- [x] Repaired ownership boundaries have pending-state UI tests and pass
   `make check-frontend`.
 
 ## Phase 6: Persistent Alert Lifecycle

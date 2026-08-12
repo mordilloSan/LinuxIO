@@ -35,6 +35,7 @@ interface DirectoryListingProps {
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
   renamingPath: string | null;
+  renamePendingPath?: string | null;
   resource: FileResource;
   selectedPaths: Set<string>;
   showHiddenFiles: boolean;
@@ -57,6 +58,7 @@ const DirectoryListing = ({
   isContextMenuOpen,
   onDelete,
   renamingPath,
+  renamePendingPath,
   onStartRename,
   onConfirmRename,
   onCancelRename,
@@ -313,6 +315,7 @@ const DirectoryListing = ({
       onMarqueeMouseDown={handleMouseDown}
       onOpenDirectory={onOpenDirectory}
       renamingPath={renamingPath}
+      renamePendingPath={renamePendingPath}
       revealIndex={revealIndex}
       selectedPaths={selectedPaths}
       selectionBox={selectionBox}

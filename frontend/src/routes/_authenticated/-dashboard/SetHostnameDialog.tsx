@@ -19,9 +19,28 @@ interface Props {
   open: boolean;
 }
 
+interface HostnameSession {
+  open: boolean;
+  source: string;
+  value: string;
+}
+
 const SetHostnameDialog = ({ open, current, onClose }: Props) => {
   const toast = useScopedToast(DASHBOARD_TOAST_META);
-  const [hostname, setHostname] = useState(current);
+  const [storedSession, setStoredSession] = useState<HostnameSession>(() => ({
+    open,
+    source: current,
+    value: current,
+  }));
+  const sessionIsCurrent =
+    storedSession.open === open && storedSession.source === current;
+  const hostname = sessionIsCurrent ? storedSession.value : current;
+
+  // Reset synchronously when the backend-provided current value changes,
+  // while retaining an in-progress edit across ordinary parent rerenders.
+  if (!sessionIsCurrent) {
+    setStoredSession({ open, source: current, value: current });
+  }
 
   const { mutate, isPending } = useCallMutation(linuxio.hostname.set_hostname, {
     success: () => {
@@ -37,11 +56,22 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
   );
 
   const handleSave = () => {
-    if (isValid) mutate({ hostname });
+    if (isValid && !isPending) mutate({ hostname });
+  };
+
+  const handleClose = () => {
+    if (!isPending) onClose();
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
+    <GeneralDialog
+      aria-busy={isPending || undefined}
+      disableEscapeKeyDown={isPending}
+      fullWidth
+      maxWidth="xs"
+      onClose={handleClose}
+      open={open}
+    >
       <AppDialogTitle>Set Hostname</AppDialogTitle>
       <AppDialogContent>
         <AppTextField
@@ -54,9 +84,12 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
               : undefined
           }
           label="Hostname"
-          onChange={(e) => setHostname(e.target.value)}
+          disabled={isPending}
+          onChange={(e) =>
+            setStoredSession({ open, source: current, value: e.target.value })
+          }
           onKeyDown={(e) => {
-            if (e.key === "Enter" && isValid) handleSave();
+            if (e.key === "Enter" && isValid && !isPending) handleSave();
           }}
           type="text"
           value={hostname}
@@ -64,13 +97,15 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
         />
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton disabled={isPending} onClick={handleClose}>
+          Cancel
+        </AppButton>
         <AppButton
           disabled={!isValid || isPending}
           onClick={handleSave}
           variant="contained"
         >
-          Save
+          {isPending ? "Saving…" : "Save"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>

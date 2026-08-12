@@ -72,6 +72,7 @@ interface VirtualDirectoryItemsProps {
   onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
+  renamePendingPath?: string | null;
   /** Item index to scroll into view, or -1 to leave the viewport alone. */
   revealIndex: number;
   selectedPaths: Set<string>;
@@ -153,6 +154,7 @@ const VirtualDirectoryItems = ({
   onMarqueeMouseDown,
   onOpenDirectory,
   renamingPath,
+  renamePendingPath,
   revealIndex,
   selectedPaths,
   selectionBox,
@@ -299,6 +301,7 @@ const VirtualDirectoryItems = ({
                       isCut={cutPaths.has(item.path)}
                       isLoadingSubfolders={isLoadingSubfolders}
                       isRenaming={renamingPath === item.path}
+                      isRenamePending={renamePendingPath === item.path}
                       item={item}
                       itemKind={row.itemKind}
                       key={`${item.path}-${item.name}`}

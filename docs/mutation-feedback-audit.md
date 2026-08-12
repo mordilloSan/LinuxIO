@@ -1,16 +1,15 @@
 # Mutation Feedback Audit and Handoff
 
-Status: implementation in progress; entity-scoped action Batches 1 and 2
-complete.
+Status: complete; Batches 1 through 5 implemented and verified.
 
-Snapshot date: 2026-08-11.
+Snapshot date: 2026-08-12.
 
-Implementation progress: Batches 1 and 2 were completed on 2026-08-11. Docker,
-VM, WireGuard, existing NFS/CIFS mount, and account-lock actions now retain
-entity/action-scoped pending state without blocking unrelated entities. Docker
-compact and context-menu actions keep a visible owner after their menus close.
-Focused delayed-mutation tests cover every repaired ownership boundary. Batches
-3 through 5 remain open.
+Implementation progress: Batches 1 and 2 were completed on 2026-08-11 and
+Batches 3 through 5 on 2026-08-12. Docker, VM, WireGuard, existing NFS/CIFS
+mount, account-lock, File Browser, Network, TuneD, hostname, and health-card
+actions now retain a visible local pending owner. Focused delayed-mutation tests
+cover every repaired ownership boundary, and the final frontend and browser
+checks pass.
 
 This document is the portable handoff for restoring visible working state to
 frontend mutations before the persistent alert phase begins. It records the
@@ -112,7 +111,7 @@ and
 | Session termination | terminate session | Confirmation remains open with `Terminating...`. | Complete. |
 | User lock/unlock | lock, unlock | Table and card views retain the affected username and action, render `Locking` or `Unlocking` progress, and leave unrelated users actionable. | Complete. |
 | Failed-login dialog | dismiss alert | Shows `Dismissing...`. | Complete. |
-| Health-card quick dismiss | dismiss failed-login/unclean-shutdown alert | The icon merely disables. | Incomplete, low priority. |
+| Health-card quick dismiss | dismiss failed-login/unclean-shutdown alert | The affected dismissal icon becomes a labelled spinner while the row remains mounted until authoritative invalidation settles. | Complete. |
 | Account-detail automatic dismissal | dismiss alert on routed focus | Background convergence with no direct user action. | Intentional. |
 
 ### Storage and Shares
@@ -134,13 +133,13 @@ and
 |---------|-----------|------------------|------------|
 | systemd unit actions | start, stop, restart, reload, enable, disable, mask, unmask, reset failed | Each action renders its own spinner and disables conflicting actions. | Complete; use this as the row-action reference. |
 | Network address save | automatic/manual IPv4 | Explicit `Saving...`. | Complete. |
-| Network enable/disable | connection switch | Switch merely disables while pending. | Incomplete. |
+| Network enable/disable | connection switch | The switch disables and renders labelled progress while retaining the intentional non-optimistic, no-retry behavior for a potentially self-severing action. | Complete. |
 | Power profile | set profile | Explicit `Applying...`. | Complete. |
-| TuneD start/disable | power icon | Section becomes busy, but the action icon does not show progress. | Incomplete. |
+| TuneD start/disable | power icon | The action icon becomes a labelled `Starting TuneD` or `Disabling TuneD` spinner without conflating profile application. | Complete. |
 | Indexer and monitoring settings | save/restart/timer | Explicit saving/restarting state. | Complete. |
 | Docker folder settings | validate/create/save | One manual `isSaving` flow covers the complete sequence. | Complete. |
 | Date/time settings | several sequenced Calls | One manual `isSaving` flow covers the complete sequence. | Complete. |
-| Hostname | set hostname | Save button merely disables. | Incomplete, low priority. |
+| Hostname | set hostname | The mounted dialog blocks conflicting dismissal and edits, reports `Saving…`, and refreshes its draft from the current hostname when reopened. | Complete. |
 | Capability installation | install Task | Spinner, status, and percentage. | Complete. |
 | Reboot and power-off | control Calls | Existing global host-action overlay appears immediately. | Intentional. |
 | Configuration persistence | config set | Optimistic local state and failure toast. | Intentional. |
@@ -169,18 +168,19 @@ and
 |---------|-----------|------------------|------------|
 | Transfer operations | upload, download, copy, move, compress, extract | Existing background-Task provider and navbar show progress independently of the page. | Complete. |
 | Indexer | index Task | Dedicated dialog and global state show progress. | Complete. |
-| File/folder creation | resource post | Input dialog closes immediately; completion is visible only through a later toast/list refresh. | Defect. |
-| Batch delete | delete Task | Confirmation closes immediately and the Task's progress is not connected to the global background surface or a local dialog. | Defect. |
-| Batch permissions | chmod Task | Permissions dialog closes before the awaited Task settles; progress is invisible. | Defect. |
-| Rename | rename Task | Inline input remains until settlement, but has no busy indicator or explicit duplicate-submit protection. | Incomplete. |
+| File/folder creation | resource post | The input dialog stays mounted with its draft, shows `Creating…`, blocks duplicate submission, closes on success, and remains open on failure. | Complete. |
+| Batch delete | delete Task | The confirmation remains the single local owner, renders common Task progress, and closes only after a fully successful result. Failure and partial failure retain it for retry. | Complete. |
+| Batch permissions | chmod Task | The permissions dialog remains mounted, disables conflicting edits, renders common Task progress, and closes only after a fully successful result. | Complete. |
+| Rename | rename Task | The inline list/card input remains mounted, disables editing and duplicate submission, and renders an accessible spinner until settlement; failure retains the draft. | Complete. |
 
 The mutation facade in
 [`frontend/src/hooks/filebrowser/useFileMutations.ts`](../frontend/src/hooks/filebrowser/useFileMutations.ts)
-currently returns action functions but strips all mutation state. The dialog
-handlers in
+now exposes only the pending and progress state needed by its UI owners. The
+dialog handlers in
 [`frontend/src/hooks/filebrowser/useFileBrowserItemActions.ts`](../frontend/src/hooks/filebrowser/useFileBrowserItemActions.ts)
-also close several surfaces before completion. This area needs a coherent
-local-versus-background ownership decision, not just scattered spinner props.
+keep bounded create/rename feedback local to their inputs and delete/chmod Task
+feedback local to their existing dialogs. These Tasks are not also registered
+as separate navbar work, so progress has one presentation owner.
 
 ### Updates
 
@@ -242,36 +242,49 @@ For a mutation owner that permits only one in-flight action, the mutation's
 intentional requirement, retain an explicit `Set` keyed by entity ID instead
 of replacing one pending target with another.
 
-### Batch 3: File Browser lifecycle
+### Batch 3: File Browser lifecycle (complete)
 
-- Expose bounded create/rename pending state to the owning surface.
-- Keep bounded-action dialogs open until success or failure.
-- Decide whether batch delete and chmod remain local progress dialogs or join
-  the existing global background-Task surface. They must not be represented in
-  both places as separate work.
-- Preserve path-precise invalidation and existing collision handling.
-- Add tests for double-submit prevention, failure retention, success closure,
-  and Task progress ownership.
+Completed on 2026-08-12:
 
-### Batch 4: Small disabled-only controls
+- Exposed bounded create/rename pending state to their existing input owners.
+- Kept create dialogs and inline rename mounted through settlement, blocked
+  duplicate submission, retained drafts on failure, and closed only on success.
+- Kept delete and chmod as local progress dialogs rather than adding a second
+  generic background-Task registration path.
+- Rendered the common Task percentage, phase, and message while disabling
+  conflicting dialog controls; full success closes the dialog, while transport
+  failure or a partial batch result retains it for retry.
+- Preserved path-precise invalidation, existing toast ownership, and collision
+  behavior.
+- Added delayed-promise coverage for success closure, failure retention,
+  duplicate prevention, Task progress, and list/card rename feedback.
 
-- Network enable/disable.
-- TuneD start/disable.
-- Hostname save.
-- Health-card quick dismissal.
+### Batch 4: Small disabled-only controls (complete)
 
-These are lower priority because they already prevent duplicate activation and
-are usually short, but they should converge on the same visible contract.
+Completed on 2026-08-12:
 
-### Batch 5: Consistency and regression coverage
+- Network enable/disable now retains its no-retry, non-optimistic semantics but
+  renders labelled local progress and blocks duplicate toggles.
+- TuneD start/disable uses the existing action-icon loading primitive with the
+  active verb, independently of power-profile application.
+- Hostname save retains the dialog, disables conflicting interaction, shows
+  `Saving…`, and resets stale drafts on reopen or a changed backend value.
+- Health-card quick dismissal replaces only the affected dismiss icon with a
+  labelled spinner and preserves authoritative query invalidation.
+- Focused tests cover every repaired pending owner and intentional exception.
 
-- Consider an opt-in `loading` prop for `AppButton` only if it materially
-  reduces repeated markup. Do not require it merely to avoid active-verb text.
-- Add `aria-busy` or an appropriate live status where visual spinner changes
-  are otherwise silent to assistive technology.
-- Test reusable presentation patterns and every repaired ownership boundary.
-  Do not add a brittle source guard that assumes every mutation must use the
-  same UI; optimistic and global-overlay exceptions are valid.
+### Batch 5: Consistency and regression coverage (complete)
+
+Completed on 2026-08-12:
+
+- Reused `AppActionIconButton.loading` for icon actions and retained explicit
+  active verbs for text buttons; an `AppButton` loading abstraction did not
+  materially simplify the remaining call sites and was not added.
+- Added labelled progress indicators and `aria-busy` to mounted owners where a
+  disabled control alone was otherwise silent.
+- Added focused behavior tests for the repaired boundaries without imposing a
+  brittle source guard across intentional optimistic, background, and
+  self-severing exceptions.
 
 ## Acceptance Criteria
 
@@ -290,21 +303,23 @@ are usually short, but they should converge on the same visible contract.
 - Error and success toasts remain single-owned.
 - Each frontend batch passes `make check-frontend` before handoff.
 
-## Test Baseline and Gaps
+## Test Coverage
 
-Focused delayed-mutation tests now cover Docker table action spinners and
+Focused delayed-mutation tests cover Docker table action spinners and
 compact-menu closure, concurrent dashboard mini-icon targets, Compose expanded
 containers, VM lifecycle actions, WireGuard interfaces and peers, NFS/CIFS
-mount actions, and account lock/unlock across view changes. File Browser and
-the smaller disabled-only controls remain uncovered. A passing mutation-hook
-test remains insufficient: the regression is specifically whether pending
-state reaches a mounted user-visible control.
+mount actions, account lock/unlock across view changes, and File Browser create,
+rename, delete, and permissions ownership, Network toggling, TuneD lifecycle,
+hostname saving, and both health-card quick dismissals. The tests assert that
+pending state reaches a mounted user-visible owner rather than stopping at the
+mutation hook.
 
-The original audit ran no implementation or test command. Batches 1 and 2 pass
-`make check-frontend` on 2026-08-11 (152 test files, 713 tests). The working
-tree already contained the API reliability and generic-progress changes when
-the audit was written; preserve those changes when moving or committing this
-handoff.
+The original audit ran no implementation or test command. Batches 1 and 2
+passed `make check-frontend` on 2026-08-11 (152 test files, 713 tests). Batch 3
+passed `make check-frontend` on 2026-08-12 (153 test files, 722 tests). The
+completed audit passes `make check-frontend` on 2026-08-12 (155 test files, 732
+tests) and `make test-frontend-browser` (11 Playwright tests). Preserve
+unrelated worktree changes when continuing the roadmap.
 
 ## Explicit Non-Goals
 

@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -32,6 +33,8 @@ interface PermissionsDialogProps {
   open: boolean;
   owner?: string;
   pathLabel: string;
+  isPending?: boolean;
+  progress?: TaskProgress | null;
   selectionCount: number;
 }
 interface PermissionBits {
@@ -140,6 +143,8 @@ const PermissionsDialog = ({
   group,
   onClose,
   onConfirm,
+  isPending = false,
+  progress,
 }: PermissionsDialogProps) => {
   const [permissions, setPermissions] = useState<PermissionBits>(() =>
     parseMode(currentMode),
@@ -185,9 +190,8 @@ const PermissionsDialog = ({
     const mode = permissionsToOctal(permissions);
     const nextOwner = ownerInput.trim() || undefined;
     const nextGroup = groupInput.trim() || undefined;
-    onConfirm(mode, recursive, nextOwner, nextGroup);
-    onClose();
-  }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
+    if (!isPending) onConfirm(mode, recursive, nextOwner, nextGroup);
+  }, [groupInput, isPending, onConfirm, ownerInput, permissions, recursive]);
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const permissionColumns: AppDataTableColumnDef<PermissionMatrixRow>[] = [
@@ -208,6 +212,7 @@ const PermissionsDialog = ({
           <AppCheckbox
             aria-label={`${row.original.label} ${flag}`}
             checked={permissions[row.original.id][flag]}
+            disabled={isPending}
             onChange={(e) =>
               handlePermissionChange(row.original.id, flag, e.target.checked)
             }
@@ -231,10 +236,12 @@ const PermissionsDialog = ({
 
   return (
     <FileBrowserDialog
+      aria-busy={isPending || undefined}
+      disableEscapeKeyDown={isPending}
       fullWidth
       key={open ? `${currentMode}-${owner}-${group}` : "closed"}
       maxWidth="sm"
-      onClose={onClose}
+      onClose={isPending ? undefined : onClose}
       open={open}
     >
       <AppDialogTitle
@@ -274,6 +281,7 @@ const PermissionsDialog = ({
           }}
         >
           <AppAutocomplete
+            disabled={isPending}
             freeSolo
             fullWidth
             label="Owner"
@@ -288,6 +296,7 @@ const PermissionsDialog = ({
           />
 
           <AppAutocomplete
+            disabled={isPending}
             freeSolo
             fullWidth
             label="Group"
@@ -323,6 +332,7 @@ const PermissionsDialog = ({
               control={
                 <AppCheckbox
                   checked={recursive}
+                  disabled={isPending}
                   onChange={(e) => setRecursive(e.target.checked)}
                 />
               }
@@ -331,10 +341,33 @@ const PermissionsDialog = ({
           </div>
         )}
       </AppDialogContent>
+      {isPending && (
+        <AppTypography
+          aria-live="polite"
+          color="text.secondary"
+          role="status"
+          style={{ paddingInline: theme.spacing(3) }}
+          variant="body2"
+        >
+          {progress?.message ?? progress?.phase ?? "Changing permissions"}
+          {progress?.percentage !== undefined
+            ? ` (${progress.percentage}%)`
+            : ""}
+        </AppTypography>
+      )}
       <AppDialogActions>
-        <AppButton onClick={onClose}>Cancel</AppButton>
-        <AppButton onClick={handleConfirm} variant="contained">
-          Apply
+        <AppButton disabled={isPending} onClick={onClose}>
+          Cancel
+        </AppButton>
+        <AppButton
+          disabled={isPending}
+          onClick={handleConfirm}
+          startIcon={
+            isPending ? <AppCircularProgress color="inherit" size={14} /> : null
+          }
+          variant="contained"
+        >
+          {isPending ? "Applying…" : "Apply"}
         </AppButton>
       </AppDialogActions>
     </FileBrowserDialog>

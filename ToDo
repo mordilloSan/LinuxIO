@@ -11,7 +11,7 @@ Follow the dependency-ordered
 3. [x] Prove one durable Task with a persistent operation record and an external
    execution owner.
 4. [x] Standardize generic Task progress while preserving typed route detail.
-5. Restore visible, entity-scoped mutation feedback using the
+5. [x] Restore visible, entity-scoped mutation feedback using the
    [`Mutation Feedback Audit`](docs/mutation-feedback-audit.md).
 6. Add a persistent alert lifecycle: severity, deduplication, seen, dismissal,
    restoration, and resolution.

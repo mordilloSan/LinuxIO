@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 
-import { call, type FileChmodBatchRequest, linuxio } from "@/api";
+import {
+  call,
+  type FileBatchResult,
+  type FileChmodBatchRequest,
+  linuxio,
+} from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
 import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -24,14 +29,19 @@ interface RenamePayload {
 }
 
 interface UseFileBrowserItemActionsParams {
-  changePermissions: (payload: ChangePermissionsPayload) => Promise<void>;
-  createFile: (fileName: string) => void;
-  createFolder: (folderName: string) => void;
-  deleteItems: (paths: string[]) => void;
+  changePermissions: (
+    payload: ChangePermissionsPayload,
+  ) => Promise<FileBatchResult>;
+  permissionsPending?: boolean;
+  createFile: (fileName: string) => Promise<void>;
+  createFolder: (folderName: string) => Promise<void>;
+  deleteItems: (paths: string[]) => Promise<FileBatchResult | undefined>;
+  deletePending?: boolean;
   dialogs: DialogsSlice;
   editor: EditorSlice;
   handleOpenDirectory: (path: string) => void;
   renameItem: (payload: RenamePayload) => Promise<void>;
+  renamePending?: boolean;
   resource?: FileResource;
   selectedItems: FileItem[];
   selectedPaths: Set<string>;
@@ -41,13 +51,16 @@ interface UseFileBrowserItemActionsParams {
 
 export const useFileBrowserItemActions = ({
   changePermissions,
+  permissionsPending = false,
   createFile,
   createFolder,
   deleteItems,
+  deletePending = false,
   dialogs,
   editor,
   handleOpenDirectory,
   renameItem,
+  renamePending = false,
   resource,
   selectedItems,
   selectedPaths,
@@ -145,16 +158,12 @@ export const useFileBrowserItemActions = ({
   }, [dialogActions]);
 
   const handleConfirmCreateFile = useCallback(
-    (fileName: string) => {
-      createFile(fileName);
-    },
+    (fileName: string) => createFile(fileName),
     [createFile],
   );
 
   const handleConfirmCreateFolder = useCallback(
-    (folderName: string) => {
-      createFolder(folderName);
-    },
+    (folderName: string) => createFolder(folderName),
     [createFolder],
   );
 
@@ -202,6 +211,7 @@ export const useFileBrowserItemActions = ({
 
   const handleConfirmInlineRename = useCallback(
     async (path: string, newName: string) => {
+      if (renamePending) return;
       const trimmed = newName.trim();
       if (!trimmed) {
         setRenamingPath(null);
@@ -221,15 +231,16 @@ export const useFileBrowserItemActions = ({
         });
         setRenamingPath(null);
       } catch {
-        setRenamingPath(null);
+        // Keep the inline editor mounted so the user can correct and retry.
       }
     },
-    [getParentPath, joinPath, renameItem, resource?.items],
+    [getParentPath, joinPath, renameItem, renamePending, resource?.items],
   );
 
   const handleCancelInlineRename = useCallback(() => {
+    if (renamePending) return;
     setRenamingPath(null);
-  }, []);
+  }, [renamePending]);
 
   const handleContextMenuRename = useCallback(() => {
     handleStartInlineRename();
@@ -245,13 +256,20 @@ export const useFileBrowserItemActions = ({
     }
   }, [dialogActions, closeContextMenu, selectedPaths, toast]);
 
-  const handleConfirmDelete = useCallback(() => {
+  const handleConfirmDelete = useCallback(async () => {
     if (!pendingDeletePaths.length) {
       return;
     }
-    deleteItems(pendingDeletePaths);
-    dialogActions.clearPendingDelete();
-  }, [deleteItems, dialogActions, pendingDeletePaths]);
+    if (deletePending) return;
+    try {
+      const result = await deleteItems(pendingDeletePaths);
+      if (result && result.failed.length === 0) {
+        dialogActions.closeDelete();
+      }
+    } catch {
+      // The mutation owns error feedback; retain the dialog for retry.
+    }
+  }, [deleteItems, deletePending, dialogActions, pendingDeletePaths]);
 
   const handleCloseDeleteDialog = useCallback(() => {
     dialogActions.closeDelete();
@@ -286,20 +304,23 @@ export const useFileBrowserItemActions = ({
       group?: string,
     ) => {
       if (!permissionsDialog) return;
+      if (permissionsPending) return;
       try {
-        await changePermissions({
+        const result = await changePermissions({
           paths: permissionsDialog.paths,
           mode,
           recursive,
           owner,
           group,
         });
-        dialogActions.closePermissions();
+        if (result.failed.length === 0) {
+          dialogActions.closePermissions();
+        }
       } catch {
         // Errors are surfaced via toast in the mutation.
       }
     },
-    [changePermissions, dialogActions, permissionsDialog],
+    [changePermissions, dialogActions, permissionsDialog, permissionsPending],
   );
 
   const handleEditFile = useCallback(

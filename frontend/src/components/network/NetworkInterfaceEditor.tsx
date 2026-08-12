@@ -7,6 +7,7 @@ import {
 } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -211,6 +212,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
   const handleConnectionToggle = () => {
+    if (toggling) return;
     if (isConnected || isConnecting) {
       disableConnection({ iface: iface.name });
     } else {
@@ -332,24 +334,38 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
             marginBottom: theme.spacing(2),
           }}
         >
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={isConnected || isConnecting}
-                disabled={toggling}
-                onChange={handleConnectionToggle}
+          <div aria-busy={toggling || undefined}>
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={isConnected || isConnecting}
+                  disabled={toggling}
+                  onChange={handleConnectionToggle}
+                />
+              }
+              label={
+                toggling
+                  ? "Toggling..."
+                  : isConnected
+                    ? "Enabled"
+                    : isConnecting
+                      ? "Connecting..."
+                      : "Disabled"
+              }
+            />
+            {toggling ? (
+              <AppCircularProgress
+                aria-label={
+                  isEnabling ? "Enabling connection" : "Disabling connection"
+                }
+                size={16}
+                style={{
+                  marginLeft: theme.spacing(1),
+                  verticalAlign: "middle",
+                }}
               />
-            }
-            label={
-              toggling
-                ? "Toggling..."
-                : isConnected
-                  ? "Enabled"
-                  : isConnecting
-                    ? "Connecting..."
-                    : "Disabled"
-            }
-          />
+            ) : null}
+          </div>
           <Chip
             color="primary"
             label={

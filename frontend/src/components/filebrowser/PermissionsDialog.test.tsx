@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
@@ -25,13 +25,15 @@ vi.mock("@/api", async () => {
 const { default: PermissionsDialog } = await import("./PermissionsDialog");
 
 describe("PermissionsDialog", () => {
-  it("updates permission checkboxes after selecting and deselecting them", async () => {
+  beforeEach(() => {
     apiMocks.usersGroupsQueryOptions.mockReturnValue({
-      queryKey: ["test", "users-groups"],
-      queryFn: () => Promise.resolve({ groups: ["root"], users: ["root"] }),
       initialData: { groups: ["root"], users: ["root"] },
+      queryFn: () => Promise.resolve({ groups: ["root"], users: ["root"] }),
+      queryKey: ["test", "users-groups"],
     });
+  });
 
+  it("updates permission checkboxes after selecting and deselecting them", async () => {
     const { user } = render(
       <PermissionsDialog
         currentMode="0755"
@@ -58,5 +60,34 @@ describe("PermissionsDialog", () => {
     expect(ownerRead).toBeChecked();
     await user.click(ownerRead);
     expect(ownerRead).not.toBeChecked();
+  });
+
+  it("shows Task progress and keeps pending permissions mounted", async () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
+    const { user } = render(
+      <PermissionsDialog
+        currentMode="0755"
+        group="root"
+        isDirectory
+        isPending
+        onClose={onClose}
+        onConfirm={onConfirm}
+        open
+        owner="root"
+        pathLabel="/srv/data"
+        progress={{ phase: "chmod" }}
+        selectionCount={1}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("chmod");
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Owner read" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

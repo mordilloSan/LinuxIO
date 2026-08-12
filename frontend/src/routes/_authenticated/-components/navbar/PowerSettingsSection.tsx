@@ -8,11 +8,10 @@ import "./power-settings.css";
 import { linuxio, type PowerStatus, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
 const profileExists = (status: PowerStatus, profile: string) =>
@@ -212,42 +211,48 @@ const PowerSettingsSection = () => {
           </div>
           <div className="power-settings__card-actions">
             <StatusBadge status={status} />
-            <AppTooltip
-              title={
-                !status.tuned_available
-                  ? ""
-                  : status.tuned_active
-                    ? "Turn Off"
-                    : status.tuned_startable
-                      ? "Start TuneD"
-                      : "TuneD cannot be started automatically"
+            <AppActionIconButton
+              ariaLabel={
+                startMutation.isPending
+                  ? "Starting TuneD"
+                  : disableMutation.isPending
+                    ? "Disabling TuneD"
+                    : status.tuned_active
+                      ? "Turn Off TuneD"
+                      : "Start TuneD"
               }
-            >
-              <AppIconButton
-                aria-label={
-                  status.tuned_active ? "Turn Off TuneD" : "Start TuneD"
-                }
-                disabled={
-                  busy ||
-                  !status.tuned_available ||
-                  (!status.tuned_active && !status.tuned_startable)
-                }
-                onClick={() =>
-                  status.tuned_active
-                    ? disableMutation.mutate()
-                    : startMutation.mutate()
-                }
-                style={{
-                  color: status.tuned_active
-                    ? "var(--app-palette-success-main)"
-                    : status.tuned_available && status.tuned_startable
-                      ? "var(--app-palette-error-main)"
-                      : "var(--app-palette-text-disabled)",
-                }}
-              >
-                <Icon height={22} icon="mdi:power" width={22} />
-              </AppIconButton>
-            </AppTooltip>
+              color={
+                status.tuned_active
+                  ? "var(--app-palette-success-main)"
+                  : status.tuned_available && status.tuned_startable
+                    ? "var(--app-palette-error-main)"
+                    : "var(--app-palette-text-disabled)"
+              }
+              disabled={
+                busy ||
+                !status.tuned_available ||
+                (!status.tuned_active && !status.tuned_startable)
+              }
+              icon="mdi:power"
+              iconSize={22}
+              label={
+                startMutation.isPending
+                  ? "Starting TuneD"
+                  : disableMutation.isPending
+                    ? "Disabling TuneD"
+                    : status.tuned_active
+                      ? "Turn Off"
+                      : status.tuned_startable
+                        ? "Start TuneD"
+                        : "TuneD cannot be started automatically"
+              }
+              loading={startMutation.isPending || disableMutation.isPending}
+              onClick={() =>
+                status.tuned_active
+                  ? disableMutation.mutate()
+                  : startMutation.mutate()
+              }
+            />
           </div>
         </div>
         <div className="power-settings__metrics">

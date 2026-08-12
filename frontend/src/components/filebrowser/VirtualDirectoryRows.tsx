@@ -10,6 +10,7 @@ export interface DirectoryItemProps {
   isCut: boolean;
   isLoadingSubfolders: boolean;
   isRenaming: boolean;
+  isRenamePending?: boolean;
   item: FileItem;
   itemKind: "file" | "folder";
   onCancelRename: () => void;
@@ -51,6 +52,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     selected,
     isCut,
     isRenaming,
+    isRenamePending,
     viewMode,
     onFileClick,
     onDownloadFile,
@@ -74,6 +76,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
           isCut={isCut}
           isDirectory={false}
           isRenaming={isRenaming}
+          isRenamePending={isRenamePending}
           isSymlink={item.symlink}
           modTime={item.modTime}
           name={item.name}
@@ -114,6 +117,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         isCut={isCut}
         isDirectory={true}
         isRenaming={isRenaming}
+        isRenamePending={isRenamePending}
         isSymlink={item.symlink}
         modTime={item.modTime}
         name={item.name}

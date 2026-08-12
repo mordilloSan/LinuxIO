@@ -1,9 +1,13 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
+  type ChmodProgress,
+  type DeleteProgress,
+  type FileBatchResult,
   type FileChmodBatchRequest,
   type FileExtractRequest,
+  type TaskProgress,
   linuxio,
   useCallMutation,
 } from "@/api";
@@ -59,6 +63,14 @@ export const useFileMutations = ({
   onDeleteSuccess,
   resolveCollisions,
 }: UseFileMutationsParams) => {
+  const [createPending, setCreatePending] = useState<"file" | "folder" | null>(
+    null,
+  );
+  const [renamePending, setRenamePending] = useState(false);
+  const [deleteProgress, setDeleteProgress] =
+    useState<TaskProgress<DeleteProgress> | null>(null);
+  const [permissionsProgress, setPermissionsProgress] =
+    useState<TaskProgress<ChmodProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();
@@ -78,11 +90,17 @@ export const useFileMutations = ({
   );
 
   const createFile = useCallback(
-    (fileName: string) => {
+    async (fileName: string) => {
+      if (createPending !== null) return;
       const path = joinPath(normalizedPath, fileName);
-      createFileMutation.mutate({ path });
+      setCreatePending("file");
+      try {
+        await createFileMutation.mutateAsync({ path });
+      } finally {
+        setCreatePending(null);
+      }
     },
-    [createFileMutation, normalizedPath],
+    [createFileMutation, createPending, normalizedPath],
   );
 
   const createFolderMutation = useCallMutation(
@@ -98,11 +116,17 @@ export const useFileMutations = ({
   );
 
   const createFolder = useCallback(
-    (folderName: string) => {
+    async (folderName: string) => {
+      if (createPending !== null) return;
       const path = `${joinPath(normalizedPath, folderName)}/`;
-      createFolderMutation.mutate({ path });
+      setCreatePending("folder");
+      try {
+        await createFolderMutation.mutateAsync({ path });
+      } finally {
+        setCreatePending(null);
+      }
     },
-    [createFolderMutation, normalizedPath],
+    [createFolderMutation, createPending, normalizedPath],
   );
 
   // One batch task deletes the whole selection; the bridge loops server-side
@@ -112,7 +136,9 @@ export const useFileMutations = ({
       closeMessage: "Delete task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
+      onProgress: setDeleteProgress,
       success: (result) => {
+        setDeleteProgress(null);
         const failed = result?.failed ?? [];
         if (failed.length > 0) {
           toast.error(
@@ -125,14 +151,16 @@ export const useFileMutations = ({
         toast.success("Items deleted successfully");
       },
       error: (error) => {
+        setDeleteProgress(null);
         toast.error(getMutationErrorMessage(error, "Failed to delete items"));
       },
     });
 
   const deleteItems = useCallback(
-    (paths: string[]) => {
-      if (!paths.length) return;
-      deleteBatchAction.mutate({ paths });
+    async (paths: string[]): Promise<FileBatchResult | undefined> => {
+      if (!paths.length || deleteBatchAction.isPending) return;
+      setDeleteProgress(null);
+      return deleteBatchAction.mutateAsync({ paths });
     },
     [deleteBatchAction],
   );
@@ -183,7 +211,9 @@ export const useFileMutations = ({
       closeMessage: "Permissions task stream closed before completion",
       // invalidateListing below is more precise than the manifest entry.
       invalidates: [],
+      onProgress: setPermissionsProgress,
       success: (result) => {
+        setPermissionsProgress(null);
         invalidateListing();
         const failed = result?.failed ?? [];
         if (failed.length > 0) {
@@ -195,6 +225,7 @@ export const useFileMutations = ({
         toast.success("Permissions changed successfully");
       },
       error: (error) => {
+        setPermissionsProgress(null);
         toast.error(
           getMutationErrorMessage(error, "Failed to change permissions"),
         );
@@ -216,7 +247,8 @@ export const useFileMutations = ({
         group: group || "",
         recursive: recursive || undefined,
       };
-      await changePermissionsAction.mutateAsync(request);
+      setPermissionsProgress(null);
+      return changePermissionsAction.mutateAsync(request);
     },
     [changePermissionsAction],
   );
@@ -240,9 +272,15 @@ export const useFileMutations = ({
         src: from,
         dst: destination,
       };
-      await renameMutation.mutateAsync(request);
+      if (renamePending) return;
+      setRenamePending(true);
+      try {
+        await renameMutation.mutateAsync(request);
+      } finally {
+        setRenamePending(false);
+      }
     },
-    [renameMutation],
+    [renameMutation, renamePending],
   );
 
   // Transfers never overwrite silently: pre-check the landing paths and ask
@@ -334,13 +372,19 @@ export const useFileMutations = ({
 
   return {
     createFile,
+    createPending,
     createFolder,
     deleteItems,
+    deletePending: deleteBatchAction.isPending,
+    deleteProgress,
     compressItems,
     extractArchive,
     changePermissions,
+    permissionsPending: changePermissionsAction.isPending,
+    permissionsProgress,
     copyItems,
     moveItems,
     renameItem,
+    renamePending,
   };
 };
