@@ -21,10 +21,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
-	DefaultRoot              = "/var/lib/linuxIO/durable-operations"
+	DefaultRoot              = version.DataDir + "/durable-operations"
 	TerminalRetention        = 30 * 24 * time.Hour
 	MaxTerminalRecordsPerUID = 200
 	MaxProgressEntries       = 32

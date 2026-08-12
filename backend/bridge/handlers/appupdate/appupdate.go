@@ -78,7 +78,7 @@ func updaterWritablePaths() []updaterWritablePath {
 		{path: "/etc/motd.d", optional: true},
 		{path: "/usr/lib/tmpfiles.d"},
 		{path: "/usr/share/linuxio"},
-		{path: "/var/lib/linuxIO"},
+		{path: version.DataDir},
 	}
 }
 

@@ -117,8 +117,8 @@ func TestUpdaterUnitPropertiesUseNativeDBusTypesAndExplicitSandbox(t *testing.T)
 		UID:           1000,
 		Unit:          appUpdateUnitName(testOperationID),
 		Description:   appUpdateUnitDescription(testOperationID, 1000),
-		ScriptPath:    "/var/lib/linuxIO/durable-operations/artifacts/" + testOperationID + "/install.sh",
-		ResultPath:    "/var/lib/linuxIO/durable-operations/artifacts/" + testOperationID + "/executor-result.json",
+		ScriptPath:    filepath.Join(durabletask.DefaultRoot, "artifacts", testOperationID, "install.sh"),
+		ResultPath:    filepath.Join(durabletask.DefaultRoot, "artifacts", testOperationID, "executor-result.json"),
 		InstallerArgs: []string{"--defer-restart", "v2.3.4"},
 		RestartAfter:  true,
 	}
@@ -135,7 +135,7 @@ func TestUpdaterUnitPropertiesUseNativeDBusTypesAndExplicitSandbox(t *testing.T)
 	if !ok {
 		t.Fatalf("ReadWritePaths type = %T, want []string", values["ReadWritePaths"])
 	}
-	for _, expected := range []string{version.BinDir, "/etc/linuxio", "/var/lib/linuxIO"} {
+	for _, expected := range []string{version.BinDir, "/etc/linuxio", version.DataDir} {
 		if !slices.Contains(paths, expected) {
 			t.Errorf("ReadWritePaths missing %q: %v", expected, paths)
 		}

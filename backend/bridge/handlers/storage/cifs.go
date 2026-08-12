@@ -17,6 +17,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -28,7 +29,7 @@ const (
 // cifsCredentialsDir holds the root-only (0600) credentials files referenced by
 // fstab via credentials=. A var so tests can redirect it. This mirrors how
 // OpenMediaVault stores SMB credentials for fstab-mounted shares.
-var cifsCredentialsDir = "/var/lib/linuxio/cifs-credentials"
+var cifsCredentialsDir = filepath.Join(version.DataDir, "cifs-credentials")
 
 // validShareName allows SMB share names (letters, digits, and . _ $ -). Spaces
 // are disallowed: fstab is whitespace-delimited and getFstabEntries splits on

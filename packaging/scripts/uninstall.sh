@@ -15,6 +15,7 @@ readonly BOLD='\e[1m'
 readonly GREY='\e[90m'
 readonly RED='\e[91m'
 readonly YELLOW='\e[33m'
+readonly DATA_DIR="/var/lib/linuxio"
 
 readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
 
@@ -83,7 +84,7 @@ Show 0 "Configuration files removed"
 Show 2 "Removing runtime and data files..."
 rm -rf /run/linuxio
 rm -rf /usr/share/linuxio
-rm -rf /var/lib/linuxIO
+rm -rf "${DATA_DIR}"
 rm -f /etc/motd.d/linuxio 2>/dev/null || true
 Show 0 "Runtime files removed"
 
