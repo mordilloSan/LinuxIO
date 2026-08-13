@@ -75,6 +75,11 @@ const ContainerAutoUpdateContext = createContext<ContainerAutoUpdateCellState>({
   toggle: () => {},
 });
 
+// And so does the page-wide "checking updates" flag, which toggles twice per
+// check — once on click, once when the sweep returns, the second one landing
+// long after the pointer has moved back over the rows.
+const CheckingUpdatesContext = createContext(false);
+
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
 
@@ -318,7 +323,6 @@ function VersionCell({ version }: { version: string }) {
 }
 
 interface UpdateCellProps {
-  checkingUpdates: boolean;
   containerId: string;
   name: string;
   updateAvailable?: boolean;
@@ -327,7 +331,6 @@ interface UpdateCellProps {
 }
 
 const UpdateCell = memo(function UpdateCell({
-  checkingUpdates,
   containerId,
   name,
   updateAvailable,
@@ -335,6 +338,7 @@ const UpdateCell = memo(function UpdateCell({
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const checkingUpdates = useContext(CheckingUpdatesContext);
   const updateStatus = getUpdateStatus({
     updateAvailable,
     updateCheckedAt,
@@ -1149,7 +1153,6 @@ const ContainerTable = ({
             <div className="container-table__version-stack">
               <VersionCell version={getVersionDisplay(container)} />
               <UpdateCell
-                checkingUpdates={checkingUpdates}
                 containerId={container.Id}
                 name={getContainerName(container)}
                 updateAvailable={container.updateAvailable}
@@ -1161,6 +1164,8 @@ const ContainerTable = ({
         },
         meta: {
           align: "center",
+          // No `checkingUpdates` here for the same reason the actions column
+          // omits the auto-update state: the cell subscribes to it directly.
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
@@ -1170,7 +1175,6 @@ const ContainerTable = ({
               container.updateAvailable,
               container.updateCheckedAt,
               container.updateError,
-              checkingUpdates,
             ];
           },
           hideBelow: "md",
@@ -1368,7 +1372,6 @@ const ContainerTable = ({
       },
     ],
     [
-      checkingUpdates,
       compactActions,
       openLogs,
       openTerminal,
@@ -1398,21 +1401,23 @@ const ContainerTable = ({
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
         <ContainerAutoUpdateContext.Provider value={autoUpdateState}>
-          <AppDataTable
-            ariaLabel="Docker containers"
-            columns={columns}
-            data={containers}
-            dnd={dnd}
-            emptyMessage="No containers found."
-            enableSorting={false}
-            getRowId={(container) => container.Id}
-            // Dragging rows is the point of edit mode; selecting one there
-            // would fight the drag and immediately swap the table for a detail
-            // view.
-            onRowClick={
-              onSelectContainer && !editMode ? handleRowClick : undefined
-            }
-          />
+          <CheckingUpdatesContext.Provider value={checkingUpdates}>
+            <AppDataTable
+              ariaLabel="Docker containers"
+              columns={columns}
+              data={containers}
+              dnd={dnd}
+              emptyMessage="No containers found."
+              enableSorting={false}
+              getRowId={(container) => container.Id}
+              // Dragging rows is the point of edit mode; selecting one there
+              // would fight the drag and immediately swap the table for a
+              // detail view.
+              onRowClick={
+                onSelectContainer && !editMode ? handleRowClick : undefined
+              }
+            />
+          </CheckingUpdatesContext.Provider>
         </ContainerAutoUpdateContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
