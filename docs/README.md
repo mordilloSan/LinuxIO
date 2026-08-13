@@ -28,4 +28,5 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |
 | [Durable Operations Architecture](./durable-operations-architecture.md) | Implemented durable-operation records, recovery, transient-unit adapter, and the `control.app_update` and `docker.update_container` routes. |
 | [Notifications](./notifications.md) | Planned persistent per-user notification store, Calls, Channel, and frontend behavior. |
+| [VM Bridge Networking](./vm-bridge-networking-plan.md) | Planned bridged VM networking: network selection at VM creation, guided host bridge creation, and the snapshot/revert-timer/check-in apply safety. |
 | [Scheduled Execution](./scheduled-execution.md) | Planned persistent schedules, execution ownership, run summaries, and notifications. |

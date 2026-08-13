@@ -18,6 +18,18 @@ The focused architecture and design details live in
 [`docs/scheduled-execution.md`](docs/scheduled-execution.md). Do not duplicate
 their task lists here.
 
+### VM bridged networking
+
+Follow the phased
+[`VM Bridge Networking Plan`](docs/vm-bridge-networking-plan.md):
+
+1. VM-side network selection: enumerate libvirt networks and host bridges,
+   generate `type='bridge'` domain XML, and add the create-dialog network
+   field with per-preset defaults.
+2. Guided host bridge creation through the renderer backends, first on spare
+   NICs, then the single-NIC IP hand-off protected by snapshot, transient
+   revert timer, and reconnect check-in.
+
 ### React Compiler dependency pin
 
 Revisit the exact `"oxc-transform": "0.136.0"` pin in
