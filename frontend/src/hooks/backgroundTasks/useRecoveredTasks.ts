@@ -370,15 +370,26 @@ export function useRecoveredTasks(
           ]);
           watch({
             onProgress: (nextProgress) => {
+              // Progress normally only moves forward, but an archive swaps its
+              // denominator once the archive file exists (source bytes ->
+              // archive bytes), so the percentage legitimately restarts. Without
+              // this, the high-water mark froze archive downloads at whatever
+              // compression ended on and they sat there reading 99%.
+              const phase =
+                nextProgress.phase ?? progressDetail(nextProgress)?.phase;
+              const restartsProgress =
+                phase === "streaming" || phase === "waiting_for_client";
               setBackgroundTasks((prev) =>
                 prev.map((item) =>
                   item.id === task.id
                     ? {
                         ...item,
-                        progress: Math.max(
-                          item.progress,
-                          genericProgressPct(nextProgress),
-                        ),
+                        progress: restartsProgress
+                          ? genericProgressPct(nextProgress)
+                          : Math.max(
+                              item.progress,
+                              genericProgressPct(nextProgress),
+                            ),
                         label: genericLabel(nextProgress),
                         ...genericProgressMeta(nextProgress),
                       }

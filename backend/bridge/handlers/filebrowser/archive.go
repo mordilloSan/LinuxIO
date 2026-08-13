@@ -1,6 +1,7 @@
 package filebrowser
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
@@ -18,8 +19,12 @@ func archiveExtension(format string) (string, error) {
 	}
 }
 
-func computeArchiveSize(paths []string) int64 {
-	totalSize, err := services.ComputeArchiveSize(paths)
+// computeArchiveSize returns 0 when the estimate cannot be produced — including
+// when ctx cancels the walk. Callers treat 0 as "total unknown" and report
+// indeterminate progress, so a failed estimate degrades the progress bar rather
+// than the archive.
+func computeArchiveSize(ctx context.Context, paths []string) int64 {
+	totalSize, err := services.ComputeArchiveSize(ctx, paths)
 	if err != nil {
 		slog.Debug("failed to compute archive size", "error", err)
 		return 0

@@ -83,6 +83,7 @@ type archiveTransferTask struct {
 	mu          sync.Mutex
 	bytes       int64
 	archiveSize int64
+	totalKnown  bool
 	attached    bool
 	active      net.Conn
 	readyErr    error
@@ -96,6 +97,12 @@ var fileTransferTasks sync.Map
 // failing; without this backstop a client that never reconnects — tab closed,
 // crash, network loss — would hold a limited transfer task slot indefinitely.
 const transferIdleTimeout = 5 * time.Minute
+
+// transferAttachWaitTimeout bounds how long an incoming data stream waits for
+// its transfer to appear in fileTransferTasks. It only has to cover the gap
+// between the start reply and the task goroutine registering itself, so every
+// task runner must register before doing any slow work — see runArchiveTask.
+const transferAttachWaitTimeout = 2 * time.Second
 
 // signalActivity records forward progress on a transfer without blocking. The
 // activity channel is buffered (size 1) and coalesces: a full buffer already
@@ -275,19 +282,18 @@ func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 	if err != nil {
 		return nil, bridgetasks.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
-	settings := taskSettingsForTask(ctx, task, store)
-	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
-	if err != nil {
-		return nil, context.Canceled
-	}
-	defer release()
-
+	// Register before any slow work. The client opens its data stream as soon
+	// as the start reply carries the task id, and attachFileTransferData only
+	// waits transferAttachWaitTimeout for this entry to appear. Both the
+	// heavy-archive slot and the size estimate (a full recursive walk) can
+	// outlast that on a large folder, so registering after them raced the
+	// client into a spurious "transfer task not ready" 404 while the task kept
+	// archiving for a client that had already given up.
 	transfer := &archiveTransferTask{
 		task:        task,
 		format:      req.Format,
 		paths:       paths,
 		archiveName: archiveNameForPaths(paths, extension),
-		total:       computeArchiveSize(paths),
 		done:        make(chan transferOutcome, 1),
 		activity:    make(chan struct{}, 1),
 		ready:       make(chan struct{}),
@@ -295,8 +301,42 @@ func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 	fileTransferTasks.Store(task.ID(), transfer)
 	defer fileTransferTasks.Delete(task.ID())
 	defer transfer.cleanupArchive()
+	// Declared last so it runs first: every early return below must release a
+	// client already parked in attach() on <-t.ready before cleanupArchive
+	// pulls the temp file out from under it. A no-op once the archive is ready.
+	defer transfer.setReadyError(errors.New("archive task ended before the archive was ready"))
 
 	transfer.reportProgress("preparing")
+
+	settings := taskSettingsForTask(ctx, task, store)
+
+	// The size estimate is only the denominator for compression progress, and
+	// it costs a stat per file — seconds on a large tree. Running it inline
+	// delayed the archive by its full cost for no reason, so compute it
+	// alongside the work instead: progress reports indeterminate until it
+	// lands, then switches to a real percentage. Cancelling and joining the
+	// walk on the way out keeps it from outliving the task that owns it.
+	limiter := newProgressLimiter(settings, 0)
+	sizeCtx, cancelSize := context.WithCancel(ctx)
+	sizeDone := make(chan struct{})
+	go func() {
+		defer close(sizeDone)
+		if total := computeArchiveSize(sizeCtx, paths); total > 0 {
+			transfer.setTotal(total)
+			limiter.SetTotal(total)
+		}
+	}()
+	defer func() {
+		cancelSize()
+		<-sizeDone
+	}()
+
+	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
+	if err != nil {
+		return nil, context.Canceled
+	}
+	defer release()
+
 	tempFile, err := os.CreateTemp("", "linuxio-task-archive-*"+extension)
 	if err != nil {
 		return nil, fmt.Errorf("create temp archive: %w", err)
@@ -312,7 +352,7 @@ func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 	transfer.archive = tempPath
 	transfer.mu.Unlock()
 
-	callbacks := newArchiveTaskCallbacks(ctx, transfer, store)
+	callbacks := newArchiveTaskCallbacks(ctx, transfer, limiter)
 	err = createArchive(req.Format, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
 	if err != nil {
 		transfer.setReadyError(err)
@@ -358,7 +398,7 @@ func attachFileTransferData(ctx context.Context, task *bridgetasks.Task, stream 
 }
 
 func waitForFileTransferTask(ctx context.Context, taskID string) (any, bool) {
-	deadline := time.NewTimer(2 * time.Second)
+	deadline := time.NewTimer(transferAttachWaitTimeout)
 	defer deadline.Stop()
 
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -410,8 +450,7 @@ func archiveNameForPaths(paths []string, extension string) string {
 	return "download" + extension
 }
 
-func newArchiveTaskCallbacks(ctx context.Context, transfer *archiveTransferTask, store *config.UserStore) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(taskSettingsForTask(ctx, transfer.task, store), transfer.total)
+func newArchiveTaskCallbacks(ctx context.Context, transfer *archiveTransferTask, limiter *progressLimiter) *ipc.OperationCallbacks {
 	return &ipc.OperationCallbacks{
 		Cancel: func() bool {
 			return ctx.Err() != nil
@@ -1001,14 +1040,20 @@ func (t *archiveTransferTask) writeProgress(stream net.Conn, phase string) {
 func (t *archiveTransferTask) reportProgress(phase string) {
 	t.mu.Lock()
 	total := t.total
+	// Once the archive exists its own size is the denominator and is always
+	// known; only the phases that run against the source tree can be waiting on
+	// the size estimate.
+	indeterminate := !t.totalKnown
 	if phase == "streaming" || phase == "waiting_for_client" || phase == "completed" {
 		total = t.archiveSize
+		indeterminate = false
 	}
 	progress := FileProgress{
-		Bytes: t.bytes,
-		Total: total,
-		Pct:   transferPct(t.bytes, total),
-		Phase: phase,
+		Bytes:         t.bytes,
+		Total:         total,
+		Pct:           transferPct(t.bytes, total),
+		Phase:         phase,
+		Indeterminate: indeterminate,
 	}
 	t.mu.Unlock()
 	t.task.ReportProgress(progress)
@@ -1018,21 +1063,35 @@ func (t *archiveTransferTask) markWaiting() {
 	t.reportProgress("waiting_for_client")
 }
 
-func (t *archiveTransferTask) setReady(size int64) {
+// setTotal records the uncompressed size that compression progress is measured
+// against. It lands mid-task because the walk that computes it runs alongside
+// the archive rather than gating it; totalKnown is tracked separately so an
+// empty selection reads as "0 bytes", not "still counting".
+func (t *archiveTransferTask) setTotal(total int64) {
 	t.mu.Lock()
-	t.archiveSize = size
-	t.bytes = 0
+	t.total = total
+	t.totalKnown = true
 	t.mu.Unlock()
+}
+
+// setReady and setReadyError both resolve the ready gate exactly once, so the
+// first outcome wins: the defensive setReadyError on the task's exit path
+// cannot overwrite a successful setReady with a spurious error.
+func (t *archiveTransferTask) setReady(size int64) {
 	t.readyOnce.Do(func() {
+		t.mu.Lock()
+		t.archiveSize = size
+		t.bytes = 0
+		t.mu.Unlock()
 		close(t.ready)
 	})
 }
 
 func (t *archiveTransferTask) setReadyError(err error) {
-	t.mu.Lock()
-	t.readyErr = err
-	t.mu.Unlock()
 	t.readyOnce.Do(func() {
+		t.mu.Lock()
+		t.readyErr = err
+		t.mu.Unlock()
 		close(t.ready)
 	})
 }

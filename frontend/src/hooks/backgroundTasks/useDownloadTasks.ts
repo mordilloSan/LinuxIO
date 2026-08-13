@@ -114,9 +114,17 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
               break;
           }
 
+          // While the archive's size estimate is still being walked there is no
+          // denominator, so pct is meaningless — drop it from the label and let
+          // the bar run indeterminate rather than show a stalled 0%.
+          const indeterminate = progress.indeterminate === true;
           updateDownload(reqId, {
             progress: progress.pct,
-            label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
+            label: formatDownloadLabel(
+              phaseLabel,
+              indeterminate ? {} : { percent: progress.pct },
+            ),
+            indeterminate,
             bytes: progress.bytes,
             total: progress.total,
             ...(speed !== undefined && { speed }),
@@ -246,11 +254,14 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
                 break;
             }
             const percentage = progress.percentage ?? detail.pct;
+            const indeterminate = detail.indeterminate === true;
             updateDownload(reqId, {
               progress: percentage,
-              label: formatDownloadLabel(phaseLabel, {
-                percent: percentage,
-              }),
+              label: formatDownloadLabel(
+                phaseLabel,
+                indeterminate ? {} : { percent: percentage },
+              ),
+              indeterminate,
               bytes: detail.bytes,
               total: detail.total,
               ...(speed !== undefined && { speed }),
@@ -279,6 +290,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
           label: formatDownloadLabel("Downloaded", {
             name: downloadLabelBase,
           }),
+          indeterminate: false,
           speed: undefined,
         });
         recordTransferRate(reqId, undefined);

@@ -972,6 +972,7 @@ export interface FileProgress {
   total: number;
   pct: number;
   phase?: string;
+  indeterminate?: boolean;
 }
 
 export interface FileResourceGetRequest {

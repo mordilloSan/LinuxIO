@@ -119,7 +119,7 @@ func runCopyBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 
 	// One shared callback/limiter across all items so byte progress accumulates
 	// into a single aggregate bar instead of resetting per file.
-	opts := newTaskPhaseCallbacks(ctx, task, store, grandTotal, "copying")
+	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(grandTotal), "copying")
 
 	succeeded := 0
 	for _, item := range items {
@@ -171,7 +171,7 @@ func runMoveBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req.Sources, overwrite)
 	writeTaskPhaseProgress(task, grandTotal, "preparing")
 
-	opts := newTaskPhaseCallbacks(ctx, task, store, grandTotal, "moving")
+	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(grandTotal), "moving")
 
 	succeeded := 0
 	for _, item := range items {

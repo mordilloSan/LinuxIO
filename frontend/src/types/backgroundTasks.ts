@@ -16,6 +16,12 @@ export type ExtractionStartOptions = FileExtractRequest & {
 interface TrackedTaskItem<TType extends string> {
   abortController: AbortController;
   id: string;
+  /**
+   * The task is working but its total is not known yet, so `progress` carries
+   * no information — render a busy bar instead of a percentage. Archive tasks
+   * set this while their size estimate is still being walked.
+   */
+  indeterminate?: boolean;
   taskId?: string;
   label: string;
   progress: number;
@@ -93,7 +99,6 @@ export interface Move extends ByteTrackedTaskItem<"move"> {
 }
 
 export interface BackgroundTask extends TrackedTaskItem<"task"> {
-  indeterminate?: boolean;
   taskType: string;
   processed?: number;
 }

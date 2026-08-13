@@ -68,6 +68,11 @@ type FileProgress struct {
 	Total int64  `json:"total"`           // Total bytes (0 if unknown)
 	Pct   int    `json:"pct"`             // Percentage (0-100)
 	Phase string `json:"phase,omitempty"` // Optional phase description
+	// Indeterminate marks progress whose total is not known yet, so Pct is
+	// meaningless and the client should show a busy bar rather than 0%. Archive
+	// compression starts before its size estimate finishes and clears this once
+	// the estimate lands.
+	Indeterminate bool `json:"indeterminate,omitempty"`
 }
 
 func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {

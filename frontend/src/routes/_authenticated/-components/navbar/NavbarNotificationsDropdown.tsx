@@ -499,7 +499,11 @@ export function NavbarNotificationsDropdown() {
                 peekTransfer.label
                   ? removePercentage(peekTransfer.label)
                   : getTransferTitle(peekTransfer.type)
-              } ${Math.round(peekTransfer.progress)}% complete`
+              } ${
+                peekTransfer.indeterminate === true
+                  ? "in progress"
+                  : `${Math.round(peekTransfer.progress)}% complete`
+              }`
             : "Open notifications"
         }
         className="app-navbar-notifications__peek"
@@ -522,13 +526,19 @@ export function NavbarNotificationsDropdown() {
             <AppLinearProgress
               style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
               value={peekTransfer.progress}
-              variant="determinate"
+              variant={
+                peekTransfer.indeterminate === true
+                  ? "indeterminate"
+                  : "determinate"
+              }
             />
             <span className="app-navbar-notifications__peek-copy">
               {peekTransfer.label
                 ? removePercentage(peekTransfer.label)
                 : getTransferTitle(peekTransfer.type)}{" "}
-              {Math.round(peekTransfer.progress)}%
+              {peekTransfer.indeterminate === true
+                ? ""
+                : `${Math.round(peekTransfer.progress)}%`}
             </span>
           </>
         )}
