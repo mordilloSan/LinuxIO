@@ -150,6 +150,23 @@ transient-unit machinery:
 5. No confirmation → the timer restores the previous configuration, and the
    operation record reports the revert honestly.
 
+The revert path has three hard requirements beyond restoring file contents:
+
+- **Tear down created links explicitly.** Re-running the renderer apply does
+  not remove an existing kernel bridge on every backend (netplan never
+  deletes devices it no longer renders); the revert deletes the links this
+  operation created before re-applying the snapshot.
+- **Survive a reboot inside the window.** A transient timer dies with the
+  boot while the unconfirmed config files persist on disk. The operation
+  therefore also writes an on-disk unconfirmed-change marker that the system
+  service consumes at boot, reverting if it is still present. Confirmation
+  removes the marker and cancels the timer atomically; a confirmation that
+  loses the race against a started revert reports the reverted outcome
+  instead of pretending success.
+- **Prefer false reverts.** If only the client's network path broke, a
+  working change reverts because no check-in arrived. That is the correct
+  failure direction: the cost is redoing the change, never a lockout.
+
 Bridge-creation mutations follow the existing rule: not `RetrySafe`. The
 confirmation and explicit-revert Calls are idempotent. netplan's `netplan
 try` and NetworkManager's D-Bus checkpoints offer native equivalents, but
@@ -170,6 +187,10 @@ Refuse or warn before writing anything:
   the condition and report it; whether creation installs an ACCEPT rule for
   the bridge or surfaces a documented manual step is decided at
   implementation per firewall stack (iptables/nftables/firewalld).
+
+The hand-off wizard states the residual risk before applying: if the revert
+itself fails, recovery requires console or out-of-band access, so the user
+should not start the hand-off without it available.
 
 ### After creation
 
