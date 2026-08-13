@@ -13,7 +13,15 @@ export function useDockerUpdateCheck() {
     useCallMutation(linuxio.docker.check_updates, {
       success: (result) => {
         const checked = result?.checked ?? 0;
+        const errors = result?.errors ?? 0;
+        const uncheckable = result?.uncheckable ?? 0;
         const updates = result?.updates ?? 0;
+        if (uncheckable > 0 && errors === 0) {
+          toast.warning(
+            `Checked ${checked} container(s), ${uncheckable} cannot be checked, found ${updates} update(s)`,
+          );
+          return;
+        }
         toast.success(
           `Checked ${checked} container(s), found ${updates} update(s)`,
         );

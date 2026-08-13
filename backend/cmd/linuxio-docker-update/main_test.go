@@ -72,3 +72,36 @@ func TestRunCLIExitCodesAndErrors(t *testing.T) {
 		t.Fatalf("missing config = code %d, stderr %q", code, stderr.String())
 	}
 }
+
+func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
+	originalConfigure := configureLogging
+	originalRun := runUpdates
+	t.Cleanup(func() {
+		configureLogging = originalConfigure
+		runUpdates = originalRun
+	})
+
+	configured := false
+	configureLogging = func(identifier string, verbose bool) error {
+		if identifier != "linuxio-docker-update" || verbose {
+			t.Fatalf("logging config = %q, %v", identifier, verbose)
+		}
+		configured = true
+		return nil
+	}
+	runUpdates = func(context.Context, string) error {
+		if !configured {
+			t.Fatal("update dispatched before logging was configured")
+		}
+		return nil
+	}
+	if code := runWorker([]string{"linuxio-docker-update", "run"}, context.Background(), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("runWorker exit code = %d, want 0", code)
+	}
+
+	configureLogging = func(string, bool) error { return errors.New("journald unavailable") }
+	var stderr bytes.Buffer
+	if code := runWorker([]string{"linuxio-docker-update", "run"}, context.Background(), &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "initialize logging") {
+		t.Fatalf("logging failure = code %d, stderr %q", code, stderr.String())
+	}
+}

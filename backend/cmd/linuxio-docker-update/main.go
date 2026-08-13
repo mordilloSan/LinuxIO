@@ -11,16 +11,26 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
 var runUpdates = docker.RunScheduledContainerUpdates
+var configureLogging = logging.Configure
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := runCLI(os.Args, ctx, os.Stdout, os.Stderr)
+	code := runWorker(os.Args, ctx, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
+}
+
+func runWorker(args []string, ctx context.Context, stdout, stderr io.Writer) int {
+	if err := configureLogging("linuxio-docker-update", false); err != nil {
+		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
+		return 1
+	}
+	return runCLI(args, ctx, stdout, stderr)
 }
 
 func runCLI(args []string, ctx context.Context, stdout, stderr io.Writer) int {

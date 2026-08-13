@@ -52,7 +52,6 @@ func RefreshContainerImageUpdate(ctx context.Context, containerID string) (apisc
 		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
-
 	inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return apischema.DockerUpdateCheckResult{}, fmt.Errorf("inspect container: %w", err)
@@ -109,6 +108,9 @@ func updateContainer(ctx context.Context, containerID string) (apischema.DockerC
 		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
+	if recoveryErr := recoverStandaloneUpdate(ctx, cli, defaultStandaloneUpdateJournal); recoveryErr != nil {
+		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("recover previous standalone Docker update: %w", recoveryErr)
+	}
 
 	inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {

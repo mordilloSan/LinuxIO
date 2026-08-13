@@ -170,6 +170,9 @@ func composePullAndUp(ctx context.Context, target composeProjectTarget, service 
 }
 
 func composePullAndUpServices(ctx context.Context, target composeProjectTarget, services []string, emitter composeLineEmitter) error {
+	if err := validateComposeUpdateInputs(target); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(services))
 	normalized := make([]string, 0, len(services))
 	for _, service := range services {
@@ -195,6 +198,36 @@ func composePullAndUpServices(ctx context.Context, target composeProjectTarget, 
 		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
 	}
 	return nil
+}
+
+func validateComposeUpdateInputs(target composeProjectTarget) error {
+	for _, configFile := range target.ConfigFiles {
+		data, err := os.ReadFile(configFile)
+		if err != nil {
+			return fmt.Errorf("read Compose config %q: %w", configFile, err)
+		}
+		if containsComposeInterpolation(data) {
+			return fmt.Errorf("Compose project %q uses environment interpolation that LinuxIO cannot reconstruct safely", target.Name)
+		}
+	}
+	return nil
+}
+
+func containsComposeInterpolation(data []byte) bool {
+	for i := 0; i < len(data); i++ {
+		if data[i] != '$' || i+1 >= len(data) {
+			continue
+		}
+		next := data[i+1]
+		if next == '$' {
+			i++
+			continue
+		}
+		if next == '{' || next == '_' || next >= 'A' && next <= 'Z' || next >= 'a' && next <= 'z' {
+			return true
+		}
+	}
+	return false
 }
 
 func composeUp(

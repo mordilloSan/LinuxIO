@@ -44,11 +44,15 @@ type nativeContainerUpdateClient interface {
 }
 
 func acquireDockerUpdateLock(ctx context.Context) (func(), error) {
+	return acquireDockerUpdateLockAt(ctx, dockerUpdateLockPath, dockerUpdateLockWait, dockerUpdateLockPoll)
+}
+
+func acquireDockerUpdateLockAt(ctx context.Context, path string, wait, poll time.Duration) (func(), error) {
 	release, err := filelock.AcquireExclusive(
 		ctx,
-		dockerUpdateLockPath,
-		filelock.WithTimeout(dockerUpdateLockWait),
-		filelock.WithRetryDelay(dockerUpdateLockPoll),
+		path,
+		filelock.WithTimeout(wait),
+		filelock.WithRetryDelay(poll),
 	)
 	if errors.Is(err, filelock.ErrTimeout) {
 		return nil, errors.New("another Docker update is already in progress")
@@ -86,10 +90,19 @@ func updateInspectedContainer(
 	if observation.err != nil {
 		return result, observation.err
 	}
+	if observation.uncheckableReason != "" {
+		if markErr := markContainerUncheckable(ctx, inspect, observation.uncheckableReason); markErr != nil {
+			return result, markErr
+		}
+		return result, nil
+	}
 	if !observation.updateAvailable {
 		result.NewImageID = inspect.Image
 		markContainerCurrent(ctx, inspect.ID, inspect)
 		return result, nil
+	}
+	if stateErr := validateContainerUpdateState(inspect); stateErr != nil {
+		return result, stateErr
 	}
 
 	target, service, managedByCompose, err := composeTargetForContainer(ctx, cli, inspect)
@@ -97,9 +110,35 @@ func updateInspectedContainer(
 		return result, err
 	}
 	if managedByCompose {
+		if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
+			return result, err
+		}
 		return updateComposeContainer(ctx, cli, inspect, target, service, result)
 	}
-	return updateStandaloneContainer(ctx, cli, inspect, normalizedRef, result)
+	return updateStandaloneContainerWithJournal(ctx, cli, inspect, normalizedRef, result, &defaultStandaloneUpdateJournal)
+}
+
+func validateComposeServiceScope(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	projectName string,
+	service string,
+) error {
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("list Compose service %q containers: %w", service, err)
+	}
+	replicas := 0
+	for _, summary := range containers.Items {
+		if summary.Labels["com.docker.compose.project"] == projectName &&
+			summary.Labels["com.docker.compose.service"] == service {
+			replicas++
+		}
+	}
+	if replicas > 1 {
+		return fmt.Errorf("Compose service %q has %d replicas and cannot be updated safely as a single container", service, replicas)
+	}
+	return nil
 }
 
 func newContainerUpdateResult(inspect container.InspectResponse) (apischema.DockerContainerUpdateResult, string, error) {
@@ -217,14 +256,26 @@ func resolveComposeUpdateWorkingDir(
 
 func updateComposeContainer(
 	ctx context.Context,
-	cli *client.Client,
+	cli nativeContainerUpdateClient,
 	before container.InspectResponse,
 	target composeProjectTarget,
 	service string,
 	result apischema.DockerContainerUpdateResult,
 ) (apischema.DockerContainerUpdateResult, error) {
+	return updateComposeContainerWithRunner(ctx, cli, before, target, service, result, composePullAndUp)
+}
+
+func updateComposeContainerWithRunner(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	before container.InspectResponse,
+	target composeProjectTarget,
+	service string,
+	result apischema.DockerContainerUpdateResult,
+	run func(context.Context, composeProjectTarget, string, composeLineEmitter) error,
+) (apischema.DockerContainerUpdateResult, error) {
 	collector := &composeMessageCollector{}
-	if err := composePullAndUp(ctx, target, service, collector.Emit); err != nil {
+	if err := run(ctx, target, service, collector.Emit); err != nil {
 		if output := collector.String(); output != "" {
 			return result, fmt.Errorf("update Compose project %q service %q: %w: %s", target.Name, service, err, output)
 		}
@@ -242,20 +293,33 @@ func updateComposeContainer(
 	result.ContainerID = after.ID
 	result.NewImageID = after.Image
 	result.Updated = after.Image != before.Image
-	if !result.Updated {
-		return result, fmt.Errorf("Compose service %q completed without activating the pulled image", service)
-	}
 	markContainerCurrent(ctx, before.ID, after)
 	return result, nil
 }
 
-func updateStandaloneContainer(
+func validateContainerUpdateState(inspect container.InspectResponse) error {
+	name := strings.TrimPrefix(inspect.Name, "/")
+	if inspect.State == nil || !inspect.State.Running || inspect.State.Paused || inspect.State.Restarting {
+		return fmt.Errorf("container %q must be running and stable before it can be updated", name)
+	}
+	return nil
+}
+
+func updateStandaloneContainerWithJournal(
 	ctx context.Context,
 	cli nativeContainerUpdateClient,
 	before container.InspectResponse,
 	imageRef string,
 	result apischema.DockerContainerUpdateResult,
+	journal *standaloneUpdateJournal,
 ) (apischema.DockerContainerUpdateResult, error) {
+	if journal != nil {
+		if _, exists, journalErr := journal.read(); journalErr != nil {
+			return result, journalErr
+		} else if exists {
+			return result, errors.New("a previous standalone Docker update requires recovery")
+		}
+	}
 	if err := validateStandaloneUpdate(before); err != nil {
 		return result, err
 	}
@@ -290,27 +354,18 @@ func updateStandaloneContainer(
 		return result, err
 	}
 	backupName := standaloneBackupName(before.ID)
-	if _, stopErr := cli.ContainerStop(ctx, before.ID, client.ContainerStopOptions{}); stopErr != nil {
-		return result, fmt.Errorf("stop standalone container %q: %w", result.ContainerName, stopErr)
+	tx := standaloneUpdateTransaction{
+		Phase:        standaloneUpdatePrepared,
+		OriginalID:   before.ID,
+		OriginalName: result.ContainerName,
+		BackupName:   backupName,
 	}
-	if _, renameErr := cli.ContainerRename(ctx, before.ID, client.ContainerRenameOptions{NewName: backupName}); renameErr != nil {
-		rollbackErr := startOriginalContainer(ctx, cli, before.ID)
-		return result, errors.Join(fmt.Errorf("rename standalone container %q for rollback: %w", result.ContainerName, renameErr), rollbackErr)
+	if parkErr := parkStandaloneOriginal(ctx, cli, tx, journal); parkErr != nil {
+		return result, parkErr
 	}
-
-	created, err := cli.ContainerCreate(ctx, createOptions)
+	after, err := createAndVerifyStandaloneReplacement(ctx, cli, before.ID, result.ContainerName, createOptions, tx, journal)
 	if err != nil {
-		rollbackErr := restoreOriginalContainer(ctx, cli, before.ID, result.ContainerName)
-		return result, errors.Join(fmt.Errorf("create replacement for standalone container %q: %w", result.ContainerName, err), rollbackErr)
-	}
-	if _, startErr := cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); startErr != nil {
-		rollbackErr := rollbackStandaloneContainer(ctx, cli, created.ID, before.ID, result.ContainerName)
-		return result, errors.Join(fmt.Errorf("start replacement for standalone container %q: %w", result.ContainerName, startErr), rollbackErr)
-	}
-	after, err := waitForContainerReady(ctx, cli, created.ID)
-	if err != nil {
-		rollbackErr := rollbackStandaloneContainer(ctx, cli, created.ID, before.ID, result.ContainerName)
-		return result, errors.Join(fmt.Errorf("verify replacement for standalone container %q: %w", result.ContainerName, err), rollbackErr)
+		return result, err
 	}
 
 	result.ContainerID = after.ID
@@ -320,7 +375,96 @@ func updateStandaloneContainer(
 	if _, err := cli.ContainerRemove(ctx, before.ID, client.ContainerRemoveOptions{}); err != nil {
 		return result, fmt.Errorf("remove rollback container %q after successful update: %w", backupName, err)
 	}
+	if err := clearStandaloneJournal(journal); err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+func parkStandaloneOriginal(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	tx standaloneUpdateTransaction,
+	journal *standaloneUpdateJournal,
+) error {
+	if journal != nil {
+		if writeErr := journal.write(tx); writeErr != nil {
+			return writeErr
+		}
+	}
+	if _, stopErr := cli.ContainerStop(ctx, tx.OriginalID, client.ContainerStopOptions{}); stopErr != nil {
+		return errors.Join(fmt.Errorf("stop standalone container %q: %w", tx.OriginalName, stopErr), clearStandaloneJournal(journal))
+	}
+	if _, renameErr := cli.ContainerRename(ctx, tx.OriginalID, client.ContainerRenameOptions{NewName: tx.BackupName}); renameErr != nil {
+		rollbackErr := startOriginalContainer(ctx, cli, tx.OriginalID)
+		return errors.Join(fmt.Errorf("rename standalone container %q for rollback: %w", tx.OriginalName, renameErr), clearJournalAfterRollback(journal, rollbackErr))
+	}
+	return nil
+}
+
+func createAndVerifyStandaloneReplacement(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	originalID string,
+	originalName string,
+	createOptions client.ContainerCreateOptions,
+	tx standaloneUpdateTransaction,
+	journal *standaloneUpdateJournal,
+) (container.InspectResponse, error) {
+	created, createErr := cli.ContainerCreate(ctx, createOptions)
+	if createErr != nil {
+		rollbackErr := restoreOriginalContainer(ctx, cli, originalID, originalName)
+		return container.InspectResponse{}, errors.Join(fmt.Errorf("create replacement for standalone container %q: %w", originalName, createErr), clearJournalAfterRollback(journal, rollbackErr))
+	}
+	tx.Phase = standaloneUpdateCreated
+	tx.ReplacementID = created.ID
+	if writeErr := writeStandaloneJournal(journal, tx); writeErr != nil {
+		return container.InspectResponse{}, errors.Join(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, journal))
+	}
+	if _, startErr := cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); startErr != nil {
+		return container.InspectResponse{}, errors.Join(fmt.Errorf("start replacement for standalone container %q: %w", originalName, startErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, journal))
+	}
+	after, readyErr := waitForContainerReady(ctx, cli, created.ID)
+	if readyErr != nil {
+		return container.InspectResponse{}, errors.Join(fmt.Errorf("verify replacement for standalone container %q: %w", originalName, readyErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, journal))
+	}
+	tx.Phase = standaloneUpdateVerified
+	if writeErr := writeStandaloneJournal(journal, tx); writeErr != nil {
+		return container.InspectResponse{}, errors.Join(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, journal))
+	}
+	return after, nil
+}
+
+func writeStandaloneJournal(journal *standaloneUpdateJournal, tx standaloneUpdateTransaction) error {
+	if journal == nil {
+		return nil
+	}
+	return journal.write(tx)
+}
+
+func rollbackAndClearStandalone(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	replacementID string,
+	originalID string,
+	originalName string,
+	journal *standaloneUpdateJournal,
+) error {
+	return clearJournalAfterRollback(journal, rollbackStandaloneContainer(ctx, cli, replacementID, originalID, originalName))
+}
+
+func clearJournalAfterRollback(journal *standaloneUpdateJournal, rollbackErr error) error {
+	if rollbackErr != nil {
+		return rollbackErr
+	}
+	return clearStandaloneJournal(journal)
+}
+
+func clearStandaloneJournal(journal *standaloneUpdateJournal) error {
+	if journal == nil {
+		return nil
+	}
+	return journal.clear()
 }
 
 func validateStandaloneUpdate(inspect container.InspectResponse) error {
@@ -328,8 +472,8 @@ func validateStandaloneUpdate(inspect container.InspectResponse) error {
 	if inspect.Config == nil || inspect.HostConfig == nil {
 		return fmt.Errorf("standalone container %q does not expose complete recreation configuration", name)
 	}
-	if inspect.State == nil || !inspect.State.Running || inspect.State.Paused || inspect.State.Restarting {
-		return fmt.Errorf("standalone container %q must be running and stable before it can be updated", name)
+	if err := validateContainerUpdateState(inspect); err != nil {
+		return err
 	}
 	if inspect.HostConfig.AutoRemove {
 		return fmt.Errorf("standalone container %q uses auto-remove and cannot be updated with rollback", name)
@@ -373,8 +517,8 @@ func validateStandaloneDependents(ctx context.Context, cli nativeContainerUpdate
 		if dependent.HostConfig == nil {
 			continue
 		}
-		if target, ok := strings.CutPrefix(string(dependent.HostConfig.NetworkMode), "container:"); ok && matchesContainerReference(target, inspect.ID, name) {
-			return fmt.Errorf("standalone container %q provides the network namespace used by container %q", name, strings.TrimPrefix(dependent.Name, "/"))
+		if dependency := standaloneNamespaceDependency(dependent.HostConfig, inspect.ID, name); dependency != "" {
+			return fmt.Errorf("standalone container %q provides the %s used by container %q", name, dependency, strings.TrimPrefix(dependent.Name, "/"))
 		}
 		for _, volumeFrom := range dependent.HostConfig.VolumesFrom {
 			target, _, _ := strings.Cut(volumeFrom, ":")
@@ -384,6 +528,22 @@ func validateStandaloneDependents(ctx context.Context, cli nativeContainerUpdate
 		}
 	}
 	return nil
+}
+
+func standaloneNamespaceDependency(hostConfig *container.HostConfig, containerID, name string) string {
+	if hostConfig.NetworkMode.IsContainer() && matchesContainerReference(hostConfig.NetworkMode.ConnectedContainer(), containerID, name) {
+		return "network namespace"
+	}
+	if hostConfig.IpcMode.IsContainer() && matchesContainerReference(hostConfig.IpcMode.Container(), containerID, name) {
+		return "IPC namespace"
+	}
+	if hostConfig.PidMode.IsContainer() && matchesContainerReference(hostConfig.PidMode.Container(), containerID, name) {
+		return "PID namespace"
+	}
+	if hostConfig.Cgroup.IsContainer() && matchesContainerReference(hostConfig.Cgroup.Container(), containerID, name) {
+		return "cgroup namespace"
+	}
+	return ""
 }
 
 func matchesContainerReference(value, containerID, name string) bool {

@@ -27,10 +27,24 @@ type containerImageUpdateTarget struct {
 }
 
 type imageUpdateObservation struct {
-	localDigest     string
-	remoteDigest    string
-	updateAvailable bool
-	err             error
+	localDigest       string
+	remoteDigest      string
+	uncheckableReason string
+	updateAvailable   bool
+	err               error
+}
+
+func (o imageUpdateObservation) checkState() apischema.DockerUpdateCheckState {
+	switch {
+	case o.err != nil:
+		return apischema.DockerUpdateCheckStateError
+	case o.uncheckableReason != "":
+		return apischema.DockerUpdateCheckStateUncheckable
+	case o.updateAvailable:
+		return apischema.DockerUpdateCheckStateAvailable
+	default:
+		return apischema.DockerUpdateCheckStateCurrent
+	}
 }
 
 func checkContainerImageUpdates(
@@ -56,6 +70,8 @@ func checkContainerImageUpdates(
 		status := imageUpdateStatus{
 			ContainerID:     target.ContainerID,
 			ContainerName:   target.ContainerName,
+			CheckReason:     observation.uncheckableReason,
+			CheckState:      observation.checkState(),
 			ImageID:         target.ImageID,
 			ImageRef:        target.ImageRef,
 			LocalDigest:     observation.localDigest,
@@ -71,6 +87,9 @@ func checkContainerImageUpdates(
 		result.Checked++
 		if status.Err != "" {
 			result.Errors++
+		}
+		if status.CheckState == apischema.DockerUpdateCheckStateUncheckable {
+			result.Uncheckable++
 		}
 		if status.UpdateAvailable {
 			result.Updates++
@@ -135,7 +154,7 @@ func inspectImageUpdate(
 
 	localDigests := repositoryDigests(local.RepoDigests)
 	if len(localDigests) == 0 {
-		observation.err = fmt.Errorf("local image %q has no repository digest; cannot compare it with %q", imageID, imageRef)
+		observation.uncheckableReason = fmt.Sprintf("local image %q has no repository digest; cannot compare it with %q", imageID, imageRef)
 		return observation, nil
 	}
 	observation.localDigest = localDigests[0].String()

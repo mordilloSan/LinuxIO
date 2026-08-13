@@ -1,3 +1,4 @@
+import type { DockerUpdateCheckState } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
@@ -15,6 +16,8 @@ export interface DockerImageRow {
   size: string;
   tags: string[];
   updateAvailable?: boolean;
+  updateCheckReason?: string;
+  updateCheckState?: DockerUpdateCheckState;
 }
 
 export interface DockerImageCardProps {
@@ -138,6 +141,15 @@ const DockerImageCard = ({
             color="warning"
             label="Update available"
             size="small"
+            variant="soft"
+          />
+        )}
+        {image.updateCheckState === "uncheckable" && (
+          <Chip
+            color="info"
+            label="Cannot check"
+            size="small"
+            title={image.updateCheckReason}
             variant="soft"
           />
         )}

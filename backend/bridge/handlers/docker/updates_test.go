@@ -158,7 +158,7 @@ func TestCheckContainerImageUpdatesHandlesImmutableAndFailedChecks(t *testing.T)
 	if err != nil {
 		t.Fatalf("checkContainerImageUpdates: %v", err)
 	}
-	want := apischema.DockerUpdateCheckResult{Checked: 4, Errors: 2}
+	want := apischema.DockerUpdateCheckResult{Checked: 4, Errors: 1, Uncheckable: 1}
 	if result != want {
 		t.Fatalf("result = %+v, want %+v", result, want)
 	}
@@ -168,10 +168,12 @@ func TestCheckContainerImageUpdatesHandlesImmutableAndFailedChecks(t *testing.T)
 	if statuses[1].Err != "" || statuses[1].UpdateAvailable || statuses[1].LocalDigest != localDigest.String() {
 		t.Fatalf("image-ID status = %+v", statuses[1])
 	}
-	if !strings.Contains(statuses[2].Err, "no repository digest") {
+	if statuses[2].Err != "" || statuses[2].CheckState != apischema.DockerUpdateCheckStateUncheckable ||
+		!strings.Contains(statuses[2].CheckReason, "no repository digest") {
 		t.Fatalf("local-only status = %+v", statuses[2])
 	}
-	if !strings.Contains(statuses[3].Err, "registry unavailable") {
+	if statuses[3].CheckState != apischema.DockerUpdateCheckStateError ||
+		!strings.Contains(statuses[3].Err, "registry unavailable") {
 		t.Fatalf("failed registry status = %+v", statuses[3])
 	}
 	if len(client.imageCalls) != 2 {

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	updateStatusVersion  = 1
+	updateStatusVersion  = 2
 	updateStatusLockWait = 10 * time.Second
 	updateStatusLockPoll = 250 * time.Millisecond
 )
@@ -34,15 +34,17 @@ var (
 )
 
 type imageUpdateStatus struct {
-	ContainerID     string    `json:"container_id,omitempty"`
-	ContainerName   string    `json:"container_name,omitempty"`
-	ImageID         string    `json:"image_id,omitempty"`
-	ImageRef        string    `json:"image_ref,omitempty"`
-	UpdateAvailable bool      `json:"update_available"`
-	LocalDigest     string    `json:"local_digest,omitempty"`
-	RemoteDigest    string    `json:"remote_digest,omitempty"`
-	CheckedAt       time.Time `json:"checked_at"`
-	Err             string    `json:"error,omitempty"`
+	ContainerID     string                           `json:"container_id,omitempty"`
+	ContainerName   string                           `json:"container_name,omitempty"`
+	CheckReason     string                           `json:"check_reason,omitempty"`
+	CheckState      apischema.DockerUpdateCheckState `json:"check_state"`
+	ImageID         string                           `json:"image_id,omitempty"`
+	ImageRef        string                           `json:"image_ref,omitempty"`
+	UpdateAvailable bool                             `json:"update_available"`
+	LocalDigest     string                           `json:"local_digest,omitempty"`
+	RemoteDigest    string                           `json:"remote_digest,omitempty"`
+	CheckedAt       time.Time                        `json:"checked_at"`
+	Err             string                           `json:"error,omitempty"`
 }
 
 type updateStatusDocument struct {
@@ -174,10 +176,21 @@ func readUpdateStatusFile() []imageUpdateStatus {
 		slog.Debug("ignoring unsupported Docker update status file version", "component", "docker", "path", updateStatusPath, "version", doc.Version)
 		return nil
 	}
+	for _, status := range doc.Statuses {
+		if !validDockerUpdateCheckState(status.CheckState) {
+			slog.Debug("ignoring Docker update status file with an invalid check state", "component", "docker", "path", updateStatusPath, "state", status.CheckState)
+			return nil
+		}
+	}
 	return doc.Statuses
 }
 
 func writeUpdateStatusFile(statuses []imageUpdateStatus) error {
+	for _, status := range statuses {
+		if !validDockerUpdateCheckState(status.CheckState) {
+			return fmt.Errorf("write Docker update status: invalid check state %q", status.CheckState)
+		}
+	}
 	doc := updateStatusDocument{
 		Version:  updateStatusVersion,
 		Statuses: compactUpdateStatuses(statuses),
@@ -191,6 +204,18 @@ func writeUpdateStatusFile(statuses []imageUpdateStatus) error {
 		return fmt.Errorf("write %s: %w", updateStatusPath, err)
 	}
 	return nil
+}
+
+func validDockerUpdateCheckState(state apischema.DockerUpdateCheckState) bool {
+	switch state {
+	case apischema.DockerUpdateCheckStateCurrent,
+		apischema.DockerUpdateCheckStateAvailable,
+		apischema.DockerUpdateCheckStateUncheckable,
+		apischema.DockerUpdateCheckStateError:
+		return true
+	default:
+		return false
+	}
 }
 
 func compactUpdateStatuses(statuses []imageUpdateStatus) []imageUpdateStatus {
@@ -271,7 +296,13 @@ func applyContainerUpdateStatus(info *apischema.ContainerInfo, snap updateStatus
 }
 
 func setContainerUpdateStatus(info *apischema.ContainerInfo, status imageUpdateStatus) {
-	info.UpdateAvailable = new(status.UpdateAvailable)
+	checkState := status.CheckState
+	info.UpdateCheckState = new(checkState)
+	info.UpdateCheckReason = utils.OptionalString(status.CheckReason)
+	info.UpdateAvailable = nil
+	if checkState != apischema.DockerUpdateCheckStateUncheckable {
+		info.UpdateAvailable = new(status.UpdateAvailable)
+	}
 	info.UpdateCheckedAt = new(status.CheckedAt.UnixMilli())
 	info.UpdateError = utils.OptionalString(status.Err)
 }
@@ -289,6 +320,7 @@ func markContainerCurrent(ctx context.Context, oldContainerID string, inspect co
 	status := imageUpdateStatus{
 		ContainerID:   inspect.ID,
 		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
+		CheckState:    apischema.DockerUpdateCheckStateCurrent,
 		ImageID:       inspect.Image,
 		CheckedAt:     time.Now(),
 	}
@@ -299,6 +331,24 @@ func markContainerCurrent(ctx context.Context, oldContainerID string, inspect co
 	if err := mergeUpdateStatuses(ctx, []imageUpdateStatus{status}, oldContainerID); err != nil {
 		slog.Warn("failed to mark Docker container image current", "component", "docker", "container", inspect.ID, "error", err)
 	}
+}
+
+func markContainerUncheckable(ctx context.Context, inspect container.InspectResponse, reason string) error {
+	status := imageUpdateStatus{
+		ContainerID:   inspect.ID,
+		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
+		CheckReason:   reason,
+		CheckState:    apischema.DockerUpdateCheckStateUncheckable,
+		ImageID:       inspect.Image,
+		CheckedAt:     time.Now(),
+	}
+	if inspect.Config != nil {
+		status.ImageRef = inspect.Config.Image
+	}
+	if err := mergeUpdateStatuses(ctx, []imageUpdateStatus{status}); err != nil {
+		return fmt.Errorf("mark Docker container image uncheckable: %w", err)
+	}
+	return nil
 }
 
 func primaryContainerName(ctr container.Summary) string {

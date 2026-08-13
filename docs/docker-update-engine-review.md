@@ -5,18 +5,17 @@ Point-in-time review of the Watchtower → native Docker update engine migration
 Method: independent review angles reconciled against the current source and tests.
 Delete this file once the findings below are resolved.
 
-**Totals:** 23 tracked findings — 16 active (2 high, 8 medium, 6 low; 14 confirmed / 2
-plausible), 5 resolved, 1 deferred Engine-API limitation, and 1 confirmed behavior with no
+**Totals:** 23 tracked findings — 15 active (1 high, 8 medium, 6 low; 13 confirmed / 2
+plausible), 6 resolved, 1 deferred Engine-API limitation, and 1 confirmed behavior with no
 current product defect.
 
 ## Summary
 
 The migration is structurally sound — the oneshot systemd-timer model, shared cross-process lock,
 stop → rename → create → verify → remove rollback choreography, and packaging wiring all hold
-up. Three findings in the original review were already fixed (F01, F02, and F10), F06 is fixed in
-this review batch, and removal of the stale implementation plan resolves F16. The most important
-remaining risks are the false hard failure for local-only images (F04), running manual mutations
-inside the bridge process (F18), and several Compose/standalone ownership gaps (F19–F22).
+up. F01, F02, F04, F06, F10, and F16 are now resolved. The most important remaining risks are
+running manual mutations inside the bridge process (F18) and several Compose/standalone ownership
+gaps (F19–F22).
 
 F03 remains a real fidelity limitation, but its original fix was unsafe: Docker Inspect exposes
 an endpoint MAC that may be generated operational state, not configured intent. Blindly copying
@@ -39,28 +38,28 @@ Tracked in stable ID order; severity and disposition are explicit in each row.
 
 | ID  | Sev    | Verdict   | Finding                                                        | Location                            |
 | --- | ------ | --------- | -------------------------------------------------------------- | ----------------------------------- |
-| F01 | High   | Resolved  | `--tmpfs` containers can never be updated                       | `native_update_apply.go:477`        |
+| F01 | High   | Resolved  | `--tmpfs` containers can never be updated                       | `native_update_apply.go:483`        |
 | F02 | High   | Resolved  | Backup-cleanup failure clobbers a successful update's status    | `scheduled_update_apply.go:68`      |
-| F03 | High   | Deferred  | Pinned MAC intent is unavailable from Docker Inspect            | `native_update_apply.go:419`        |
-| F04 | High   | Confirmed | Local images fail every scheduled update-mode run               | `native_update_check.go:138`        |
-| F05 | Medium | Confirmed | Orphaned backup containers are never swept                      | `native_update_apply.go:321`        |
-| F06 | Medium | Resolved  | Replacement inherits the old container's short-ID hostname     | `native_update_apply.go:411`        |
-| F07 | Medium | Plausible | Compose hard-errors the benign same-image outcome               | `native_update_apply.go:246`        |
+| F03 | High   | Deferred  | Pinned MAC intent is unavailable from Docker Inspect            | `native_update_apply.go:425`        |
+| F04 | High   | Resolved  | Local images fail every scheduled update-mode run               | `native_update_check.go:157`        |
+| F05 | Medium | Confirmed | Orphaned backup containers are never swept                      | `native_update_apply.go:327`        |
+| F06 | Medium | Resolved  | Replacement inherits the old container's short-ID hostname     | `native_update_apply.go:417`        |
+| F07 | Medium | Plausible | Compose hard-errors the benign same-image outcome               | `native_update_apply.go:252`        |
 | F08 | Medium | Confirmed | Worker logs unstructured; component tag breaks convention       | `cmd/linuxio-docker-update/main.go:20` |
 | F09 | Medium | Confirmed | Scheduled orchestration and lock remain largely untested        | `scheduled_update_runner.go:24`     |
 | F10 | Medium | Resolved  | `.gitignore` missed the new binary at the repo root             | `.gitignore:13`                     |
 | F11 | Low    | Confirmed | Manual and scheduled paths duplicate decision + verify logic    | `scheduled_update_apply.go:99`      |
-| F12 | Low    | Confirmed | Duplicated helper, lock constants, and JSON-document pattern    | `native_update_apply.go:510`        |
-| F13 | Low    | Confirmed | Sequential registry round-trips on the UI refresh path          | `native_update_check.go:143`        |
-| F14 | Low    | Confirmed | Per-update full-host dependent inspection                       | `native_update_apply.go:358`        |
+| F12 | Low    | Confirmed | Duplicated helper, lock constants, and JSON-document pattern    | `native_update_apply.go:516`        |
+| F13 | Low    | Confirmed | Sequential registry round-trips on the UI refresh path          | `native_update_check.go:162`        |
+| F14 | Low    | Confirmed | Per-update full-host dependent inspection                       | `native_update_apply.go:364`        |
 | F15 | Low    | No defect | `docker_updates` capability alone ignores Docker availability   | `system/capabilities.go:71`         |
 | F16 | Low    | Resolved  | Plan doc was a stale status record                              | `docs/docker-update-engine-plan.md` |
-| F17 | Low    | Plausible | First not-running poll aborts with no retry                     | `native_update_apply.go:526`        |
+| F17 | Low    | Plausible | First not-running poll aborts with no retry                     | `native_update_apply.go:532`        |
 | F18 | High   | Confirmed | Manual update mutation still runs inside the bridge process     | `updates.go:92`                     |
-| F19 | Medium | Confirmed | Compose invocation environment cannot be reconstructed          | `compose_sdk.go:77`                 |
-| F20 | Medium | Confirmed | Replica selection silently broadens to the whole Compose service | `scheduled_update_apply.go:145`    |
-| F21 | Medium | Confirmed | Standalone dependency checks miss IPC/PID/cgroup namespaces     | `native_update_apply.go:358`        |
-| F22 | Medium | Confirmed | Stopped standalone and Compose targets have conflicting behavior | `scheduled_update_runner.go:50`    |
+| F19 | Medium | Confirmed | Compose invocation environment cannot be reconstructed          | `native_update_apply.go:130`        |
+| F20 | Medium | Confirmed | Replica selection silently broadens to the whole Compose service | `scheduled_update_apply.go:157`    |
+| F21 | Medium | Confirmed | Standalone dependency checks miss IPC/PID/cgroup namespaces     | `native_update_apply.go:364`        |
+| F22 | Medium | Confirmed | Stopped standalone and Compose targets have conflicting behavior | `scheduled_update_runner.go:52`    |
 | F23 | Low    | Confirmed | Successful check toasts hide partial scan errors                | `useDockerUpdateCheck.tsx:14`       |
 
 Backend paths are relative to `backend/bridge/handlers/docker/` unless noted.
@@ -69,7 +68,7 @@ Backend paths are relative to `backend/bridge/handlers/docker/` unless noted.
 
 ### F01 — `--tmpfs` containers can never be updated
 
-**High · Resolved · `native_update_apply.go:477` · correctness**
+**High · Resolved · `native_update_apply.go:483` · correctness**
 
 The original implementation checked `HostConfig.Mounts` and `HostConfig.Binds` but not
 `HostConfig.Tmpfs`, so a tmpfs entry surfacing in `inspect.Mounts` fell into
@@ -96,7 +95,7 @@ failure without overwriting the status with the old container. The regression te
 
 ### F03 — Pinned MAC intent is unavailable from Docker Inspect
 
-**High · Deferred Engine-API limitation · `native_update_apply.go:419` · correctness**
+**High · Deferred Engine-API limitation · `native_update_apply.go:425` · correctness**
 
 The rebuilt per-network `EndpointSettings` does not copy `MacAddress`, so a standalone container
 created with an explicitly pinned per-network MAC may receive a different address after
@@ -113,24 +112,26 @@ fix.
 
 ### F04 — Local images fail every scheduled update-mode run
 
-**High · Confirmed · `native_update_check.go:138` · correctness**
+**High · Resolved · `native_update_check.go:157` · correctness**
 
-An image with no `RepoDigests` (anything from `docker build` that was never pushed) is recorded as
-a hard error on every check: "local image has no repository digest". In the default scheduled
-`update` mode that error propagates through `errors.Join` to the process exit code, so
-`linuxio-docker-update.service` is marked failed on every firing. In `check_only` mode the worker
-logs the error count but returns success; the container still carries the same permanent error
-badge. Neither mode can clear it short of pushing the image.
+Previously, an image with no `RepoDigests` (anything from `docker build` that was never pushed) was
+recorded as a hard error on every check. In the default scheduled `update` mode that error
+propagated through `errors.Join` to the process exit code, so `linuxio-docker-update.service` was
+marked failed on every firing. In `check_only` mode the worker returned success but left the same
+permanent error badge.
 
-**Fix:** add an explicit persisted/API check state such as `uncheckable`, with an informational
-reason. For that state, leave `UpdateAvailable` unset, exclude it from `Errors` and the scheduled
-run's joined error, and render "Cannot check" rather than either "Scan failed" or "Up to date".
-Simply clearing `Err` is insufficient because the current UI interprets a checked false value as
-up to date.
+**Resolution:** local-only images now produce an explicit persisted/API `uncheckable` state and
+informational reason. They increment the result's `uncheckable` count instead of `errors`, do not
+enter the scheduled update run's joined error, and leave `updateAvailable` absent in container and
+image API responses. Container and image views render "Cannot check", and interactive checks give
+warning feedback instead of claiming the image is current. Legacy status records infer
+`current`/`available`/`error` without a status-file version break. Backend coverage exercises the
+scan result, API projection, image projection, and scheduled update-mode path; frontend coverage
+pins the container-row label.
 
 ### F05 — Orphaned backup containers are never swept
 
-**Medium · Confirmed · `native_update_apply.go:321` · correctness**
+**Medium · Confirmed · `native_update_apply.go:327` · correctness**
 
 The renamed `linuxio-update-backup-*` container is removed at exactly one call site. If that
 removal fails, nothing ever retries or sweeps it: later updates of the same container use a new
@@ -145,7 +146,7 @@ container may be the rollback source.
 
 ### F06 — Replacement inherits the old container's short-ID hostname
 
-**Medium · Resolved · `native_update_apply.go:411` · correctness**
+**Medium · Resolved · `native_update_apply.go:417` · correctness**
 
 `cloneJSON(inspect.Config)` copies `Hostname` verbatim. A container that never set `--hostname` has
 Docker's default — its own 12-character ID — so the replacement is created with the *old*
@@ -159,7 +160,7 @@ unchanged, with table-driven regression coverage.
 
 ### F07 — Compose hard-errors the benign same-image outcome
 
-**Medium · Plausible · `native_update_apply.go:246` · consistency**
+**Medium · Plausible · `native_update_apply.go:252` · consistency**
 
 Both paths run only after the digest check reports an update. When the subsequent pull resolves to
 the image already running (a digest-check false positive — e.g. a registry or mirror manifest
@@ -226,7 +227,7 @@ diverge — F07 is already a divergence of this kind.
 
 ### F12 — Duplicated helper, lock constants, and JSON-document pattern
 
-**Low · Confirmed · `native_update_apply.go:510` · reuse**
+**Low · Confirmed · `native_update_apply.go:516` · reuse**
 
 Three small copies in one package: `cloneEndpointStringMap` reimplements the existing
 `cloneStringMap` (`volumes.go:74`) with a subtly different nil guard; the 10s/250ms lock wait/poll
@@ -239,7 +240,7 @@ constants; consider a small versioned-document helper when the next JSON file ap
 
 ### F13 — Sequential registry round-trips on the UI refresh path
 
-**Low · Confirmed · `native_update_check.go:143` · efficiency**
+**Low · Confirmed · `native_update_check.go:162` · efficiency**
 
 `checkContainerImageUpdates` performs one `DistributionInspect` registry round-trip per unique
 `(image ID, normalized reference)` cache key, strictly sequentially — on the interactive
@@ -251,7 +252,7 @@ observations are independent.
 
 ### F14 — Per-update full-host dependent inspection
 
-**Low · Confirmed · `native_update_apply.go:358` · efficiency**
+**Low · Confirmed · `native_update_apply.go:364` · efficiency**
 
 `validateStandaloneDependents` lists all containers and then `ContainerInspect`s every other
 container sequentially, before *each* standalone update — a scheduled pass updating M standalone
@@ -287,7 +288,7 @@ tree. Durable decisions needed for follow-up work are recorded in this review in
 
 ### F17 — First not-running poll aborts with no retry
 
-**Low · Plausible · `native_update_apply.go:526` · correctness**
+**Low · Plausible · `native_update_apply.go:532` · correctness**
 
 `waitForContainerReady` treats the very first observation of `!State.Running` as terminal, while a
 health check in "starting" state is patiently retried. If an inspect ever races a just-started
@@ -316,7 +317,7 @@ Detaching only the request context is not sufficient because it still cannot sur
 
 ### F19 — Compose invocation environment cannot be reconstructed
 
-**Medium · Confirmed · `native_update_apply.go:124`, `compose_sdk.go:77` · correctness**
+**Medium · Confirmed · `native_update_apply.go:130`, `compose_sdk.go:77` · correctness**
 
 Compose discovery preserves project name, config-file paths, and working directory from labels.
 The later `docker compose` call reconstructs only `--project-name`, repeated `--file` arguments,
@@ -333,7 +334,7 @@ env-file and interpolated image tag in the Compose integration suite.
 
 ### F20 — Replica selection silently broadens to the whole Compose service
 
-**Medium · Confirmed · `scheduled_update_apply.go:145`, `compose_sdk.go:172` · correctness / UX**
+**Medium · Confirmed · `scheduled_update_apply.go:157`, `compose_sdk.go:172` · correctness / UX**
 
 Auto-update configuration selects container names, including individual Compose replicas. The
 scheduled preparation path converts selected replicas to service names, deduplicates them, then
@@ -349,7 +350,7 @@ selected.
 
 ### F21 — Standalone dependency checks miss IPC/PID/cgroup namespaces
 
-**Medium · Confirmed · `native_update_apply.go:358` · correctness**
+**Medium · Confirmed · `native_update_apply.go:364` · correctness**
 
 Before recreating a standalone provider, `validateStandaloneDependents` rejects dependents using
 `NetworkMode=container:<ref>` or `VolumesFrom`. Docker also supports container references in
@@ -363,7 +364,7 @@ name, full ID, and 12-character ID matching where applicable.
 
 ### F22 — Stopped standalone and Compose targets have conflicting behavior
 
-**Medium · Confirmed · `scheduled_update_runner.go:50` · correctness / semantics**
+**Medium · Confirmed · `scheduled_update_runner.go:52` · correctness / semantics**
 
 Target discovery uses `ContainerList(All: true)`, and the UI/backend allow stopped containers to be
 enrolled. In update mode, standalone validation rejects a stopped container and records a recurring
@@ -387,8 +388,8 @@ image failures can therefore produce a green success toast while row status reco
 
 **Fix:** show warning/error feedback whenever `result.errors > 0`, include the count in the message,
 and never say a single container is up to date when its check failed. Add component/hook tests for
-full success, partial failure, and total per-container failure. Coordinate wording with F04's future
-non-error `uncheckable` state.
+full success, partial failure, and total per-container failure. Preserve F04's non-error
+`uncheckable` wording.
 
 ## Claims investigated and rejected
 
@@ -425,10 +426,10 @@ re-litigated later.
 
 Work one independently reviewable finding at a time:
 
-1. **F06 — completed in this batch.** Regenerate only default short-ID hostnames and preserve
+1. **F06 — completed.** Regenerate only default short-ID hostnames and preserve
    explicit/host-network values.
-2. **F04.** Introduce an honest `uncheckable` status across persisted state, the API contract, and
-   the frontend; do not replace the hard error with a false "Up to date" result.
+2. **F04 — completed.** Local images now carry an honest non-error `uncheckable`
+   state across persisted status, API results, scheduled execution, and the frontend.
 3. **F18.** Move manual mutation to a durable system-owned execution path before expanding update
    behavior further.
 4. **F21**, then **F19**, **F20**, and **F22** individually. These close the remaining namespace,

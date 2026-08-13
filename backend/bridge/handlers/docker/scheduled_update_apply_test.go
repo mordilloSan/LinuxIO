@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
@@ -40,5 +42,30 @@ func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
 	}
 	if _, ok := snapshot.forContainer(before.ID); ok {
 		t.Fatal("old container status was retained")
+	}
+}
+
+func TestScheduledLocalImageIsUncheckableWithoutRunError(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	ctx := context.Background()
+	candidate := scheduledUpdateCandidate{inspect: standaloneTestInspect()}
+	const reason = "local image has no repository digest"
+
+	result, err := applyScheduledImageObservation(ctx, candidate, "docker.io/library/local:test", imageUpdateObservation{
+		uncheckableReason: reason,
+	})
+	if err != nil {
+		t.Fatalf("applyScheduledImageObservation: %v", err)
+	}
+	if result.needsUpdate {
+		t.Fatal("local image was marked as needing an update")
+	}
+
+	status, ok := readUpdateStatusSnapshot().forContainer(candidate.inspect.ID)
+	if !ok {
+		t.Fatal("uncheckable status was not persisted")
+	}
+	if status.CheckState != apischema.DockerUpdateCheckStateUncheckable || status.CheckReason != reason || status.Err != "" {
+		t.Fatalf("status = %+v, want non-error uncheckable state", status)
 	}
 }

@@ -11,6 +11,7 @@ type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type DockerContainerAutoUpdateMode string
+type DockerUpdateCheckState string
 type IndexerIntegrityCheck string
 type TaskState string
 type MonitoringHistoryResolution string
@@ -24,6 +25,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
+	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
@@ -38,6 +40,11 @@ var StringEnums = map[string][]string{
 const (
 	SensorReadingKindNumber  SensorReadingKind = "number"
 	SensorReadingKindBoolean SensorReadingKind = "boolean"
+
+	DockerUpdateCheckStateCurrent     DockerUpdateCheckState = "current"
+	DockerUpdateCheckStateAvailable   DockerUpdateCheckState = "available"
+	DockerUpdateCheckStateUncheckable DockerUpdateCheckState = "uncheckable"
+	DockerUpdateCheckStateError       DockerUpdateCheckState = "error"
 )
 
 var ExtraTypes = []TypeSpec{
@@ -377,24 +384,26 @@ type ContainerNetworkSettings struct {
 }
 
 type ContainerInfo struct {
-	Created         int64                     `json:"Created"`
-	HostConfig      *ContainerHostConfig      `json:"HostConfig,omitempty"`
-	Icon            *string                   `json:"icon,omitempty"`
-	ID              string                    `json:"Id"`
-	Image           string                    `json:"Image"`
-	Labels          map[string]string         `json:"Labels,omitempty"`
-	Metrics         *ContainerMetrics         `json:"metrics,omitempty"`
-	Mounts          []ContainerMount          `json:"Mounts,omitempty"`
-	Names           []string                  `json:"Names"`
-	NetworkSettings *ContainerNetworkSettings `json:"NetworkSettings,omitempty"`
-	Ports           []ContainerPort           `json:"Ports,omitempty"`
-	ProxyPort       *string                   `json:"proxyPort,omitempty"`
-	State           string                    `json:"State"`
-	Status          string                    `json:"Status"`
-	UpdateAvailable *bool                     `json:"updateAvailable,omitempty"`
-	UpdateCheckedAt *int64                    `json:"updateCheckedAt,omitempty"`
-	UpdateError     *string                   `json:"updateError,omitempty"`
-	URL             *string                   `json:"url,omitempty"`
+	Created           int64                     `json:"Created"`
+	HostConfig        *ContainerHostConfig      `json:"HostConfig,omitempty"`
+	Icon              *string                   `json:"icon,omitempty"`
+	ID                string                    `json:"Id"`
+	Image             string                    `json:"Image"`
+	Labels            map[string]string         `json:"Labels,omitempty"`
+	Metrics           *ContainerMetrics         `json:"metrics,omitempty"`
+	Mounts            []ContainerMount          `json:"Mounts,omitempty"`
+	Names             []string                  `json:"Names"`
+	NetworkSettings   *ContainerNetworkSettings `json:"NetworkSettings,omitempty"`
+	Ports             []ContainerPort           `json:"Ports,omitempty"`
+	ProxyPort         *string                   `json:"proxyPort,omitempty"`
+	State             string                    `json:"State"`
+	Status            string                    `json:"Status"`
+	UpdateAvailable   *bool                     `json:"updateAvailable,omitempty"`
+	UpdateCheckedAt   *int64                    `json:"updateCheckedAt,omitempty"`
+	UpdateCheckReason *string                   `json:"updateCheckReason,omitempty"`
+	UpdateCheckState  *DockerUpdateCheckState   `json:"updateCheckState,omitempty"`
+	UpdateError       *string                   `json:"updateError,omitempty"`
+	URL               *string                   `json:"url,omitempty"`
 }
 
 type DockerContainerAutoUpdateOptions struct {
@@ -424,14 +433,16 @@ type DockerContainerAutoUpdateState struct {
 }
 
 type DockerImage struct {
-	Containers      *int              `json:"Containers,omitempty"`
-	Created         int64             `json:"Created"`
-	ID              string            `json:"Id"`
-	Labels          map[string]string `json:"Labels,omitempty"`
-	RepoDigests     []string          `json:"RepoDigests,omitempty"`
-	RepoTags        []string          `json:"RepoTags"`
-	Size            int64             `json:"Size"`
-	UpdateAvailable *bool             `json:"updateAvailable,omitempty"`
+	Containers        *int                    `json:"Containers,omitempty"`
+	Created           int64                   `json:"Created"`
+	ID                string                  `json:"Id"`
+	Labels            map[string]string       `json:"Labels,omitempty"`
+	RepoDigests       []string                `json:"RepoDigests,omitempty"`
+	RepoTags          []string                `json:"RepoTags"`
+	Size              int64                   `json:"Size"`
+	UpdateAvailable   *bool                   `json:"updateAvailable,omitempty"`
+	UpdateCheckReason *string                 `json:"updateCheckReason,omitempty"`
+	UpdateCheckState  *DockerUpdateCheckState `json:"updateCheckState,omitempty"`
 }
 
 type DockerNetworkContainer struct {

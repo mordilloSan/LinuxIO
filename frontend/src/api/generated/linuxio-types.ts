@@ -493,6 +493,8 @@ export interface ContainerInfo {
   Status: string;
   updateAvailable?: boolean;
   updateCheckedAt?: number;
+  updateCheckReason?: string;
+  updateCheckState?: DockerUpdateCheckState;
   updateError?: string;
   url?: string;
 }
@@ -708,6 +710,8 @@ export interface DockerImage {
   RepoTags: string[];
   Size: number;
   updateAvailable?: boolean;
+  updateCheckReason?: string;
+  updateCheckState?: DockerUpdateCheckState;
 }
 
 export interface DockerLogsFollowRequest {
@@ -831,8 +835,15 @@ export interface DockerSystemPruneResponse {
 export interface DockerUpdateCheckResult {
   checked: number;
   errors: number;
+  uncheckable: number;
   updates: number;
 }
+
+export type DockerUpdateCheckState =
+  | "current"
+  | "available"
+  | "uncheckable"
+  | "error";
 
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;

@@ -10,12 +10,20 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type scheduledComposeTarget struct {
 	target   composeProjectTarget
 	services []string
 	before   []container.InspectResponse
+}
+
+type scheduledPassOperations struct {
+	list   func(context.Context) ([]container.Summary, error)
+	check  func(context.Context, []container.Summary) error
+	update func(context.Context, []container.Summary, bool) error
 }
 
 // RunScheduledContainerUpdates executes one configured check or update pass.
@@ -31,7 +39,7 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 		return err
 	}
 	if len(opts.ContainerNames) == 0 {
-		slog.Info("Docker update schedule has no selected containers", "component", "docker-update")
+		slog.Info("Docker update schedule has no selected containers", "component", "docker", "subsystem", "update")
 		return nil
 	}
 
@@ -46,13 +54,31 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 		return fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
+	if err := recoverStandaloneUpdate(ctx, cli, defaultStandaloneUpdateJournal); err != nil {
+		return fmt.Errorf("recover previous standalone Docker update: %w", err)
+	}
 
-	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
+	return runScheduledPass(ctx, opts, scheduledPassOperations{
+		list: func(ctx context.Context) ([]container.Summary, error) {
+			containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
+			return containers.Items, err
+		},
+		check: func(ctx context.Context, summaries []container.Summary) error {
+			return runScheduledUpdateCheck(ctx, cli, summaries)
+		},
+		update: func(ctx context.Context, summaries []container.Summary, cleanup bool) error {
+			return runScheduledUpdates(ctx, cli, summaries, cleanup)
+		},
+	})
+}
+
+func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpdateOptions, operations scheduledPassOperations) error {
+	containers, err := operations.list(ctx)
 	if err != nil {
 		return fmt.Errorf("list scheduled Docker update targets: %w", err)
 	}
-	targetByName := make(map[string]container.Summary, len(containers.Items))
-	for _, summary := range containers.Items {
+	targetByName := make(map[string]container.Summary, len(containers))
+	for _, summary := range containers {
 		if name := primaryContainerName(summary); name != "" {
 			targetByName[name] = summary
 		}
@@ -70,10 +96,10 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 	}
 
 	if opts.Mode == "check_only" {
-		checkErr := runScheduledUpdateCheck(ctx, cli, selected)
+		checkErr := operations.check(ctx, selected)
 		return errors.Join(append(runErrs, checkErr)...)
 	}
-	updateErr := runScheduledUpdates(ctx, cli, selected, opts.Cleanup)
+	updateErr := operations.update(ctx, selected, opts.Cleanup)
 	return errors.Join(append(runErrs, updateErr)...)
 }
 
@@ -95,9 +121,11 @@ func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers
 		return err
 	}
 	slog.Info("scheduled Docker image check complete",
-		"component", "docker-update",
+		"component", "docker",
+		"subsystem", "update",
 		"checked", result.Checked,
 		"updates", result.Updates,
+		"uncheckable", result.Uncheckable,
 		"errors", result.Errors)
 	return nil
 }
@@ -128,6 +156,7 @@ func scheduledUpdateError(ctx context.Context, inspect container.InspectResponse
 	status := imageUpdateStatus{
 		ContainerID:   inspect.ID,
 		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
+		CheckState:    apischema.DockerUpdateCheckStateError,
 		ImageID:       inspect.Image,
 		CheckedAt:     time.Now(),
 		Err:           err.Error(),
@@ -141,7 +170,12 @@ func scheduledUpdateError(ctx context.Context, inspect container.InspectResponse
 	return err
 }
 
-func cleanupUnusedUpdateImages(ctx context.Context, cli *client.Client, imageIDs []string) error {
+type scheduledImageCleanupClient interface {
+	ContainerList(context.Context, client.ContainerListOptions) (client.ContainerListResult, error)
+	ImageRemove(context.Context, string, client.ImageRemoveOptions) (client.ImageRemoveResult, error)
+}
+
+func cleanupUnusedUpdateImages(ctx context.Context, cli scheduledImageCleanupClient, imageIDs []string) error {
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("list containers before old-image cleanup: %w", err)

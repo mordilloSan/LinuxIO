@@ -41,6 +41,7 @@ function container(
   id: string,
   name: string,
   state: "exited" | "running",
+  updateStatus: Partial<ContainerInfo> = {},
 ): ContainerInfo {
   return {
     Created: 1,
@@ -49,6 +50,7 @@ function container(
     Names: [`/${name}`],
     State: state,
     Status: state === "running" ? "Up 1 minute" : "Exited",
+    ...updateStatus,
   };
 }
 
@@ -69,6 +71,23 @@ function rowNamed(name: string) {
 }
 
 describe("ContainerTable mutation feedback", () => {
+  it("shows local-only images as uncheckable instead of up to date", () => {
+    media.compact = false;
+    renderTable([
+      container("local-id", "local", "running", {
+        updateCheckedAt: Date.now(),
+        updateCheckReason: "local image has no repository digest",
+        updateCheckState: "uncheckable",
+      }),
+    ]);
+
+    const rescan = within(rowNamed("local")).getByRole("button", {
+      name: "Re-scan local for updates",
+    });
+    expect(rescan).toHaveTextContent("Cannot check");
+    expect(rescan).not.toHaveTextContent("Up to date");
+  });
+
   it.each([
     ["Start", "start_container", "exited"],
     ["Stop", "stop_container", "running"],

@@ -25,6 +25,7 @@ func TestUpdateStatusStoreRoundTrip(t *testing.T) {
 			ImageID:         "sha256:image-1",
 			ImageRef:        "nginx:latest",
 			UpdateAvailable: true,
+			CheckState:      apischema.DockerUpdateCheckStateAvailable,
 			LocalDigest:     "sha256:local",
 			RemoteDigest:    "sha256:remote",
 			CheckedAt:       checkedAt,
@@ -72,8 +73,8 @@ func TestMergeUpdateStatusesOverlaysEntry(t *testing.T) {
 	oldTime := time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC)
 	newTime := oldTime.Add(time.Hour)
 	if err := writeUpdateStatuses(context.Background(), []imageUpdateStatus{
-		{ContainerID: "container-1", ContainerName: "nginx", ImageID: "sha256:image-1", CheckedAt: oldTime},
-		{ContainerID: "container-2", ContainerName: "redis", ImageID: "sha256:image-2", CheckedAt: oldTime},
+		{ContainerID: "container-1", ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:image-1", CheckedAt: oldTime},
+		{ContainerID: "container-2", ContainerName: "redis", CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:image-2", CheckedAt: oldTime},
 	}); err != nil {
 		t.Fatalf("writeUpdateStatuses: %v", err)
 	}
@@ -84,6 +85,7 @@ func TestMergeUpdateStatusesOverlaysEntry(t *testing.T) {
 			ContainerName:   "nginx",
 			ImageID:         "sha256:image-1",
 			UpdateAvailable: true,
+			CheckState:      apischema.DockerUpdateCheckStateAvailable,
 			CheckedAt:       newTime,
 		},
 	}); err != nil {
@@ -104,13 +106,13 @@ func TestMergeUpdateStatusesOverlaysEntry(t *testing.T) {
 func TestMergeUpdateStatusesRemovesOldContainerID(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	if err := writeUpdateStatuses(context.Background(), []imageUpdateStatus{
-		{ContainerID: "old-container", ContainerName: "nginx", ImageID: "sha256:old", UpdateAvailable: true, CheckedAt: time.Now()},
+		{ContainerID: "old-container", ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateAvailable, ImageID: "sha256:old", UpdateAvailable: true, CheckedAt: time.Now()},
 	}); err != nil {
 		t.Fatalf("writeUpdateStatuses: %v", err)
 	}
 
 	if err := mergeUpdateStatuses(context.Background(), []imageUpdateStatus{
-		{ContainerID: "new-container", ContainerName: "nginx", ImageID: "sha256:new", CheckedAt: time.Now()},
+		{ContainerID: "new-container", ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:new", CheckedAt: time.Now()},
 	}, "old-container"); err != nil {
 		t.Fatalf("mergeUpdateStatuses: %v", err)
 	}
@@ -126,8 +128,8 @@ func TestMergeUpdateStatusesRemovesOldContainerID(t *testing.T) {
 
 func TestUpdateStatusSnapshotPrefersAvailableImageStatus(t *testing.T) {
 	snap := newUpdateStatusSnapshot([]imageUpdateStatus{
-		{ContainerID: "container-1", ImageID: "sha256:shared", CheckedAt: time.Now()},
-		{ContainerID: "container-2", ImageID: "sha256:shared", UpdateAvailable: true, CheckedAt: time.Now()},
+		{ContainerID: "container-1", CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:shared", CheckedAt: time.Now()},
+		{ContainerID: "container-2", CheckState: apischema.DockerUpdateCheckStateAvailable, ImageID: "sha256:shared", UpdateAvailable: true, CheckedAt: time.Now()},
 	})
 
 	status, ok := snap.forImage(image.Summary{ID: "sha256:shared"})
@@ -138,7 +140,7 @@ func TestUpdateStatusSnapshotPrefersAvailableImageStatus(t *testing.T) {
 
 func TestUpdateStatusSnapshotMatchesImageRef(t *testing.T) {
 	snap := newUpdateStatusSnapshot([]imageUpdateStatus{
-		{ContainerName: "nginx", ImageRef: "nginx:latest", UpdateAvailable: true, CheckedAt: time.Now()},
+		{ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateAvailable, ImageRef: "nginx:latest", UpdateAvailable: true, CheckedAt: time.Now()},
 	})
 
 	status, ok := snap.forImage(image.Summary{RepoTags: []string{"nginx:latest"}})
@@ -150,7 +152,7 @@ func TestUpdateStatusSnapshotMatchesImageRef(t *testing.T) {
 func TestApplyContainerUpdateStatusFallsBackToContainerName(t *testing.T) {
 	checkedAt := time.Date(2026, 6, 24, 12, 30, 0, 0, time.UTC)
 	snap := newUpdateStatusSnapshot([]imageUpdateStatus{
-		{ContainerName: "nginx", ImageRef: "nginx:latest", UpdateAvailable: true, CheckedAt: checkedAt},
+		{ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateAvailable, ImageRef: "nginx:latest", UpdateAvailable: true, CheckedAt: checkedAt},
 	})
 	info := apischema.ContainerInfo{
 		ID:    "container-1",
@@ -164,6 +166,49 @@ func TestApplyContainerUpdateStatusFallsBackToContainerName(t *testing.T) {
 	}
 	if info.UpdateCheckedAt == nil || *info.UpdateCheckedAt != checkedAt.UnixMilli() {
 		t.Fatalf("UpdateCheckedAt = %v, want %d", info.UpdateCheckedAt, checkedAt.UnixMilli())
+	}
+	if info.UpdateCheckState == nil || *info.UpdateCheckState != apischema.DockerUpdateCheckStateAvailable {
+		t.Fatalf("UpdateCheckState = %v, want available", info.UpdateCheckState)
+	}
+}
+
+func TestApplyUncheckableUpdateStatusLeavesAvailabilityUnset(t *testing.T) {
+	checkedAt := time.Date(2026, 8, 13, 12, 30, 0, 0, time.UTC)
+	const reason = "local image has no repository digest"
+	snap := newUpdateStatusSnapshot([]imageUpdateStatus{{
+		ContainerID: "container-1",
+		CheckReason: reason,
+		CheckState:  apischema.DockerUpdateCheckStateUncheckable,
+		CheckedAt:   checkedAt,
+	}})
+	info := apischema.ContainerInfo{ID: "container-1", UpdateAvailable: new(true)}
+
+	applyContainerUpdateStatus(&info, snap)
+
+	if info.UpdateAvailable != nil {
+		t.Fatalf("UpdateAvailable = %v, want nil", info.UpdateAvailable)
+	}
+	if info.UpdateCheckState == nil || *info.UpdateCheckState != apischema.DockerUpdateCheckStateUncheckable {
+		t.Fatalf("UpdateCheckState = %v, want uncheckable", info.UpdateCheckState)
+	}
+	if info.UpdateCheckReason == nil || *info.UpdateCheckReason != reason {
+		t.Fatalf("UpdateCheckReason = %v, want %q", info.UpdateCheckReason, reason)
+	}
+	if info.UpdateError != nil {
+		t.Fatalf("UpdateError = %v, want nil", info.UpdateError)
+	}
+
+	img := apischema.DockerImage{UpdateAvailable: new(true)}
+	applyImageUpdateStatus(&img, imageUpdateStatus{
+		CheckReason: reason,
+		CheckState:  apischema.DockerUpdateCheckStateUncheckable,
+	})
+	if img.UpdateAvailable != nil || img.UpdateCheckState == nil ||
+		*img.UpdateCheckState != apischema.DockerUpdateCheckStateUncheckable {
+		t.Fatalf("DockerImage update status = %+v, want uncheckable with nil availability", img)
+	}
+	if img.UpdateCheckReason == nil || *img.UpdateCheckReason != reason {
+		t.Fatalf("DockerImage UpdateCheckReason = %v, want %q", img.UpdateCheckReason, reason)
 	}
 }
 
@@ -185,7 +230,7 @@ func TestMergeUpdateStatusesWaitsForFileLock(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- mergeUpdateStatuses(context.Background(), []imageUpdateStatus{
-			{ContainerID: "container-1", ContainerName: "nginx", ImageID: "sha256:image-1", CheckedAt: time.Now()},
+			{ContainerID: "container-1", ContainerName: "nginx", CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:image-1", CheckedAt: time.Now()},
 		})
 	}()
 
@@ -215,7 +260,7 @@ func TestConcurrentMergeUpdateStatusesKeepAllEntries(t *testing.T) {
 	for _, id := range []string{"container-1", "container-2", "container-3"} {
 		wg.Go(func() {
 			if err := mergeUpdateStatuses(context.Background(), []imageUpdateStatus{
-				{ContainerID: id, ContainerName: id, ImageID: "sha256:" + id, CheckedAt: time.Now()},
+				{ContainerID: id, ContainerName: id, CheckState: apischema.DockerUpdateCheckStateCurrent, ImageID: "sha256:" + id, CheckedAt: time.Now()},
 			}); err != nil {
 				t.Errorf("mergeUpdateStatuses(%s): %v", id, err)
 			}
@@ -236,8 +281,11 @@ func withTempUpdateStatusPath(t *testing.T) string {
 	oldPath := updateStatusPath
 	path := filepath.Join(t.TempDir(), "docker-update-status.json")
 	updateStatusPath = path
+	oldJournal := defaultStandaloneUpdateJournal
+	defaultStandaloneUpdateJournal.path = filepath.Join(filepath.Dir(path), "docker-update-transaction.json")
 	t.Cleanup(func() {
 		updateStatusPath = oldPath
+		defaultStandaloneUpdateJournal = oldJournal
 	})
 	return path
 }

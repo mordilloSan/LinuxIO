@@ -25,6 +25,7 @@ type scheduledUpdateState struct {
 	composeGroups map[string]*scheduledComposeTarget
 	oldImageIDs   []string
 	errs          []error
+	composeUpdate func(context.Context, composeProjectTarget, []string, composeLineEmitter) error
 }
 
 func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduledUpdateState {
@@ -32,6 +33,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 		ctx:           ctx,
 		cli:           cli,
 		composeGroups: make(map[string]*scheduledComposeTarget),
+		composeUpdate: composePullAndUpServices,
 	}
 }
 
@@ -47,6 +49,10 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 	if !candidate.needsUpdate {
 		return nil
 	}
+	if stateErr := validateContainerUpdateState(candidate.inspect); stateErr != nil {
+		s.recordCandidateError(candidate.inspect, stateErr)
+		return nil
+	}
 
 	target, service, managedByCompose, err := composeTargetForContainer(s.ctx, s.cli, candidate.inspect)
 	if err != nil {
@@ -57,11 +63,15 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		return nil
 	}
 	if managedByCompose {
+		if scopeErr := validateComposeServiceScope(s.ctx, s.cli, target.Name, service); scopeErr != nil {
+			s.recordCandidateError(candidate.inspect, scopeErr)
+			return nil
+		}
 		s.addComposeCandidate(target, service, candidate.inspect)
 		return nil
 	}
 
-	updated, err := updateStandaloneContainer(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result)
+	updated, err := updateStandaloneContainerWithJournal(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
 }
 
@@ -73,7 +83,8 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 	if updated.Updated {
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
 		slog.Info("updated standalone Docker container",
-			"component", "docker-update",
+			"component", "docker",
+			"subsystem", "update",
 			"container", updated.ContainerName,
 			"old_image", updated.PreviousImageID,
 			"new_image", updated.NewImageID)
@@ -85,7 +96,8 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 		if updated.Updated {
 			s.errs = append(s.errs, updateErr)
 			slog.Warn("failed to remove standalone Docker rollback container after successful update",
-				"component", "docker-update",
+				"component", "docker",
+				"subsystem", "update",
 				"container", updated.ContainerName,
 				"error", updateErr)
 			return nil
@@ -123,8 +135,20 @@ func inspectScheduledUpdateCandidate(
 	if err != nil {
 		return candidate, err
 	}
+	return applyScheduledImageObservation(ctx, candidate, normalizedRef, observation)
+}
+
+func applyScheduledImageObservation(
+	ctx context.Context,
+	candidate scheduledUpdateCandidate,
+	normalizedRef string,
+	observation imageUpdateObservation,
+) (scheduledUpdateCandidate, error) {
 	if observation.err != nil {
 		return candidate, observation.err
+	}
+	if observation.uncheckableReason != "" {
+		return candidate, markContainerUncheckable(ctx, candidate.inspect, observation.uncheckableReason)
 	}
 	if !observation.updateAvailable {
 		markContainerCurrent(ctx, candidate.inspect.ID, candidate.inspect)
@@ -167,7 +191,7 @@ func (s *scheduledUpdateState) applyComposeGroups() error {
 
 func (s *scheduledUpdateState) applyComposeGroup(group *scheduledComposeTarget) error {
 	collector := &composeMessageCollector{}
-	if err := composePullAndUpServices(s.ctx, group.target, group.services, collector.Emit); err != nil {
+	if err := s.composeUpdate(s.ctx, group.target, group.services, collector.Emit); err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
@@ -188,9 +212,13 @@ func (s *scheduledUpdateState) applyComposeGroup(group *scheduledComposeTarget) 
 			continue
 		}
 		markContainerCurrent(s.ctx, before.ID, after)
+		if after.Image == before.Image {
+			continue
+		}
 		s.oldImageIDs = append(s.oldImageIDs, before.Image)
 		slog.Info("updated Compose Docker container",
-			"component", "docker-update",
+			"component", "docker",
+			"subsystem", "update",
 			"project", group.target.Name,
 			"container", strings.TrimPrefix(before.Name, "/"),
 			"old_image", before.Image,
@@ -212,9 +240,6 @@ func verifyScheduledComposeContainer(
 	after, err := waitForContainerReady(ctx, cli, afterResult.Container.ID)
 	if err != nil {
 		return container.InspectResponse{}, fmt.Errorf("verify updated Compose container %q: %w", name, err)
-	}
-	if after.Image == before.Image {
-		return container.InspectResponse{}, fmt.Errorf("Compose container %q did not activate the pulled image", name)
 	}
 	return after, nil
 }

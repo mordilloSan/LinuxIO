@@ -373,9 +373,10 @@ type WireGuardAddInterfaceRequest struct {
 }
 
 type DockerUpdateCheckResult struct {
-	Checked int `json:"checked"`
-	Errors  int `json:"errors"`
-	Updates int `json:"updates"`
+	Checked     int `json:"checked"`
+	Errors      int `json:"errors"`
+	Uncheckable int `json:"uncheckable"`
+	Updates     int `json:"updates"`
 }
 
 type DockerContainerUpdateResult struct {

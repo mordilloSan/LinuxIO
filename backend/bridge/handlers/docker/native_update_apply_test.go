@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,6 +20,16 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
+
+func updateStandaloneContainer(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	before container.InspectResponse,
+	imageRef string,
+	result apischema.DockerContainerUpdateResult,
+) (apischema.DockerContainerUpdateResult, error) {
+	return updateStandaloneContainerWithJournal(ctx, cli, before, imageRef, result, nil)
+}
 
 func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
 	target := composeProjectTarget{
@@ -46,6 +58,65 @@ func TestComposeCommandArgsRejectsIncompleteTarget(t *testing.T) {
 	}
 	if _, err := composeCommandArgs(composeProjectTarget{Name: "media"}, "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted a project without config files")
+	}
+}
+
+func TestComposeUpdateInputsRejectEnvironmentInterpolation(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain.yml")
+	interpolated := filepath.Join(dir, "interpolated.yml")
+	if err := os.WriteFile(plain, []byte("services:\n  web:\n    image: nginx:latest\n    command: echo $$HOSTNAME\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(interpolated, []byte("services:\n  web:\n    image: nginx:${IMAGE_TAG}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposeUpdateInputs(composeProjectTarget{Name: "web", ConfigFiles: []string{plain}}); err != nil {
+		t.Fatalf("plain Compose config rejected: %v", err)
+	}
+	if err := validateComposeUpdateInputs(composeProjectTarget{Name: "web", ConfigFiles: []string{interpolated}}); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
+		t.Fatalf("interpolated Compose config error = %v", err)
+	}
+}
+
+func TestUpdateComposeContainerTreatsSameImageAsCurrent(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	before := standaloneTestInspect()
+	after := readyContainer("replacement", before.Image)
+	fake := newStandaloneUpdateFake()
+	fake.inspectResults["web"] = after
+	fake.inspectResults["replacement"] = after
+
+	result, err := updateComposeContainerWithRunner(
+		context.Background(), fake, before,
+		composeProjectTarget{Name: "project", ConfigFiles: []string{"compose.yml"}},
+		"web", apischemaUpdateResult(before),
+		func(context.Context, composeProjectTarget, string, composeLineEmitter) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("updateComposeContainerWithRunner: %v", err)
+	}
+	if result.Updated || result.NewImageID != before.Image || result.ContainerID != after.ID {
+		t.Fatalf("result = %+v, want successful current outcome", result)
+	}
+	status, ok := readUpdateStatusSnapshot().forContainer(after.ID)
+	if !ok || status.CheckState != apischema.DockerUpdateCheckStateCurrent {
+		t.Fatalf("status = %+v, %v; want current", status, ok)
+	}
+}
+
+func TestValidateComposeServiceScopeRejectsReplicas(t *testing.T) {
+	fake := newStandaloneUpdateFake()
+	labels := map[string]string{
+		"com.docker.compose.project": "media",
+		"com.docker.compose.service": "web",
+	}
+	fake.containerItems = []container.Summary{
+		{ID: "replica-1", Labels: labels},
+		{ID: "replica-2", Labels: labels},
+	}
+	if err := validateComposeServiceScope(context.Background(), fake, "media", "web"); err == nil || !strings.Contains(err.Error(), "2 replicas") {
+		t.Fatalf("validateComposeServiceScope error = %v", err)
 	}
 }
 
@@ -86,6 +157,37 @@ func TestValidateStandaloneUpdateRejectsUnsafeOwnership(t *testing.T) {
 				t.Fatalf("validateStandaloneUpdate error = %v, want %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateStandaloneDependentsRejectsNamespaceReferences(t *testing.T) {
+	const fullID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for _, reference := range []string{"web", fullID, fullID[:12]} {
+		for _, mode := range []struct {
+			name   string
+			set    func(*container.HostConfig)
+			needle string
+		}{
+			{name: "network", set: func(h *container.HostConfig) { h.NetworkMode = container.NetworkMode("container:" + reference) }, needle: "network namespace"},
+			{name: "ipc", set: func(h *container.HostConfig) { h.IpcMode = container.IpcMode("container:" + reference) }, needle: "IPC namespace"},
+			{name: "pid", set: func(h *container.HostConfig) { h.PidMode = container.PidMode("container:" + reference) }, needle: "PID namespace"},
+			{name: "cgroup", set: func(h *container.HostConfig) { h.Cgroup = container.CgroupSpec("container:" + reference) }, needle: "cgroup namespace"},
+		} {
+			t.Run(mode.name+"/"+reference, func(t *testing.T) {
+				before := standaloneTestInspect()
+				before.ID = fullID
+				dependent := standaloneTestInspect()
+				dependent.ID = "dependent"
+				dependent.Name = "/consumer"
+				mode.set(dependent.HostConfig)
+				fake := newStandaloneUpdateFake()
+				fake.containerItems = []container.Summary{{ID: before.ID}, {ID: dependent.ID, Names: []string{"/consumer"}}}
+				fake.inspectResults[dependent.ID] = dependent
+				if err := validateStandaloneDependents(context.Background(), fake, before); err == nil || !strings.Contains(err.Error(), mode.needle) {
+					t.Fatalf("validateStandaloneDependents error = %v, want %q", err, mode.needle)
+				}
+			})
+		}
 	}
 }
 
@@ -462,6 +564,47 @@ func TestUpdateStandaloneContainerReportsBackupCleanupFailure(t *testing.T) {
 	}
 }
 
+func TestStandaloneUpdateJournalRetriesVerifiedBackupCleanup(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	cleanupErr := errors.New("backup removal failed")
+	fake := newStandaloneUpdateFake()
+	fake.removeErrors["old-container"] = cleanupErr
+
+	result, err := updateStandaloneContainerWithJournal(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()), &journal,
+	)
+	if !errors.Is(err, cleanupErr) || !result.Updated {
+		t.Fatalf("update result = %+v, error = %v", result, err)
+	}
+	backup := standaloneTestInspect()
+	backup.Name = "/" + standaloneBackupName(backup.ID)
+	backup.State = &container.State{Status: container.StateExited}
+	fake.inspectResults["old-container"] = backup
+	delete(fake.removeErrors, "old-container")
+
+	if err := recoverStandaloneUpdate(context.Background(), fake, journal); err != nil {
+		t.Fatalf("recoverStandaloneUpdate: %v", err)
+	}
+	if _, err := os.Stat(journal.path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal still exists: %v", err)
+	}
+	if got := fake.calls[len(fake.calls)-1]; got != "remove:old-container:false" {
+		t.Fatalf("last recovery call = %q", got)
+	}
+}
+
+func TestStandaloneUpdateJournalDoesNotSweepUnjournaledBackups(t *testing.T) {
+	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	fake := newStandaloneUpdateFake()
+	if err := recoverStandaloneUpdate(context.Background(), fake, journal); err != nil {
+		t.Fatalf("recoverStandaloneUpdate: %v", err)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("unexpected Docker calls without a journal: %v", fake.calls)
+	}
+}
+
 func newStandaloneUpdateFake() *fakeNativeUpdateClient {
 	return &fakeNativeUpdateClient{
 		pulledImage: client.ImageInspectResult{InspectResponse: image.InspectResponse{ID: "sha256:new"}},
@@ -538,6 +681,7 @@ type fakeNativeUpdateClient struct {
 	removeErrors    map[string]error
 	stopErr         error
 	createErr       error
+	containerItems  []container.Summary
 }
 
 func (f *fakeNativeUpdateClient) ImageInspect(
@@ -587,7 +731,7 @@ func (f *fakeNativeUpdateClient) ContainerList(
 	client.ContainerListOptions,
 ) (client.ContainerListResult, error) {
 	f.calls = append(f.calls, "list-containers")
-	return client.ContainerListResult{}, nil
+	return client.ContainerListResult{Items: f.containerItems}, nil
 }
 
 func (f *fakeNativeUpdateClient) ContainerStop(

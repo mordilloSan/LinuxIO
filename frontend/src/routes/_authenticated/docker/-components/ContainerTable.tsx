@@ -131,7 +131,11 @@ const getVersionDisplay = (container: ContainerInfo) => {
 
 type ContainerUpdateStatusInput = Pick<
   ContainerInfo,
-  "updateAvailable" | "updateCheckedAt" | "updateError"
+  | "updateAvailable"
+  | "updateCheckedAt"
+  | "updateCheckReason"
+  | "updateCheckState"
+  | "updateError"
 >;
 
 // `label` is the visible second line of the Version cell; `detail` is the
@@ -140,13 +144,22 @@ type ContainerUpdateStatusInput = Pick<
 const getUpdateStatus = ({
   updateAvailable,
   updateCheckedAt,
+  updateCheckReason,
+  updateCheckState,
   updateError,
 }: ContainerUpdateStatusInput) => {
   const detail = updateCheckedAt
     ? `Scanned ${formatRelativeAge(updateCheckedAt)}`
     : "Never scanned";
 
-  if (updateError) {
+  if (updateCheckState === "uncheckable") {
+    return {
+      color: "secondary" as const,
+      detail: updateCheckReason || "This image has no repository digest",
+      label: "Cannot check",
+    };
+  }
+  if (updateCheckState === "error" || updateError) {
     return {
       color: "error" as const,
       detail: updateError,
@@ -234,6 +247,8 @@ const getContainerTableSignature = (container: ContainerInfo) => {
       ? ""
       : String(container.updateAvailable),
     container.updateCheckedAt ?? "",
+    container.updateCheckReason ?? "",
+    container.updateCheckState ?? "",
     container.updateError ?? "",
     container.metrics?.cpu_percent?.toFixed(1) ?? "",
     container.metrics?.mem_usage === undefined
@@ -327,6 +342,8 @@ interface UpdateCellProps {
   name: string;
   updateAvailable?: boolean;
   updateCheckedAt?: ContainerInfo["updateCheckedAt"];
+  updateCheckReason?: string;
+  updateCheckState?: ContainerInfo["updateCheckState"];
   updateError?: string;
 }
 
@@ -335,6 +352,8 @@ const UpdateCell = memo(function UpdateCell({
   name,
   updateAvailable,
   updateCheckedAt,
+  updateCheckReason,
+  updateCheckState,
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
@@ -342,12 +361,19 @@ const UpdateCell = memo(function UpdateCell({
   const updateStatus = getUpdateStatus({
     updateAvailable,
     updateCheckedAt,
+    updateCheckReason,
+    updateCheckState,
     updateError,
   });
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
     useCallMutation(linuxio.docker.check_container_update, {
       success: (result) => {
         const updates = result?.updates ?? 0;
+        const uncheckable = result?.uncheckable ?? 0;
+        if (uncheckable > 0) {
+          toast.warning(`Cannot check updates for ${name}`);
+          return;
+        }
         toast.success(
           updates > 0
             ? `Container ${name} has an update`
@@ -1157,6 +1183,8 @@ const ContainerTable = ({
                 name={getContainerName(container)}
                 updateAvailable={container.updateAvailable}
                 updateCheckedAt={container.updateCheckedAt}
+                updateCheckReason={container.updateCheckReason}
+                updateCheckState={container.updateCheckState}
                 updateError={container.updateError}
               />
             </div>
@@ -1174,6 +1202,8 @@ const ContainerTable = ({
               getContainerName(container),
               container.updateAvailable,
               container.updateCheckedAt,
+              container.updateCheckReason,
+              container.updateCheckState,
               container.updateError,
             ];
           },
