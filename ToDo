@@ -5,20 +5,12 @@
 Follow the dependency-ordered
 [`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
 
-1. [x] Add strict standard-library request decoding, explicit safe-retry policy,
-   and honest connection-loss outcomes.
-2. [x] Define Task lifetime/owner scope and session activity semantics.
-3. [x] Prove one durable Task with a persistent operation record and an external
-   execution owner.
-4. [x] Standardize generic Task progress while preserving typed route detail.
-5. [x] Restore visible, entity-scoped mutation feedback using the
-   [`Mutation Feedback Audit`](docs/mutation-feedback-audit.md).
-6. Add a persistent alert lifecycle: severity, deduplication, seen, dismissal,
+1. Add a persistent alert lifecycle: severity, deduplication, seen, dismissal,
    restoration, and resolution.
-7. Use native systemd services and timers for scheduled scripts, with stable run
+2. Use native systemd services and timers for scheduled scripts, with stable run
    summaries correlated to journald rather than duplicated log storage.
-8. Add notification routing through metadata matchers and delivery targets.
-9. Reassess app-update Task reconstruction against the generic systemd-run
+3. Add notification routing through metadata matchers and delivery targets.
+4. Reassess app-update Task reconstruction against the generic systemd-run
    model, then extend recovery only from measured need.
 
 The focused implementation details live in
@@ -52,18 +44,23 @@ file.
 Define and complete the intended division of coverage between Vitest and
 Playwright.
 
-### Native Docker update engine
-
-Follow the phased
-[`Native Docker Update Engine Plan`](docs/docker-update-engine-plan.md):
-
-1. [x] Replace Watchtower-based checks with native Docker registry digest checks.
-2. [x] Update Compose-managed containers through their Compose project.
-3. [x] Recreate opted-in standalone containers transactionally with rollback.
-4. [x] Move scheduled execution to a LinuxIO systemd runner and remove Watchtower.
-
 ## Completed or closed
 
+- [x] Completed the phased
+  [`Native Docker Update Engine Plan`](docs/docker-update-engine-plan.md):
+  native registry digest checks replaced Watchtower-based checks,
+  Compose-managed containers update through their Compose project, opted-in
+  standalone containers recreate transactionally with rollback, and scheduled
+  execution moved to a LinuxIO systemd runner.
+- [x] Completed the first five steps of the
+  [`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
+  strict standard-library request decoding with an explicit safe-retry policy
+  and honest connection-loss outcomes; Task lifetime/owner scope and session
+  activity semantics; one durable Task proven with a persistent operation record
+  and an external execution owner; generic Task progress standardized while
+  preserving typed route detail; and visible, entity-scoped mutation feedback
+  restored using the
+  [`Mutation Feedback Audit`](docs/mutation-feedback-audit.md).
 - [x] Completed the Call/Channel/Task transport migration: all Tasks use one
   typed runner/result shape, ordinary handlers have no emitter, and
   `TaskService` registers the reserved `tasks.*` Calls and Channels without a

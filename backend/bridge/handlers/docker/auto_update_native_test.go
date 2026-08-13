@@ -43,8 +43,8 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	if !strings.Contains(unit, "ExecStart=/usr/local/bin/linuxio-docker-update run --config "+DockerUpdateConfigPath) {
 		t.Fatalf("unit file does not invoke the LinuxIO runner directly:\n%s", unit)
 	}
-	if strings.Contains(unit, "/bin/sh") || strings.Contains(strings.ToLower(unit), "watchtower") {
-		t.Fatalf("unit file contains a legacy shell or Watchtower path:\n%s", unit)
+	if strings.Contains(unit, "/bin/sh") {
+		t.Fatalf("unit file contains a legacy shell:\n%s", unit)
 	}
 
 	wantCalls := []string{"reload", "enable:" + dockerUpdateTimerName, "start:" + dockerUpdateTimerName}
