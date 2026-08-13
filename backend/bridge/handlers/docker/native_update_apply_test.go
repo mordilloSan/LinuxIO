@@ -160,6 +160,49 @@ func TestStandaloneCreateOptionsPreservesTmpfs(t *testing.T) {
 	}
 }
 
+func TestStandaloneCreateOptionsRegeneratesDefaultHostname(t *testing.T) {
+	const containerID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	tests := []struct {
+		name        string
+		hostname    string
+		networkMode container.NetworkMode
+		want        string
+	}{
+		{
+			name:     "default short ID",
+			hostname: containerID[:12],
+		},
+		{
+			name:     "explicit hostname",
+			hostname: "web.internal",
+			want:     "web.internal",
+		},
+		{
+			name:        "host network hostname",
+			hostname:    containerID[:12],
+			networkMode: container.NetworkMode("host"),
+			want:        containerID[:12],
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			inspect := standaloneTestInspect()
+			inspect.ID = containerID
+			inspect.Config.Hostname = tc.hostname
+			inspect.HostConfig.NetworkMode = tc.networkMode
+
+			options, err := standaloneCreateOptions(inspect, "docker.io/library/nginx:latest", "web")
+			if err != nil {
+				t.Fatalf("standaloneCreateOptions: %v", err)
+			}
+			if options.Config.Hostname != tc.want {
+				t.Fatalf("hostname = %q, want %q", options.Config.Hostname, tc.want)
+			}
+		})
+	}
+}
+
 func TestUpdateStandaloneContainerRecreatesAndKeepsRollbackUntilReady(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	before := standaloneTestInspect()

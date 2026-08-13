@@ -404,6 +404,13 @@ func standaloneCreateOptions(
 	if err != nil {
 		return client.ContainerCreateOptions{}, fmt.Errorf("copy standalone host configuration: %w", err)
 	}
+	// Docker materializes an unset hostname as the container's short ID in
+	// Inspect. Clear that recognizable default so the replacement gets its own.
+	if len(inspect.ID) >= 12 &&
+		!hostConfigCopy.NetworkMode.IsHost() &&
+		configCopy.Hostname == inspect.ID[:12] {
+		configCopy.Hostname = ""
+	}
 	configCopy.Image = imageRef
 	if err := preserveInspectedMounts(hostConfigCopy, inspect.Mounts); err != nil {
 		return client.ContainerCreateOptions{}, err
