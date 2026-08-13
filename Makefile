@@ -952,7 +952,7 @@ build-cli: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
-	-o ../linuxio ./ && \
+	-o ../linuxio ./cli && \
 	echo "✅ CLI built successfully!" && \
 	echo "   Path: $(PWD)/linuxio" && \
 	echo "   Size: $$(du -h ../linuxio | cut -f1)"
@@ -964,7 +964,7 @@ build-docker-update: $(GO_BUILD_PREREQ)
 	$(GO_CMD_ENV) GOAMD64=v3 GOFLAGS="-buildvcs=false" \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "-s -w" \
-	-o ../linuxio-docker-update ./cmd/linuxio-docker-update && \
+	-o ../linuxio-docker-update ./docker-update && \
 	echo "✅ Docker update worker built successfully!" && \
 	echo "   Path: $(PWD)/linuxio-docker-update" && \
 	echo "   Size: $$(du -h ../linuxio-docker-update | cut -f1)"

@@ -147,7 +147,7 @@ linuxio verbose enable|disable|status   # toggle -verbose via a webserver drop-i
 linuxio version [--self]    # versions of CLI + each installed component
 ```
 
-`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/main.go`). `--full` restarts the whole `linuxio.target`.
+`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/main.go`). `--full` restarts the whole `linuxio.target`.
 
 ## File Locations
 
@@ -156,7 +156,7 @@ linuxio version [--self]    # versions of CLI + each installed component
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/localinstall.sh` |
-| CLI (commands) | `backend/main.go` |
+| CLI (commands) | `backend/cli/main.go` |
 | Webserver socket-activation adopt | `backend/webserver/cmd/activation.go`, `cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
