@@ -3,7 +3,6 @@ import {
   memo,
   useLayoutEffect,
   useMemo,
-  useState,
   type MouseEvent,
   type MouseEventHandler,
   type RefObject,
@@ -15,6 +14,7 @@ import {
   DirectoryItem,
   SectionHeader,
 } from "@/components/filebrowser/VirtualDirectoryRows";
+import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
@@ -164,35 +164,15 @@ const VirtualDirectoryItems = ({
   "use no memo";
 
   const theme = useAppTheme();
-  const [viewportWidth, setViewportWidth] = useState(0);
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
-  useLayoutEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-
-    const measure = () => {
-      setViewportWidth(node.clientWidth);
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [containerRef]);
-
-  const columnCount = useMemo(() => {
-    if (viewMode === "list") return 1;
-
-    const availableWidth = Math.max(0, viewportWidth - CARD_PADDING * 2);
-    return Math.max(
-      1,
-      Math.floor((availableWidth + CARD_GAP) / (CARD_MIN_WIDTH + CARD_GAP)),
-    );
-  }, [viewMode, viewportWidth]);
+  const cardColumnCount = useGridColumnCount(containerRef, {
+    gap: CARD_GAP,
+    minItemWidth: CARD_MIN_WIDTH,
+    padding: CARD_PADDING,
+  });
+  const columnCount = viewMode === "list" ? 1 : cardColumnCount;
 
   const rows = useMemo(
     () => buildRows({ columnCount, files, folders, viewMode }),
