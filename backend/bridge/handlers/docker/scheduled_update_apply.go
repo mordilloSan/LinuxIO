@@ -12,16 +12,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-type scheduledUpdateCandidate struct {
-	inspect       container.InspectResponse
-	result        apischema.DockerContainerUpdateResult
-	normalizedRef string
-	needsUpdate   bool
-}
+type scheduledUpdateCandidate = containerUpdateCandidate
 
 type scheduledUpdateState struct {
 	ctx           context.Context
 	cli           *client.Client
+	allContainers []container.Summary
+	dependencyCli nativeContainerUpdateClient
+	dependencies  *standaloneDependencyIndex
+	dependencyErr error
+	dependencySet bool
 	composeGroups map[string]*scheduledComposeTarget
 	oldImageIDs   []string
 	errs          []error
@@ -32,6 +32,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 	return &scheduledUpdateState{
 		ctx:           ctx,
 		cli:           cli,
+		dependencyCli: cli,
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
 	}
@@ -47,6 +48,12 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		return nil
 	}
 	if !candidate.needsUpdate {
+		return nil
+	}
+	if skipped, skipErr := skipStoppedScheduledContainer(s.ctx, candidate.inspect); skipped {
+		if skipErr != nil {
+			s.recordCandidateError(candidate.inspect, skipErr)
+		}
 		return nil
 	}
 	if stateErr := validateContainerUpdateState(candidate.inspect); stateErr != nil {
@@ -71,8 +78,39 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		return nil
 	}
 
-	updated, err := updateStandaloneContainerWithJournal(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal)
+	dependencies, err := s.standaloneDependencies()
+	if err != nil {
+		if ctxErr := s.ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		s.recordCandidateError(candidate.inspect, err)
+		return nil
+	}
+	updated, err := updateStandaloneContainerWithDependencies(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal, dependencies)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
+}
+
+func skipStoppedScheduledContainer(ctx context.Context, inspect container.InspectResponse) (bool, error) {
+	if inspect.State == nil || inspect.State.Running || inspect.State.Restarting {
+		return false, nil
+	}
+	reason := "Automatic update skipped because the container is stopped; start it or use check-only scheduling."
+	if err := markContainerUpdateDeferred(ctx, inspect, reason); err != nil {
+		return true, err
+	}
+	slog.Info("skipped automatic update for stopped Docker container",
+		"component", "docker",
+		"subsystem", "update",
+		"container", strings.TrimPrefix(inspect.Name, "/"))
+	return true, nil
+}
+
+func (s *scheduledUpdateState) standaloneDependencies() (*standaloneDependencyIndex, error) {
+	if !s.dependencySet {
+		s.dependencies, s.dependencyErr = buildStandaloneDependencyIndex(s.ctx, s.dependencyCli, s.allContainers)
+		s.dependencySet = true
+	}
+	return s.dependencies, s.dependencyErr
 }
 
 func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
@@ -117,46 +155,7 @@ func inspectScheduledUpdateCandidate(
 	if err != nil {
 		return scheduledUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", primaryContainerName(summary), err)
 	}
-	candidate := scheduledUpdateCandidate{inspect: inspectResult.Container}
-	result, imageRef, err := newContainerUpdateResult(candidate.inspect)
-	if err != nil {
-		return candidate, err
-	}
-	candidate.result = result
-	normalizedRef, _, immutable, err := normalizeUpdateReference(imageRef)
-	if err != nil {
-		return candidate, err
-	}
-	if immutable {
-		markContainerCurrent(ctx, candidate.inspect.ID, candidate.inspect)
-		return candidate, nil
-	}
-	observation, err := inspectImageUpdate(ctx, cli, candidate.inspect.Image, normalizedRef)
-	if err != nil {
-		return candidate, err
-	}
-	return applyScheduledImageObservation(ctx, candidate, normalizedRef, observation)
-}
-
-func applyScheduledImageObservation(
-	ctx context.Context,
-	candidate scheduledUpdateCandidate,
-	normalizedRef string,
-	observation imageUpdateObservation,
-) (scheduledUpdateCandidate, error) {
-	if observation.err != nil {
-		return candidate, observation.err
-	}
-	if observation.uncheckableReason != "" {
-		return candidate, markContainerUncheckable(ctx, candidate.inspect, observation.uncheckableReason)
-	}
-	if !observation.updateAvailable {
-		markContainerCurrent(ctx, candidate.inspect.ID, candidate.inspect)
-		return candidate, nil
-	}
-	candidate.normalizedRef = normalizedRef
-	candidate.needsUpdate = true
-	return candidate, nil
+	return inspectContainerUpdateCandidate(ctx, cli, inspectResult.Container)
 }
 
 func (s *scheduledUpdateState) recordCandidateError(inspect container.InspectResponse, err error) {
@@ -190,18 +189,58 @@ func (s *scheduledUpdateState) applyComposeGroups() error {
 }
 
 func (s *scheduledUpdateState) applyComposeGroup(group *scheduledComposeTarget) error {
+	valid, err := s.validateComposeGroup(group)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return nil
+	}
+	updated, err := s.runComposeUpdate(group)
+	if err != nil {
+		return err
+	}
+	if !updated {
+		return nil
+	}
+	return s.verifyComposeGroup(group)
+}
+
+func (s *scheduledUpdateState) validateComposeGroup(group *scheduledComposeTarget) (bool, error) {
+	if s.cli == nil {
+		return true, nil
+	}
+	if err := validateComposeServiceScopes(s.ctx, s.cli, group.target.Name, group.services); err != nil {
+		if ctxErr := s.ctx.Err(); ctxErr != nil {
+			return false, ctxErr
+		}
+		s.recordComposeGroupError(group, err)
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (bool, error) {
 	collector := &composeMessageCollector{}
 	if err := s.composeUpdate(s.ctx, group.target, group.services, collector.Emit); err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return false, ctxErr
 		}
 		groupErr := fmt.Errorf("update Compose project %q: %w: %s", group.target.Name, err, collector.String())
-		for _, inspect := range group.before {
-			_ = scheduledUpdateError(s.ctx, inspect, groupErr)
-		}
-		s.errs = append(s.errs, groupErr)
-		return nil
+		s.recordComposeGroupError(group, groupErr)
+		return false, nil
 	}
+	return true, nil
+}
+
+func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTarget, err error) {
+	for _, inspect := range group.before {
+		_ = scheduledUpdateError(s.ctx, inspect, err)
+	}
+	s.errs = append(s.errs, err)
+}
+
+func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget) error {
 	for _, before := range group.before {
 		after, err := verifyScheduledComposeContainer(s.ctx, s.cli, before)
 		if err != nil {
@@ -233,11 +272,7 @@ func verifyScheduledComposeContainer(
 	before container.InspectResponse,
 ) (container.InspectResponse, error) {
 	name := strings.TrimPrefix(before.Name, "/")
-	afterResult, err := cli.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
-	if err != nil {
-		return container.InspectResponse{}, fmt.Errorf("inspect updated Compose container %q: %w", name, err)
-	}
-	after, err := waitForContainerReady(ctx, cli, afterResult.Container.ID)
+	after, err := inspectAndWaitForComposeContainer(ctx, cli, name)
 	if err != nil {
 		return container.InspectResponse{}, fmt.Errorf("verify updated Compose container %q: %w", name, err)
 	}

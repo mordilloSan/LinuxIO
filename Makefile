@@ -653,7 +653,7 @@ test-docker-update-integration: ensure-go
 	@cd "$(BACKEND_DIR)" && \
 	  LINUXIO_RUN_DOCKER_INTEGRATION=1 \
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	  "$(GO_BIN)" test ./bridge/handlers/docker -run '^TestDockerUpdateComposeIntegration$$' -count=1 -v
+	  "$(GO_BIN)" test ./bridge/handlers/docker -run '^TestDockerUpdateCompose' -count=1 -v
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:

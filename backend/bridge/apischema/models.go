@@ -415,11 +415,13 @@ type DockerContainerAutoUpdateOptions struct {
 }
 
 type DockerContainerAutoUpdateTarget struct {
-	ID       string `json:"id"`
-	Image    string `json:"image"`
-	Name     string `json:"name"`
-	Selected bool   `json:"selected"`
-	State    string `json:"state"`
+	ID              string  `json:"id"`
+	Image           string  `json:"image"`
+	Name            string  `json:"name"`
+	Selected        bool    `json:"selected"`
+	State           string  `json:"state"`
+	MutationAllowed bool    `json:"mutationAllowed"`
+	MutationReason  *string `json:"mutationReason,omitempty"`
 }
 
 type DockerContainerAutoUpdateState struct {

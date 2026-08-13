@@ -2,15 +2,13 @@ package appupdate
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/transientunit"
 )
 
 const (
@@ -18,23 +16,10 @@ const (
 	updaterStopTimeout  = 30 * time.Second
 )
 
-var errUpdaterUnitNotFound = errors.New("updater unit not found")
+var errUpdaterUnitNotFound = transientunit.ErrNotFound
 
-type transientUnitProperty struct {
-	Name  string
-	Value godbus.Variant
-}
-
-type transientAuxUnit struct {
-	Name       string
-	Properties []transientUnitProperty
-}
-
-type transientExecCommand struct {
-	Path          string
-	Arguments     []string
-	IgnoreFailure bool
-}
+type transientUnitProperty = transientunit.Property
+type transientExecCommand = transientunit.ExecCommand
 
 type updaterLaunch struct {
 	OperationID   string
@@ -47,12 +32,7 @@ type updaterLaunch struct {
 	RestartAfter  bool
 }
 
-type updaterUnitState struct {
-	ActiveState   string
-	SubState      string
-	ServiceResult string
-	ExitCode      int
-}
+type updaterUnitState = transientunit.State
 
 type updaterExecutor interface {
 	Start(context.Context, updaterLaunch) error
@@ -121,115 +101,27 @@ func appUpdateUnitDescription(operationID string, uid uint32) string {
 
 func (systemdUpdaterExecutor) Start(ctx context.Context, launch updaterLaunch) error {
 	properties := buildUpdaterUnitProperties(launch)
-	var job dbusclient.ObjectPath
-	err := dbusclient.SystemdManager.UseSessionWithOptions(
-		ctx,
-		dbusclient.SystemBusOptions{Subsystem: "app-update", Timeout: 15 * time.Second, NoRetry: true},
-		func(session dbusclient.SystemSession) error {
-			if err := session.RequireAvailable(); err != nil {
-				return err
-			}
-			return session.CallStore(
-				dbusclient.SystemdManagerIface+".StartTransientUnit",
-				dbusclient.CallPolicy{},
-				[]any{launch.Unit, "fail", properties, []transientAuxUnit{}},
-				&job,
-			)
-		},
-	)
+	err := transientunit.Start(ctx, launch.Unit, properties, transientunit.Options{Subsystem: "app-update", NoRetry: true})
 	if err != nil {
-		return fmt.Errorf("start transient updater unit %s: %w", launch.Unit, err)
+		return err
 	}
 	return nil
 }
 
 func (systemdUpdaterExecutor) Inspect(ctx context.Context, unitName, expectedDescription string) (updaterUnitState, error) {
-	var state updaterUnitState
-	err := dbusclient.SystemdManager.UseSessionWithOptions(
-		ctx,
-		dbusclient.SystemBusOptions{Subsystem: "app-update", Timeout: 10 * time.Second},
-		func(session dbusclient.SystemSession) error {
-			found, inspectErr := inspectUpdaterUnit(session, unitName, expectedDescription)
-			state = found
-			return inspectErr
-		},
-	)
-	if err != nil {
-		return updaterUnitState{}, fmt.Errorf("inspect updater unit %s: %w", unitName, err)
-	}
-	return state, nil
-}
-
-func inspectUpdaterUnit(session dbusclient.SystemSession, unitName, expectedDescription string) (updaterUnitState, error) {
-	var path dbusclient.ObjectPath
-	if err := session.CallStore(
-		dbusclient.SystemdManagerIface+".GetUnit",
-		dbusclient.CallPolicy{},
-		[]any{unitName},
-		&path,
-	); err != nil {
-		if session.Context().Err() != nil {
-			return updaterUnitState{}, session.Context().Err()
-		}
-		if isNoSuchUnitError(err) {
-			return updaterUnitState{}, errUpdaterUnitNotFound
-		}
-		return updaterUnitState{}, err
-	}
-
-	unit := session.ObjectAt(path)
-	id, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "Id")
+	state, err := transientunit.Inspect(ctx, unitName, expectedDescription, transientunit.Options{Subsystem: "app-update"})
 	if err != nil {
 		return updaterUnitState{}, err
-	}
-	description, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "Description")
-	if err != nil {
-		return updaterUnitState{}, err
-	}
-	transient, err := dbusclient.GetProperty[bool](session.Context(), unit, dbusclient.SystemdUnitIface, "Transient")
-	if err != nil {
-		return updaterUnitState{}, err
-	}
-	if id != unitName || description != expectedDescription || !transient {
-		return updaterUnitState{}, fmt.Errorf("updater unit identity mismatch for %s", unitName)
-	}
-	return readUpdaterUnitState(session, unit)
-}
-
-func readUpdaterUnitState(session dbusclient.SystemSession, unit godbus.BusObject) (updaterUnitState, error) {
-	var state updaterUnitState
-	var err error
-	state.ActiveState, err = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "ActiveState")
-	if err != nil {
-		return updaterUnitState{}, err
-	}
-	state.SubState, _ = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "SubState")
-	state.ServiceResult, _ = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdServiceIface, "Result")
-	if exitCode, getErr := dbusclient.GetProperty[int32](session.Context(), unit, dbusclient.SystemdServiceIface, "ExecMainStatus"); getErr == nil {
-		state.ExitCode = int(exitCode)
 	}
 	return state, nil
 }
 
 func (systemdUpdaterExecutor) Stop(ctx context.Context, unitName string) error {
-	return systemdapi.StopUnit(ctx, unitName)
+	return transientunit.Stop(ctx, unitName)
 }
 
 func (systemdUpdaterExecutor) Collect(ctx context.Context, unitName string) {
-	properties := []transientUnitProperty{{Name: "CollectMode", Value: godbus.MakeVariant("inactive-or-failed")}}
-	_ = dbusclient.SystemdManager.UseSessionWithOptions(
-		ctx,
-		dbusclient.SystemBusOptions{Subsystem: "app-update", Timeout: 5 * time.Second},
-		func(session dbusclient.SystemSession) error {
-			return session.Call(
-				dbusclient.SystemdManagerIface+".SetUnitProperties",
-				dbusclient.CallPolicy{},
-				unitName,
-				true,
-				properties,
-			)
-		},
-	)
+	transientunit.Collect(ctx, unitName, transientunit.Options{Subsystem: "app-update"})
 }
 
 func buildUpdaterUnitProperties(launch updaterLaunch) []transientUnitProperty {
@@ -266,12 +158,4 @@ func buildUpdaterUnitProperties(launch updaterLaunch) []transientUnitProperty {
 		{Name: "StandardError", Value: godbus.MakeVariant("journal")},
 		{Name: "SyslogIdentifier", Value: godbus.MakeVariant("linuxio-app-update")},
 	}
-}
-
-func isNoSuchUnitError(err error) bool {
-	var dbusErr godbus.Error
-	if !errors.As(err, &dbusErr) {
-		return false
-	}
-	return dbusErr.Name == "org.freedesktop.systemd1.NoSuchUnit" || dbusErr.Name == "org.freedesktop.systemd1.LoadFailed"
 }

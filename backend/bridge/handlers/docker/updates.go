@@ -86,16 +86,6 @@ func RefreshContainerImageUpdate(ctx context.Context, containerID string) (apisc
 	return result, nil
 }
 
-// UpdateContainer updates one container through its Compose project when
-// managed by Compose, or through guarded Docker Engine recreation otherwise.
-func UpdateContainer(ctx context.Context, containerID string) (apischema.DockerContainerUpdateResult, error) {
-	result, err := updateContainer(ctx, containerID)
-	if err != nil {
-		result.Error = err.Error()
-	}
-	return result, err
-}
-
 func updateContainer(ctx context.Context, containerID string) (apischema.DockerContainerUpdateResult, error) {
 	release, err := acquireDockerUpdateLock(ctx)
 	if err != nil {

@@ -70,6 +70,158 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	assertUpdatedComposeContainer(t, initial, updated, secondImage)
 }
 
+// TestDockerUpdateComposeInterpolationRefusesMutation verifies that a Compose
+// file whose image reference depends on environment interpolation is rejected
+// before Compose is invoked. The running container must remain untouched.
+func TestDockerUpdateComposeInterpolationRefusesMutation(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	project := fmt.Sprintf("linuxio-it-interpolation-%d", time.Now().UnixNano())
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	const service = "app"
+	const image = "alpine:3.20"
+	t.Setenv("LINUXIO_IT_IMAGE", image)
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: ${LINUXIO_IT_IMAGE}\n    command: [\"sleep\", \"infinity\"]\n"), 0o600); err != nil {
+		t.Fatalf("write interpolated Compose file: %v", err)
+	}
+	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
+	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+		t.Fatalf("compose up with interpolated image: %v", err)
+	}
+
+	cli, err := getClient()
+	if err != nil {
+		t.Fatalf("create Docker client: %v", err)
+	}
+	defer releaseClient(cli)
+	initial := mustInspectComposeService(t, ctx, cli, project, service)
+	resolved, resolvedService, managed, err := composeTargetForContainer(ctx, cli, initial)
+	if err != nil {
+		t.Fatalf("resolve Compose target: %v", err)
+	}
+	if !managed || resolvedService != service {
+		t.Fatalf("resolved target = %#v, service=%q, managed=%v; want Compose-managed app", resolved, resolvedService, managed)
+	}
+	result, _, err := newContainerUpdateResult(initial)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	if _, err := updateComposeContainer(ctx, cli, initial, resolved, service, result); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
+		t.Fatalf("interpolated Compose update error = %v, want reconstruction refusal", err)
+	}
+
+	after := mustInspectComposeService(t, ctx, cli, project, service)
+	if after.ID != initial.ID || after.Image != initial.Image {
+		t.Fatalf("interpolated Compose refusal changed container: before=%s/%s after=%s/%s", initial.ID, initial.Image, after.ID, after.Image)
+	}
+}
+
+// TestDockerUpdateComposeScaledServiceRefusesMutation verifies that selecting
+// one container from a scaled Compose service is rejected before pull/up. Both
+// replicas must remain running with their original image and IDs.
+func TestDockerUpdateComposeScaledServiceRefusesMutation(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+
+	fixture := setupScaledComposeFixture(t)
+	const service = "app"
+	const secondImage = "alpine:3.21"
+	writeDockerUpdateComposeFile(t, fixture.composePath, service, secondImage)
+	selected := fixture.initial[0]
+	result, _, err := newContainerUpdateResult(selected)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	if _, err := updateComposeContainer(fixture.ctx, fixture.cli, selected, fixture.target, service, result); err == nil || !strings.Contains(err.Error(), "replicas") {
+		t.Fatalf("scaled Compose update error = %v, want replica-safety refusal", err)
+	}
+
+	after := mustInspectComposeServiceContainers(t, fixture.ctx, fixture.cli, fixture.target.Name, service)
+	assertScaledComposeRefusal(t, fixture.initial, after)
+}
+
+type scaledComposeFixture struct {
+	ctx         context.Context
+	cli         *client.Client
+	composePath string
+	target      composeProjectTarget
+	initial     []container.InspectResponse
+}
+
+func setupScaledComposeFixture(t *testing.T) scaledComposeFixture {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	t.Cleanup(cancel)
+	project := fmt.Sprintf("linuxio-it-scaled-%d", time.Now().UnixNano())
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	const service = "app"
+	const image = "alpine:3.20"
+	writeDockerUpdateComposeFile(t, composePath, service, image)
+	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
+	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+		t.Fatalf("compose up with %s: %v", image, err)
+	}
+	if err := runCompose(ctx, project, composePath, dir, nil, "up", "-d", "--scale", service+"=2", service); err != nil {
+		t.Fatalf("scale Compose service: %v", err)
+	}
+	cli, err := getClient()
+	if err != nil {
+		t.Fatalf("create Docker client: %v", err)
+	}
+	t.Cleanup(func() { releaseClient(cli) })
+	initial := mustInspectComposeServiceContainers(t, ctx, cli, project, service)
+	if len(initial) != 2 {
+		t.Fatalf("scaled Compose service has %d containers, want 2", len(initial))
+	}
+	assertScaledComposeContainersRunning(t, initial)
+	target, resolvedService, managed, err := composeTargetForContainer(ctx, cli, initial[0])
+	if err != nil {
+		t.Fatalf("resolve Compose target: %v", err)
+	}
+	if !managed || resolvedService != service {
+		t.Fatalf("resolved target = %#v, service=%q, managed=%v; want Compose-managed app", target, resolvedService, managed)
+	}
+	return scaledComposeFixture{ctx: ctx, cli: cli, composePath: composePath, target: target, initial: initial}
+}
+
+func assertScaledComposeContainersRunning(t *testing.T, containers []container.InspectResponse) {
+	t.Helper()
+	for _, inspect := range containers {
+		if inspect.State == nil || !inspect.State.Running {
+			t.Fatalf("scaled Compose container %s is not running", inspect.ID)
+		}
+	}
+}
+
+func assertScaledComposeRefusal(t *testing.T, initial, after []container.InspectResponse) {
+	t.Helper()
+	if len(after) != len(initial) {
+		t.Fatalf("scaled Compose refusal changed replica count from %d to %d", len(initial), len(after))
+	}
+	initialByID := make(map[string]container.InspectResponse, len(initial))
+	for _, inspect := range initial {
+		initialByID[inspect.ID] = inspect
+	}
+	for _, inspect := range after {
+		before, ok := initialByID[inspect.ID]
+		if !ok {
+			t.Fatalf("scaled Compose refusal replaced replica %s", inspect.ID)
+		}
+		if inspect.Image != before.Image || inspect.Config == nil || before.Config == nil || inspect.Config.Image != before.Config.Image {
+			t.Fatalf("scaled Compose refusal changed replica %s image: before=%s/%s after=%s/%s", inspect.ID, before.Image, before.Config.Image, inspect.Image, inspect.Config.Image)
+		}
+	}
+}
+
 func writeDockerUpdateComposeFile(t *testing.T, composePath, service, image string) {
 	t.Helper()
 	content := fmt.Sprintf("services:\n  %s:\n    image: %s\n    command: [\"sleep\", \"infinity\"]\n", service, image)
@@ -148,19 +300,40 @@ func requireDockerComposeIntegration(t *testing.T) {
 }
 
 func inspectComposeService(ctx context.Context, cli *client.Client, project, service string) (container.InspectResponse, error) {
+	containers, err := inspectComposeServiceContainers(ctx, cli, project, service)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	if len(containers) != 1 {
+		return container.InspectResponse{}, fmt.Errorf("found %d containers for Compose service", len(containers))
+	}
+	return containers[0], nil
+}
+
+func inspectComposeServiceContainers(ctx context.Context, cli *client.Client, project, service string) ([]container.InspectResponse, error) {
 	filters := client.Filters{}.
 		Add("label", "com.docker.compose.project="+project).
 		Add("label", "com.docker.compose.service="+service)
 	list, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filters})
 	if err != nil {
-		return container.InspectResponse{}, err
+		return nil, err
 	}
-	if len(list.Items) != 1 {
-		return container.InspectResponse{}, fmt.Errorf("found %d containers for Compose service", len(list.Items))
+	results := make([]container.InspectResponse, 0, len(list.Items))
+	for _, item := range list.Items {
+		result, err := cli.ContainerInspect(ctx, item.ID, client.ContainerInspectOptions{})
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result.Container)
 	}
-	result, err := cli.ContainerInspect(ctx, list.Items[0].ID, client.ContainerInspectOptions{})
+	return results, nil
+}
+
+func mustInspectComposeServiceContainers(t *testing.T, ctx context.Context, cli *client.Client, project, service string) []container.InspectResponse {
+	t.Helper()
+	containers, err := inspectComposeServiceContainers(ctx, cli, project, service)
 	if err != nil {
-		return container.InspectResponse{}, err
+		t.Fatalf("inspect Compose containers: %v", err)
 	}
-	return result.Container, nil
+	return containers
 }

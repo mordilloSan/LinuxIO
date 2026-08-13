@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -68,54 +67,89 @@ func updateInspectedContainer(
 	cli *client.Client,
 	inspect container.InspectResponse,
 ) (apischema.DockerContainerUpdateResult, error) {
-	result, imageRef, err := newContainerUpdateResult(inspect)
+	candidate, err := inspectContainerUpdateCandidate(ctx, cli, inspect)
 	if err != nil {
-		return result, err
+		return candidate.result, err
 	}
-
-	normalizedRef, _, immutable, err := normalizeUpdateReference(imageRef)
-	if err != nil {
-		return result, err
-	}
-	if immutable {
-		result.NewImageID = inspect.Image
-		markContainerCurrent(ctx, inspect.ID, inspect)
-		return result, nil
-	}
-
-	observation, err := inspectImageUpdate(ctx, cli, inspect.Image, normalizedRef)
-	if err != nil {
-		return result, err
-	}
-	if observation.err != nil {
-		return result, observation.err
-	}
-	if observation.uncheckableReason != "" {
-		if markErr := markContainerUncheckable(ctx, inspect, observation.uncheckableReason); markErr != nil {
-			return result, markErr
-		}
-		return result, nil
-	}
-	if !observation.updateAvailable {
-		result.NewImageID = inspect.Image
-		markContainerCurrent(ctx, inspect.ID, inspect)
-		return result, nil
+	if !candidate.needsUpdate {
+		return candidate.result, nil
 	}
 	if stateErr := validateContainerUpdateState(inspect); stateErr != nil {
-		return result, stateErr
+		return candidate.result, stateErr
 	}
 
 	target, service, managedByCompose, err := composeTargetForContainer(ctx, cli, inspect)
 	if err != nil {
-		return result, err
+		return candidate.result, err
 	}
 	if managedByCompose {
 		if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
-			return result, err
+			return candidate.result, err
 		}
-		return updateComposeContainer(ctx, cli, inspect, target, service, result)
+		return updateComposeContainer(ctx, cli, inspect, target, service, candidate.result)
 	}
-	return updateStandaloneContainerWithJournal(ctx, cli, inspect, normalizedRef, result, &defaultStandaloneUpdateJournal)
+	return updateStandaloneContainerWithJournal(ctx, cli, inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal)
+}
+
+type containerUpdateCandidate struct {
+	inspect       container.InspectResponse
+	result        apischema.DockerContainerUpdateResult
+	normalizedRef string
+	needsUpdate   bool
+}
+
+func inspectContainerUpdateCandidate(
+	ctx context.Context,
+	cli imageUpdateCheckClient,
+	inspect container.InspectResponse,
+) (containerUpdateCandidate, error) {
+	candidate := containerUpdateCandidate{inspect: inspect}
+	result, imageRef, err := newContainerUpdateResult(inspect)
+	if err != nil {
+		candidate.result = result
+		return candidate, err
+	}
+	candidate.result = result
+	normalizedRef, _, immutable, err := normalizeUpdateReference(imageRef)
+	if err != nil {
+		return candidate, err
+	}
+	if immutable {
+		candidate.result.NewImageID = inspect.Image
+		markContainerCurrent(ctx, inspect.ID, inspect)
+		return candidate, nil
+	}
+	observation, err := inspectImageUpdate(ctx, cli, inspect.Image, normalizedRef)
+	if err != nil {
+		return candidate, err
+	}
+	return applyContainerImageObservation(ctx, candidate, normalizedRef, observation)
+}
+
+func applyContainerImageObservation(
+	ctx context.Context,
+	candidate containerUpdateCandidate,
+	normalizedRef string,
+	observation imageUpdateObservation,
+) (containerUpdateCandidate, error) {
+	inspect := candidate.inspect
+	if observation.err != nil {
+		return candidate, observation.err
+	}
+	if observation.uncheckableReason != "" {
+		if markErr := markContainerUncheckable(ctx, inspect, observation.uncheckableReason); markErr != nil {
+			return candidate, markErr
+		}
+		return candidate, nil
+	}
+	if !observation.updateAvailable {
+		candidate.result.NewImageID = inspect.Image
+		markContainerCurrent(ctx, inspect.ID, inspect)
+		return candidate, nil
+	}
+	candidate.normalizedRef = normalizedRef
+	candidate.needsUpdate = true
+	return candidate, nil
 }
 
 func validateComposeServiceScope(
@@ -124,19 +158,36 @@ func validateComposeServiceScope(
 	projectName string,
 	service string,
 ) error {
+	return validateComposeServiceScopes(ctx, cli, projectName, []string{service})
+}
+
+func validateComposeServiceScopes(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	projectName string,
+	services []string,
+) error {
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("list Compose service %q containers: %w", service, err)
+		return fmt.Errorf("list Compose project %q containers: %w", projectName, err)
 	}
-	replicas := 0
+	selected := make(map[string]struct{}, len(services))
+	for _, service := range services {
+		selected[service] = struct{}{}
+	}
+	replicas := make(map[string]int, len(selected))
 	for _, summary := range containers.Items {
-		if summary.Labels["com.docker.compose.project"] == projectName &&
-			summary.Labels["com.docker.compose.service"] == service {
-			replicas++
+		service := summary.Labels["com.docker.compose.service"]
+		if summary.Labels["com.docker.compose.project"] == projectName {
+			if _, ok := selected[service]; ok {
+				replicas[service]++
+			}
 		}
 	}
-	if replicas > 1 {
-		return fmt.Errorf("Compose service %q has %d replicas and cannot be updated safely as a single container", service, replicas)
+	for _, service := range services {
+		if replicas[service] > 1 {
+			return fmt.Errorf("Compose service %q has %d replicas and cannot be updated safely as a single container", service, replicas[service])
+		}
 	}
 	return nil
 }
@@ -274,6 +325,9 @@ func updateComposeContainerWithRunner(
 	result apischema.DockerContainerUpdateResult,
 	run func(context.Context, composeProjectTarget, string, composeLineEmitter) error,
 ) (apischema.DockerContainerUpdateResult, error) {
+	if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
+		return result, err
+	}
 	collector := &composeMessageCollector{}
 	if err := run(ctx, target, service, collector.Emit); err != nil {
 		if output := collector.String(); output != "" {
@@ -282,11 +336,7 @@ func updateComposeContainerWithRunner(
 		return result, fmt.Errorf("update Compose project %q service %q: %w", target.Name, service, err)
 	}
 
-	afterResult, err := cli.ContainerInspect(ctx, result.ContainerName, client.ContainerInspectOptions{})
-	if err != nil {
-		return result, fmt.Errorf("inspect updated Compose container %q: %w", result.ContainerName, err)
-	}
-	after, err := waitForContainerReady(ctx, cli, afterResult.Container.ID)
+	after, err := inspectAndWaitForComposeContainer(ctx, cli, result.ContainerName)
 	if err != nil {
 		return result, fmt.Errorf("verify updated Compose container %q: %w", result.ContainerName, err)
 	}
@@ -295,6 +345,22 @@ func updateComposeContainerWithRunner(
 	result.Updated = after.Image != before.Image
 	markContainerCurrent(ctx, before.ID, after)
 	return result, nil
+}
+
+func inspectAndWaitForComposeContainer(
+	ctx context.Context,
+	cli containerReadinessClient,
+	name string,
+) (container.InspectResponse, error) {
+	inspectResult, err := cli.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
+	if err != nil {
+		return container.InspectResponse{}, fmt.Errorf("inspect updated Compose container %q: %w", name, err)
+	}
+	after, err := waitForContainerReady(ctx, cli, inspectResult.Container.ID)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	return after, nil
 }
 
 func validateContainerUpdateState(inspect container.InspectResponse) error {
@@ -313,6 +379,18 @@ func updateStandaloneContainerWithJournal(
 	result apischema.DockerContainerUpdateResult,
 	journal *standaloneUpdateJournal,
 ) (apischema.DockerContainerUpdateResult, error) {
+	return updateStandaloneContainerWithDependencies(ctx, cli, before, imageRef, result, journal, nil)
+}
+
+func updateStandaloneContainerWithDependencies(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	before container.InspectResponse,
+	imageRef string,
+	result apischema.DockerContainerUpdateResult,
+	journal *standaloneUpdateJournal,
+	dependencies *standaloneDependencyIndex,
+) (apischema.DockerContainerUpdateResult, error) {
 	if journal != nil {
 		if _, exists, journalErr := journal.read(); journalErr != nil {
 			return result, journalErr
@@ -323,8 +401,14 @@ func updateStandaloneContainerWithJournal(
 	if err := validateStandaloneUpdate(before); err != nil {
 		return result, err
 	}
-	if err := validateStandaloneDependents(ctx, cli, before); err != nil {
-		return result, err
+	var dependencyErr error
+	if dependencies == nil {
+		dependencyErr = validateStandaloneDependents(ctx, cli, before)
+	} else {
+		dependencyErr = dependencies.validate(before)
+	}
+	if dependencyErr != nil {
+		return result, dependencyErr
 	}
 
 	pull, err := cli.ImagePull(ctx, imageRef, client.ImagePullOptions{})
@@ -504,26 +588,67 @@ func validateStandaloneDependents(ctx context.Context, cli nativeContainerUpdate
 	if err != nil {
 		return fmt.Errorf("list containers before standalone update: %w", err)
 	}
-	name := strings.TrimPrefix(inspect.Name, "/")
+	potentialDependents := make([]container.Summary, 0, len(containers.Items))
 	for _, summary := range containers.Items {
-		if summary.ID == inspect.ID {
-			continue
+		if summary.ID != inspect.ID {
+			potentialDependents = append(potentialDependents, summary)
 		}
+	}
+	dependencies, err := buildStandaloneDependencyIndex(ctx, cli, potentialDependents)
+	if err != nil {
+		return err
+	}
+	return dependencies.validate(inspect)
+}
+
+type standaloneDependent struct {
+	id         string
+	name       string
+	hostConfig *container.HostConfig
+}
+
+type standaloneDependencyIndex struct {
+	dependents []standaloneDependent
+}
+
+func buildStandaloneDependencyIndex(
+	ctx context.Context,
+	cli nativeContainerUpdateClient,
+	containers []container.Summary,
+) (*standaloneDependencyIndex, error) {
+	index := &standaloneDependencyIndex{dependents: make([]standaloneDependent, 0, len(containers))}
+	for _, summary := range containers {
 		dependentResult, inspectErr := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
 		if inspectErr != nil {
-			return fmt.Errorf("inspect potential dependent container %q: %w", primaryContainerName(summary), inspectErr)
+			return nil, fmt.Errorf("inspect potential dependent container %q: %w", primaryContainerName(summary), inspectErr)
 		}
 		dependent := dependentResult.Container
-		if dependent.HostConfig == nil {
+		name := strings.TrimPrefix(dependent.Name, "/")
+		if name == "" {
+			name = primaryContainerName(summary)
+		}
+		index.dependents = append(index.dependents, standaloneDependent{
+			id:         dependent.ID,
+			name:       name,
+			hostConfig: dependent.HostConfig,
+		})
+	}
+	return index, nil
+}
+
+func (i *standaloneDependencyIndex) validate(inspect container.InspectResponse) error {
+	name := strings.TrimPrefix(inspect.Name, "/")
+	for _, dependent := range i.dependents {
+		if dependent.id == inspect.ID || dependent.hostConfig == nil {
 			continue
 		}
-		if dependency := standaloneNamespaceDependency(dependent.HostConfig, inspect.ID, name); dependency != "" {
-			return fmt.Errorf("standalone container %q provides the %s used by container %q", name, dependency, strings.TrimPrefix(dependent.Name, "/"))
+		if dependency := standaloneNamespaceDependency(dependent.hostConfig, inspect.ID, name); dependency != "" {
+			return fmt.Errorf("standalone container %q provides the %s used by container %q", name, dependency, dependent.name)
 		}
-		for _, volumeFrom := range dependent.HostConfig.VolumesFrom {
+		for _, volumeFrom := range dependent.hostConfig.VolumesFrom {
 			target, _, _ := strings.Cut(volumeFrom, ":")
 			if matchesContainerReference(target, inspect.ID, name) {
-				return fmt.Errorf("standalone container %q provides volumes used by container %q", name, strings.TrimPrefix(dependent.Name, "/"))
+				return fmt.Errorf("standalone container %q provides volumes used by container %q", name, dependent.name)
 			}
 		}
 	}
@@ -586,7 +711,7 @@ func standaloneCreateOptions(
 				IPAMConfig: endpoint.IPAMConfig.Copy(),
 				Links:      append([]string(nil), endpoint.Links...),
 				Aliases:    append([]string(nil), endpoint.Aliases...),
-				DriverOpts: cloneEndpointStringMap(endpoint.DriverOpts),
+				DriverOpts: cloneStringMap(endpoint.DriverOpts),
 				GwPriority: endpoint.GwPriority,
 			}
 		}
@@ -667,15 +792,6 @@ func cloneJSON[T any](value *T) (*T, error) {
 	return &clone, nil
 }
 
-func cloneEndpointStringMap(values map[string]string) map[string]string {
-	if values == nil {
-		return nil
-	}
-	clone := make(map[string]string, len(values))
-	maps.Copy(clone, values)
-	return clone
-}
-
 func standaloneBackupName(containerID string) string {
 	if len(containerID) > 12 {
 		containerID = containerID[:12]
@@ -685,22 +801,46 @@ func standaloneBackupName(containerID string) string {
 
 func waitForContainerReady(
 	ctx context.Context,
-	cli nativeContainerUpdateClient,
+	cli containerReadinessClient,
 	containerID string,
 ) (container.InspectResponse, error) {
-	readyCtx, cancel := context.WithTimeout(ctx, containerReadyTimeout)
+	return waitForContainerReadyWithTiming(ctx, cli, containerID, containerReadyTimeout, containerReadyPoll)
+}
+
+type containerReadinessClient interface {
+	ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error)
+}
+
+func waitForContainerReadyWithTiming(
+	ctx context.Context,
+	cli containerReadinessClient,
+	containerID string,
+	timeout time.Duration,
+	poll time.Duration,
+) (container.InspectResponse, error) {
+	if poll <= 0 {
+		poll = time.Nanosecond
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	ticker := time.NewTicker(containerReadyPoll)
+	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	for {
 		inspectResult, err := cli.ContainerInspect(readyCtx, containerID, client.ContainerInspectOptions{})
 		if err != nil {
 			return container.InspectResponse{}, err
 		}
-		if err := containerReady(inspectResult.Container); err == nil {
+		ready, terminal, err := containerReady(inspectResult.Container)
+		switch {
+		case ready:
 			return inspectResult.Container, nil
-		} else if inspectResult.Container.State == nil || !inspectResult.Container.State.Running || inspectResult.Container.State.Dead || inspectResult.Container.State.Health == nil || inspectResult.Container.State.Health.Status == "unhealthy" {
+		case terminal:
+			if err == nil {
+				err = errors.New("container is not ready")
+			}
+			return container.InspectResponse{}, err
+		case err != nil:
 			return container.InspectResponse{}, err
 		}
 
@@ -712,17 +852,40 @@ func waitForContainerReady(
 	}
 }
 
-func containerReady(inspect container.InspectResponse) error {
+func containerReady(inspect container.InspectResponse) (ready bool, terminal bool, err error) {
 	if inspect.State == nil {
-		return errors.New("container state is unavailable")
+		return false, true, errors.New("container state is unavailable")
 	}
-	if !inspect.State.Running || inspect.State.Dead {
-		return fmt.Errorf("container state is %q", inspect.State.Status)
+	if inspect.State.Dead {
+		return false, true, fmt.Errorf("container state is %q", inspect.State.Status)
 	}
-	if inspect.State.Health != nil && inspect.State.Health.Status != "healthy" {
-		return fmt.Errorf("container health is %q", inspect.State.Health.Status)
+	if inspect.State.Paused {
+		return false, true, errors.New("container is paused")
 	}
-	return nil
+	if inspect.State.Restarting {
+		return false, false, nil
+	}
+	status := strings.ToLower(string(inspect.State.Status))
+	switch status {
+	case "exited", "removing", "dead":
+		return false, true, fmt.Errorf("container state is %q", inspect.State.Status)
+	case "created", "restarting":
+		return false, false, nil
+	}
+	if !inspect.State.Running {
+		return false, false, nil
+	}
+	if inspect.State.Health == nil {
+		return true, false, nil
+	}
+	switch strings.ToLower(string(inspect.State.Health.Status)) {
+	case "healthy":
+		return true, false, nil
+	case "unhealthy":
+		return false, true, fmt.Errorf("container health is %q", inspect.State.Health.Status)
+	default:
+		return false, false, nil
+	}
 }
 
 func rollbackStandaloneContainer(

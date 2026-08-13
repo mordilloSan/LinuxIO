@@ -3,7 +3,10 @@ package docker
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/container"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -51,11 +54,11 @@ func TestScheduledLocalImageIsUncheckableWithoutRunError(t *testing.T) {
 	candidate := scheduledUpdateCandidate{inspect: standaloneTestInspect()}
 	const reason = "local image has no repository digest"
 
-	result, err := applyScheduledImageObservation(ctx, candidate, "docker.io/library/local:test", imageUpdateObservation{
+	result, err := applyContainerImageObservation(ctx, candidate, "docker.io/library/local:test", imageUpdateObservation{
 		uncheckableReason: reason,
 	})
 	if err != nil {
-		t.Fatalf("applyScheduledImageObservation: %v", err)
+		t.Fatalf("applyContainerImageObservation: %v", err)
 	}
 	if result.needsUpdate {
 		t.Fatal("local image was marked as needing an update")
@@ -67,5 +70,25 @@ func TestScheduledLocalImageIsUncheckableWithoutRunError(t *testing.T) {
 	}
 	if status.CheckState != apischema.DockerUpdateCheckStateUncheckable || status.CheckReason != reason || status.Err != "" {
 		t.Fatalf("status = %+v, want non-error uncheckable state", status)
+	}
+}
+
+func TestScheduledStoppedContainerIsDeferredWithoutRunError(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	inspect := standaloneTestInspect()
+	inspect.State = &container.State{Status: container.StateExited}
+
+	skipped, err := skipStoppedScheduledContainer(context.Background(), inspect)
+	if err != nil || !skipped {
+		t.Fatalf("skipStoppedScheduledContainer = %v, %v", skipped, err)
+	}
+	status, ok := readUpdateStatusSnapshot().forContainer(inspect.ID)
+	if !ok {
+		t.Fatal("deferred update status was not persisted")
+	}
+	if status.CheckState != apischema.DockerUpdateCheckStateAvailable ||
+		!status.UpdateAvailable || status.Err != "" ||
+		!strings.Contains(status.CheckReason, "container is stopped") {
+		t.Fatalf("status = %+v, want non-error deferred update", status)
 	}
 }

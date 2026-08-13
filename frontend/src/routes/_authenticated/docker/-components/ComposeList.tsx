@@ -26,6 +26,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 
 import "./compose-list.css";
 
@@ -130,9 +131,8 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
       toast: DOCKER_TOAST_META,
     },
   );
-  const { mutate: updateContainer, isPending: isUpdating } = useCallMutation(
-    linuxio.docker.update_container,
-    {
+  const { mutate: updateContainer, isPending: isUpdating } =
+    linuxio.docker.update_container.useTaskAction({
       success: (result) => {
         toast.success(
           result.updated
@@ -142,8 +142,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
       },
       error: `Failed to update ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: removeContainer, isPending: isRemoving } = useCallMutation(
     linuxio.docker.remove_container,
     {
@@ -199,7 +198,9 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
           iconSize={18}
           label="Update container"
           loading={isUpdating}
-          onClick={() => updateContainer(request)}
+          onClick={() =>
+            updateContainer(createDockerContainerUpdateRequest(container.Id))
+          }
         />
       )}
       <AppActionIconButton

@@ -23,9 +23,7 @@ import (
 )
 
 const (
-	updateStatusVersion  = 2
-	updateStatusLockWait = 10 * time.Second
-	updateStatusLockPoll = 250 * time.Millisecond
+	updateStatusVersion = 2
 )
 
 var (
@@ -269,8 +267,8 @@ func withUpdateStatusWriteLock(ctx context.Context, fn func() error) error {
 		ctx,
 		updateStatusLockPath(),
 		fn,
-		filelock.WithTimeout(updateStatusLockWait),
-		filelock.WithRetryDelay(updateStatusLockPoll),
+		filelock.WithTimeout(dockerUpdateLockWait),
+		filelock.WithRetryDelay(dockerUpdateLockPoll),
 	)
 }
 
@@ -347,6 +345,25 @@ func markContainerUncheckable(ctx context.Context, inspect container.InspectResp
 	}
 	if err := mergeUpdateStatuses(ctx, []imageUpdateStatus{status}); err != nil {
 		return fmt.Errorf("mark Docker container image uncheckable: %w", err)
+	}
+	return nil
+}
+
+func markContainerUpdateDeferred(ctx context.Context, inspect container.InspectResponse, reason string) error {
+	status := imageUpdateStatus{
+		ContainerID:     inspect.ID,
+		ContainerName:   strings.TrimPrefix(inspect.Name, "/"),
+		CheckReason:     reason,
+		CheckState:      apischema.DockerUpdateCheckStateAvailable,
+		ImageID:         inspect.Image,
+		UpdateAvailable: true,
+		CheckedAt:       time.Now(),
+	}
+	if inspect.Config != nil {
+		status.ImageRef = inspect.Config.Image
+	}
+	if err := mergeUpdateStatuses(ctx, []imageUpdateStatus{status}); err != nil {
+		return fmt.Errorf("mark Docker container update deferred: %w", err)
 	}
 	return nil
 }

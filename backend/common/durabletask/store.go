@@ -103,7 +103,11 @@ type ExecutorResult struct {
 	State      State     `json:"state"`
 	ExitCode   int       `json:"exit_code"`
 	FinishedAt time.Time `json:"finished_at"`
-	Error      string    `json:"error,omitempty"`
+	// Result is the route-owned typed terminal payload. It is deliberately
+	// opaque to the durable store; route code validates and decodes it after
+	// ApplyExecutorResult persists it.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
 }
 
 type Store struct {
@@ -332,10 +336,40 @@ func (s *Store) ReadExecutorResult(id string) (ExecutorResult, error) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		return ExecutorResult{}, fmt.Errorf("decode executor result for %s: %w", id, err)
 	}
-	if result.ID != id || (result.State != StateCompleted && result.State != StateFailed) || result.FinishedAt.IsZero() {
+	if result.ID != id || (result.State != StateCompleted && result.State != StateFailed && result.State != StateCanceled) || result.FinishedAt.IsZero() {
 		return ExecutorResult{}, fmt.Errorf("invalid executor result for %s", id)
 	}
+	if len(result.Result) > maxResultBytes {
+		return ExecutorResult{}, fmt.Errorf("executor result for %s exceeds %d bytes", id, maxResultBytes)
+	}
 	return result, nil
+}
+
+// GetForExecutor reads an operation for a system-owned worker. The worker is
+// intentionally not authorized by the initiating UID: it runs as root under a
+// deterministic systemd unit, so route and executor identity are the security
+// boundary instead. The operation ID is still validated as a canonical UUID
+// and the record is read under the store lock.
+func (s *Store) GetForExecutor(ctx context.Context, id, route string, executor Executor) (Record, error) {
+	if err := ValidateID(id); err != nil {
+		return Record{}, err
+	}
+	if strings.TrimSpace(route) == "" || executor.Kind == "" || executor.Identity == "" || executor.Handle == "" {
+		return Record{}, errors.New("durable executor identity is incomplete")
+	}
+	var record Record
+	err := s.withLock(ctx, func() error {
+		current, err := s.readRecord(id)
+		if err != nil {
+			return err
+		}
+		if current.Route != route || current.Executor != executor {
+			return ErrNotFound
+		}
+		record = current
+		return nil
+	})
+	return record, err
 }
 
 func (s *Store) ApplyExecutorResult(ctx context.Context, uid uint32, result ExecutorResult) (Record, error) {
@@ -343,22 +377,33 @@ func (s *Store) ApplyExecutorResult(ctx context.Context, uid uint32, result Exec
 		if record.Terminal() && record.State != StateUnknown {
 			return nil
 		}
-		payload, err := json.Marshal(struct {
-			ExitCode int `json:"exit_code"`
-		}{ExitCode: result.ExitCode})
-		if err != nil {
-			return err
+		payload := result.Result
+		if len(payload) == 0 {
+			var err error
+			payload, err = json.Marshal(struct {
+				ExitCode int `json:"exit_code"`
+			}{ExitCode: result.ExitCode})
+			if err != nil {
+				return err
+			}
 		}
 		record.State = result.State
 		record.Result = payload
 		record.FinishedAt = new(result.FinishedAt.UTC())
-		if result.State == StateFailed {
+		switch result.State {
+		case StateFailed:
 			message := strings.TrimSpace(result.Error)
 			if message == "" {
 				message = fmt.Sprintf("updater exited with status %d", result.ExitCode)
 			}
 			record.Error = &StructuredError{Code: result.ExitCode, Message: message}
-		} else {
+		case StateCanceled:
+			message := strings.TrimSpace(result.Error)
+			if message == "" {
+				message = "operation canceled"
+			}
+			record.Error = &StructuredError{Code: 499, Message: message}
+		default:
 			record.Error = nil
 		}
 		return nil

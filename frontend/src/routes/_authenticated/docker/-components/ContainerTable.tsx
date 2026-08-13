@@ -38,6 +38,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import "./container-table.css";
@@ -60,6 +61,7 @@ const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
 // then the confirmed options land), so keeping it in the column closures would
 // remount every action button right when the table first becomes clickable.
 interface ContainerAutoUpdateCellState {
+  blockedReasons: ReadonlyMap<string, string>;
   disabled: boolean;
   pendingNames: ReadonlySet<string>;
   reason?: string;
@@ -68,7 +70,9 @@ interface ContainerAutoUpdateCellState {
 }
 
 const EMPTY_AUTO_UPDATE_NAMES: ReadonlySet<string> = new Set();
+const EMPTY_AUTO_UPDATE_REASONS: ReadonlyMap<string, string> = new Map();
 const ContainerAutoUpdateContext = createContext<ContainerAutoUpdateCellState>({
+  blockedReasons: EMPTY_AUTO_UPDATE_REASONS,
   disabled: true,
   pendingNames: EMPTY_AUTO_UPDATE_NAMES,
   selectedNames: EMPTY_AUTO_UPDATE_NAMES,
@@ -167,7 +171,11 @@ const getUpdateStatus = ({
     };
   }
   if (updateAvailable === true) {
-    return { color: "warning" as const, detail, label: "Update available" };
+    return {
+      color: "warning" as const,
+      detail: updateCheckReason || detail,
+      label: "Update available",
+    };
   }
   if (updateAvailable === false || updateCheckedAt) {
     return { color: "success" as const, detail, label: "Up to date" };
@@ -368,8 +376,15 @@ const UpdateCell = memo(function UpdateCell({
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
     useCallMutation(linuxio.docker.check_container_update, {
       success: (result) => {
+        const errors = result?.errors ?? 0;
         const updates = result?.updates ?? 0;
         const uncheckable = result?.uncheckable ?? 0;
+        if (errors > 0) {
+          toast.warning(
+            `Failed to check updates for ${name}: ${errors} error(s)`,
+          );
+          return;
+        }
         if (uncheckable > 0) {
           toast.warning(`Cannot check updates for ${name}`);
           return;
@@ -384,7 +399,7 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    useCallMutation(linuxio.docker.update_container, {
+    linuxio.docker.update_container.useTaskAction({
       success: (result) => {
         toast.success(
           result.updated
@@ -422,7 +437,9 @@ const UpdateCell = memo(function UpdateCell({
             "Update"
           )
         }
-        onClick={() => updateContainer({ containerId })}
+        onClick={() =>
+          updateContainer(createDockerContainerUpdateRequest(containerId))
+        }
         size="small"
         title="Apply update"
         variant="soft"
@@ -464,18 +481,30 @@ const UpdateCell = memo(function UpdateCell({
 
 /** Per-row view of the shared auto-update state, resolved from context. */
 function useContainerAutoUpdate(name: string) {
-  const { disabled, pendingNames, reason, selectedNames, toggle } = useContext(
-    ContainerAutoUpdateContext,
-  );
+  const {
+    blockedReasons,
+    disabled: globallyDisabled,
+    pendingNames,
+    reason,
+    selectedNames,
+    toggle,
+  } = useContext(ContainerAutoUpdateContext);
   const pending = pendingNames.has(name);
   const selected = selectedNames.has(name);
-  const tooltip = disabled
+  const blockedReason = blockedReasons.get(name);
+  const disabled =
+    globallyDisabled || (!selected && blockedReason !== undefined);
+  const tooltip = globallyDisabled
     ? (reason ?? "Scheduled auto-update unavailable")
-    : pending
-      ? "Saving auto-update setting"
-      : selected
-        ? "Scheduled auto-update enabled"
-        : "Scheduled auto-update disabled";
+    : blockedReason
+      ? selected
+        ? `${blockedReason} Disable this selection to stop automatic mutation attempts.`
+        : blockedReason
+      : pending
+        ? "Saving auto-update setting"
+        : selected
+          ? "Scheduled auto-update enabled"
+          : "Scheduled auto-update disabled";
 
   return { disabled, pending, selected, toggle, tooltip };
 }
@@ -1072,6 +1101,7 @@ const ActionsCell = memo(function ActionsCell({
 });
 
 interface ContainerTableProps {
+  autoUpdateBlockedReasons: ReadonlyMap<string, string>;
   autoUpdateDisabled: boolean;
   autoUpdatePendingNames: Set<string>;
   autoUpdateReason?: string;
@@ -1091,6 +1121,7 @@ interface ContainerDialogTarget {
 }
 
 const ContainerTable = ({
+  autoUpdateBlockedReasons,
   autoUpdateDisabled,
   autoUpdatePendingNames,
   autoUpdateReason,
@@ -1412,6 +1443,7 @@ const ContainerTable = ({
   const editMode = dnd?.editing ?? false;
   const autoUpdateState = useMemo<ContainerAutoUpdateCellState>(
     () => ({
+      blockedReasons: autoUpdateBlockedReasons,
       disabled: autoUpdateDisabled,
       pendingNames: autoUpdatePendingNames,
       reason: autoUpdateReason,
@@ -1419,6 +1451,7 @@ const ContainerTable = ({
       toggle: onToggleAutoUpdate,
     }),
     [
+      autoUpdateBlockedReasons,
       autoUpdateDisabled,
       autoUpdatePendingNames,
       autoUpdateReason,
@@ -1476,6 +1509,7 @@ const areContainerTablePropsEqual = (
   previous: ContainerTableProps,
   next: ContainerTableProps,
 ) =>
+  previous.autoUpdateBlockedReasons === next.autoUpdateBlockedReasons &&
   previous.autoUpdateDisabled === next.autoUpdateDisabled &&
   previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&

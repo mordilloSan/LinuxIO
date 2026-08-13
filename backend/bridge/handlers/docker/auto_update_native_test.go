@@ -114,6 +114,41 @@ func TestBuildContainerAutoUpdateTargetsPreservesMissingNames(t *testing.T) {
 	}
 }
 
+func TestBuildContainerAutoUpdateTargetsMarksMutationEligibility(t *testing.T) {
+	composeLabels := map[string]string{
+		"com.docker.compose.project": "media",
+		"com.docker.compose.service": "web",
+	}
+	targets := buildContainerAutoUpdateTargets([]container.Summary{
+		{ID: "replica-1", Names: []string{"/web-1"}, State: "running", Labels: composeLabels},
+		{ID: "replica-2", Names: []string{"/web-2"}, State: "running", Labels: composeLabels},
+		{ID: "stopped", Names: []string{"/stopped"}, State: "exited"},
+		{ID: "standalone", Names: []string{"/standalone"}, State: "running"},
+	}, nil)
+	if len(targets) != 4 {
+		t.Fatalf("targets = %#v", targets)
+	}
+	byName := make(map[string]apischema.DockerContainerAutoUpdateTarget, len(targets))
+	for _, target := range targets {
+		byName[target.Name] = target
+	}
+	for _, name := range []string{"web-1", "web-2"} {
+		target := byName[name]
+		if target.MutationAllowed ||
+			target.MutationReason == nil ||
+			!strings.Contains(*target.MutationReason, "media/web") ||
+			!strings.Contains(*target.MutationReason, "2 replicas") {
+			t.Fatalf("Compose target %s eligibility = %+v", name, target)
+		}
+	}
+	if target := byName["stopped"]; target.MutationAllowed || target.MutationReason == nil || !strings.Contains(*target.MutationReason, "not running") {
+		t.Fatalf("stopped target eligibility = %+v", target)
+	}
+	if target := byName["standalone"]; !target.MutationAllowed || target.MutationReason != nil {
+		t.Fatalf("standalone target eligibility = %+v", target)
+	}
+}
+
 type recordingContainerUpdateOps struct {
 	calls         []string
 	unitFileState string

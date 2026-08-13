@@ -2,6 +2,8 @@ package apischema
 
 import (
 	"reflect"
+
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // TypeSpec is a route payload type reflected into generated TypeScript.
@@ -80,6 +82,15 @@ type PackageUpdateRequest struct {
 
 type ContainerIDRequest struct {
 	ContainerID string `json:"containerId"`
+}
+
+// DockerContainerUpdateRequest identifies one durable native Docker update.
+// RunID is allocated by the client before the request so a retry after bridge
+// loss can reclaim the same persisted operation instead of starting another
+// mutation.
+type DockerContainerUpdateRequest struct {
+	ContainerID string `json:"containerId"`
+	RunID       string `json:"runId"`
 }
 
 type UsernameRequest struct {
@@ -387,6 +398,15 @@ type DockerContainerUpdateResult struct {
 	NewImageID      string `json:"newImageId,omitempty"`
 	PreviousImageID string `json:"previousImageId,omitempty"`
 	Updated         bool   `json:"updated"`
+}
+
+type DockerContainerUpdateProgress struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+}
+
+func (p DockerContainerUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Phase: p.Phase, Message: p.Message, Detail: p}
 }
 
 type DockerLogsFollowRequest struct {

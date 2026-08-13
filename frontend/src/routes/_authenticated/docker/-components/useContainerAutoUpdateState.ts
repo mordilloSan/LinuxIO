@@ -21,6 +21,16 @@ import {
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 const SAVE_DEBOUNCE_MS = 250;
 
+export interface ContainerAutoUpdateTargetEligibility {
+  mutationAllowed: boolean;
+  mutationReason?: string;
+}
+
+export const canEnableContainerAutoUpdateTarget = (
+  mode: DockerContainerAutoUpdateOptions["mode"],
+  eligibility?: ContainerAutoUpdateTargetEligibility,
+) => mode === "check_only" || eligibility?.mutationAllowed !== false;
+
 export type ContainerAutoUpdateController = ReturnType<
   typeof useContainerAutoUpdateState
 >;
@@ -77,6 +87,24 @@ export const useContainerAutoUpdateState = () => {
   const pendingNames = useMemo(
     () => diffNames(confirmedNames ?? containerNames, containerNames),
     [confirmedNames, containerNames],
+  );
+  const targetEligibility = useMemo<
+    ReadonlyMap<string, ContainerAutoUpdateTargetEligibility>
+  >(
+    () =>
+      new Map(
+        (query.data?.containers ?? []).map(
+          (target) =>
+            [
+              target.name,
+              {
+                mutationAllowed: target.mutationAllowed,
+                mutationReason: target.mutationReason,
+              },
+            ] as const,
+        ),
+      ),
+    [query.data?.containers],
   );
   const disabled = query.isPending || !query.data?.available;
   const reason = query.isPending
@@ -226,6 +254,15 @@ export const useContainerAutoUpdateState = () => {
 
       const nextNames = new Set(options.container_names ?? []);
       const enabling = !nextNames.has(name);
+      if (
+        enabling &&
+        !canEnableContainerAutoUpdateTarget(
+          options.mode,
+          targetEligibility.get(name),
+        )
+      ) {
+        return;
+      }
       if (enabling) {
         nextNames.add(name);
       } else {
@@ -244,7 +281,7 @@ export const useContainerAutoUpdateState = () => {
       );
       scheduleSave(nextOptions);
     },
-    [autoUpdateKey, queryClient, scheduleSave],
+    [autoUpdateKey, queryClient, scheduleSave, targetEligibility],
   );
 
   // Explicit whole-form save (settings dialog): optimistic like the toggles,
@@ -279,6 +316,7 @@ export const useContainerAutoUpdateState = () => {
     saveOptions,
     selectedNames,
     state: query.data,
+    targetEligibility,
     toggleContainer,
   };
 };

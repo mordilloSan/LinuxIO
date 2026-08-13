@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ComposeProject, ContainerInfo } from "@/api";
+import type { ComposeProject, ContainerInfo, TaskSnapshot } from "@/api";
 import * as core from "@/api/linuxio-core";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
@@ -80,12 +80,17 @@ const noopName = (_name: string) => {};
 
 describe("ComposeList expanded-container mutation feedback", () => {
   it("keeps action progress scoped to each expanded container", async () => {
-    const updating = createDeferred<{ updated: boolean }>();
+    const updating = createDeferred<TaskSnapshot>();
     const restarting = createDeferred<void>();
+    let updateRequest: { containerId?: string; runId?: string } | undefined;
     vi.spyOn(core, "request").mockImplementation(
       (_handler, command, request) => {
         const containerId = (request as { containerId?: string }).containerId;
         if (command === "update_container" && containerId === alpha.Id) {
+          updateRequest = request as {
+            containerId?: string;
+            runId?: string;
+          };
           return updating.promise;
         }
         if (command === "restart_container" && containerId === beta.Id) {
@@ -115,6 +120,12 @@ describe("ComposeList expanded-container mutation feedback", () => {
     await user.click(
       alphaActions.getByRole("button", { name: "Update container" }),
     );
+    expect(updateRequest).toEqual({
+      containerId: alpha.Id,
+      runId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
+    });
 
     await waitFor(() => {
       expect(
@@ -148,7 +159,16 @@ describe("ComposeList expanded-container mutation feedback", () => {
     });
 
     await act(async () => {
-      updating.resolve({ updated: true });
+      const now = new Date().toISOString();
+      updating.resolve({
+        created_at: now,
+        finished_at: now,
+        id: updateRequest?.runId ?? "missing-run-id",
+        result: { updated: true },
+        state: "completed",
+        type: "docker.update_container",
+        updated_at: now,
+      });
       await updating.promise;
     });
     await waitFor(() => {

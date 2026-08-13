@@ -671,6 +671,18 @@ export interface DockerContainerAutoUpdateTarget {
   name: string;
   selected: boolean;
   state: string;
+  mutationAllowed: boolean;
+  mutationReason?: string;
+}
+
+export interface DockerContainerUpdateProgress {
+  phase: string;
+  message: string;
+}
+
+export interface DockerContainerUpdateRequest {
+  containerId: string;
+  runId: string;
 }
 
 export interface DockerContainerUpdateResult {
@@ -2550,9 +2562,10 @@ export interface LinuxIOSchema {
       result: DockerSystemPruneResponse;
     };
     update_container: {
-      input: [containerId: string];
-      request: ContainerIDRequest;
+      input: [request: DockerContainerUpdateRequest];
+      request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
+      progress: TaskProgress<DockerContainerUpdateProgress>;
     };
     validate_compose: {
       input: [content: string];
@@ -3295,10 +3308,6 @@ export interface LinuxIOCallSchema {
   "docker.system_prune": {
     request: DockerSystemPruneRequest;
     result: DockerSystemPruneResponse;
-  };
-  "docker.update_container": {
-    request: ContainerIDRequest;
-    result: DockerContainerUpdateResult;
   };
   "docker.validate_compose": {
     request: ContentRequest;

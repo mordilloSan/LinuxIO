@@ -16,6 +16,7 @@ import (
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
 var runUpdates = docker.RunScheduledContainerUpdates
+var runOperation = docker.RunDurableDockerUpdate
 var configureLogging = logging.Configure
 
 func main() {
@@ -50,6 +51,16 @@ func runCLI(args []string, ctx context.Context, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "run-operation":
+		operationID, ok := parseOperationArgs(args[2:], stderr)
+		if !ok {
+			return 2
+		}
+		if err := runOperation(ctx, operationID); err != nil {
+			fmt.Fprintf(stderr, "linuxio-docker-update: run-operation failed: %v\n", err)
+			return 1
+		}
+		return 0
 	case "help", "-h", "--help":
 		writeHelp(stdout)
 		return 0
@@ -58,6 +69,31 @@ func runCLI(args []string, ctx context.Context, stdout, stderr io.Writer) int {
 		writeUsage(stderr)
 		return 2
 	}
+}
+
+func parseOperationArgs(args []string, stderr io.Writer) (string, bool) {
+	operationID := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--id" {
+			fmt.Fprintf(stderr, "linuxio-docker-update: run-operation: unknown argument %q\n", args[i])
+			return "", false
+		}
+		if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+			fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id requires an operation ID")
+			return "", false
+		}
+		if operationID != "" {
+			fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id may only be provided once")
+			return "", false
+		}
+		operationID = strings.TrimSpace(args[i+1])
+		i++
+	}
+	if operationID == "" {
+		fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id requires an operation ID")
+		return "", false
+	}
+	return operationID, true
 }
 
 func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
@@ -79,6 +115,7 @@ func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
 
 func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage: linuxio-docker-update run [options]")
+	fmt.Fprintln(w, "       linuxio-docker-update run-operation --id OPERATION_ID")
 }
 
 func writeHelp(w io.Writer) {
@@ -88,7 +125,10 @@ func writeHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  run  Run one configured Docker update pass")
+	fmt.Fprintln(w, "  run-operation  Run one persisted Docker update operation")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Options for run:")
 	fmt.Fprintln(w, "  --config PATH  Use an alternate update configuration file")
+	fmt.Fprintln(w, "Options for run-operation:")
+	fmt.Fprintln(w, "  --id ID  Persisted operation identifier")
 }

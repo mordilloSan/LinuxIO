@@ -16,6 +16,14 @@ export function useDockerUpdateCheck() {
         const errors = result?.errors ?? 0;
         const uncheckable = result?.uncheckable ?? 0;
         const updates = result?.updates ?? 0;
+        if (errors > 0) {
+          const uncheckableMessage =
+            uncheckable > 0 ? `, ${uncheckable} cannot be checked` : "";
+          toast.warning(
+            `Checked ${checked} container(s), ${errors} check error(s)${uncheckableMessage}, found ${updates} update(s)`,
+          );
+          return;
+        }
         if (uncheckable > 0 && errors === 0) {
           toast.warning(
             `Checked ${checked} container(s), ${uncheckable} cannot be checked, found ${updates} update(s)`,

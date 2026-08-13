@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
@@ -7,6 +7,38 @@ import { act, render, screen, waitFor, within } from "@/test/render";
 import ContainerTable from "./ContainerTable";
 
 const media = vi.hoisted(() => ({ compact: false }));
+
+const updateCheckMocks = vi.hoisted(() => ({
+  useCallMutation: vi.fn(),
+}));
+
+vi.mock("@/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api")>();
+  updateCheckMocks.useCallMutation.mockImplementation(
+    (
+      endpoint: { route?: string },
+      config: { success?: (result: unknown) => void },
+    ) => {
+      if (endpoint.route === "docker.check_container_update") {
+        return {
+          isPending: false,
+          mutate: () =>
+            config.success?.({
+              checked: 1,
+              errors: 1,
+              uncheckable: 0,
+              updates: 0,
+            }),
+        };
+      }
+      return actual.useCallMutation(endpoint as never, config);
+    },
+  );
+  return {
+    ...actual,
+    useCallMutation: updateCheckMocks.useCallMutation,
+  };
+});
 
 vi.mock("@/theme", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/theme")>();
@@ -19,6 +51,10 @@ vi.mock("@/theme", async (importOriginal) => {
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 vi.mock("@/components/docker/DockerIcon", () => ({
   default: ({ alt }: { alt: string }) => <span>{alt}</span>,
@@ -57,6 +93,7 @@ function container(
 function renderTable(containers: ContainerInfo[]) {
   return render(
     <ContainerTable
+      autoUpdateBlockedReasons={new Map()}
       autoUpdateDisabled={false}
       autoUpdatePendingNames={new Set()}
       autoUpdateSelectedNames={new Set()}
@@ -71,6 +108,63 @@ function rowNamed(name: string) {
 }
 
 describe("ContainerTable mutation feedback", () => {
+  it("blocks unsafe automatic enrollment but still allows deselection", async () => {
+    media.compact = false;
+    const reason =
+      "Compose service media/web has 2 replicas; automatic updates require a single replica.";
+    const toggle = vi.fn();
+    const { rerender, user } = render(
+      <ContainerTable
+        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
+        autoUpdateDisabled={false}
+        autoUpdatePendingNames={new Set()}
+        autoUpdateSelectedNames={new Set()}
+        containers={[container("blocked-id", "blocked", "running")]}
+        onToggleAutoUpdate={toggle}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: reason })).toBeDisabled();
+
+    rerender(
+      <ContainerTable
+        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
+        autoUpdateDisabled={false}
+        autoUpdatePendingNames={new Set()}
+        autoUpdateSelectedNames={new Set(["blocked"])}
+        containers={[container("blocked-id", "blocked", "running")]}
+        onToggleAutoUpdate={toggle}
+      />,
+    );
+    const selected = screen.getByRole("button", {
+      name: new RegExp(`${reason} Disable this selection`),
+    });
+    expect(selected).toBeEnabled();
+    await user.click(selected);
+    expect(toggle).toHaveBeenCalledWith("blocked");
+  });
+
+  it("shows a warning and never claims up to date after a failed per-container scan", async () => {
+    media.compact = false;
+    const { user } = renderTable([container("failed-id", "failed", "running")]);
+
+    await user.click(
+      within(rowNamed("failed")).getByRole("button", {
+        name: "Re-scan failed for updates",
+      }),
+    );
+
+    const { toast } = await import("sonner");
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Failed to check updates for failed: 1 error(s)",
+      expect.anything(),
+    );
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Container failed is up to date",
+      expect.anything(),
+    );
+  });
+
   it("shows local-only images as uncheckable instead of up to date", () => {
     media.compact = false;
     renderTable([

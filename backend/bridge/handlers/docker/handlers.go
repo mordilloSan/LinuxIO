@@ -52,7 +52,6 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.NoRequest, apischema.DockerStoppedFailedResponse]("docker.stop_all_running").Handle(handlers.handleStopAllRunning),
 		apischema.Call[apischema.NoRequest, apischema.DockerUpdateCheckResult]("docker.check_updates").Handle(handlers.handleCheckUpdates),
 		apischema.Call[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
-		apischema.Call[apischema.ContainerIDRequest, apischema.DockerContainerUpdateResult]("docker.update_container").Handle(handlers.handleUpdateContainer),
 		apischema.Call[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update", apischema.RetrySafe()).Handle(handlers.handleGetContainerAutoUpdate),
 		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),
 		apischema.Call[apischema.NoRequest, apischema.CaddyStatusResponse]("docker.get_caddy_status", apischema.RetrySafe()).Handle(handlers.handleGetCaddyStatus),
@@ -75,4 +74,5 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	prepareDockerHandlers(router, handlers)
 
 	routeBindings(rt, handlers).Register(router)
+	recoverDockerUpdates(rt, router)
 }

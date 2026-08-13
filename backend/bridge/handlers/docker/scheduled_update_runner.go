@@ -23,7 +23,7 @@ type scheduledComposeTarget struct {
 type scheduledPassOperations struct {
 	list   func(context.Context) ([]container.Summary, error)
 	check  func(context.Context, []container.Summary) error
-	update func(context.Context, []container.Summary, bool) error
+	update func(context.Context, []container.Summary, []container.Summary, bool) error
 }
 
 // RunScheduledContainerUpdates executes one configured check or update pass.
@@ -66,8 +66,8 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 		check: func(ctx context.Context, summaries []container.Summary) error {
 			return runScheduledUpdateCheck(ctx, cli, summaries)
 		},
-		update: func(ctx context.Context, summaries []container.Summary, cleanup bool) error {
-			return runScheduledUpdates(ctx, cli, summaries, cleanup)
+		update: func(ctx context.Context, summaries, all []container.Summary, cleanup bool) error {
+			return runScheduledUpdates(ctx, cli, summaries, all, cleanup)
 		},
 	})
 }
@@ -99,7 +99,7 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 		checkErr := operations.check(ctx, selected)
 		return errors.Join(append(runErrs, checkErr)...)
 	}
-	updateErr := operations.update(ctx, selected, opts.Cleanup)
+	updateErr := operations.update(ctx, selected, containers, opts.Cleanup)
 	return errors.Join(append(runErrs, updateErr)...)
 }
 
@@ -130,8 +130,9 @@ func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers
 	return nil
 }
 
-func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries []container.Summary, cleanup bool) error {
+func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all []container.Summary, cleanup bool) error {
 	state := newScheduledUpdateState(ctx, cli)
+	state.allContainers = all
 	for _, summary := range summaries {
 		if err := state.prepare(summary); err != nil {
 			return err

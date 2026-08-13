@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
@@ -74,7 +75,8 @@ func TestComposeUpdateInputsRejectEnvironmentInterpolation(t *testing.T) {
 	if err := validateComposeUpdateInputs(composeProjectTarget{Name: "web", ConfigFiles: []string{plain}}); err != nil {
 		t.Fatalf("plain Compose config rejected: %v", err)
 	}
-	if err := validateComposeUpdateInputs(composeProjectTarget{Name: "web", ConfigFiles: []string{interpolated}}); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
+	t.Setenv("IMAGE_TAG", "from-custom-env-file")
+	if err := composePullAndUpServices(context.Background(), composeProjectTarget{Name: "web", ConfigFiles: []string{interpolated}}, []string{"web"}, nil); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
 		t.Fatalf("interpolated Compose config error = %v", err)
 	}
 }
@@ -102,6 +104,54 @@ func TestUpdateComposeContainerTreatsSameImageAsCurrent(t *testing.T) {
 	status, ok := readUpdateStatusSnapshot().forContainer(after.ID)
 	if !ok || status.CheckState != apischema.DockerUpdateCheckStateCurrent {
 		t.Fatalf("status = %+v, %v; want current", status, ok)
+	}
+}
+
+func TestContainerReadyClassification(t *testing.T) {
+	tests := []struct {
+		name     string
+		inspect  container.InspectResponse
+		ready    bool
+		terminal bool
+	}{
+		{name: "missing state", inspect: container.InspectResponse{}, terminal: true},
+		{name: "created", inspect: container.InspectResponse{State: &container.State{Status: "created"}}},
+		{name: "restarting", inspect: container.InspectResponse{State: &container.State{Status: "restarting"}}},
+		{name: "exited", inspect: container.InspectResponse{State: &container.State{Status: "exited"}}, terminal: true},
+		{name: "removing", inspect: container.InspectResponse{State: &container.State{Status: "removing"}}, terminal: true},
+		{name: "dead", inspect: container.InspectResponse{State: &container.State{Status: "dead"}}, terminal: true},
+		{name: "paused", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true, Paused: true}}, terminal: true},
+		{name: "restarting flag", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true, Restarting: true}}},
+		{name: "running without health", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true}}, ready: true},
+		{name: "starting health", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true, Health: &container.Health{Status: "starting"}}}},
+		{name: "unknown health", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true, Health: &container.Health{Status: "unknown"}}}},
+		{name: "healthy", inspect: readyContainer("ready", "sha256:image"), ready: true},
+		{name: "unhealthy", inspect: container.InspectResponse{State: &container.State{Status: "running", Running: true, Health: &container.Health{Status: "unhealthy"}}}, terminal: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ready, terminal, err := containerReady(tc.inspect)
+			if ready != tc.ready || terminal != tc.terminal {
+				t.Fatalf("containerReady = (%v, %v, %v), want (%v, %v)", ready, terminal, err, tc.ready, tc.terminal)
+			}
+			if tc.terminal && err == nil {
+				t.Fatal("terminal readiness result did not include an error")
+			}
+		})
+	}
+}
+
+func TestWaitForContainerReadyRetriesCreatedThenRunningHealthy(t *testing.T) {
+	client := &sequenceReadinessClient{results: []container.InspectResponse{
+		{ID: "replacement", State: &container.State{Status: "created"}},
+		readyContainer("replacement", "sha256:image"),
+	}}
+	got, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", time.Second, time.Millisecond)
+	if err != nil {
+		t.Fatalf("waitForContainerReadyWithTiming: %v", err)
+	}
+	if got.ID != "replacement" || len(client.results) != 0 {
+		t.Fatalf("result = %+v, remaining inspections = %d", got, len(client.results))
 	}
 }
 
@@ -188,6 +238,73 @@ func TestValidateStandaloneDependentsRejectsNamespaceReferences(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestValidateStandaloneDependentsRejectsVolumesFromReference(t *testing.T) {
+	before := standaloneTestInspect()
+	dependent := standaloneTestInspect()
+	dependent.ID, dependent.Name = "dependent", "/consumer"
+	dependent.HostConfig.VolumesFrom = []string{before.ID[:12] + ":ro"}
+	fake := newStandaloneUpdateFake()
+	fake.containerItems = []container.Summary{
+		{ID: before.ID, Names: []string{before.Name}},
+		{ID: dependent.ID, Names: []string{dependent.Name}},
+	}
+	fake.inspectResults[dependent.ID] = dependent
+
+	err := validateStandaloneDependents(context.Background(), fake, before)
+	if err == nil || !strings.Contains(err.Error(), "provides volumes") {
+		t.Fatalf("validateStandaloneDependents error = %v", err)
+	}
+}
+
+func TestScheduledStandaloneDependenciesInspectEachContainerOnce(t *testing.T) {
+	providers := []container.InspectResponse{standaloneTestInspect(), standaloneTestInspect()}
+	providers[0].ID, providers[0].Name = "provider-one", "/one"
+	providers[1].ID, providers[1].Name = "provider-two", "/two"
+	consumer := standaloneTestInspect()
+	consumer.ID, consumer.Name = "consumer", "/consumer"
+
+	fake := newStandaloneUpdateFake()
+	fake.containerItems = []container.Summary{
+		{ID: providers[0].ID, Names: []string{providers[0].Name}},
+		{ID: providers[1].ID, Names: []string{providers[1].Name}},
+		{ID: consumer.ID, Names: []string{consumer.Name}},
+	}
+	for _, inspect := range append(providers, consumer) {
+		fake.inspectResults[inspect.ID] = inspect
+	}
+	state := &scheduledUpdateState{
+		ctx:           context.Background(),
+		allContainers: fake.containerItems,
+		dependencyCli: fake,
+	}
+
+	first, err := state.standaloneDependencies()
+	if err != nil {
+		t.Fatalf("first standaloneDependencies: %v", err)
+	}
+	second, err := state.standaloneDependencies()
+	if err != nil {
+		t.Fatalf("second standaloneDependencies: %v", err)
+	}
+	if first != second {
+		t.Fatal("scheduled dependency index was rebuilt")
+	}
+	for _, provider := range providers {
+		if err := first.validate(provider); err != nil {
+			t.Fatalf("validate %s: %v", provider.Name, err)
+		}
+	}
+	inspectCalls := 0
+	for _, call := range fake.calls {
+		if strings.HasPrefix(call, "inspect-container:") {
+			inspectCalls++
+		}
+	}
+	if inspectCalls != len(fake.containerItems) {
+		t.Fatalf("dependency inspections = %d, want %d", inspectCalls, len(fake.containerItems))
 	}
 }
 
@@ -657,6 +774,23 @@ func apischemaUpdateResult(inspect container.InspectResponse) apischema.DockerCo
 type fakeImagePullResponse struct {
 	waitErr  error
 	closeErr error
+}
+
+type sequenceReadinessClient struct {
+	results []container.InspectResponse
+}
+
+func (c *sequenceReadinessClient) ContainerInspect(
+	context.Context,
+	string,
+	client.ContainerInspectOptions,
+) (client.ContainerInspectResult, error) {
+	if len(c.results) == 0 {
+		return client.ContainerInspectResult{}, errors.New("no more readiness results")
+	}
+	result := c.results[0]
+	c.results = c.results[1:]
+	return client.ContainerInspectResult{Container: result}, nil
 }
 
 func (f *fakeImagePullResponse) Read([]byte) (int, error) { return 0, io.EOF }

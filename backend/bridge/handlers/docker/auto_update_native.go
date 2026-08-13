@@ -299,6 +299,7 @@ func containerAutoUpdateTargets(ctx context.Context, selectedNames []string) ([]
 
 func buildContainerAutoUpdateTargets(containers []container.Summary, selectedNames []string) []apischema.DockerContainerAutoUpdateTarget {
 	selected := selectedNameSet(selectedNames)
+	replicas := composeReplicaCounts(containers)
 	targets := make([]apischema.DockerContainerAutoUpdateTarget, 0, len(containers))
 	for _, ctr := range containers {
 		name := primaryContainerName(ctr)
@@ -306,8 +307,15 @@ func buildContainerAutoUpdateTargets(containers []container.Summary, selectedNam
 			continue
 		}
 		_, isSelected := selected[name]
+		mutationAllowed, mutationReason := containerMutationEligibility(ctr, replicas)
 		targets = append(targets, apischema.DockerContainerAutoUpdateTarget{
-			ID: ctr.ID, Image: ctr.Image, Name: name, Selected: isSelected, State: string(ctr.State),
+			ID:              ctr.ID,
+			Image:           ctr.Image,
+			Name:            name,
+			Selected:        isSelected,
+			State:           string(ctr.State),
+			MutationAllowed: mutationAllowed,
+			MutationReason:  mutationReason,
 		})
 	}
 	slices.SortFunc(targets, func(a, b apischema.DockerContainerAutoUpdateTarget) int {
@@ -317,6 +325,49 @@ func buildContainerAutoUpdateTargets(containers []container.Summary, selectedNam
 		return cmp.Compare(a.ID, b.ID)
 	})
 	return targets
+}
+
+type composeReplicaKey struct {
+	project string
+	service string
+}
+
+func composeReplicaCounts(containers []container.Summary) map[composeReplicaKey]int {
+	counts := make(map[composeReplicaKey]int)
+	for _, ctr := range containers {
+		project := strings.TrimSpace(ctr.Labels["com.docker.compose.project"])
+		service := strings.TrimSpace(ctr.Labels["com.docker.compose.service"])
+		if project == "" || service == "" {
+			continue
+		}
+		counts[composeReplicaKey{project: project, service: service}]++
+	}
+	return counts
+}
+
+func containerMutationEligibility(
+	ctr container.Summary,
+	replicas map[composeReplicaKey]int,
+) (bool, *string) {
+	if strings.ToLower(strings.TrimSpace(string(ctr.State))) != "running" {
+		reason := "Container is not running; start it before enabling automatic updates."
+		return false, &reason
+	}
+
+	project := strings.TrimSpace(ctr.Labels["com.docker.compose.project"])
+	service := strings.TrimSpace(ctr.Labels["com.docker.compose.service"])
+	if project != "" && service != "" {
+		replicaCount := replicas[composeReplicaKey{project: project, service: service}]
+		if replicaCount > 1 {
+			reason := fmt.Sprintf(
+				`Compose service %q has %d replicas; automatic updates require a single replica.`,
+				project+"/"+service,
+				replicaCount,
+			)
+			return false, &reason
+		}
+	}
+	return true, nil
 }
 
 func missingSelectedContainerNames(containers []container.Summary, selectedNames []string) []string {

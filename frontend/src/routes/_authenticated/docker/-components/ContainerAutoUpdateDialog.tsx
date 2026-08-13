@@ -109,6 +109,17 @@ const ContainerAutoUpdateDialog = ({
   const missingNames = (serverState?.missing_container_names ?? []).filter(
     (name) => currentOptions.container_names.includes(name),
   );
+  const blockedNames = currentOptions.container_names.filter((name) => {
+    if (currentOptions.mode !== "update") return false;
+    return autoUpdate.targetEligibility.get(name)?.mutationAllowed === false;
+  });
+  const blockedReasons = blockedNames.map((name) => ({
+    name,
+    reason:
+      autoUpdate.targetEligibility.get(name)?.mutationReason ??
+      "This container cannot be updated automatically.",
+  }));
+  const hasBlockedNames = blockedReasons.length > 0;
 
   return (
     <GeneralDialog
@@ -165,6 +176,47 @@ const ContainerAutoUpdateDialog = ({
           <AppAlert severity="warning">
             <AppAlertTitle>Docker updates unavailable</AppAlertTitle>
             {unavailableReason}
+          </AppAlert>
+        )}
+        {!loading && hasBlockedNames && (
+          <AppAlert severity="warning">
+            <AppAlertTitle>
+              Selected containers cannot be updated automatically
+            </AppAlertTitle>
+            Remove these containers before saving “Update automatically”, or
+            switch the mode to “Check only”.
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: theme.spacing(1),
+                marginTop: theme.spacing(1),
+              }}
+            >
+              {blockedReasons.map(({ name, reason }) => (
+                <div
+                  key={name}
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: theme.spacing(1),
+                  }}
+                >
+                  <AppChip
+                    color="warning"
+                    disabled={controlsDisabled}
+                    label={name}
+                    onDelete={() => removeSelectedName(name)}
+                    size="small"
+                    variant="soft"
+                  />
+                  <AppTypography color="text.secondary" variant="body2">
+                    {reason}
+                  </AppTypography>
+                </div>
+              ))}
+            </div>
           </AppAlert>
         )}
 
@@ -297,7 +349,7 @@ const ContainerAutoUpdateDialog = ({
           Reset
         </AppButton>
         <AppButton
-          disabled={controlsDisabled || !dirty}
+          disabled={controlsDisabled || !dirty || hasBlockedNames}
           onClick={save}
           variant="contained"
         >

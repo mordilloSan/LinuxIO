@@ -10,9 +10,12 @@ import (
 	"github.com/distribution/reference"
 	"github.com/moby/moby/client"
 	digest "github.com/opencontainers/go-digest"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
+
+const imageUpdateObservationConcurrency = 6
 
 type imageUpdateCheckClient interface {
 	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
@@ -32,6 +35,13 @@ type imageUpdateObservation struct {
 	uncheckableReason string
 	updateAvailable   bool
 	err               error
+}
+
+type imageUpdateObservationRequest struct {
+	imageID     string
+	imageRef    string
+	observation imageUpdateObservation
+	inspect     bool
 }
 
 func (o imageUpdateObservation) checkState() apischema.DockerUpdateCheckState {
@@ -57,15 +67,44 @@ func checkContainerImageUpdates(
 		return nil, apischema.DockerUpdateCheckResult{}, err
 	}
 
-	statuses := make([]imageUpdateStatus, 0, len(targets))
-	observations := make(map[string]imageUpdateObservation)
-	var result apischema.DockerUpdateCheckResult
-
-	for _, target := range targets {
-		observation, err := cachedImageUpdateObservation(ctx, cli, observations, target)
-		if err != nil {
-			return nil, apischema.DockerUpdateCheckResult{}, err
+	requests := make([]imageUpdateObservationRequest, 0, len(targets))
+	requestByKey := make(map[string]int, len(targets))
+	targetRequestIndices := make([]int, len(targets))
+	for targetIndex, target := range targets {
+		normalizedRef, pinnedDigest, immutable, normalizeErr := normalizeUpdateReference(target.ImageRef)
+		cacheKey := target.ImageID + "\x00" + normalizedRef
+		if normalizeErr != nil {
+			cacheKey = target.ImageID + "\x00" + target.ImageRef
 		}
+
+		requestIndex, exists := requestByKey[cacheKey]
+		if !exists {
+			requestIndex = len(requests)
+			requestByKey[cacheKey] = requestIndex
+			request := imageUpdateObservationRequest{imageID: target.ImageID, imageRef: normalizedRef}
+			switch {
+			case normalizeErr != nil:
+				request.observation.err = normalizeErr
+			case immutable:
+				request.observation.localDigest = pinnedDigest
+			default:
+				request.inspect = true
+			}
+			requests = append(requests, request)
+		}
+		targetRequestIndices[targetIndex] = requestIndex
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, apischema.DockerUpdateCheckResult{}, err
+	}
+	if err := inspectImageUpdateRequests(ctx, cli, requests); err != nil {
+		return nil, apischema.DockerUpdateCheckResult{}, err
+	}
+
+	statuses := make([]imageUpdateStatus, 0, len(targets))
+	var result apischema.DockerUpdateCheckResult
+	for targetIndex, target := range targets {
+		observation := requests[targetRequestIndices[targetIndex]].observation
 
 		status := imageUpdateStatus{
 			ContainerID:     target.ContainerID,
@@ -99,40 +138,35 @@ func checkContainerImageUpdates(
 	return statuses, result, nil
 }
 
-func cachedImageUpdateObservation(
+func inspectImageUpdateRequests(
 	ctx context.Context,
 	cli imageUpdateCheckClient,
-	cache map[string]imageUpdateObservation,
-	target containerImageUpdateTarget,
-) (imageUpdateObservation, error) {
+	requests []imageUpdateObservationRequest,
+) error {
 	if err := ctx.Err(); err != nil {
-		return imageUpdateObservation{}, err
+		return err
 	}
-
-	normalizedRef, pinnedDigest, immutable, normalizeErr := normalizeUpdateReference(target.ImageRef)
-	cacheKey := target.ImageID + "\x00" + normalizedRef
-	if normalizeErr != nil {
-		cacheKey = target.ImageID + "\x00" + target.ImageRef
-	}
-	if observation, ok := cache[cacheKey]; ok {
-		return observation, nil
-	}
-
-	var observation imageUpdateObservation
-	switch {
-	case normalizeErr != nil:
-		observation.err = normalizeErr
-	case immutable:
-		observation.localDigest = pinnedDigest
-	default:
-		var err error
-		observation, err = inspectImageUpdate(ctx, cli, target.ImageID, normalizedRef)
-		if err != nil {
-			return imageUpdateObservation{}, err
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(imageUpdateObservationConcurrency)
+	for requestIndex := range requests {
+		if !requests[requestIndex].inspect {
+			continue
 		}
+		group.Go(func() error {
+			observation, err := inspectImageUpdate(
+				groupCtx,
+				cli,
+				requests[requestIndex].imageID,
+				requests[requestIndex].imageRef,
+			)
+			if err != nil {
+				return err
+			}
+			requests[requestIndex].observation = observation
+			return nil
+		})
 	}
-	cache[cacheKey] = observation
-	return observation, nil
+	return group.Wait()
 }
 
 func inspectImageUpdate(

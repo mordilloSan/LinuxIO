@@ -80,7 +80,7 @@ vi.mock("@/hooks/useScopedToast", () => ({
 const { act, createTestQueryClient, renderHook, waitFor } =
   await import("@/test/render");
 const { QueryClientProvider } = await import("@tanstack/react-query");
-const { useContainerAutoUpdateState } =
+const { canEnableContainerAutoUpdateTarget, useContainerAutoUpdateState } =
   await import("./useContainerAutoUpdateState");
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -91,6 +91,19 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 describe("useContainerAutoUpdateState", () => {
   afterEach(() => vi.clearAllMocks());
+
+  it("allows check-only enrollment but blocks mutation enrollment for ineligible targets", () => {
+    const blocked = {
+      mutationAllowed: false,
+      mutationReason:
+        "Container is not running; start it before enabling automatic updates.",
+    };
+    expect(canEnableContainerAutoUpdateTarget("update", blocked)).toBe(false);
+    expect(canEnableContainerAutoUpdateTarget("check_only", blocked)).toBe(
+      true,
+    );
+    expect(canEnableContainerAutoUpdateTarget("update")).toBe(true);
+  });
 
   it("ignores an in-flight save after unmount and drops its queued follow-up", async () => {
     let resolveSave!: (state: typeof mocks.cacheState) => void;

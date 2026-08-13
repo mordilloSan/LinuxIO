@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 )
 
 type fakeImageUpdateCheckClient struct {
+	mu                  sync.Mutex
 	images              map[string]client.ImageInspectResult
 	imageErrors         map[string]error
 	distributions       map[string]client.DistributionInspectResult
@@ -37,7 +39,9 @@ func (f *fakeImageUpdateCheckClient) ImageInspect(
 	imageID string,
 	_ ...client.ImageInspectOption,
 ) (client.ImageInspectResult, error) {
+	f.mu.Lock()
 	f.imageCalls = append(f.imageCalls, imageID)
+	f.mu.Unlock()
 	if err := f.imageErrors[imageID]; err != nil {
 		return client.ImageInspectResult{}, err
 	}
@@ -53,8 +57,10 @@ func (f *fakeImageUpdateCheckClient) DistributionInspect(
 	imageRef string,
 	options client.DistributionInspectOptions,
 ) (client.DistributionInspectResult, error) {
+	f.mu.Lock()
 	f.distributionCalls = append(f.distributionCalls, imageRef)
 	f.distributionOptions = append(f.distributionOptions, options)
+	f.mu.Unlock()
 	if f.distributionHook != nil {
 		return f.distributionHook(ctx, imageRef, options)
 	}
@@ -66,6 +72,53 @@ func (f *fakeImageUpdateCheckClient) DistributionInspect(
 		return client.DistributionInspectResult{}, fmt.Errorf("unexpected distribution inspect %q", imageRef)
 	}
 	return result, nil
+}
+
+type boundedImageUpdateCheckClient struct {
+	mu      sync.Mutex
+	active  int
+	maximum int
+	release chan struct{}
+	started chan struct{}
+}
+
+func (f *boundedImageUpdateCheckClient) ImageInspect(
+	_ context.Context,
+	imageID string,
+	_ ...client.ImageInspectOption,
+) (client.ImageInspectResult, error) {
+	digestValue := digest.FromString("local-" + imageID)
+	return client.ImageInspectResult{
+		RepoDigests: []string{"docker.io/library/" + imageID + "@" + digestValue.String()}}, nil
+}
+
+func (f *boundedImageUpdateCheckClient) DistributionInspect(
+	ctx context.Context,
+	imageRef string,
+	_ client.DistributionInspectOptions,
+) (client.DistributionInspectResult, error) {
+	f.mu.Lock()
+	f.active++
+	if f.active > f.maximum {
+		f.maximum = f.active
+	}
+	f.mu.Unlock()
+
+	f.started <- struct{}{}
+	select {
+	case <-ctx.Done():
+		f.finishRequest()
+		return client.DistributionInspectResult{}, ctx.Err()
+	case <-f.release:
+	}
+	f.finishRequest()
+	return distributionInspectResult(digest.FromString("remote-" + imageRef)), nil
+}
+
+func (f *boundedImageUpdateCheckClient) finishRequest() {
+	f.mu.Lock()
+	f.active--
+	f.mu.Unlock()
 }
 
 func TestCheckContainerImageUpdatesDetectsAndDeduplicates(t *testing.T) {
@@ -124,6 +177,71 @@ func TestCheckContainerImageUpdatesDetectsAndDeduplicates(t *testing.T) {
 	for _, options := range client.distributionOptions {
 		if options.EncodedRegistryAuth != "" {
 			t.Fatalf("registry auth = %q, want anonymous access", options.EncodedRegistryAuth)
+		}
+	}
+}
+
+func TestCheckContainerImageUpdatesBoundsParallelRegistryChecksAndPreservesOrder(t *testing.T) {
+	client := &boundedImageUpdateCheckClient{
+		release: make(chan struct{}),
+		started: make(chan struct{}, 8),
+	}
+	targets := make([]containerImageUpdateTarget, 8)
+	for i := range targets {
+		name := fmt.Sprintf("image-%d", i)
+		targets[i] = containerImageUpdateTarget{
+			ContainerID:   fmt.Sprintf("container-%d", i),
+			ContainerName: name,
+			ImageID:       name,
+			ImageRef:      name,
+		}
+	}
+
+	type checkResult struct {
+		statuses []imageUpdateStatus
+		err      error
+	}
+	done := make(chan checkResult, 1)
+	go func() {
+		statuses, _, err := checkContainerImageUpdates(context.Background(), client, targets, time.Now())
+		done <- checkResult{statuses: statuses, err: err}
+	}()
+
+	for range imageUpdateObservationConcurrency {
+		select {
+		case <-client.started:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for bounded registry checks to start")
+		}
+	}
+	select {
+	case <-client.started:
+		t.Fatalf("more than %d registry checks started concurrently", imageUpdateObservationConcurrency)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(client.release)
+
+	var result checkResult
+	select {
+	case result = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for registry checks to finish")
+	}
+	if result.err != nil {
+		t.Fatalf("checkContainerImageUpdates: %v", result.err)
+	}
+	client.mu.Lock()
+	maximum := client.maximum
+	client.mu.Unlock()
+	if maximum != imageUpdateObservationConcurrency {
+		t.Fatalf("maximum parallel checks = %d, want %d", maximum, imageUpdateObservationConcurrency)
+	}
+	if len(result.statuses) != len(targets) {
+		t.Fatalf("statuses = %d, want %d", len(result.statuses), len(targets))
+	}
+	for i, status := range result.statuses {
+		if status.ContainerID != targets[i].ContainerID || status.ContainerName != targets[i].ContainerName {
+			t.Fatalf("status %d = %+v, want target %+v", i, status, targets[i])
 		}
 	}
 }
@@ -216,5 +334,26 @@ func TestCheckContainerImageUpdatesPreservesCancellation(t *testing.T) {
 	}
 	if statuses != nil || result != (apischema.DockerUpdateCheckResult{}) {
 		t.Fatalf("partial result returned after cancellation: statuses=%+v result=%+v", statuses, result)
+	}
+}
+
+func TestCheckContainerImageUpdatesPreservesCancellationWithoutRegistryWork(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	statuses, result, err := checkContainerImageUpdates(
+		ctx,
+		&fakeImageUpdateCheckClient{},
+		[]containerImageUpdateTarget{{
+			ContainerID: "immutable",
+			ImageID:     "sha256:local",
+			ImageRef:    "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		}},
+		time.Now(),
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if statuses != nil || result != (apischema.DockerUpdateCheckResult{}) {
+		t.Fatalf("result after cancellation: statuses=%+v result=%+v", statuses, result)
 	}
 }

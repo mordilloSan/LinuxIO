@@ -37,9 +37,38 @@ func TestParseRunArgs(t *testing.T) {
 	}
 }
 
+func TestParseOperationArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+		ok   bool
+	}{
+		{name: "valid", args: []string{"--id", "00000000-0000-4000-8000-000000000001"}, want: "00000000-0000-4000-8000-000000000001", ok: true},
+		{name: "missing", ok: false},
+		{name: "blank", args: []string{"--id", "  "}, ok: false},
+		{name: "unknown", args: []string{"--verbose"}, ok: false},
+		{name: "duplicate", args: []string{"--id", "one", "--id", "two"}, ok: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			got, ok := parseOperationArgs(tt.args, &stderr)
+			if ok != tt.ok || got != tt.want {
+				t.Fatalf("parseOperationArgs(%v) = %q, %v; want %q, %v", tt.args, got, ok, tt.want, tt.ok)
+			}
+			if !tt.ok && stderr.Len() == 0 {
+				t.Fatal("expected a usage error")
+			}
+		})
+	}
+}
+
 func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	originalRun := runUpdates
+	originalOperation := runOperation
 	t.Cleanup(func() { runUpdates = originalRun })
+	t.Cleanup(func() { runOperation = originalOperation })
 
 	var gotConfig string
 	runUpdates = func(ctx context.Context, configPath string) error {
@@ -52,11 +81,26 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	if gotConfig != "/tmp/custom" {
 		t.Fatalf("run config = %q, want custom path", gotConfig)
 	}
+	var gotOperation string
+	runOperation = func(ctx context.Context, operationID string) error {
+		gotOperation = operationID
+		return nil
+	}
+	if code := runCLI([]string{"linuxio-docker-update", "run-operation", "--id", "00000000-0000-4000-8000-000000000001"}, context.Background(), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("run-operation exit code = %d, want 0", code)
+	}
+	if gotOperation == "" {
+		t.Fatal("run-operation did not receive an operation ID")
+	}
 }
 
 func TestRunCLIExitCodesAndErrors(t *testing.T) {
 	originalRun := runUpdates
-	t.Cleanup(func() { runUpdates = originalRun })
+	originalOperation := runOperation
+	t.Cleanup(func() {
+		runUpdates = originalRun
+		runOperation = originalOperation
+	})
 	runUpdates = func(context.Context, string) error { return errors.New("docker unavailable") }
 
 	var stderr bytes.Buffer
@@ -70,6 +114,11 @@ func TestRunCLIExitCodesAndErrors(t *testing.T) {
 	stderr.Reset()
 	if code := runCLI([]string{"linuxio-docker-update", "run", "--config"}, context.Background(), &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "requires a path") {
 		t.Fatalf("missing config = code %d, stderr %q", code, stderr.String())
+	}
+	runOperation = func(context.Context, string) error { return errors.New("operation failed") }
+	stderr.Reset()
+	if code := runCLI([]string{"linuxio-docker-update", "run-operation", "--id", "00000000-0000-4000-8000-000000000001"}, context.Background(), &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "run-operation failed") {
+		t.Fatalf("run-operation failure = code %d, stderr %q", code, stderr.String())
 	}
 }
 

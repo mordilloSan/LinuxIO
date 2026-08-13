@@ -64,6 +64,15 @@ var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
 func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
+		apischema.TaskRunner[apischema.DockerContainerUpdateRequest, apischema.DockerContainerUpdateResult](
+			dockerUpdateRoute,
+			apischema.DurableTask(),
+			apischema.WithTaskProgress[apischema.DockerContainerUpdateProgress](),
+			apischema.WithTaskIdentity(dockerUpdateTaskIdentity),
+			apischema.WithTaskMetadata(func(req apischema.DockerContainerUpdateRequest) bridgetask.TaskMetadata {
+				return bridgetask.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
+			}),
+		).Run(runDockerUpdateTask, bridgetask.TaskSingletonSystem),
 		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
