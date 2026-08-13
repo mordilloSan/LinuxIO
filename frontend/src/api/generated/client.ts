@@ -90,7 +90,9 @@ const linuxio = {
     stop_all_running: defineCall("docker.stop_all_running"),
     stop_container: defineCallWithRequest("docker.stop_container"),
     system_prune: defineCallWithRequest("docker.system_prune"),
-    update_container: defineCallWithRequest("docker.update_container"),
+    update_container: createTaskEndpoint("docker", "update_container", {
+      kind: "object",
+    }),
     validate_compose: defineCallWithRequest("docker.validate_compose"),
     validate_stack_directory: defineCallWithRequest(
       "docker.validate_stack_directory",

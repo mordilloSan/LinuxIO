@@ -214,6 +214,8 @@ export function useRecoveredTasks(
               message ??
               `Docker compose ${requestString(metadata, "action") ?? "operation"}`
             );
+          case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
+            return message ?? "Updating Docker container";
           case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${data.package_id.split(";")[0]}`
@@ -332,6 +334,7 @@ export function useRecoveredTasks(
           break;
         }
         case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
+        case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
         case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
         case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
         case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY:

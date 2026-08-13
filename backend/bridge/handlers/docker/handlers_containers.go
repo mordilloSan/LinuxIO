@@ -50,13 +50,6 @@ func (h dockerHandlers) handleCheckContainerUpdate(ctx context.Context, req apis
 	return RefreshContainerImageUpdate(ctx, req.ContainerID)
 }
 
-func (h dockerHandlers) handleUpdateContainer(ctx context.Context, req apischema.ContainerIDRequest) (apischema.DockerContainerUpdateResult, error) {
-	if req.ContainerID == "" {
-		return apischema.DockerContainerUpdateResult{}, bridgeipc.ErrInvalidArgs
-	}
-	return UpdateContainer(ctx, req.ContainerID)
-}
-
 func (h dockerHandlers) handleGetContainerAutoUpdate(ctx context.Context, _ apischema.NoRequest) (apischema.DockerContainerAutoUpdateState, error) {
 	return GetContainerAutoUpdate(ctx)
 }

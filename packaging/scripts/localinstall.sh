@@ -60,7 +60,7 @@ cd "$REPO_ROOT"
 Header "Step 1/2 — Verify Binaries"
 
 MISSING=0
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update; do
     if [[ ! -f "$REPO_ROOT/$binary" ]]; then
         Show 1 "Binary not found: ${binary}. Run 'make build' first."
         MISSING=1
@@ -74,7 +74,7 @@ Header "Step 2/2 — Install"
 
 # Binaries
 Show 2 "Installing binaries..."
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update; do
     install -o root -g root -m 0755 "$REPO_ROOT/$binary" /usr/local/bin/
 done
 Show 0 "Binaries installed to /usr/local/bin"
@@ -193,7 +193,7 @@ echo -e "${LINE}"
 echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
 echo -e "${LINE}"
 echo "Installed components:"
-echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
+echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
 echo "  • PAM config:      /etc/pam.d/linuxio"

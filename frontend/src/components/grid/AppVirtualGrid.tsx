@@ -2,9 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   memo,
   useLayoutEffect,
-  useMemo,
   useRef,
-  useState,
   type CSSProperties,
   type Key,
   type MouseEventHandler,
@@ -13,6 +11,7 @@ import {
 } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
+import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 
 export interface AppVirtualGridProps<TItem> {
   ariaLabel?: string;
@@ -86,37 +85,22 @@ function AppVirtualGrid<TItem>({
 
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
-  const [viewportWidth, setViewportWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-
-    const measure = () => {
-      setViewportWidth(node.clientWidth);
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [scrollRef]);
-
-  const columnCount = useMemo(() => {
-    const availableWidth = Math.max(0, viewportWidth - padding * 2);
-    return Math.max(
-      1,
-      Math.floor((availableWidth + gap) / (minItemWidth + gap)),
-    );
-  }, [gap, minItemWidth, padding, viewportWidth]);
+  const columnCount = useGridColumnCount(scrollRef, {
+    gap,
+    minItemWidth,
+    padding,
+  });
 
   const rowCount = Math.ceil(items.length / columnCount);
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rowCount,
+    // The virtualizer owns the row wrappers' transform and the rowgroup
+    // height — scroll and remeasure updates are written straight to the DOM
+    // instead of re-rendering. The outer padding rides along as
+    // paddingStart/paddingEnd so row starts already include it.
+    directDomUpdates: true,
     estimateSize: () => estimateItemHeight + gap,
     getItemKey: (rowIndex) => {
       const firstItemIndex = rowIndex * columnCount;
@@ -125,6 +109,8 @@ function AppVirtualGrid<TItem>({
     },
     getScrollElement: () => scrollRef.current,
     overscan,
+    paddingEnd: padding,
+    paddingStart: padding,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
@@ -168,9 +154,9 @@ function AppVirtualGrid<TItem>({
         </div>
       ) : (
         <div
+          ref={virtualizer.containerRef}
           role="rowgroup"
           style={{
-            height: virtualizer.getTotalSize() + padding * 2,
             minWidth: 0,
             position: "relative",
           }}
@@ -193,7 +179,6 @@ function AppVirtualGrid<TItem>({
                   position: "absolute",
                   right: padding,
                   top: 0,
-                  transform: `translateY(${virtualRow.start + padding}px)`,
                 }}
               >
                 {Array.from({ length: columnCount }, (_, columnIndex) => {

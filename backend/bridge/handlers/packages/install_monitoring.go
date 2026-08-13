@@ -64,7 +64,7 @@ func downloadMonitoringInstallScript(ctx context.Context, client *http.Client) (
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readWatchtowerErrorBody(resp.Body))
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readHTTPErrorBody(resp.Body))
 	}
 	if resp.ContentLength > monitoringInstallScriptMaxBytes {
 		return nil, fmt.Errorf("installer exceeds %d bytes", monitoringInstallScriptMaxBytes)

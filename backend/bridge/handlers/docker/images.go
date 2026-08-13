@@ -9,6 +9,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // List all images
@@ -38,11 +39,21 @@ func ListImages(ctx context.Context) ([]apischema.DockerImage, error) {
 	for _, item := range imageItems {
 		img := dockerImageFromSummary(item)
 		if status, ok := updateStatus.forImage(item); ok {
-			img.UpdateAvailable = new(status.UpdateAvailable)
+			applyImageUpdateStatus(&img, status)
 		}
 		result = append(result, img)
 	}
 	return result, nil
+}
+
+func applyImageUpdateStatus(img *apischema.DockerImage, status imageUpdateStatus) {
+	checkState := status.CheckState
+	img.UpdateCheckState = new(checkState)
+	img.UpdateCheckReason = utils.OptionalString(status.CheckReason)
+	img.UpdateAvailable = nil
+	if checkState != apischema.DockerUpdateCheckStateUncheckable {
+		img.UpdateAvailable = new(status.UpdateAvailable)
+	}
 }
 
 func dockerImageFromSummary(item image.Summary) apischema.DockerImage {

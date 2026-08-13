@@ -3,7 +3,6 @@ import {
   memo,
   useLayoutEffect,
   useMemo,
-  useState,
   type MouseEvent,
   type MouseEventHandler,
   type RefObject,
@@ -15,6 +14,7 @@ import {
   DirectoryItem,
   SectionHeader,
 } from "@/components/filebrowser/VirtualDirectoryRows";
+import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
@@ -164,35 +164,15 @@ const VirtualDirectoryItems = ({
   "use no memo";
 
   const theme = useAppTheme();
-  const [viewportWidth, setViewportWidth] = useState(0);
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
-  useLayoutEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-
-    const measure = () => {
-      setViewportWidth(node.clientWidth);
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [containerRef]);
-
-  const columnCount = useMemo(() => {
-    if (viewMode === "list") return 1;
-
-    const availableWidth = Math.max(0, viewportWidth - CARD_PADDING * 2);
-    return Math.max(
-      1,
-      Math.floor((availableWidth + CARD_GAP) / (CARD_MIN_WIDTH + CARD_GAP)),
-    );
-  }, [viewMode, viewportWidth]);
+  const cardColumnCount = useGridColumnCount(containerRef, {
+    gap: CARD_GAP,
+    minItemWidth: CARD_MIN_WIDTH,
+    padding: CARD_PADDING,
+  });
+  const columnCount = viewMode === "list" ? 1 : cardColumnCount;
 
   const rows = useMemo(
     () => buildRows({ columnCount, files, folders, viewMode }),
@@ -203,6 +183,11 @@ const VirtualDirectoryItems = ({
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length,
+    // The virtualizer owns the row wrappers' transform and the container
+    // height — scroll and remeasure updates are written straight to the DOM
+    // instead of re-rendering. The outer padding rides along as
+    // paddingStart/paddingEnd so row starts already include it.
+    directDomUpdates: true,
     estimateSize: (index) => {
       const row = rows[index];
       if (row?.type === "sectionHeader") {
@@ -215,6 +200,8 @@ const VirtualDirectoryItems = ({
     getItemKey: (index) => rows[index]?.key ?? index,
     getScrollElement: () => containerRef.current,
     overscan: 6,
+    paddingEnd: horizontalPadding,
+    paddingStart: horizontalPadding,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
@@ -255,8 +242,8 @@ const VirtualDirectoryItems = ({
       }}
     >
       <div
+        ref={virtualizer.containerRef}
         style={{
-          height: virtualizer.getTotalSize() + horizontalPadding * 2,
           minWidth: 0,
           position: "relative",
         }}
@@ -277,7 +264,6 @@ const VirtualDirectoryItems = ({
                 position: "absolute",
                 right: horizontalPadding,
                 top: 0,
-                transform: `translateY(${virtualRow.start + horizontalPadding}px)`,
               }}
             >
               {row.type === "sectionHeader" ? (

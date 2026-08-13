@@ -196,8 +196,6 @@ func installOptionalComponent(ctx context.Context, task *bridgetask.Task, spec s
 		return installIndexer(ctx, task)
 	case system.OptionalComponentMonitoring:
 		return installMonitoring(ctx, task)
-	case system.OptionalComponentWatchtower:
-		return installWatchtower(ctx, task)
 	default:
 		return fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
 	}

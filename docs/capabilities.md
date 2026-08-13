@@ -119,7 +119,7 @@ resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_se
 
 - `detectDistroFamily()` reads `/etc/os-release` and classifies the host as
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
-- Optional LinuxIO-managed components (for example the indexer, Watchtower, or
+- Optional LinuxIO-managed components (for example the indexer or
   go-monitoring) install through a component-specific asset/script step instead
   of PackageKit.
 - Package installs go through PackageKit (`InstallByName`), so installable

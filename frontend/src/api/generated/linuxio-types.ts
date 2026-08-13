@@ -262,7 +262,7 @@ export interface CaddyStatusResponse {
 
 export interface CapabilitiesResponse {
   docker_available: boolean;
-  watchtower_available: boolean;
+  docker_updates_available: boolean;
   indexer_available: boolean;
   monitoring_available: boolean;
   lm_sensors_available: boolean;
@@ -278,7 +278,7 @@ export interface CapabilitiesResponse {
   wireguard_available: boolean;
   libvirt_available: boolean;
   docker_error?: string;
-  watchtower_error?: string;
+  docker_updates_error?: string;
   indexer_error?: string;
   monitoring_error?: string;
   lm_sensors_error?: string;
@@ -493,6 +493,8 @@ export interface ContainerInfo {
   Status: string;
   updateAvailable?: boolean;
   updateCheckedAt?: number;
+  updateCheckReason?: string;
+  updateCheckState?: DockerUpdateCheckState;
   updateError?: string;
   url?: string;
 }
@@ -669,6 +671,18 @@ export interface DockerContainerAutoUpdateTarget {
   name: string;
   selected: boolean;
   state: string;
+  mutationAllowed: boolean;
+  mutationReason?: string;
+}
+
+export interface DockerContainerUpdateProgress {
+  phase: string;
+  message: string;
+}
+
+export interface DockerContainerUpdateRequest {
+  containerId: string;
+  runId: string;
 }
 
 export interface DockerContainerUpdateResult {
@@ -708,6 +722,8 @@ export interface DockerImage {
   RepoTags: string[];
   Size: number;
   updateAvailable?: boolean;
+  updateCheckReason?: string;
+  updateCheckState?: DockerUpdateCheckState;
 }
 
 export interface DockerLogsFollowRequest {
@@ -831,8 +847,15 @@ export interface DockerSystemPruneResponse {
 export interface DockerUpdateCheckResult {
   checked: number;
   errors: number;
+  uncheckable: number;
   updates: number;
 }
+
+export type DockerUpdateCheckState =
+  | "current"
+  | "available"
+  | "uncheckable"
+  | "error";
 
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;
@@ -2539,9 +2562,10 @@ export interface LinuxIOSchema {
       result: DockerSystemPruneResponse;
     };
     update_container: {
-      input: [containerId: string];
-      request: ContainerIDRequest;
+      input: [request: DockerContainerUpdateRequest];
+      request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
+      progress: TaskProgress<DockerContainerUpdateProgress>;
     };
     validate_compose: {
       input: [content: string];
@@ -3284,10 +3308,6 @@ export interface LinuxIOCallSchema {
   "docker.system_prune": {
     request: DockerSystemPruneRequest;
     result: DockerSystemPruneResponse;
-  };
-  "docker.update_container": {
-    request: ContainerIDRequest;
-    result: DockerContainerUpdateResult;
   };
   "docker.validate_compose": {
     request: ContentRequest;

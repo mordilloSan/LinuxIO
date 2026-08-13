@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
 import {
+  TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
 } from "@/constants/backgroundTaskTypes";
@@ -149,6 +150,33 @@ describe("useRecoveredTasks package updates", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["linuxio", "updates", "get_updates_basic"],
     });
+  });
+
+  it("restores an active durable Docker update to the background task UI", async () => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "docker-update-active",
+      metadata: { identity: ["web"] },
+      progress: { message: "Pulling the updated image", phase: "running" },
+      state: "running",
+      type: TASK_TYPE_DOCKER_UPDATE,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    expect(controls.genericTasks.setBackgroundTasks).toHaveBeenCalledOnce();
+    const update = controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered task state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "docker-update-active",
+        label: "Pulling the updated image",
+        taskType: TASK_TYPE_DOCKER_UPDATE,
+      }),
+    ]);
   });
 
   it("toasts a terminal package failure once when no page stream owns it", async () => {

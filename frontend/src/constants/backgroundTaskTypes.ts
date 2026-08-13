@@ -13,6 +13,7 @@ export const TASK_TYPE_FILE_DOWNLOAD = "filebrowser.download";
 export const TASK_TYPE_FILE_ARCHIVE = "filebrowser.archive";
 export const TASK_TYPE_FILE_CHMOD_BATCH = "filebrowser.chmod_batch";
 export const TASK_TYPE_DOCKER_COMPOSE = "docker.compose";
+export const TASK_TYPE_DOCKER_UPDATE = "docker.update_container";
 export const TASK_TYPE_PACKAGE_UPDATE = "packages.update";
 export const TASK_TYPE_STORAGE_SMART_TEST = "storage.run_smart_test";
 export const TASK_TYPE_SYSTEM_INSTALL_CAPABILITY = "system.install_capability";

@@ -15,6 +15,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 import { formatFileSize } from "@/utils/formaters";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -153,7 +154,7 @@ const ContainerCardBody = ({
     });
 
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    useCallMutation(linuxio.docker.update_container, {
+    linuxio.docker.update_container.useTaskAction({
       success: (result) => {
         toast.success(
           result.updated
@@ -211,7 +212,7 @@ const ContainerCardBody = ({
   };
 
   const handleUpdateClick = useCallback(() => {
-    updateContainer({ containerId: container.Id });
+    updateContainer(createDockerContainerUpdateRequest(container.Id));
   }, [container.Id, updateContainer]);
 
   const handleAutoUpdateClick = useCallback(() => {
@@ -231,9 +232,13 @@ const ContainerCardBody = ({
     ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
     : autoUpdatePending
       ? "Saving auto-update setting"
-      : autoUpdateSelected
-        ? "Scheduled auto-update enabled"
-        : "Scheduled auto-update disabled";
+      : autoUpdateReason
+        ? autoUpdateSelected
+          ? `${autoUpdateReason} Disable this selection to stop automatic mutation attempts.`
+          : autoUpdateReason
+        : autoUpdateSelected
+          ? "Scheduled auto-update enabled"
+          : "Scheduled auto-update disabled";
 
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (

@@ -9,13 +9,21 @@ LinuxIO exposes three deliberately different operation shapes:
 - **Call** is bounded request/response work.
 - **Channel** is a live stream with an explicit resume/reconnect contract.
 - **Task** is tracked background work with identity, progress, and watcher
-  recovery. Seventeen routes are session-bound; `control.app_update` opts into
-  a persistent UID-owned record and external executor.
+  recovery. Tasks may be session-bound or durable, with the lifetime selected
+  explicitly by each route.
 
-Task progress/data events are not persistent history. A Task snapshot retains
-only the latest common progress envelope; the current navbar keeps toast
-history in the browser, and the planned alert store is separate from Task
-snapshots.
+The shipped Task catalog contains 17 session-bound routes and two durable routes:
+`control.app_update` and `docker.update_container`. Durable routes persist a
+UID-owned operation record and use an external executor; all other Tasks remain
+owned by the authenticated session. This browser-to-bridge API is an internal
+product surface. A future supported external API would be a separate contract.
+
+Task progress and data streams are not a durable audit/history API. A Task
+snapshot retains only the latest common progress envelope. Durable operation
+records may keep a small bounded progress window solely for recovery; that does
+not turn `tasks.events` or `tasks.watch` into queryable history. The current
+navbar keeps toast history in the browser, and the planned alert store is
+separate from Task snapshots.
 
 - Go owns route names, modes, request types, and result types. Route declarations live with each handler family's registration in `backend/bridge/handlers/<domain>/handlers.go`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
@@ -96,7 +104,7 @@ Every route has one mode:
 | Mode | Use |
 |------|-----|
 | `bridgeipc.ModeCall` | Bounded request/response work. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
-| `bridgeipc.ModeTask` | Tracked work with Task identity, progress, watcher recovery, and an explicit session or durable lifetime. Only `control.app_update` currently opts into durable execution. |
+| `bridgeipc.ModeTask` | Tracked work with Task identity, progress, watcher recovery, and an explicit session or durable lifetime. `control.app_update` and `docker.update_container` opt into durable execution; other Task routes are session-bound. |
 | `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
 
 Every route has one schema kind:
@@ -352,9 +360,10 @@ through a single direct `useCallMutation` request/response.
 
 Seventeen Task routes declare `SessionTask()`. Their owner is the exact
 authenticated `SessionID`; logout, expiry, session deletion, bridge failure,
-or bridge shutdown cancels the in-memory Task. `control.app_update` alone
-declares `DurableTask()` and is owned by the authenticated numeric UID, so a
-later session for that UID can observe the same operation.
+or bridge shutdown cancels the in-memory Task. `control.app_update` and
+`docker.update_container` declare `DurableTask()` and are owned by the
+authenticated numeric UID, so a later session for that UID can observe the
+same operation.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
 in public Task snapshots or serialized API models. Public owner fields are
@@ -404,23 +413,32 @@ and supplies its terminal result. Explicit transient output on `tasks.watch`
 and payload-specific `tasks.data` flow-control frames remain route protocols;
 they are not stored as Task progress or published on `tasks.events`.
 
-The app-update exception receives a canonical Web-Crypto UUID before start.
-That UUID is both its Task ID and persistent operation ID. The backend binds it
-to the UID, route, and a safe fingerprint of the requested version; repeating
-the same claim attaches to the existing operation while incompatible reuse is
-a conflict. Closing the app-update stream only detaches observation. Explicit
-abort invokes `tasks.cancel`, and cancellation is terminal only after systemd
-confirms that the exact unit stopped. A replacement bridge reattaches active
-records as Tasks before accepting requests, so a later session for the same UID
-retains watch/cancel access and the recovered updater still occupies singleton
-admission.
+Durable operations receive a canonical client-generated UUID before start. That
+UUID is both the Task ID and persistent operation ID. The backend binds it to
+the UID, route, and a safe request fingerprint; repeating the same claim
+attaches to the existing operation while incompatible reuse is a conflict.
+Closing a durable Task stream only detaches observation. Explicit abort invokes
+`tasks.cancel`, and cancellation is terminal only after the exact external
+executor confirms it stopped. A replacement bridge reattaches active records as
+Tasks before accepting requests, so a later session for the same UID retains
+watch/cancel access and recovered work still occupies route admission.
 
-`GET /api/update-status?id=<uuid>` is session-authenticated and UID-scoped. It
-reads the persistent operation record, reconciles a typed executor result when
-available, and reports `running`, `ok`, `error`, or `unknown`. Missing and
-different-UID records are indistinguishable. The endpoint is the browser's
-convergence path across reloads and the LinuxIO service restart performed by
-the updater.
+`control.app_update` uses the requested-version fingerprint. Its systemd unit
+deliberately severs the bridge during service replacement; the persistent
+record and typed executor result, not the stream, are authoritative.
+`docker.update_container` fingerprints the target
+container, admits only one active update, and runs a validated root-owned
+systemd worker. The worker revalidates the persisted route, target fingerprint,
+executor identity, operation state, and cancellation intent before mutating
+Docker, then writes a typed executor-result artifact for reconciliation. Both
+routes reattach after bridge loss without blindly launching a second executor.
+
+For `control.app_update`, `GET /api/update-status?id=<uuid>` is
+session-authenticated and UID-scoped. It reads the persistent operation record,
+reconciles a typed executor result when available, and reports `running`, `ok`,
+`error`, or `unknown`. Missing and different-UID records are indistinguishable.
+The endpoint is the app-update browser flow's convergence path across reloads
+and the LinuxIO service restart performed by the updater.
 
 Built-in Task routes:
 
@@ -561,13 +579,15 @@ var api = apischema.Bindings(
 
 The dispatcher checks the authenticated session before running the route. Handlers may still validate operation-specific policy, but they should not duplicate the route-level admin gate.
 
-## Implementation Boundaries and Follow-up
+## Implementation Boundaries
 
 The current contract shape is intentionally JSON-first and Go-owned. Runtime
 route binding is typed, and TypeScript generation still reads Go type metadata.
-Call fetching and Task lifecycle have separate, final runtime factories; the
-completed transport migration is recorded in
-[API Transport Simplification Plan](./api-transport-simplification-plan.md).
+Call fetching and Task lifecycle have separate runtime factories. Tasks are a
+service layered over the existing Call and Channel transports, not a second
+wire protocol. Frontend query and mutation cache policy is independent of the
+underlying transport shape. This API is internal to LinuxIO; any future
+supported external API would be versioned and documented separately.
 
 ### 1. Keep Reflection Generator-Only
 

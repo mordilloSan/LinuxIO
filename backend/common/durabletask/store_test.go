@@ -86,6 +86,7 @@ func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 		State:      StateFailed,
 		ExitCode:   17,
 		FinishedAt: time.Date(2026, 8, 10, 12, 1, 0, 0, time.UTC),
+		Result:     json.RawMessage(`{"containerId":"new-id","updated":true}`),
 		Error:      "installer failed",
 	}
 	data, err := json.Marshal(result)
@@ -108,13 +109,14 @@ func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 		t.Fatalf("terminal record = %+v", record)
 	}
 	var typedResult struct {
-		ExitCode int `json:"exit_code"`
+		ContainerID string `json:"containerId"`
+		Updated     bool   `json:"updated"`
 	}
 	if decodeErr := json.Unmarshal(record.Result, &typedResult); decodeErr != nil {
 		t.Fatalf("decode typed result: %v", decodeErr)
 	}
-	if typedResult.ExitCode != 17 {
-		t.Fatalf("exit code = %d, want 17", typedResult.ExitCode)
+	if typedResult.ContainerID != "new-id" || !typedResult.Updated {
+		t.Fatalf("typed result = %+v", typedResult)
 	}
 	repeated := result
 	repeated.ExitCode = 99
@@ -125,6 +127,45 @@ func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 	}
 	if record.Error == nil || record.Error.Code != 17 {
 		t.Fatalf("duplicate completion replaced terminal record: %+v", record)
+	}
+}
+
+func TestStoreAppliesCanceledExecutorResultAndRejectsWrongExecutor(t *testing.T) {
+	store := newTestStore(t)
+	claim := testClaim(11, 1000, "container-id")
+	if _, _, err := store.Claim(context.Background(), claim); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	executor := Executor{Kind: "systemd-transient-unit", Handle: "linuxio-docker-update.service", Identity: "root:linuxio-docker-update"}
+	if _, err := store.Update(context.Background(), claim.ID, claim.UID, func(record *Record) error {
+		record.State = StateRunning
+		record.Executor = executor
+		return nil
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	if _, err := store.GetForExecutor(context.Background(), claim.ID, testRoute, Executor{Kind: executor.Kind, Handle: executor.Handle, Identity: "root:other"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("wrong executor error = %v, want ErrNotFound", err)
+	}
+	finished := time.Date(2026, 8, 10, 12, 2, 0, 0, time.UTC)
+	result := ExecutorResult{ID: claim.ID, State: StateCanceled, ExitCode: 143, FinishedAt: finished, Error: "worker stopped"}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if _, writeErr := store.WriteArtifact(claim.ID, "executor-result.json", data, 0o600); writeErr != nil {
+		t.Fatalf("WriteArtifact: %v", writeErr)
+	}
+	read, err := store.ReadExecutorResult(claim.ID)
+	if err != nil {
+		t.Fatalf("ReadExecutorResult: %v", err)
+	}
+	record, err := store.ApplyExecutorResult(context.Background(), claim.UID, read)
+	if err != nil {
+		t.Fatalf("ApplyExecutorResult: %v", err)
+	}
+	if record.State != StateCanceled || record.Error == nil || record.Error.Code != 499 {
+		t.Fatalf("canceled record = %+v", record)
 	}
 }
 

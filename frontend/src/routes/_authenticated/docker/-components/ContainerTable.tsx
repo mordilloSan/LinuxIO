@@ -38,6 +38,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import "./container-table.css";
@@ -54,6 +55,34 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 // skips the expand animation. Context lets the columns stay stable while cells
 // still re-render in place when the expanded set changes.
 const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
+
+// Scheduled auto-update state travels the same way, and for the same reason:
+// it settles a beat after the rows first paint (the capability query resolves,
+// then the confirmed options land), so keeping it in the column closures would
+// remount every action button right when the table first becomes clickable.
+interface ContainerAutoUpdateCellState {
+  blockedReasons: ReadonlyMap<string, string>;
+  disabled: boolean;
+  pendingNames: ReadonlySet<string>;
+  reason?: string;
+  selectedNames: ReadonlySet<string>;
+  toggle: (name: string) => void;
+}
+
+const EMPTY_AUTO_UPDATE_NAMES: ReadonlySet<string> = new Set();
+const EMPTY_AUTO_UPDATE_REASONS: ReadonlyMap<string, string> = new Map();
+const ContainerAutoUpdateContext = createContext<ContainerAutoUpdateCellState>({
+  blockedReasons: EMPTY_AUTO_UPDATE_REASONS,
+  disabled: true,
+  pendingNames: EMPTY_AUTO_UPDATE_NAMES,
+  selectedNames: EMPTY_AUTO_UPDATE_NAMES,
+  toggle: () => {},
+});
+
+// And so does the page-wide "checking updates" flag, which toggles twice per
+// check — once on click, once when the sweep returns, the second one landing
+// long after the pointer has moved back over the rows.
+const CheckingUpdatesContext = createContext(false);
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || "Unnamed";
@@ -106,7 +135,11 @@ const getVersionDisplay = (container: ContainerInfo) => {
 
 type ContainerUpdateStatusInput = Pick<
   ContainerInfo,
-  "updateAvailable" | "updateCheckedAt" | "updateError"
+  | "updateAvailable"
+  | "updateCheckedAt"
+  | "updateCheckReason"
+  | "updateCheckState"
+  | "updateError"
 >;
 
 // `label` is the visible second line of the Version cell; `detail` is the
@@ -115,13 +148,22 @@ type ContainerUpdateStatusInput = Pick<
 const getUpdateStatus = ({
   updateAvailable,
   updateCheckedAt,
+  updateCheckReason,
+  updateCheckState,
   updateError,
 }: ContainerUpdateStatusInput) => {
   const detail = updateCheckedAt
     ? `Scanned ${formatRelativeAge(updateCheckedAt)}`
     : "Never scanned";
 
-  if (updateError) {
+  if (updateCheckState === "uncheckable") {
+    return {
+      color: "secondary" as const,
+      detail: updateCheckReason || "This image has no repository digest",
+      label: "Cannot check",
+    };
+  }
+  if (updateCheckState === "error" || updateError) {
     return {
       color: "error" as const,
       detail: updateError,
@@ -129,7 +171,11 @@ const getUpdateStatus = ({
     };
   }
   if (updateAvailable === true) {
-    return { color: "warning" as const, detail, label: "Update available" };
+    return {
+      color: "warning" as const,
+      detail: updateCheckReason || detail,
+      label: "Update available",
+    };
   }
   if (updateAvailable === false || updateCheckedAt) {
     return { color: "success" as const, detail, label: "Up to date" };
@@ -209,6 +255,8 @@ const getContainerTableSignature = (container: ContainerInfo) => {
       ? ""
       : String(container.updateAvailable),
     container.updateCheckedAt ?? "",
+    container.updateCheckReason ?? "",
+    container.updateCheckState ?? "",
     container.updateError ?? "",
     container.metrics?.cpu_percent?.toFixed(1) ?? "",
     container.metrics?.mem_usage === undefined
@@ -298,32 +346,49 @@ function VersionCell({ version }: { version: string }) {
 }
 
 interface UpdateCellProps {
-  checkingUpdates: boolean;
   containerId: string;
   name: string;
   updateAvailable?: boolean;
   updateCheckedAt?: ContainerInfo["updateCheckedAt"];
+  updateCheckReason?: string;
+  updateCheckState?: ContainerInfo["updateCheckState"];
   updateError?: string;
 }
 
 const UpdateCell = memo(function UpdateCell({
-  checkingUpdates,
   containerId,
   name,
   updateAvailable,
   updateCheckedAt,
+  updateCheckReason,
+  updateCheckState,
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const checkingUpdates = useContext(CheckingUpdatesContext);
   const updateStatus = getUpdateStatus({
     updateAvailable,
     updateCheckedAt,
+    updateCheckReason,
+    updateCheckState,
     updateError,
   });
   const { mutate: checkContainerUpdate, isPending: isCheckingUpdate } =
     useCallMutation(linuxio.docker.check_container_update, {
       success: (result) => {
+        const errors = result?.errors ?? 0;
         const updates = result?.updates ?? 0;
+        const uncheckable = result?.uncheckable ?? 0;
+        if (errors > 0) {
+          toast.warning(
+            `Failed to check updates for ${name}: ${errors} error(s)`,
+          );
+          return;
+        }
+        if (uncheckable > 0) {
+          toast.warning(`Cannot check updates for ${name}`);
+          return;
+        }
         toast.success(
           updates > 0
             ? `Container ${name} has an update`
@@ -334,7 +399,7 @@ const UpdateCell = memo(function UpdateCell({
       toast: DOCKER_TOAST_META,
     });
   const { mutate: updateContainer, isPending: isUpdatePending } =
-    useCallMutation(linuxio.docker.update_container, {
+    linuxio.docker.update_container.useTaskAction({
       success: (result) => {
         toast.success(
           result.updated
@@ -372,7 +437,9 @@ const UpdateCell = memo(function UpdateCell({
             "Update"
           )
         }
-        onClick={() => updateContainer({ containerId })}
+        onClick={() =>
+          updateContainer(createDockerContainerUpdateRequest(containerId))
+        }
         size="small"
         title="Apply update"
         variant="soft"
@@ -412,46 +479,59 @@ const UpdateCell = memo(function UpdateCell({
   );
 });
 
-interface AutoUpdateCellProps {
-  autoUpdateDisabled: boolean;
-  autoUpdatePending: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected: boolean;
-  name: string;
-  onToggleAutoUpdate: (name: string) => void;
+/** Per-row view of the shared auto-update state, resolved from context. */
+function useContainerAutoUpdate(name: string) {
+  const {
+    blockedReasons,
+    disabled: globallyDisabled,
+    pendingNames,
+    reason,
+    selectedNames,
+    toggle,
+  } = useContext(ContainerAutoUpdateContext);
+  const pending = pendingNames.has(name);
+  const selected = selectedNames.has(name);
+  const blockedReason = blockedReasons.get(name);
+  const disabled =
+    globallyDisabled || (!selected && blockedReason !== undefined);
+  const tooltip = globallyDisabled
+    ? (reason ?? "Scheduled auto-update unavailable")
+    : blockedReason
+      ? selected
+        ? `${blockedReason} Disable this selection to stop automatic mutation attempts.`
+        : blockedReason
+      : pending
+        ? "Saving auto-update setting"
+        : selected
+          ? "Scheduled auto-update enabled"
+          : "Scheduled auto-update disabled";
+
+  return { disabled, pending, selected, toggle, tooltip };
 }
 
 const AutoUpdateCell = memo(function AutoUpdateCell({
-  autoUpdateDisabled,
-  autoUpdatePending,
-  autoUpdateReason,
-  autoUpdateSelected,
   name,
-  onToggleAutoUpdate,
-}: AutoUpdateCellProps) {
+}: {
+  name: string;
+}) {
   const theme = useAppTheme();
   const [autoTooltipKey, setAutoTooltipKey] = useState(0);
-  const tooltip = autoUpdateDisabled
-    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-    : autoUpdatePending
-      ? "Saving auto-update setting"
-      : autoUpdateSelected
-        ? "Scheduled auto-update enabled"
-        : "Scheduled auto-update disabled";
+  const { disabled, pending, selected, toggle, tooltip } =
+    useContainerAutoUpdate(name);
 
   return (
     <AppTooltip key={autoTooltipKey} title={tooltip}>
       <span>
         <AppActionIconButton
-          color={autoUpdateSelected ? theme.palette.primary.main : undefined}
-          disabled={autoUpdateDisabled || autoUpdatePending}
+          color={selected ? theme.palette.primary.main : undefined}
+          disabled={disabled || pending}
           icon="mdi:timer-cog-outline"
           iconSize={16}
           label={tooltip}
-          loading={autoUpdatePending}
+          loading={pending}
           onClick={() => {
             setAutoTooltipKey((key) => key + 1);
-            onToggleAutoUpdate(name);
+            toggle(name);
           }}
           tooltip={false}
         />
@@ -817,10 +897,6 @@ interface ContainerAction {
 }
 
 interface ActionsCellProps {
-  autoUpdateDisabled: boolean;
-  autoUpdatePending: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected: boolean;
   // Below md only Name and Actions remain, and a seven-icon strip leaves the
   // name barely legible — so the same actions collapse into one menu, which
   // also swallows the auto-update toggle that sits beside the strip.
@@ -829,28 +905,23 @@ interface ActionsCellProps {
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
-  onToggleAutoUpdate: (name: string) => void;
   pending?: boolean;
   state: string;
   url?: string;
 }
 
 const ActionsCell = memo(function ActionsCell({
-  autoUpdateDisabled,
-  autoUpdatePending,
-  autoUpdateReason,
-  autoUpdateSelected,
   compact,
   containerId,
   name,
   onOpenLogs,
   onOpenTerminal,
-  onToggleAutoUpdate,
   pending = false,
   state,
   url,
 }: ActionsCellProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const autoUpdate = useContainerAutoUpdate(name);
   const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
     linuxio.docker.start_container,
     {
@@ -980,21 +1051,17 @@ const ActionsCell = memo(function ActionsCell({
           ))}
           <AppDivider />
           <AppMenuItem
-            disabled={autoUpdateDisabled || autoUpdatePending}
+            disabled={autoUpdate.disabled || autoUpdate.pending}
             endAdornment={
-              autoUpdateSelected ? <Icon icon="mdi:check" width={16} /> : null
+              autoUpdate.selected ? <Icon icon="mdi:check" width={16} /> : null
             }
             onClick={() => {
               setMenuAnchor(null);
-              onToggleAutoUpdate(name);
+              autoUpdate.toggle(name);
             }}
-            selected={autoUpdateSelected}
+            selected={autoUpdate.selected}
             startAdornment={<Icon icon="mdi:timer-cog-outline" width={18} />}
-            title={
-              autoUpdateDisabled
-                ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-                : undefined
-            }
+            title={autoUpdate.disabled ? autoUpdate.tooltip : undefined}
           >
             Auto-update
           </AppMenuItem>
@@ -1034,6 +1101,7 @@ const ActionsCell = memo(function ActionsCell({
 });
 
 interface ContainerTableProps {
+  autoUpdateBlockedReasons: ReadonlyMap<string, string>;
   autoUpdateDisabled: boolean;
   autoUpdatePendingNames: Set<string>;
   autoUpdateReason?: string;
@@ -1053,6 +1121,7 @@ interface ContainerDialogTarget {
 }
 
 const ContainerTable = ({
+  autoUpdateBlockedReasons,
   autoUpdateDisabled,
   autoUpdatePendingNames,
   autoUpdateReason,
@@ -1141,11 +1210,12 @@ const ContainerTable = ({
             <div className="container-table__version-stack">
               <VersionCell version={getVersionDisplay(container)} />
               <UpdateCell
-                checkingUpdates={checkingUpdates}
                 containerId={container.Id}
                 name={getContainerName(container)}
                 updateAvailable={container.updateAvailable}
                 updateCheckedAt={container.updateCheckedAt}
+                updateCheckReason={container.updateCheckReason}
+                updateCheckState={container.updateCheckState}
                 updateError={container.updateError}
               />
             </div>
@@ -1153,6 +1223,8 @@ const ContainerTable = ({
         },
         meta: {
           align: "center",
+          // No `checkingUpdates` here for the same reason the actions column
+          // omits the auto-update state: the cell subscribes to it directly.
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
@@ -1161,8 +1233,9 @@ const ContainerTable = ({
               getContainerName(container),
               container.updateAvailable,
               container.updateCheckedAt,
+              container.updateCheckReason,
+              container.updateCheckState,
               container.updateError,
-              checkingUpdates,
             ];
           },
           hideBelow: "md",
@@ -1317,27 +1390,13 @@ const ContainerTable = ({
           const name = getContainerName(container);
           return (
             <>
-              {!compactActions && (
-                <AutoUpdateCell
-                  autoUpdateDisabled={autoUpdateDisabled}
-                  autoUpdatePending={autoUpdatePendingNames.has(name)}
-                  autoUpdateReason={autoUpdateReason}
-                  autoUpdateSelected={autoUpdateSelectedNames.has(name)}
-                  name={name}
-                  onToggleAutoUpdate={onToggleAutoUpdate}
-                />
-              )}
+              {!compactActions && <AutoUpdateCell name={name} />}
               <ActionsCell
-                autoUpdateDisabled={autoUpdateDisabled}
-                autoUpdatePending={autoUpdatePendingNames.has(name)}
-                autoUpdateReason={autoUpdateReason}
-                autoUpdateSelected={autoUpdateSelectedNames.has(name)}
                 compact={compactActions}
                 containerId={container.Id}
                 name={name}
                 onOpenLogs={openLogs}
                 onOpenTerminal={openTerminal}
-                onToggleAutoUpdate={onToggleAutoUpdate}
                 pending={stoppingContainerIds.has(container.Id)}
                 state={container.State}
                 url={container.url}
@@ -1357,57 +1416,72 @@ const ContainerTable = ({
           // A compact row holds nothing but the menu button, so the rest of the
           // track goes back to the name.
           width: compactActions ? "56px" : "215px",
+          // Auto-update state is deliberately absent: the cells read it from
+          // context, which re-renders them past this memo without touching the
+          // column identity.
           getCellRenderKey: (row) => {
             const container = asContainer(row);
-            const name = getContainerName(container);
             return [
               container.Id,
-              name,
+              getContainerName(container),
               container.State,
               container.url,
               stoppingContainerIds.has(container.Id),
-              autoUpdateDisabled,
-              autoUpdatePendingNames.has(name),
-              autoUpdateReason,
-              autoUpdateSelectedNames.has(name),
             ];
           },
         },
       },
     ],
     [
-      autoUpdateDisabled,
-      autoUpdatePendingNames,
-      autoUpdateReason,
-      autoUpdateSelectedNames,
-      checkingUpdates,
       compactActions,
       openLogs,
       openTerminal,
-      onToggleAutoUpdate,
       stoppingContainerIds,
       toggleExpanded,
     ],
   );
   const editMode = dnd?.editing ?? false;
+  const autoUpdateState = useMemo<ContainerAutoUpdateCellState>(
+    () => ({
+      blockedReasons: autoUpdateBlockedReasons,
+      disabled: autoUpdateDisabled,
+      pendingNames: autoUpdatePendingNames,
+      reason: autoUpdateReason,
+      selectedNames: autoUpdateSelectedNames,
+      toggle: onToggleAutoUpdate,
+    }),
+    [
+      autoUpdateBlockedReasons,
+      autoUpdateDisabled,
+      autoUpdatePendingNames,
+      autoUpdateReason,
+      autoUpdateSelectedNames,
+      onToggleAutoUpdate,
+    ],
+  );
 
   return (
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
-        <AppDataTable
-          ariaLabel="Docker containers"
-          columns={columns}
-          data={containers}
-          dnd={dnd}
-          emptyMessage="No containers found."
-          enableSorting={false}
-          getRowId={(container) => container.Id}
-          // Dragging rows is the point of edit mode; selecting one there would
-          // fight the drag and immediately swap the table for a detail view.
-          onRowClick={
-            onSelectContainer && !editMode ? handleRowClick : undefined
-          }
-        />
+        <ContainerAutoUpdateContext.Provider value={autoUpdateState}>
+          <CheckingUpdatesContext.Provider value={checkingUpdates}>
+            <AppDataTable
+              ariaLabel="Docker containers"
+              columns={columns}
+              data={containers}
+              dnd={dnd}
+              emptyMessage="No containers found."
+              enableSorting={false}
+              getRowId={(container) => container.Id}
+              // Dragging rows is the point of edit mode; selecting one there
+              // would fight the drag and immediately swap the table for a
+              // detail view.
+              onRowClick={
+                onSelectContainer && !editMode ? handleRowClick : undefined
+              }
+            />
+          </CheckingUpdatesContext.Provider>
+        </ContainerAutoUpdateContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
         {logsTarget && (
@@ -1435,6 +1509,7 @@ const areContainerTablePropsEqual = (
   previous: ContainerTableProps,
   next: ContainerTableProps,
 ) =>
+  previous.autoUpdateBlockedReasons === next.autoUpdateBlockedReasons &&
   previous.autoUpdateDisabled === next.autoUpdateDisabled &&
   previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&

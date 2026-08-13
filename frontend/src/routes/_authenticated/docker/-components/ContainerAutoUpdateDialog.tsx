@@ -31,16 +31,16 @@ interface ContainerAutoUpdateDialogProps {
   autoUpdate: ContainerAutoUpdateController;
   onClose: () => void;
   open: boolean;
-  watchtowerEnabled: boolean;
-  watchtowerReason?: string;
+  dockerUpdatesEnabled: boolean;
+  dockerUpdatesReason?: string;
 }
 
 const ContainerAutoUpdateDialog = ({
   autoUpdate,
   onClose,
   open,
-  watchtowerEnabled,
-  watchtowerReason,
+  dockerUpdatesEnabled,
+  dockerUpdatesReason,
 }: ContainerAutoUpdateDialogProps) => {
   const theme = useAppTheme();
   const [draftOverrides, setDraftOverrides] =
@@ -68,13 +68,15 @@ const ContainerAutoUpdateDialog = ({
   const saving = autoUpdate.isSaving;
   const unavailable =
     !loading &&
-    (!watchtowerEnabled || !serverState?.available || !!autoUpdate.queryError);
+    (!dockerUpdatesEnabled ||
+      !serverState?.available ||
+      !!autoUpdate.queryError);
   const controlsDisabled = loading || saving || unavailable;
   const unavailableReason =
     autoUpdate.queryError ??
     serverState?.error ??
-    watchtowerReason ??
-    "Watchtower is unavailable.";
+    dockerUpdatesReason ??
+    "Docker updates are unavailable.";
 
   const updateDraft = <K extends keyof DockerContainerAutoUpdateOptions>(
     key: K,
@@ -107,6 +109,17 @@ const ContainerAutoUpdateDialog = ({
   const missingNames = (serverState?.missing_container_names ?? []).filter(
     (name) => currentOptions.container_names.includes(name),
   );
+  const blockedNames = currentOptions.container_names.filter((name) => {
+    if (currentOptions.mode !== "update") return false;
+    return autoUpdate.targetEligibility.get(name)?.mutationAllowed === false;
+  });
+  const blockedReasons = blockedNames.map((name) => ({
+    name,
+    reason:
+      autoUpdate.targetEligibility.get(name)?.mutationReason ??
+      "This container cannot be updated automatically.",
+  }));
+  const hasBlockedNames = blockedReasons.length > 0;
 
   return (
     <GeneralDialog
@@ -161,8 +174,49 @@ const ContainerAutoUpdateDialog = ({
         )}
         {unavailable && (
           <AppAlert severity="warning">
-            <AppAlertTitle>Watchtower unavailable</AppAlertTitle>
+            <AppAlertTitle>Docker updates unavailable</AppAlertTitle>
             {unavailableReason}
+          </AppAlert>
+        )}
+        {!loading && hasBlockedNames && (
+          <AppAlert severity="warning">
+            <AppAlertTitle>
+              Selected containers cannot be updated automatically
+            </AppAlertTitle>
+            Remove these containers before saving “Update automatically”, or
+            switch the mode to “Check only”.
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: theme.spacing(1),
+                marginTop: theme.spacing(1),
+              }}
+            >
+              {blockedReasons.map(({ name, reason }) => (
+                <div
+                  key={name}
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: theme.spacing(1),
+                  }}
+                >
+                  <AppChip
+                    color="warning"
+                    disabled={controlsDisabled}
+                    label={name}
+                    onDelete={() => removeSelectedName(name)}
+                    size="small"
+                    variant="soft"
+                  />
+                  <AppTypography color="text.secondary" variant="body2">
+                    {reason}
+                  </AppTypography>
+                </div>
+              ))}
+            </div>
           </AppAlert>
         )}
 
@@ -295,7 +349,7 @@ const ContainerAutoUpdateDialog = ({
           Reset
         </AppButton>
         <AppButton
-          disabled={controlsDisabled || !dirty}
+          disabled={controlsDisabled || !dirty || hasBlockedNames}
           onClick={save}
           variant="contained"
         >

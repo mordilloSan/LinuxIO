@@ -76,10 +76,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 203; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 202; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 19; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 9; got != want {
@@ -102,7 +102,7 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			}
 		case bridgeipc.TaskLifetimeDurable:
 			durableCount++
-			if route.Route != "control.app_update" {
+			if route.Route != "control.app_update" && route.Route != "docker.update_container" {
 				t.Errorf("unexpected durable task route %s", route.Route)
 			}
 			if route.Identity == nil {
@@ -112,8 +112,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 17 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 1", sessionCount, durableCount)
+	if sessionCount != 17 || durableCount != 2 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 2", sessionCount, durableCount)
 	}
 }
 
@@ -263,7 +263,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 		{
 			name:  "object request",
 			route: "docker.update_container",
-			raw:   `{"containerId":"web"}`,
+			raw:   `{"containerId":"web","runId":"00000000-0000-4000-8000-000000000001"}`,
 		},
 		{
 			name:  "optional request",
@@ -427,7 +427,8 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true, "filebrowser.download": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
-		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
+		"docker.update_container": true,
+		"packages.update":         true, "storage.run_smart_test": true, "system.install_capability": true,
 	}
 	for _, route := range handlers.Routes {
 		if route.Metadata == nil {

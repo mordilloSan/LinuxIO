@@ -76,7 +76,7 @@ export const ROUTE_MODES = {
   "docker.stop_all_running": "call",
   "docker.stop_container": "call",
   "docker.system_prune": "call",
-  "docker.update_container": "call",
+  "docker.update_container": "task",
   "docker.validate_compose": "call",
   "docker.validate_stack_directory": "call",
   "filebrowser.archive": "task",

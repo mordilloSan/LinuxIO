@@ -98,12 +98,39 @@ const ContainerList = ({
   const containers = rawContainers;
   const [search, setSearch] = useState("");
 
-  const isAutoUpdateSelected = useCallback(
-    (container: (typeof containers)[number]) =>
-      containerAutoUpdate.selectedNames.has(
-        container.Names?.[0]?.replace("/", "") ?? "",
-      ),
-    [containerAutoUpdate.selectedNames],
+  const autoUpdateBlockedReasons = useMemo<ReadonlyMap<string, string>>(() => {
+    if (containerAutoUpdate.state?.options.mode !== "update") return new Map();
+    const blocked = new Map<string, string>();
+    for (const [name, eligibility] of containerAutoUpdate.targetEligibility) {
+      if (!eligibility.mutationAllowed && eligibility.mutationReason) {
+        blocked.set(name, eligibility.mutationReason);
+      }
+    }
+    return blocked;
+  }, [
+    containerAutoUpdate.state?.options.mode,
+    containerAutoUpdate.targetEligibility,
+  ]);
+
+  const autoUpdatePresentation = useCallback(
+    (container: (typeof containers)[number]) => {
+      const name = container.Names?.[0]?.replace("/", "") ?? "";
+      const selected = containerAutoUpdate.selectedNames.has(name);
+      const blockedReason = autoUpdateBlockedReasons.get(name);
+      return {
+        disabled:
+          containerAutoUpdate.disabled ||
+          (!selected && blockedReason !== undefined),
+        reason: blockedReason ?? containerAutoUpdate.reason,
+        selected,
+      };
+    },
+    [
+      autoUpdateBlockedReasons,
+      containerAutoUpdate.disabled,
+      containerAutoUpdate.reason,
+      containerAutoUpdate.selectedNames,
+    ],
   );
 
   const updateSelectedContainer = useCallback(
@@ -235,12 +262,18 @@ const ContainerList = ({
               >
                 <ContainerCard
                   actionPending={stoppingContainerIds.has(selectedContainer.Id)}
-                  autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdateDisabled={
+                    autoUpdatePresentation(selectedContainer).disabled
+                  }
                   autoUpdatePending={containerAutoUpdate.pendingNames.has(
                     selectedContainer.Names?.[0]?.replace("/", "") ?? "",
                   )}
-                  autoUpdateReason={containerAutoUpdate.reason}
-                  autoUpdateSelected={isAutoUpdateSelected(selectedContainer)}
+                  autoUpdateReason={
+                    autoUpdatePresentation(selectedContainer).reason
+                  }
+                  autoUpdateSelected={
+                    autoUpdatePresentation(selectedContainer).selected
+                  }
                   containerId={selectedContainer.Id}
                   onSelect={() => handleSelectContainer(selectedContainer.Id)}
                   onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
@@ -324,6 +357,7 @@ const ContainerList = ({
   if (viewMode === "table") {
     const table = (
       <ContainerTable
+        autoUpdateBlockedReasons={autoUpdateBlockedReasons}
         autoUpdateDisabled={containerAutoUpdate.disabled}
         autoUpdatePendingNames={containerAutoUpdate.pendingNames}
         autoUpdateReason={containerAutoUpdate.reason}
@@ -386,12 +420,16 @@ const ContainerList = ({
               renderItem={(container) => (
                 <ContainerCard
                   actionPending={stoppingContainerIds.has(container.Id)}
-                  autoUpdateDisabled={containerAutoUpdate.disabled}
+                  autoUpdateDisabled={
+                    autoUpdatePresentation(container).disabled
+                  }
                   autoUpdatePending={containerAutoUpdate.pendingNames.has(
                     container.Names?.[0]?.replace("/", "") ?? "",
                   )}
-                  autoUpdateReason={containerAutoUpdate.reason}
-                  autoUpdateSelected={isAutoUpdateSelected(container)}
+                  autoUpdateReason={autoUpdatePresentation(container).reason}
+                  autoUpdateSelected={
+                    autoUpdatePresentation(container).selected
+                  }
                   containerId={container.Id}
                   onSelect={
                     editMode

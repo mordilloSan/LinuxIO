@@ -18,6 +18,12 @@ import (
 // rendering of the same event; for plain text lines progress is nil.
 type composeLineEmitter func(msgType, message string, progress *ComposeProgress)
 
+type composeProjectTarget struct {
+	Name        string
+	ConfigFiles []string
+	WorkingDir  string
+}
+
 type composeMessageCollector struct {
 	mu    sync.Mutex
 	lines []string
@@ -68,18 +74,40 @@ func humanizeComposeProgress(p *ComposeProgress) string {
 	return line
 }
 
-// runCompose executes a docker compose command, streaming output lines to the emitter.
-func runCompose(ctx context.Context, projectName, configFile, workingDir string, emitter composeLineEmitter, args ...string) error {
+func composeCommandArgs(target composeProjectTarget, args ...string) ([]string, error) {
+	if strings.TrimSpace(target.Name) == "" {
+		return nil, fmt.Errorf("compose project name is empty")
+	}
+	if len(target.ConfigFiles) == 0 {
+		return nil, fmt.Errorf("compose project %q has no config files", target.Name)
+	}
+
+	baseArgs := []string{"compose", "--progress=json", "--project-name", target.Name}
+	for _, configFile := range target.ConfigFiles {
+		if strings.TrimSpace(configFile) == "" {
+			return nil, fmt.Errorf("compose project %q has an empty config file path", target.Name)
+		}
+		baseArgs = append(baseArgs, "--file", configFile)
+	}
+	return append(baseArgs, args...), nil
+}
+
+// runComposeProject executes a docker compose command, streaming output lines
+// to the emitter. Every config file is passed in label order so projects that
+// use override files are reconciled with the same effective configuration.
+func runComposeProject(ctx context.Context, target composeProjectTarget, emitter composeLineEmitter, args ...string) error {
 	// --progress=json makes Docker emit one machine-readable JSON event per
 	// progress update (per-layer current/total/percent) instead of the
 	// humanized, TTY-less text dump. We parse those below into structured
 	// progress and a clean humanized line.
-	baseArgs := []string{"compose", "--progress=json", "--project-name", projectName, "--file", configFile}
-	baseArgs = append(baseArgs, args...)
+	baseArgs, err := composeCommandArgs(target, args...)
+	if err != nil {
+		return err
+	}
 
 	cmd := exec.CommandContext(ctx, "docker", baseArgs...)
-	if workingDir != "" {
-		cmd.Dir = workingDir
+	if target.WorkingDir != "" {
+		cmd.Dir = target.WorkingDir
 	}
 
 	// Merge stdout and stderr so we capture all output in order.
@@ -125,6 +153,81 @@ func runCompose(ctx context.Context, projectName, configFile, workingDir string,
 	}
 
 	return cmd.Wait()
+}
+
+// runCompose preserves the single-config call surface used by the existing
+// project actions while update reconciliation uses runComposeProject directly.
+func runCompose(ctx context.Context, projectName, configFile, workingDir string, emitter composeLineEmitter, args ...string) error {
+	return runComposeProject(ctx, composeProjectTarget{
+		Name:        projectName,
+		ConfigFiles: []string{configFile},
+		WorkingDir:  workingDir,
+	}, emitter, args...)
+}
+
+func composePullAndUp(ctx context.Context, target composeProjectTarget, service string, emitter composeLineEmitter) error {
+	return composePullAndUpServices(ctx, target, []string{service}, emitter)
+}
+
+func composePullAndUpServices(ctx context.Context, target composeProjectTarget, services []string, emitter composeLineEmitter) error {
+	if err := validateComposeUpdateInputs(target); err != nil {
+		return err
+	}
+	seen := make(map[string]struct{}, len(services))
+	normalized := make([]string, 0, len(services))
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service == "" {
+			return fmt.Errorf("compose service name is empty")
+		}
+		if _, ok := seen[service]; ok {
+			continue
+		}
+		seen[service] = struct{}{}
+		normalized = append(normalized, service)
+	}
+	if len(normalized) == 0 {
+		return fmt.Errorf("no compose services selected")
+	}
+	pullArgs := append([]string{"pull"}, normalized...)
+	if err := runComposeProject(ctx, target, emitter, pullArgs...); err != nil {
+		return fmt.Errorf("pull compose services %q: %w", normalized, err)
+	}
+	upArgs := append([]string{"up", "-d", "--no-deps"}, normalized...)
+	if err := runComposeProject(ctx, target, emitter, upArgs...); err != nil {
+		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
+	}
+	return nil
+}
+
+func validateComposeUpdateInputs(target composeProjectTarget) error {
+	for _, configFile := range target.ConfigFiles {
+		data, err := os.ReadFile(configFile)
+		if err != nil {
+			return fmt.Errorf("read Compose config %q: %w", configFile, err)
+		}
+		if containsComposeInterpolation(data) {
+			return fmt.Errorf("Compose project %q uses environment interpolation that LinuxIO cannot reconstruct safely", target.Name)
+		}
+	}
+	return nil
+}
+
+func containsComposeInterpolation(data []byte) bool {
+	for i := 0; i < len(data); i++ {
+		if data[i] != '$' || i+1 >= len(data) {
+			continue
+		}
+		next := data[i+1]
+		if next == '$' {
+			i++
+			continue
+		}
+		if next == '{' || next == '_' || next >= 'A' && next <= 'Z' || next >= 'a' && next <= 'z' {
+			return true
+		}
+	}
+	return false
 }
 
 func composeUp(
