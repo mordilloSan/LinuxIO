@@ -75,14 +75,15 @@ HTML, or unvalidated external links. Apply schema migrations transactionally,
 use restrictive file permissions, enable foreign-key checks, and keep retention
 bounded. Active alerts are never removed by age-based pruning.
 
-The initial database tables are conceptually:
+Phase 6 starts with:
 
 - `alerts` — source identity, lifecycle, severity, safe presentation fields;
-- `alert_seen` — per-UID seen timestamp;
-- `scheduled_runs` — bounded execution summaries defined in the scheduling
-  plan; and
-- later, `delivery_attempts` — target, transition, attempt time, outcome, and
-  bounded retry state.
+- `alert_seen` — per-UID seen timestamp.
+
+The same metadata database may later add `scheduled_runs` for the bounded
+execution summaries defined in the scheduling plan (Phase 7), followed by
+`delivery_attempts` for target, transition, attempt time, outcome, and bounded
+retry state (Phase 8).
 
 Notification target secrets remain in a separately protected configuration
 surface; they do not belong in alert rows or delivery history.

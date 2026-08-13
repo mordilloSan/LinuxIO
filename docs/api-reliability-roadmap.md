@@ -5,23 +5,20 @@
 This is the canonical dependency-ordered roadmap for the remaining API
 reliability work. It starts from the completed transport migration and connects
 connection-loss behavior, Task lifetime, durable execution, and the planned
-notification system.
+notification system. This roadmap is temporary: keep it until the remaining
+phases are complete, then fold the verified lifecycle into the focused
+implementation documents.
 
-Detailed contracts remain in their focused documents:
+Focused implementation and design details remain in their own documents:
 
 - [API Contract](./api-contract.md) describes implemented API behavior.
-- [API Transport Simplification Plan](./api-transport-simplification-plan.md)
-  records the completed Query/Job and Task-runner cleanup.
 - [Handler Patterns](./bridge_handler_patterns.md) defines handler code style.
-- [Durable Operations and Transient Units](./transient-units-plan.md) defines the durable Task
-  execution pilot.
+- [Durable Operations Architecture](./durable-operations-architecture.md)
+  defines durable Task execution and recovery mechanics.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   run-summary, and journald ownership boundaries.
-- [Mutation Feedback Audit](./mutation-feedback-audit.md) records the
-  post-transport frontend pending-state gaps and their repair order.
-
 The repository [`ToDo`](../ToDo) links here instead of duplicating these plans.
 
 ## Principles
@@ -46,7 +43,7 @@ Make the smallest change that establishes a real invariant:
 ## Current Baseline
 
 The Query/Job migration is complete. The generated route contract currently
-contains 203 Calls, 18 Tasks, and 9 Channel routes implemented with
+contains 202 Calls, 19 Tasks, and 9 Channel routes implemented with
 `ModeDuplex`. React Query fetching is independent of Task lifecycle.
 
 The transport cleanup is complete:
@@ -237,7 +234,7 @@ branch on error message text.
   the original deadline; Task starts do not retry.
 - [x] Backend and transport error codes reach feature decisions unchanged.
 
-## Phase 3: Task Lifetime, Identity, and Session Activity
+## Phase 3: Task Lifetime, Identity, and Session Activity (complete)
 
 Every Task route declares one lifetime:
 
@@ -274,7 +271,7 @@ demonstrates value.
 | Route group | Initial lifetime / recovery owner |
 |-------------|-----------------------------------|
 | File operations, `docker.compose`, `virt.create`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (17 routes) | Session Task. Each is canceled with its owning bridge/session. |
-| `control.app_update` | Durable Task owned by authenticated numeric UID. A persistent record and deterministic systemd transient unit own recovery. |
+| `control.app_update`, `docker.update_container` (2 routes) | Durable Task owned by authenticated numeric UID. Each has a persistent record and deterministic systemd transient unit for recovery. |
 
 ### Session activity
 
@@ -289,20 +286,21 @@ session Tasks end with the session.
 
 ### Phase 3 exit criteria
 
-- [x] Every Task declaration has an explicit lifetime. Phase 3 initially landed
-  all routes as session-bound; Phase 4 promotes only `control.app_update`.
+- [x] Every Task declaration has an explicit lifetime: 17 session routes and
+  two durable routes, `control.app_update` and `docker.update_container`.
 - [x] Owner plumbing distinguishes exact `SessionID` from durable numeric UID;
-  `control.app_update` uses UID scope and the other 17 routes use session scope.
+  both durable routes use UID scope and the other 17 routes use session scope.
 - [x] Bridge shutdown calls `CancelTasksForSession` before closing its transport.
 - [x] Session IDs remain internal authorization values and are redacted from
   public Task snapshots and serialized owner models.
 - [x] Passive WebSocket traffic does not refresh activity; only the explicit
   `FlagActivity` bit does.
 
-## Phase 4: Durable Task Pilot
+## Phase 4: Durable Task Foundation (complete)
 
-Implement the [transient-unit plan](./transient-units-plan.md) for
-`control.app_update` only.
+The [Durable Operations Architecture](./durable-operations-architecture.md)
+is implemented for both current durable routes:
+`control.app_update` and `docker.update_container`.
 
 A durable Task requires both:
 
@@ -312,7 +310,7 @@ A durable Task requires both:
 Use a bounded service-owned directory with one JSON record per operation,
 protected by the repository's existing file-lock patterns and written through
 the atomic utility that fsyncs the temporary file and parent directory. Active
-records are never pruned; the pilot retains terminal records for 30 days and at
+records are never pruned; the store retains terminal records for 30 days and at
 most the newest 200 per UID. Do not add a database dependency before record
 volume or query behavior requires one.
 
@@ -327,22 +325,23 @@ the record remains authoritative. A recovered `queued` record is safe to resume
 because it proves the executor was never called; after `launching`, recovery
 may only adopt the recorded executor and must never start a replacement.
 
-For app update, replace the current `systemd-run --wait --pipe` path with
-`StartTransientUnit` through the existing D-Bus stack. The update remains an
-explicitly privileged root operation; the initiating UID owns its record but is
-not automatically the unit's execution user. journald owns logs, while the
-operation record owns typed state and result. Bridge-owned pipes are not a
-durability mechanism.
+The app update remains an explicitly privileged root operation; the initiating
+UID owns its record but is not automatically the unit's execution user. The
+Docker update uses the same identity-checked transient-unit boundary while
+retaining Docker-specific admission, target validation, and typed result
+semantics. In both cases journald owns logs, the operation record owns typed
+state and result, and bridge-owned pipes are not a durability mechanism.
 
 ### Required fault matrix
 
 These are different events with deliberately different outcomes:
 
-| Event | Pilot behavior |
-|-------|----------------|
-| Page reload | The browser retains the canonical operation ID and target, detaches its watch without canceling, then converges through authenticated `/api/update-status`. |
-| WebSocket reconnect | Repeating the same UID/UUID/fingerprint claim returns the existing Task/record; a different request fingerprint conflicts. |
-| Bridge death and later reauthentication | The systemd unit and record outlive the bridge. A replacement bridge reattaches each active record as a real UID-owned Task, validates the exact unit identity, and resumes observation without launching a second unit; watch and cancellation work from the replacement session. |
+| Event | Durable-route behavior |
+|-------|------------------------|
+| App-update page reload | The browser retains the canonical operation ID and target, detaches its watch without canceling, then converges through authenticated `/api/update-status`. |
+| Docker-update page or transport loss | Detaching the UI does not cancel the systemd worker. Same-UID bridge recovery reconstructs an active Task from the persisted record and resumes observation without launching a second unit. |
+| WebSocket reconnect | Repeating the same UID/UUID/fingerprint claim for either durable route returns the existing Task/record; a different request fingerprint conflicts. |
+| Bridge death and later reauthentication | The systemd unit and record outlive the bridge. A replacement bridge reattaches each active app-update or Docker-update record as a real UID-owned Task, validates the exact unit identity, and resumes observation without launching a second unit; watch and cancellation work from the replacement session. |
 | Host restart | The JSON record survives but the transient unit does not promise reboot survival. A previously running record with no typed result becomes terminal `unknown`; recovery never starts a replacement automatically. |
 
 Do not claim survival for an event unless the external executor and persistent
@@ -351,24 +350,27 @@ owner confirms it stopped.
 
 ### Phase 4 exit criteria
 
-- [x] `control.app_update` is the only durable Task; all other Tasks remain
-  session-bound by default.
+- [x] `control.app_update` and `docker.update_container` are the two durable
+  Tasks; all other 17 Tasks remain session-bound by default.
 - [x] Starts use a Web-Crypto UUID as the Task and operation identity, with
   idempotent same-fingerprint claims and conflict on reuse for other input.
 - [x] The bounded UID-scoped store atomically persists one sanitized record per
   operation and never prunes active records.
-- [x] The updater runs in a deterministic, identity-checked systemd transient
-  unit started through D-Bus; journald remains diagnostic-only and a typed
-  result file determines completion.
-- [x] Page reload, reconnect, bridge recovery, conservative host-restart
-  `unknown`, and stop-confirmed cancellation have focused automated coverage.
-- [x] `/api/update-status` requires authentication and hides records owned by a
-  different UID as missing.
+- [x] Both durable executors run in deterministic, identity-checked systemd
+  transient units started through D-Bus; journald remains diagnostic-only and
+  typed result files determine completion.
+- [x] Same-identity claims, persisted-result recovery without relaunch, bridge
+  recovery, conservative host-restart `unknown`, cancellation before mutation,
+  and stop-confirmed cancellation have focused automated coverage across the
+  durable routes.
+- [x] Durable status and recovery require authentication and hide records owned
+  by a different UID as missing; app update additionally exposes
+  `/api/update-status` for its existing status projection.
 - [x] Recovered operations are reattached to the router Task registry, remain
   cancelable from a replacement same-UID session, and count toward singleton
   admission; the locked store also enforces the singleton across processes.
 
-## Phase 5: Uniform Generic Task Progress
+## Phase 5: Uniform Generic Task Progress (complete)
 
 Completed on 2026-08-10.
 
@@ -407,10 +409,10 @@ use the progress opcode.
 
 ## Phase 5.5: Mutation Feedback Consistency Gate (complete)
 
-Complete the [Mutation Feedback Audit](./mutation-feedback-audit.md) before
-starting the persistent alert implementation. Uniform Task progress does not
-make bounded Call mutations visible automatically: `isPending` must reach the
-action, entity, dialog, or global surface that owns the user's expectation.
+This completed gate repaired the post-transport frontend pending-state gaps
+before persistent alert implementation. Uniform Task progress does not make
+bounded Call mutations visible automatically: `isPending` must reach the action,
+entity, dialog, or global surface that owns the user's expectation.
 
 This is a frontend reliability gate, not notification infrastructure. It does
 not require a database, another Task type, a global mutation registry, or a
@@ -514,12 +516,14 @@ whether the alert itself is active, seen, or dismissed.
 
 After the progress, alert, and scheduled-run vertical slices:
 
-- reassess `control.app_update`: keep its external systemd executor and stable
-  result, but replace replacement-bridge Task reconstruction if the generic run
-  status model gives the same honest post-login recovery with less machinery;
+- reassess the current durable routes: keep their external systemd executors and
+  stable results, but replace replacement-bridge Task reconstruction if the
+  generic run status model gives the same honest post-login recovery with less
+  machinery;
 - recover PackageKit work through PackageKit when supported;
 - recover SMART tests from drive state;
-- promote Docker or VM work only with explicit idempotency and convergence;
+- extend durable execution to another route only with explicit idempotency and
+  convergence;
 - add a bridge worker subcommand only for an in-process Task with a demonstrated
   durability requirement;
 - extend persistence or replay only when bounded behavior is measured to be
@@ -563,10 +567,9 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 
 - `api-contract.md`: the implemented contract and clearly labelled local
   follow-up; cross-cutting future work stays in this roadmap.
-- `api-transport-simplification-plan.md`: migration history and remaining
-  transport deletion.
 - `bridge_handler_patterns.md`: current handler style.
-- `transient-units-plan.md`: durable execution and recovery mechanics.
+- `durable-operations-architecture.md`: durable execution and recovery
+  mechanics.
 - `notifications.md`: alert lifecycle, metadata storage, API, Channel, routing,
   and frontend behavior.
 - `scheduled-execution.md`: schedule, systemd unit, run-summary, and journald
@@ -586,7 +589,7 @@ This roadmap is complete when:
   outcome honestly;
 - every Task has an explicit lifetime and owner scope;
 - session deletion cancels session Tasks in production;
-- the app-update durable pilot survives every event it claims to survive;
+- both durable routes survive every event they claim to survive;
 - all Tasks expose uniform generic progress while route UIs retain typed detail;
 - alerts have one persistent server owner and one frontend cache owner;
 - scheduled scripts remain systemd-owned and their bounded run summaries link

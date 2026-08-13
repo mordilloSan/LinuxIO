@@ -3,6 +3,12 @@
 > **Status: Planned.** LinuxIO does not yet expose general scheduled scripts or
 > a persistent scheduled-run history.
 
+This is a future generic scheduling surface for user-defined scripts. It is
+distinct from the existing Docker auto-update timer, the durable manual
+`docker.update_container` operation, and the read-only systemd timer inventory.
+Those surfaces keep their existing owners and are not schedule definitions
+described here.
+
 This plan defines future timed script execution without turning the bridge into
 a cron daemon, process supervisor, or log database. Native systemd services and
 timers own execution. LinuxIO owns declarative configuration, a bounded API
