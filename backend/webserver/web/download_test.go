@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
+
+type readerFromRecorder struct {
+	*httptest.ResponseRecorder
+	readerFromCalled bool
+}
+
+func (w *readerFromRecorder) ReadFrom(r io.Reader) (int64, error) {
+	w.readerFromCalled = true
+	return io.Copy(w.ResponseRecorder, r)
+}
 
 func TestOpenNativeDownloadStreamRequestsArchiveTaskData(t *testing.T) {
 	var wire bytes.Buffer
@@ -96,7 +107,7 @@ func TestStreamNativeDownloadStreamsFramesAndCommitsHeadersAfterProgress(t *test
 	}()
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/download?taskId=task-1", nil)
-	response := httptest.NewRecorder()
+	response := &readerFromRecorder{ResponseRecorder: httptest.NewRecorder()}
 	if err := streamNativeDownload(response, req, server); err != nil {
 		t.Fatalf("streamNativeDownload: %v", err)
 	}
@@ -121,6 +132,9 @@ func TestStreamNativeDownloadStreamsFramesAndCommitsHeadersAfterProgress(t *test
 	}
 	if got := response.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("nosniff = %q, want nosniff", got)
+	}
+	if !response.readerFromCalled {
+		t.Fatal("download data was written as a materialized frame instead of streamed")
 	}
 }
 
@@ -195,9 +209,7 @@ func TestStreamNativeDownloadRejectsDataBeforeProgress(t *testing.T) {
 	if err := streamNativeDownload(response, req, server); err == nil {
 		t.Fatal("streamNativeDownload error = nil, want protocol error")
 	}
-	if err := <-writeErr; err != nil {
-		t.Fatalf("write frame: %v", err)
-	}
+	<-writeErr
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadGateway)
 	}

@@ -166,7 +166,17 @@ func streamNativeDownload(w http.ResponseWriter, r *http.Request, stream net.Con
 	}
 
 	for {
-		frame, err := relay.ReadRelayFrame(stream)
+		header, err := relay.ReadRelayFrameHeader(stream)
+		if err != nil {
+			return state.readError(err)
+		}
+		if header.Opcode == relay.OpStreamData {
+			if consumeErr := state.consumeData(stream, int64(header.PayloadLength)); consumeErr != nil {
+				return consumeErr
+			}
+			continue
+		}
+		frame, err := relay.ReadRelayFramePayload(stream, header)
 		if err != nil {
 			return state.readError(err)
 		}
@@ -203,8 +213,6 @@ func (s *nativeDownloadStreamState) consume(frame *relay.StreamFrame) (bool, err
 	switch frame.Opcode {
 	case relay.OpStreamProgress:
 		return false, s.consumeProgress(frame.Payload)
-	case relay.OpStreamData:
-		return false, s.consumeData(frame.Payload)
 	case relay.OpStreamResult:
 		return s.consumeResult(frame.Payload)
 	case relay.OpStreamClose:
@@ -254,24 +262,24 @@ func decodeDownloadProgress(payload []byte) (int64, string, error) {
 	return *progress.Total, sanitizeDownloadName(progress.FileName), nil
 }
 
-func (s *nativeDownloadStreamState) consumeData(payload []byte) error {
+func (s *nativeDownloadStreamState) consumeData(r io.Reader, length int64) error {
 	if !s.headersCommitted {
 		return downloadHTTPError(s.writer, http.StatusBadGateway, "download data arrived before size")
 	}
-	if int64(len(payload)) > s.total-s.written {
+	if length > s.total-s.written {
 		return errors.New("download data exceeds declared size")
 	}
-	if len(payload) == 0 {
+	if length == 0 {
 		return nil
 	}
 
-	n, err := s.writer.Write(payload)
-	s.written += int64(n)
+	n, err := io.CopyN(s.writer, r, length)
+	s.written += n
 	if err != nil {
-		return fmt.Errorf("write download response: %w", err)
-	}
-	if n != len(payload) {
-		return io.ErrShortWrite
+		if ctxErr := s.ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("stream download payload: %w", err)
 	}
 	return nil
 }
