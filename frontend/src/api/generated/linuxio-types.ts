@@ -950,12 +950,6 @@ export interface FileCompressResult {
   format: string;
 }
 
-export interface FileDownloadResult {
-  path: string;
-  size: number;
-  fileName: string;
-}
-
 export interface FileExtractRequest {
   archivePath: string;
   destination?: string;
@@ -2618,12 +2612,6 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: DirectorySizeData;
     };
-    download: {
-      input: [path: string];
-      request: PathRequest;
-      result: FileDownloadResult;
-      progress: TaskProgress<FileProgress>;
-    };
     exists_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
@@ -3632,6 +3620,7 @@ export interface LinuxIOStreamSchema {
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.normalize_compose": ContentRequest;
+  "filebrowser.download_stream": PathRequest;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;
   "system.get_services": void;

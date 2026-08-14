@@ -51,22 +51,6 @@ type uploadTransferTask struct {
 	attrs    uploadAttributes
 }
 
-type downloadTransferTask struct {
-	task     *bridgetasks.Task
-	path     string
-	realRel  string
-	fileName string
-	total    int64
-	done     chan transferOutcome
-	activity chan struct{}
-
-	finishOnce sync.Once
-	mu         sync.Mutex
-	bytes      int64
-	attached   bool
-	active     net.Conn
-}
-
 type archiveTransferTask struct {
 	task        *bridgetasks.Task
 	format      string
@@ -92,7 +76,7 @@ type archiveTransferTask struct {
 var fileTransferTasks sync.Map
 
 // transferIdleTimeout bounds how long a transfer task may sit with no client
-// progress before it is abandoned. Uploads/downloads/archives park in
+// progress before it is abandoned. Uploads and archives park in
 // waiting_for_client on a stream error (so the client can resume) instead of
 // failing; without this backstop a client that never reconnects — tab closed,
 // crash, network loss — would hold a limited transfer task slot indefinitely.
@@ -235,43 +219,6 @@ func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.Fi
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func runDownloadTask(ctx context.Context, task *bridgetasks.Task, req apischema.PathRequest) (any, error) {
-	if req.Path == "" {
-		return nil, bridgetasks.NewError("missing file path", 400)
-	}
-
-	path := filepath.Clean(req.Path)
-	root, err := fsroot.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to access filesystem: %w", err)
-	}
-	defer root.Close()
-
-	realRel := fsroot.ToRel(path)
-	stat, err := root.Root.Stat(realRel)
-	if err != nil {
-		return nil, bridgetasks.NewError(fmt.Sprintf("file not found: %v", err), 404)
-	}
-	if stat.IsDir() {
-		return nil, bridgetasks.NewError("path is a directory, use archive download instead", 400)
-	}
-
-	transfer := &downloadTransferTask{
-		task:     task,
-		path:     path,
-		realRel:  realRel,
-		fileName: filepath.Base(path),
-		total:    stat.Size(),
-		done:     make(chan transferOutcome, 1),
-		activity: make(chan struct{}, 1),
-	}
-	fileTransferTasks.Store(task.ID(), transfer)
-	defer fileTransferTasks.Delete(task.ID())
-
-	transfer.reportProgress("waiting_for_client")
-	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
-}
-
 func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
 	if req.Format == "" || len(req.Paths) == 0 {
 		return nil, bridgetasks.NewError("missing format or paths", 400)
@@ -387,8 +334,6 @@ func attachFileTransferData(ctx context.Context, task *bridgetasks.Task, stream 
 	case *uploadTransferTask:
 		return active.attach(stream, req)
 	case *uploadBatchTransferTask:
-		return active.attach(stream, req)
-	case *downloadTransferTask:
 		return active.attach(stream, req)
 	case *archiveTransferTask:
 		return active.attach(stream, req)
@@ -746,170 +691,6 @@ func (t *uploadTransferTask) finish(result any, err error) {
 	})
 }
 
-func (t *downloadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
-	offset, err := parseTransferOffset(req)
-	if err != nil {
-		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
-	}
-	err = t.beginAttach(stream, offset)
-	if err != nil {
-		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 409)
-	}
-	defer t.endAttach(stream)
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return t.fail(stream, "failed to access filesystem", 500, fmt.Errorf("failed to access filesystem: %w", err))
-	}
-	defer root.Close()
-
-	file, err := root.Root.Open(t.realRel)
-	if err != nil {
-		return t.fail(stream, fmt.Sprintf("cannot open file: %v", err), 500, err)
-	}
-	defer file.Close()
-
-	if _, err := file.Seek(offset, io.SeekStart); err != nil {
-		return t.fail(stream, fmt.Sprintf("cannot resume download: %v", err), 500, err)
-	}
-
-	t.writeProgress(stream, "streaming")
-	if err := t.streamChunks(stream, file); err != nil {
-		return err
-	}
-
-	result := FileDownloadResult{Path: t.path, Size: t.total, FileName: t.fileName}
-	t.reportProgress("completed")
-	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))
-	t.finish(result, nil)
-	slog.Info("download complete", "path", t.path, "size", t.total, "task_id", t.task.ID())
-	return nil
-}
-
-func (t *downloadTransferTask) beginAttach(stream net.Conn, offset int64) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.attached {
-		return fmt.Errorf("transfer already has an attached data stream")
-	}
-	if offset != t.bytes {
-		return fmt.Errorf("offset mismatch: expected %d, got %d", t.bytes, offset)
-	}
-	if offset > t.total {
-		return fmt.Errorf("offset exceeds transfer size")
-	}
-	t.bytes = offset
-	t.attached = true
-	t.active = stream
-	signalActivity(t.activity)
-	return nil
-}
-
-func (t *downloadTransferTask) endAttach(stream net.Conn) {
-	t.mu.Lock()
-	if t.active == stream {
-		t.attached = false
-		t.active = nil
-	}
-	t.mu.Unlock()
-}
-
-func (t *downloadTransferTask) streamChunks(stream net.Conn, file io.Reader) error {
-	buf := make([]byte, progressReportIntervalBytes)
-	progressGate := newTransferProgressGate(transferProgressMaxBytes)
-
-	for {
-		n, readErr := file.Read(buf)
-		if n > 0 {
-			if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-				Opcode:   ipc.OpStreamData,
-				StreamID: 0,
-				Payload:  buf[:n],
-			}); err != nil {
-				t.markWaiting()
-				return nil
-			}
-
-			t.mu.Lock()
-			t.bytes += int64(n)
-			bytes := t.bytes
-			total := t.total
-			t.mu.Unlock()
-			signalActivity(t.activity)
-
-			if progressGate.ShouldReport(bytes, total) {
-				t.writeProgress(stream, "streaming")
-			}
-		}
-
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return t.fail(stream, fmt.Sprintf("read error: %v", readErr), 500, readErr)
-		}
-	}
-	return nil
-}
-
-func (t *downloadTransferTask) writeProgress(stream net.Conn, phase string) {
-	t.mu.Lock()
-	progress := FileProgress{
-		Bytes: t.bytes,
-		Total: t.total,
-		Pct:   transferPct(t.bytes, t.total),
-		Phase: phase,
-	}
-	t.mu.Unlock()
-
-	t.task.ReportProgress(progress)
-	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
-}
-
-func (t *downloadTransferTask) reportProgress(phase string) {
-	t.mu.Lock()
-	progress := FileProgress{
-		Bytes: t.bytes,
-		Total: t.total,
-		Pct:   transferPct(t.bytes, t.total),
-		Phase: phase,
-	}
-	t.mu.Unlock()
-	t.task.ReportProgress(progress)
-}
-
-func (t *downloadTransferTask) markWaiting() {
-	t.reportProgress("waiting_for_client")
-}
-
-func (t *downloadTransferTask) fail(stream net.Conn, message string, code int, err error) error {
-	taskErr := bridgetasks.NewError(message, code)
-	if stream != nil {
-		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
-	}
-	t.finish(nil, taskErr)
-	if err != nil {
-		return err
-	}
-	return taskErr
-}
-
-func (t *downloadTransferTask) cancel() {
-	t.mu.Lock()
-	active := t.active
-	t.mu.Unlock()
-	if active != nil {
-		_ = active.Close()
-	}
-	t.finish(nil, context.Canceled)
-}
-
-func (t *downloadTransferTask) finish(result any, err error) {
-	t.finishOnce.Do(func() {
-		t.done <- transferOutcome{result: result, err: err}
-	})
-}
-
 func (t *archiveTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
@@ -1034,7 +815,10 @@ func (t *archiveTransferTask) writeProgress(stream net.Conn, phase string) {
 	t.mu.Unlock()
 
 	t.task.ReportProgress(progress)
-	logWriteErr("progress", ipc.WriteProgress(stream, 0, progress))
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, downloadStreamProgress{
+		FileProgress: progress,
+		FileName:     t.archiveName,
+	}))
 }
 
 func (t *archiveTransferTask) reportProgress(phase string) {

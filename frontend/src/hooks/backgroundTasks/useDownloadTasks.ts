@@ -4,11 +4,9 @@ import { toast } from "sonner";
 import {
   type FileProgress,
   isConnected,
-  type TaskSnapshot,
   type TaskProgress,
   linuxio,
   openTaskWatchStream,
-  openTaskDataStream,
 } from "@/api";
 import * as TaskTypes from "@/constants/backgroundTaskTypes";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -18,6 +16,10 @@ import {
   createProgressSpeedCalculator,
   taskIdentityKey,
 } from "@/utils/backgroundTasks";
+import {
+  triggerNativeArchiveDownload,
+  triggerNativeFileDownload,
+} from "@/utils/nativeDownload";
 import { isDirectoryPath } from "@/utils/path";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
@@ -50,98 +52,22 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
     [],
   );
 
-  const removeDownload = useCallback(
+  const hideDownload = useCallback(
     (id: string) => {
       setDownloads((prev) => prev.filter((d) => d.id !== id));
-      activeFileTransferTaskIdsRef.current.delete(id);
       releaseDownloadLabelBase(id);
       transferRatesRef.current.delete(id);
-      streamRefsRef.current.delete(id);
     },
-    [
-      activeFileTransferTaskIdsRef,
-      releaseDownloadLabelBase,
-      streamRefsRef,
-      transferRatesRef,
-    ],
+    [releaseDownloadLabelBase, transferRatesRef],
   );
 
-  /**
-   * Stream-based download implementation.
-   * Uses yamux binary streams for efficient file transfers.
-   */
-  const startStreamBasedDownload = useCallback(
-    async (
-      paths: string[],
-      reqId: string,
-      downloadTask: TaskSnapshot,
-      abortSignal: AbortSignal,
-      formatDownloadLabel: (
-        stage: string,
-        options?: { percent?: number; name?: string },
-      ) => string,
-      markDataProgress: () => void,
-    ) => {
-      const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
-      const chunks: Uint8Array[] = [];
-      const getSpeed = createProgressSpeedCalculator();
-      await runStreamResult({
-        open: () => openTaskDataStream(downloadTask.id, 0),
-        openErrorMessage: "Failed to open download stream",
-        signal: abortSignal,
-        onOpen: (stream) => {
-          // Store stream reference for cancellation (sync ref for immediate access)
-          streamRefsRef.current.set(reqId, stream);
-        },
-        onData: (data) => {
-          chunks.push(data);
-        },
-        onProgress: (progress) => {
-          markDataProgress();
-          const speed = getSpeed(progress.bytes);
-
-          let phaseLabel: string;
-          switch (progress.phase) {
-            case "preparing":
-              phaseLabel = "Preparing";
-              break;
-            case "compressing":
-              phaseLabel = "Downloading (compressing)";
-              break;
-            case "streaming":
-            default:
-              phaseLabel = "Downloading";
-              break;
-          }
-
-          // While the archive's size estimate is still being walked there is no
-          // denominator, so pct is meaningless — drop it from the label and let
-          // the bar run indeterminate rather than show a stalled 0%.
-          const indeterminate = progress.indeterminate === true;
-          updateDownload(reqId, {
-            progress: progress.pct,
-            label: formatDownloadLabel(
-              phaseLabel,
-              indeterminate ? {} : { percent: progress.pct },
-            ),
-            indeterminate,
-            bytes: progress.bytes,
-            total: progress.total,
-            ...(speed !== undefined && { speed }),
-          });
-        },
-        closeMessage: "Stream closed before transfer completed",
-        onFinally: () => {
-          streamRefsRef.current.delete(reqId);
-        },
-      });
-
-      const mimeType = isSingleFile
-        ? "application/octet-stream"
-        : "application/zip";
-      return new Blob(chunks as BlobPart[], { type: mimeType });
+  const removeDownload = useCallback(
+    (id: string) => {
+      hideDownload(id);
+      activeFileTransferTaskIdsRef.current.delete(id);
+      streamRefsRef.current.delete(id);
     },
-    [runStreamResult, streamRefsRef, updateDownload],
+    [activeFileTransferTaskIdsRef, hideDownload, streamRefsRef],
   );
 
   const startDownload = useCallback(
@@ -149,8 +75,6 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
       if (!paths.length) return;
 
       const isSingleFile = paths.length === 1 && !isDirectoryPath(paths[0]);
-      let reqId: string = crypto.randomUUID();
-      const abortController = new AbortController();
 
       const sanitizeLabelBase = (path: string) => {
         const trimmed = path.replace(/\/+$/, "");
@@ -160,8 +84,16 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         const segments = trimmed.split("/");
         return segments[segments.length - 1] || "download";
       };
-      const candidateLabelBase =
-        paths.length === 1 ? sanitizeLabelBase(paths[0]) : "download.zip";
+      if (isSingleFile) {
+        triggerNativeFileDownload(paths[0]);
+        return;
+      }
+
+      const selectedName =
+        paths.length === 1 ? sanitizeLabelBase(paths[0]) : "download";
+      let reqId: string = crypto.randomUUID();
+      const abortController = new AbortController();
+      const candidateLabelBase = `${selectedName}.zip`;
       let downloadLabelBase = allocateDownloadLabelBase(
         candidateLabelBase,
         reqId,
@@ -185,16 +117,18 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         return;
       }
 
-      const pendingKey = isSingleFile
-        ? taskIdentityKey(TaskTypes.TASK_TYPE_FILE_DOWNLOAD, [paths[0]])
-        : taskIdentityKey(TaskTypes.TASK_TYPE_FILE_ARCHIVE, ["zip", ...paths]);
+      const pendingKey = taskIdentityKey(TaskTypes.TASK_TYPE_FILE_ARCHIVE, [
+        "zip",
+        ...paths,
+      ]);
       pendingLocalTaskKeysRef.current.add(pendingKey);
       let pendingKeyHeld = true;
 
       try {
-        const activeDownloadTask = isSingleFile
-          ? await linuxio.filebrowser.download(paths[0])
-          : await linuxio.filebrowser.archive({ format: "zip", paths });
+        const activeDownloadTask = await linuxio.filebrowser.archive({
+          format: "zip",
+          paths,
+        });
         activeFileTransferTaskIdsRef.current.add(activeDownloadTask.id);
         pendingLocalTaskKeysRef.current.delete(pendingKey);
         pendingKeyHeld = false;
@@ -217,42 +151,38 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
         };
 
         setDownloads((prev) => [...prev, download]);
-        // Both streams receive the task's progress frames. Once the data
-        // stream is delivering them, the watch stream stays silent so each
-        // frame updates the item once; watching keeps covering the phases
-        // before bytes flow to the client (preparing, compressing,
-        // waiting_for_client).
-        let dataStreamHasProgress = false;
+        // The watch stream covers archive preparation and tells us when the
+        // server is ready for the browser-managed HTTP download.
+        let browserDownloadStarted = false;
+        const handoffToBrowser = () => {
+          if (browserDownloadStarted || abortController.signal.aborted) return;
+          browserDownloadStarted = true;
+          triggerNativeArchiveDownload(activeDownloadTask.id);
+          // Compression is LinuxIO's concern; once the browser owns the bytes,
+          // keep only the invisible watch that prevents task recovery and
+          // releases server-side bookkeeping at terminal completion.
+          hideDownload(reqId);
+        };
         const getTaskSpeed = createProgressSpeedCalculator();
+        primeTransferRate(reqId, 0);
         void runStreamResult<void, TaskProgress<FileProgress>>({
           open: () => openTaskWatchStream(activeDownloadTask.id),
           signal: abortController.signal,
           closeOnAbort: "none",
           openErrorMessage: "Failed to watch download task",
           closeMessage: "Download task stream closed unexpectedly",
+          onOpen: (stream) => {
+            streamRefsRef.current.set(reqId, stream);
+          },
           onProgress: (progress) => {
-            if (dataStreamHasProgress) {
-              return;
-            }
             const detail = progress.detail;
+            const phase = progress.phase ?? detail?.phase;
+            if (phase === "waiting_for_client") handoffToBrowser();
+            if (browserDownloadStarted) return;
             if (!detail) return;
             const speed = getTaskSpeed(detail.bytes);
-            let phaseLabel: string;
-            switch (progress.phase ?? detail.phase) {
-              case "preparing":
-                phaseLabel = "Preparing";
-                break;
-              case "compressing":
-                phaseLabel = "Downloading (compressing)";
-                break;
-              case "waiting_for_client":
-                phaseLabel = "Download waiting";
-                break;
-              case "streaming":
-              default:
-                phaseLabel = "Downloading";
-                break;
-            }
+            const phaseLabel =
+              phase === "preparing" ? "Preparing" : "Compressing";
             const percentage = progress.percentage ?? detail.pct;
             const indeterminate = detail.indeterminate === true;
             updateDownload(reqId, {
@@ -267,49 +197,31 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
               ...(speed !== undefined && { speed }),
             });
           },
+          onSuccess: () => {
+            recordTransferRate(reqId, undefined);
+            removeDownload(reqId);
+          },
           onError: (error) => {
             if (!abortController.signal.aborted) {
               console.debug("Download task watch failed", error);
+              if (!browserDownloadStarted) {
+                toast.error(
+                  error instanceof Error ? error.message : "Download failed",
+                );
+              }
+              recordTransferRate(reqId, undefined);
+              removeDownload(reqId);
             }
           },
         });
-        primeTransferRate(reqId, 0);
-        const blob = await startStreamBasedDownload(
-          paths,
-          reqId,
-          activeDownloadTask,
-          abortController.signal,
-          formatDownloadLabel,
-          () => {
-            dataStreamHasProgress = true;
-          },
-        );
-
-        updateDownload(reqId, {
-          progress: 100,
-          label: formatDownloadLabel("Downloaded", {
-            name: downloadLabelBase,
-          }),
-          indeterminate: false,
-          speed: undefined,
-        });
-        recordTransferRate(reqId, undefined);
-
-        // Trigger browser download
-        const fileName = downloadLabelBase;
-        const blobUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(blobUrl);
-
-        toast.success(
-          formatDownloadLabel("Downloaded", { name: downloadLabelBase }),
-        );
-        setTimeout(() => removeDownload(reqId), 1000);
+        // A task can already be ready when its creation response arrives. Do
+        // this after the watch is attached so no waiting_for_client event can
+        // race past us, while still avoiding any wait for task data here.
+        const initialPhase =
+          activeDownloadTask.progress?.phase ??
+          (activeDownloadTask.progress?.detail as FileProgress | undefined)
+            ?.phase;
+        if (initialPhase === "waiting_for_client") handoffToBrowser();
       } catch (err: any) {
         if (pendingKeyHeld) {
           pendingLocalTaskKeysRef.current.delete(pendingKey);
@@ -332,9 +244,10 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
       primeTransferRate,
       recordTransferRate,
       releaseDownloadLabelBase,
+      hideDownload,
       removeDownload,
       runStreamResult,
-      startStreamBasedDownload,
+      streamRefsRef,
       updateDownload,
     ],
   );
@@ -344,11 +257,11 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
       const download = downloadsRef.current.find((d) => d.id === id);
       if (download) {
         download.abortController.abort();
-        // Abort stream if using stream-based download (RST for immediate cancel)
-        // Use ref first (synchronous) then fallback to state
+        // Abort the task watch immediately; tasks.cancel below owns the actual
+        // bridge-task cancellation and closes any active HTTP data stream.
         const stream = streamRefsRef.current.get(id) || download.stream;
         if (stream) {
-          stream.abort(); // Use abort() instead of close() for immediate cancellation
+          stream.abort();
           streamRefsRef.current.delete(id);
         }
         if (download.taskId) {

@@ -199,7 +199,6 @@ func archiveExtractWorkers(taskSettings config.PersistedJobSettings) int {
 
 const (
 	routeArchive     = "filebrowser.archive"
-	routeDownload    = "filebrowser.download"
 	routeUpload      = "filebrowser.upload"
 	routeUploadBatch = "filebrowser.upload_batch"
 )
@@ -294,11 +293,6 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (FileUploadBatchResult, error) {
 			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req))
 		}, bridgetasks.TaskStreamDefault),
-		apischema.TaskRunner[apischema.PathRequest, FileDownloadResult](routeDownload, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.PathRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.Path}, Path: req.Path, Label: req.Path}
-		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.PathRequest) (FileDownloadResult, error) {
-			return transferResult[FileDownloadResult](runDownloadTask(ctx, task, req))
-		}, bridgetasks.TaskStreamDefault),
 		apischema.TaskRunner[apischema.FileArchiveRequest, FileArchiveResult](routeArchive, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileArchiveRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
@@ -333,7 +327,6 @@ func RegisterTaskRoutes(router *bridgetasks.Router, store *config.UserStore) {
 	fileTaskBindings(store).Register(router)
 	router.TaskService().RegisterTaskDataAttacher(routeUpload, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeUploadBatch, attachFileTransferData)
-	router.TaskService().RegisterTaskDataAttacher(routeDownload, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeArchive, attachFileTransferData)
 }
 

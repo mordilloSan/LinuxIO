@@ -33,12 +33,6 @@ type FileUploadBatchResult struct {
 	Size        int64  `json:"size"`
 }
 
-type FileDownloadResult struct {
-	Path     string `json:"path"`
-	Size     int64  `json:"size"`
-	FileName string `json:"fileName"`
-}
-
 type FileArchiveResult struct {
 	ArchiveName string `json:"archiveName"`
 	Size        int64  `json:"size"`

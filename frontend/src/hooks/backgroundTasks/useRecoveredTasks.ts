@@ -187,16 +187,6 @@ export function useRecoveredTasks(
               ? `Upload waiting: ${filesTotal} file${filesTotal === 1 ? "" : "s"}`
               : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           }
-          case TaskTypes.TASK_TYPE_FILE_DOWNLOAD: {
-            const name = getName(
-              requestString(metadata, "path") ??
-                requestString(metadata, "label"),
-              "file",
-            );
-            return phase === "waiting_for_client"
-              ? `Download waiting: ${name}`
-              : `Downloading ${name}${percentage !== undefined ? ` (${percentage}%)` : ""}`;
-          }
           case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
             return phase === "waiting_for_client"
               ? "Archive download waiting"
@@ -340,7 +330,6 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH:
-        case TaskTypes.TASK_TYPE_FILE_DOWNLOAD:
         case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
         case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
         case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {

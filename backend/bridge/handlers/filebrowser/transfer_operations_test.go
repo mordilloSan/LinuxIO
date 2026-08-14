@@ -2,6 +2,8 @@ package filebrowser
 
 import (
 	"context"
+	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
@@ -127,4 +130,43 @@ func TestArchiveTaskRegistersTransferBeforeSlowStartup(t *testing.T) {
 	if snapshot.State != bridgetasks.TaskStateCanceled {
 		t.Fatalf("task state = %q, want canceled", snapshot.State)
 	}
+}
+
+func TestArchiveDownloadProgressIncludesArtifactName(t *testing.T) {
+	registry := bridgetasks.NewTaskService()
+	task, err := registry.Create(routeArchive, apischema.FileArchiveRequest{
+		Format: "zip",
+		Paths:  []string{"/photos"},
+	})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	transfer := &archiveTransferTask{
+		task:        task,
+		archiveName: "photos.zip",
+		archiveSize: 42,
+	}
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		_ = server.Close()
+		_ = client.Close()
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		transfer.writeProgress(server, "streaming")
+	}()
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("read progress: %v", err)
+	}
+	var progress downloadStreamProgress
+	if err := json.Unmarshal(frame.Payload, &progress); err != nil {
+		t.Fatalf("decode progress: %v", err)
+	}
+	if progress.FileName != "photos.zip" || progress.Total != 42 {
+		t.Fatalf("progress = %+v, want filename photos.zip and total 42", progress)
+	}
+	<-done
 }

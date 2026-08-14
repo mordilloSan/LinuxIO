@@ -112,10 +112,6 @@ const linuxio = {
       field: "paths",
     }),
     dir_size: defineCallWithRequest("filebrowser.dir_size"),
-    download: createTaskEndpoint("filebrowser", "download", {
-      kind: "field",
-      field: "path",
-    }),
     exists_batch: defineCallWithRequest("filebrowser.exists_batch"),
     extract: createTaskEndpoint("filebrowser", "extract", { kind: "object" }),
     index: createTaskEndpoint("filebrowser", "index", { kind: "object" }),

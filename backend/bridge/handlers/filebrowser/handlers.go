@@ -9,6 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
+	apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
 	apischema.Call[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get", apischema.RetrySafe()).Handle(handleResourceGet),
 	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
 	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),

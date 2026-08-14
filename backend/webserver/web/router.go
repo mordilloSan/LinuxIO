@@ -40,6 +40,11 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// 401, which browsers cannot distinguish from a network error.
 	mux.Handle("GET /ws", wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
 
+	// Native browser downloads use one ordinary HTTP endpoint. A path streams
+	// directly; a taskId attaches to a prepared archive. Neither source buffers
+	// file contents in the webserver or browser tab.
+	mux.Handle("GET /api/download", nativeDownloadHandler(sm))
+
 	// Container reverse proxy — session-protected
 	// Requests: /proxy/{container-name}/[...] → container's internal IP:port
 	mux.Handle("/proxy/", sm.RequireSession(http.HandlerFunc(ContainerProxyHandler)))

@@ -79,10 +79,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	if got, want := modes[bridgeipc.ModeCall], 202; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 19; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeDuplex], 9; got != want {
+	if got, want := modes[bridgeipc.ModeDuplex], 10; got != want {
 		t.Errorf("duplex route count = %d, want %d", got, want)
 	}
 }
@@ -112,8 +112,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 17 || durableCount != 2 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 2", sessionCount, durableCount)
+	if sessionCount != 16 || durableCount != 2 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 16 and 2", sessionCount, durableCount)
 	}
 }
 
@@ -366,7 +366,7 @@ func assertContainerRequestDecode(
 }
 
 func TestEndpointExcludesChannels(t *testing.T) {
-	for _, route := range []string{"tasks.watch", "tasks.data", "terminal.open", "container.open"} {
+	for _, route := range []string{"tasks.watch", "tasks.data", "terminal.open", "container.open", "filebrowser.download_stream"} {
 		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should not generate an endpoint", route)
@@ -425,7 +425,7 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
-		"filebrowser.upload": true, "filebrowser.upload_batch": true, "filebrowser.download": true,
+		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
 		"docker.update_container": true,
 		"packages.update":         true, "storage.run_smart_test": true, "system.install_capability": true,
