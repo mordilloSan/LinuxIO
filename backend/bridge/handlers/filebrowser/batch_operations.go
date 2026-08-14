@@ -201,56 +201,104 @@ func runMoveBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 	return batchResult(len(req.Sources), succeeded, failures), nil
 }
 
-// runDeleteBatchTask deletes many paths as a single task, reporting a running
-// processed-item count across all paths.
-func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
-	if len(req.Paths) == 0 {
-		return FileBatchResult{}, bridgetasks.NewError("no paths provided", 400)
-	}
+// deletePlanItem is one validated delete target with its known entry total
+// (0 when unknown).
+type deletePlanItem struct {
+	raw   string
+	path  string
+	total int64
+}
 
-	var processed int64
-	succeeded := 0
-	failures := make([]FileBatchItemFailure, 0)
+// planDeleteBatch validates each requested path and resolves how many entries
+// deleting it will remove, summing a grand total for aggregate progress. The
+// grand total is 0 (indeterminate) unless every item's total is known.
+func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanItem, grandTotal int64, failures []FileBatchItemFailure) {
+	failures = make([]FileBatchItemFailure, 0)
+	allKnown := true
 
-	for _, raw := range req.Paths {
+	for _, raw := range paths {
 		if ctx.Err() != nil {
-			return FileBatchResult{}, context.Canceled
+			return nil, 0, failures
 		}
 		path := utils.CleanAbsPath(raw)
 		if path == "/" {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "cannot delete root"})
 			continue
 		}
-
 		isDir, err := deleteTargetIsDir(path)
 		if err != nil {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "not found"})
 			continue
 		}
+		total := deleteEntryTotalForPath(ctx, path, isDir)
+		if total <= 0 {
+			allKnown = false
+		}
+		grandTotal += total
+		items = append(items, deletePlanItem{raw: raw, path: path, total: total})
+	}
 
-		opts := deleteOptionsForPath(ctx, path, isDir)
-		base := processed
-		opts.Progress = func(p, _ int64, _ bool) {
-			task.ReportProgress(DeleteProgress{
-				Processed:     base + p,
-				Phase:         "deleting",
-				Indeterminate: true,
-			})
+	if !allKnown {
+		grandTotal = 0
+	}
+	return items, grandTotal, failures
+}
+
+// runDeleteBatchTask deletes many paths as a single task. It resolves entry
+// totals up front (indexer, else a bounded prescan) so progress reports a real
+// aggregate percentage; when a total stays unknown the task reports an
+// indeterminate running count instead.
+func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.BatchPathRequest) (FileBatchResult, error) {
+	if len(req.Paths) == 0 {
+		return FileBatchResult{}, bridgetasks.NewError("no paths provided", 400)
+	}
+
+	task.ReportProgress(DeleteProgress{Phase: "preparing", Indeterminate: true})
+	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths)
+	if ctx.Err() != nil {
+		return FileBatchResult{}, context.Canceled
+	}
+
+	indeterminate := grandTotal <= 0
+	limiter := newCountProgressLimiter(taskSettingsForTask(ctx, task, store))
+	var processed int64
+	succeeded := 0
+
+	for _, item := range items {
+		if ctx.Err() != nil {
+			return FileBatchResult{}, context.Canceled
 		}
 
-		count, err := services.DeleteFilesWithProgress(ctx, path, opts)
+		base := processed
+		count, err := services.DeleteFilesWithProgress(ctx, item.path, services.DeleteOptions{
+			Progress: func(p int64) {
+				cur, pct, ok := limiter.Set(base+p, grandTotal)
+				if !ok {
+					return
+				}
+				task.ReportProgress(DeleteProgress{
+					Processed:     cur,
+					Total:         grandTotal,
+					Pct:           pct,
+					Phase:         "deleting",
+					Indeterminate: indeterminate,
+				})
+			},
+		})
+		// count reflects entries actually removed, even when the item failed
+		// partway through, so aggregate progress stays monotonic.
+		processed += count
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return FileBatchResult{}, err
 			}
-			slog.Debug("batch delete item failed", "path", path, "error", err)
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
+			slog.Debug("batch delete item failed", "path", item.path, "error", err)
+			failures = append(failures, FileBatchItemFailure{Path: item.raw, Error: err.Error()})
 			continue
 		}
-		processed += count
 		succeeded++
 
-		p := path
+		p := item.path
 		runDetachedIndexerUpdate("delete_batch", func(ctx context.Context) error {
 			return deleteFromIndexer(ctx, p)
 		})

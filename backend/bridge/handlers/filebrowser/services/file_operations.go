@@ -386,10 +386,22 @@ func reportOperationProgress(opts *ipc.OperationCallbacks, bytes int64) {
 }
 
 type DeleteOptions struct {
-	Total         int64
-	Indeterminate bool
-	Prescan       bool
-	Progress      func(processed, total int64, indeterminate bool)
+	// Progress receives the running count of removed entries (files and
+	// directories, including the deleted root). Totals and percentages are the
+	// caller's concern, since only the caller can aggregate across a batch.
+	Progress func(processed int64)
+}
+
+// CountDeleteEntries counts the entries (files plus directories, including the
+// root itself) that deleting absPath would remove.
+func CountDeleteEntries(ctx context.Context, absPath string) (int64, error) {
+	absPath = utils.CleanAbsPath(absPath)
+	root, err := fsroot.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+	return countRecursiveEntries(ctx, root, absPath, true)
 }
 
 // TopLevelEntryCountWithin reports whether a directory has at most maxEntries direct children.
@@ -439,40 +451,22 @@ func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOpt
 		if err := root.Root.Remove(targetRel); err != nil {
 			return 0, err
 		}
-		reportDeleteProgress(opts, 1, 1, false)
+		if opts.Progress != nil {
+			opts.Progress(1)
+		}
 		return 1, nil
 	}
 
-	total := opts.Total
-	indeterminate := opts.Indeterminate
-	if opts.Prescan && total <= 0 {
-		var countErr error
-		total, countErr = countRecursiveEntries(ctx, root, absPath, true)
-		if countErr != nil {
-			return 0, countErr
-		}
-		indeterminate = false
-	}
-	if total <= 0 {
-		indeterminate = true
-	}
-
-	return deleteDirectoryWithProgress(ctx, root, absPath, total, indeterminate, opts.Progress)
+	return deleteDirectoryWithProgress(ctx, root, absPath, opts.Progress)
 }
 
 func deleteDirectoryWithProgress(
 	ctx context.Context,
 	root *fsroot.FSRoot,
 	absPath string,
-	total int64,
-	indeterminate bool,
-	progress func(processed, total int64, indeterminate bool),
+	progress func(processed int64),
 ) (int64, error) {
-	reporter := deleteItemReporter{
-		total:         total,
-		indeterminate: indeterminate,
-		progress:      progress,
-	}
+	reporter := deleteItemReporter{progress: progress}
 
 	dirs, err := deleteFilesDuringWalk(ctx, root, absPath, &reporter)
 	if err != nil {
@@ -488,16 +482,14 @@ func deleteDirectoryWithProgress(
 }
 
 type deleteItemReporter struct {
-	processed     int64
-	total         int64
-	indeterminate bool
-	progress      func(processed, total int64, indeterminate bool)
+	processed int64
+	progress  func(processed int64)
 }
 
 func (r *deleteItemReporter) report() {
 	r.processed++
 	if r.progress != nil {
-		r.progress(r.processed, r.total, r.indeterminate)
+		r.progress(r.processed)
 	}
 }
 
@@ -562,12 +554,6 @@ func removeDeleteDirs(ctx context.Context, root *fsroot.FSRoot, dirs []string, r
 		reporter.report()
 	}
 	return nil
-}
-
-func reportDeleteProgress(opts DeleteOptions, processed, total int64, indeterminate bool) {
-	if opts.Progress != nil {
-		opts.Progress(processed, total, indeterminate)
-	}
 }
 
 // GetContent reads and returns the file content if it's considered an editable text file.

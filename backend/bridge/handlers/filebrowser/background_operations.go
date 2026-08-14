@@ -260,7 +260,9 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.SessionTask(), apischema.WithTaskProgress[DeleteProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
-			runDeleteBatchTask,
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+				return runDeleteBatchTask(ctx, task, store, req)
+			},
 			bridgetasks.TaskDefault,
 		),
 		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
