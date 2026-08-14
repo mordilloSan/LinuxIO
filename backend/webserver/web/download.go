@@ -273,9 +273,6 @@ func (s *nativeDownloadStreamState) consumeData(payload []byte) error {
 	if n != len(payload) {
 		return io.ErrShortWrite
 	}
-	if flusher, ok := s.writer.(http.Flusher); ok {
-		flusher.Flush()
-	}
 	return nil
 }
 

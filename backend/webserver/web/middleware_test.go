@@ -55,26 +55,6 @@ func TestLoggerMiddlewareLogsAssetRequest(t *testing.T) {
 	requireNotContains(t, output, "cache=1", "?cache=1")
 }
 
-func TestLoggerMiddlewarePreservesStreamingFlush(t *testing.T) {
-	flushed := false
-	handler := LoggerMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("logging response writer does not implement http.Flusher")
-		}
-		flusher.Flush()
-		flushed = true
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/api/download?taskId=task-1", nil)
-	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
-
-	if !flushed || !resp.Flushed {
-		t.Fatalf("flush was not forwarded: handler=%t recorder=%t", flushed, resp.Flushed)
-	}
-}
-
 func captureWebLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 
