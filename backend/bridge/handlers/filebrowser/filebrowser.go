@@ -260,7 +260,7 @@ func prescanDeleteEntryTotal(ctx context.Context, path string, allowed bool) int
 	if !allowed {
 		return 0
 	}
-	total, err := services.CountDeleteEntries(ctx, path)
+	total, err := services.CountEntries(ctx, path, true)
 	if err != nil {
 		slog.Debug("failed to prescan delete directory entries", "path", path, "error", err)
 		return 0

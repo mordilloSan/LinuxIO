@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { linuxio, type TaskProgress } from "@/api";
+import { type ChmodProgress, linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -34,7 +34,7 @@ interface PermissionsDialogProps {
   owner?: string;
   pathLabel: string;
   isPending?: boolean;
-  progress?: TaskProgress | null;
+  progress?: TaskProgress<ChmodProgress> | null;
   selectionCount: number;
 }
 interface PermissionBits {
@@ -350,9 +350,13 @@ const PermissionsDialog = ({
           variant="body2"
         >
           {progress?.message ?? progress?.phase ?? "Changing permissions"}
+          {/* Indeterminate progress carries no percentage; fall back to the
+              running entry count so the dialog never sits frozen. */}
           {progress?.percentage !== undefined
             ? ` (${progress.percentage}%)`
-            : ""}
+            : progress?.detail?.processed
+              ? ` (${progress.detail.processed.toLocaleString()} entries)`
+              : ""}
         </AppTypography>
       )}
       <AppDialogActions>

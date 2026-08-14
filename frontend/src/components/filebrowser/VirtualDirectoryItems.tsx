@@ -73,6 +73,7 @@ interface VirtualDirectoryItemsProps {
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
   renamePendingPath?: string | null;
+  renameProgressPct?: number;
   /** Item index to scroll into view, or -1 to leave the viewport alone. */
   revealIndex: number;
   selectedPaths: Set<string>;
@@ -155,6 +156,7 @@ const VirtualDirectoryItems = ({
   onOpenDirectory,
   renamingPath,
   renamePendingPath,
+  renameProgressPct,
   revealIndex,
   selectedPaths,
   selectionBox,
@@ -299,6 +301,11 @@ const VirtualDirectoryItems = ({
                       onFolderClick={onFolderClick}
                       onFolderContextMenu={onFolderContextMenu}
                       onOpenDirectory={onOpenDirectory}
+                      renameProgressPct={
+                        renamePendingPath === item.path
+                          ? renameProgressPct
+                          : undefined
+                      }
                       selected={selectedPaths.has(item.path)}
                       subfolderData={
                         row.itemKind === "folder" && !item.symlink

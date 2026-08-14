@@ -320,27 +320,52 @@ func parseChmodBatchRequest(req apischema.FileChmodBatchRequest) (paths []string
 }
 
 // chmodBatchReporter accumulates a running processed-entry count across all
-// items and phases of a chmod batch task, throttled by one shared limiter.
+// items and phases of a chmod batch task, throttled by one shared limiter and
+// reported against the planned grand total (0 when unknown).
 type chmodBatchReporter struct {
 	task      *bridgetasks.Task
 	limiter   *countProgressLimiter
+	total     int64
 	processed int64
 }
 
-func (r *chmodBatchReporter) phase(phase string) func(processed, total int64) {
+func (r *chmodBatchReporter) phase(phase string) func(processed int64) {
 	base := r.processed
-	return func(processed, _ int64) {
+	return func(processed int64) {
 		r.processed = base + processed
-		count, _, ok := r.limiter.Set(r.processed, 0)
+		count, pct, ok := r.limiter.Set(r.processed, r.total)
 		if !ok {
 			return
 		}
 		r.task.ReportProgress(ChmodProgress{
 			Processed:     count,
+			Total:         r.total,
+			Pct:           pct,
 			Phase:         phase,
-			Indeterminate: true,
+			Indeterminate: r.total <= 0,
 		})
 	}
+}
+
+// planChmodBatchTotal sums the entries every pass of the batch will touch:
+// each item's entry count times the number of passes (chmod, plus chown when
+// ownership changes). Items whose count fails contribute nothing — they fail
+// again during apply and report no progress, so excluding them keeps the
+// percentage honest. Returns 0 only when no item could be counted.
+func planChmodBatchTotal(ctx context.Context, paths []string, recursive bool, passes int64) int64 {
+	var grandTotal int64
+	for _, raw := range paths {
+		if ctx.Err() != nil {
+			return 0
+		}
+		total, err := services.CountEntries(ctx, utils.CleanAbsPath(raw), recursive)
+		if err != nil {
+			slog.Debug("failed to count chmod entries", "path", raw, "error", err)
+			continue
+		}
+		grandTotal += total * passes
+	}
+	return grandTotal
 }
 
 type batchOwnership struct {
@@ -392,10 +417,15 @@ func runChmodBatchTask(ctx context.Context, task *bridgetasks.Task, store *confi
 		return FileBatchResult{}, bridgetasks.NewError(err.Error(), 400)
 	}
 
-	task.ReportProgress(ChmodProgress{Phase: "preparing"})
+	task.ReportProgress(ChmodProgress{Phase: "preparing", Indeterminate: true})
+	passes := int64(1)
+	if ownership != nil {
+		passes = 2
+	}
 	reporter := &chmodBatchReporter{
 		task:    task,
 		limiter: newCountProgressLimiter(taskSettingsForTask(ctx, task, store)),
+		total:   planChmodBatchTotal(ctx, paths, recursive, passes),
 	}
 
 	succeeded := 0

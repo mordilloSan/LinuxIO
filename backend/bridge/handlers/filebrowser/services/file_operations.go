@@ -392,16 +392,16 @@ type DeleteOptions struct {
 	Progress func(processed int64)
 }
 
-// CountDeleteEntries counts the entries (files plus directories, including the
-// root itself) that deleting absPath would remove.
-func CountDeleteEntries(ctx context.Context, absPath string) (int64, error) {
+// CountEntries counts the entries an operation over absPath touches: absPath
+// itself plus, when recursive, all of its descendants (files and directories).
+func CountEntries(ctx context.Context, absPath string, recursive bool) (int64, error) {
 	absPath = utils.CleanAbsPath(absPath)
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
 	}
 	defer root.Close()
-	return countRecursiveEntries(ctx, root, absPath, true)
+	return countRecursiveEntries(ctx, root, absPath, recursive)
 }
 
 // TopLevelEntryCountWithin reports whether a directory has at most maxEntries direct children.
@@ -665,7 +665,7 @@ func nonPrintableRuneRatio(content string) float64 {
 }
 
 // ChangePermissionsCtx changes permissions and reports processed entries when requested.
-func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed, total int64)) error {
+func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed int64)) error {
 	path = utils.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
@@ -681,11 +681,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 	}
 
 	recursiveDir := info.IsDir() && recursive
-	total, err := countRecursiveEntries(ctx, root, path, recursiveDir)
-	if err != nil {
-		return err
-	}
-	report := progressReporter(total, cb)
+	report := progressReporter(cb)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -705,7 +701,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 }
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when requested.
-func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed, total int64)) error {
+func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed int64)) error {
 	path = utils.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
@@ -720,11 +716,7 @@ func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursiv
 	}
 
 	recursiveDir := info.IsDir() && recursive
-	total, err := countRecursiveEntries(ctx, root, path, recursiveDir)
-	if err != nil {
-		return err
-	}
-	report := progressReporter(total, cb)
+	report := progressReporter(cb)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -742,12 +734,12 @@ func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursiv
 	return nil
 }
 
-func progressReporter(total int64, cb func(processed, total int64)) func() {
+func progressReporter(cb func(processed int64)) func() {
 	var processed int64
 	return func() {
 		processed++
 		if cb != nil {
-			cb(processed, total)
+			cb(processed)
 		}
 	}
 }

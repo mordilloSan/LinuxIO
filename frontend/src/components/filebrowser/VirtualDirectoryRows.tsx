@@ -11,6 +11,7 @@ export interface DirectoryItemProps {
   isLoadingSubfolders: boolean;
   isRenaming: boolean;
   isRenamePending?: boolean;
+  renameProgressPct?: number;
   item: FileItem;
   itemKind: "file" | "folder";
   onCancelRename: () => void;
@@ -53,6 +54,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     isCut,
     isRenaming,
     isRenamePending,
+    renameProgressPct,
     viewMode,
     onFileClick,
     onDownloadFile,
@@ -86,6 +88,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
           onContextMenu={(event) => onFileContextMenu(event, item.path)}
           onDoubleClick={() => onDownloadFile(item)}
           path={item.path}
+          renameProgressPct={renameProgressPct}
           selected={selected}
           showFullPath={item.showFullPath}
           size={item.size}
@@ -127,6 +130,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         onContextMenu={(event) => onFolderContextMenu(event, item.path)}
         onDoubleClick={() => onOpenDirectory(item.path)}
         path={item.path}
+        renameProgressPct={renameProgressPct}
         selected={selected}
         showFullPath={item.showFullPath}
         size={item.symlink ? undefined : size === null ? undefined : size}

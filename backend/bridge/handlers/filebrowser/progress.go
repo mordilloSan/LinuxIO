@@ -115,14 +115,21 @@ func (p DeleteProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	return envelope
 }
 
-// ChmodProgress represents entry-count progress for chmod batch tasks. The
-// per-entry total is unknown up front, so the count is indeterminate.
+// ChmodProgress represents entry-count progress for chmod batch tasks. When
+// the entry total is unknown, Indeterminate is set and the envelope omits the
+// percentage so clients show a running count instead of a frozen 0%.
 type ChmodProgress struct {
 	Processed     int64  `json:"processed"`
+	Total         int64  `json:"total"`
+	Pct           int    `json:"pct"`
 	Phase         string `json:"phase,omitempty"`
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
 func (p ChmodProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+	if !p.Indeterminate {
+		envelope.Percentage = &p.Pct
+	}
+	return envelope
 }

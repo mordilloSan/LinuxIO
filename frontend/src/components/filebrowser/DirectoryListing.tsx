@@ -36,6 +36,7 @@ interface DirectoryListingProps {
   onStartRename: () => void;
   renamingPath: string | null;
   renamePendingPath?: string | null;
+  renameProgressPct?: number;
   resource: FileResource;
   selectedPaths: Set<string>;
   showHiddenFiles: boolean;
@@ -59,6 +60,7 @@ const DirectoryListing = ({
   onDelete,
   renamingPath,
   renamePendingPath,
+  renameProgressPct,
   onStartRename,
   onConfirmRename,
   onCancelRename,
@@ -316,6 +318,7 @@ const DirectoryListing = ({
       onOpenDirectory={onOpenDirectory}
       renamingPath={renamingPath}
       renamePendingPath={renamePendingPath}
+      renameProgressPct={renameProgressPct}
       revealIndex={revealIndex}
       selectedPaths={selectedPaths}
       selectionBox={selectionBox}

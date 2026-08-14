@@ -306,6 +306,8 @@ export interface ChangePasswordRequest {
 
 export interface ChmodProgress {
   processed: number;
+  total: number;
+  pct: number;
   phase?: string;
   indeterminate?: boolean;
 }

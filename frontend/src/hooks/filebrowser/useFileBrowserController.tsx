@@ -117,6 +117,7 @@ export function useFileBrowserController(): FileBrowserController {
     moveItems,
     renameItem,
     renamePending,
+    renameProgress,
   } = useFileMutations({
     normalizedPath,
     onDeleteSuccess: selectionActions.clear,
@@ -609,6 +610,7 @@ export function useFileBrowserController(): FileBrowserController {
       onSelectedPathsChange: selectionActions.select,
       onStartRename: handleStartInlineRename,
       renamePendingPath: renamePending ? renamingPath : null,
+      renameProgressPct: renameProgress?.percentage,
       renamingPath,
       selectedPaths,
       showHiddenFiles,
@@ -627,6 +629,7 @@ export function useFileBrowserController(): FileBrowserController {
       handleStartInlineRename,
       renamingPath,
       renamePending,
+      renameProgress,
       selectedPaths,
       selectionActions,
       showHiddenFiles,

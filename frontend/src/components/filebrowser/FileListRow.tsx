@@ -38,6 +38,7 @@ export interface FileListRowProps {
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
+  renameProgressPct?: number;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -60,6 +61,7 @@ const FileListRow = memo<FileListRowProps>(
     isCut = false,
     isRenaming = false,
     isRenamePending = false,
+    renameProgressPct,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -297,7 +299,15 @@ const FileListRow = memo<FileListRowProps>(
                 </AppTypography>
               )}
               {isRenaming && isRenamePending && (
-                <AppCircularProgress aria-label="Renaming" size={16} />
+                <>
+                  <AppCircularProgress aria-label="Renaming" size={16} />
+                  {/* Only slow copy-fallback renames report a percentage. */}
+                  {renameProgressPct !== undefined && (
+                    <AppTypography color="text.secondary" variant="caption">
+                      {renameProgressPct}%
+                    </AppTypography>
+                  )}
+                </>
               )}
               {showFullPath && (
                 <span

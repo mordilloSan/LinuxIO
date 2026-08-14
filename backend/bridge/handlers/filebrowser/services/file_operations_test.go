@@ -326,12 +326,12 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 	})
 }
 
-func TestCountDeleteEntries(t *testing.T) {
+func TestCountEntries(t *testing.T) {
 	t.Run("empty_directory_counts_itself", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dirPath := createTestDir(t, tmpDir, "empty")
 
-		total, err := CountDeleteEntries(context.Background(), dirPath)
+		total, err := CountEntries(context.Background(), dirPath, true)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 	})
@@ -343,9 +343,19 @@ func TestCountDeleteEntries(t *testing.T) {
 		createTestFile(t, dirPath, "file1.txt", []byte("root"))
 		createTestFile(t, subDir, "file2.txt", []byte("nested"))
 
-		total, err := CountDeleteEntries(context.Background(), dirPath)
+		total, err := CountEntries(context.Background(), dirPath, true)
 		require.NoError(t, err)
 		assert.Equal(t, int64(4), total)
+	})
+
+	t.Run("non_recursive_counts_only_the_target", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "tree")
+		createTestFile(t, dirPath, "file1.txt", []byte("root"))
+
+		total, err := CountEntries(context.Background(), dirPath, false)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
 	})
 }
 

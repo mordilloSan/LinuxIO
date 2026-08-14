@@ -60,6 +60,7 @@ export interface FileCardProps {
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
+  renameProgressPct?: number;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -79,6 +80,7 @@ const FileCard = memo<FileCardProps>(
     isCut = false,
     isRenaming = false,
     isRenamePending = false,
+    renameProgressPct,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -290,7 +292,15 @@ const FileCard = memo<FileCardProps>(
                 value={renameValue}
               />
               {isRenamePending && (
-                <AppCircularProgress aria-label="Renaming" size={16} />
+                <>
+                  <AppCircularProgress aria-label="Renaming" size={16} />
+                  {/* Only slow copy-fallback renames report a percentage. */}
+                  {renameProgressPct !== undefined && (
+                    <AppTypography color="text.secondary" variant="caption">
+                      {renameProgressPct}%
+                    </AppTypography>
+                  )}
+                </>
               )}
             </div>
           ) : (
