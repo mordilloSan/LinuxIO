@@ -134,21 +134,37 @@ unsupported or ambiguous layouts refuse with the existing structured errors.
 The `bridge-utils` requirement on ifupdown hosts joins the capabilities
 system with its install flow.
 
-### Apply safety: snapshot, revert timer, check-in
+### Apply safety: snapshot, detached reverter, check-in
 
-The hand-off is a durable operation using the existing operation-record and
-transient-unit machinery:
+Unraid performs this same hand-off live: applying network settings re-runs
+`rc.inet1` — the same script that builds the bridge at boot — and the webGUI
+reconnects seconds later on the same DHCP lease, with no revert mechanism
+behind it at all. The live apply is proven practice; the revert below is the
+part Unraid doesn't have.
 
-1. Snapshot every config file the change touches.
-2. Arm a revert as a transient systemd timer/service (survives bridge and
-   session death) that restores the snapshot and re-runs the backend apply
-   after ~90 seconds.
+The hand-off is a durable operation using the existing operation-record
+machinery. The revert involves no systemd units, transient or installed. It
+cannot live in the webserver either — that process runs sandboxed under
+`DynamicUser` with no privileged path outside a session bridge — and the
+applying bridge dies with its session. The revert is therefore owned by a
+detached reverter process: the bridge re-execs its own binary as a revert
+subcommand, double-forked so it reparents to PID 1 and survives bridge
+death, session logout, and the connection drop.
+
+1. Write the marker: a root-owned on-disk record holding the snapshot of
+   every touched config file, the list of links the operation creates, the
+   backend apply command, and the confirmation deadline (~90 s).
+2. Spawn the detached reverter, which watches the marker.
 3. Apply the new configuration. The connection may drop; the operation
    record already models this as an expected ambiguous outcome.
 4. The frontend reconnects (same IP, per the MAC pinning above) and issues a
-   confirmation Call that cancels the revert unit and finalizes the record.
-5. No confirmation → the timer restores the previous configuration, and the
-   operation record reports the revert honestly.
+   confirmation Call that claims the marker and finalizes the record; the
+   reverter sees the marker go and exits. Confirmation and revert both claim
+   the marker by atomic rename, so exactly one outcome ever wins.
+5. No confirmation by the deadline → the reverter claims the marker,
+   restores the previous configuration, and the operation record reports the
+   revert honestly. A confirmation that loses the race reports the reverted
+   outcome instead of pretending success.
 
 The revert path has three hard requirements beyond restoring file contents:
 
@@ -156,13 +172,16 @@ The revert path has three hard requirements beyond restoring file contents:
   not remove an existing kernel bridge on every backend (netplan never
   deletes devices it no longer renders); the revert deletes the links this
   operation created before re-applying the snapshot.
-- **Survive a reboot inside the window.** A transient timer dies with the
-  boot while the unconfirmed config files persist on disk. The operation
-  therefore also writes an on-disk unconfirmed-change marker that the system
-  service consumes at boot, reverting if it is still present. Confirmation
-  removes the marker and cancels the timer atomically; a confirmation that
-  loses the race against a started revert reports the reverted outcome
-  instead of pretending success.
+- **Own the reboot-inside-window case.** The reverter dies with the boot
+  while the unconfirmed config files persist on disk; the marker persists
+  too. The next privileged bridge to start finds the expired marker and
+  runs the revert before allowing new network mutations. If the host
+  reboots into a config that never comes up, nobody can log in to trigger
+  that — this is the one residual gap of keeping systemd out of the revert
+  path (closing it needs a boot-time unit, exactly the dependency being
+  traded away). The window is ~90 s, MAC pinning makes a boot with the new
+  config likely to come up anyway, and the wizard states the console
+  requirement up front.
 - **Prefer false reverts.** If only the client's network path broke, a
   working change reverts because no check-in arrived. That is the correct
   failure direction: the cost is redoing the change, never a lockout.
@@ -170,8 +189,11 @@ The revert path has three hard requirements beyond restoring file contents:
 Bridge-creation mutations follow the existing rule: not `RetrySafe`. The
 confirmation and explicit-revert Calls are idempotent. netplan's `netplan
 try` and NetworkManager's D-Bus checkpoints offer native equivalents, but
-the snapshot-plus-timer design is backend-agnostic and is the primary
-mechanism.
+the snapshot-plus-marker design is backend-agnostic and is the primary
+mechanism. The transient-unit machinery already in the tree (app and Docker
+updates) was considered and rejected here: a transient timer dies at reboot
+just like the detached process, so it buys only systemd supervision while
+putting `systemd-run` in the lockout-recovery path.
 
 ### Preflights
 
@@ -189,7 +211,8 @@ Refuse or warn before writing anything:
   implementation per firewall stack (iptables/nftables/firewalld).
 
 The hand-off wizard states the residual risk before applying: if the revert
-itself fails, recovery requires console or out-of-band access, so the user
+itself fails, or the host reboots mid-window into a configuration that does
+not come up, recovery requires console or out-of-band access, so the user
 should not start the hand-off without it available.
 
 ### After creation
