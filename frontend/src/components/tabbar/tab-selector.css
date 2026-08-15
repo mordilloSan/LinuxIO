@@ -20,6 +20,10 @@
   overflow-y: hidden;
 }
 
+.tab-selector__scroller:only-child {
+  grid-column: 1 / -1;
+}
+
 .tab-selector__pills {
   display: inline-flex;
   flex-wrap: nowrap;

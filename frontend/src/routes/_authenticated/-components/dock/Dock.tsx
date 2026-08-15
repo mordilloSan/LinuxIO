@@ -1,10 +1,14 @@
-import { useMotionValue } from "motion/react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import DockItem from "./DockItem";
 import DockTile from "./DockTile";
+import {
+  DockMagnificationProvider,
+  useDockPointer,
+} from "./useDockMagnification";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
 
@@ -54,16 +58,22 @@ export interface DockProps {
 const Dock = ({ actions }: DockProps) => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
-  /* Cursor x position over the dock; Infinity = cursor away, all tiles at
-     rest. Each item derives its own magnification from this single value. */
-  const mouseX = useMotionValue(Infinity);
+  const setPointer = useDockPointer();
+  const theme = useAppTheme();
+  const magnificationEnabled = useAppMediaQuery(theme.breakpoints.up("sm"));
+
+  useEffect(() => {
+    if (!magnificationEnabled) setPointer(Infinity);
+  }, [magnificationEnabled, setPointer]);
 
   return (
     <nav
       aria-label="Primary navigation"
       className="app-dock"
-      onMouseLeave={() => mouseX.set(Infinity)}
-      onMouseMove={(e) => mouseX.set(e.clientX)}
+      onMouseLeave={() => setPointer(Infinity)}
+      onMouseMove={
+        magnificationEnabled ? (event) => setPointer(event.clientX) : undefined
+      }
     >
       <ul className="app-dock__list">
         {items.map((page, index) => (
@@ -72,7 +82,6 @@ const Dock = ({ actions }: DockProps) => {
             disabled={!canNavigate}
             gradient={gradientFor(page.to, index)}
             key={page.title}
-            mouseX={mouseX}
           />
         ))}
       </ul>
@@ -83,7 +92,6 @@ const Dock = ({ actions }: DockProps) => {
               <DockTile
                 gradient={ACTION_GRADIENTS[index % ACTION_GRADIENTS.length]}
                 label={label}
-                mouseX={mouseX}
               >
                 {node}
               </DockTile>
@@ -95,4 +103,10 @@ const Dock = ({ actions }: DockProps) => {
   );
 };
 
-export default Dock;
+const DockWithMagnification = (props: DockProps) => (
+  <DockMagnificationProvider>
+    <Dock {...props} />
+  </DockMagnificationProvider>
+);
+
+export default DockWithMagnification;

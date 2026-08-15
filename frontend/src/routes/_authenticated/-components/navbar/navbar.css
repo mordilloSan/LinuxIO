@@ -175,3 +175,10 @@
     width: min(360px, calc(100vw - 16px));
   }
 }
+
+/* Portaled navbar panels use AppPopover's measured fixed position rather than
+   the inline dropdown's absolute/right anchoring. */
+.app-popover__paper.app-navbar-panel {
+  position: fixed;
+  right: auto;
+}

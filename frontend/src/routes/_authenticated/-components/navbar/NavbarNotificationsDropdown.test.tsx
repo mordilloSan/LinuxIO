@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,10 +26,6 @@ vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
 vi.mock("@/hooks/useToastHistory", () => ({
   useClearToastHistory: () => vi.fn(),
   useToastHistory: () => [],
-}));
-
-vi.mock("@/hooks/useDismissibleLayer", () => ({
-  useDismissibleLayer: () => ({ current: null }),
 }));
 
 vi.mock("@/theme", () => ({
@@ -107,5 +103,15 @@ describe("NavbarNotificationsDropdown peek timer", () => {
 
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("portals the notifications panel outside the dock tile", () => {
+    const view = render(<NavbarNotificationsDropdown tooltip={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+    const panel = screen.getByRole("dialog", { name: "Notifications" });
+    expect(view.container).not.toContainElement(panel);
+    expect(panel.closest(".app-popover-root")).toBeInTheDocument();
   });
 });

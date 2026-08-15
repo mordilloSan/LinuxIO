@@ -61,10 +61,8 @@
 
 .app-dock-link {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
+  display: block;
+  width: 40px;
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -76,20 +74,29 @@
 }
 
 .app-dock__tile {
-  /* relative: the magnification dip animates `top` (transform-free, see
-     DockTile), and the hover label anchors to the tile. */
   position: relative;
   display: flex;
+  width: 40px;
+  height: 40px;
   align-items: center;
   justify-content: center;
   border-radius: 26%;
-  /* No overflow clipping: relocated action buttons anchor their dropdown
-     panels inside the tile subtree, and clipping would swallow them. */
+  transform-origin: 50% 0;
+  will-change: transform;
   color: #fff;
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.4),
     inset 0 -2px 4px rgba(0, 0, 0, 0.15),
     0 6px 14px -6px rgba(0, 0, 0, 0.5);
+}
+
+.app-dock__slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+  height: 48px;
 }
 
 /* Also overrides fixed width/height attributes on Iconify icons inside
@@ -99,12 +106,18 @@
   height: 56%;
 }
 
-/* Anchored to the tile itself (not the link box), so it sits a constant gap
-   below the icon and tracks the tile as it magnifies and dips. */
-.app-dock__label {
+/* The anchor follows the visual tile without scaling the label itself. */
+.app-dock__label-anchor {
   position: absolute;
-  top: calc(100% + 8px);
+  top: 48px;
   left: 50%;
+  z-index: 1;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.app-dock__label {
+  display: block;
   transform: translate(-50%, -4px);
   padding: 3px 10px;
   border-radius: 8px;
@@ -124,17 +137,15 @@
 
 /* :focus-within covers the action tiles, whose focus lands on the wrapped
    button rather than the dock link (matching their old tooltip-on-focus). */
-.app-dock__tile:hover > .app-dock__label,
+.app-dock-link:hover .app-dock__label,
 .app-dock-link:focus-visible .app-dock__label,
 .app-dock__action:focus-within .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 
-/* While a relocated control's panel is open (it renders inside the tile
-   subtree), the tile still counts as hovered/focused — keep the label from
-   peeking into the gap above the panel. */
-.app-dock__tile:has(.app-navbar-panel) > .app-dock__label {
+/* Keep the label out of the gap above an open relocated control. */
+.app-dock__action:has([aria-expanded="true"]) .app-dock__label {
   opacity: 0;
 }
 
@@ -167,7 +178,7 @@
   }
 }
 
-/* Phone widths: no hover magnification to clip, so let the row scroll. */
+/* Phone widths disable magnification in Dock and let the resting row scroll. */
 @media (max-width: 767.95px) {
   .app-dock__list {
     gap: 4px;

@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+
+import { calculateDockTargets } from "./useDockMagnification";
+
+describe("calculateDockTargets", () => {
+  it("returns rest targets out of range", () => {
+    expect(calculateDockTargets([100, 150], Number.POSITIVE_INFINITY)).toEqual([
+      { scale: 1, x: 0 },
+      { scale: 1, x: 0 },
+    ]);
+  });
+
+  it("centers cumulative expansion around the original dock", () => {
+    const targets = calculateDockTargets([100, 140, 180], 140);
+    expect(targets[1].scale).toBe(1.6);
+    expect(targets[0].x + targets[2].x).toBeCloseTo(0);
+  });
+
+  it("reconstructs the same centers as cumulative flex expansion", () => {
+    const targets = calculateDockTargets([20, 66, 112, 158], 66);
+    const expansions = targets.map(({ scale }) => (scale - 1) * 40);
+    const totalExpansion = expansions.reduce((sum, value) => sum + value, 0);
+    let precedingExpansion = 0;
+
+    targets.forEach(({ x }, index) => {
+      expect(x).toBeCloseTo(
+        precedingExpansion + expansions[index] / 2 - totalExpansion / 2,
+      );
+      precedingExpansion += expansions[index];
+    });
+  });
+});

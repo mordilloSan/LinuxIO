@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
-import type { MotionValue } from "motion/react";
 import { memo } from "react";
 
 import DockTile from "./DockTile";
@@ -9,11 +8,10 @@ import type { SidebarItem } from "../sidebar/types";
 type DockItemProps = SidebarItem & {
   disabled?: boolean;
   gradient: readonly [string, string];
-  mouseX: MotionValue<number>;
 };
 
 const DockItem = memo<DockItemProps>(
-  ({ to, title, icon, params, disabled = false, gradient, mouseX }) => {
+  ({ to, title, icon, params, disabled = false, gradient }) => {
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -23,7 +21,7 @@ const DockItem = memo<DockItemProps>(
     };
 
     const content = (
-      <DockTile gradient={gradient} label={title} mouseX={mouseX}>
+      <DockTile gradient={gradient} label={title}>
         {renderIcon()}
       </DockTile>
     );

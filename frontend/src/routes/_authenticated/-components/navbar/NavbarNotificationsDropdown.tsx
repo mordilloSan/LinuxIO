@@ -11,12 +11,12 @@ import {
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppPopover from "@/components/ui/AppPopover";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useBackgroundTaskState } from "@/hooks/backgroundTasks/useBackgroundTaskState";
-import { useDismissibleLayer } from "@/hooks/useDismissibleLayer";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { useAppTheme } from "@/theme";
 import { iconSize as iconSizes } from "@/theme/constants";
@@ -241,9 +241,6 @@ export function NavbarNotificationsDropdown({
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [now, setNow] = useState(0);
   const isFullOpen = Boolean(anchorEl);
-  const layerRef = useDismissibleLayer<HTMLDivElement>(isFullOpen, () =>
-    setAnchorEl(null),
-  );
 
   // Peek state (auto-triggered)
   const [peekOpen, setPeekOpen] = useState(false);
@@ -551,7 +548,7 @@ export function NavbarNotificationsDropdown({
         )}
       </AppButton>
 
-      <div className="app-navbar-dropdown" ref={layerRef}>
+      <div className="app-navbar-dropdown">
         <AppTooltip title={tooltip ? "Notifications" : ""}>
           <AppIconButton
             aria-label="Notifications"
@@ -568,10 +565,16 @@ export function NavbarNotificationsDropdown({
           </AppIconButton>
         </AppTooltip>
 
-        {isFullOpen ? (
+        <AppPopover
+          anchorEl={anchorEl}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          onClose={handleClose}
+          open={isFullOpen}
+          paperClassName="app-navbar-panel app-navbar-panel--notifications"
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
           <div
             aria-label="Notifications"
-            className="app-navbar-panel app-navbar-panel--notifications"
             id="navbar-notifications-panel"
             role="dialog"
           >
@@ -733,7 +736,7 @@ export function NavbarNotificationsDropdown({
               </AppButton>
             </div>
           </div>
-        ) : null}
+        </AppPopover>
       </div>
     </>
   );
