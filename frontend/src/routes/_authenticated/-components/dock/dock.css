@@ -48,10 +48,6 @@
   background: transparent;
 }
 
-.app-dock__action .app-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-
 /* The notifications bell's inline transfer peek expands the button sideways,
    which a fixed-size tile can't accommodate — the full dropdown still works. */
 .app-dock__action .app-navbar-notifications__peek {
@@ -80,6 +76,9 @@
 }
 
 .app-dock__tile {
+  /* relative: the magnification dip animates `top` (transform-free, see
+     DockTile), and the hover label anchors to the tile. */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -100,10 +99,11 @@
   height: 56%;
 }
 
+/* Anchored to the tile itself (not the link box), so it sits a constant gap
+   below the icon and tracks the tile as it magnifies and dips. */
 .app-dock__label {
   position: absolute;
-  /* Cleared past the fully magnified tile (which overflows the link box). */
-  top: calc(100% + 38px);
+  top: calc(100% + 8px);
   left: 50%;
   transform: translate(-50%, -4px);
   padding: 3px 10px;
@@ -122,10 +122,20 @@
     transform 140ms ease;
 }
 
-.app-dock-link:hover .app-dock__label,
-.app-dock-link:focus-visible .app-dock__label {
+/* :focus-within covers the action tiles, whose focus lands on the wrapped
+   button rather than the dock link (matching their old tooltip-on-focus). */
+.app-dock__tile:hover > .app-dock__label,
+.app-dock-link:focus-visible .app-dock__label,
+.app-dock__action:focus-within .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+/* While a relocated control's panel is open (it renders inside the tile
+   subtree), the tile still counts as hovered/focused — keep the label from
+   peeking into the gap above the panel. */
+.app-dock__tile:has(.app-navbar-panel) > .app-dock__label {
+  opacity: 0;
 }
 
 /* Running-app style indicator for the active route, sitting above the tile

@@ -56,7 +56,7 @@ function calcStyle(placement: TooltipPlacement, rect: DOMRect): CSSProperties {
   const midY = rect.top + rect.height / 2;
 
   // Uses the CSS `translate` property (not `transform`) so that it doesn't
-  // conflict with the scale animation applied via `transform` in the CSS.
+  // conflict with the entrance slide applied via `transform` in the CSS.
   switch (placement) {
     case "bottom":
       return {

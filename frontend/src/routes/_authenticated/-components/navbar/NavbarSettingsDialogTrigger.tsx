@@ -7,7 +7,14 @@ import { iconSize } from "@/theme/constants";
 
 import SettingsDialog from "./SettingsDialog";
 
-const NavbarSettingsDialogTrigger = () => {
+interface NavbarSettingsDialogTriggerProps {
+  /** false when the dock provides its own hover label for this control. */
+  tooltip?: boolean;
+}
+
+const NavbarSettingsDialogTrigger = ({
+  tooltip = true,
+}: NavbarSettingsDialogTriggerProps) => {
   const [open, setOpen] = useState(false);
 
   const handleOpen = useCallback(() => {
@@ -20,7 +27,7 @@ const NavbarSettingsDialogTrigger = () => {
 
   return (
     <>
-      <AppTooltip title="Open settings">
+      <AppTooltip title={tooltip ? "Open settings" : ""}>
         <AppIconButton
           aria-label="Open settings"
           color="inherit"

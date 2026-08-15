@@ -1,9 +1,9 @@
 import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
-import { motion, type MotionValue } from "motion/react";
+import type { MotionValue } from "motion/react";
 import { memo } from "react";
 
-import { useDockMagnification } from "./useDockMagnification";
+import DockTile from "./DockTile";
 import type { SidebarItem } from "../sidebar/types";
 
 type DockItemProps = SidebarItem & {
@@ -14,8 +14,6 @@ type DockItemProps = SidebarItem & {
 
 const DockItem = memo<DockItemProps>(
   ({ to, title, icon, params, disabled = false, gradient, mouseX }) => {
-    const { lift, size, tileRef } = useDockMagnification(mouseX);
-
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -25,22 +23,9 @@ const DockItem = memo<DockItemProps>(
     };
 
     const content = (
-      <>
-        <span className="app-dock__label">{title}</span>
-        <span className="app-dock__dot" />
-        <motion.span
-          className="app-dock__tile"
-          ref={tileRef}
-          style={{
-            background: `linear-gradient(180deg, ${gradient[0]}, ${gradient[1]})`,
-            height: size,
-            width: size,
-            y: lift,
-          }}
-        >
-          {renderIcon()}
-        </motion.span>
-      </>
+      <DockTile gradient={gradient} label={title} mouseX={mouseX}>
+        {renderIcon()}
+      </DockTile>
     );
 
     if (disabled) {

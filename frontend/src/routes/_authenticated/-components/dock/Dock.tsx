@@ -1,10 +1,10 @@
 import { useMotionValue } from "motion/react";
-import { Children, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 
-import DockActionSlot from "./DockActionSlot";
 import DockItem from "./DockItem";
+import DockTile from "./DockTile";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
 
@@ -30,21 +30,28 @@ const FALLBACK_GRADIENTS = Object.values(TILE_GRADIENTS);
 const gradientFor = (to: string, index: number) =>
   TILE_GRADIENTS[to] ?? FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
 
-/* Tile gradients for the relocated header actions, assigned by child order
-   (notifications, theme toggle, settings, account). */
+/* Tile gradients for the relocated header actions, assigned by slot order
+   (notifications, settings, account). */
 const ACTION_GRADIENTS: readonly (readonly [string, string])[] = [
   ["#ffb74a", "#f57c00"],
-  ["#8e7cf0", "#5b45d6"],
   ["#aab4c2", "#6b7686"],
   ["#ff7b7b", "#e03131"],
 ];
 
-export interface DockProps {
-  /** Header action buttons shown after the nav tiles, behind a divider. */
-  children?: ReactNode;
+export interface DockAction {
+  /** Dock tooltip text; replaces the control's own tooltip. */
+  label: string;
+  /** The header action control (icon button plus its popup). */
+  node: ReactNode;
 }
 
-const Dock = ({ children }: DockProps) => {
+export interface DockProps {
+  /** Header actions shown after the nav tiles, behind a divider, dressed as
+      dock tiles with the same magnification and hover label as nav items. */
+  actions?: readonly DockAction[];
+}
+
+const Dock = ({ actions }: DockProps) => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
   /* Cursor x position over the dock; Infinity = cursor away, all tiles at
@@ -69,18 +76,21 @@ const Dock = ({ children }: DockProps) => {
           />
         ))}
       </ul>
-      {children && (
+      {actions?.length ? (
         <div className="app-dock__actions">
-          {Children.map(children, (child, index) => (
-            <DockActionSlot
-              gradient={ACTION_GRADIENTS[index % ACTION_GRADIENTS.length]}
-              mouseX={mouseX}
-            >
-              {child}
-            </DockActionSlot>
+          {actions.map(({ label, node }, index) => (
+            <div className="app-dock-link app-dock__action" key={label}>
+              <DockTile
+                gradient={ACTION_GRADIENTS[index % ACTION_GRADIENTS.length]}
+                label={label}
+                mouseX={mouseX}
+              >
+                {node}
+              </DockTile>
+            </div>
           ))}
         </div>
-      )}
+      ) : null}
     </nav>
   );
 };

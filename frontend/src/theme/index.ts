@@ -640,11 +640,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-dialog-border": theme.dialog.border,
     "--app-dialog-glow": theme.dialog.glow,
     "--app-dialog-backdrop": theme.dialog.backdrop,
-    "--app-tooltip-bg":
-      theme.palette.mode === "dark"
-        ? "rgba(66, 66, 66, 0.95)"
-        : "rgba(110, 110, 110, 0.92)",
-    "--app-tooltip-color": "#ffffff",
     "--app-panel-background": theme.palette.background.paper,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":

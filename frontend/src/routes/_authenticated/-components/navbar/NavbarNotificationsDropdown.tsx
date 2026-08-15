@@ -225,7 +225,14 @@ const TransferItem = memo(function TransferItem({
 
 // --- Main component ---
 
-export function NavbarNotificationsDropdown() {
+interface NavbarNotificationsDropdownProps {
+  /** false when the dock provides its own hover label for this control. */
+  tooltip?: boolean;
+}
+
+export function NavbarNotificationsDropdown({
+  tooltip = true,
+}: NavbarNotificationsDropdownProps) {
   const theme = useAppTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const iconSize = iconSizes.md;
@@ -545,7 +552,7 @@ export function NavbarNotificationsDropdown() {
       </AppButton>
 
       <div className="app-navbar-dropdown" ref={layerRef}>
-        <AppTooltip title="Notifications">
+        <AppTooltip title={tooltip ? "Notifications" : ""}>
           <AppIconButton
             aria-label="Notifications"
             aria-controls={

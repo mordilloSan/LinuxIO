@@ -9,11 +9,21 @@ import { iconSize } from "@/theme/constants";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
 import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
-import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
-import Dock from "../dock/Dock";
+import Dock, { type DockAction } from "../dock/Dock";
 
 import "./navbar.css";
+
+/* In dock mode the actions render as dock tiles: the dock's own hover label
+   replaces each control's tooltip, so those are switched off. */
+const DOCK_ACTIONS: readonly DockAction[] = [
+  {
+    label: "Notifications",
+    node: <NavbarNotificationsDropdown tooltip={false} />,
+  },
+  { label: "Settings", node: <NavbarSettingsDialogTrigger tooltip={false} /> },
+  { label: "Account", node: <NavbarUserDropdown tooltip={false} /> },
+];
 
 interface NavbarProps {
   onDrawerToggle?: MouseEventHandler<HTMLElement>;
@@ -43,16 +53,10 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
         )}
 
         {navigationMode === "dock" ? (
-          <Dock>
-            <NavbarNotificationsDropdown />
-            <Settings />
-            <NavbarSettingsDialogTrigger />
-            <NavbarUserDropdown />
-          </Dock>
+          <Dock actions={DOCK_ACTIONS} />
         ) : (
           <div className="app-navbar__actions">
             <NavbarNotificationsDropdown />
-            <Settings />
             <NavbarSettingsDialogTrigger />
             <NavbarUserDropdown />
           </div>
