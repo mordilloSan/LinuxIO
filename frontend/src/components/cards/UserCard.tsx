@@ -250,7 +250,7 @@ const UserCard = ({
         position: "relative",
         width: isSelected ? "100%" : undefined,
         transition:
-          "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
+          "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border 0.3s ease-in-out, margin 0.3s ease-in-out",
         borderBottomWidth: 2,
         borderBottomStyle: "solid",
         borderBottomColor: isSelected

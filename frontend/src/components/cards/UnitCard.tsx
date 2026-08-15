@@ -65,7 +65,7 @@ function UnitCard<T extends UnitListItem>({
         {
           "--svc-status-color": statusColor,
           ...(isSelected ? selectedCardStyle : cardStyle),
-          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
+          transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
         } as CSSProperties
       }
     >

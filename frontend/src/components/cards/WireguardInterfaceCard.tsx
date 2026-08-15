@@ -80,7 +80,7 @@ const InterfaceCard = ({
           borderBottomColor: isSelected
             ? statusColor
             : `color-mix(in srgb, ${statusColor}, transparent 70%)`,
-          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}`,
+          transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
         }}
       >
         {/* Status chip top-right */}

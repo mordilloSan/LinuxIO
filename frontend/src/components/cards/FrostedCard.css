@@ -11,10 +11,6 @@
   box-shadow: var(--fc-lift-shadow) !important;
 }
 
-.fc-opacity-hover:hover {
-  opacity: 0.8;
-}
-
 /* UnitViews: hide bottom border on last detail row inside a card */
 .fc-svc-card .svc-rows-wrapper > .svc-detail-row:last-of-type {
   border-bottom: none;
@@ -45,10 +41,10 @@
   /* The border and margin shifts ride the same curve as the lift, so the
      accent thickens in step with the card rising. */
   transition:
-    transform var(--app-transition-duration-fast) ease-out,
-    box-shadow var(--app-transition-duration-fast) ease-out,
-    border var(--app-transition-duration-fast) ease-out,
-    margin var(--app-transition-duration-fast) ease-out;
+    transform var(--hover-lift-duration) var(--hover-lift-ease),
+    box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
+    border var(--hover-lift-duration) var(--hover-lift-ease),
+    margin var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .dc-accent-card:hover {

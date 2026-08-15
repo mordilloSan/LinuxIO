@@ -90,12 +90,28 @@ a {
   opacity: 1;
 }
 
-/* Shared hover/press response for anything card-shaped. Entering runs on the
-   dock's magnification spring so a card and a dock tile accelerate and settle
+/* Hover timing for anything card-shaped. Entering runs on the dock's
+   magnification spring, so a card and a dock tile accelerate and settle
    identically; leaving runs on a plain, shorter ease-out, because sweeping the
    cursor across a grid otherwise drags a trail of cards still easing back down.
 
-   Consumers own their own depth (shadow, border, background) and just let it
+   That asymmetry lives in these two properties, which the state rules below
+   swap, rather than in a transition declaration — being properties is what lets
+   the timing reach a card that styles itself inline, since an inline
+   `transition` outranks any rule here. A card that times something of its own
+   alongside the lift — a border, a margin — declares its own transition and
+   reuses them.
+
+   They resolve at the root so those references still work on a card that lifts
+   only conditionally (hoverLift={!isSelected}); without the class, its own
+   transition would be left referencing undefined properties, which invalidates
+   the whole declaration. */
+:root {
+  --hover-lift-duration: var(--app-transition-duration-fast);
+  --hover-lift-ease: ease-out;
+}
+
+/* Consumers own their own depth (shadow, border, background) and just let it
    ride these transitions; only the geometry is shared, tunable per card through
    the custom properties below. Large cards should drop --hover-lift-scale to 1
    — a percentage of a 220px card is a much bigger jump than of a 60px one. */
@@ -104,34 +120,33 @@ a {
   --hover-lift-scale: 1.02;
   --hover-lift-press-scale: 0.99;
   transition:
-    transform var(--app-transition-duration-fast) ease-out,
-    box-shadow var(--app-transition-duration-fast) ease-out,
-    border-color var(--app-transition-duration-fast) ease-out;
+    transform var(--hover-lift-duration) var(--hover-lift-ease),
+    box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
+    border-color var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .hover-lift:hover {
+  --hover-lift-duration: var(--app-transition-duration-lift);
+  --hover-lift-ease: var(--app-easing-spring);
   transform: translateY(var(--hover-lift-y)) scale(var(--hover-lift-scale));
-  transition-duration: var(--app-transition-duration-lift);
-  transition-timing-function: var(--app-easing-spring);
 }
 
 /* Pressing overrides the hover lift, so it has to come after it. */
 .hover-lift:active {
+  --hover-lift-duration: 100ms;
+  --hover-lift-ease: ease-out;
   transform: scale(var(--hover-lift-press-scale));
-  transition-duration: 100ms;
-  transition-timing-function: ease-out;
 }
 
 /* An icon growing inside the lifting card is what sells the depth — the dock
-   gets the same effect for free, since its icons scale with the tile. */
+   gets the same effect for free, since its icons scale with the tile. The
+   timing comes from the card, which the icon inherits. */
 .hover-lift__icon {
-  transition: transform var(--app-transition-duration-fast) ease-out;
+  transition: transform var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .hover-lift:hover .hover-lift__icon {
   transform: scale(1.06);
-  transition-duration: var(--app-transition-duration-lift);
-  transition-timing-function: var(--app-easing-spring);
 }
 
 /* Suppressed while a gesture owns the pointer (marquee selection), where cards
@@ -143,13 +158,9 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hover-lift,
-  .hover-lift__icon {
-    transition-duration: 1ms;
-  }
-
-  /* Hover feedback stays, as the consumer's shadow and border; the movement is
-     what goes away. */
+  /* Hover feedback stays, as the consumer's shadow and border — those are not
+     movement. Only the geometry goes away, which also leaves nothing for the
+     swapped durations to animate. */
   .hover-lift:hover,
   .hover-lift:active,
   .hover-lift:hover .hover-lift__icon {

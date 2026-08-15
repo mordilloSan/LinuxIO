@@ -18,7 +18,7 @@ const FolderShareCard = ({
   actions,
   protocolSummary,
 }: FolderShareCardProps) => (
-  <FrostedCard style={{ padding: 10 }}>
+  <FrostedCard hoverLift style={{ padding: 10 }}>
     {/* Header: name + actions */}
     <div
       style={{

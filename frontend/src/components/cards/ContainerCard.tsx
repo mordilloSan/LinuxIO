@@ -747,7 +747,6 @@ const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
       minWidth: 0,
       position: "relative",
       border: "none",
-      transition: "transform 0.2s, box-shadow 0.2s",
     }}
   >
     <ContainerCardLive {...props} selected={selected} />

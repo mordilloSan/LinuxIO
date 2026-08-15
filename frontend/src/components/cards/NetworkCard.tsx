@@ -18,7 +18,7 @@ export interface NetworkCardProps {
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
-  <FrostedCard style={{ padding: 8 }}>
+  <FrostedCard hoverLift style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div
       style={{

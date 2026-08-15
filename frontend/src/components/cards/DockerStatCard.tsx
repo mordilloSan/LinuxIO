@@ -18,7 +18,7 @@ const DockerStatCard = ({
   onClick,
 }: DockerStatCardProps) => (
   <FrostedCard
-    className="fc-opacity-hover"
+    hoverLift
     style={{
       padding: 0,
     }}
