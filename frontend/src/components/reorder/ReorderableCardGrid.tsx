@@ -4,6 +4,7 @@ import SortableCard from "@/components/cards/SortableCard";
 import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
+import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 interface ReorderableCardGridProps<TItem> {
   getId: (item: TItem) => string;
@@ -30,7 +31,7 @@ function ReorderableCardGrid<TItem>({
   items,
   renderItem,
   size,
-  spacing = 2,
+  spacing = DASHBOARD_CARD_SPACING,
   surface,
 }: ReorderableCardGridProps<TItem>) {
   const rendered = items ?? surface.items;

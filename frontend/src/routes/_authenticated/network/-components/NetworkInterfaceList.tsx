@@ -21,6 +21,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
 import {
+  DASHBOARD_CARD_SPACING,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
@@ -249,7 +250,7 @@ const NetworkInterfaceList = () => {
   return (
     <div>
       <ReorderableArea surface={surface}>
-        <AppGrid container spacing={4}>
+        <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
           <AnimatePresence>
             {surface.items.map((iface) =>
               expanded && expanded !== iface.name ? null : (

@@ -44,6 +44,11 @@ export const GAP_MD = 12;
 export const GAP_LG = 16;
 export const GAP_XL = 24;
 
+// Canonical dashboard card spacing is expressed in AppGrid units. Custom CSS
+// and virtualized grids use the derived pixel gap.
+export const DASHBOARD_CARD_SPACING = 4;
+export const DASHBOARD_CARD_GAP = DASHBOARD_CARD_SPACING * GAP_XS;
+
 // Icon sizes
 export const iconSize = {
   sm: 18,

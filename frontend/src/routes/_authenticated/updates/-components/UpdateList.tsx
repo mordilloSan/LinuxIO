@@ -101,7 +101,6 @@ const UpdateList = ({
           />
         )}
         size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-        spacing={4}
         surface={surface}
       />
     </div>

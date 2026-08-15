@@ -29,7 +29,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { GAP_SM } from "@/theme/constants";
+import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 const STORAGE_TOAST_META = {
@@ -632,14 +632,14 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
       <div
         style={{
           display: "grid",
-          gap: GAP_SM,
+          gap: DASHBOARD_CARD_GAP,
         }}
       >
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: GAP_SM,
+            gap: DASHBOARD_CARD_GAP,
           }}
         >
           <LVMMetricCard

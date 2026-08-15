@@ -21,6 +21,7 @@ import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
+import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -455,7 +456,11 @@ const DockerDashboard = ({
       />
       <div id="docker-overview-panel">
         <AppCollapse in={sections.overview}>
-          <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
+          <AppGrid
+            container
+            spacing={DASHBOARD_CARD_SPACING}
+            style={{ marginBottom: 8 }}
+          >
             {(
               [
                 {
@@ -533,7 +538,11 @@ const DockerDashboard = ({
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <div id="docker-daemon-panel">
         <AppCollapse in={sections.daemon}>
-          <AppGrid container spacing={2} style={{ marginBottom: 8 }}>
+          <AppGrid
+            container
+            spacing={DASHBOARD_CARD_SPACING}
+            style={{ marginBottom: 8 }}
+          >
             {dockerInfo && (
               <>
                 {/* ── Resource Usage ────────────────────────────────────────────── */}
@@ -738,7 +747,7 @@ const DockerDashboard = ({
       />
       <div id="docker-resources-panel">
         <AppCollapse in={sections.resources}>
-          <AppGrid container spacing={2}>
+          <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
             {/* Containers table */}
             <AppGrid
               size={{

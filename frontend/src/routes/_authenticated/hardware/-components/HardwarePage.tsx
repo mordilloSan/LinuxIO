@@ -17,7 +17,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { cardHeight } from "@/theme/constants";
+import { cardHeight, DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import {
   BIOSInfoCard,
@@ -293,7 +293,6 @@ const HardwarePage = () => {
               </ErrorBoundary>
             )}
             size={{ xs: 12, md: 6, xl: 3 }}
-            spacing={4}
             surface={systemInfoSurface}
           />
         </AppCollapse>
@@ -312,7 +311,7 @@ const HardwarePage = () => {
             <AppGrid
               alignItems="stretch"
               container
-              spacing={4}
+              spacing={DASHBOARD_CARD_SPACING}
               style={{ marginBottom: 16 }}
             >
               <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>

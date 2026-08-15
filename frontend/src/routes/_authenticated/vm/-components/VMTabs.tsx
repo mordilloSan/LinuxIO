@@ -9,6 +9,7 @@ import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { type AppTheme, useAppTheme } from "@/theme";
+import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import PreflightSummary from "./PreflightSummary";
 import {
@@ -29,7 +30,7 @@ const tabPanelStyle = (theme: AppTheme): CSSProperties => ({
 
 const cardGridStyle = (theme: AppTheme): CSSProperties => ({
   display: "grid",
-  gap: theme.spacing(3.5),
+  gap: theme.spacing(DASHBOARD_CARD_SPACING),
   gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
 });
 

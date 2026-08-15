@@ -32,6 +32,7 @@ import { getServiceStatusColor } from "@/constants/statusColors";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
+  DASHBOARD_CARD_GAP,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
@@ -46,7 +47,6 @@ export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 // In layout mode a card press belongs to the drag, not to opening the unit.
 const noopExpand = () => {};
 
-const UNIT_CARD_GRID_GAP = 12;
 const UNIT_CARD_MIN_WIDTH = 360;
 const UNIT_CARD_ESTIMATE_HEIGHT = 150;
 const SERVICES_TOAST_META = {
@@ -613,7 +613,7 @@ export function UnitCardsView<T extends UnitListItem>({
           emptyMessage={emptyMessage}
           estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
           fillAvailable
-          gap={UNIT_CARD_GRID_GAP}
+          gap={DASHBOARD_CARD_GAP}
           getItemKey={(item) => item.name}
           items={items}
           minItemWidth={UNIT_CARD_MIN_WIDTH}

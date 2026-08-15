@@ -24,6 +24,7 @@ import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskReco
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import {
   DriveInfoTab,
@@ -519,7 +520,7 @@ const DiskOverview = () => {
           </AppTypography>
           <AppGrid
             container
-            spacing={3}
+            spacing={DASHBOARD_CARD_SPACING}
             style={{
               marginBottom: 16,
             }}
@@ -592,7 +593,7 @@ const DiskOverview = () => {
           >
             Filesystems
           </AppTypography>
-          <AppGrid container spacing={3}>
+          <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
             <AnimatePresence>
               {relevantFS.length === 0 ? (
                 <AppGrid
