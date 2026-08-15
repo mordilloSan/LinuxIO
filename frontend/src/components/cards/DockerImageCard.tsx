@@ -57,7 +57,8 @@ const DockerImageCard = ({
           {
             padding: 8,
             "--docker-image-card-accent": theme.palette.primary.main,
-            "--docker-image-card-selected-shadow": getFrostedCardLiftShadow(theme),
+            "--docker-image-card-selected-shadow":
+              getFrostedCardLiftShadow(theme),
           } as CSSProperties
         }
       >
@@ -115,79 +116,79 @@ const DockerImageCard = ({
           </div>
         </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: theme.spacing(0.5),
-          marginBottom: theme.spacing(1.5),
-        }}
-      >
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          Size: {image.size} MB
+        <div
+          style={{
+            display: "grid",
+            gap: theme.spacing(0.5),
+            marginBottom: theme.spacing(1.5),
+          }}
+        >
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            Size: {image.size} MB
+          </AppTypography>
+          <AppTypography
+            style={{
+              fontFamily: "var(--app-font-mono)",
+              ...responsiveTextStyles,
+            }}
+            variant="body2"
+          >
+            ID: {image.shortId}
+          </AppTypography>
+          <AppTypography
+            style={{ fontSize: "0.82rem", ...responsiveTextStyles }}
+            variant="body2"
+          >
+            Created: {image.created}
+          </AppTypography>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: theme.spacing(1),
+            marginBottom: theme.spacing(1.5),
+          }}
+        >
+          <Chip
+            color={image.containers > 0 ? "success" : "default"}
+            label={`Used by ${image.containers}`}
+            size="small"
+            variant="soft"
+          />
+          {image.updateAvailable && (
+            <Chip
+              color="warning"
+              label="Update available"
+              size="small"
+              variant="soft"
+            />
+          )}
+          {image.updateCheckState === "uncheckable" && (
+            <Chip
+              color="info"
+              label="Cannot check"
+              size="small"
+              title={image.updateCheckReason}
+              variant="soft"
+            />
+          )}
+        </div>
+
+        <AppTypography color="text.secondary" variant="caption">
+          Full ID
         </AppTypography>
         <AppTypography
           style={{
             fontFamily: "var(--app-font-mono)",
-            ...responsiveTextStyles,
+            fontSize: "0.75rem",
+            marginBottom: 4,
+            ...longTextStyles,
           }}
           variant="body2"
         >
-          ID: {image.shortId}
+          {image.id}
         </AppTypography>
-        <AppTypography
-          style={{ fontSize: "0.82rem", ...responsiveTextStyles }}
-          variant="body2"
-        >
-          Created: {image.created}
-        </AppTypography>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: theme.spacing(1),
-          marginBottom: theme.spacing(1.5),
-        }}
-      >
-        <Chip
-          color={image.containers > 0 ? "success" : "default"}
-          label={`Used by ${image.containers}`}
-          size="small"
-          variant="soft"
-        />
-        {image.updateAvailable && (
-          <Chip
-            color="warning"
-            label="Update available"
-            size="small"
-            variant="soft"
-          />
-        )}
-        {image.updateCheckState === "uncheckable" && (
-          <Chip
-            color="info"
-            label="Cannot check"
-            size="small"
-            title={image.updateCheckReason}
-            variant="soft"
-          />
-        )}
-      </div>
-
-      <AppTypography color="text.secondary" variant="caption">
-        Full ID
-      </AppTypography>
-      <AppTypography
-        style={{
-          fontFamily: "var(--app-font-mono)",
-          fontSize: "0.75rem",
-          marginBottom: 4,
-          ...longTextStyles,
-        }}
-        variant="body2"
-      >
-        {image.id}
-      </AppTypography>
       </FrostedCard>
     </AppButton>
   );

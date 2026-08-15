@@ -31,6 +31,14 @@ const UpdateActions = ({
   onCancel,
 }: UpdateActionsProps) => {
   const theme = useAppTheme();
+
+  // Both branches below are conditional, so an idle section rendered an empty
+  // box whose bottom margin still pushed the package list down — the tab strip
+  // owns that gap now (tab-container.css). Bail out instead of painting it.
+  if (!error && !isUpdating) {
+    return null;
+  }
+
   // Build the status text: "Status: packageName" or just "Status" or "Preparing..."
   const getStatusText = () => {
     if (!currentPackage) {

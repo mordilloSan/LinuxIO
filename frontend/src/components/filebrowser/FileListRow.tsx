@@ -207,8 +207,7 @@ const FileListRow = memo<FileListRowProps>(
     // colour over it keeps the selected and hidden variants distinguishable
     // while hovered.
     const hoverBg = useMemo(
-      () =>
-        `color-mix(in srgb, ${baseBg}, var(--app-palette-text-primary) 7%)`,
+      () => `color-mix(in srgb, ${baseBg}, var(--app-palette-text-primary) 7%)`,
       [baseBg],
     );
 

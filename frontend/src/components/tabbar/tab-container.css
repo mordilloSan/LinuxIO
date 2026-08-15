@@ -1,4 +1,19 @@
 .tab-container {
+  /*
+    The gap between the tab strip and route content, split in two parts. The
+    strip is sticky with an opaque background, so its padding is not empty
+    space — it is a curtain that content scrolls under, painted OVER the cards
+    (z-index below). A card that hover-lifts into it is occluded, not clipped,
+    and reads as cropped along its top edge.
+
+    So only the curtain part belongs to the strip. The headroom part sits below
+    it, in the panels, where a lifted card has somewhere to rise into. Keep the
+    headroom >= the tallest card lift (--hover-lift-y, up to 4px on
+    .fc-hover-lift, plus ~1% of card height where --hover-lift-scale is 1.02).
+    Total visible gap is the sum of the two.
+  */
+  --tab-strip-curtain: 4px;
+  --tab-strip-headroom: 6px;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -12,7 +27,7 @@
   top: 0;
   z-index: 10;
   margin-bottom: 0;
-  padding-bottom: 8px;
+  padding-bottom: var(--tab-strip-curtain);
   background: var(--app-palette-background-default);
 }
 
@@ -21,4 +36,7 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  /* Lift headroom, not decoration — see .tab-container. Routes must not add
+     their own top offset on top of it. */
+  padding-top: var(--tab-strip-headroom);
 }
