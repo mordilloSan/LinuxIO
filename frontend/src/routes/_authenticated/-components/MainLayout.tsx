@@ -106,11 +106,25 @@ const MainLayout = () => {
               overflow: "auto",
               background: theme.palette.background.default,
               position: "relative",
-              ...contentSpacing,
             }}
           >
-            <Outlet />
-            <BootstrapLoaderReady />
+            {/*
+             * Keep page spacing inside the scrollport. A sticky routed-tab
+             * header is then pinned to the scrollport edge instead of the
+             * scrollport's padded content edge, so page content cannot appear
+             * in a gap above the header while it is stuck.
+             */}
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                minHeight: "100%",
+                ...contentSpacing,
+              }}
+            >
+              <Outlet />
+              <BootstrapLoaderReady />
+            </div>
           </div>
         </div>
       </div>
