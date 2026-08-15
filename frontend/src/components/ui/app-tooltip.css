@@ -37,10 +37,10 @@
   width: max-content;
   max-width: min(300px, calc(100vw - 16px));
   padding: 3px 10px;
-  border-radius: 8px;
+  border-radius: var(--app-floating-surface-radius);
   background-color: var(--app-palette-background-paper);
   border: 1px solid var(--app-palette-divider);
-  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--app-floating-surface-shadow);
   color: var(--app-palette-text-primary);
   font-family: inherit;
   font-size: 0.75rem;

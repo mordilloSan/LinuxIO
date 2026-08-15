@@ -33,12 +33,6 @@
   z-index: 1200;
   width: min(360px, calc(100vw - 24px));
   overflow: hidden;
-  border: 1px solid var(--app-palette-divider);
-  border-radius: 16px;
-  background: var(--app-palette-background-paper);
-  color: var(--app-palette-text-primary);
-  box-shadow: var(--app-panel-shadow);
-  backdrop-filter: blur(12px);
 }
 
 .app-navbar-account-menu {

@@ -10,7 +10,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { COLOR_TOKENS } from "@/theme/colors";
-import { iconSize, shadowSm } from "@/theme/constants";
+import { iconSize } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 function NavbarColorCustomizer() {
@@ -44,8 +44,6 @@ function NavbarColorCustomizer() {
         open={open}
         paperStyle={{
           padding: theme.spacing(2),
-          background: theme.palette.background.paper,
-          boxShadow: shadowSm,
         }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >

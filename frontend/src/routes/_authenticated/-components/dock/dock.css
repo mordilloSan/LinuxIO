@@ -120,14 +120,14 @@
   display: block;
   transform: translate(-50%, -4px);
   padding: 3px 10px;
-  border-radius: 8px;
+  border-radius: var(--app-floating-surface-radius);
   font-size: 0.75rem;
   line-height: 1.5;
   white-space: nowrap;
   color: var(--app-palette-text-primary);
   background: var(--app-palette-background-paper);
   border: 1px solid var(--app-palette-divider);
-  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--app-floating-surface-shadow);
   opacity: 0;
   pointer-events: none;
   transition:

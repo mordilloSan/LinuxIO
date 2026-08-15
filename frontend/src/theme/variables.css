@@ -4,6 +4,11 @@
     "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol";
+  /* Shared chrome for lightweight floating surfaces. Keep dock labels,
+     tooltips, and popovers visually aligned without imposing tooltip-sized
+     typography or padding on richer panel content. */
+  --app-floating-surface-radius: 8px;
+  --app-floating-surface-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
   /* Kept in sync with FONT_FAMILY_MONO in theme/index.ts — see font-loading
      tests. Machine values (paths, addresses, port maps) use this; prose does
      not. */
