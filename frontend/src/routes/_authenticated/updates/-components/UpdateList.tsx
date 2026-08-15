@@ -82,6 +82,7 @@ const UpdateList = ({
   return (
     <div ref={containerRef} style={{ paddingBottom: 16 }}>
       <ReorderableCardGrid
+        columns={{ xs: 1, sm: 2, md: 3, lg: 4, xl: 5 }}
         getId={getUpdateId}
         renderItem={(update) => (
           <UpdateCard
@@ -100,7 +101,7 @@ const UpdateList = ({
             update={update}
           />
         )}
-        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+        size={1}
         surface={surface}
       />
     </div>

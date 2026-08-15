@@ -7,6 +7,8 @@ import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 interface ReorderableCardGridProps<TItem> {
+  /** Equal-width columns at each breakpoint. When present, each card spans one column. */
+  columns?: GridSize;
   getId: (item: TItem) => string;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
@@ -27,6 +29,7 @@ interface ReorderableCardGridProps<TItem> {
  * this component.
  */
 function ReorderableCardGrid<TItem>({
+  columns,
   getId,
   items,
   renderItem,
@@ -38,11 +41,11 @@ function ReorderableCardGrid<TItem>({
 
   return (
     <ReorderableArea surface={surface}>
-      <AppGrid container spacing={spacing}>
+      <AppGrid columns={columns} container spacing={spacing}>
         {rendered.map((item, index) => {
           const id = getId(item);
           return (
-            <AppGrid key={id} size={size}>
+            <AppGrid key={id} size={columns ? 1 : size}>
               <SortableCard
                 editMode={surface.editMode}
                 id={id}

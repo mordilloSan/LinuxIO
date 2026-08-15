@@ -1,7 +1,31 @@
 /* ── AppGrid ─────────────────────────────────────────── */
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: repeat(var(--_gcols-xs, 12), 1fr);
+}
+
+@media (min-width: 600px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-sm, 12), 1fr);
+  }
+}
+
+@media (min-width: 900px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-md, 12), 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-lg, 12), 1fr);
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-xl, 12), 1fr);
+  }
 }
 
 /* ── items ─────────────────────────────────────── */

@@ -47,4 +47,27 @@ describe("ReorderableCardGrid", () => {
       gap: `${DASHBOARD_CARD_GAP}px`,
     });
   });
+
+  it("supports equal-width responsive columns", () => {
+    const { container } = render(
+      <ReorderableCardGrid
+        columns={{ xs: 1, md: 3, xl: 5 }}
+        getId={(item) => item.id}
+        renderItem={(item) => item.id}
+        size={12}
+        surface={surface}
+      />,
+    );
+
+    expect(container.querySelector(".app-grid")).toHaveStyle({
+      "--_gcols-xs": "1",
+      "--_gcols-sm": "1",
+      "--_gcols-md": "3",
+      "--_gcols-lg": "3",
+      "--_gcols-xl": "5",
+    });
+    expect(container.querySelector(".app-grid-item")).toHaveStyle({
+      "--_gc-xs": "1",
+    });
+  });
 });
