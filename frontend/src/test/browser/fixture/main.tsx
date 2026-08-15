@@ -17,6 +17,7 @@ import "@/theme/variables.css";
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
+const ScrollingTabsPage = lazy(() => import("./routes/ScrollingTabsPage"));
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -69,6 +70,16 @@ const accessibilityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "accessibility",
 });
+const growingTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="grow" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/grow",
+});
+const fillingTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="fill" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/fill",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -95,6 +106,8 @@ const failedRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
+  growingTabsRoute,
+  fillingTabsRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

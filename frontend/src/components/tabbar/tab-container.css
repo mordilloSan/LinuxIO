@@ -19,12 +19,37 @@
   */
   --tab-strip-curtain: 4px;
   --tab-strip-headroom: 6px;
+
+  /*
+    The page's own top padding (MainLayout's --page-inset-block-start), pulled
+    back out here and handed to the strip as its top padding. The strip is stuck
+    to the scrollport's top edge, so without this the inset is above the strip
+    and scrolls away with the page: the gap under the header collapses over the
+    first few scrolled pixels. Carried by the strip, it is part of the curtain
+    instead — the same gap parked or stuck, with content passing under it.
+  */
+  --tab-strip-inset: var(--page-inset-block-start, 0px);
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
   min-width: 0;
-  min-height: 0;
+
+  /*
+    A sticky box cannot leave its containing block, so the strip stays put only
+    for as long as this element is on screen. At `height: 100%` that is one
+    scrollport, and a page taller than that (any card grid — those are not
+    virtualized) drags the strip off the top on the way down. Growing to the
+    content keeps the strip pinned for the whole scroll.
+
+    Panels claim the remaining space with `flex: 1 1 auto` against a `flex-basis:
+    0` child (.app-vdt--fill, AppVirtualGrid), so a self-scrolling panel still
+    contributes no height of its own and the floor below is what sizes it. The
+    inset is added back so that floor still reaches the padding edge the page
+    laid out — the negative margin above must not shorten the panel.
+  */
+  height: auto;
+  min-height: calc(100% + var(--tab-strip-inset));
+  margin-top: calc(-1 * var(--tab-strip-inset));
 }
 
 .tab-selector.tab-container__selector {
@@ -32,6 +57,7 @@
   top: 0;
   z-index: 10;
   margin-bottom: 0;
+  padding-top: var(--tab-strip-inset);
   padding-bottom: var(--tab-strip-curtain);
   background: var(--app-palette-background-default);
 }

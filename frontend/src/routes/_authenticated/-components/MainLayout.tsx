@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import "@/icons/icons";
@@ -26,6 +27,18 @@ const MainLayout = () => {
 
   useCloseMobileSidebarOnNavigate();
 
+  /*
+   * The gap between the header and the first thing on the page. A routed tab
+   * strip reclaims it and carries it as its own top padding, so the strip sits
+   * the same distance below the header whether it is parked or stuck — see
+   * --page-inset-block-start in components/tabbar/tab-container.css. Routes
+   * without that strip just get the padding.
+   */
+  const pageInsetBlockStart =
+    location.pathname === "/" || location.pathname.includes("/filebrowser")
+      ? theme.spacing(0)
+      : theme.spacing(5);
+
   const contentSpacing =
     location.pathname === "/"
       ? {
@@ -39,7 +52,7 @@ const MainLayout = () => {
         : {
             paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
             paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-            paddingTop: theme.spacing(5),
+            paddingTop: pageInsetBlockStart,
             paddingBottom: theme.spacing(5),
           };
 
@@ -115,12 +128,15 @@ const MainLayout = () => {
              * in a gap above the header while it is stuck.
              */}
             <div
-              style={{
-                width: "100%",
-                height: "100%",
-                minHeight: "100%",
-                ...contentSpacing,
-              }}
+              style={
+                {
+                  width: "100%",
+                  height: "100%",
+                  minHeight: "100%",
+                  ...contentSpacing,
+                  "--page-inset-block-start": pageInsetBlockStart,
+                } as CSSProperties
+              }
             >
               <Outlet />
               <BootstrapLoaderReady />
