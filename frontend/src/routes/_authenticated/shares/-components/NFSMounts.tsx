@@ -911,6 +911,7 @@ const NFSMountCardGrid = ({
 
   return (
     <ReorderableCardGrid
+      fillAvailable={false}
       getId={identity}
       renderItem={(mountpoint) => (
         <NFSMountCard actions={renderActions} mountpoint={mountpoint} />

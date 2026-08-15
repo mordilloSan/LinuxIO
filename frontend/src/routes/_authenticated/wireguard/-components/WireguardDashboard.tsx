@@ -191,6 +191,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
         <>
           <AnimatePresence>
             <ReorderableCardGrid
+              fillAvailable={false}
               getId={getWireguardInterfaceId}
               renderItem={(iface) => (
                 <WireguardInterfaceCard

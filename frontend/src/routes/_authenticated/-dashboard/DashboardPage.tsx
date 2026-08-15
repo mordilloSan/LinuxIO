@@ -197,6 +197,7 @@ const DashboardPage = () => {
       </AppPopover>
 
       <ReorderableCardGrid
+        fillAvailable={false}
         getId={getCardId}
         renderItem={({ label, component: CardComponent, skeletonLayout }) => (
           <ErrorBoundary>

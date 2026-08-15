@@ -105,6 +105,7 @@ function SensorReadings() {
         />
       </div>
       <ReorderableCardGrid
+        fillAvailable={false}
         getId={getSensorGroupId}
         renderItem={({ adapter, sourceIndex, visibleReadingCount }) => (
           <SensorGroupCard
@@ -284,6 +285,7 @@ const HardwarePage = () => {
       <div id="hardware-system-info-panel">
         <AppCollapse in={sections.systemInfo} unmountOnExit>
           <ReorderableCardGrid
+            fillAvailable={false}
             getId={getSystemInfoCardId}
             renderItem={({ component: CardComponent }) => (
               <ErrorBoundary>

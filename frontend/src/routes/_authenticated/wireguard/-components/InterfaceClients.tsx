@@ -152,6 +152,7 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
         </AppGrid>
       ) : (
         <ReorderableCardGrid
+          fillAvailable={false}
           getId={getPeerId}
           renderItem={(peer) => (
             <WireguardPeerCard

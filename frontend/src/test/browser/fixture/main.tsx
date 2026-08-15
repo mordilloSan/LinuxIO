@@ -80,6 +80,11 @@ const fillingTabsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "scrolling-tabs/fill",
 });
+const cardTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="cards" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/cards",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -108,6 +113,7 @@ const routeTree = rootRoute.addChildren([
   accessibilityRoute,
   growingTabsRoute,
   fillingTabsRoute,
+  cardTabsRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

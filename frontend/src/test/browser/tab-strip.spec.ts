@@ -72,9 +72,7 @@ test.describe("routed tab strip", () => {
     }
   });
 
-  test("keeps a self-scrolling panel filling the scrollport", async ({
-    page,
-  }) => {
+  test("keeps a virtualized panel filling the scrollport", async ({ page }) => {
     await page.goto("/scrolling-tabs/fill");
     await expect(page.getByRole("tab", { name: "Groups" })).toBeVisible();
 
@@ -92,5 +90,46 @@ test.describe("routed tab strip", () => {
     });
     expect(grid.height).toBeGreaterThan(100);
     expect(grid.scrollable).toBeGreaterThan(0);
+  });
+
+  test("keeps a filling card grid scrolling inside the panel", async ({
+    page,
+  }) => {
+    await page.goto("/scrolling-tabs/cards");
+    await expect(page.getByRole("tab", { name: "Groups" })).toBeVisible();
+    await expect(page.getByText("item-0")).toBeVisible();
+
+    // Same contract as the virtualized grid: cards move, page does not.
+    expect(await maxScroll(page)).toBe(0);
+
+    const grid = await page.evaluate(() => {
+      const cards = document.querySelector<HTMLElement>(".app-grid")!;
+      const scroller = cards.parentElement!;
+      const style = getComputedStyle(scroller);
+      return {
+        overflow: style.overflowY,
+        scrollable: scroller.scrollHeight - scroller.clientHeight,
+        // The reserved lift headroom and shadow gutter are handed straight
+        // back, so the cards sit exactly where an unfilled grid puts them.
+        insetTop:
+          Math.round(cards.getBoundingClientRect().top) -
+          Math.round(scroller.getBoundingClientRect().top),
+        insetLeft:
+          Math.round(cards.getBoundingClientRect().left) -
+          Math.round(scroller.getBoundingClientRect().left),
+        marginTop: style.marginTop,
+        marginLeft: style.marginLeft,
+        paddingTop: style.paddingTop,
+        paddingLeft: style.paddingLeft,
+      };
+    });
+
+    expect(grid.overflow).toBe("auto");
+    expect(grid.scrollable).toBeGreaterThan(0);
+    // Reserved inside, given back outside: the pair must cancel exactly.
+    expect(grid.paddingTop).toBe(`${grid.insetTop}px`);
+    expect(grid.marginTop).toBe(`-${grid.insetTop}px`);
+    expect(grid.paddingLeft).toBe(`${grid.insetLeft}px`);
+    expect(grid.marginLeft).toBe(`-${grid.insetLeft}px`);
   });
 });

@@ -36,6 +36,7 @@ describe("ReorderableCardGrid", () => {
   it("uses the global dashboard card gap by default", () => {
     const { container } = render(
       <ReorderableCardGrid
+        fillAvailable={false}
         getId={(item) => item.id}
         renderItem={(item) => item.id}
         size={12}
@@ -52,6 +53,7 @@ describe("ReorderableCardGrid", () => {
     const { container } = render(
       <ReorderableCardGrid
         columns={{ xs: 1, md: 3, xl: 5 }}
+        fillAvailable={false}
         getId={(item) => item.id}
         renderItem={(item) => item.id}
         size={12}
