@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 
-import "./FileCard.css";
+import "@/components/filebrowser/file-listing.css";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -338,13 +338,7 @@ const FileCard = memo<FileCardProps>(
           >
             {effectiveSizeLoading &&
             (effectiveSize === undefined || effectiveSize === 0) ? (
-              <span
-                style={{
-                  animation: "sizeGlow 2.5s infinite",
-                }}
-              >
-                —
-              </span>
+              <span className="file-size-pending">—</span>
             ) : effectiveSize !== undefined && effectiveSize !== 0 ? (
               formatFileSize(effectiveSize, 1, "")
             ) : (

@@ -72,7 +72,12 @@
   border-radius: 0 999px 999px 0;
   color: var(--app-sidebar-color);
   text-decoration: none;
-  transition: all 300ms ease;
+  /* Named rather than `all`: the only things that change here are the surface
+     and the label, and the active state's gradient is a background-image, which
+     never transitioned regardless. */
+  transition:
+    background-color var(--hover-lift-duration) var(--hover-lift-ease),
+    color var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .app-sidebar-link:hover {

@@ -21,24 +21,34 @@
 }
 
 .app-table-row {
+  --app-table-row-bg: transparent;
   display: table-row;
   vertical-align: middle;
   outline: 0;
   color: inherit;
-  transition: background-color var(--app-transition-duration-fast)
-    var(--app-easing-standard);
+  background-color: var(--app-table-row-bg);
+  transition: background-color var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .app-table-row--interactive {
   cursor: pointer;
 }
 
+/* Brightening the row's own surface, rather than painting one hover colour over
+   it, is what keeps a selected row visibly selected while hovered. Same
+   derivation as the filebrowser list rows, so both read as one control. A row
+   is too dense to lift or scale — and transforms do not apply to table-row
+   elements anyway — so the surface is the whole response. */
 .app-table-row--interactive:hover {
-  background-color: var(--uct-hover-bg);
+  background-color: color-mix(
+    in srgb,
+    var(--app-table-row-bg),
+    var(--app-palette-text-primary) 7%
+  );
 }
 
 .app-table-row--selected {
-  background-color: var(--app-palette-action-selected);
+  --app-table-row-bg: var(--app-palette-action-selected);
 }
 
 /* ── Sticky header ─────────────────────────── */

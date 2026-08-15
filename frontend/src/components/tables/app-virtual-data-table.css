@@ -33,35 +33,44 @@
 }
 
 .app-vdt__row {
+  --app-vdt-row-bg: transparent;
   display: grid;
   grid-template-columns: var(--app-vdt-grid);
   min-width: 100%;
   color: inherit;
+  background-color: var(--app-vdt-row-bg);
 }
 
 .app-vdt__row--head {
-  background-color: var(--app-vdt-head-bg);
+  --app-vdt-row-bg: var(--app-vdt-head-bg);
 }
 
 .app-vdt__row--body {
-  transition: background-color var(--app-transition-duration-fast)
-    var(--app-easing-standard);
+  transition: background-color var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
 .app-vdt__row--alt {
-  background-color: var(--app-vdt-alt-bg);
+  --app-vdt-row-bg: var(--app-vdt-alt-bg);
 }
 
 .app-vdt__row--selected {
-  background-color: var(--app-vdt-selected-bg);
+  --app-vdt-row-bg: var(--app-vdt-selected-bg);
 }
 
 .app-vdt__row--interactive {
   cursor: pointer;
 }
 
+/* Brightening the row's own surface keeps zebra striping and selection legible
+   underneath the hover, and keeps hovering from reading as selecting — a tinted
+   hover is hard to tell from the primary-tinted selected state. Same derivation
+   as .app-table-row and .file-row, so every row in the app responds alike. */
 .app-vdt__row--interactive:hover {
-  background-color: var(--app-vdt-hover-bg);
+  background-color: color-mix(
+    in srgb,
+    var(--app-vdt-row-bg),
+    var(--app-palette-text-primary) 7%
+  );
 }
 
 .app-vdt__virtual-row {

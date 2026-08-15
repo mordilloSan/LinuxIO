@@ -815,7 +815,6 @@ function AppVirtualDataTable<TData extends RowData>({
   const altBg = isEmbedded
     ? "transparent"
     : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
-  const hoverBg = alpha(theme.palette.primary.main, 0.08);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
   const visibleColumns = table.getVisibleLeafColumns();
@@ -859,7 +858,6 @@ function AppVirtualDataTable<TData extends RowData>({
           "--app-vdt-alt-bg": altBg,
           "--app-vdt-grid": gridTemplate,
           "--app-vdt-head-bg": headRowBg,
-          "--app-vdt-hover-bg": hoverBg,
           "--app-vdt-selected-bg": selectedBg,
           "--reorder-hold-color": theme.palette.primary.main,
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,

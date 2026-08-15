@@ -1,0 +1,59 @@
+/* Styles shared by the directory listing's two renderers, FileCard (grid) and
+   FileListRow (list). Both are reachable from either view mode, so anything
+   either one animates belongs here rather than in one renderer's stylesheet. */
+
+@keyframes sizeGlow {
+  0% {
+    opacity: 0.5;
+  }
+  25% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0.5;
+  }
+}
+
+/* A directory whose size is still being walked. */
+.file-size-pending {
+  animation: sizeGlow 2.5s infinite;
+}
+
+/* ── grid card ─────────────────────────────────────── */
+
+/* Depth to go with the shared lift: the card reads as rising off the listing
+   rather than just shifting up. Matches the drop shadow under a dock tile. */
+.file-card:hover:not(.hover-lift--disabled) {
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.55);
+}
+
+.file-card:active:not(.hover-lift--disabled) {
+  box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+/* ── list row ──────────────────────────────────────── */
+
+/* Rows are full-width and packed against their neighbours, so they respond in
+   place: the surface brightens and the icon grows, but nothing moves. A lift
+   here would either collide with the row above or, scaled, shimmer the text.
+   The background arrives as a property because the row computes it per state
+   (selected, hidden, plain) and CSS owns only the hovered variant. */
+.file-row {
+  --hover-lift-y: 0px;
+  --hover-lift-scale: 1;
+  --hover-lift-press-scale: 0.995;
+  background-color: var(--file-row-bg);
+  transition:
+    background-color var(--hover-lift-duration) var(--hover-lift-ease),
+    transform var(--hover-lift-duration) var(--hover-lift-ease);
+}
+
+.file-row:hover:not(.hover-lift--disabled) {
+  background-color: var(--file-row-bg-hover);
+}

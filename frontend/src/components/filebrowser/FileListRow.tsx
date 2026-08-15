@@ -5,9 +5,12 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+
+import "./file-listing.css";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -15,8 +18,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-
-// Styles are injected by FileCard.tsx (shared animation)
 
 export interface FileListRowProps {
   borderRadius?: number | string;
@@ -72,6 +73,7 @@ const FileListRow = memo<FileListRowProps>(
     onConfirmRename,
     onCancelRename,
     borderRadius,
+    disableHover = false,
   }) => {
     const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
@@ -201,25 +203,38 @@ const FileListRow = memo<FileListRowProps>(
       return theme.fileBrowser.surface;
     }, [hidden, selected, theme.fileBrowser.surface]);
 
+    // Brightening the row's own surface rather than painting a fixed hover
+    // colour over it keeps the selected and hidden variants distinguishable
+    // while hovered.
+    const hoverBg = useMemo(
+      () =>
+        `color-mix(in srgb, ${baseBg}, var(--app-palette-text-primary) 7%)`,
+      [baseBg],
+    );
+
     const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
 
     return (
       <div
+        className={`file-row hover-lift${disableHover ? " hover-lift--disabled" : ""}`}
         data-file-card="true"
         data-file-path={path}
         onClick={handleClick}
         onContextMenu={onContextMenu}
         onDoubleClick={handleDoubleClick}
-        style={{
-          display: "grid",
-          gridTemplateColumns: COLUMN_TEMPLATE,
-          alignItems: "center",
-          backgroundColor: baseBg,
-          cursor: "pointer",
-          borderRadius: resolvedBorderRadius,
-          userSelect: "none",
-          opacity: isCut ? 0.5 : 1,
-        }}
+        style={
+          {
+            display: "grid",
+            gridTemplateColumns: COLUMN_TEMPLATE,
+            alignItems: "center",
+            "--file-row-bg": baseBg,
+            "--file-row-bg-hover": hoverBg,
+            cursor: "pointer",
+            borderRadius: resolvedBorderRadius,
+            userSelect: "none",
+            opacity: isCut ? 0.5 : 1,
+          } as CSSProperties
+        }
       >
         {/* Name and Icon */}
         <div
@@ -238,6 +253,7 @@ const FileListRow = memo<FileListRowProps>(
         >
           <div style={{ flexShrink: 0 }}>
             <FileIcon
+              className="hover-lift__icon"
               filename={name}
               hidden={hidden}
               isDirectory={isDirectory}
@@ -363,13 +379,7 @@ const FileListRow = memo<FileListRowProps>(
           title={effectiveSizeError?.message}
         >
           {effectiveSizeLoading ? (
-            <span
-              style={{
-                animation: "sizeGlow 2.5s infinite",
-              }}
-            >
-              —
-            </span>
+            <span className="file-size-pending">—</span>
           ) : (
             formattedSize
           )}
