@@ -36,15 +36,6 @@ type WireGuardConfig struct {
 	Peers      []PeerConfig `json:"peers"`
 }
 
-type WireGuardInterfaceUI struct {
-	Name        string `json:"name"`
-	IsConnected string `json:"isConnected"`
-	Address     string `json:"address"`
-	Port        int    `json:"port"`
-	PeerCount   int    `json:"peerCount"`
-	IsEnabled   bool   `json:"isEnabled"`
-}
-
 type PeerInfo struct {
 	PeerConfig
 

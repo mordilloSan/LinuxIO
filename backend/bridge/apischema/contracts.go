@@ -755,12 +755,3 @@ type ShareUpdateSambaRequest struct {
 type FailedLoginEventsRequest struct {
 	Limit *string `json:"limit,omitempty"`
 }
-
-type UpdatesSetAutoUpdatesRequest struct {
-	Enabled         bool     `json:"enabled"`
-	Frequency       string   `json:"frequency"`
-	Scope           string   `json:"scope"`
-	DownloadOnly    bool     `json:"download_only"`
-	RebootPolicy    string   `json:"reboot_policy"`
-	ExcludePackages []string `json:"exclude_packages"`
-}

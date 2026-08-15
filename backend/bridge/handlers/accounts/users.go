@@ -147,7 +147,7 @@ func GetUser(ctx context.Context, username string) (*apischema.AccountUser, erro
 }
 
 // ListUserLogins returns the most recent login events for a user.
-func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogin, error) {
+func ListUserLogins(ctx context.Context, username string, limit int) ([]apischema.AccountUserLogin, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return nil, fmt.Errorf("username is required")
@@ -161,13 +161,13 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 		return nil, err
 	}
 
-	result := make([]UserLogin, 0, len(logins))
+	result := make([]apischema.AccountUserLogin, 0, len(logins))
 	for _, login := range logins {
 		startedAt := ""
 		if !login.StartedAt.IsZero() {
 			startedAt = login.StartedAt.Format(time.RFC3339)
 		}
-		result = append(result, UserLogin{
+		result = append(result, apischema.AccountUserLogin{
 			ID:        login.ID,
 			Username:  login.Username,
 			Terminal:  login.Terminal,
@@ -181,14 +181,14 @@ func ListUserLogins(ctx context.Context, username string, limit int) ([]UserLogi
 }
 
 // GetUserDetails returns security, runtime, and filesystem health for a user.
-func GetUserDetails(ctx context.Context, username string) (UserDetails, error) {
+func GetUserDetails(ctx context.Context, username string) (apischema.AccountUserDetails, error) {
 	user, err := GetUser(ctx, username)
 	if err != nil {
-		return UserDetails{}, err
+		return apischema.AccountUserDetails{}, err
 	}
 
 	allGroups := allGroupsForUser(*user)
-	details := UserDetails{
+	details := apischema.AccountUserDetails{
 		Username:       user.Username,
 		ActiveSessions: getActiveSessions(ctx, user.Username),
 		Password:       getPasswordState(user.Username),
@@ -219,41 +219,41 @@ func allGroupsForUser(user apischema.AccountUser) []string {
 	return groups
 }
 
-func getActiveSessions(ctx context.Context, username string) []UserActiveSession {
+func getActiveSessions(ctx context.Context, username string) []apischema.AccountActiveSession {
 	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	output, err := exec.CommandContext(cmdCtx, "who", "-u").Output()
 	if err != nil {
-		return []UserActiveSession{}
+		return []apischema.AccountActiveSession{}
 	}
 
-	sessions := make([]UserActiveSession, 0)
+	sessions := make([]apischema.AccountActiveSession, 0)
 	for line := range strings.SplitSeq(string(output), "\n") {
 		session, ok := parseWhoUserSession(line, username)
 		if !ok {
 			continue
 		}
-		if session.PID > 0 {
-			session.SessionID = logindSessionFromPID(session.PID)
+		if session.PID != nil && *session.PID > 0 {
+			session.SessionID = logindSessionFromPID(*session.PID)
 		}
 		sessions = append(sessions, session)
 	}
 	return sessions
 }
 
-func parseWhoUserSession(line, username string) (UserActiveSession, bool) {
+func parseWhoUserSession(line, username string) (apischema.AccountActiveSession, bool) {
 	fields := strings.Fields(line)
 	if len(fields) < 4 || fields[0] != username {
-		return UserActiveSession{}, false
+		return apischema.AccountActiveSession{}, false
 	}
 
 	dateIndex := findWhoDateField(fields)
 	if dateIndex <= 1 || dateIndex+1 >= len(fields) {
-		return UserActiveSession{}, false
+		return apischema.AccountActiveSession{}, false
 	}
 
-	session := UserActiveSession{
+	session := apischema.AccountActiveSession{
 		Terminal:  strings.Join(fields[1:dateIndex], " "),
 		StartedAt: fields[dateIndex] + " " + fields[dateIndex+1],
 	}
@@ -264,7 +264,9 @@ func parseWhoUserSession(line, username string) (UserActiveSession, bool) {
 		valueIndex++
 	}
 	if valueIndex < len(fields) {
-		session.PID, _ = strconv.Atoi(fields[valueIndex])
+		if pid, err := strconv.Atoi(fields[valueIndex]); err == nil && pid > 0 {
+			session.PID = &pid
+		}
 		valueIndex++
 	}
 	if valueIndex < len(fields) {
@@ -333,10 +335,10 @@ func TerminateSession(ctx context.Context, sessionID string, pid int) error {
 	return nil
 }
 
-func getPasswordState(username string) UserPasswordState {
+func getPasswordState(username string) apischema.AccountPasswordState {
 	file, err := os.Open(shadowFile)
 	if err != nil {
-		return UserPasswordState{Error: err.Error()}
+		return apischema.AccountPasswordState{Error: err.Error()}
 	}
 	defer file.Close()
 
@@ -349,12 +351,12 @@ func getPasswordState(username string) UserPasswordState {
 		return parsePasswordState(parts)
 	}
 	if err := scanner.Err(); err != nil {
-		return UserPasswordState{Error: err.Error()}
+		return apischema.AccountPasswordState{Error: err.Error()}
 	}
-	return UserPasswordState{Error: "shadow entry not found"}
+	return apischema.AccountPasswordState{Error: "shadow entry not found"}
 }
 
-func parsePasswordState(parts []string) UserPasswordState {
+func parsePasswordState(parts []string) apischema.AccountPasswordState {
 	hash := parts[1]
 	locked := strings.HasPrefix(hash, "!") || strings.HasPrefix(hash, "*")
 	hashWithoutLock := strings.TrimLeft(hash, "!")
@@ -367,7 +369,7 @@ func parsePasswordState(parts []string) UserPasswordState {
 	maxDays := intPtrIfValid(parseShadowInt(parts[4]))
 	warningDays := intPtrIfValid(parseShadowInt(parts[5]))
 
-	state := UserPasswordState{
+	state := apischema.AccountPasswordState{
 		Locked:      locked,
 		HasPassword: hasPassword,
 		MaxDays:     maxDays,
@@ -388,7 +390,7 @@ func parsePasswordState(parts []string) UserPasswordState {
 	return state
 }
 
-func getAdminAccess(user apischema.AccountUser, groups []string) UserAdminAccess {
+func getAdminAccess(user apischema.AccountUser, groups []string) apischema.AccountAdminAccess {
 	privilegedGroups := map[string]bool{
 		"admin":   true,
 		"docker":  true,
@@ -409,49 +411,49 @@ func getAdminAccess(user apischema.AccountUser, groups []string) UserAdminAccess
 		}
 	}
 
-	return UserAdminAccess{
+	return apischema.AccountAdminAccess{
 		IsAdmin: len(adminGroups) > 0,
 		Groups:  adminGroups,
 	}
 }
 
-func getHomeHealth(user apischema.AccountUser) UserHomeHealth {
+func getHomeHealth(user apischema.AccountUser) apischema.AccountHomeHealth {
 	if user.HomeDir == "" {
-		return UserHomeHealth{Error: "home directory is not configured"}
+		return apischema.AccountHomeHealth{Error: "home directory is not configured"}
 	}
 
 	info, err := os.Stat(user.HomeDir)
 	if errors.Is(err, os.ErrNotExist) {
-		return UserHomeHealth{Exists: false}
+		return apischema.AccountHomeHealth{Exists: false}
 	}
 	if err != nil {
-		return UserHomeHealth{Error: err.Error()}
+		return apischema.AccountHomeHealth{Error: err.Error()}
 	}
 
-	health := UserHomeHealth{
+	health := apischema.AccountHomeHealth{
 		Exists:      true,
 		IsDirectory: info.IsDir(),
 		Mode:        formatFileMode(info.Mode()),
 	}
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
 		_, gidToGroup := parseGroupFile()
-		health.OwnerUID = int(stat.Uid)
-		health.GroupGID = int(stat.Gid)
-		health.ownershipKnown = true
-		health.GroupName = gidToGroup[health.GroupGID]
-		health.OwnerMatches = health.OwnerUID == user.UID
+		ownerUID, groupGID := int(stat.Uid), int(stat.Gid)
+		health.OwnerUID = &ownerUID
+		health.GroupGID = &groupGID
+		health.GroupName = gidToGroup[groupGID]
+		health.OwnerMatches = ownerUID == user.UID
 	}
 	return health
 }
 
-func getSSHAccess(user apischema.AccountUser) UserSSHAccess {
+func getSSHAccess(user apischema.AccountUser) apischema.AccountSSHAccess {
 	if user.HomeDir == "" {
-		return UserSSHAccess{Error: "home directory is not configured"}
+		return apischema.AccountSSHAccess{Error: "home directory is not configured"}
 	}
 
 	sshDir := filepath.Join(user.HomeDir, ".ssh")
 	authKeysPath := filepath.Join(sshDir, "authorized_keys")
-	access := UserSSHAccess{}
+	access := apischema.AccountSSHAccess{}
 
 	sshInfo, err := os.Stat(sshDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -487,11 +489,11 @@ func getSSHAccess(user apischema.AccountUser) UserSSHAccess {
 	return access
 }
 
-func getProcessSummary(ctx context.Context, username string) UserProcessSummary {
+func getProcessSummary(ctx context.Context, username string) apischema.AccountProcessSummary {
 	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	summary := UserProcessSummary{Top: []UserProcess{}}
+	summary := apischema.AccountProcessSummary{Top: []apischema.AccountUserProcess{}}
 	output, err := exec.CommandContext(
 		cmdCtx,
 		"ps",
@@ -521,7 +523,7 @@ func getProcessSummary(ctx context.Context, username string) UserProcessSummary 
 		cpu, _ := strconv.ParseFloat(fields[2], 64)
 		mem, _ := strconv.ParseFloat(fields[3], 64)
 		summary.Count++
-		summary.Top = append(summary.Top, UserProcess{
+		summary.Top = append(summary.Top, apischema.AccountUserProcess{
 			PID:     pid,
 			Command: fields[1],
 			CPU:     cpu,

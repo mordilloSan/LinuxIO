@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *configDockerPayload) error {
+func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *apischema.ConfigDockerPayload) error {
 	if err := applyDockerFoldersSetting(docker, payload.Folders); err != nil {
 		return err
 	}
@@ -19,7 +20,7 @@ func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *configDocke
 	return nil
 }
 
-func applyDockerProxyUpdate(proxy *bridgeconfig.DockerProxy, payload *configDockerProxyPayload) {
+func applyDockerProxyUpdate(proxy *bridgeconfig.DockerProxy, payload *apischema.ConfigDockerProxyPayload) {
 	if payload.CaddyEnabled != nil {
 		proxy.CaddyEnabled = *payload.CaddyEnabled
 	}

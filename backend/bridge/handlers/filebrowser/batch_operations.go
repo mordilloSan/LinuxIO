@@ -253,7 +253,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, store *conf
 		return FileBatchResult{}, bridgetasks.NewError("no paths provided", 400)
 	}
 
-	task.ReportProgress(DeleteProgress{Phase: "preparing", Indeterminate: true})
+	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
 	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths)
 	if ctx.Err() != nil {
 		return FileBatchResult{}, context.Canceled
@@ -276,7 +276,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, store *conf
 				if !ok {
 					return
 				}
-				task.ReportProgress(DeleteProgress{
+				task.ReportProgress(CountProgress{
 					Processed:     cur,
 					Total:         grandTotal,
 					Pct:           pct,
@@ -337,7 +337,7 @@ func (r *chmodBatchReporter) phase(phase string) func(processed int64) {
 		if !ok {
 			return
 		}
-		r.task.ReportProgress(ChmodProgress{
+		r.task.ReportProgress(CountProgress{
 			Processed:     count,
 			Total:         r.total,
 			Pct:           pct,
@@ -417,7 +417,7 @@ func runChmodBatchTask(ctx context.Context, task *bridgetasks.Task, store *confi
 		return FileBatchResult{}, bridgetasks.NewError(err.Error(), 400)
 	}
 
-	task.ReportProgress(ChmodProgress{Phase: "preparing", Indeterminate: true})
+	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
 	passes := int64(1)
 	if ownership != nil {
 		passes = 2

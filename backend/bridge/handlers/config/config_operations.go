@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -21,20 +20,15 @@ func GetConfigForUser(ctx context.Context, username string, store *bridgeconfig.
 }
 
 func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *bridgeconfig.UserStore, privileged bool) (apischema.ConfigSetResult, error) {
-	payload, err := configSetPayloadFromAPI(req)
-	if err != nil {
-		return apischema.ConfigSetResult{}, err
-	}
-
 	var syncDockerMountOrdering bool
 	updated, cfgPath, err := bridgeconfig.UpdateForUser(ctx, username, store, func(cfg *bridgeconfig.Settings) error {
-		if privilegeErr := requireDockerMountOrderingPrivilege(cfg, payload, privileged); privilegeErr != nil {
+		if privilegeErr := requireDockerMountOrderingPrivilege(cfg, &req, privileged); privilegeErr != nil {
 			return privilegeErr
 		}
-		if applyErr := applyConfigPayload(cfg, payload); applyErr != nil {
+		if applyErr := applyConfigPayload(cfg, &req); applyErr != nil {
 			return applyErr
 		}
-		syncDockerMountOrdering = shouldSyncDockerMountOrdering(cfg, payload)
+		syncDockerMountOrdering = shouldSyncDockerMountOrdering(cfg, &req)
 		return nil
 	})
 	if err != nil {
@@ -49,7 +43,7 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 	return apischema.ConfigSetResult{Message: "config updated", Path: cfgPath}, nil
 }
 
-func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *configSetPayload, privileged bool) error {
+func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload, privileged bool) error {
 	if privileged || payload == nil || payload.Docker == nil {
 		return nil
 	}
@@ -62,7 +56,7 @@ func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *co
 	return nil
 }
 
-func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *configSetPayload) bool {
+func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload) bool {
 	if payload == nil || payload.Docker == nil {
 		return false
 	}
@@ -70,16 +64,4 @@ func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *configSe
 		return true
 	}
 	return payload.Docker.Folders != nil && cfg.Docker.RequireMountsForFolders
-}
-
-func configSetPayloadFromAPI(req apischema.ConfigSetPayload) (*configSetPayload, error) {
-	data, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	var payload configSetPayload
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, err
-	}
-	return &payload, nil
 }

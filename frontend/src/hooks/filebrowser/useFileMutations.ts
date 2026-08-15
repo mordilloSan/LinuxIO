@@ -2,8 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
-  type ChmodProgress,
-  type DeleteProgress,
+  type CountProgress,
   type FileBatchResult,
   type FileChmodBatchRequest,
   type FileExtractRequest,
@@ -71,9 +70,9 @@ export const useFileMutations = ({
   const [renameProgress, setRenameProgress] =
     useState<TaskProgress<FileProgress> | null>(null);
   const [deleteProgress, setDeleteProgress] =
-    useState<TaskProgress<DeleteProgress> | null>(null);
+    useState<TaskProgress<CountProgress> | null>(null);
   const [permissionsProgress, setPermissionsProgress] =
-    useState<TaskProgress<ChmodProgress> | null>(null);
+    useState<TaskProgress<CountProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();

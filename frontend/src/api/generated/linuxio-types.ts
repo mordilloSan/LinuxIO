@@ -305,14 +305,6 @@ export interface ChangePasswordRequest {
   password: string;
 }
 
-export interface ChmodProgress {
-  processed: number;
-  total: number;
-  pct: number;
-  phase?: string;
-  indeterminate?: boolean;
-}
-
 export interface ComposeActionResult {
   message: string;
   output: string;
@@ -543,6 +535,14 @@ export interface ContentRequest {
   content: string;
 }
 
+export interface CountProgress {
+  processed: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  indeterminate?: boolean;
+}
+
 export interface CreateGroupRequest {
   name: string;
   gid?: number;
@@ -562,14 +562,6 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
-}
-
-export interface DeleteProgress {
-  processed: number;
-  total: number;
-  pct: number;
-  phase?: string;
-  indeterminate?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -959,10 +951,6 @@ export interface FileExtractRequest {
 
 export interface FileExtractResult {
   destination: string;
-}
-
-export interface FileOperationResult {
-  message: string;
 }
 
 export interface FileProgress {
@@ -1845,11 +1833,6 @@ export interface StackNameRequest {
   stackName: string;
 }
 
-export interface StorageCreateLVResult {
-  success: boolean;
-  path: string;
-}
-
 export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
@@ -2104,15 +2087,6 @@ export interface UpdateItem {
 
 export interface UpdatesFastResponse {
   updates?: UpdateItem[];
-}
-
-export interface UpdatesSetAutoUpdatesRequest {
-  enabled: boolean;
-  frequency: string;
-  scope: string;
-  download_only: boolean;
-  reboot_policy: string;
-  exclude_packages: string[];
 }
 
 export interface UpgradeItem {
@@ -2591,7 +2565,7 @@ export interface LinuxIOSchema {
       input: [request: FileChmodBatchRequest];
       request: FileChmodBatchRequest;
       result: FileBatchResult;
-      progress: TaskProgress<ChmodProgress>;
+      progress: TaskProgress<CountProgress>;
     };
     compress: {
       input: [request: FileCompressRequest];
@@ -2609,7 +2583,7 @@ export interface LinuxIOSchema {
       input: [paths: string[]];
       request: BatchPathRequest;
       result: FileBatchResult;
-      progress: TaskProgress<DeleteProgress>;
+      progress: TaskProgress<CountProgress>;
     };
     dir_size: {
       input: [path: string];
@@ -2648,7 +2622,7 @@ export interface LinuxIOSchema {
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
       request: ActionSourceDestinationRequest;
-      result: FileOperationResult;
+      result: MessageResponse;
       progress: TaskProgress<FileProgress>;
     };
     resource_post: {
@@ -2852,7 +2826,7 @@ export interface LinuxIOSchema {
     create_lv: {
       input: [request: CreateLogicalVolumeRequest];
       request: CreateLogicalVolumeRequest;
-      result: StorageCreateLVResult;
+      result: SuccessPathResponse;
     };
     delete_lv: {
       input: [request: VolumeGroupLogicalVolumeRequest];
@@ -3079,8 +3053,8 @@ export interface LinuxIOSchema {
     get_updates_basic: { input: []; request: void; result: Update[] };
     refresh_cache: { input: []; request: void; result: SuccessResponse };
     set_auto_updates: {
-      input: [request: UpdatesSetAutoUpdatesRequest];
-      request: UpdatesSetAutoUpdatesRequest;
+      input: [request: AutoUpdateOptions];
+      request: AutoUpdateOptions;
       result: AutoUpdateState;
     };
   };
@@ -3422,7 +3396,7 @@ export interface LinuxIOCallSchema {
   };
   "storage.create_lv": {
     request: CreateLogicalVolumeRequest;
-    result: StorageCreateLVResult;
+    result: SuccessPathResponse;
   };
   "storage.delete_lv": {
     request: VolumeGroupLogicalVolumeRequest;
@@ -3528,7 +3502,7 @@ export interface LinuxIOCallSchema {
   "updates.get_updates_basic": { request: void; result: Update[] };
   "updates.refresh_cache": { request: void; result: SuccessResponse };
   "updates.set_auto_updates": {
-    request: UpdatesSetAutoUpdatesRequest;
+    request: AutoUpdateOptions;
     result: AutoUpdateState;
   };
   "virt.delete": { request: VMDeleteRequest; result: VMDeleteResult };

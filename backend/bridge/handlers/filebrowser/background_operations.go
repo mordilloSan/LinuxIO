@@ -256,7 +256,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.SessionTask(), apischema.WithTaskProgress[DeleteProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
 			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
@@ -301,7 +301,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskStreamDefault,
 		),
-		apischema.TaskRunner[apischema.FileChmodBatchRequest, FileBatchResult]("filebrowser.chmod_batch", apischema.SessionTask(), apischema.WithTaskProgress[ChmodProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileChmodBatchRequest, FileBatchResult]("filebrowser.chmod_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Mode, req.Owner, req.Group}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
 			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {

@@ -579,27 +579,27 @@ func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest) (a
 }
 
 // resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (FileOperationResult, error) {
+func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (apischema.MessageResponse, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
-		return FileOperationResult{}, err
+		return apischema.MessageResponse{}, err
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileOperationResult{}, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
 	patchReq, err = prepareResourcePatch(root, patchReq)
 	if err != nil {
-		return FileOperationResult{}, err
+		return apischema.MessageResponse{}, err
 	}
 
 	srcInfo, err := root.Root.Lstat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
 		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
-		return FileOperationResult{}, fmt.Errorf("bad_request:source not found")
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:source not found")
 	}
 	_, destStatErr := root.Root.Lstat(fsroot.ToRel(patchReq.realDest))
 	destExisted := destStatErr == nil
@@ -619,11 +619,11 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	opts := newPatchTaskCallbacks(ctx, task, patchReq.action, size.total)
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
-		return FileOperationResult{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%v", err)
 	}
 
 	notifyIndexerAfterPatch(ctx, root, patchReq, size, destExisted)
-	return FileOperationResult{Message: "operation completed"}, nil
+	return apischema.MessageResponse{Message: "operation completed"}, nil
 }
 
 func newPatchTaskCallbacks(ctx context.Context, task *bridgeipc.Task, action string, totalSize int64) *ipc.OperationCallbacks {

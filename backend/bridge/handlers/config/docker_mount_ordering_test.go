@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
@@ -53,18 +54,18 @@ func TestRequireDockerMountOrderingPrivilege(t *testing.T) {
 		},
 	}
 
-	err := requireDockerMountOrderingPrivilege(cfg, &configSetPayload{
-		Docker: &configDockerPayload{Folders: []string{"/opt/docker"}},
+	err := requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/opt/docker"}},
 	}, false)
 	require.ErrorContains(t, err, "privileged session")
 
-	err = requireDockerMountOrderingPrivilege(cfg, &configSetPayload{
-		Docker: &configDockerPayload{RequireMountsForFolders: &enabled},
+	err = requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{RequireMountsForFolders: &enabled},
 	}, false)
 	require.ErrorContains(t, err, "privileged session")
 
-	require.NoError(t, requireDockerMountOrderingPrivilege(cfg, &configSetPayload{
-		Docker: &configDockerPayload{Folders: []string{"/opt/docker"}},
+	require.NoError(t, requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/opt/docker"}},
 	}, true))
 }
 
@@ -74,18 +75,18 @@ func TestShouldSyncDockerMountOrdering(t *testing.T) {
 		Docker: bridgeconfig.Docker{RequireMountsForFolders: true},
 	}
 
-	require.True(t, shouldSyncDockerMountOrdering(cfg, &configSetPayload{
-		Docker: &configDockerPayload{RequireMountsForFolders: &enabled},
+	require.True(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{RequireMountsForFolders: &enabled},
 	}))
-	require.True(t, shouldSyncDockerMountOrdering(cfg, &configSetPayload{
-		Docker: &configDockerPayload{Folders: []string{"/srv/docker"}},
+	require.True(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/srv/docker"}},
 	}))
 
 	cfg.Docker.RequireMountsForFolders = false
-	require.False(t, shouldSyncDockerMountOrdering(cfg, &configSetPayload{
-		Docker: &configDockerPayload{Folders: []string{"/srv/docker"}},
+	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/srv/docker"}},
 	}))
-	require.False(t, shouldSyncDockerMountOrdering(cfg, &configSetPayload{}))
+	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{}))
 	require.False(t, shouldSyncDockerMountOrdering(cfg, nil))
 }
 

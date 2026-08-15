@@ -125,7 +125,9 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"create_samba_share: {",
 		"input: [request: ShareSambaRequest]; request: ShareSambaRequest;",
 		"archive: { input: [request: FileArchiveRequest]; request: FileArchiveRequest; result: FileArchiveResult; progress: TaskProgress<FileProgress> };",
-		"resource_patch: { input: [request: ActionSourceDestinationRequest]; request: ActionSourceDestinationRequest; result: FileOperationResult; progress: TaskProgress<FileProgress> };",
+		"progress: TaskProgress<CountProgress> };",
+		"resource_patch: { input: [request: ActionSourceDestinationRequest]; request: ActionSourceDestinationRequest; result: MessageResponse; progress: TaskProgress<FileProgress> };",
+		"input: [request: AutoUpdateOptions]; request: AutoUpdateOptions;",
 		"create: { input: [request: VMCreateRequest]; request: VMCreateRequest; result: VirtualMachine; progress: TaskProgress<VMCreateProgress> };",
 		"export interface TaskProgress<TDetail = unknown>",
 		"system_prune: {",
@@ -156,6 +158,18 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 	} {
 		if strings.Contains(out, unexpected) {
 			t.Fatalf("generated endpoint types include duplex route %s", unexpected)
+		}
+	}
+
+	for _, duplicate := range []string{
+		"export interface ChmodProgress",
+		"export interface DeleteProgress",
+		"export interface FileOperationResult",
+		"export interface StorageCreateLVResult",
+		"export interface UpdatesSetAutoUpdatesRequest",
+	} {
+		if strings.Contains(out, duplicate) {
+			t.Fatalf("generated types retain duplicate contract %s", duplicate)
 		}
 	}
 }

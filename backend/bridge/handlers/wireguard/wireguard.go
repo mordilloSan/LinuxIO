@@ -26,7 +26,7 @@ import (
 )
 
 // --- Handler Implementations ---
-func ListInterfaces(ctx context.Context) ([]WireGuardInterfaceUI, error) {
+func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error) {
 	slog.Debug("ListInterfaces: listing interfaces")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
@@ -36,7 +36,7 @@ func ListInterfaces(ctx context.Context) ([]WireGuardInterfaceUI, error) {
 		return nil, fmt.Errorf("list interfaces: %w", err)
 	}
 
-	interfaces := make([]WireGuardInterfaceUI, 0, len(files))
+	interfaces := make([]apischema.WireGuardInterface, 0, len(files))
 
 	for _, f := range files {
 		if err := ctx.Err(); err != nil {
@@ -54,7 +54,7 @@ func ListInterfaces(ctx context.Context) ([]WireGuardInterfaceUI, error) {
 			status = "Active"
 		}
 
-		interfaces = append(interfaces, WireGuardInterfaceUI{
+		interfaces = append(interfaces, apischema.WireGuardInterface{
 			Name:        name,
 			IsConnected: status,
 			Address:     strings.Join(cfg.Address, ", "),

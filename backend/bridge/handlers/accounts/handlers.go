@@ -39,13 +39,11 @@ func handleListUsers(ctx context.Context, _ apischema.NoRequest) ([]apischema.Ac
 }
 
 func handleGetUserDetails(ctx context.Context, req apischema.UsernameRequest) (apischema.AccountUserDetails, error) {
-	result, err := GetUserDetails(ctx, req.Username)
-	return accountUserDetailsToAPI(result), err
+	return GetUserDetails(ctx, req.Username)
 }
 
 func handleListUserLogins(ctx context.Context, req apischema.UsernameRequest) ([]apischema.AccountUserLogin, error) {
-	result, err := ListUserLogins(ctx, req.Username, 24)
-	return accountUserLoginsToAPI(result), err
+	return ListUserLogins(ctx, req.Username, 24)
 }
 
 func handleTerminateSession(ctx context.Context, req apischema.TerminateSessionRequest) error {
@@ -74,8 +72,7 @@ func handleDeleteGroup(ctx context.Context, req apischema.GroupNameRequest) erro
 }
 
 func handleListGroups(ctx context.Context, _ apischema.NoRequest) ([]apischema.AccountGroup, error) {
-	result, err := ListGroups(ctx)
-	return accountGroupsToAPI(result), err
+	return ListGroups(ctx)
 }
 
 func handleListShells(ctx context.Context, _ apischema.NoRequest) ([]string, error) {

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { type ChmodProgress, linuxio, type TaskProgress } from "@/api";
+import { type CountProgress, linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
@@ -34,7 +34,7 @@ interface PermissionsDialogProps {
   owner?: string;
   pathLabel: string;
   isPending?: boolean;
-  progress?: TaskProgress<ChmodProgress> | null;
+  progress?: TaskProgress<CountProgress> | null;
   selectionCount: number;
 }
 interface PermissionBits {

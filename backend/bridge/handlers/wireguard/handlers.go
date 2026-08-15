@@ -38,8 +38,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleListInterfaces(ctx context.Context, _ apischema.NoRequest) ([]apischema.WireGuardInterface, error) {
-	result, err := ListInterfaces(ctx)
-	return wireGuardInterfacesToAPI(result), err
+	return ListInterfaces(ctx)
 }
 
 // AddInterface's result carries the generated private key; discarding it is the

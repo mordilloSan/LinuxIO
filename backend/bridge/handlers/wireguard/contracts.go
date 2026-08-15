@@ -2,14 +2,6 @@ package wireguard
 
 import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-func wireGuardInterfacesToAPI(values []WireGuardInterfaceUI) []apischema.WireGuardInterface {
-	result := make([]apischema.WireGuardInterface, len(values))
-	for i, value := range values {
-		result[i] = apischema.WireGuardInterface{Name: value.Name, IsConnected: value.IsConnected, Address: value.Address, Port: value.Port, PeerCount: value.PeerCount, IsEnabled: value.IsEnabled}
-	}
-	return result
-}
-
 func peersToAPI(values []PeerInfo) []apischema.Peer {
 	result := make([]apischema.Peer, len(values))
 	for i, value := range values {

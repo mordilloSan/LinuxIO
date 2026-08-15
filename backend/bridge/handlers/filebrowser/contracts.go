@@ -2,10 +2,6 @@ package filebrowser
 
 import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-type FileOperationResult struct {
-	Message string `json:"message"`
-}
-
 type FileCompressResult struct {
 	Path   string `json:"path"`
 	Size   int64  `json:"size"`

@@ -3,9 +3,13 @@ package accounts
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestValidateChpasswdInput(t *testing.T) {
@@ -92,6 +96,36 @@ func TestGetProcessSummaryErrorKeepsTopAsArray(t *testing.T) {
 	}
 }
 
+func TestGetHomeHealthKeepsKnownOwnership(t *testing.T) {
+	homeDir := t.TempDir()
+	info, err := os.Stat(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("temporary directory has no syscall.Stat_t metadata")
+	}
+
+	health := getHomeHealth(apischema.AccountUser{HomeDir: homeDir, UID: int(stat.Uid)})
+	if health.OwnerUID == nil || *health.OwnerUID != int(stat.Uid) {
+		t.Fatalf("OwnerUID = %v, want known %d", health.OwnerUID, stat.Uid)
+	}
+	if health.GroupGID == nil || *health.GroupGID != int(stat.Gid) {
+		t.Fatalf("GroupGID = %v, want known %d", health.GroupGID, stat.Gid)
+	}
+	if !health.OwnerMatches {
+		t.Fatal("OwnerMatches = false, want true")
+	}
+}
+
+func TestGetHomeHealthOmitsUnknownOwnership(t *testing.T) {
+	health := getHomeHealth(apischema.AccountUser{HomeDir: t.TempDir() + "/missing"})
+	if health.OwnerUID != nil || health.GroupGID != nil {
+		t.Fatalf("unknown ownership must be omitted, got %#v", health)
+	}
+}
+
 func TestGetProcessSummaryNoRowsIsNotAnError(t *testing.T) {
 	summary := getProcessSummary(context.Background(), "nobody")
 	if strings.Contains(summary.Error, "does not exist") {
@@ -124,8 +158,8 @@ func TestParseWhoUserSessionHandlesSSHPTYLine(t *testing.T) {
 	if session.Idle != "00:04" {
 		t.Fatalf("Idle = %q, want %q", session.Idle, "00:04")
 	}
-	if session.PID != 2618794 {
-		t.Fatalf("PID = %d, want %d", session.PID, 2618794)
+	if session.PID == nil || *session.PID != 2618794 {
+		t.Fatalf("PID = %v, want %d", session.PID, 2618794)
 	}
 	if session.Source != "192.168.1.239" {
 		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")
@@ -148,8 +182,8 @@ func TestParseWhoUserSessionHandlesSSHWithoutTTY(t *testing.T) {
 	if session.Idle != "?" {
 		t.Fatalf("Idle = %q, want %q", session.Idle, "?")
 	}
-	if session.PID != 2606470 {
-		t.Fatalf("PID = %d, want %d", session.PID, 2606470)
+	if session.PID == nil || *session.PID != 2606470 {
+		t.Fatalf("PID = %v, want %d", session.PID, 2606470)
 	}
 	if session.Source != "192.168.1.239" {
 		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")

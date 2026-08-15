@@ -1288,11 +1288,6 @@ type StoragePathResult struct {
 	Path       *string `json:"path,omitempty"`
 }
 
-type StorageCreateLVResult struct {
-	Success bool   `json:"success"`
-	Path    string `json:"path"`
-}
-
 type StorageMountResult struct {
 	Success    bool    `json:"success"`
 	Mountpoint *string `json:"mountpoint,omitempty"`

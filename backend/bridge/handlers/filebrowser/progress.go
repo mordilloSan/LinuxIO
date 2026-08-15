@@ -96,10 +96,10 @@ func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
-// DeleteProgress represents item-count progress for delete tasks. When the
+// CountProgress represents item-count progress for batch tasks. When the
 // entry total is unknown, Indeterminate is set and the envelope omits the
 // percentage so clients show a running count instead of a frozen 0%.
-type DeleteProgress struct {
+type CountProgress struct {
 	Processed     int64  `json:"processed"`
 	Total         int64  `json:"total"`
 	Pct           int    `json:"pct"`
@@ -107,26 +107,7 @@ type DeleteProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
-func (p DeleteProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
-	if !p.Indeterminate {
-		envelope.Percentage = &p.Pct
-	}
-	return envelope
-}
-
-// ChmodProgress represents entry-count progress for chmod batch tasks. When
-// the entry total is unknown, Indeterminate is set and the envelope omits the
-// percentage so clients show a running count instead of a frozen 0%.
-type ChmodProgress struct {
-	Processed     int64  `json:"processed"`
-	Total         int64  `json:"total"`
-	Pct           int    `json:"pct"`
-	Phase         string `json:"phase,omitempty"`
-	Indeterminate bool   `json:"indeterminate,omitempty"`
-}
-
-func (p ChmodProgress) ProgressEnvelope() bridgetask.TaskProgress {
+func (p CountProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
 	if !p.Indeterminate {
 		envelope.Percentage = &p.Pct

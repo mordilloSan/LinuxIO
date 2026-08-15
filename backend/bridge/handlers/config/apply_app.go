@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *configAppSettingsPayload) error {
+func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigAppSettingsPayload) error {
 	if err := applyThemeSetting(app, payload.Theme); err != nil {
 		return err
 	}
@@ -65,7 +66,7 @@ func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryCol
 	return nil
 }
 
-func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *configThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -85,7 +86,7 @@ func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *c
 	return nil
 }
 
-func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*bridgeconfig.ThemeColors, error) {
+func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, modePrefix string) (*bridgeconfig.ThemeColors, error) {
 	if payload == nil {
 		return nil, nil
 	}
@@ -132,15 +133,15 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*br
 	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.DockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigDockerDashboardSections) {
 	if sections != nil {
-		app.DockerDashboardSections = sections
+		app.DockerDashboardSections = &bridgeconfig.DockerDashboardSections{Overview: sections.Overview, Daemon: sections.Daemon, Resources: sections.Resources}
 	}
 }
 
-func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.HardwareSections) {
+func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigHardwareSections) {
 	if sections != nil {
-		app.HardwareSections = sections
+		app.HardwareSections = &bridgeconfig.HardwareSections{Overview: sections.Overview, Hardware: sections.Hardware, Sensors: sections.Sensors, SystemInfo: sections.SystemInfo, GPU: sections.GPU, PCIDevices: sections.PCIDevices, MemoryModules: sections.MemoryModules}
 	}
 }
 
