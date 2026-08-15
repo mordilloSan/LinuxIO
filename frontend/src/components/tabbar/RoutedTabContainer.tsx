@@ -48,6 +48,8 @@ interface RoutedTabContainerProps {
 interface TabSelectorProps {
   actionHostMountRef?: (element: HTMLDivElement | null) => void;
   hasSlotActions?: boolean;
+  hasSlotSearch?: boolean;
+  searchHostMountRef?: (element: HTMLDivElement | null) => void;
   tabs: readonly RoutedTab[];
 }
 
@@ -56,6 +58,11 @@ const EMPTY_CONTAINER_STYLE: CSSProperties = {};
 const TabActionSlotContext = createContext<{
   host: HTMLElement;
   registerActions: () => () => void;
+} | null>(null);
+
+const TabSearchSlotContext = createContext<{
+  host: HTMLElement;
+  registerSearch: () => () => void;
 } | null>(null);
 
 /**
@@ -84,19 +91,46 @@ export const RoutedTabActions = ({ children }: { children: ReactNode }) => {
   return createPortal(children, parentActionSlot.host);
 };
 
+/** Places a child route's search field in the persistent parent tab strip. */
+export const RoutedTabSearch = ({ children }: { children: ReactNode }) => {
+  const parentSearchSlot = useContext(TabSearchSlotContext);
+  const hasSearch = children != null && typeof children !== "boolean";
+
+  useLayoutEffect(() => {
+    if (!parentSearchSlot || !hasSearch) return;
+    return parentSearchSlot.registerSearch();
+  }, [hasSearch, parentSearchSlot]);
+
+  if (!hasSearch) {
+    return null;
+  }
+
+  if (!parentSearchSlot) {
+    return <>{children}</>;
+  }
+
+  return createPortal(children, parentSearchSlot.host);
+};
+
 export const RoutedTabLayout = ({
   children,
   containerStyle = EMPTY_CONTAINER_STYLE,
   tabs,
 }: RoutedTabContainerProps) => {
-  // Keep one portal target for the layout's lifetime. Moving this element
-  // between desktop and mobile mounts preserves state inside child actions.
+  // Keep the portal targets for the layout's lifetime so moving route content
+  // does not reset state held by its header controls.
   const [actionHost] = useState(() => {
     const host = document.createElement("div");
     host.className = "tab-selector__action-portal";
     return host;
   });
+  const [searchHost] = useState(() => {
+    const host = document.createElement("div");
+    host.className = "tab-selector__search-portal";
+    return host;
+  });
   const [slotActionCount, setSlotActionCount] = useState(0);
+  const [slotSearchCount, setSlotSearchCount] = useState(0);
   const registerActions = useCallback(() => {
     setSlotActionCount((count) => count + 1);
     return () => setSlotActionCount((count) => Math.max(0, count - 1));
@@ -109,20 +143,40 @@ export const RoutedTabLayout = ({
     },
     [actionHost],
   );
+  const registerSearch = useCallback(() => {
+    setSlotSearchCount((count) => count + 1);
+    return () => setSlotSearchCount((count) => Math.max(0, count - 1));
+  }, []);
+  const mountSearchHost = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element) {
+        element.append(searchHost);
+      }
+    },
+    [searchHost],
+  );
   const actionSlot = useMemo(
     () => ({ host: actionHost, registerActions }),
     [actionHost, registerActions],
+  );
+  const searchSlot = useMemo(
+    () => ({ host: searchHost, registerSearch }),
+    [registerSearch, searchHost],
   );
   return (
     <div className="tab-container" style={containerStyle}>
       <TabSelector
         actionHostMountRef={mountActionHost}
         hasSlotActions={slotActionCount > 0}
+        hasSlotSearch={slotSearchCount > 0}
+        searchHostMountRef={mountSearchHost}
         tabs={tabs}
       />
-      <TabActionSlotContext value={actionSlot}>
-        <TabPanel>{children}</TabPanel>
-      </TabActionSlotContext>
+      <TabSearchSlotContext value={searchSlot}>
+        <TabActionSlotContext value={actionSlot}>
+          <TabPanel>{children}</TabPanel>
+        </TabActionSlotContext>
+      </TabSearchSlotContext>
     </div>
   );
 };
@@ -156,6 +210,8 @@ const TabSelector = memo(function TabSelector({
   tabs,
   actionHostMountRef,
   hasSlotActions = false,
+  hasSlotSearch = false,
+  searchHostMountRef,
 }: TabSelectorProps) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
@@ -190,6 +246,10 @@ const TabSelector = memo(function TabSelector({
         </div>
       </div>
 
+      {searchHostMountRef && hasSlotSearch ? (
+        <div className="tab-selector__search" ref={searchHostMountRef} />
+      ) : null}
+
       {actionHostMountRef && hasSlotActions ? (
         isMobile ? (
           <>
@@ -199,7 +259,12 @@ const TabSelector = memo(function TabSelector({
               onClick={(event) => setAnchorEl(event.currentTarget)}
               ref={handleMenuTriggerRef}
               size="small"
-              style={{ marginTop: 2, flexShrink: 0 }}
+              style={{
+                gridColumn: 3,
+                justifySelf: "end",
+                marginTop: 2,
+                flexShrink: 0,
+              }}
             >
               <Icon height={20} icon="mdi:tune" width={20} />
             </AppIconButton>

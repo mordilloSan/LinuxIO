@@ -15,6 +15,7 @@ import { render } from "@/test/render";
 import {
   RoutedTabActions,
   RoutedTabLayout,
+  RoutedTabSearch,
   type RoutedTab,
 } from "./RoutedTabContainer";
 import { makeTabLayout } from "./tabLayoutFactory";
@@ -333,6 +334,47 @@ describe("RoutedTabContainer", () => {
 
     await screen.findByText("Boolean route content");
     expect(container.querySelector(".app-icon-btn")).not.toBeInTheDocument();
+  });
+
+  it("keeps child search controls visible in the parent tab strip", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: () => (
+        <RoutedTabSearch>
+          <input aria-label="Search users" />
+        </RoutedTabSearch>
+      ),
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { container } = render(<RouterProvider router={router} />);
+
+    const search = await screen.findByRole("textbox", {
+      name: "Search users",
+    });
+    expect(container.querySelector(".tab-selector__search")).toContainElement(
+      search,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Actions" }),
+    ).not.toBeInTheDocument();
   });
 
   it("preserves action-local state across breakpoint changes", async () => {

@@ -9,13 +9,13 @@ import {
 } from "react";
 
 import type { TableCardViewMode } from "@/api";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppGrid from "@/components/ui/AppGrid";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import {
   useReorderableSurface,
   type ReorderableSurface,
 } from "@/hooks/useReorderableSurface";
-import { useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
@@ -71,7 +71,6 @@ function UnitListTab<T extends UnitListItem>({
   onSelectedChange,
   surfaceId,
 }: UnitListTabProps<T>) {
-  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
   const expanded = selected;
@@ -140,23 +139,14 @@ function UnitListTab<T extends UnitListItem>({
     ? (filtered.find((item) => item.name === expanded) ?? null)
     : null;
 
-  const searchControls = (
-    <div
-      style={{
-        marginBottom: theme.spacing(2),
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-      }}
-    >
-      <AppSearchField
-        onChange={(event) => setSearch(event.target.value)}
+  const searchControl = (
+    <RoutedTabSearch>
+      <AppHeaderSearch
+        onChange={setSearch}
         placeholder={searchPlaceholder}
-        style={{ width: 320 }}
         value={search}
       />
-      <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
-    </div>
+    </RoutedTabSearch>
   );
 
   if (viewMode === "card") {
@@ -170,7 +160,7 @@ function UnitListTab<T extends UnitListItem>({
           minWidth: 0,
         }}
       >
-        {!selectedItem && searchControls}
+        {!selectedItem && searchControl}
         <div
           style={{
             display: "flex",
@@ -203,7 +193,7 @@ function UnitListTab<T extends UnitListItem>({
         minWidth: 0,
       }}
     >
-      {!selectedItem && searchControls}
+      {!selectedItem && searchControl}
 
       <motion.div
         layout="position"

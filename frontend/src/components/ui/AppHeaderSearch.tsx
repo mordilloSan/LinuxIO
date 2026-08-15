@@ -1,25 +1,28 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState, type ChangeEvent } from "react";
 
-import "./search-bar.css";
+import "./app-header-search.css";
 
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTextField from "@/components/ui/AppTextField";
 import { useAppTheme } from "@/theme";
 
-interface SearchBarProps {
+import AppIconButton from "./AppIconButton";
+import AppTextField from "./AppTextField";
+
+interface AppHeaderSearchProps {
+  "aria-label"?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
   placeholder?: string;
   value: string;
 }
 
-const SearchBar = ({
+const AppHeaderSearch = ({
   value,
   onChange,
-  placeholder = "Search files...",
+  placeholder = "Search...",
   disabled = false,
-}: SearchBarProps) => {
+  "aria-label": ariaLabel,
+}: AppHeaderSearchProps) => {
   const theme = useAppTheme();
   const [isFocused, setIsFocused] = useState(false);
 
@@ -36,12 +39,13 @@ const SearchBar = ({
 
   return (
     <AppTextField
-      className="search-bar"
+      aria-label={ariaLabel ?? placeholder}
+      className="app-header-search"
       disabled={disabled}
       endAdornment={
         value ? (
           <AppIconButton
-            aria-label="clear search"
+            aria-label="Clear search"
             disabled={disabled}
             edge="end"
             onClick={handleClear}
@@ -76,4 +80,4 @@ const SearchBar = ({
   );
 };
 
-export default SearchBar;
+export default AppHeaderSearch;

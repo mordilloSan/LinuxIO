@@ -11,11 +11,12 @@ import {
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import {
@@ -776,36 +777,14 @@ const ComposeList = ({
     },
     [containersByProject, expandedContainerColumns],
   );
-  const searchBar = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "nowrap",
-        gap: isSmallUp ? theme.spacing(2) : theme.spacing(1),
-        marginBottom: theme.spacing(2),
-      }}
-    >
-      <AppSearchField
-        onChange={(e) => setSearch(e.target.value)}
+  const searchControl = (
+    <RoutedTabSearch>
+      <AppHeaderSearch
+        onChange={setSearch}
         placeholder="Search stacks…"
-        style={{
-          flex: isSmallUp ? "0 0 320px" : "1 1 auto",
-          minWidth: 0,
-          width: isSmallUp ? 320 : undefined,
-        }}
         value={search}
       />
-      <AppTypography
-        fontWeight={700}
-        style={{
-          flexShrink: 0,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {filtered.length} shown
-      </AppTypography>
-    </div>
+    </RoutedTabSearch>
   );
   const containerDialogs = (
     <Suspense fallback={null}>
@@ -830,7 +809,7 @@ const ComposeList = ({
   if (viewMode === "card") {
     return (
       <div>
-        {searchBar}
+        {searchControl}
         {filtered.length === 0 ? (
           <div
             style={{
@@ -876,7 +855,7 @@ const ComposeList = ({
         minHeight: 0,
       }}
     >
-      {searchBar}
+      {searchControl}
       <AppDataTable
         ariaLabel="Docker compose stacks"
         columns={columns}

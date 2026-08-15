@@ -4,11 +4,12 @@ import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import type { UserLockAction } from "@/components/cards/UserCard";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
@@ -406,30 +407,13 @@ const UsersTab = ({
       }}
     >
       {!detailUser && (
-        <div
-          style={{
-            display: "flex",
-            flexShrink: 0,
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 8,
-          }}
-        >
-          <AppSearchField
-            onChange={(e) => setSearch(e.target.value)}
+        <RoutedTabSearch>
+          <AppHeaderSearch
+            onChange={setSearch}
             placeholder="Search users…"
-            style={{ width: 320 }}
             value={search}
           />
-          <span
-            style={{
-              fontWeight: "bold",
-            }}
-          >
-            {filtered.length} shown
-          </span>
-        </div>
+        </RoutedTabSearch>
       )}
       {effectiveViewMode === "card" ? (
         <UserCardsView

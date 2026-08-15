@@ -4,11 +4,12 @@ import { useCallback, useState } from "react";
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -209,24 +210,13 @@ const GroupsTab = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
+      <RoutedTabSearch>
+        <AppHeaderSearch
+          onChange={setSearch}
           placeholder="Search groups…"
-          style={{ width: 320 }}
           value={search}
         />
-        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
-      </div>
+      </RoutedTabSearch>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid

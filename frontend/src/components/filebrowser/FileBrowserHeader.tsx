@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { useCallback, useState, type ReactNode } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -13,7 +14,6 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import IndexerDialog from "./IndexerDialog";
-import SearchBar from "./SearchBar";
 import type { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
@@ -138,7 +138,7 @@ const FileBrowserHeader = ({
               }}
             >
               <div style={{ width: "100%", maxWidth: 420 }}>
-                <SearchBar
+                <AppHeaderSearch
                   onChange={onSearchChange}
                   placeholder={
                     isMobile ? "Search..." : "Search files and folders..."

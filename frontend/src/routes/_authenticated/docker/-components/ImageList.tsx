@@ -6,6 +6,7 @@ import { linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
@@ -17,7 +18,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -463,24 +464,15 @@ const ImageList = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          alignItems: "center",
-          gap: theme.spacing(2),
-          flexWrap: "wrap",
-          marginBottom: theme.spacing(2),
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
+      <RoutedTabSearch>
+        <AppHeaderSearch
+          onChange={setSearch}
           placeholder="Search images…"
-          style={{ width: 320 }}
           value={search}
         />
-        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
-        {effectiveSelected.size > 0 && (
+      </RoutedTabSearch>
+      {effectiveSelected.size > 0 && (
+        <div style={{ marginBottom: theme.spacing(2) }}>
           <AppButton
             color="error"
             onClick={() => setDeleteDialogOpen(true)}
@@ -490,8 +482,8 @@ const ImageList = ({
           >
             Delete ({effectiveSelected.size})
           </AppButton>
-        )}
-      </div>
+        </div>
+      )}
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid

@@ -15,7 +15,8 @@ import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppSearchField from "@/components/ui/AppSearchField";
+import { RoutedTabSearch } from "@/components/tabbar";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -380,24 +381,13 @@ const ContainerList = ({
 
   return (
     <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-      <div
-        style={{
-          marginBottom: theme.spacing(2),
-          display: "flex",
-          alignItems: "center",
-          gap: theme.spacing(2),
-        }}
-      >
-        <AppSearchField
-          onChange={(event) => setSearch(event.target.value)}
+      <RoutedTabSearch>
+        <AppHeaderSearch
+          onChange={setSearch}
           placeholder="Search containers…"
-          style={{ width: 320 }}
           value={search}
         />
-        <AppTypography fontWeight={700}>
-          {filteredContainers.length} shown
-        </AppTypography>
-      </div>
+      </RoutedTabSearch>
 
       <motion.div
         layout="position"
