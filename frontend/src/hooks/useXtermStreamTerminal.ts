@@ -142,6 +142,7 @@ export function useXtermStreamTerminal({
     if (terminal) {
       terminal.options.theme = {
         ...terminal.options.theme,
+        ...terminalOptions?.theme,
         background,
         foreground,
       };
@@ -151,7 +152,7 @@ export function useXtermStreamTerminal({
     if (containerRef.current) {
       containerRef.current.style.background = background;
     }
-  }, [background, foreground]);
+  }, [background, foreground, terminalOptions?.theme]);
 
   useEffect(() => {
     if (!enabled || !containerRef.current) return;

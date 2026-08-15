@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import "@xterm/xterm/css/xterm.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/700.css";
@@ -21,6 +21,46 @@ const DEFAULT_FONT = 16;
 
 const TERMINAL_FONT = "JetBrains Mono";
 const TERMINAL_FONT_STACK = `"${TERMINAL_FONT}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+
+let terminalFontsReady = false;
+let terminalFontsLoading = false;
+const terminalFontListeners = new Set<() => void>();
+
+function markTerminalFontsReady() {
+  terminalFontsReady = true;
+  terminalFontListeners.forEach((listener) => listener());
+}
+
+function loadTerminalFonts() {
+  if (terminalFontsReady || terminalFontsLoading) return;
+
+  if (
+    typeof document === "undefined" ||
+    typeof document.fonts?.load !== "function"
+  ) {
+    markTerminalFontsReady();
+    return;
+  }
+
+  terminalFontsLoading = true;
+  void Promise.all([
+    document.fonts.load(`${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
+    document.fonts.load(`bold ${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
+  ]).then(markTerminalFontsReady, markTerminalFontsReady);
+}
+
+function subscribeToTerminalFonts(listener: () => void) {
+  terminalFontListeners.add(listener);
+  loadTerminalFonts();
+  return () => terminalFontListeners.delete(listener);
+}
+
+function getTerminalFontsReady() {
+  return (
+    typeof document !== "undefined" &&
+    (typeof document.fonts?.load !== "function" || terminalFontsReady)
+  );
+}
 
 // One Dark / One Light ANSI palettes: the xterm defaults are the harsh
 // pure-RGB primaries, which is most of what makes `ls` output look dated.
@@ -70,29 +110,17 @@ const TerminalXTerm = () => {
   const { streamRef, openStream, closeStream, detachStream } = useLiveStream({
     closeOnUnmount: false,
   });
-  const [configFontSize, setConfigFontSize] = useConfigValue("terminalFontSize");
+  const [configFontSize, setConfigFontSize] =
+    useConfigValue("terminalFontSize");
   const fontSize = configFontSize ?? DEFAULT_FONT;
 
   // xterm measures its cell grid once on open; opening before the bundled
   // font is available would leave a mismatched grid until the next resize.
-  const [fontsReady, setFontsReady] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const markReady = () => {
-      if (!cancelled) setFontsReady(true);
-    };
-    if (typeof document.fonts?.load === "function") {
-      void Promise.all([
-        document.fonts.load(`${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
-        document.fonts.load(`bold ${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
-      ]).then(markReady, markReady);
-    } else {
-      markReady();
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const fontsReady = useSyncExternalStore(
+    subscribeToTerminalFonts,
+    getTerminalFontsReady,
+    () => false,
+  );
 
   const terminalTheme = useMemo(
     () => ({
@@ -155,14 +183,6 @@ const TerminalXTerm = () => {
     streamRef,
     terminalRef: xterm,
   });
-
-  // The hook only re-applies background/foreground on a theme switch; merge
-  // the ANSI palette and cursor/selection colors so those recolor live too.
-  useEffect(() => {
-    const terminal = xterm.current;
-    if (!terminal) return;
-    terminal.options.theme = { ...terminal.options.theme, ...terminalTheme };
-  }, [terminalTheme, xterm]);
 
   // Handler for reset - closes PTY and creates fresh terminal
   const handleReset = () => {
