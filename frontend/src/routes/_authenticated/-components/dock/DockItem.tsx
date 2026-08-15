@@ -1,25 +1,10 @@
 import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
-import {
-  motion,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
-import { memo, useRef } from "react";
+import { motion, type MotionValue } from "motion/react";
+import { memo } from "react";
 
+import { useDockMagnification } from "./useDockMagnification";
 import type { SidebarItem } from "../sidebar/types";
-
-/* Resting tile size, peak size under the cursor, and how far (px) the
-   magnification bulge reaches to either side of the cursor. */
-const TILE_SIZE = 40;
-const TILE_SIZE_MAX = 64;
-const MAGNIFY_RANGE = 140;
-/* Positive = downward: tiles hang from the top-mounted panel and dip toward
-   the cursor. */
-const LIFT_MAX = 8;
-
-const SPRING = { damping: 14, mass: 0.1, stiffness: 170 };
 
 type DockItemProps = SidebarItem & {
   disabled?: boolean;
@@ -29,30 +14,7 @@ type DockItemProps = SidebarItem & {
 
 const DockItem = memo<DockItemProps>(
   ({ to, title, icon, params, disabled = false, gradient, mouseX }) => {
-    const tileRef = useRef<HTMLSpanElement>(null);
-
-    const distance = useTransform(mouseX, (x) => {
-      const bounds = tileRef.current?.getBoundingClientRect();
-      if (!bounds) return Infinity;
-      return x - bounds.x - bounds.width / 2;
-    });
-
-    const size = useSpring(
-      useTransform(
-        distance,
-        [-MAGNIFY_RANGE, 0, MAGNIFY_RANGE],
-        [TILE_SIZE, TILE_SIZE_MAX, TILE_SIZE],
-      ),
-      SPRING,
-    );
-    const lift = useSpring(
-      useTransform(
-        distance,
-        [-MAGNIFY_RANGE, 0, MAGNIFY_RANGE],
-        [0, LIFT_MAX, 0],
-      ),
-      SPRING,
-    );
+    const { lift, size, tileRef } = useDockMagnification(mouseX);
 
     const renderIcon = () => {
       if (!icon) return null;

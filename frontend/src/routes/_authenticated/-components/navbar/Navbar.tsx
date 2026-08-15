@@ -72,14 +72,21 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
           </div>
         )}
 
-        {navigationMode === "dock" && <Dock />}
-
-        <div className="app-navbar__actions">
-          <NavbarNotificationsDropdown />
-          <Settings />
-          <NavbarSettingsDialogTrigger />
-          <NavbarUserDropdown />
-        </div>
+        {navigationMode === "dock" ? (
+          <Dock>
+            <NavbarNotificationsDropdown />
+            <Settings />
+            <NavbarSettingsDialogTrigger />
+            <NavbarUserDropdown />
+          </Dock>
+        ) : (
+          <div className="app-navbar__actions">
+            <NavbarNotificationsDropdown />
+            <Settings />
+            <NavbarSettingsDialogTrigger />
+            <NavbarUserDropdown />
+          </div>
+        )}
       </div>
     </header>
   );

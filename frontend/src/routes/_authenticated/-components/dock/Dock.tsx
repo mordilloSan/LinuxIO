@@ -1,7 +1,9 @@
 import { useMotionValue } from "motion/react";
+import { Children, type ReactNode } from "react";
 
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 
+import DockActionSlot from "./DockActionSlot";
 import DockItem from "./DockItem";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
@@ -28,7 +30,21 @@ const FALLBACK_GRADIENTS = Object.values(TILE_GRADIENTS);
 const gradientFor = (to: string, index: number) =>
   TILE_GRADIENTS[to] ?? FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
 
-const Dock = () => {
+/* Tile gradients for the relocated header actions, assigned by child order
+   (notifications, theme toggle, settings, account). */
+const ACTION_GRADIENTS: readonly (readonly [string, string])[] = [
+  ["#ffb74a", "#f57c00"],
+  ["#8e7cf0", "#5b45d6"],
+  ["#aab4c2", "#6b7686"],
+  ["#ff7b7b", "#e03131"],
+];
+
+export interface DockProps {
+  /** Header action buttons shown after the nav tiles, behind a divider. */
+  children?: ReactNode;
+}
+
+const Dock = ({ children }: DockProps) => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
   /* Cursor x position over the dock; Infinity = cursor away, all tiles at
@@ -36,12 +52,13 @@ const Dock = () => {
   const mouseX = useMotionValue(Infinity);
 
   return (
-    <nav aria-label="Primary navigation" className="app-dock">
-      <ul
-        className="app-dock__list"
-        onMouseLeave={() => mouseX.set(Infinity)}
-        onMouseMove={(e) => mouseX.set(e.clientX)}
-      >
+    <nav
+      aria-label="Primary navigation"
+      className="app-dock"
+      onMouseLeave={() => mouseX.set(Infinity)}
+      onMouseMove={(e) => mouseX.set(e.clientX)}
+    >
+      <ul className="app-dock__list">
         {items.map((page, index) => (
           <DockItem
             {...page}
@@ -52,6 +69,18 @@ const Dock = () => {
           />
         ))}
       </ul>
+      {children && (
+        <div className="app-dock__actions">
+          {Children.map(children, (child, index) => (
+            <DockActionSlot
+              gradient={ACTION_GRADIENTS[index % ACTION_GRADIENTS.length]}
+              mouseX={mouseX}
+            >
+              {child}
+            </DockActionSlot>
+          ))}
+        </div>
+      )}
     </nav>
   );
 };

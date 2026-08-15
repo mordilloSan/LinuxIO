@@ -175,7 +175,7 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
                   padding: theme.spacing(1.5),
                 }}
               >
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <AppTypography fontWeight={600} variant="body2">
                     Navigation style
                   </AppTypography>
@@ -189,6 +189,12 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
                     { label: "Sidebar", value: "sidebar" },
                     { label: "Dock", value: "dock" },
                   ]}
+                  style={{
+                    flexShrink: 0,
+                    marginBottom: 0,
+                    marginLeft: theme.spacing(1.5),
+                    width: "auto",
+                  }}
                   value={navigationMode ?? "sidebar"}
                 />
               </FrostedCard>
