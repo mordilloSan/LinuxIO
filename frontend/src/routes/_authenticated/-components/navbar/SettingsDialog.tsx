@@ -191,9 +191,10 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
                   ]}
                   style={{
                     flexShrink: 0,
+                    gridTemplateColumns: "max-content",
                     marginBottom: 0,
                     marginLeft: theme.spacing(1.5),
-                    width: "auto",
+                    width: "max-content",
                   }}
                   value={navigationMode ?? "sidebar"}
                 />
