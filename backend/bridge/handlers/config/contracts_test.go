@@ -33,8 +33,9 @@ func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
 				Light: &bridgeconfig.ThemeColors{BackgroundDefault: &light},
 				Dark:  &bridgeconfig.ThemeColors{CodeText: &dark},
 			},
-			ViewModes:   map[string]string{"docker": "table", "storage": "card"},
-			ChunkSizeMB: 8,
+			ViewModes:        map[string]string{"docker": "table", "storage": "card"},
+			ChunkSizeMB:      8,
+			TerminalFontSize: 18,
 		},
 		Docker: bridgeconfig.Docker{
 			Folders:                 []bridgeconfig.AbsolutePath{"/srv/docker", "/mnt/apps"},

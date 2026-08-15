@@ -242,6 +242,8 @@ const applyDefaults = (
         cloneHardwareSections(defaultConfig.appSettings.hardwareSections),
       viewModes,
       chunkSizeMB: app.chunkSizeMB ?? defaultConfig.appSettings.chunkSizeMB,
+      // Absent means "frontend default"; the terminal owns that constant.
+      terminalFontSize: app.terminalFontSize,
     },
     docker: {
       folders:

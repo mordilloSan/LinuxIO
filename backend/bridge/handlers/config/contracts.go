@@ -36,6 +36,9 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 	if value.AppSettings.ChunkSizeMB != 0 {
 		result.AppSettings.ChunkSizeMB = &value.AppSettings.ChunkSizeMB
 	}
+	if value.AppSettings.TerminalFontSize != 0 {
+		result.AppSettings.TerminalFontSize = &value.AppSettings.TerminalFontSize
+	}
 	if value.Dismissals != nil {
 		result.Dismissals = &apischema.Dismissals{UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID), FailedLoginAlertID: optionalString(value.Dismissals.FailedLoginAlertID)}
 	}

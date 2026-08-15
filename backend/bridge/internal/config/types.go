@@ -87,6 +87,8 @@ type PersistedAppSettings struct {
 	ContainerOrder          []string                 `json:"-" yaml:"containerOrder,omitempty"`
 	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`
+	// TerminalFontSize is the terminal font size in px (10–28). 0 = use the frontend default.
+	TerminalFontSize int `json:"terminalFontSize,omitempty" yaml:"terminalFontSize,omitempty"`
 }
 
 // DockerProxy holds Caddy reverse proxy configuration

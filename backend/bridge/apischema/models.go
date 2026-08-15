@@ -1403,6 +1403,7 @@ type AppSettings struct {
 	PrimaryColor            string                          `json:"primaryColor"`
 	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
+	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
 	Theme                   Theme                           `json:"theme"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
 	ViewModes               map[string]TableCardViewMode    `json:"viewModes,omitempty"`

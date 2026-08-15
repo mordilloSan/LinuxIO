@@ -472,6 +472,7 @@ type ConfigAppSettingsPayload struct {
 	ViewModes               map[string]string               `json:"viewModes,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
+	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
 }
 
 type ConfigThemeColorsByModePayload struct {

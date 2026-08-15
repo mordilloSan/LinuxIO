@@ -144,6 +144,7 @@ export interface AppSettings {
   primaryColor: string;
   showHiddenFiles: boolean;
   sidebarCollapsed: boolean;
+  terminalFontSize?: number;
   theme: Theme;
   themeColors?: ConfigThemeColorsByModePayload;
   viewModes?: Record<string, TableCardViewMode>;
@@ -375,6 +376,7 @@ export interface ConfigAppSettingsPayload {
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   chunkSizeMB?: number;
+  terminalFontSize?: number;
 }
 
 export interface ConfigDismissalsPayload {

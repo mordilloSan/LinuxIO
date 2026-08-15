@@ -28,7 +28,10 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *api
 	applyOptionalHardwareSections(app, payload.HardwareSections)
 	applyViewModes(app, payload.ViewModes)
 	applyLayoutOrders(app, payload.LayoutOrders)
-	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
+	if err := applyChunkSizeSetting(app, payload.ChunkSizeMB); err != nil {
+		return err
+	}
+	return applyTerminalFontSizeSetting(app, payload.TerminalFontSize)
 }
 
 func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) error {
@@ -202,5 +205,17 @@ func applyChunkSizeSetting(app *bridgeconfig.PersistedAppSettings, chunkSize *in
 		return fmt.Errorf("chunkSizeMB must be 0 (default) or between 1 and 32")
 	}
 	app.ChunkSizeMB = value
+	return nil
+}
+
+func applyTerminalFontSizeSetting(app *bridgeconfig.PersistedAppSettings, fontSize *int) error {
+	if fontSize == nil {
+		return nil
+	}
+	value := *fontSize
+	if value != 0 && (value < 10 || value > 28) {
+		return fmt.Errorf("terminalFontSize must be 0 (default) or between 10 and 28")
+	}
+	app.TerminalFontSize = value
 	return nil
 }
