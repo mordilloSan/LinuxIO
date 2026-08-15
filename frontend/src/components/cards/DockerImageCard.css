@@ -1,9 +1,28 @@
+.docker-image-card-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: inherit;
+}
+
+.docker-image-card-button:hover {
+  background: transparent;
+}
+
 .docker-image-card {
   transition:
-    box-shadow var(--app-transition-duration-fast) ease-out,
-    border-bottom-color var(--app-transition-duration-fast) ease-out,
-    border-bottom-width var(--app-transition-duration-fast) ease-out,
-    margin var(--app-transition-duration-fast) ease-out;
+    transform var(--hover-lift-duration) var(--hover-lift-ease),
+    box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
+    border-bottom-color var(--hover-lift-duration) var(--hover-lift-ease),
+    border-bottom-width var(--hover-lift-duration) var(--hover-lift-ease),
+    margin var(--hover-lift-duration) var(--hover-lift-ease);
+}
+
+.docker-image-card-button:focus-visible .docker-image-card {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
 /* Image selection uses the same accent treatment as a hovered dashboard card,

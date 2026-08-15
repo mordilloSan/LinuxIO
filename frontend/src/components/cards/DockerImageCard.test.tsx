@@ -15,23 +15,37 @@ const image: DockerImageRow = {
 };
 
 describe("DockerImageCard", () => {
-  it("keeps the dashboard-style accent while its image is selected", async () => {
+  it("selects the whole card and keeps the dashboard-style accent", async () => {
     const onSelect = vi.fn();
     const { container, rerender, user } = render(
       <DockerImageCard image={image} onSelect={onSelect} selected={false} />,
     );
 
-    expect(container.firstElementChild).toHaveClass("docker-image-card");
-    expect(container.firstElementChild).not.toHaveClass(
+    const card = screen.getByRole("button", {
+      name: `Select image ${image.repo}`,
+    });
+    expect(card).toBe(container.firstElementChild);
+    expect(card).toHaveAttribute("aria-pressed", "false");
+    expect(card).toHaveClass("docker-image-card-button");
+    expect(card.firstElementChild).not.toHaveClass(
       "docker-image-card--selected",
     );
+    expect(screen.queryByRole("checkbox")).toBeNull();
 
-    await user.click(screen.getByRole("checkbox"));
+    await user.click(card);
     expect(onSelect).toHaveBeenCalledWith(true);
 
     rerender(<DockerImageCard image={image} onSelect={onSelect} selected />);
-    expect(container.firstElementChild).toHaveClass(
+    const selectedCard = screen.getByRole("button", {
+      name: `Deselect image ${image.repo}`,
+    });
+    expect(selectedCard).toHaveAttribute("aria-pressed", "true");
+    expect(selectedCard.firstElementChild).toHaveClass(
       "docker-image-card--selected",
     );
+
+    selectedCard.focus();
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenLastCalledWith(false);
   });
 });

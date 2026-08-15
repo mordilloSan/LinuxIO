@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { DockerUpdateCheckState } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -39,76 +39,81 @@ const DockerImageCard = ({
   onSelect,
 }: DockerImageCardProps) => {
   const theme = useAppTheme();
+  const selectionLabel = `${selected ? "Deselect" : "Select"} image ${image.repo}`;
+
+  const toggleSelection = () => onSelect(!selected);
 
   return (
-    <FrostedCard
-      className={`docker-image-card${selected ? " docker-image-card--selected" : ""}`}
-      style={
-        {
-          padding: 8,
-          "--docker-image-card-accent": theme.palette.primary.main,
-          "--docker-image-card-selected-shadow": getFrostedCardLiftShadow(theme),
-        } as CSSProperties
-      }
+    <AppButton
+      aria-label={selectionLabel}
+      onClick={toggleSelection}
+      aria-pressed={selected}
+      className="docker-image-card-button"
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: theme.spacing(1),
-          marginBottom: theme.spacing(1),
-        }}
+      <FrostedCard
+        className={`docker-image-card${selected ? " docker-image-card--selected" : ""}`}
+        hoverLift
+        style={
+          {
+            padding: 8,
+            "--docker-image-card-accent": theme.palette.primary.main,
+            "--docker-image-card-selected-shadow": getFrostedCardLiftShadow(theme),
+          } as CSSProperties
+        }
       >
         <div
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "space-between",
             gap: theme.spacing(1),
+            marginBottom: theme.spacing(1),
           }}
         >
-          <AppCheckbox
-            checked={selected}
-            onChange={(e) => onSelect(e.target.checked)}
-            size="small"
-          />
-          <AppTypography
-            fontWeight={700}
-            noWrap
-            title={image.repo}
-            toastMeta={DOCKER_TOAST_META}
-            variant="body2"
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1),
+            }}
           >
-            {image.repo}
-          </AppTypography>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-            gap: theme.spacing(0.5),
-          }}
-        >
-          {image.tags.map((tag) => (
-            <AppTooltip
-              contentWidth
-              copyText={tag}
-              key={tag}
-              onlyWhenTruncated
-              title={tag}
+            <AppTypography
+              fontWeight={700}
+              noWrap
+              title={image.repo}
               toastMeta={DOCKER_TOAST_META}
+              variant="body2"
             >
-              <Chip
-                label={tag}
-                size="small"
-                style={{ fontSize: "0.75rem" }}
-                variant="soft"
-              />
-            </AppTooltip>
-          ))}
+              {image.repo}
+            </AppTypography>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              gap: theme.spacing(0.5),
+            }}
+          >
+            {image.tags.map((tag) => (
+              <AppTooltip
+                contentWidth
+                copyText={tag}
+                key={tag}
+                onlyWhenTruncated
+                title={tag}
+                toastMeta={DOCKER_TOAST_META}
+              >
+                <Chip
+                  label={tag}
+                  size="small"
+                  style={{ fontSize: "0.75rem" }}
+                  variant="soft"
+                />
+              </AppTooltip>
+            ))}
+          </div>
         </div>
-      </div>
 
       <div
         style={{
@@ -183,7 +188,8 @@ const DockerImageCard = ({
       >
         {image.id}
       </AppTypography>
-    </FrostedCard>
+      </FrostedCard>
+    </AppButton>
   );
 };
 
