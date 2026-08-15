@@ -12,6 +12,7 @@ import {
 
 import AppTypography from "@/components/ui/AppTypography";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
+import { HOVER_LIFT_HEADROOM } from "@/theme/constants";
 
 export interface AppVirtualGridProps<TItem> {
   ariaLabel?: string;
@@ -110,7 +111,11 @@ function AppVirtualGrid<TItem>({
     getScrollElement: () => scrollRef.current,
     overscan,
     paddingEnd: padding,
-    paddingStart: padding,
+    // This scrollport is `overflow: auto`, so it clips a hover-lifted card in
+    // the first row against its own top edge. Reserve the lift headroom inside
+    // the scroll area, where the card has somewhere to rise into; the negative
+    // margin below gives the space back, so nothing moves on screen.
+    paddingStart: padding + HOVER_LIFT_HEADROOM,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
@@ -138,6 +143,11 @@ function AppVirtualGrid<TItem>({
       style={{
         flex: fillAvailable ? "1 1 0" : undefined,
         height: height ?? (fillAvailable ? "100%" : undefined),
+        // Cancels the paddingStart reserved above, so the first row lands where
+        // it always did and the grid only gains headroom the lift can use. The
+        // space pulled into is the gap the tab strip already leaves below
+        // itself (--tab-strip-headroom); both are HOVER_LIFT_HEADROOM.
+        marginTop: -HOVER_LIFT_HEADROOM,
         maxHeight,
         minHeight: fillAvailable ? 0 : undefined,
         minWidth: 0,

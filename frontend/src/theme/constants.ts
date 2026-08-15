@@ -63,6 +63,14 @@ export const GAP_XL = 24;
 export const DASHBOARD_CARD_SPACING = 4;
 export const DASHBOARD_CARD_GAP = DASHBOARD_CARD_SPACING * GAP_XS;
 
+/* Vertical room a hover-lifted card needs above its resting top edge. The lift
+   itself is a 4px translate (--hover-lift-y on .fc-hover-lift, which every card
+   grid uses); the remaining 2px keeps it clear of whatever sits above. Without
+   this the top row is cut off along its top edge — either occluded by an opaque
+   sticky header or clipped by a scroll container's overflow.
+   Mirrors --tab-strip-headroom in components/tabbar/tab-container.css. */
+export const HOVER_LIFT_HEADROOM = 6;
+
 // Icon sizes
 export const iconSize = {
   sm: 18,

@@ -11,6 +11,11 @@
     headroom >= the tallest card lift (--hover-lift-y, up to 4px on
     .fc-hover-lift, plus ~1% of card height where --hover-lift-scale is 1.02).
     Total visible gap is the sum of the two.
+
+    A panel that scrolls internally (AppVirtualGrid) clips against its own edge
+    long before a card reaches the curtain, so headroom out here does nothing
+    for it. Those components reclaim this space and re-reserve it inside their
+    scrollport instead — see HOVER_LIFT_HEADROOM in theme/constants.ts.
   */
   --tab-strip-curtain: 4px;
   --tab-strip-headroom: 6px;
