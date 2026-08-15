@@ -30,11 +30,12 @@
 .app-tooltip {
   position: fixed;
   z-index: 1500;
+  box-sizing: border-box;
   /* max-content keeps a short tooltip hugging its text — the reason this rule
      used to say nowrap — while max-width still caps a long one. nowrap plus a
      max-width cannot both hold: the text simply overflowed the painted box. */
   width: max-content;
-  max-width: 300px;
+  max-width: min(300px, calc(100vw - 16px));
   padding: 3px 10px;
   border-radius: 8px;
   background-color: var(--app-palette-background-paper);
