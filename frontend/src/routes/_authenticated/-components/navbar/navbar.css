@@ -26,13 +26,15 @@
   align-items: center;
 }
 
-.app-navbar-panel {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 1200;
-  width: min(360px, calc(100vw - 24px));
+/* AppPopover portals the panel and drives its placement through inline
+   top/left, so this rule only redresses the paper's own chrome — and it takes
+   the doubled class to outrank .app-popover__paper whichever order the two
+   stylesheets end up bundled in. */
+.app-popover__paper.app-navbar-panel {
+  width: min(380px, calc(100vw - 24px));
   overflow: hidden;
+  border-radius: var(--app-floating-panel-radius);
+  box-shadow: var(--app-floating-panel-shadow);
 }
 
 .app-navbar-account-menu {
@@ -43,8 +45,13 @@
   padding: 14px 16px;
 }
 
-.app-navbar-panel__header--centered {
-  text-align: center;
+/* Notifications sets its count and its clear action on one line; the account
+   menu keeps the stacked eyebrow-over-name header. */
+.app-navbar-panel__header--row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
 }
 
 .app-navbar-panel__eyebrow {
@@ -56,16 +63,21 @@
 }
 
 .app-navbar-panel__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
 }
 
-.app-navbar-panel__footer {
-  display: flex;
-  justify-content: center;
-  padding: 8px;
-  border-top: 1px solid var(--app-palette-divider);
+/* Pulled tight against the panel padding so the header stays a line of text
+   rather than growing to button height. Doubled up on .app-btn to beat that
+   rule's own min-width and padding regardless of stylesheet order. */
+.app-btn.app-navbar-panel__action {
+  min-width: auto;
+  margin: -4px -6px -4px 0;
+  padding: 4px 8px;
+  border-radius: 8px;
 }
 
 .app-navbar-notifications__peek {
@@ -81,11 +93,17 @@
   font-size: 0.7rem;
 }
 
+/* Rows sit as cards inset from the panel edge rather than strips cut apart by
+   full-bleed rules — the dock's reading of tiles resting on a surface. */
 .app-navbar-notifications__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   max-height: 400px;
   margin: 0;
-  padding: 0;
-  overflow: auto;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 
@@ -93,12 +111,12 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--app-palette-divider);
-}
-
-.app-navbar-notifications__item:last-child {
-  border-bottom: 0;
+  padding: 10px;
+  /* Matches .app-menu__item, and sits close to concentric with the panel's
+     16px corner across the list's 8px inset. */
+  border-radius: 10px;
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .app-navbar-notifications__item--interactive {
@@ -111,13 +129,34 @@
   outline: none;
 }
 
+/* Dressed as a dock tile: a light-to-base vertical gradient under the tiles'
+   own gloss, so a status icon here and an app icon in the dock read as the
+   same object at two sizes. Callers supply --app-tile-color. */
 .app-navbar-notifications__icon {
+  --app-tile-color: var(--app-palette-text-secondary);
   display: inline-flex;
+  width: 30px;
+  height: 30px;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  margin-top: 2px;
   flex-shrink: 0;
+  border-radius: var(--app-tile-radius);
+  color: #fff;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-tile-color) 74%, #fff),
+    var(--app-tile-color)
+  );
+  box-shadow:
+    var(--app-tile-gloss),
+    0 3px 8px -4px rgba(0, 0, 0, 0.45);
+}
+
+/* Also overrides the fixed width/height attributes on Iconify icons, so every
+   glyph lands at the dock's proportion whatever size the caller passed. */
+.app-navbar-notifications__icon svg {
+  width: 56%;
+  height: 56%;
 }
 
 .app-navbar-notifications__content {
@@ -125,15 +164,45 @@
   min-width: 0;
 }
 
+.app-navbar-notifications__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Clamped because a raw backend error arrives as a paragraph, and one of those
+   left unbounded owns the whole panel; the full text stays on hover. */
 .app-navbar-notifications__title {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  font-size: 0.875rem;
+  overflow: hidden;
+  font-size: 0.8125rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/* Baseline-aligned with the first line of the title, so a three-line error
+   still starts level with its timestamp instead of pushing it down. */
+.app-navbar-notifications__status {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--app-palette-text-secondary);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .app-navbar-notifications__meta {
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .app-navbar-notifications__caption {
@@ -147,12 +216,43 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
-.app-navbar-notifications__link {
-  margin-left: auto;
+/* Same doubling as the header action — this replaces the geometry the two
+   call sites used to pass as identical inline styles. */
+.app-btn.app-navbar-notifications__link {
+  min-width: auto;
+  padding: 0;
+  line-height: 1.2;
   text-decoration: none;
+}
+
+/* The cancel affordance stays quiet until its row is pointed at or tabbed
+   into, so several running transfers aren't a column of close buttons. */
+.app-navbar-notifications__item .app-icon-btn {
+  opacity: 0.5;
+  transition: opacity var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+.app-navbar-notifications__item:hover .app-icon-btn,
+.app-navbar-notifications__item .app-icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.app-navbar-notifications__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 32px;
+  color: var(--app-palette-text-secondary);
+}
+
+.app-navbar-notifications__empty-copy {
+  margin: 0;
+  font-size: 0.8125rem;
 }
 
 @media (max-width: 959.95px) {
@@ -160,19 +260,4 @@
     min-height: 56px;
     padding: 0 16px;
   }
-
-  .app-navbar-panel {
-    position: fixed;
-    top: 66px;
-    right: 8px;
-    left: auto;
-    width: min(360px, calc(100vw - 16px));
-  }
-}
-
-/* Portaled navbar panels use AppPopover's measured fixed position rather than
-   the inline dropdown's absolute/right anchoring. */
-.app-popover__paper.app-navbar-panel {
-  position: fixed;
-  right: auto;
 }
