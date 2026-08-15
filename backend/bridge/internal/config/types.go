@@ -76,21 +76,15 @@ type PersistedAppSettings struct {
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
 	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	NavigationMode          string                   `json:"navigationMode,omitempty" yaml:"navigationMode,omitempty"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
 	HardwareSections        *HardwareSections        `json:"hardwareSections,omitempty" yaml:"hardwareSections,omitempty"`
 	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
-	// LayoutOrders holds the user's drag-to-reorder result per surface, keyed by
-	// the same surface ids as ViewModes ("dashboard", "docker.containers", ...).
-	// A surface absent from the map renders in its natural order.
-	LayoutOrders map[string][]string `json:"layoutOrders,omitempty" yaml:"layoutOrders,omitempty"`
-	// DashboardOrder and ContainerOrder are the pre-LayoutOrders spellings of
-	// the two surfaces that had reordering first. They are read from existing
-	// config files and folded into LayoutOrders on load, then dropped on the
-	// next write; nothing else may use them.
-	DashboardOrder []string `json:"-" yaml:"dashboardOrder,omitempty"`
-	ContainerOrder []string `json:"-" yaml:"containerOrder,omitempty"`
+	LayoutOrders            map[string][]string      `json:"layoutOrders,omitempty" yaml:"layoutOrders,omitempty"`
+	DashboardOrder          []string                 `json:"-" yaml:"dashboardOrder,omitempty"`
+	ContainerOrder          []string                 `json:"-" yaml:"containerOrder,omitempty"`
 	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`
 }
@@ -117,6 +111,18 @@ type PersistedJobSettings struct {
 	HeavyArchiveConcurrency   int `json:"heavyArchiveConcurrency" yaml:"heavyArchiveConcurrency"`
 	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers" yaml:"archiveCompressionWorkers"`
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
+}
+
+// Accepted PersistedAppSettings.NavigationMode values.
+const (
+	NavigationModeSidebar = "sidebar"
+	NavigationModeDock    = "dock"
+)
+
+// IsValidNavigationMode reports whether s is a valid stored navigation mode
+// ("" counts: it means the default).
+func IsValidNavigationMode(s string) bool {
+	return s == "" || s == NavigationModeSidebar || s == NavigationModeDock
 }
 
 // PersistedTheme represents a validated theme value (LIGHT or DARK).

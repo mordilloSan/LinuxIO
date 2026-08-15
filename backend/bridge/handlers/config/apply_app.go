@@ -17,6 +17,9 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *con
 	if err := applyThemeColorOverrides(app, payload.ThemeColors); err != nil {
 		return err
 	}
+	if err := applyNavigationModeSetting(app, payload.NavigationMode); err != nil {
+		return err
+	}
 	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
@@ -36,6 +39,18 @@ func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) er
 		return fmt.Errorf("invalid theme value (LIGHT|DARK)")
 	}
 	app.Theme = bridgeconfig.PersistedTheme(normalized)
+	return nil
+}
+
+func applyNavigationModeSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+	if mode == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(*mode))
+	if normalized != bridgeconfig.NavigationModeSidebar && normalized != bridgeconfig.NavigationModeDock {
+		return fmt.Errorf("invalid navigationMode value (sidebar|dock)")
+	}
+	app.NavigationMode = normalized
 	return nil
 }
 

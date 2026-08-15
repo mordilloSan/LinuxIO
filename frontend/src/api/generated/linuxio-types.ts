@@ -140,6 +140,7 @@ export interface AppSettings {
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
   layoutOrders?: Record<string, string[]>;
+  navigationMode?: NavigationMode;
   primaryColor: string;
   showHiddenFiles: boolean;
   sidebarCollapsed: boolean;
@@ -374,6 +375,7 @@ export interface ConfigAppSettingsPayload {
   primaryColor?: string;
   themeColors?: ConfigThemeColorsByModePayload;
   sidebarCollapsed?: boolean;
+  navigationMode?: string;
   showHiddenFiles?: boolean;
   hiddenCards?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
@@ -1573,6 +1575,8 @@ export interface NTPServersRequest {
 export interface NameRequest {
   name: string;
 }
+
+export type NavigationMode = "sidebar" | "dock";
 
 export interface NetworkInterface {
   dns: string[];

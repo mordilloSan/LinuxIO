@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "@tanstack/react-router";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import "@/icons/icons";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import Footer from "./footer/Footer";
@@ -17,6 +18,8 @@ const MainLayout = () => {
   const location = useLocation();
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const [navigationMode] = useConfigValue("navigationMode");
+  const dockMode = navigationMode === "dock";
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
@@ -59,7 +62,7 @@ const MainLayout = () => {
           overflow: "hidden",
         }}
       >
-        <Sidebar items={sidebarItems} />
+        {!dockMode && <Sidebar items={sidebarItems} />}
         <div
           style={{
             flex: 1,
@@ -71,11 +74,15 @@ const MainLayout = () => {
               easing: theme.transitions.easing.easeInOut,
               duration: theme.transitions.duration.leavingScreen,
             }),
-            marginLeft: isDesktop ? `${sidebarWidth}px` : undefined,
-            width: isDesktop ? `calc(100% - ${sidebarWidth}px)` : "100%",
+            marginLeft:
+              !dockMode && isDesktop ? `${sidebarWidth}px` : undefined,
+            width:
+              !dockMode && isDesktop
+                ? `calc(100% - ${sidebarWidth}px)`
+                : "100%",
           }}
         >
-          <Navbar onDrawerToggle={toggleMobileOpen} />
+          <Navbar onDrawerToggle={dockMode ? undefined : toggleMobileOpen} />
 
           {updateInfo?.available && (
             <div

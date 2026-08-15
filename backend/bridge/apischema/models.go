@@ -18,6 +18,7 @@ type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
+type NavigationMode string
 type ValidationIssueType string
 
 var StringEnums = map[string][]string{
@@ -32,6 +33,7 @@ var StringEnums = map[string][]string{
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
+	"NavigationMode":                {"sidebar", "dock"},
 	"ValidationIssueType":           {"error", "warning"},
 	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":                  {"iso", "imagePreset"},
@@ -1402,6 +1404,7 @@ type AppSettings struct {
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
+	NavigationMode          NavigationMode                  `json:"navigationMode,omitempty"`
 	PrimaryColor            string                          `json:"primaryColor"`
 	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`

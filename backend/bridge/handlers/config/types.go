@@ -14,6 +14,7 @@ type configAppSettingsPayload struct {
 	PrimaryColor            *string                               `json:"primaryColor"`
 	ThemeColors             *configThemeColorsByModePayload       `json:"themeColors"`
 	SidebarCollapsed        *bool                                 `json:"sidebarCollapsed"`
+	NavigationMode          *string                               `json:"navigationMode"`
 	ShowHiddenFiles         *bool                                 `json:"showHiddenFiles"`
 	HiddenCards             []string                              `json:"hiddenCards"`
 	DockerDashboardSections *bridgeconfig.DockerDashboardSections `json:"dockerDashboardSections"`

@@ -16,6 +16,7 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 		AppSettings: apischema.AppSettings{
 			Theme: apischema.Theme(value.AppSettings.Theme), PrimaryColor: value.AppSettings.PrimaryColor.String(),
 			ThemeColors: themeColorsToAPI(value.AppSettings.ThemeColors), SidebarCollapsed: value.AppSettings.SidebarCollapsed,
+			NavigationMode:  apischema.NavigationMode(value.AppSettings.NavigationMode),
 			ShowHiddenFiles: value.AppSettings.ShowHiddenFiles, HiddenCards: value.AppSettings.HiddenCards,
 			DockerDashboardSections: dockerDashboardSectionsToAPI(value.AppSettings.DockerDashboardSections),
 			HardwareSections:        hardwareSectionsToAPI(value.AppSettings.HardwareSections), ViewModes: viewModes,

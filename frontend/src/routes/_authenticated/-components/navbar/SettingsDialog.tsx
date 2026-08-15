@@ -10,6 +10,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
 import CapabilityManagerSection from "./CapabilityManagerSection";
@@ -35,6 +36,7 @@ interface SettingsDialogProps {
 const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
+  const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
     !privileged &&
@@ -162,6 +164,33 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
                   </AppTypography>
                 </div>
                 <NavbarCustomizer />
+              </FrostedCard>
+
+              <FrostedCard
+                hoverLift
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: theme.spacing(1.5),
+                }}
+              >
+                <div>
+                  <AppTypography fontWeight={600} variant="body2">
+                    Navigation style
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    Classic sidebar, or a macOS-style dock in the header.
+                  </AppTypography>
+                </div>
+                <TabSelector
+                  onChange={(value) => setNavigationMode(value)}
+                  options={[
+                    { label: "Sidebar", value: "sidebar" },
+                    { label: "Dock", value: "dock" },
+                  ]}
+                  value={navigationMode ?? "sidebar"}
+                />
               </FrostedCard>
             </div>
           ) : null}

@@ -3,6 +3,7 @@ import { memo, type CSSProperties, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
@@ -11,16 +12,18 @@ import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
 import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
+import Dock from "../dock/Dock";
 
 import "./navbar.css";
 
 interface NavbarProps {
-  onDrawerToggle: MouseEventHandler<HTMLElement>;
+  onDrawerToggle?: MouseEventHandler<HTMLElement>;
 }
 
 const Navbar = ({ onDrawerToggle }: NavbarProps) => {
   const theme = useAppTheme();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
+  const [navigationMode] = useConfigValue("navigationMode");
 
   return (
     <header
@@ -30,7 +33,7 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
       }}
     >
       <div className="app-navbar__inner">
-        {!isDesktop && (
+        {!isDesktop && onDrawerToggle && (
           <AppIconButton
             aria-label="Open drawer"
             color="inherit"
@@ -68,6 +71,8 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
             />
           </div>
         )}
+
+        {navigationMode === "dock" && <Dock />}
 
         <div className="app-navbar__actions">
           <NavbarNotificationsDropdown />

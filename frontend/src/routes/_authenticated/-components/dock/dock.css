@@ -1,0 +1,133 @@
+.app-dock {
+  /* Lives inside the navbar: centered in the header row, magnified tiles
+     spill out below the header (nothing above clips overflow). */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.app-dock__list {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  /* Fixed height so magnified tiles pop out below the panel instead of
+     stretching it (48px content = dot row + 40px resting tile). */
+  height: 60px;
+  border-radius: 20px;
+  border: 1px solid var(--app-palette-divider);
+  background: color-mix(
+    in srgb,
+    var(--app-palette-background-paper) 62%,
+    transparent
+  );
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+.app-dock__item {
+  display: flex;
+  align-items: flex-start;
+}
+
+.app-dock-link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-dock-link--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.app-dock__tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 26%;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.15),
+    0 6px 14px -6px rgba(0, 0, 0, 0.5);
+}
+
+.app-dock__tile svg {
+  width: 56%;
+  height: 56%;
+}
+
+.app-dock__label {
+  position: absolute;
+  /* Cleared past the fully magnified tile (which overflows the link box). */
+  top: calc(100% + 38px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--app-palette-text-primary);
+  background: var(--app-palette-background-paper);
+  border: 1px solid var(--app-palette-divider);
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.app-dock-link:hover .app-dock__label,
+.app-dock-link:focus-visible .app-dock__label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Running-app style indicator for the active route, sitting above the tile
+   near the panel edge. Always laid out so the tile row keeps a constant
+   baseline; only its visibility changes. */
+.app-dock__dot {
+  width: 4px;
+  height: 4px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--app-palette-text-primary);
+  opacity: 0;
+  flex: 0 0 auto;
+}
+
+.app-dock-link--active .app-dock__dot {
+  opacity: 0.9;
+}
+
+/* When the header row gets tight, drop out of absolute centering and share
+   the row with the search field and actions. */
+@media (max-width: 1279.95px) {
+  .app-dock {
+    position: static;
+    transform: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0 12px;
+  }
+}
+
+/* Phone widths: no hover magnification to clip, so let the row scroll. */
+@media (max-width: 767.95px) {
+  .app-dock__list {
+    gap: 4px;
+    overflow-x: auto;
+  }
+}
