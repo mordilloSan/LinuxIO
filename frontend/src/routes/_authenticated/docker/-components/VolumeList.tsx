@@ -397,6 +397,7 @@ const VolumeList = ({
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getVolumeId}
             items={filtered}
             renderItem={(volume) => (

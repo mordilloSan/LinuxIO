@@ -1472,6 +1472,7 @@ const ContainerTable = ({
               dnd={dnd}
               emptyMessage="No containers found."
               enableSorting={false}
+              fillAvailable
               getRowId={(container) => container.Id}
               // Dragging rows is the point of edit mode; selecting one there
               // would fight the drag and immediately swap the table for a

@@ -1233,6 +1233,7 @@ const SharesPage = () => {
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getShareGroupId}
             renderItem={(group) => (
               <FolderShareCard

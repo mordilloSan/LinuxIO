@@ -46,7 +46,12 @@ export default function ScrollingTabsPage({
       />
       <div
         data-testid="fixture-scrollport"
-        style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative" }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          position: "relative",
+        }}
       >
         <div
           style={

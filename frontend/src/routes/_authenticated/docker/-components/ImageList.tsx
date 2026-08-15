@@ -508,6 +508,7 @@ const ImageList = ({
         filtered.length > 0 ? (
           <ReorderableCardGrid
             disableReordering
+            fillAvailable
             getId={getImageRowId}
             items={filtered}
             renderItem={(image) => (

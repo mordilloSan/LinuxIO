@@ -389,14 +389,29 @@ const ContainerList = ({
         />
       </RoutedTabSearch>
 
+      {/* The grid scrolls itself, so this wrapper has to pass the panel's
+          height down rather than size to the cards. */}
       <motion.div
         layout="position"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: "1 1 auto",
+          minHeight: 0,
+        }}
         transition={{
           duration: detailTransitionDurationSeconds,
           ease: EASING_EMPHASIZED,
         }}
       >
-        <div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: "1 1 auto",
+            minHeight: 0,
+          }}
+        >
           {filteredContainers.length === 0 ? (
             <div style={{ textAlign: "center", padding: "32px 0" }}>
               <AppTypography color="text.secondary" variant="body2">
@@ -405,6 +420,7 @@ const ContainerList = ({
             </div>
           ) : (
             <ReorderableCardGrid
+              fillAvailable
               getId={getContainerId}
               items={filteredContainers}
               renderItem={(container) => (

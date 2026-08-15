@@ -808,7 +808,14 @@ const ComposeList = ({
   );
   if (viewMode === "card") {
     return (
-      <div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         {searchControl}
         {filtered.length === 0 ? (
           <div
@@ -825,6 +832,7 @@ const ComposeList = ({
           </div>
         ) : (
           <ReorderableCardGrid
+            fillAvailable
             getId={getComposeProjectId}
             items={filtered}
             renderItem={(project) => (
@@ -862,14 +870,11 @@ const ComposeList = ({
         data={filtered}
         dnd={tableDnd}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
+        fillAvailable
         getRowId={(project) => project.name}
         renderExpandedContent={({ original: project }) =>
           renderExpandedContent(project)
         }
-        style={{
-          flex: "1 1 0",
-          minHeight: 0,
-        }}
       />
       {containerDialogs}
     </div>

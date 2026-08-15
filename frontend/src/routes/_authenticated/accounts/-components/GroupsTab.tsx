@@ -220,6 +220,7 @@ const GroupsTab = ({
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getAccountGroupId}
             items={filtered}
             renderItem={(group) => (

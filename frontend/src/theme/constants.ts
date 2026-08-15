@@ -71,6 +71,14 @@ export const DASHBOARD_CARD_GAP = DASHBOARD_CARD_SPACING * GAP_XS;
    Mirrors --tab-strip-headroom in components/tabbar/tab-container.css. */
 export const HOVER_LIFT_HEADROOM = 6;
 
+/* Sideways room a lifted card's shadow needs when a card grid scrolls inside
+   its own scrollport. `overflow: auto` clips, and getFrostedCardLiftShadow is
+   `0 8px 24px` — a 24px blur reaches about half that far to each side before it
+   is invisible, so an edge card would otherwise show a hard vertical cut along
+   the scrollport wall on hover. There is no equivalent above, where the lift
+   headroom already reserves what the tab strip hands back. */
+export const CARD_LIFT_SHADOW_GUTTER = 12;
+
 // Icon sizes
 export const iconSize = {
   sm: 18,

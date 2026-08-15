@@ -652,6 +652,7 @@ const NetworkList = ({
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getNetworkId}
             items={filtered}
             renderItem={(network) => (

@@ -66,6 +66,7 @@ const UserCardsView = ({
   if (!selectedUser) {
     return (
       <ReorderableCardGrid
+        fillAvailable
         getId={getUsername}
         items={users}
         renderItem={(user) => (
