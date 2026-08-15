@@ -10,6 +10,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { isKeyboardEvent } from "@dnd-kit/utilities";
 import {
   useCallback,
   useEffect,
@@ -116,6 +117,10 @@ export function useReorderableSurface<TItem>({
   const [editMode, setEditMode] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
+  // The element the opening press incidentally focused, kept so leaving layout
+  // mode can give that focus up again. Null when the drag came from the
+  // keyboard, where the focus is the user's own and has to stay put.
+  const pressFocusRef = useRef<HTMLElement | null>(null);
   // Read inside the sensor callback so the sensor descriptors never change
   // identity: dnd-kit resolves them while a press is already in flight.
   const editModeRef = useRef(false);
@@ -160,14 +165,32 @@ export function useReorderableSurface<TItem>({
     isDraggingRef.current = false;
     setPendingId(null);
     setEditMode(false);
+
+    // A hold is a pointer gesture, but the press underneath it still focuses
+    // whatever it landed on — usually the card's own expand button. dnd-kit
+    // swallows the trailing click, so the user never sees that focus until
+    // Escape flips the browser to keyboard modality and the element lights up
+    // with a `:focus-visible` ring nobody asked for. Drop the focus the press
+    // took; keyboard-opened drags keep theirs, since there the ring is the
+    // user's place in the list.
+    const pressFocus = pressFocusRef.current;
+    pressFocusRef.current = null;
+    if (pressFocus && pressFocus === document.activeElement) {
+      pressFocus.blur();
+    }
   }, []);
 
   const handleDragPending = useCallback((event: DragPendingEvent) => {
     setPendingId(String(event.id));
   }, []);
 
-  const handleDragStart = useCallback(() => {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     isDraggingRef.current = true;
+    const focused = document.activeElement;
+    pressFocusRef.current =
+      isKeyboardEvent(event.activatorEvent) || !(focused instanceof HTMLElement)
+        ? null
+        : focused;
     setPendingId(null);
     setEditMode(true);
   }, []);

@@ -29,8 +29,8 @@ interface Item {
 const getId = (item: Item) => item.id;
 const items: Item[] = [{ id: "a" }, { id: "b" }, { id: "c" }];
 
-const dragStart = (id: string) =>
-  ({ active: { id } }) as unknown as DragStartEvent;
+const dragStart = (id: string, activatorEvent?: Event) =>
+  ({ active: { id }, activatorEvent }) as unknown as DragStartEvent;
 
 const dragEnd = (activeId: string, overId: string) =>
   ({
@@ -216,6 +216,55 @@ describe("useReorderableSurface", () => {
     });
 
     expect(result.current.editMode).toBe(false);
+  });
+
+  it("drops the focus a press took, so Escape leaves no focus ring", () => {
+    const pressed = document.createElement("button");
+    document.body.append(pressed);
+    pressed.focus();
+
+    try {
+      const { result } = renderSurface();
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart("a"));
+        result.current.dndContextProps.onDragEnd(dragEnd("a", "a"));
+      });
+      expect(document.activeElement).toBe(pressed);
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      });
+
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      pressed.remove();
+    }
+  });
+
+  it("keeps focus when the keyboard opened layout mode", () => {
+    const focused = document.createElement("button");
+    document.body.append(focused);
+    focused.focus();
+
+    try {
+      const { result } = renderSurface();
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(
+          dragStart("a", new KeyboardEvent("keydown", { key: " " })),
+        );
+        result.current.dndContextProps.onDragEnd(dragEnd("a", "a"));
+      });
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      });
+
+      expect(document.activeElement).toBe(focused);
+    } finally {
+      focused.remove();
+    }
   });
 
   it("reports no layout mode while disabled", () => {
