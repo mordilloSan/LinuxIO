@@ -1,5 +1,13 @@
+/* Geometry and timing come from .hover-lift; these cards are large enough that
+   scaling them reads as a wobble, so they lift only. The shadow needs
+   !important to beat the frosted base style, which is applied inline. */
+.fc-hover-lift {
+  --hover-lift-y: -4px;
+  --hover-lift-scale: 1;
+  --hover-lift-press-scale: 0.995;
+}
+
 .fc-hover-lift:hover {
-  transform: translateY(-4px);
   box-shadow: var(--fc-lift-shadow) !important;
 }
 
@@ -30,6 +38,19 @@
 
 /* DashboardCard: hover accent — lift shadow + stronger bottom border.
    !important beats the inline frosted/accent base styles. */
+.dc-accent-card {
+  --hover-lift-y: -2px;
+  --hover-lift-scale: 1;
+  --hover-lift-press-scale: 0.997;
+  /* The border and margin shifts ride the same curve as the lift, so the
+     accent thickens in step with the card rising. */
+  transition:
+    transform var(--app-transition-duration-fast) ease-out,
+    box-shadow var(--app-transition-duration-fast) ease-out,
+    border var(--app-transition-duration-fast) ease-out,
+    margin var(--app-transition-duration-fast) ease-out;
+}
+
 .dc-accent-card:hover {
   box-shadow: var(--dc-hover-shadow) !important;
   border-bottom-width: 3px !important;

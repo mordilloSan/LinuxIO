@@ -12,11 +12,6 @@ export const getFrostedCardShadow = (theme: AppTheme) =>
 export const getFrostedCardLiftShadow = (theme: AppTheme) =>
   `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`;
 
-export const getFrostedCardLiftStyles = (theme: AppTheme) => ({
-  transform: "translateY(-4px)",
-  boxShadow: getFrostedCardLiftShadow(theme),
-});
-
 export const getFrostedCardStyles = (theme: AppTheme) => ({
   backgroundColor: alpha(
     theme.card.background,

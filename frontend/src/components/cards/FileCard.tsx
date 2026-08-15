@@ -9,37 +9,14 @@ import {
   type MouseEvent,
 } from "react";
 
+import "./FileCard.css";
+
 import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
-
-const fileCardStyles = `
-  @keyframes sizeGlow {
-    0% { opacity: 0.5; }
-    25% { opacity: 0.7; }
-    50% { opacity: 1; }
-    75% { opacity: 0.7; }
-    100% { opacity: 0.5; }
-  }
-
-  .file-card-hover:not(.file-card-disable-hover):hover {
-    transform: translateY(-2px) scale(1.01);
-  }
-`;
-
-// Inject styles
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById("fileCardStyles")
-) {
-  const style = document.createElement("style");
-  style.id = "fileCardStyles";
-  style.textContent = fileCardStyles;
-  document.head.appendChild(style);
-}
 
 export interface FileCardProps {
   directorySizeError?: Error | null;
@@ -219,8 +196,8 @@ const FileCard = memo<FileCardProps>(
       [onDoubleClick],
     );
 
-    // Use CSS class for hover - no React state updates during hover
-    const className = `file-card-hover${disableHover ? " file-card-disable-hover" : ""}`;
+    // Use CSS classes for hover - no React state updates during hover
+    const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}`;
 
     return (
       <div
@@ -246,6 +223,7 @@ const FileCard = memo<FileCardProps>(
         }}
       >
         <FileIcon
+          className="hover-lift__icon"
           filename={name}
           hidden={hidden}
           isDirectory={isDirectory}

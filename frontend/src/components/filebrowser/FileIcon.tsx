@@ -1,6 +1,8 @@
 import { Icon } from "@iconify/react";
 import { memo } from "react";
 
+import "./FileIcon.css";
+
 import { useAppTheme } from "@/theme";
 import { FILE_TYPE_COLORS } from "@/theme/colors";
 import { alpha } from "@/utils/color";
@@ -8,6 +10,8 @@ import { alpha } from "@/utils/color";
 import { getIconForType } from "./fileIconUtils";
 
 interface FileIconProps {
+  /** Applied to the icon wrapper, so a parent can animate the icon. */
+  className?: string;
   filename?: string;
   hidden?: boolean;
   isDirectory: boolean;
@@ -104,6 +108,7 @@ const getIconColor = (
 
 const FileIcon = memo(
   ({
+    className,
     isDirectory,
     filename,
     hidden,
@@ -121,16 +126,11 @@ const FileIcon = memo(
       : getIconColor(filename, defaultIconColor);
     const wrapperOpacity = hidden ? 0.25 : 1;
 
+    const wrapperClass = ["file-icon", className].filter(Boolean).join(" ");
+
     if (!isSymlink) {
       return (
-        <span
-          style={{
-            display: "inline-flex",
-            flexShrink: 0,
-            opacity: wrapperOpacity,
-            transition: "opacity 120ms ease",
-          }}
-        >
+        <span className={wrapperClass} style={{ opacity: wrapperOpacity }}>
           <Icon
             color={iconColor}
             height={size}
@@ -145,13 +145,8 @@ const FileIcon = memo(
     // Render with symlink overlay
     return (
       <div
-        style={{
-          position: "relative",
-          display: "inline-flex",
-          flexShrink: 0,
-          opacity: wrapperOpacity,
-          transition: "opacity 120ms ease",
-        }}
+        className={`${wrapperClass} file-icon--symlink`}
+        style={{ opacity: wrapperOpacity }}
       >
         <Icon
           color={iconColor}

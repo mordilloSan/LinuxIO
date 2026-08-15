@@ -23,13 +23,12 @@ const FrostedCard = forwardRef<HTMLDivElement, FrostedCardProps>(
       borderRadius: cardBorderRadius,
       ...getFrostedCardStyles(theme),
       ...(hoverLift && {
-        transition: "transform 0.2s, box-shadow 0.2s",
         "--fc-lift-shadow": getFrostedCardLiftShadow(theme),
       }),
       ...style,
     } as CSSProperties;
 
-    const cls = [hoverLift && "fc-hover-lift", className]
+    const cls = [hoverLift && "hover-lift fc-hover-lift", className]
       .filter(Boolean)
       .join(" ");
 

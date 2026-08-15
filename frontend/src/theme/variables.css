@@ -90,6 +90,73 @@ a {
   opacity: 1;
 }
 
+/* Shared hover/press response for anything card-shaped. Entering runs on the
+   dock's magnification spring so a card and a dock tile accelerate and settle
+   identically; leaving runs on a plain, shorter ease-out, because sweeping the
+   cursor across a grid otherwise drags a trail of cards still easing back down.
+
+   Consumers own their own depth (shadow, border, background) and just let it
+   ride these transitions; only the geometry is shared, tunable per card through
+   the custom properties below. Large cards should drop --hover-lift-scale to 1
+   — a percentage of a 220px card is a much bigger jump than of a 60px one. */
+.hover-lift {
+  --hover-lift-y: -3px;
+  --hover-lift-scale: 1.02;
+  --hover-lift-press-scale: 0.99;
+  transition:
+    transform var(--app-transition-duration-fast) ease-out,
+    box-shadow var(--app-transition-duration-fast) ease-out,
+    border-color var(--app-transition-duration-fast) ease-out;
+}
+
+.hover-lift:hover {
+  transform: translateY(var(--hover-lift-y)) scale(var(--hover-lift-scale));
+  transition-duration: var(--app-transition-duration-lift);
+  transition-timing-function: var(--app-easing-spring);
+}
+
+/* Pressing overrides the hover lift, so it has to come after it. */
+.hover-lift:active {
+  transform: scale(var(--hover-lift-press-scale));
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
+}
+
+/* An icon growing inside the lifting card is what sells the depth — the dock
+   gets the same effect for free, since its icons scale with the tile. */
+.hover-lift__icon {
+  transition: transform var(--app-transition-duration-fast) ease-out;
+}
+
+.hover-lift:hover .hover-lift__icon {
+  transform: scale(1.06);
+  transition-duration: var(--app-transition-duration-lift);
+  transition-timing-function: var(--app-easing-spring);
+}
+
+/* Suppressed while a gesture owns the pointer (marquee selection), where cards
+   under the cursor are being swept, not hovered. */
+.hover-lift--disabled:hover,
+.hover-lift--disabled:active,
+.hover-lift--disabled:hover .hover-lift__icon {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift,
+  .hover-lift__icon {
+    transition-duration: 1ms;
+  }
+
+  /* Hover feedback stays, as the consumer's shadow and border; the movement is
+     what goes away. */
+  .hover-lift:hover,
+  .hover-lift:active,
+  .hover-lift:hover .hover-lift__icon {
+    transform: none;
+  }
+}
+
 .log-identifier-link {
   cursor: pointer;
 }

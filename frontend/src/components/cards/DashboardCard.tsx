@@ -277,14 +277,12 @@ const DashboardCard = ({
 
   return (
     <FrostedCard
-      className="dc-accent-card"
+      className="hover-lift dc-accent-card"
       style={
         {
           minHeight: cardHeight,
           display: "flex",
           flexDirection: "column",
-          transition:
-            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
           ...getAccentCardStyles(primaryColor),
           "--dc-accent": primaryColor,
           "--dc-hover-shadow": getFrostedCardLiftShadow(theme),

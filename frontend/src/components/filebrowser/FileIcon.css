@@ -1,0 +1,13 @@
+/* The wrapper's styles live here rather than inline so a parent can animate the
+   icon through a class — an inline `transition` would override any the parent
+   adds (see .hover-lift__icon). Only the opacity value stays inline, since it
+   is per-item. */
+.file-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: opacity 120ms ease;
+}
+
+.file-icon--symlink {
+  position: relative;
+}
