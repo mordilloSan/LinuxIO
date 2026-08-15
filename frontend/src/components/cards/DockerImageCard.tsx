@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { DockerUpdateCheckState } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -5,7 +7,10 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { getFrostedCardLiftShadow } from "@/theme/surfaces";
 import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
+
+import "./DockerImageCard.css";
 
 export interface DockerImageRow {
   containers: number;
@@ -36,7 +41,16 @@ const DockerImageCard = ({
   const theme = useAppTheme();
 
   return (
-    <FrostedCard style={{ padding: 8 }}>
+    <FrostedCard
+      className={`docker-image-card${selected ? " docker-image-card--selected" : ""}`}
+      style={
+        {
+          padding: 8,
+          "--docker-image-card-accent": theme.palette.primary.main,
+          "--docker-image-card-selected-shadow": getFrostedCardLiftShadow(theme),
+        } as CSSProperties
+      }
+    >
       <div
         style={{
           display: "flex",

@@ -1,0 +1,16 @@
+.docker-image-card {
+  transition:
+    box-shadow var(--app-transition-duration-fast) ease-out,
+    border-bottom-color var(--app-transition-duration-fast) ease-out,
+    border-bottom-width var(--app-transition-duration-fast) ease-out,
+    margin var(--app-transition-duration-fast) ease-out;
+}
+
+/* Image selection uses the same accent treatment as a hovered dashboard card,
+   but persists until the image is deselected. */
+.docker-image-card--selected {
+  box-shadow: var(--docker-image-card-selected-shadow) !important;
+  border-bottom-width: 3px !important;
+  border-bottom-color: var(--docker-image-card-accent) !important;
+  margin-block-end: -1px;
+}
