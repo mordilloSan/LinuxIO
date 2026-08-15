@@ -20,11 +20,6 @@
     margin var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
-.docker-image-card-button:focus-visible .docker-image-card {
-  outline: 2px solid var(--app-palette-primary-main);
-  outline-offset: 2px;
-}
-
 /* Image selection uses the same accent treatment as a hovered dashboard card,
    but persists until the image is deselected. */
 .docker-image-card--selected {

@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
@@ -181,6 +181,27 @@ const ImageList = ({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Card selection is transient. Escape dismisses it without entering the
+  // destructive flow; the open confirmation dialog retains its own Escape
+  // handling and therefore keeps this selection intact.
+  useEffect(() => {
+    if (selected.size === 0 || deleteDialogOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Esc") {
+        setSelected(new Set());
+        const activeElement = document.activeElement;
+        if (
+          activeElement instanceof HTMLButtonElement &&
+          activeElement.classList.contains("docker-image-card-button")
+        ) {
+          activeElement.blur();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleteDialogOpen, selected.size]);
 
   // Create image handler
   const handleCreateImage = useCallback(() => {
@@ -486,6 +507,7 @@ const ImageList = ({
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            disableReordering
             getId={getImageRowId}
             items={filtered}
             renderItem={(image) => (

@@ -9,6 +9,8 @@ import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 interface ReorderableCardGridProps<TItem> {
   /** Equal-width columns at each breakpoint. When present, each card spans one column. */
   columns?: GridSize;
+  /** Leaves the rendered cards interactive without arming hold-to-reorder. */
+  disableReordering?: boolean;
   getId: (item: TItem) => string;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
@@ -30,6 +32,7 @@ interface ReorderableCardGridProps<TItem> {
  */
 function ReorderableCardGrid<TItem>({
   columns,
+  disableReordering = false,
   getId,
   items,
   renderItem,
@@ -47,6 +50,7 @@ function ReorderableCardGrid<TItem>({
           return (
             <AppGrid key={id} size={columns ? 1 : size}>
               <SortableCard
+                disabled={disableReordering}
                 editMode={surface.editMode}
                 id={id}
                 pending={surface.pendingId === id}
