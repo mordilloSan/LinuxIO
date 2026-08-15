@@ -111,6 +111,12 @@ const FileBrowserContent = ({
     >
       {!chrome.editingPath && (
         <FileBrowserHeader
+          breadcrumbs={
+            <BreadcrumbsNav
+              onNavigate={chrome.onOpenDirectory}
+              path={chrome.normalizedPath}
+            />
+          }
           isSaving={chrome.isSavingFile}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
@@ -135,21 +141,12 @@ const FileBrowserContent = ({
           flexDirection: "column",
         }}
       >
-        {!chrome.editingPath && (
-          <>
-            <BreadcrumbsNav
-              onNavigate={chrome.onOpenDirectory}
-              path={chrome.normalizedPath}
-            />
-
-            {data.resource?.type === "directory" && (
-              <SortBar
-                onSortChange={chrome.onSortChange}
-                sortField={listing.sortField}
-                sortOrder={chrome.sortOrder}
-              />
-            )}
-          </>
+        {!chrome.editingPath && data.resource?.type === "directory" && (
+          <SortBar
+            onSortChange={chrome.onSortChange}
+            sortField={listing.sortField}
+            sortOrder={chrome.sortOrder}
+          />
         )}
         <div
           style={{

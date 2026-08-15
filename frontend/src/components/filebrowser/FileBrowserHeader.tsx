@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -11,13 +11,14 @@ import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundT
 import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { shadowSm } from "@/theme/constants";
 
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import type { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
+  /** Leading slot for the browsing view — the breadcrumb trail. */
+  breadcrumbs?: ReactNode;
   editingFileName?: string;
   editingFilePath?: string;
   isDirty?: boolean;
@@ -41,6 +42,7 @@ const FileBrowserHeader = ({
   onCloseEditor,
   isSaving = false,
   viewMode,
+  breadcrumbs,
   editingFileName,
   editingFilePath,
   isDirty = false,
@@ -67,13 +69,8 @@ const FileBrowserHeader = ({
         style={{
           display: "flex",
           alignItems: "center",
-          paddingInline: 12,
+          paddingInline: theme.spacing(2),
           minHeight: 64,
-          backgroundColor:
-            theme.palette.mode === "light"
-              ? theme.darken(theme.sidebar.background, 0.13)
-              : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: shadowSm,
         }}
       >
         {/* Left section - Status indicator when editing */}
@@ -103,7 +100,7 @@ const FileBrowserHeader = ({
             )}
           </div>
         )}
-        {/* Center section - File info when editing OR search bar when browsing */}
+        {/* Center section - File info when editing OR breadcrumbs + search when browsing */}
         {showQuickSave && editingFileName ? (
           <div
             style={{
@@ -120,23 +117,37 @@ const FileBrowserHeader = ({
             </AppTypography>
           </div>
         ) : (
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              display: "flex",
-              justifyContent: "center",
-              marginInline: 8,
-            }}
-          >
-            <SearchBar
-              onChange={onSearchChange}
-              placeholder={
-                isMobile ? "Search..." : "Search files and folders..."
-              }
-              value={searchQuery}
-            />
-          </div>
+          <>
+            <div
+              style={{
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                overflow: "hidden",
+              }}
+            >
+              {breadcrumbs}
+            </div>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                justifyContent: "center",
+                marginInline: 8,
+              }}
+            >
+              <div style={{ width: "100%", maxWidth: 420 }}>
+                <SearchBar
+                  onChange={onSearchChange}
+                  placeholder={
+                    isMobile ? "Search..." : "Search files and folders..."
+                  }
+                  value={searchQuery}
+                />
+              </div>
+            </div>
+          </>
         )}
         {/* Right section - Action buttons */}
         <div

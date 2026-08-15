@@ -116,9 +116,6 @@ export interface AppTheme {
   header: {
     color: string;
     background: string;
-    search: {
-      color: string;
-    };
     indicator: {
       background: string;
     };
@@ -489,9 +486,6 @@ function resolveVariantTheme(
       color: themeConfig.header.color,
       background:
         themeColors?.headerBackground ?? themeConfig.header.background,
-      search: {
-        color: themeConfig.header.search.color,
-      },
       indicator: {
         background: themeConfig.header.indicator.background,
       },
@@ -621,7 +615,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-palette-grey-900": "#212121",
     "--app-header-background": theme.header.background,
     "--app-header-color": theme.header.color,
-    "--app-header-search-color": theme.header.search.color,
     "--app-header-search-bg": alpha(
       theme.palette.common.white,
       theme.palette.mode === "dark" ? 0.04 : 0.6,

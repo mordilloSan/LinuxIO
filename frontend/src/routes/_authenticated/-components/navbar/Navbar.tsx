@@ -1,8 +1,7 @@
 import { Icon } from "@iconify/react";
-import { memo, type CSSProperties, type MouseEventHandler } from "react";
+import { memo, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppSearchField from "@/components/ui/AppSearchField";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
@@ -41,35 +40,6 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
           >
             <Icon height={iconSize.md} icon="mdi:menu" width={iconSize.md} />
           </AppIconButton>
-        )}
-
-        {isDesktop && (
-          <div className="app-navbar__search">
-            <AppSearchField
-              aria-label="Search containers or services"
-              className="app-navbar-search"
-              fullWidth
-              id="search-input"
-              name="search"
-              placeholder="Search"
-              startAdornment={
-                <Icon
-                  height={iconSize.md}
-                  icon="mdi:magnify"
-                  width={iconSize.md}
-                />
-              }
-              style={
-                {
-                  "--app-navbar-search-bg": theme.header.background,
-                  "--app-navbar-search-text": theme.header.search.color,
-                  "--app-navbar-search-icon": theme.header.color,
-                  borderRadius: `${theme.shape.borderRadius * 2}px`,
-                } as CSSProperties
-              }
-              type="search"
-            />
-          </div>
         )}
 
         {navigationMode === "dock" ? (
