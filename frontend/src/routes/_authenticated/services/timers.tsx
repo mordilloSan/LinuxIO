@@ -53,7 +53,6 @@ function TimersRoute() {
       </RoutedTabActions>
       <TimersTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
         selected={search.timer}
         viewMode={viewMode}
       />

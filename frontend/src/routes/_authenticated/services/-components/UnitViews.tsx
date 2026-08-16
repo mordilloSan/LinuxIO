@@ -2,9 +2,6 @@ import { Icon } from "@iconify/react";
 import type { RowData } from "@tanstack/react-table";
 import { motion } from "motion/react";
 import {
-  Children,
-  Fragment,
-  isValidElement,
   useCallback,
   useMemo,
   type CSSProperties,
@@ -21,7 +18,6 @@ import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type {
-  AppVirtualDataTableBreakpoint,
   AppVirtualDataTableColumnDef,
   AppVirtualDataTableDndOptions,
 } from "@/components/tables/AppVirtualDataTable";
@@ -61,16 +57,14 @@ interface UnitTableViewProps<T extends RowData> {
   emptyMessage: string;
   getRowKey: (row: T, index: number) => string | number;
   mobileColumns: UnitTableColumn[];
-  onDoubleClick?: (key: string | number) => void;
   onSelect?: (key: string | number | null) => void;
-  renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode;
+  /** One node per column of the active `desktopColumns`/`mobileColumns` set. */
+  renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode[];
   renderMobileExpandedContent?: (row: T, index: number) => ReactNode;
-  selected?: string | number | null;
 }
 
 interface UnitTableColumn {
   align?: "left" | "center" | "right";
-  className?: string;
   field: string;
   headerName: string;
   style?: CSSProperties;
@@ -446,46 +440,6 @@ export const UnitCardActions = ({
   );
 };
 
-type RenderedTableCellProps = {
-  children?: ReactNode;
-};
-
-function getHideBelow(
-  className?: string,
-): AppVirtualDataTableBreakpoint | undefined {
-  if (!className) return undefined;
-  if (className.includes("app-table-hide-below-xl")) return "xl";
-  if (className.includes("app-table-hide-below-lg")) return "lg";
-  if (className.includes("app-table-hide-below-md")) return "md";
-  if (className.includes("app-table-hide-below-sm")) return "sm";
-  return undefined;
-}
-
-function flattenRenderedCells(node: ReactNode): ReactNode[] {
-  const cells: ReactNode[] = [];
-
-  Children.forEach(node, (child) => {
-    if (
-      isValidElement<RenderedTableCellProps>(child) &&
-      child.type === Fragment
-    ) {
-      cells.push(...flattenRenderedCells(child.props.children));
-      return;
-    }
-
-    cells.push(child);
-  });
-
-  return cells;
-}
-
-function getRenderedCellContent(cell: ReactNode) {
-  if (isValidElement<RenderedTableCellProps>(cell)) {
-    return cell.props.children;
-  }
-  return cell;
-}
-
 export function UnitTableView<T extends RowData>({
   dnd,
   data,
@@ -494,9 +448,7 @@ export function UnitTableView<T extends RowData>({
   getRowKey,
   renderMainRow,
   renderMobileExpandedContent,
-  selected,
   onSelect,
-  onDoubleClick,
   emptyMessage,
 }: UnitTableViewProps<T>) {
   const theme = useAppTheme();
@@ -520,22 +472,18 @@ export function UnitTableView<T extends RowData>({
           cached.rowIndex !== row.index
         ) {
           cached = {
-            cells: flattenRenderedCells(
-              renderMainRow(row.original, isMobile, row.index),
-            ),
+            cells: renderMainRow(row.original, isMobile, row.index),
             original: row.original,
             rowIndex: row.index,
           };
           renderedCellCache.set(rowKey, cached);
         }
-        return getRenderedCellContent(cached.cells[columnIndex]);
+        return cached.cells[columnIndex];
       },
       meta: {
         align: column.align,
         cellStyle: column.style,
-        className: column.className,
         headerStyle: column.style,
-        hideBelow: getHideBelow(column.className),
         width: column.width,
       },
     }));
@@ -544,18 +492,13 @@ export function UnitTableView<T extends RowData>({
     (row: T, index: number) => String(getRowKey(row, index)),
     [getRowKey],
   );
+  // Selecting a unit swaps the whole list for its detail layout, so the table
+  // never renders a selected row — there is nothing to toggle back off.
   const handleRowClick = useCallback(
     ({ original, index }: { original: T; index: number }) => {
-      const rowKey = getRowKey(original, index);
-      onSelect?.(selected === rowKey ? null : rowKey);
+      onSelect?.(getRowKey(original, index));
     },
-    [getRowKey, onSelect, selected],
-  );
-  const handleRowDoubleClick = useCallback(
-    ({ original, index }: { original: T; index: number }) => {
-      onDoubleClick?.(getRowKey(original, index));
-    },
-    [getRowKey, onDoubleClick],
+    [getRowKey, onSelect],
   );
   const renderExpandedContent = useCallback(
     ({ original, index }: { original: T; index: number }) =>
@@ -573,14 +516,10 @@ export function UnitTableView<T extends RowData>({
       fillAvailable
       getRowId={getTableRowId}
       onRowClick={isMobile ? undefined : handleRowClick}
-      onRowDoubleClick={handleRowDoubleClick}
       renderExpandedContent={
         isMobile && renderMobileExpandedContent
           ? renderExpandedContent
           : undefined
-      }
-      selectedRowId={
-        selected === undefined || selected === null ? null : String(selected)
       }
     />
   );

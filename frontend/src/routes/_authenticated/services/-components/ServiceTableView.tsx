@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 
 import type { Service } from "@/api";
-import { AppTableCell } from "@/components/ui/AppTable";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
@@ -9,9 +8,7 @@ import UnitStatusDot from "./UnitStatusDot";
 import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
-  onDoubleClick?: (name: string) => void;
   onSelect?: (name: string | null) => void;
-  selected?: string | null;
   services: Service[];
   surface: ReorderableSurface<Service>;
 }
@@ -53,22 +50,16 @@ const mobileColumns = [
 
 const getServiceRowKey = (service: Service) => service.name;
 
-const renderServiceMainRow = (service: Service, isMobile: boolean) => (
+const renderServiceMainRow = (service: Service, isMobile: boolean) => [
   <>
-    <AppTableCell style={{ paddingLeft: 8 }}>
-      <UnitStatusDot activeState={service.active_state} />
-      {service.active_state}
-    </AppTableCell>
-    <AppTableCell>{service.name}</AppTableCell>
-    {!isMobile && (
-      <>
-        <AppTableCell>{service.load_state}</AppTableCell>
-        <AppTableCell>{service.sub_state}</AppTableCell>
-        <AppTableCell>{service.description || "-"}</AppTableCell>
-      </>
-    )}
-  </>
-);
+    <UnitStatusDot activeState={service.active_state} />
+    {service.active_state}
+  </>,
+  service.name,
+  ...(isMobile
+    ? []
+    : [service.load_state, service.sub_state, service.description || "-"]),
+];
 
 const renderServiceMobileExpandedContent = (service: Service) => (
   <MobileExpandedDetails
@@ -83,18 +74,8 @@ const renderServiceMobileExpandedContent = (service: Service) => (
 const ServiceTableView = ({
   surface,
   services,
-  selected,
   onSelect,
-  onDoubleClick,
 }: ServiceTableViewProps) => {
-  const handleDoubleClick = useCallback(
-    (key: string | number) => {
-      if (typeof key === "string") {
-        onDoubleClick?.(key);
-      }
-    },
-    [onDoubleClick],
-  );
   const handleSelect = useCallback(
     (key: string | number | null) =>
       onSelect?.(typeof key === "string" ? key : null),
@@ -111,11 +92,9 @@ const ServiceTableView = ({
       emptyMessage="No services found."
       getRowKey={getServiceRowKey}
       mobileColumns={mobileColumns}
-      onDoubleClick={handleDoubleClick}
       onSelect={handleSelect}
       renderMainRow={renderServiceMainRow}
       renderMobileExpandedContent={renderServiceMobileExpandedContent}
-      selected={selected}
     />
   );
 };

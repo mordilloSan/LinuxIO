@@ -55,14 +55,12 @@ function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
 
 interface SocketsTabProps {
   onSelectedChange: (name: string | null) => void;
-  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
   viewMode: TableCardViewMode;
 }
 
 const SocketsTab = ({
   onSelectedChange,
-  onViewModeChange,
   selected,
   viewMode,
 }: SocketsTabProps) => {
@@ -96,24 +94,15 @@ const SocketsTab = ({
           unitName={socket.name}
         />
       )}
-      renderTableView={({
-        items,
-        selected,
-        onSelect,
-        onDoubleClick,
-        surface,
-      }) => (
+      renderTableView={({ items, onSelect, surface }) => (
         <SocketTableView
-          onDoubleClick={onDoubleClick}
           onSelect={onSelect}
-          selected={selected}
           sockets={items}
           surface={surface}
         />
       )}
       searchPlaceholder="Search sockets…"
       selected={selected}
-      setViewMode={onViewModeChange}
       surfaceId="sockets.list"
       viewMode={viewMode}
     />

@@ -10,7 +10,6 @@ import {
 
 import type { TableCardViewMode } from "@/api";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppGrid from "@/components/ui/AppGrid";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import {
   useReorderableSurface,
@@ -25,9 +24,7 @@ import type { UnitListItem } from "./UnitViews";
 
 interface UnitTableViewRenderProps<T> {
   items: T[];
-  onDoubleClick: (name: string) => void;
   onSelect: (name: string | null) => void;
-  selected: string | null;
   surface: ReorderableSurface<T>;
 }
 
@@ -51,7 +48,6 @@ interface UnitListTabProps<T extends UnitListItem> {
   renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
   selected?: string;
-  setViewMode: (next: TableCardViewMode) => void;
   /** Surface id the manual order is stored under, e.g. "services.list". */
   surfaceId: string;
   viewMode: TableCardViewMode;
@@ -59,7 +55,6 @@ interface UnitListTabProps<T extends UnitListItem> {
 
 function UnitListTab<T extends UnitListItem>({
   viewMode,
-  setViewMode,
   data,
   searchPlaceholder,
   compareItems,
@@ -78,18 +73,12 @@ function UnitListTab<T extends UnitListItem>({
     (name: string | null) => onSelectedChange(name),
     [onSelectedChange],
   );
-  const [returnToTable, setReturnToTable] = useState(false);
-
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
     if (event.key !== "Escape") {
       return;
     }
 
     setExpanded(null);
-    if (returnToTable) {
-      setViewMode("table");
-      setReturnToTable(false);
-    }
   });
 
   useEffect(() => {
@@ -115,26 +104,6 @@ function UnitListTab<T extends UnitListItem>({
     return orderedItems.filter((item) => matchesSearch(item, searchText));
   }, [matchesSearch, orderedItems, search]);
 
-  const handleCardExpand = useCallback(
-    (name: string | null) => {
-      setExpanded(name);
-      if (name === null && returnToTable) {
-        setViewMode("table");
-        setReturnToTable(false);
-      }
-    },
-    [returnToTable, setExpanded, setViewMode],
-  );
-
-  const handleOpenCardView = useCallback(
-    (name: string) => {
-      setViewMode("card");
-      setExpanded(name);
-      setReturnToTable(true);
-    },
-    [setExpanded, setViewMode],
-  );
-
   const selectedItem = expanded
     ? (filtered.find((item) => item.name === expanded) ?? null)
     : null;
@@ -149,7 +118,11 @@ function UnitListTab<T extends UnitListItem>({
     </RoutedTabSearch>
   );
 
-  if (viewMode === "card") {
+  // Selecting a unit replaces whichever list you came from with the same detail
+  // layout, so the table gets the card view's detail for free — the same model
+  // as the Docker container list. `viewMode` is left alone, so clearing the
+  // selection drops you back into the list you were already in.
+  if (viewMode === "card" || selectedItem) {
     return (
       <div
         style={{
@@ -173,9 +146,9 @@ function UnitListTab<T extends UnitListItem>({
           {renderCardsView({
             items: filtered,
             expanded: expanded ?? null,
-            onExpand: handleCardExpand,
+            onExpand: setExpanded,
             renderDetailPanel: (item) =>
-              renderDetailPanel(item, () => handleCardExpand(null)),
+              renderDetailPanel(item, () => setExpanded(null)),
             surface,
           })}
         </div>
@@ -193,7 +166,7 @@ function UnitListTab<T extends UnitListItem>({
         minWidth: 0,
       }}
     >
-      {!selectedItem && searchControl}
+      {searchControl}
 
       <motion.div
         layout="position"
@@ -209,34 +182,11 @@ function UnitListTab<T extends UnitListItem>({
           ease: EASING_STANDARD,
         }}
       >
-        <AppGrid
-          alignItems="stretch"
-          container
-          spacing={3}
-          style={{ flex: "1 1 0", minHeight: 0 }}
-        >
-          <AppGrid
-            size={{ xs: 12, md: selectedItem ? 7 : 12 }}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-            }}
-          >
-            {renderTableView({
-              items: filtered,
-              selected: expanded ?? null,
-              onSelect: setExpanded,
-              onDoubleClick: handleOpenCardView,
-              surface,
-            })}
-          </AppGrid>
-          {selectedItem && (
-            <AppGrid size={{ xs: 12, md: 5 }}>
-              {renderDetailPanel(selectedItem, () => setExpanded(null))}
-            </AppGrid>
-          )}
-        </AppGrid>
+        {renderTableView({
+          items: filtered,
+          onSelect: setExpanded,
+          surface,
+        })}
       </motion.div>
     </div>
   );

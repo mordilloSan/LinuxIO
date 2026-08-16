@@ -51,14 +51,12 @@ function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
 
 interface TimersTabProps {
   onSelectedChange: (name: string | null) => void;
-  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
   viewMode: TableCardViewMode;
 }
 
 const TimersTab = ({
   onSelectedChange,
-  onViewModeChange,
   selected,
   viewMode,
 }: TimersTabProps) => {
@@ -92,24 +90,11 @@ const TimersTab = ({
           unitName={timer.name}
         />
       )}
-      renderTableView={({
-        items,
-        selected,
-        onSelect,
-        onDoubleClick,
-        surface,
-      }) => (
-        <TimerTableView
-          onDoubleClick={onDoubleClick}
-          onSelect={onSelect}
-          selected={selected}
-          timers={items}
-          surface={surface}
-        />
+      renderTableView={({ items, onSelect, surface }) => (
+        <TimerTableView onSelect={onSelect} timers={items} surface={surface} />
       )}
       searchPlaceholder="Search timers…"
       selected={selected}
-      setViewMode={onViewModeChange}
       surfaceId="timers.list"
       viewMode={viewMode}
     />

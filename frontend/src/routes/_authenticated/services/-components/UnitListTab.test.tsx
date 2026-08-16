@@ -16,16 +16,13 @@ describe("UnitListTab", () => {
         renderDetailPanel={() => null}
         renderTableView={() => <div data-testid="table-viewport" />}
         searchPlaceholder="Search units"
-        setViewMode={vi.fn()}
         surfaceId="services.list"
         viewMode="table"
       />,
     );
 
     const viewport = container.querySelector('[data-testid="table-viewport"]');
-    const tableItem = viewport?.parentElement;
-    const grid = tableItem?.parentElement;
-    const tableContainer = grid?.parentElement;
+    const tableContainer = viewport?.parentElement;
     const layout = tableContainer?.parentElement;
 
     expect(layout).toHaveStyle({
@@ -37,16 +34,6 @@ describe("UnitListTab", () => {
     expect(tableContainer).toHaveStyle({
       display: "flex",
       flex: "1 1 0",
-      flexDirection: "column",
-      minHeight: "0",
-    });
-    expect(grid).toHaveStyle({
-      alignItems: "stretch",
-      flex: "1 1 0",
-      minHeight: "0",
-    });
-    expect(tableItem).toHaveStyle({
-      display: "flex",
       flexDirection: "column",
       minHeight: "0",
     });

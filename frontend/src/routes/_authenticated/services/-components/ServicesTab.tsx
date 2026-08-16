@@ -31,14 +31,12 @@ function useServicesQuery(viewMode: TableCardViewMode) {
 
 interface ServicesTabProps {
   onSelectedChange: (name: string | null) => void;
-  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
   viewMode: TableCardViewMode;
 }
 
 const ServicesTab = ({
   onSelectedChange,
-  onViewModeChange,
   selected,
   viewMode,
 }: ServicesTabProps) => {
@@ -68,24 +66,15 @@ const ServicesTab = ({
       renderDetailPanel={(service, onClose) => (
         <UnitInfoPanel onClose={onClose} unitName={service.name} />
       )}
-      renderTableView={({
-        items,
-        selected,
-        onSelect,
-        onDoubleClick,
-        surface,
-      }) => (
+      renderTableView={({ items, onSelect, surface }) => (
         <ServiceTableView
-          onDoubleClick={onDoubleClick}
           onSelect={onSelect}
-          selected={selected}
           services={items}
           surface={surface}
         />
       )}
       searchPlaceholder="Search services…"
       selected={selected}
-      setViewMode={onViewModeChange}
       surfaceId="services.list"
       viewMode={viewMode}
     />

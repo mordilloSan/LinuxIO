@@ -34,12 +34,7 @@ const tableColumns = [
   { field: "status", headerName: "Status" },
 ];
 const getRowKey = (row: UnitRow) => row.id;
-const renderMainRow = vi.fn((row: UnitRow) => (
-  <>
-    <span>{row.name}</span>
-    <span>{row.status}</span>
-  </>
-));
+const renderMainRow = vi.fn((row: UnitRow) => [row.name, row.status]);
 const initialRows: UnitRow[] = [
   { id: "one", name: "Alpha", status: "running" },
   { id: "two", name: "Beta", status: "stopped" },

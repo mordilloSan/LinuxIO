@@ -53,7 +53,6 @@ function SocketsRoute() {
       </RoutedTabActions>
       <SocketsTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
         selected={search.socket}
         viewMode={viewMode}
       />

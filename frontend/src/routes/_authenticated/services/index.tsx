@@ -53,7 +53,6 @@ function ServicesRoute() {
       </RoutedTabActions>
       <ServicesTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
         selected={search.service}
         viewMode={viewMode}
       />

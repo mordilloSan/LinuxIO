@@ -2,7 +2,6 @@ import { useCallback } from "react";
 
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
-import { AppTableCell } from "@/components/ui/AppTable";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppTheme } from "@/theme";
@@ -11,9 +10,7 @@ import UnitStatusDot from "./UnitStatusDot";
 import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
 
 interface SocketTableViewProps {
-  onDoubleClick?: (name: string) => void;
   onSelect?: (name: string | null) => void;
-  selected?: string | null;
   sockets: Socket[];
   surface: ReorderableSurface<Socket>;
 }
@@ -75,24 +72,20 @@ function SocketListenAddresses({ socket }: { socket: Socket }) {
   );
 }
 
-const renderSocketMainRow = (socket: Socket, isMobile: boolean) => (
+const renderSocketMainRow = (socket: Socket, isMobile: boolean) => [
   <>
-    <AppTableCell style={{ paddingLeft: 8 }}>
-      <UnitStatusDot activeState={socket.active_state} />
-      {socket.active_state}
-    </AppTableCell>
-    <AppTableCell>{socket.name}</AppTableCell>
-    {!isMobile && (
-      <>
-        <AppTableCell>
-          <SocketListenAddresses socket={socket} />
-        </AppTableCell>
-        <AppTableCell align="right">{socket.n_connections}</AppTableCell>
-        <AppTableCell align="right">{socket.n_accepted}</AppTableCell>
-      </>
-    )}
-  </>
-);
+    <UnitStatusDot activeState={socket.active_state} />
+    {socket.active_state}
+  </>,
+  socket.name,
+  ...(isMobile
+    ? []
+    : [
+        <SocketListenAddresses socket={socket} />,
+        socket.n_connections,
+        socket.n_accepted,
+      ]),
+];
 
 const renderSocketMobileExpandedContent = (socket: Socket) => (
   <MobileExpandedDetails
@@ -107,18 +100,8 @@ const renderSocketMobileExpandedContent = (socket: Socket) => (
 const SocketTableView = ({
   surface,
   sockets,
-  selected,
   onSelect,
-  onDoubleClick,
 }: SocketTableViewProps) => {
-  const handleDoubleClick = useCallback(
-    (key: string | number) => {
-      if (typeof key === "string") {
-        onDoubleClick?.(key);
-      }
-    },
-    [onDoubleClick],
-  );
   const handleSelect = useCallback(
     (key: string | number | null) =>
       onSelect?.(typeof key === "string" ? key : null),
@@ -135,11 +118,9 @@ const SocketTableView = ({
       emptyMessage="No sockets found."
       getRowKey={getSocketRowKey}
       mobileColumns={mobileColumns}
-      onDoubleClick={handleDoubleClick}
       onSelect={handleSelect}
       renderMainRow={renderSocketMainRow}
       renderMobileExpandedContent={renderSocketMobileExpandedContent}
-      selected={selected}
     />
   );
 };

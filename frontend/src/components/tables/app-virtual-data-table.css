@@ -175,6 +175,25 @@
   padding: 6px 16px;
 }
 
+/* Shared shape for the detail panels rendered into `renderExpandedContent`. */
+
+.expand-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expand-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.expand-panel__mono {
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
 .app-vdt__empty {
   padding-block: 32px;
   text-align: center;
