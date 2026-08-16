@@ -437,6 +437,30 @@ tsc: ensure-node setup
 golint: ensure-golint ensure-modernize ensure-govulncheck
 	@$(MAKE) --no-print-directory golint-only
 
+# Two independent lanes, serial inside each lane:
+#
+#   frontend: lint-only ─→ tsc-only ─→ test-frontend-only
+#   backend:  golint-only ─→ test-backend ─→ deadcode-only
+#
+# The lane heads must come first because they rewrite sources in place
+# (oxlint --fix / oxfmt; golangci-lint fmt / modernize -fix / go mod tidy), so
+# nothing may read those trees until they finish. The rest is scheduling, not
+# dependency: every job here already saturates ~2 cores on its own, so running
+# four of them at once on a 4-core box costs more in contention than it buys in
+# overlap. Two lanes keeps demand near the core count and puts the long pole
+# (frontend unit tests, ~58% of the suite's total CPU) in flight early, with the
+# cheaper backend lane filling the other half of the machine underneath it.
+#
+# Serializing test-backend before deadcode-only also stops them from compiling
+# the same 58 packages simultaneously and fighting over the Go build cache.
+#
+# The frontend lane is the critical path (~51s of the ~71s total); the backend
+# lane finishes around 33s and then leaves the machine to it. Deprioritising the
+# backend lane with nice(1) was measured and made no difference — the run never
+# saturates all four cores, so there is nothing for priority to arbitrate.
+#
+# Execution order is fixed by the lane chains; the follow() order below is only
+# how output is replayed, and does not constrain what runs when.
 test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep
 	@set -uo pipefail; \
 	ST=0; \
@@ -445,23 +469,28 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck en
 	trap 'rm -f "$$FRONTEND_LINT_WARNINGS_FILE"; rm -rf "$$TMPDIR_JOBS"' EXIT; \
 	export FRONTEND_LINT_WARNINGS_FILE; \
 	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/golint"; \
-	$(MAKE) --no-print-directory lint-only   > "$$TMPDIR_JOBS/lint"   2>&1 & PID_LINT=$$!; \
-	$(MAKE) --no-print-directory golint-only > "$$TMPDIR_JOBS/golint" 2>&1 & PID_GOLINT=$$!; \
+	await() { while [ ! -f "$$1" ]; do sleep 0.1; done; }; \
+	stage() { name="$$1"; shift; \
+	  ( "$$@" > "$$TMPDIR_JOBS/$$name" 2>&1; rc=$$?; \
+	    printf '%s\n' "$$rc" > "$$TMPDIR_JOBS/$$name.rc"; exit "$$rc" ); }; \
+	touch "$$TMPDIR_JOBS/lint" "$$TMPDIR_JOBS/golint" "$$TMPDIR_JOBS/tsc" \
+	      "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
+	stage lint   $(MAKE) --no-print-directory lint-only   & PID_LINT=$$!; \
+	stage golint $(MAKE) --no-print-directory golint-only & PID_GOLINT=$$!; \
+	( await "$$TMPDIR_JOBS/lint.rc";   stage tsc  $(MAKE) --no-print-directory tsc-only ) & PID_TSC=$$!; \
+	( await "$$TMPDIR_JOBS/tsc.rc";    stage fe   $(MAKE) --no-print-directory test-frontend-only ) & PID_FE=$$!; \
+	( await "$$TMPDIR_JOBS/golint.rc"; stage be   $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 ) & PID_BE=$$!; \
+	( await "$$TMPDIR_JOBS/be.rc";     stage dead $(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 ) & PID_DEAD=$$!; \
 	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
 	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	$(PRINTC) ""; \
-	touch "$$TMPDIR_JOBS/tsc" "$$TMPDIR_JOBS/fe" "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
-	$(MAKE) --no-print-directory tsc-only                        > "$$TMPDIR_JOBS/tsc"  2>&1 & PID_TSC=$$!; \
-	$(MAKE) --no-print-directory test-frontend-only              > "$$TMPDIR_JOBS/fe"   2>&1 & PID_FE=$$!; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1  > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
-	follow "$$TMPDIR_JOBS/tsc"  $$PID_TSC  || ST=1; \
-	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	follow "$$TMPDIR_JOBS/tsc"    $$PID_TSC    || ST=1; \
 	$(PRINTC) ""; \
-	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
+	follow "$$TMPDIR_JOBS/be"     $$PID_BE     || ST=1; \
 	$(PRINTC) ""; \
-	follow "$$TMPDIR_JOBS/fe"   $$PID_FE   || ST=1; \
+	follow "$$TMPDIR_JOBS/dead"   $$PID_DEAD   || true; \
+	$(PRINTC) ""; \
+	follow "$$TMPDIR_JOBS/fe"     $$PID_FE     || ST=1; \
 	if [ -s "$$FRONTEND_LINT_WARNINGS_FILE" ]; then \
 	  FRONTEND_LINT_WARNINGS="$$(tail -n 1 "$$FRONTEND_LINT_WARNINGS_FILE")"; \
 	  $(PRINTC) "\n$(COLOR_YELLOW)⚠️  All checks completed with $$FRONTEND_LINT_WARNINGS frontend lint warning(s).$(COLOR_RESET)"; \
@@ -501,20 +530,17 @@ check-frontend: ensure-node setup
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ Frontend checks passed!$(COLOR_RESET)"
 
+# Fully serial: test-backend and deadcode-only both compile the whole backend,
+# so overlapping them duplicates the work and contends on the Go build cache.
+# Each already uses ~2 cores on its own, so there is nothing to gain by pairing.
 check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode
 	@set -uo pipefail; \
 	ST=0; \
 	$(MAKE) --no-print-directory golint-only || ST=1; \
 	$(PRINTC) ""; \
-	TMPDIR_JOBS="$$(mktemp -d)"; \
-	trap 'rm -rf "$$TMPDIR_JOBS"' EXIT; \
-	follow() { tail -n +1 -f -s 0.1 --pid="$$2" "$$1"; wait "$$2"; }; \
-	touch "$$TMPDIR_JOBS/be" "$$TMPDIR_JOBS/dead"; \
-	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/be" 2>&1 & PID_BE=$$!; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 > "$$TMPDIR_JOBS/dead" 2>&1 & PID_DEAD=$$!; \
-	follow "$$TMPDIR_JOBS/dead" $$PID_DEAD || true; \
+	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
 	$(PRINTC) ""; \
-	follow "$$TMPDIR_JOBS/be"   $$PID_BE   || ST=1; \
+	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
