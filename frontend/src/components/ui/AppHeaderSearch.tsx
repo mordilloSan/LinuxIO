@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState, type ChangeEvent } from "react";
+import { useCallback, useState, type ChangeEvent, type KeyboardEvent } from "react";
 
 import "./app-header-search.css";
 
@@ -37,6 +37,15 @@ const AppHeaderSearch = ({
     [onChange],
   );
 
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onChange("");
+      }
+    },
+    [onChange],
+  );
+
   return (
     <AppTextField
       aria-label={ariaLabel ?? placeholder}
@@ -60,6 +69,7 @@ const AppHeaderSearch = ({
       onBlur={() => setIsFocused(false)}
       onChange={handleChange}
       onFocus={() => setIsFocused(true)}
+      onKeyDown={handleKeyDown}
       placeholder={placeholder}
       size="small"
       startAdornment={
