@@ -10,9 +10,9 @@
   },
   "scripts": {
     "dev": "vite --config config/vite.config.ts --configLoader native",
-    "lint": "oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/run-browser-fixture.mjs && npm run format",
-    "format": "oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/**/*.ts\" \"scripts/run-browser-fixture.mjs\"",
-    "format:check": "oxfmt -c config/.oxfmtrc.json --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/**/*.ts\" \"scripts/run-browser-fixture.mjs\"",
+    "lint": "oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs && npm run format",
+    "format": "oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/**/*.ts\" \"scripts/compiler-coverage.mjs\" \"scripts/run-browser-fixture.mjs\"",
+    "format:check": "oxfmt -c config/.oxfmtrc.json --check --no-error-on-unmatched-pattern \"src/**/*.js\" \"src/**/*.jsx\" \"src/**/*.ts\" \"src/**/*.tsx\" \"src/test/browser/**/*.html\" \"!src/routeTree.gen.ts\" \"config/**/*.ts\" \"scripts/compiler-coverage.mjs\" \"scripts/run-browser-fixture.mjs\"",
     "icons:generate": "node scripts/generate-icons.mjs",
     "build": "vite build --config config/vite.config.ts --configLoader native",
     "analyze": "BUNDLE_ANALYZE=true vite build --config config/vite.config.ts --configLoader native",

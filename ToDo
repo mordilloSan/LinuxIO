@@ -37,10 +37,6 @@ Follow the phased
    compiler-coverage, and browser gates.
 2. Replace the custom Vite plugin only when `@vitejs/plugin-react` publishes its
    native `oxc-transform-react` integration (`vitejs/vite-plugin-react#1419` or its successor).
-3. Extend `make compiler-coverage` to report recoverable function-level
-   compiler bailouts and explicit `"use no memo"` boundaries separately. Its
-   current file-level count proves the transform emitted compiler runtime code,
-   but does not mean every function in those files was memoized.
 
 ### Router policy settings
 
@@ -77,7 +73,8 @@ Playwright.
   compile-time route-mode endpoint safety, and eliminated contract drift.
 - [x] Moved the React Compiler backend from Babel to Oxc (2026-07-09), then
   replaced the frozen general-transformer binding with the official dedicated
-  `oxc-transform-react` package (2026-08-16).
+  `oxc-transform-react` package and added separate reporting for recoverable
+  function bailouts and explicit compiler opt-outs (2026-08-16).
 - [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
 - [x] Completed the post-migration frontend UI architecture cleanup.
 - [x] Fixed file-browser progress updates rerendering the entire browser.
