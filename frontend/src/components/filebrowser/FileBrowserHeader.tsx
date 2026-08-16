@@ -58,6 +58,7 @@ const FileBrowserHeader = ({
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
+  const useMobileBrowsingLayout = isMobile && !showQuickSave;
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
     openIndexerDialog();
@@ -66,8 +67,12 @@ const FileBrowserHeader = ({
   return (
     <>
       <div
+        className="file-browser-header"
         style={{
-          display: "flex",
+          display: useMobileBrowsingLayout ? "grid" : "flex",
+          gridTemplateColumns: useMobileBrowsingLayout
+            ? "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)"
+            : undefined,
           alignItems: "center",
           paddingInline: theme.spacing(2),
           minHeight: 64,
@@ -119,7 +124,9 @@ const FileBrowserHeader = ({
         ) : (
           <>
             <div
+              className="file-browser-header__breadcrumbs"
               style={{
+                gridColumn: useMobileBrowsingLayout ? 1 : undefined,
                 minWidth: 0,
                 display: "flex",
                 alignItems: "center",
@@ -129,8 +136,10 @@ const FileBrowserHeader = ({
               {breadcrumbs}
             </div>
             <div
+              className="file-browser-header__search"
               style={{
                 flex: 1,
+                gridColumn: useMobileBrowsingLayout ? 2 : undefined,
                 minWidth: 0,
                 display: "flex",
                 justifyContent: "center",
@@ -154,7 +163,9 @@ const FileBrowserHeader = ({
           className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
           style={{
             display: "flex",
-            marginLeft: "auto",
+            gridColumn: useMobileBrowsingLayout ? 3 : undefined,
+            justifySelf: useMobileBrowsingLayout ? "end" : undefined,
+            marginLeft: useMobileBrowsingLayout ? 0 : "auto",
           }}
         >
           <div

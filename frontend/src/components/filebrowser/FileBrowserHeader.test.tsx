@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
@@ -26,7 +26,24 @@ const defaultProps = {
   viewMode: "list" as const,
 };
 
+const mockMobileViewport = () => {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query) =>
+      ({
+        addEventListener: vi.fn(),
+        matches: true,
+        media: query,
+        onchange: null,
+        removeEventListener: vi.fn(),
+      }) as unknown as MediaQueryList,
+  );
+};
+
 describe("FileBrowserHeader", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("disables absent quick-save callbacks and enables supplied handlers", async () => {
     const { rerender, user } = render(<FileBrowserHeader {...defaultProps} />);
 
@@ -75,5 +92,33 @@ describe("FileBrowserHeader", () => {
 
     await user.click(button);
     expect(onSwitchView).toHaveBeenCalledOnce();
+  });
+
+  it("centers the visible search between equal mobile side columns", () => {
+    mockMobileViewport();
+    const { container } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        breadcrumbs={<div>Home</div>}
+        showQuickSave={false}
+      />,
+    );
+
+    expect(container.querySelector(".file-browser-header")).toHaveStyle({
+      display: "grid",
+      gridTemplateColumns:
+        "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)",
+    });
+    expect(
+      container.querySelector(".file-browser-header__breadcrumbs"),
+    ).toHaveStyle({ gridColumn: "1" });
+    expect(container.querySelector(".file-browser-header__search")).toHaveStyle(
+      { gridColumn: "2" },
+    );
+    expect(container.querySelector(".header-right")).toHaveStyle({
+      gridColumn: "3",
+      justifySelf: "end",
+    });
+    expect(screen.getByRole("textbox", { name: "Search..." })).toBeVisible();
   });
 });
