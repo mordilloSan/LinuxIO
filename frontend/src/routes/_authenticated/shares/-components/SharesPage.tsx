@@ -47,6 +47,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
+import { GAP_LG, GAP_XL } from "@/theme/constants";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
@@ -1060,7 +1061,7 @@ function renderExpandedContent(
   setDeletingNFS: (share: NFSExport | null) => void,
 ): ReactNode {
   return (
-    <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: GAP_XL, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 280 }}>
         <AppTypography gutterBottom variant="subtitle2">
           <strong>Share Details:</strong>
@@ -1225,7 +1226,7 @@ const SharesPage = () => {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
+        gap: GAP_LG,
         height: "100%",
         minHeight: 0,
       }}
@@ -1281,7 +1282,7 @@ const SharesPage = () => {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
+        gap: GAP_LG,
         height: "100%",
         minHeight: 0,
       }}

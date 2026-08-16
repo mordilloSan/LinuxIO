@@ -20,7 +20,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
-  DASHBOARD_CARD_SPACING,
+  DETAIL_PANEL_GAP,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
@@ -263,7 +263,9 @@ const NetworkInterfaceList = () => {
       the whole layout rises and fades at 0.04s, then the side panel arrives at
       0.08s — from the right on a wide screen, from below once it has wrapped
       under the card. Durations and easing come from the shared slow transition,
-      so services and network read as one gesture rather than two.
+      so services and network read as one gesture rather than two. The gap
+      between card and panel is DETAIL_PANEL_GAP, the same 10px UnitViews uses
+      for its own isolated view.
     */
     return (
       <AppGrid
@@ -271,7 +273,7 @@ const NetworkInterfaceList = () => {
         component={motion.div}
         container
         initial={{ opacity: 0, y: 14 }}
-        spacing={DASHBOARD_CARD_SPACING}
+        style={{ gap: DETAIL_PANEL_GAP }}
         transition={{
           duration: slowTransitionDurationSeconds,
           delay: 0.04,
@@ -310,7 +312,7 @@ const NetworkInterfaceList = () => {
 
   return (
     <ReorderableCardGrid
-      fillAvailable={false}
+      fillAvailable
       getId={getNetworkInterfaceId}
       renderItem={(iface) => (
         <NetworkInterfaceCard

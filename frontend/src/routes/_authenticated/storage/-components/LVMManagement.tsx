@@ -29,7 +29,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { DASHBOARD_CARD_GAP } from "@/theme/constants";
+import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 const STORAGE_TOAST_META = {
@@ -70,7 +70,7 @@ const PANEL_ACCENTS: Record<LVMSectionId, string> = {
 const dialogStackStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: GAP_MD,
   marginTop: 4,
 };
 

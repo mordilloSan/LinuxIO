@@ -6,6 +6,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
+import { GAP_XL } from "@/theme/constants";
 
 import CIFSMounts from "./CIFSMounts";
 import NFSMounts from "./NFSMounts";
@@ -63,7 +64,7 @@ const MountsPage = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 24,
+          gap: GAP_XL,
           height: "100%",
           minHeight: 0,
           minWidth: 0,

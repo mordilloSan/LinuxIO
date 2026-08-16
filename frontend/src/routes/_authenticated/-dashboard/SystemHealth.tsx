@@ -27,6 +27,7 @@ import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 
 const HEALTH_REFETCH_MS = 50000;
 
@@ -566,7 +567,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
               style={{
                 display: "grid",
                 gridTemplateColumns: failedLoginGridColumns,
-                gap: 12,
+                gap: GAP_MD,
                 padding: "0 0 8px",
               }}
             >
@@ -587,7 +588,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
                   style={{
                     display: "grid",
                     gridTemplateColumns: failedLoginGridColumns,
-                    gap: 12,
+                    gap: GAP_MD,
                     alignItems: "center",
                     padding: "8px 0",
                   }}

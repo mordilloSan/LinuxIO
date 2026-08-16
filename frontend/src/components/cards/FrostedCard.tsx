@@ -44,7 +44,7 @@ const FrostedCard = forwardRef<HTMLDivElement, FrostedCardProps>(
         ...getAccentCardStyles(accentColor),
         // Read by the hold animation, so a card that keys its line to its own
         // state lights up in that colour rather than the theme's.
-        "--dc-accent": accentColor,
+        "--fc-accent": accentColor,
       }),
       ...style,
     } as CSSProperties;

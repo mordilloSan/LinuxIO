@@ -3,6 +3,7 @@ import { useMemo, type CSSProperties } from "react";
 import AppButton from "@/components/ui/AppButton";
 import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { getChromeSurfaceColor } from "@/theme/surfaces";
 import { isDirectoryPath } from "@/utils/path";
 
 export interface BreadcrumbItem {
@@ -161,15 +162,7 @@ const breadcrumbStyles = `
     padding: 0.35em 0.75em;
     max-width: 8.5em;
     border-radius: 0.75em;
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
-  }
-
-  [data-app-color-scheme="dark"] .linuxio-gallery-size {
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
-  }
-
-  [data-app-color-scheme="light"] .linuxio-gallery-size {
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 92%);
+    background: var(--linuxio-filebrowser-chrome-surface);
   }
 
   .linuxio-range-input {
@@ -262,7 +255,10 @@ const FilebrowserBreadcrumbs = ({
     "--linuxio-filebrowser-breadcrumb-bg":
       theme.fileBrowser.breadcrumbBackground,
     "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
-    "--linuxio-filebrowser-chrome": theme.fileBrowser.chrome,
+    "--linuxio-filebrowser-chrome-surface": getChromeSurfaceColor(
+      theme,
+      theme.fileBrowser.chrome,
+    ),
   } as CSSProperties;
 
   return (

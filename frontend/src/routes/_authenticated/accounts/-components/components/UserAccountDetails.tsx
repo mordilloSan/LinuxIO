@@ -41,6 +41,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
+import { GAP_MD } from "@/theme/constants";
 
 import "./user-account-details.css";
 const accountsRouteApi = getRouteApi("/_authenticated/accounts/");
@@ -1054,7 +1055,7 @@ export const UserSupplementalCards = ({ username }: { username: string }) => {
 };
 
 export const UserDetailsStack = (props: UserDetailsPanelProps) => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+  <div style={{ display: "flex", flexDirection: "column", gap: GAP_MD }}>
     <UserDetailsPanel {...props} />
     <UserSupplementalCards username={props.user.username} />
   </div>

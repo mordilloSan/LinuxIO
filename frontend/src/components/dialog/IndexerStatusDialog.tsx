@@ -9,6 +9,7 @@ import AppTypography, {
   type AppTypographyProps,
 } from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 export interface IndexerStat {
   label: string;
   value: ReactNode;
@@ -151,7 +152,7 @@ const IndexerStatusDialog = ({
             <div
               style={{
                 display: "flex",
-                gap: 12,
+                gap: GAP_MD,
                 padding: 8,
                 backgroundColor: sectionBackground,
                 borderRadius: 4,
@@ -240,7 +241,7 @@ const IndexerStatusDialog = ({
                       <div
                         style={{
                           display: "flex",
-                          gap: 12,
+                          gap: GAP_MD,
                           marginTop: 4,
                         }}
                       >
@@ -291,7 +292,7 @@ const IndexerStatusDialog = ({
                   <div
                     style={{
                       display: "flex",
-                      gap: 12,
+                      gap: GAP_MD,
                       marginTop: 4,
                     }}
                   >

@@ -7,8 +7,6 @@ export const cardBorderRadius = 16;
 // Motion
 export const EASING_STANDARD = [0.4, 0, 0.2, 1] as const;
 export const EASING_STANDARD_CSS = `cubic-bezier(${EASING_STANDARD.join(", ")})`;
-export const EASING_EMPHASIZED = [0.22, 1, 0.36, 1] as const;
-export const EASING_EMPHASIZED_CSS = `cubic-bezier(${EASING_EMPHASIZED.join(", ")})`;
 export const EASING_DECELERATE = [0, 0, 0.2, 1] as const;
 export const EASING_DECELERATE_CSS = `cubic-bezier(${EASING_DECELERATE.join(", ")})`;
 export const EASING_LINEAR_PROGRESS_PRIMARY = [0.65, 0.815, 0.74, 0.4] as const;
@@ -35,7 +33,6 @@ export const TRANSITION_SLOW_CSS = `${TRANSITION_DURATION_SLOW_MS}ms ${EASING_ST
 
 export const MOTION_CSS_VARS: Record<string, string> = {
   "--app-easing-standard": EASING_STANDARD_CSS,
-  "--app-easing-emphasized": EASING_EMPHASIZED_CSS,
   "--app-easing-decelerate": EASING_DECELERATE_CSS,
   "--app-easing-linear-progress-primary": EASING_LINEAR_PROGRESS_PRIMARY_CSS,
   "--app-easing-linear-progress-secondary":
@@ -78,6 +75,11 @@ export const HOVER_LIFT_HEADROOM = 6;
    the scrollport wall on hover. There is no equivalent above, where the lift
    headroom already reserves what the tab strip hands back. */
 export const CARD_LIFT_SHADOW_GUTTER = 12;
+
+/* Gap between the selected card and its detail panel, shared by every
+   isolate-on-select view (docker containers, services, network) so they
+   cannot drift apart. Equivalent to theme.spacing(2.5). */
+export const DETAIL_PANEL_GAP = 10;
 
 // Icon sizes
 export const iconSize = {

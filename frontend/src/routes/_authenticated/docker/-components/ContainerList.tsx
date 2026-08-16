@@ -22,7 +22,8 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
-  EASING_EMPHASIZED,
+  DETAIL_PANEL_GAP,
+  EASING_STANDARD,
   TRANSITION_DURATION_SLOW_MS,
 } from "@/theme/constants";
 
@@ -179,7 +180,7 @@ const ContainerList = ({
           layout="position"
           transition={{
             duration: detailTransitionDurationSeconds,
-            ease: EASING_EMPHASIZED,
+            ease: EASING_STANDARD,
           }}
         >
           <div
@@ -196,12 +197,12 @@ const ContainerList = ({
                 display: "flex",
                 flexDirection: isCompactLayout ? "column" : "row",
                 alignItems: "stretch",
-                gap: theme.spacing(2.5),
+                gap: DETAIL_PANEL_GAP,
               }}
               transition={{
                 duration: detailTransitionDurationSeconds,
                 delay: 0.04,
-                ease: EASING_EMPHASIZED,
+                ease: EASING_STANDARD,
               }}
             >
               <motion.div
@@ -216,7 +217,7 @@ const ContainerList = ({
                 transition={{
                   duration: detailTransitionDurationSeconds,
                   delay: 0.04,
-                  ease: EASING_EMPHASIZED,
+                  ease: EASING_STANDARD,
                 }}
               >
                 <ContainerCard
@@ -238,7 +239,7 @@ const ContainerList = ({
                 transition={{
                   duration: detailTransitionDurationSeconds,
                   delay: 0.08,
-                  ease: EASING_EMPHASIZED,
+                  ease: EASING_STANDARD,
                 }}
               >
                 <ContainerDetailsPanel
@@ -265,7 +266,7 @@ const ContainerList = ({
                 transition={{
                   duration: detailTransitionDurationSeconds,
                   delay: 0.12,
-                  ease: EASING_EMPHASIZED,
+                  ease: EASING_STANDARD,
                 }}
               >
                 <ContainerDetailsPanel
@@ -280,7 +281,7 @@ const ContainerList = ({
               transition={{
                 duration: detailTransitionDurationSeconds,
                 delay: 0.16,
-                ease: EASING_EMPHASIZED,
+                ease: EASING_STANDARD,
               }}
             >
               <UnitLogsCard
@@ -340,7 +341,7 @@ const ContainerList = ({
         }}
         transition={{
           duration: detailTransitionDurationSeconds,
-          ease: EASING_EMPHASIZED,
+          ease: EASING_STANDARD,
         }}
       >
         <div

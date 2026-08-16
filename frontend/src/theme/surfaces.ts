@@ -47,8 +47,11 @@ export const getAccentCardStyles = (accentColor: string) => ({
   borderBottomColor: mixWithTransparency(accentColor, 0.3),
 });
 
+/* Dark's default matches the filebrowser gallery-size chip's hand-tuned
+   color-mix (transparent 67%) — the last other caller of this helper was
+   deleted, so this call site is what the table is now calibrated against. */
 const CHROME_SURFACE_OPACITY = {
-  dark: { default: 0.18, hover: 0.28 },
+  dark: { default: 0.33, hover: 0.28 },
   light: { default: 0.08, hover: 0.14 },
 } as const;
 

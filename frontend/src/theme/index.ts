@@ -17,10 +17,8 @@ import type {
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
-  FILE_TYPE_COLORS,
   getContrastText,
   resolvePrimaryColor,
-  SEMANTIC_STATUS_COLORS,
 } from "@/theme/colors";
 import {
   EASING_STANDARD_CSS,
@@ -574,11 +572,9 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-radius-base": `${theme.shape.borderRadius}px`,
     ...MOTION_CSS_VARS,
     "--app-palette-primary-main": theme.palette.primary.main,
-    "--app-palette-primary-light": theme.palette.primary.light,
     "--app-palette-primary-dark": theme.palette.primary.dark,
     "--app-palette-primary-contrast-text": theme.palette.primary.contrastText,
     "--app-palette-secondary-main": theme.palette.secondary.main,
-    "--app-palette-secondary-light": theme.palette.secondary.light,
     "--app-palette-secondary-dark": theme.palette.secondary.dark,
     "--app-palette-secondary-contrast-text":
       theme.palette.secondary.contrastText,
@@ -610,7 +606,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.primary.main,
     ),
     "--app-palette-dividerChannel": toColorChannel(theme.palette.divider),
-    "--app-palette-common-blackChannel": "0 0 0",
     "--app-palette-grey-100": "#f5f5f5",
     "--app-palette-grey-900": "#212121",
     "--app-header-background": theme.header.background,
@@ -623,12 +618,9 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.mode === "dark"
         ? lighten(theme.header.background, 0.07)
         : darken(theme.header.background, 0.07),
-    "--app-footer-background": theme.footer.background,
-    "--app-footer-color": theme.footer.color,
     "--app-sidebar-background": theme.sidebar.background,
     "--app-sidebar-color": theme.sidebar.color,
     "--app-sidebar-header-background": theme.sidebar.header.background,
-    "--app-sidebar-header-color": theme.sidebar.header.color,
     "--app-sidebar-item-hover-bg":
       theme.palette.mode === "dark"
         ? lighten(theme.sidebar.background, 0.07)
@@ -636,10 +628,6 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-sidebar-item-grad-start": lighten(theme.palette.primary.main, 0.35),
     "--app-sidebar-item-grad-end": theme.palette.primary.main,
     "--app-sidebar-item-active-color": theme.palette.primary.contrastText,
-    "--app-card-background": theme.card.background,
-    "--app-dialog-border": theme.dialog.border,
-    "--app-dialog-glow": theme.dialog.glow,
-    "--app-dialog-backdrop": theme.dialog.backdrop,
     "--app-panel-background": theme.palette.background.paper,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
@@ -652,30 +640,9 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.mode === "dark"
         ? "0 16px 40px -28px rgba(0, 0, 0, 0.6)"
         : "rgba(50, 50, 93, 0.025) 0px 2px 5px -1px, rgba(0, 0, 0, 0.05) 0px 1px 3px -1px",
-    "--breakpoint-sm": `${theme.breakpoints.values.sm}px`,
-    "--breakpoint-md": `${theme.breakpoints.values.md}px`,
-    "--breakpoint-lg": `${theme.breakpoints.values.lg}px`,
-    "--breakpoint-xl": `${theme.breakpoints.values.xl}px`,
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,
     "--accent-strong": theme.palette.primary.dark,
-    "--app-status-success": SEMANTIC_STATUS_COLORS.success,
-    "--app-status-warning": SEMANTIC_STATUS_COLORS.warning,
-    "--app-status-error": SEMANTIC_STATUS_COLORS.error,
-    "--app-status-danger": SEMANTIC_STATUS_COLORS.danger,
-    "--app-status-info": SEMANTIC_STATUS_COLORS.info,
-    "--app-status-neutral": SEMANTIC_STATUS_COLORS.neutral,
-    "--app-status-muted": SEMANTIC_STATUS_COLORS.muted,
-    "--app-status-caution": SEMANTIC_STATUS_COLORS.caution,
-    "--app-file-code": FILE_TYPE_COLORS.code,
-    "--app-file-pdf": FILE_TYPE_COLORS.pdf,
-    "--app-file-image": FILE_TYPE_COLORS.image,
-    "--app-file-video": FILE_TYPE_COLORS.video,
-    "--app-file-audio": FILE_TYPE_COLORS.audio,
-    "--app-file-archive": FILE_TYPE_COLORS.archive,
-    "--app-file-spreadsheet": FILE_TYPE_COLORS.spreadsheet,
-    "--app-file-document": FILE_TYPE_COLORS.document,
-    "--app-file-executable": FILE_TYPE_COLORS.executable,
     "--app-overlay-dark": "rgba(0, 0, 0, 0.35)",
   };
 }

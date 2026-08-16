@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 import "@/components/charts/chart-tooltip.css";
@@ -495,7 +496,7 @@ const HistoryAreaChart = ({
             style={{
               display: "grid",
               gridTemplateColumns: tooltipRows.length > 8 ? "1fr 1fr" : "1fr",
-              columnGap: 12,
+              columnGap: GAP_MD,
             }}
           >
             {tooltipRows.map(({ point, seriesIndex }) =>

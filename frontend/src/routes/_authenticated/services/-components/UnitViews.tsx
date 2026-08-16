@@ -26,6 +26,7 @@ import { getServiceStatusColor } from "@/constants/statusColors";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
+  DETAIL_PANEL_GAP,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
@@ -579,7 +580,7 @@ export function UnitCardsView<T extends UnitListItem>({
           display: "flex",
           flexDirection: isCompactLayout ? "column" : "row",
           alignItems: "stretch",
-          gap: theme.spacing(2.5),
+          gap: DETAIL_PANEL_GAP,
         }}
         transition={{
           duration: slowTransitionDurationSeconds,

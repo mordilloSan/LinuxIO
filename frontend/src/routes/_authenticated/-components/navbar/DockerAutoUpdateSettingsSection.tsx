@@ -17,6 +17,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 
 import {
   DEFAULT_AUTO_UPDATE_OPTIONS,
@@ -319,7 +320,7 @@ const DockerAutoUpdateSettingsSection = ({
         </div>
 
         <div style={{ display: "grid", gap: theme.spacing(1.5) }}>
-          <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+          <div style={{ alignItems: "center", display: "flex", gap: GAP_MD }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <AppTypography variant="body2">
                 Check stopped containers
@@ -337,7 +338,7 @@ const DockerAutoUpdateSettingsSection = ({
             />
           </div>
 
-          <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+          <div style={{ alignItems: "center", display: "flex", gap: GAP_MD }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <AppTypography variant="body2">
                 Update stopped containers
@@ -358,7 +359,7 @@ const DockerAutoUpdateSettingsSection = ({
             />
           </div>
 
-          <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+          <div style={{ alignItems: "center", display: "flex", gap: GAP_MD }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <AppTypography variant="body2">Start after update</AppTypography>
               <AppTypography color="text.secondary" variant="caption">

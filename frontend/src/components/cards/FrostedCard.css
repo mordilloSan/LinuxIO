@@ -47,10 +47,10 @@
    content under it, which is a worse trade than a quieter line. So the generic
    ring stands down and only the line moves. Cards with no accent line — none
    in a sortable grid today — still get the ring.
-   Intensity is --dc-hold-glow, how far past the plain accent the lit line goes.
+   Intensity is --fc-hold-glow, how far past the plain accent the lit line goes.
    No !important needed: animations outrank inline styles. */
 .sc-hold:has(.accent-card) {
-  --dc-hold-glow: 30%;
+  --fc-hold-glow: 30%;
 }
 
 .sc-hold:has(.accent-card) .reorder-hold-ring {
@@ -58,15 +58,15 @@
 }
 
 .sc-hold .accent-card {
-  animation: dc-accent-hold-fill var(--reorder-hold-ms) ease-out forwards;
+  animation: fc-accent-hold-fill var(--reorder-hold-ms) ease-out forwards;
 }
 
-@keyframes dc-accent-hold-fill {
+@keyframes fc-accent-hold-fill {
   to {
     border-bottom-color: color-mix(
       in srgb,
-      white var(--dc-hold-glow),
-      var(--dc-accent)
+      white var(--fc-hold-glow),
+      var(--fc-accent)
     );
   }
 }
@@ -76,8 +76,8 @@
     animation: none;
     border-bottom-color: color-mix(
       in srgb,
-      white var(--dc-hold-glow),
-      var(--dc-accent)
+      white var(--fc-hold-glow),
+      var(--fc-accent)
     ) !important;
   }
 }

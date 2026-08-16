@@ -60,7 +60,7 @@ const DockerImageCard = ({
             declarations outrank animations, which would silence the hold
             feedback on a selected card. Inline styles do not.
           */
-          ...(selected && { borderBottomColor: "var(--dc-accent)" }),
+          ...(selected && { borderBottomColor: "var(--fc-accent)" }),
         }}
       >
         <div

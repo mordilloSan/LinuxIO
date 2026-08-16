@@ -5,6 +5,7 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 
 export type SummaryRow = {
   label: string;
@@ -115,7 +116,7 @@ const HardwareCard = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: GAP_MD,
               flexShrink: 0,
             }}
           >
