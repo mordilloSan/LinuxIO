@@ -207,10 +207,6 @@ func runCompose(ctx context.Context, projectName, configFile, workingDir string,
 	}, emitter, args...)
 }
 
-func composePullAndUp(ctx context.Context, target composeProjectTarget, service string, emitter composeLineEmitter) error {
-	return composePullAndUpServices(ctx, target, []string{service}, emitter)
-}
-
 func composePullAndUpServices(ctx context.Context, target composeProjectTarget, services []string, emitter composeLineEmitter) error {
 	if err := validateComposeUpdateInputs(ctx, target, emitter); err != nil {
 		return err

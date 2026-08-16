@@ -108,10 +108,15 @@
     transform 140ms ease;
 }
 
-/* Match only keyboard-visible focus so a mouse click does not leave the label
-   showing after the pointer has moved on. */
+/* Show the label for keyboard focus only, so a mouse click does not leave it
+   hanging under the tile after the pointer has moved on. :focus-visible alone
+   does not get there: the browser re-reads it against the current modality, so
+   the link a click focused starts matching the moment any key is pressed and
+   the label pops up with the pointer nowhere near the dock. The
+   [data-pointer-focus] mark is what tells the two apart — see
+   utils/inputModality.ts and the base rule in theme/variables.css. */
 .app-dock-link:hover .app-dock__label,
-.app-dock-link:focus-visible .app-dock__label {
+.app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
 }

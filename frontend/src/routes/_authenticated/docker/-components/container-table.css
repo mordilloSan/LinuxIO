@@ -44,8 +44,11 @@
   cursor: pointer;
 }
 
+/* The toggle stays mounted after it is clicked and this table binds Escape, so
+   the pointer-focus mark has to be excluded or the lit colour sticks. See
+   utils/inputModality.ts. */
 .container-table__stack-toggle:hover,
-.container-table__stack-toggle:focus-visible {
+.container-table__stack-toggle:focus-visible:not([data-pointer-focus]) {
   color: var(--app-palette-text-primary);
 }
 

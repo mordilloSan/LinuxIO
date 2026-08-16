@@ -13,8 +13,11 @@ const stylesheet = fs.readFileSync(
 
 describe("dock labels", () => {
   it("shows labels only for keyboard-visible focus", () => {
+    // :focus-visible is necessary but not sufficient — the browser starts
+    // matching it on the click-focused link as soon as any key is pressed, so
+    // the pointer-focus mark has to be excluded too or the label sticks.
     expect(stylesheet).toContain(
-      ".app-dock-link:focus-visible .app-dock__label",
+      ".app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label",
     );
     expect(stylesheet).not.toContain(":focus-within");
   });
