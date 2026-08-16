@@ -1,0 +1,34 @@
+/* Settings is a page, not an overlay. Living in the content column is what
+   keeps the header — and the dock inside it — visible and sharp while you
+   change what it does, which a modal covering the viewport could not do.
+   The sheet keeps the dialog's chrome (see getDialogSurfaceStyles) so nothing
+   about how settings look changed, only where they sit. */
+.settings-page {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Capped rather than full-bleed: the sections are rows of a label on the left
+   and a control on the right, and those stop being readable once the row is
+   wider than a dialog. Matches .app-dialog--md, the width it had as a
+   dialog. */
+.settings-page__sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 900px;
+  overflow: hidden;
+}
+
+.settings-page__header {
+  padding: 14px 20px 10px;
+}
+
+.settings-page__tabs {
+  padding-inline: 12px;
+}
+
+.settings-page__body {
+  padding: 12px;
+}

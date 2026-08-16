@@ -26,6 +26,16 @@ export const getFrostedCardStyles = (theme: AppTheme) => ({
   boxShadow: getFrostedCardShadow(theme),
 });
 
+/* The dialog paper: a paper surface ringed by the theme's dialog glow. Shared
+   with the settings sheet, which is a route rather than an overlay but wears
+   the same chrome, so the two cannot drift apart. */
+export const getDialogSurfaceStyles = (theme: AppTheme) => ({
+  backgroundColor: theme.palette.background.paper,
+  borderRadius: 16,
+  border: `1px solid ${alpha(theme.dialog.border, 0.2)}`,
+  boxShadow: `0 0 10px ${alpha(theme.dialog.glow, 0.5)}, 0 0 20px ${alpha(theme.dialog.glow, 0.3)}, inset 0 0 20px ${alpha(theme.dialog.glow, 0.1)}`,
+});
+
 export const getAccentCardStyles = (accentColor: string) => ({
   borderBottomWidth: "2px",
   borderBottomStyle: "solid" as const,

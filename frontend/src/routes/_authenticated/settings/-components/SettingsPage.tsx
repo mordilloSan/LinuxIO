@@ -1,29 +1,180 @@
-import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useState } from "react";
 
-import SettingsDialog from "@/routes/_authenticated/-components/navbar/SettingsDialog";
+import FrostedCard from "@/components/cards/FrostedCard";
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import TabSelector from "@/components/tabbar/TabSelector";
+import AppDivider from "@/components/ui/AppDivider";
+import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
+import { useConfigValue } from "@/hooks/useConfig";
+import CapabilityManagerSection from "@/routes/_authenticated/-components/navbar/CapabilityManagerSection";
+import DockerSettingsSection from "@/routes/_authenticated/-components/navbar/DockerSettingsSection";
+import IndexerSettingsSection from "@/routes/_authenticated/-components/navbar/IndexerSettingsSection";
+import MonitoringSettingsSection from "@/routes/_authenticated/-components/navbar/MonitoringSettingsSection";
+import NavbarCustomizer from "@/routes/_authenticated/-components/navbar/NavbarCustomizer";
+import PowerSettingsSection from "@/routes/_authenticated/-components/navbar/PowerSettingsSection";
+import ThemeColorsSection from "@/routes/_authenticated/-components/navbar/ThemeColorsSection";
+import UpdateSettings, {
+  useUpdateSettingsState,
+} from "@/routes/_authenticated/updates/-components/UpdateSettings";
+import { useAppTheme } from "@/theme";
+import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
-/* Interim shape of the route: the page surface is still empty, so settings
-   keep their dialog and float it over the page background. The sections move
-   onto the page itself once they are laid out for a full-width surface. */
+import "./settings-page.css";
+
+type SettingsTab =
+  | "general"
+  | "theme"
+  | "capabilities"
+  | "docker"
+  | "indexer"
+  | "monitoring"
+  | "power";
+
 const SettingsPage = () => {
-  const router = useRouter();
-  const canGoBack = useCanGoBack();
-  const navigate = useNavigate();
+  const theme = useAppTheme();
+  const { privileged } = useAuth();
+  const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const effectiveTab =
+    !privileged &&
+    (activeTab === "power" ||
+      activeTab === "indexer" ||
+      activeTab === "monitoring")
+      ? "general"
+      : activeTab;
+  const updateSettingsState = useUpdateSettingsState(
+    effectiveTab === "general",
+  );
+  const tabs = [
+    { value: "general", label: "General" },
+    { value: "theme", label: "Theme" },
+    { value: "capabilities", label: "Capabilities" },
+    { value: "docker", label: "Docker" },
+    ...(privileged ? [{ value: "indexer", label: "Indexer" }] : []),
+    ...(privileged ? [{ value: "monitoring", label: "Monitoring" }] : []),
+    ...(privileged ? [{ value: "power", label: "Power" }] : []),
+  ];
 
-  /* Closing leaves the route rather than baring the empty page. Entering
-     settings by URL has nothing to go back to, so that lands on the
-     dashboard. */
-  const handleClose = useCallback(() => {
-    if (canGoBack) {
-      router.history.back();
-      return;
-    }
+  const sectionErrorFallback = (
+    <div style={{ padding: theme.spacing(1) }}>
+      <AppTypography color="error">
+        This settings section failed to render.
+      </AppTypography>
+    </div>
+  );
 
-    void navigate({ to: "/" });
-  }, [canGoBack, navigate, router]);
+  return (
+    <div className="settings-page">
+      <div
+        className="settings-page__sheet"
+        style={getDialogSurfaceStyles(theme)}
+      >
+        <div className="settings-page__header">
+          <AppTypography variant="h3">Settings</AppTypography>
+        </div>
 
-  return <SettingsDialog onClose={handleClose} open />;
+        <div className="settings-page__tabs">
+          <TabSelector
+            onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
+            options={tabs}
+            style={{ marginBottom: 0 }}
+            value={effectiveTab}
+          />
+          <AppDivider />
+        </div>
+
+        <div className="settings-page__body">
+          <ErrorBoundary key={effectiveTab} fallback={sectionErrorFallback}>
+            {effectiveTab === "general" ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: theme.spacing(1.5),
+                }}
+              >
+                <div>
+                  <AppTypography fontWeight={600} variant="body1">
+                    General
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    Common app preferences.
+                  </AppTypography>
+                </div>
+
+                <FrostedCard
+                  hoverLift
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: theme.spacing(1.5),
+                  }}
+                >
+                  <div>
+                    <AppTypography fontWeight={600} variant="body2">
+                      Primary color
+                    </AppTypography>
+                    <AppTypography color="text.secondary" variant="caption">
+                      Change the app accent color.
+                    </AppTypography>
+                  </div>
+                  <NavbarCustomizer />
+                </FrostedCard>
+
+                <FrostedCard
+                  hoverLift
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: theme.spacing(1.5),
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <AppTypography fontWeight={600} variant="body2">
+                      Navigation style
+                    </AppTypography>
+                    <AppTypography color="text.secondary" variant="caption">
+                      Classic sidebar, or a macOS-style dock in the header.
+                    </AppTypography>
+                  </div>
+                  <TabSelector
+                    onChange={(value) => setNavigationMode(value)}
+                    options={[
+                      { label: "Sidebar", value: "sidebar" },
+                      { label: "Dock", value: "dock" },
+                    ]}
+                    style={{
+                      flexShrink: 0,
+                      gridTemplateColumns: "max-content",
+                      marginBottom: 0,
+                      marginLeft: theme.spacing(1.5),
+                      width: "max-content",
+                    }}
+                    value={navigationMode ?? "sidebar"}
+                  />
+                </FrostedCard>
+
+                <UpdateSettings state={updateSettingsState} />
+              </div>
+            ) : null}
+            {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
+            {effectiveTab === "capabilities" ? (
+              <CapabilityManagerSection />
+            ) : null}
+            {effectiveTab === "docker" ? <DockerSettingsSection /> : null}
+            {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
+            {effectiveTab === "monitoring" ? (
+              <MonitoringSettingsSection />
+            ) : null}
+            {effectiveTab === "power" ? <PowerSettingsSection /> : null}
+          </ErrorBoundary>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default SettingsPage;
