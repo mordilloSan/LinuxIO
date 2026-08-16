@@ -135,7 +135,7 @@ const MainLayout = () => {
                   minHeight: "100%",
                   ...contentSpacing,
                   "--page-inset-block-start": pageInsetBlockStart,
-                } as CSSProperties
+                } as CSSProperties & { "--page-inset-block-start": string }
               }
             >
               <Outlet />
