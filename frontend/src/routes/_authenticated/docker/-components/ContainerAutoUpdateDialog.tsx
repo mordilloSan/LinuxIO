@@ -23,7 +23,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
 import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
@@ -326,9 +325,7 @@ const ContainerAutoUpdateDialog = ({
             <AppChip
               color={serverState?.timer_enabled ? "success" : "default"}
               label={
-                serverState?.timer_enabled
-                  ? "Timer enabled"
-                  : "Timer disabled"
+                serverState?.timer_enabled ? "Timer enabled" : "Timer disabled"
               }
               size="small"
               variant="soft"
@@ -354,7 +351,7 @@ const ContainerAutoUpdateDialog = ({
           aria-label="Edit container update policy"
           style={{
             display: loading ? "none" : "grid",
-            gap: theme.spacing(2),
+            gap: theme.spacing(3),
             padding: 14,
           }}
         >
@@ -362,24 +359,15 @@ const ContainerAutoUpdateDialog = ({
             style={{
               alignItems: "center",
               display: "flex",
-              gap: theme.spacing(1.5),
+              gap: theme.spacing(1),
             }}
           >
-            <div
-              style={{
-                alignItems: "center",
-                background: theme.palette.action.hover,
-                borderRadius: 9,
-                color: theme.palette.primary.main,
-                display: "inline-flex",
-                flexShrink: 0,
-                height: 38,
-                justifyContent: "center",
-                width: 38,
-              }}
-            >
-              <Icon height={22} icon="mdi:tune-variant" width={22} />
-            </div>
+            <Icon
+              color={theme.palette.primary.main}
+              height={19}
+              icon="mdi:tune-variant"
+              width={19}
+            />
             <div style={{ flex: 1, minWidth: 0 }}>
               <AppTypography
                 component="h3"
@@ -429,44 +417,43 @@ const ContainerAutoUpdateDialog = ({
               value={currentOptions.time}
             />
           </div>
+        </FrostedCard>
 
-          <div
-            style={{
-              alignItems: "center",
-              background: theme.palette.action.hover,
-              borderRadius: 9,
-              display: "flex",
-              gap: theme.spacing(1),
-              minHeight: 44,
-              padding: `0 ${theme.spacing(1.25)}`,
-            }}
-          >
-            <Icon
-              color={theme.palette.primary.main}
-              height={19}
-              icon="mdi:image-remove-outline"
-              width={19}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <AppTypography fontWeight={600} variant="caption">
-                Cleanup old images
-              </AppTypography>
-              <AppTypography
-                color="text.secondary"
-                style={{ display: "block" }}
-                variant="caption"
-              >
-                Remove superseded images after successful updates
-              </AppTypography>
-            </div>
-            <AppSwitch
-              aria-label="Cleanup old images"
-              checked={currentOptions.cleanup}
-              disabled={controlsDisabled}
-              onChange={(_, checked) => updateDraft("cleanup", checked)}
-              size="small"
-            />
+        <FrostedCard
+          aria-label="Cleanup old images setting"
+          style={{
+            alignItems: "center",
+            display: loading ? "none" : "flex",
+            gap: theme.spacing(1),
+            minHeight: 66,
+            padding: 14,
+          }}
+        >
+          <Icon
+            color={theme.palette.primary.main}
+            height={19}
+            icon="mdi:image-remove-outline"
+            width={19}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <AppTypography fontWeight={600} variant="body2">
+              Cleanup old images
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              style={{ display: "block" }}
+              variant="caption"
+            >
+              Remove superseded images after successful updates
+            </AppTypography>
           </div>
+          <AppSwitch
+            aria-label="Cleanup old images"
+            checked={currentOptions.cleanup}
+            disabled={controlsDisabled}
+            onChange={(_, checked) => updateDraft("cleanup", checked)}
+            size="small"
+          />
         </FrostedCard>
 
         {!loading && missingNames.length > 0 && (
@@ -510,7 +497,6 @@ const ContainerAutoUpdateDialog = ({
       <AppDialogActions
         style={{
           backgroundColor: theme.palette.background.paper,
-          borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
           padding: 8,
         }}
       >
