@@ -83,7 +83,7 @@ function NavbarUserDropdown() {
             aria-controls={menuOpen ? "navbar-account-menu" : undefined}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            color="inherit"
+            color="secondary"
             onClick={toggleMenu}
           >
             <Icon height={iconSize.md} icon="mdi:power" width={iconSize.md} />

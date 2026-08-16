@@ -567,12 +567,18 @@ export function NavbarNotificationsDropdown() {
             aria-expanded={isFullOpen}
             aria-haspopup="dialog"
             className="app-navbar-notifications__trigger"
-            color="inherit"
+            color="primary"
             onClick={handleOpen}
             ref={ref}
             size="small"
           >
-            <Icon height={16} icon="mdi:bell" width={16} />
+            {/* Filled only when the bell has something to report, so an idle
+                footer reads as an outline rather than a solid badge. */}
+            <Icon
+              height={16}
+              icon={totalItems === 0 ? "mdi:bell-outline" : "mdi:bell"}
+              width={16}
+            />
           </AppIconButton>
         </AppTooltip>
 
