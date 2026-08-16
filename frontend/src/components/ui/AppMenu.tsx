@@ -33,6 +33,8 @@ export interface AppMenuItemProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
+  /** Marks a destructive entry (delete, remove) so it reads as one at rest. */
+  danger?: boolean;
   endAdornment?: ReactNode;
   selected?: boolean;
   startAdornment?: ReactNode;
@@ -156,6 +158,7 @@ export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
   (
     {
       selected = false,
+      danger = false,
       startAdornment,
       endAdornment,
       disabled,
@@ -169,6 +172,7 @@ export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
       className={[
         "app-menu__item",
         selected && "app-menu__item--selected",
+        danger && "app-menu__item--danger",
         className,
       ]
         .filter(Boolean)
