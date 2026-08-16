@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { DockerUpdateOperationProvider } from "@/components/docker/DockerUpdateOperationProvider";
 import { makeTabLayout } from "@/components/tabbar";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { DockerIcon } from "@/icons/svg";
@@ -16,7 +17,11 @@ const DockerTabsLayout = makeTabLayout(DOCKER_TABS);
 
 function DockerLayout() {
   useDockerUpdateStatusRefresh();
-  return <DockerTabsLayout />;
+  return (
+    <DockerUpdateOperationProvider>
+      <DockerTabsLayout />
+    </DockerUpdateOperationProvider>
+  );
 }
 
 export const Route = createFileRoute("/_authenticated/docker")({

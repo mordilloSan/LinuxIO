@@ -20,6 +20,7 @@ import {
   useCallMutation,
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type {
   AppDataTableColumnDef,
@@ -38,7 +39,6 @@ import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import "./container-table.css";
@@ -338,6 +338,7 @@ const UpdateCell = memo(function UpdateCell({
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
   const checkingUpdates = useContext(CheckingUpdatesContext);
   const updateStatus = getUpdateStatus({
     updateAvailable,
@@ -371,18 +372,7 @@ const UpdateCell = memo(function UpdateCell({
       error: `Failed to check updates for ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useTaskAction({
-      success: (result) => {
-        toast.success(
-          result.updated
-            ? `Container ${name} updated`
-            : `Container ${name} is already up to date`,
-        );
-      },
-      error: `Failed to update ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
+  const isUpdatePending = isUpdating(containerId);
 
   const checking = isCheckingUpdate || checkingUpdates;
 
@@ -393,7 +383,7 @@ const UpdateCell = memo(function UpdateCell({
     return (
       <Chip
         color="warning"
-        disabled={isUpdatePending}
+        disabled={updating}
         label={
           isUpdatePending ? (
             <span
@@ -410,9 +400,7 @@ const UpdateCell = memo(function UpdateCell({
             "Update"
           )
         }
-        onClick={() =>
-          updateContainer(createDockerContainerUpdateRequest(containerId))
-        }
+        onClick={() => startUpdate(containerId, name)}
         size="small"
         title="Apply update"
         variant="soft"

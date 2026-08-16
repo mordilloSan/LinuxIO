@@ -86,7 +86,20 @@ func RefreshContainerImageUpdate(ctx context.Context, containerID string) (apisc
 	return result, nil
 }
 
-func updateContainer(ctx context.Context, containerID string) (apischema.DockerContainerUpdateResult, error) {
+type dockerUpdateProgressReporter func(phase, message string)
+
+func reportDockerUpdateProgress(report dockerUpdateProgressReporter, phase, message string) {
+	if report != nil {
+		report(phase, message)
+	}
+}
+
+func updateContainerWithProgress(
+	ctx context.Context,
+	containerID string,
+	report dockerUpdateProgressReporter,
+) (apischema.DockerContainerUpdateResult, error) {
+	reportDockerUpdateProgress(report, "waiting", "Waiting for the Docker update lock")
 	release, err := acquireDockerUpdateLock(ctx)
 	if err != nil {
 		return apischema.DockerContainerUpdateResult{}, err
@@ -102,9 +115,10 @@ func updateContainer(ctx context.Context, containerID string) (apischema.DockerC
 		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("recover previous standalone Docker update: %w", recoveryErr)
 	}
 
+	reportDockerUpdateProgress(report, "checking", "Checking the container and registry image")
 	inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("inspect container: %w", err)
 	}
-	return updateInspectedContainer(ctx, cli, inspectResult.Container)
+	return updateInspectedContainerWithProgress(ctx, cli, inspectResult.Container, report)
 }

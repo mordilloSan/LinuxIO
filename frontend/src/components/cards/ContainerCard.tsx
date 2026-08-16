@@ -6,6 +6,7 @@ import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -14,7 +15,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 import { formatFileSize } from "@/utils/formaters";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -95,6 +95,7 @@ const ContainerCardBody = ({
 }: ContainerCardBodyProps) => {
   const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
@@ -141,18 +142,7 @@ const ContainerCardBody = ({
       toast: DOCKER_TOAST_META,
     });
 
-  const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useTaskAction({
-      success: (result) => {
-        toast.success(
-          result.updated
-            ? `Container ${name} updated successfully`
-            : `Container ${name} is already up to date`,
-        );
-      },
-      error: `Failed to update container ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
+  const isUpdatePending = isUpdating(container.Id);
 
   const isActionPending =
     actionPending ||
@@ -160,7 +150,7 @@ const ContainerCardBody = ({
     isStopPending ||
     isRestartPending ||
     isRemovePending ||
-    isUpdatePending;
+    updating;
 
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
@@ -200,8 +190,8 @@ const ContainerCardBody = ({
   };
 
   const handleUpdateClick = useCallback(() => {
-    updateContainer(createDockerContainerUpdateRequest(container.Id));
-  }, [container.Id, updateContainer]);
+    startUpdate(container.Id, name);
+  }, [container.Id, name, startUpdate]);
 
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;

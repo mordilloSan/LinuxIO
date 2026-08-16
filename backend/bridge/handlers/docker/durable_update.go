@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,7 +29,7 @@ var (
 	dockerUpdateStoreRoot      = durabletask.DefaultRoot
 	dockerUpdatePollInterval   = 500 * time.Millisecond
 	newDockerUpdateExecutor    = func() dockerUpdateExecutor { return systemdDockerUpdateExecutor{} }
-	runDockerContainerMutation = updateContainer
+	runDockerContainerMutation = updateContainerWithProgress
 )
 
 type dockerUpdateRequest struct {
@@ -251,6 +252,12 @@ func observeDockerUpdate(ctx context.Context, task *bridgeipc.Task, store *durab
 		if ctx.Err() != nil {
 			return cancelDockerUpdate(store, executor, record.ID, record.UID)
 		}
+		current, getErr := store.Get(ctx, record.ID, record.UID)
+		if getErr != nil {
+			return apischema.DockerContainerUpdateResult{}, getErr
+		}
+		reportNewDockerUpdateProgress(task, record, current)
+		record = current
 		result, done, err := reconcileDockerUpdate(ctx, task, store, executor, record)
 		if done || err != nil {
 			return result, err
@@ -259,12 +266,30 @@ func observeDockerUpdate(ctx context.Context, task *bridgeipc.Task, store *durab
 		case <-ctx.Done():
 			return cancelDockerUpdate(store, executor, record.ID, record.UID)
 		case <-ticker.C:
-			current, getErr := store.Get(ctx, record.ID, record.UID)
-			if getErr != nil {
-				return apischema.DockerContainerUpdateResult{}, getErr
-			}
-			record = current
 		}
+	}
+}
+
+func reportNewDockerUpdateProgress(task *bridgeipc.Task, previous, current durabletask.Record) {
+	if task == nil || len(current.Progress) == 0 {
+		return
+	}
+	start := 0
+	if len(previous.Progress) > 0 {
+		prior := previous.Progress[len(previous.Progress)-1]
+		for index, candidate := range slices.Backward(current.Progress) {
+
+			if prior.At.Equal(candidate.At) && prior.Phase == candidate.Phase && prior.Message == candidate.Message {
+				start = index + 1
+				break
+			}
+		}
+	}
+	for _, progress := range current.Progress[start:] {
+		task.ReportProgress(apischema.DockerContainerUpdateProgress{
+			Phase:   progress.Phase,
+			Message: progress.Message,
+		})
 	}
 }
 
@@ -687,7 +712,22 @@ func RunDurableDockerUpdate(ctx context.Context, operationID string) error {
 		return err
 	}
 
-	result, updateErr := runDockerContainerMutation(ctx, record.Target)
+	report := func(phase, message string) {
+		if _, progressErr := store.Update(ctx, record.ID, record.UID, func(current *durabletask.Record) error {
+			current.AppendProgress(time.Now().UTC(), phase, message)
+			return nil
+		}); progressErr != nil {
+			slog.Warn(
+				"failed to persist Docker update progress",
+				"component", "docker",
+				"subsystem", "update",
+				"operation_id", record.ID,
+				"phase", phase,
+				"error", progressErr,
+			)
+		}
+	}
+	result, updateErr := runDockerContainerMutation(ctx, record.Target, report)
 	return writeDockerUpdateExecutorResult(store, operationID, result, updateErr)
 }
 

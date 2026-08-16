@@ -10,6 +10,7 @@ import {
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -27,7 +28,6 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 
 import "./compose-list.css";
 
@@ -108,6 +108,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
 }: ComposeContainerActionsProps) {
   const name = getContainerName(container);
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
   const { mutate: startContainer, isPending: isStarting } = useCallMutation(
     linuxio.docker.start_container,
     {
@@ -132,18 +133,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
       toast: DOCKER_TOAST_META,
     },
   );
-  const { mutate: updateContainer, isPending: isUpdating } =
-    linuxio.docker.update_container.useTaskAction({
-      success: (result) => {
-        toast.success(
-          result.updated
-            ? `Container ${name} updated`
-            : `Container ${name} is already up to date`,
-        );
-      },
-      error: `Failed to update ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
+  const updatePending = isUpdating(container.Id);
   const { mutate: removeContainer, isPending: isRemoving } = useCallMutation(
     linuxio.docker.remove_container,
     {
@@ -153,8 +143,8 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
     },
   );
   const actionPending =
-    isStarting || isStopping || isRestarting || isUpdating || isRemoving;
-  const controlsDisabled = disabled || actionPending;
+    isStarting || isStopping || isRestarting || updatePending || isRemoving;
+  const controlsDisabled = disabled || actionPending || updating;
   const request = { containerId: container.Id };
 
   return (
@@ -198,10 +188,8 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
           icon="mdi:update"
           iconSize={18}
           label="Update container"
-          loading={isUpdating}
-          onClick={() =>
-            updateContainer(createDockerContainerUpdateRequest(container.Id))
-          }
+          loading={updatePending}
+          onClick={() => startUpdate(container.Id, name)}
         />
       )}
       <AppActionIconButton

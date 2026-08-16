@@ -72,7 +72,8 @@ func TestRunDurableDockerUpdateWritesTypedResult(t *testing.T) {
 		runDockerContainerMutation = oldMutation
 	})
 	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
-	runDockerContainerMutation = func(context.Context, string) (apischema.DockerContainerUpdateResult, error) {
+	runDockerContainerMutation = func(_ context.Context, _ string, report dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
+		report("pulling", "Pulling the updated image")
 		return apischema.DockerContainerUpdateResult{ContainerID: "web", Updated: true}, nil
 	}
 
@@ -103,11 +104,18 @@ func TestRunDurableDockerUpdateWritesTypedResult(t *testing.T) {
 		t.Fatalf("executor artifact = %+v", artifact)
 	}
 	var result apischema.DockerContainerUpdateResult
-	if err := json.Unmarshal(artifact.Result, &result); err != nil {
-		t.Fatalf("decode typed result: %v", err)
+	if unmarshalErr := json.Unmarshal(artifact.Result, &result); unmarshalErr != nil {
+		t.Fatalf("decode typed result: %v", unmarshalErr)
 	}
 	if result.ContainerID != "web" || !result.Updated {
 		t.Fatalf("typed result = %+v", result)
+	}
+	record, err := store.Get(context.Background(), testDockerOperationID, 0)
+	if err != nil {
+		t.Fatalf("Get durable record: %v", err)
+	}
+	if got := record.Progress[len(record.Progress)-1]; got.Phase != "pulling" || got.Message != "Pulling the updated image" {
+		t.Fatalf("persisted progress = %+v", got)
 	}
 }
 
@@ -172,7 +180,7 @@ func TestRunDurableDockerUpdatePersistsCanceledResult(t *testing.T) {
 	})
 	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
 	ctx, cancel := context.WithCancel(context.Background())
-	runDockerContainerMutation = func(context.Context, string) (apischema.DockerContainerUpdateResult, error) {
+	runDockerContainerMutation = func(context.Context, string, dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
 		cancel()
 		return apischema.DockerContainerUpdateResult{}, context.Canceled
 	}
@@ -209,7 +217,7 @@ func TestRunDurableDockerUpdateHonorsPersistedCancellationBeforeMutation(t *test
 	})
 	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
 	mutationCalls := 0
-	runDockerContainerMutation = func(context.Context, string) (apischema.DockerContainerUpdateResult, error) {
+	runDockerContainerMutation = func(context.Context, string, dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
 		mutationCalls++
 		return apischema.DockerContainerUpdateResult{ContainerID: "web"}, nil
 	}
