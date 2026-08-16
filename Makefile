@@ -1151,7 +1151,7 @@ help:
 	@$(PRINTC) ""
 
 cloc:
-	@echo "==> Handwritten LOC (also excluding generated/minified files)"
+	@echo "====>   Handwritten LOC    <===="
 	@bash -c 'eval "$$LOC_COUNT_SCRIPT"; loc_count . "$(LOC_INCLUDE_EXT)" 1'
 
 .PHONY: \
