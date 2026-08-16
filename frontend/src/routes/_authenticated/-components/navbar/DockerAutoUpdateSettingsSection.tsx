@@ -6,17 +6,11 @@ import {
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -24,24 +18,20 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 
-import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./containerAutoUpdate";
-import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
+import { DEFAULT_AUTO_UPDATE_OPTIONS, optionsKey } from "./dockerAutoUpdateState";
+import type { DockerAutoUpdateController } from "./useDockerAutoUpdateState";
 
-interface ContainerAutoUpdateDialogProps {
-  autoUpdate: ContainerAutoUpdateController;
-  onClose: () => void;
-  open: boolean;
-  dockerUpdatesEnabled: boolean;
+interface DockerAutoUpdateSettingsSectionProps {
+  autoUpdate: DockerAutoUpdateController;
+  dockerUpdatesEnabled?: boolean;
   dockerUpdatesReason?: string;
 }
 
-const ContainerAutoUpdateDialog = ({
+const DockerAutoUpdateSettingsSection = ({
   autoUpdate,
-  onClose,
-  open,
-  dockerUpdatesEnabled,
+  dockerUpdatesEnabled = true,
   dockerUpdatesReason,
-}: ContainerAutoUpdateDialogProps) => {
+}: DockerAutoUpdateSettingsSectionProps) => {
   const theme = useAppTheme();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
@@ -87,20 +77,13 @@ const ContainerAutoUpdateDialog = ({
       [key]: value,
     }));
 
-  const removeSelectedName = (name: string) => {
-    setContainerNamesOverride((prev) =>
-      (prev ?? currentOptions.container_names).filter((item) => item !== name),
-    );
-  };
-
   const reset = () => {
     setDraftOverrides(null);
     setContainerNamesOverride(null);
   };
 
-  // Optimistic like the per-container toggles: the shared writer updates the
-  // cache immediately (so the drafts can clear now) and rolls back with an
-  // error toast if the save fails.
+  // The settings writer updates the cache immediately so the draft can clear,
+  // then rolls back and reports the error if the save fails.
   const save = () => {
     autoUpdate.saveOptions(currentOptions);
     reset();
@@ -120,89 +103,26 @@ const ContainerAutoUpdateDialog = ({
       "This container cannot be updated automatically.",
   }));
   const hasBlockedNames = blockedReasons.length > 0;
+  const selectableNames = useMemo(() => {
+    const names = new Set<string>([
+      ...currentOptions.container_names,
+      ...(serverState?.containers ?? []).map((container) => container.name),
+    ]);
+    return Array.from(names).filter((name) => {
+      if (currentOptions.container_names.includes(name)) return true;
+      return autoUpdate.targetEligibility.get(name)?.mutationAllowed !== false;
+    });
+  }, [
+    autoUpdate.targetEligibility,
+    currentOptions.container_names,
+    serverState?.containers,
+  ]);
 
   return (
-    <GeneralDialog
+    <div
       aria-busy={saving}
-      disableEscapeKeyDown={saving}
-      fullWidth
-      maxWidth="md"
-      onClose={() => !saving && onClose()}
-      open={open}
-      paperStyle={{ borderRadius: 12 }}
+      style={{ display: "grid", gap: theme.spacing(1.5) }}
     >
-      <AppDialogTitle
-        style={{
-          backgroundColor: theme.palette.background.paper,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          padding: "10px 12px",
-        }}
-      >
-        <div
-          style={{
-            alignItems: "center",
-            display: "flex",
-            gap: theme.spacing(1),
-          }}
-        >
-          <div
-            style={{
-              alignItems: "center",
-              background: theme.palette.action.hover,
-              borderRadius: 9,
-              color: theme.palette.primary.main,
-              display: "inline-flex",
-              flexShrink: 0,
-              height: 36,
-              justifyContent: "center",
-              width: 36,
-            }}
-          >
-            <Icon height={22} icon="mdi:timer-cog-outline" width={22} />
-          </div>
-          <div
-            style={{
-              alignSelf: "stretch",
-              display: "flex",
-              flexDirection: "column",
-              flexGrow: 1,
-              justifyContent: "center",
-              minWidth: 0,
-            }}
-          >
-            <AppTypography
-              fontWeight={600}
-              style={{ lineHeight: 1.25 }}
-              variant="subtitle1"
-            >
-              Container Auto-Update
-            </AppTypography>
-            <AppTypography
-              color="text.secondary"
-              style={{ lineHeight: 1.35 }}
-              variant="caption"
-            >
-              Schedule image checks and automatic container updates
-            </AppTypography>
-          </div>
-          <AppIconButton
-            aria-label="Close container auto-update settings"
-            disabled={saving}
-            onClick={onClose}
-            size="small"
-          >
-            <Icon height={18} icon="mdi:close" width={18} />
-          </AppIconButton>
-        </div>
-      </AppDialogTitle>
-
-      <AppDialogContent
-        style={{
-          display: "grid",
-          gap: theme.spacing(1.5),
-          padding: 10,
-        }}
-      >
         {loading && (
           <div
             style={{
@@ -225,8 +145,8 @@ const ContainerAutoUpdateDialog = ({
             <AppAlertTitle>
               Selected containers cannot be updated automatically
             </AppAlertTitle>
-            Remove these containers before saving “Update automatically”, or
-            switch the mode to “Check only”.
+            Remove these containers from Automatic-update targets before
+            saving “Update automatically”, or switch the mode to “Check only”.
             <div
               style={{
                 display: "flex",
@@ -247,9 +167,7 @@ const ContainerAutoUpdateDialog = ({
                 >
                   <AppChip
                     color="warning"
-                    disabled={controlsDisabled}
                     label={name}
-                    onDelete={() => removeSelectedName(name)}
                     size="small"
                     variant="soft"
                   />
@@ -383,6 +301,26 @@ const ContainerAutoUpdateDialog = ({
             </div>
           </div>
 
+          <AppAutocomplete
+            disabled={controlsDisabled}
+            fullWidth
+            helperText={
+              currentOptions.mode === "update"
+                ? "Select the containers to update after each scheduled check."
+                : "Saved for Update automatically; scheduled checks always include all running containers."
+            }
+            label="Automatic-update targets"
+            maxListHeight={260}
+            multiple
+            noOptionsText="No eligible containers"
+            onChange={(names) => setContainerNamesOverride(names)}
+            options={selectableNames}
+            placeholder="Select containers"
+            shrinkLabel
+            size="small"
+            value={currentOptions.container_names}
+          />
+
           <div
             style={{
               display: "grid",
@@ -480,10 +418,8 @@ const ContainerAutoUpdateDialog = ({
               {missingNames.map((name) => (
                 <AppChip
                   color="warning"
-                  disabled={controlsDisabled}
                   key={name}
                   label={name}
-                  onDelete={() => removeSelectedName(name)}
                   size="small"
                   title="Selected container is not currently present"
                   variant="soft"
@@ -492,17 +428,14 @@ const ContainerAutoUpdateDialog = ({
             </div>
           </FrostedCard>
         )}
-      </AppDialogContent>
-
-      <AppDialogActions
+      <div
         style={{
-          backgroundColor: theme.palette.background.paper,
-          padding: 8,
+          display: "flex",
+          gap: theme.spacing(1.5),
+          justifyContent: "flex-end",
+          paddingTop: theme.spacing(0.5),
         }}
       >
-        <AppButton color="inherit" disabled={saving} onClick={onClose}>
-          Close
-        </AppButton>
         <AppButton disabled={!dirty || saving} onClick={reset}>
           Reset
         </AppButton>
@@ -516,9 +449,9 @@ const ContainerAutoUpdateDialog = ({
         >
           {saving ? "Saving..." : "Save"}
         </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
+      </div>
+    </div>
   );
 };
 
-export default ContainerAutoUpdateDialog;
+export default DockerAutoUpdateSettingsSection;

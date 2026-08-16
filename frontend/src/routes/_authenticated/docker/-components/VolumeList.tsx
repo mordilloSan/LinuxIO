@@ -10,7 +10,6 @@ import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -216,13 +215,6 @@ const VolumeList = ({
     return result;
   }, [selected, filtered]);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((v) => v.Name)));
-    } else {
-      setSelected(new Set());
-    }
-  };
   const handleSelectOne = (name: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -238,40 +230,7 @@ const VolumeList = ({
     setSelected(new Set());
   };
   const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.Name)}
-          onChange={(e) => handleSelectOne(row.original.Name, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const volume = row as (typeof filtered)[number];
-          return [volume.Name, effectiveSelected.has(volume.Name)];
-        },
-        width: "40px",
-      },
-    },
     {
       accessorKey: "Name",
       header: "Volume Name",
@@ -432,6 +391,7 @@ const VolumeList = ({
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}
+          selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: volume }) =>
             handleSelectOne(volume.Name, !effectiveSelected.has(volume.Name))

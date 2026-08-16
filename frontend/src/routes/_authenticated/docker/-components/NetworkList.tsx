@@ -10,7 +10,6 @@ import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -406,14 +405,6 @@ const NetworkList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((n) => n.Id)));
-    } else {
-      setSelected(new Set());
-    }
-  };
-
   const handleSelectOne = (id: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -431,41 +422,8 @@ const NetworkList = ({
   };
 
   const selectedNetworks = filtered.filter((n) => effectiveSelected.has(n.Id));
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
 
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.Id)}
-          onChange={(e) => handleSelectOne(row.original.Id, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const network = row as (typeof filtered)[number];
-          return [network.Id, effectiveSelected.has(network.Id)];
-        },
-        width: "40px",
-      },
-    },
     {
       accessorKey: "Name",
       header: "Network Name",
@@ -687,6 +645,7 @@ const NetworkList = ({
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
+          selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: network }) =>
             handleSelectOne(network.Id, !effectiveSelected.has(network.Id))

@@ -18,9 +18,13 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
+
+import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
+import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
 const normalizePathInput = (value: string): string => {
   const trimmed = value.trim();
@@ -71,10 +75,13 @@ const validateDraftFolders = (
   return { folders, errors };
 };
 
-const DockerFolderSettingsSection = () => {
+const DockerSettingsSection = () => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
   const { config, updateConfig } = useConfig();
+  const dockerAutoUpdate = useDockerAutoUpdateState();
+  const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
+    useCapability("dockerUpdatesAvailable");
   // Errors and toasts are handled by handleSave's try/catch.
   const { mutateAsync: createDockerFolder } = useCallMutation(
     linuxio.filebrowser.resource_post,
@@ -414,6 +421,29 @@ const DockerFolderSettingsSection = () => {
         </div>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1.5),
+          marginTop: theme.spacing(1.5),
+        }}
+      >
+        <div>
+          <AppTypography fontWeight={600} variant="body1">
+            Scheduled Updates
+          </AppTypography>
+          <AppTypography color="text.secondary" variant="caption">
+            Schedule image checks and automatic container updates.
+          </AppTypography>
+        </div>
+        <DockerAutoUpdateSettingsSection
+          autoUpdate={dockerAutoUpdate}
+          dockerUpdatesEnabled={dockerUpdatesEnabled}
+          dockerUpdatesReason={dockerUpdatesReason}
+        />
+      </div>
+
       <ConfirmDialog
         cancelText="Cancel"
         confirmText="Create"
@@ -427,4 +457,4 @@ const DockerFolderSettingsSection = () => {
   );
 };
 
-export default DockerFolderSettingsSection;
+export default DockerSettingsSection;

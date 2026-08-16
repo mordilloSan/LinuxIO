@@ -1,7 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { CACHE_TTL_MS, linuxio, useCallMutation } from "@/api";
-import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
+import {
+  CACHE_TTL_MS,
+  invalidateOperationQueries,
+  linuxio,
+  useCallMutation,
+} from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -19,7 +23,6 @@ export function useDockerUpdateStatusRefresh() {
     "dockerUpdatesAvailable",
   );
   const endpoint = linuxio.docker.check_updates;
-  const invalidationKeys = OPERATION_QUERY_INVALIDATIONS[endpoint.route] ?? [];
 
   return useQuery({
     ...endpoint,
@@ -34,11 +37,7 @@ export function useDockerUpdateStatusRefresh() {
     meta: { silent: true },
     queryFn: async (context) => {
       const result = await endpoint.queryFn(context);
-      await Promise.all(
-        invalidationKeys.map((queryKey) =>
-          queryClient.invalidateQueries({ queryKey }),
-        ),
-      );
+      await invalidateOperationQueries(queryClient, endpoint.route);
       return result;
     },
   });

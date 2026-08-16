@@ -12,42 +12,30 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
   DEFAULT_AUTO_UPDATE_OPTIONS,
-  diffNames,
   normalizeOptions,
   optionsKey,
   stateWithOptions,
-} from "./containerAutoUpdate";
+} from "./dockerAutoUpdateState";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
-const SAVE_DEBOUNCE_MS = 250;
 
 export interface ContainerAutoUpdateTargetEligibility {
   mutationAllowed: boolean;
   mutationReason?: string;
 }
 
-export const canEnableContainerAutoUpdateTarget = (
-  mode: DockerContainerAutoUpdateOptions["mode"],
-  eligibility?: ContainerAutoUpdateTargetEligibility,
-) => mode === "check_only" || eligibility?.mutationAllowed !== false;
-
-export type ContainerAutoUpdateController = ReturnType<
-  typeof useContainerAutoUpdateState
+export type DockerAutoUpdateController = ReturnType<
+  typeof useDockerAutoUpdateState
 >;
 
 /**
- * The single writer for `docker.get_container_auto_update` state. Every save
- * — the container list's optimistic per-container toggles and the settings
- * dialog's explicit Save — funnels through one coalescing queue, so the two
- * surfaces cannot clobber each other's writes. Instantiate once per page and
- * pass the controller down.
+ * Settings-owned writer for scheduled Docker update policy. Consecutive saves
+ * are coalesced while preserving optimistic cache state and rollback behavior.
  */
-export const useContainerAutoUpdateState = () => {
+export const useDockerAutoUpdateState = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);
   const queryClient = useQueryClient();
   const autoUpdateKey = linuxio.docker.get_container_auto_update.queryKey;
-  const [confirmedOptions, setConfirmedOptions] =
-    useState<DockerContainerAutoUpdateOptions | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const confirmedOptionsRef = useRef<DockerContainerAutoUpdateOptions | null>(
     null,
@@ -60,7 +48,6 @@ export const useContainerAutoUpdateState = () => {
   );
   const saveLoopRunningRef = useRef(false);
   const mountedRef = useRef(true);
-  const flushTimerRef = useRef<number | undefined>(undefined);
   const query = useQuery({
     ...linuxio.docker.get_container_auto_update,
     staleTime: 2000,
@@ -72,22 +59,6 @@ export const useContainerAutoUpdateState = () => {
     { invalidates: [] },
   );
 
-  const containerNames =
-    query.data?.options?.container_names ??
-    DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
-  // Both sets are consumed as memo dependencies by the table's column builder.
-  // A fresh identity per render rebuilds the columns, and rebuilt columns
-  // remount every cell — including an action button with a click already in
-  // flight over it, which swallows the click outright.
-  const selectedNames = useMemo(
-    () => new Set(containerNames),
-    [containerNames],
-  );
-  const confirmedNames = confirmedOptions?.container_names;
-  const pendingNames = useMemo(
-    () => diffNames(confirmedNames ?? containerNames, containerNames),
-    [confirmedNames, containerNames],
-  );
   const targetEligibility = useMemo<
     ReadonlyMap<string, ContainerAutoUpdateTargetEligibility>
   >(
@@ -106,13 +77,6 @@ export const useContainerAutoUpdateState = () => {
       ),
     [query.data?.containers],
   );
-  const disabled = query.isPending || !query.data?.available;
-  const reason = query.isPending
-    ? "Loading scheduled auto-update settings..."
-    : (query.error?.message ??
-      query.data?.error ??
-      (!query.data?.available ? "Docker updates are unavailable." : undefined));
-
   useEffect(() => {
     if (!query.data?.options) return;
     if (saveLoopRunningRef.current || queuedOptionsRef.current) return;
@@ -120,7 +84,6 @@ export const useContainerAutoUpdateState = () => {
     const options = normalizeOptions(query.data.options);
     confirmedOptionsRef.current = options;
     desiredOptionsRef.current = options;
-    setConfirmedOptions(options);
   }, [query.data?.options]);
 
   useEffect(() => {
@@ -143,10 +106,6 @@ export const useContainerAutoUpdateState = () => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (flushTimerRef.current !== undefined) {
-        window.clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = undefined;
-      }
       queuedOptionsRef.current = null;
     };
   }, []);
@@ -154,11 +113,6 @@ export const useContainerAutoUpdateState = () => {
   const runQueuedSave = useCallback(() => {
     if (!mountedRef.current) return;
     if (saveLoopRunningRef.current) return;
-
-    if (flushTimerRef.current !== undefined) {
-      window.clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = undefined;
-    }
 
     saveLoopRunningRef.current = true;
     setIsSaving(true);
@@ -174,7 +128,6 @@ export const useContainerAutoUpdateState = () => {
           const desiredOptions = desiredOptionsRef.current ?? savedOptions;
 
           confirmedOptionsRef.current = savedOptions;
-          setConfirmedOptions(savedOptions);
           queryClient.setQueryData(
             autoUpdateKey,
             optionsKey(savedOptions) === optionsKey(desiredOptions)
@@ -183,7 +136,7 @@ export const useContainerAutoUpdateState = () => {
           );
 
           if (optionsKey(savedOptions) === optionsKey(desiredOptions)) {
-            toast.success("Container auto-update settings saved");
+            toast.success("Scheduled update settings saved");
           }
         } catch (err) {
           if (!mountedRef.current) break;
@@ -212,7 +165,7 @@ export const useContainerAutoUpdateState = () => {
           toast.error(
             getMutationErrorMessage(
               err,
-              "Failed to save container auto-update setting",
+              "Failed to save scheduled update settings",
             ),
           );
         }
@@ -227,65 +180,8 @@ export const useContainerAutoUpdateState = () => {
     });
   }, [autoUpdateKey, queryClient, saveAutoUpdateOptions, toast]);
 
-  const scheduleSave = useCallback(
-    (options: DockerContainerAutoUpdateOptions) => {
-      if (!mountedRef.current) return;
-      queuedOptionsRef.current = normalizeOptions(options);
-      if (saveLoopRunningRef.current) return;
-
-      if (flushTimerRef.current !== undefined) {
-        window.clearTimeout(flushTimerRef.current);
-      }
-      flushTimerRef.current = window.setTimeout(() => {
-        flushTimerRef.current = undefined;
-        runQueuedSave();
-      }, SAVE_DEBOUNCE_MS);
-    },
-    [runQueuedSave],
-  );
-
-  const toggleContainer = useCallback(
-    (name: string) => {
-      if (!mountedRef.current) return;
-      const state =
-        queryClient.getQueryData<DockerContainerAutoUpdateState>(autoUpdateKey);
-      if (!state) return;
-      const options = state.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
-
-      const nextNames = new Set(options.container_names ?? []);
-      const enabling = !nextNames.has(name);
-      if (
-        enabling &&
-        !canEnableContainerAutoUpdateTarget(
-          options.mode,
-          targetEligibility.get(name),
-        )
-      ) {
-        return;
-      }
-      if (enabling) {
-        nextNames.add(name);
-      } else {
-        nextNames.delete(name);
-      }
-      const nextOptions = normalizeOptions({
-        ...options,
-        container_names: Array.from(nextNames),
-      });
-
-      desiredOptionsRef.current = nextOptions;
-      void queryClient.cancelQueries({ queryKey: autoUpdateKey });
-      queryClient.setQueryData(
-        autoUpdateKey,
-        stateWithOptions(state, nextOptions),
-      );
-      scheduleSave(nextOptions);
-    },
-    [autoUpdateKey, queryClient, scheduleSave, targetEligibility],
-  );
-
-  // Explicit whole-form save (settings dialog): optimistic like the toggles,
-  // but flushed immediately instead of waiting out the toggle debounce.
+  // Explicit whole-form save updates the cache optimistically and flushes the
+  // latest desired policy through the single settings-owned save loop.
   const saveOptions = useCallback(
     (options: DockerContainerAutoUpdateOptions) => {
       if (!mountedRef.current) return;
@@ -307,16 +203,11 @@ export const useContainerAutoUpdateState = () => {
   );
 
   return {
-    disabled,
     isPending: query.isPending,
     isSaving,
-    pendingNames,
     queryError: query.error?.message,
-    reason,
     saveOptions,
-    selectedNames,
     state: query.data,
     targetEligibility,
-    toggleContainer,
   };
 };

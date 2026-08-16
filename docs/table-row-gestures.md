@@ -21,6 +21,22 @@ The shared predicates live in
 | Escape | Collapses every expanded row | passing `renderExpandedContent` |
 | Escape again | Clears the selection | passing `onClearSelection` |
 
+## Showing selection
+
+Selected rows are tinted, not checkboxed. `selectedRowIds` takes the whole
+selected set and `selectedRowId` the single open/focused row; both paint the same
+`--app-vdt-selected-bg`, which is the theme's `primary.main` at 10% (15% in dark).
+
+The tint is applied as the row's *own* surface rather than an overlay, so zebra
+striping stays legible underneath it and hover brightens the tinted surface
+instead of replacing it — a selected row still responds to the pointer and still
+reads as selected. That derivation is shared with `.app-table-row` and
+`.file-row`, so every row in the app responds alike.
+
+A checkbox column is not the way to do this. It costs a column of width on every
+row, and its cell has to close over the selection — which makes the column defs
+volatile and reintroduces the remount hazard below.
+
 ## Rules, and why they are rules
 
 **A row has exactly one click action.** `onRowClick` wins over expand-on-click:
@@ -90,6 +106,7 @@ does. `meta.getCellRenderKey` then narrows which cells re-render.
 2. Add `dnd` only if the row order is the user's to save.
 3. Add `onRowDoubleClick` only if the table has a genuine second row action, and
    accept the click delay and the loss of word selection.
-4. Add `onClearSelection` whenever rows can be selected, so Escape can clear it.
+4. If rows can be selected, pass `selectedRowIds` so the selection is visible and
+   `onClearSelection` so Escape can clear it.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.

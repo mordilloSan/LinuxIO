@@ -91,16 +91,7 @@ function container(
 }
 
 function renderTable(containers: ContainerInfo[]) {
-  return render(
-    <ContainerTable
-      autoUpdateBlockedReasons={new Map()}
-      autoUpdateDisabled={false}
-      autoUpdatePendingNames={new Set()}
-      autoUpdateSelectedNames={new Set()}
-      containers={containers}
-      onToggleAutoUpdate={vi.fn()}
-    />,
-  );
+  return render(<ContainerTable containers={containers} />);
 }
 
 function rowNamed(name: string) {
@@ -108,42 +99,6 @@ function rowNamed(name: string) {
 }
 
 describe("ContainerTable mutation feedback", () => {
-  it("blocks unsafe automatic enrollment but still allows deselection", async () => {
-    media.compact = false;
-    const reason =
-      "Compose service media/web has 2 replicas; automatic updates require a single replica.";
-    const toggle = vi.fn();
-    const { rerender, user } = render(
-      <ContainerTable
-        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
-        autoUpdateDisabled={false}
-        autoUpdatePendingNames={new Set()}
-        autoUpdateSelectedNames={new Set()}
-        containers={[container("blocked-id", "blocked", "running")]}
-        onToggleAutoUpdate={toggle}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: reason })).toBeDisabled();
-
-    rerender(
-      <ContainerTable
-        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
-        autoUpdateDisabled={false}
-        autoUpdatePendingNames={new Set()}
-        autoUpdateSelectedNames={new Set(["blocked"])}
-        containers={[container("blocked-id", "blocked", "running")]}
-        onToggleAutoUpdate={toggle}
-      />,
-    );
-    const selected = screen.getByRole("button", {
-      name: new RegExp(`${reason} Disable this selection`),
-    });
-    expect(selected).toBeEnabled();
-    await user.click(selected);
-    expect(toggle).toHaveBeenCalledWith("blocked");
-  });
-
   it("shows a warning and never claims up to date after a failed per-container scan", async () => {
     media.compact = false;
     const { user } = renderTable([container("failed-id", "failed", "running")]);

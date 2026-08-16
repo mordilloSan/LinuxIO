@@ -80,8 +80,8 @@ vi.mock("@/hooks/useScopedToast", () => ({
 const { act, createTestQueryClient, renderHook, waitFor } =
   await import("@/test/render");
 const { QueryClientProvider } = await import("@tanstack/react-query");
-const { canEnableContainerAutoUpdateTarget, useContainerAutoUpdateState } =
-  await import("./useContainerAutoUpdateState");
+const { useDockerAutoUpdateState } =
+  await import("./useDockerAutoUpdateState");
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={createTestQueryClient()}>
@@ -89,21 +89,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </QueryClientProvider>
 );
 
-describe("useContainerAutoUpdateState", () => {
+describe("useDockerAutoUpdateState", () => {
   afterEach(() => vi.clearAllMocks());
-
-  it("allows check-only enrollment but blocks mutation enrollment for ineligible targets", () => {
-    const blocked = {
-      mutationAllowed: false,
-      mutationReason:
-        "Container is not running; start it before enabling automatic updates.",
-    };
-    expect(canEnableContainerAutoUpdateTarget("update", blocked)).toBe(false);
-    expect(canEnableContainerAutoUpdateTarget("check_only", blocked)).toBe(
-      true,
-    );
-    expect(canEnableContainerAutoUpdateTarget("update")).toBe(true);
-  });
 
   it("ignores an in-flight save after unmount and drops its queued follow-up", async () => {
     let resolveSave!: (state: typeof mocks.cacheState) => void;
@@ -111,7 +98,7 @@ describe("useContainerAutoUpdateState", () => {
       () => new Promise((resolve) => (resolveSave = resolve)),
     );
     const { result, unmount } = renderHook(
-      () => useContainerAutoUpdateState(),
+      () => useDockerAutoUpdateState(),
       { wrapper },
     );
     await waitFor(() => expect(result.current.state).toBeDefined());

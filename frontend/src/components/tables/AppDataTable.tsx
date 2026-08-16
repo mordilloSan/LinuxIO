@@ -149,7 +149,13 @@ export interface AppDataTableProps<TData extends RowData> {
   onSortingChange?: OnChangeFn<SortingState>;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
+  /** The one open/focused row. Use `selectedRowIds` for multi-selection. */
   selectedRowId?: string | null;
+  /**
+   * Rows a multi-select table has selected. They carry the same primary-tinted
+   * surface as `selectedRowId`, so selection reads the same everywhere.
+   */
+  selectedRowIds?: ReadonlySet<string>;
   showHeader?: boolean;
   sorting?: SortingState;
   style?: CSSProperties;
@@ -718,6 +724,7 @@ function AppDataTable<TData extends RowData>({
   renderExpandedContent,
   renderRow,
   selectedRowId,
+  selectedRowIds,
   showHeader = true,
   sorting,
   style,
@@ -948,7 +955,9 @@ function AppDataTable<TData extends RowData>({
         <div className="app-vdt__body" role="rowgroup">
           {rows.map((row, rowIndex) => {
             const isExpanded = row.getIsExpanded();
-            const isSelected = row.id === selectedRowId;
+            const isSelected =
+              row.id === selectedRowId ||
+              (selectedRowIds?.has(row.id) ?? false);
             const canExpand = row.getCanExpand();
             const cells = row.getVisibleCells().map((cell) => ({
               cell,

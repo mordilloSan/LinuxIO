@@ -28,7 +28,6 @@ import {
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import ContainerTable from "./ContainerTable";
-import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
 
 // Card mode only needs identity/display fields in this parent.  Keeping the
 // volatile metrics out of the selected result means a metrics-only poll can
@@ -56,11 +55,6 @@ const selectAllContainers = (containers: ContainerInfo[]) => containers;
 
 interface ContainerListProps {
   checkingUpdates?: boolean;
-  /**
-   * Page-level auto-update controller, shared with the settings dialog so
-   * both surfaces write through one save queue.
-   */
-  containerAutoUpdate: ContainerAutoUpdateController;
   stoppingContainerIds?: ReadonlySet<string>;
   viewMode?: "card" | "table";
 }
@@ -71,7 +65,6 @@ const getContainerId = (container: { Id: string }) => container.Id;
 
 const ContainerList = ({
   checkingUpdates = false,
-  containerAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
@@ -98,41 +91,6 @@ const ContainerList = ({
   });
   const containers = rawContainers;
   const [search, setSearch] = useState("");
-
-  const autoUpdateBlockedReasons = useMemo<ReadonlyMap<string, string>>(() => {
-    if (containerAutoUpdate.state?.options.mode !== "update") return new Map();
-    const blocked = new Map<string, string>();
-    for (const [name, eligibility] of containerAutoUpdate.targetEligibility) {
-      if (!eligibility.mutationAllowed && eligibility.mutationReason) {
-        blocked.set(name, eligibility.mutationReason);
-      }
-    }
-    return blocked;
-  }, [
-    containerAutoUpdate.state?.options.mode,
-    containerAutoUpdate.targetEligibility,
-  ]);
-
-  const autoUpdatePresentation = useCallback(
-    (container: (typeof containers)[number]) => {
-      const name = container.Names?.[0]?.replace("/", "") ?? "";
-      const selected = containerAutoUpdate.selectedNames.has(name);
-      const blockedReason = autoUpdateBlockedReasons.get(name);
-      return {
-        disabled:
-          containerAutoUpdate.disabled ||
-          (!selected && blockedReason !== undefined),
-        reason: blockedReason ?? containerAutoUpdate.reason,
-        selected,
-      };
-    },
-    [
-      autoUpdateBlockedReasons,
-      containerAutoUpdate.disabled,
-      containerAutoUpdate.reason,
-      containerAutoUpdate.selectedNames,
-    ],
-  );
 
   const updateSelectedContainer = useCallback(
     (containerId: string | null) => {
@@ -263,21 +221,8 @@ const ContainerList = ({
               >
                 <ContainerCard
                   actionPending={stoppingContainerIds.has(selectedContainer.Id)}
-                  autoUpdateDisabled={
-                    autoUpdatePresentation(selectedContainer).disabled
-                  }
-                  autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                    selectedContainer.Names?.[0]?.replace("/", "") ?? "",
-                  )}
-                  autoUpdateReason={
-                    autoUpdatePresentation(selectedContainer).reason
-                  }
-                  autoUpdateSelected={
-                    autoUpdatePresentation(selectedContainer).selected
-                  }
                   containerId={selectedContainer.Id}
                   onSelect={() => handleSelectContainer(selectedContainer.Id)}
-                  onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                   selected
                 />
               </motion.div>
@@ -358,17 +303,11 @@ const ContainerList = ({
   if (viewMode === "table") {
     const table = (
       <ContainerTable
-        autoUpdateBlockedReasons={autoUpdateBlockedReasons}
-        autoUpdateDisabled={containerAutoUpdate.disabled}
-        autoUpdatePendingNames={containerAutoUpdate.pendingNames}
-        autoUpdateReason={containerAutoUpdate.reason}
-        autoUpdateSelectedNames={containerAutoUpdate.selectedNames}
         checkingUpdates={checkingUpdates}
         containers={orderedContainers}
         dnd={tableDnd}
         onSelectContainer={updateSelectedContainer}
         stoppingContainerIds={stoppingContainerIds}
-        onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
       />
     );
 
@@ -426,23 +365,12 @@ const ContainerList = ({
               renderItem={(container) => (
                 <ContainerCard
                   actionPending={stoppingContainerIds.has(container.Id)}
-                  autoUpdateDisabled={
-                    autoUpdatePresentation(container).disabled
-                  }
-                  autoUpdatePending={containerAutoUpdate.pendingNames.has(
-                    container.Names?.[0]?.replace("/", "") ?? "",
-                  )}
-                  autoUpdateReason={autoUpdatePresentation(container).reason}
-                  autoUpdateSelected={
-                    autoUpdatePresentation(container).selected
-                  }
                   containerId={container.Id}
                   onSelect={
                     editMode
                       ? undefined
                       : () => handleSelectContainer(container.Id)
                   }
-                  onToggleAutoUpdate={containerAutoUpdate.toggleContainer}
                 />
               )}
               size={{ xs: 12, sm: 6, md: 4, lg: 2 }}

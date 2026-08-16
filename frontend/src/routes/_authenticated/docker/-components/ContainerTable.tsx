@@ -31,7 +31,6 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
-import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -56,29 +55,6 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 // skips the expand animation. Context lets the columns stay stable while cells
 // still re-render in place when the expanded set changes.
 const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
-
-// Scheduled auto-update state travels the same way, and for the same reason:
-// it settles a beat after the rows first paint (the capability query resolves,
-// then the confirmed options land), so keeping it in the column closures would
-// remount every action button right when the table first becomes clickable.
-interface ContainerAutoUpdateCellState {
-  blockedReasons: ReadonlyMap<string, string>;
-  disabled: boolean;
-  pendingNames: ReadonlySet<string>;
-  reason?: string;
-  selectedNames: ReadonlySet<string>;
-  toggle: (name: string) => void;
-}
-
-const EMPTY_AUTO_UPDATE_NAMES: ReadonlySet<string> = new Set();
-const EMPTY_AUTO_UPDATE_REASONS: ReadonlyMap<string, string> = new Map();
-const ContainerAutoUpdateContext = createContext<ContainerAutoUpdateCellState>({
-  blockedReasons: EMPTY_AUTO_UPDATE_REASONS,
-  disabled: true,
-  pendingNames: EMPTY_AUTO_UPDATE_NAMES,
-  selectedNames: EMPTY_AUTO_UPDATE_NAMES,
-  toggle: () => {},
-});
 
 // And so does the page-wide "checking updates" flag, which toggles twice per
 // check — once on click, once when the sweep returns, the second one landing
@@ -476,67 +452,6 @@ const UpdateCell = memo(function UpdateCell({
   );
 });
 
-/** Per-row view of the shared auto-update state, resolved from context. */
-function useContainerAutoUpdate(name: string) {
-  const {
-    blockedReasons,
-    disabled: globallyDisabled,
-    pendingNames,
-    reason,
-    selectedNames,
-    toggle,
-  } = useContext(ContainerAutoUpdateContext);
-  const pending = pendingNames.has(name);
-  const selected = selectedNames.has(name);
-  const blockedReason = blockedReasons.get(name);
-  const disabled =
-    globallyDisabled || (!selected && blockedReason !== undefined);
-  const tooltip = globallyDisabled
-    ? (reason ?? "Scheduled auto-update unavailable")
-    : blockedReason
-      ? selected
-        ? `${blockedReason} Disable this selection to stop automatic mutation attempts.`
-        : blockedReason
-      : pending
-        ? "Saving auto-update setting"
-        : selected
-          ? "Scheduled auto-update enabled"
-          : "Scheduled auto-update disabled";
-
-  return { disabled, pending, selected, toggle, tooltip };
-}
-
-const AutoUpdateCell = memo(function AutoUpdateCell({
-  name,
-}: {
-  name: string;
-}) {
-  const theme = useAppTheme();
-  const [autoTooltipKey, setAutoTooltipKey] = useState(0);
-  const { disabled, pending, selected, toggle, tooltip } =
-    useContainerAutoUpdate(name);
-
-  return (
-    <AppTooltip key={autoTooltipKey} title={tooltip}>
-      <span>
-        <AppActionIconButton
-          color={selected ? theme.palette.primary.main : undefined}
-          disabled={disabled || pending}
-          icon="mdi:timer-cog-outline"
-          iconSize={16}
-          label={tooltip}
-          loading={pending}
-          onClick={() => {
-            setAutoTooltipKey((key) => key + 1);
-            toggle(name);
-          }}
-          tooltip={false}
-        />
-      </span>
-    </AppTooltip>
-  );
-});
-
 function UptimeCell({ created }: { created: number }) {
   return (
     <AppTypography
@@ -894,9 +809,8 @@ interface ContainerAction {
 }
 
 interface ActionsCellProps {
-  // Below md only Name and Actions remain, and a seven-icon strip leaves the
-  // name barely legible — so the same actions collapse into one menu, which
-  // also swallows the auto-update toggle that sits beside the strip.
+  // Below md only Name and Actions remain, so the action strip collapses into
+  // one menu to keep the name legible.
   compact: boolean;
   containerId: string;
   name: string;
@@ -918,7 +832,6 @@ const ActionsCell = memo(function ActionsCell({
   url,
 }: ActionsCellProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const autoUpdate = useContainerAutoUpdate(name);
   const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
     linuxio.docker.start_container,
     {
@@ -1046,22 +959,6 @@ const ActionsCell = memo(function ActionsCell({
               {action.label}
             </AppMenuItem>
           ))}
-          <AppDivider />
-          <AppMenuItem
-            disabled={autoUpdate.disabled || autoUpdate.pending}
-            endAdornment={
-              autoUpdate.selected ? <Icon icon="mdi:check" width={16} /> : null
-            }
-            onClick={() => {
-              setMenuAnchor(null);
-              autoUpdate.toggle(name);
-            }}
-            selected={autoUpdate.selected}
-            startAdornment={<Icon icon="mdi:timer-cog-outline" width={18} />}
-            title={autoUpdate.disabled ? autoUpdate.tooltip : undefined}
-          >
-            Auto-update
-          </AppMenuItem>
         </AppMenu>
       </>
     );
@@ -1098,17 +995,11 @@ const ActionsCell = memo(function ActionsCell({
 });
 
 interface ContainerTableProps {
-  autoUpdateBlockedReasons: ReadonlyMap<string, string>;
-  autoUpdateDisabled: boolean;
-  autoUpdatePendingNames: Set<string>;
-  autoUpdateReason?: string;
-  autoUpdateSelectedNames: Set<string>;
   checkingUpdates?: boolean;
   containers: ContainerInfo[];
   /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
   dnd?: AppDataTableDndOptions<ContainerInfo>;
   onSelectContainer?: (containerId: string) => void;
-  onToggleAutoUpdate: (name: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
 }
 
@@ -1118,16 +1009,10 @@ interface ContainerDialogTarget {
 }
 
 const ContainerTable = ({
-  autoUpdateBlockedReasons,
-  autoUpdateDisabled,
-  autoUpdatePendingNames,
-  autoUpdateReason,
-  autoUpdateSelectedNames,
   checkingUpdates = false,
   containers,
   dnd,
   onSelectContainer,
-  onToggleAutoUpdate,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
   const theme = useAppTheme();
@@ -1380,19 +1265,16 @@ const ContainerTable = ({
           const container = row.original;
           const name = getContainerName(container);
           return (
-            <>
-              {!compactActions && <AutoUpdateCell name={name} />}
-              <ActionsCell
-                compact={compactActions}
-                containerId={container.Id}
-                name={name}
-                onOpenLogs={openLogs}
-                onOpenTerminal={openTerminal}
-                pending={stoppingContainerIds.has(container.Id)}
-                state={container.State}
-                url={container.url}
-              />
-            </>
+            <ActionsCell
+              compact={compactActions}
+              containerId={container.Id}
+              name={name}
+              onOpenLogs={openLogs}
+              onOpenTerminal={openTerminal}
+              pending={stoppingContainerIds.has(container.Id)}
+              state={container.State}
+              url={container.url}
+            />
           );
         },
         meta: {
@@ -1400,16 +1282,11 @@ const ContainerTable = ({
           // The buttons fill the column, so a right-aligned label reads as
           // hanging off the end of the strip rather than titling it.
           headerStyle: { justifyContent: "center" },
-          // Tighter than the default 16px so the seven-button strip fits the
-          // track without clipping, and gap: 2 matches the strip's own spacing
-          // across the auto-update toggle sitting beside it.
+          // Tighter than the default 16px so the action strip fits the track.
           cellStyle: { gap: 2, paddingInline: 8 },
           // A compact row holds nothing but the menu button, so the rest of the
           // track goes back to the name.
           width: compactActions ? "56px" : "215px",
-          // Auto-update state is deliberately absent: the cells read it from
-          // context, which re-renders them past this memo without touching the
-          // column identity.
           getCellRenderKey: (row) => {
             const container = asContainer(row);
             return [
@@ -1432,48 +1309,27 @@ const ContainerTable = ({
     ],
   );
   const editMode = dnd?.editing ?? false;
-  const autoUpdateState = useMemo<ContainerAutoUpdateCellState>(
-    () => ({
-      blockedReasons: autoUpdateBlockedReasons,
-      disabled: autoUpdateDisabled,
-      pendingNames: autoUpdatePendingNames,
-      reason: autoUpdateReason,
-      selectedNames: autoUpdateSelectedNames,
-      toggle: onToggleAutoUpdate,
-    }),
-    [
-      autoUpdateBlockedReasons,
-      autoUpdateDisabled,
-      autoUpdatePendingNames,
-      autoUpdateReason,
-      autoUpdateSelectedNames,
-      onToggleAutoUpdate,
-    ],
-  );
-
   return (
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
-        <ContainerAutoUpdateContext.Provider value={autoUpdateState}>
-          <CheckingUpdatesContext.Provider value={checkingUpdates}>
-            <AppDataTable
-              ariaLabel="Docker containers"
-              columns={columns}
-              data={containers}
-              dnd={dnd}
-              emptyMessage="No containers found."
-              enableSorting={false}
-              fillAvailable
-              getRowId={(container) => container.Id}
-              // Dragging rows is the point of edit mode; selecting one there
-              // would fight the drag and immediately swap the table for a
-              // detail view.
-              onRowClick={
-                onSelectContainer && !editMode ? handleRowClick : undefined
-              }
-            />
-          </CheckingUpdatesContext.Provider>
-        </ContainerAutoUpdateContext.Provider>
+        <CheckingUpdatesContext.Provider value={checkingUpdates}>
+          <AppDataTable
+            ariaLabel="Docker containers"
+            columns={columns}
+            data={containers}
+            dnd={dnd}
+            emptyMessage="No containers found."
+            enableSorting={false}
+            fillAvailable
+            getRowId={(container) => container.Id}
+            // Dragging rows is the point of edit mode; selecting one there
+            // would fight the drag and immediately swap the table for a
+            // detail view.
+            onRowClick={
+              onSelectContainer && !editMode ? handleRowClick : undefined
+            }
+          />
+        </CheckingUpdatesContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
         {logsTarget && (
@@ -1501,24 +1357,12 @@ const areContainerTablePropsEqual = (
   previous: ContainerTableProps,
   next: ContainerTableProps,
 ) =>
-  previous.autoUpdateBlockedReasons === next.autoUpdateBlockedReasons &&
-  previous.autoUpdateDisabled === next.autoUpdateDisabled &&
-  previous.autoUpdateReason === next.autoUpdateReason &&
   previous.checkingUpdates === next.checkingUpdates &&
   previous.dnd === next.dnd &&
   previous.onSelectContainer === next.onSelectContainer &&
-  previous.onToggleAutoUpdate === next.onToggleAutoUpdate &&
   areStringSetsEqual(
     previous.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
     next.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
-  ) &&
-  areStringSetsEqual(
-    previous.autoUpdatePendingNames,
-    next.autoUpdatePendingNames,
-  ) &&
-  areStringSetsEqual(
-    previous.autoUpdateSelectedNames,
-    next.autoUpdateSelectedNames,
   ) &&
   areContainerArraysEquivalent(previous.containers, next.containers);
 

@@ -14,7 +14,7 @@ import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 
 import CapabilityManagerSection from "./CapabilityManagerSection";
-import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
+import DockerSettingsSection from "./DockerSettingsSection";
 import IndexerSettingsSection from "./IndexerSettingsSection";
 import MonitoringSettingsSection from "./MonitoringSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
@@ -205,7 +205,7 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
           {effectiveTab === "capabilities" ? (
             <CapabilityManagerSection />
           ) : null}
-          {effectiveTab === "docker" ? <DockerFolderSettingsSection /> : null}
+          {effectiveTab === "docker" ? <DockerSettingsSection /> : null}
           {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
           {effectiveTab === "monitoring" ? <MonitoringSettingsSection /> : null}
           {effectiveTab === "power" ? <PowerSettingsSection /> : null}

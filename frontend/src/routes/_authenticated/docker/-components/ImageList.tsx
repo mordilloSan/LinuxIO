@@ -10,7 +10,6 @@ import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -287,13 +286,6 @@ const ImageList = ({
     return result;
   }, [selected, filtered]);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((img) => img.id)));
-    } else {
-      setSelected(new Set());
-    }
-  };
   const handleSelectOne = (id: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -311,40 +303,7 @@ const ImageList = ({
   const selectedImages = filtered.filter((img) =>
     effectiveSelected.has(img.id),
   );
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.id)}
-          onChange={(e) => handleSelectOne(row.original.id, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const image = row as (typeof filtered)[number];
-          return [image.id, effectiveSelected.has(image.id)];
-        },
-        width: "40px",
-      },
-    },
     {
       accessorKey: "repo",
       header: "Repository",
@@ -548,6 +507,7 @@ const ImageList = ({
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}
+          selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: image }) =>
             handleSelectOne(image.id, !effectiveSelected.has(image.id))

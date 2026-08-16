@@ -9,7 +9,6 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -53,13 +52,8 @@ const resolveColor = (palette: any, path: string): string => {
 
 interface ContainerCardProps {
   actionPending?: boolean;
-  autoUpdateDisabled?: boolean;
-  autoUpdatePending?: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected?: boolean;
   containerId: string;
   onSelect?: () => void;
-  onToggleAutoUpdate?: (name: string) => void;
   selected?: boolean;
 }
 
@@ -95,13 +89,8 @@ type ContainerCardBodyProps = Omit<ContainerCardLiveProps, "containerId"> & {
 
 const ContainerCardBody = ({
   actionPending = false,
-  autoUpdateDisabled = false,
-  autoUpdatePending = false,
-  autoUpdateReason,
-  autoUpdateSelected = false,
   container,
   onSelect,
-  onToggleAutoUpdate,
   selected,
 }: ContainerCardBodyProps) => {
   const theme = useAppTheme();
@@ -112,7 +101,6 @@ const ContainerCardBody = ({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
-  const [autoTooltipKey, setAutoTooltipKey] = useState(0);
 
   // derived
   const name = useMemo(
@@ -215,11 +203,6 @@ const ContainerCardBody = ({
     updateContainer(createDockerContainerUpdateRequest(container.Id));
   }, [container.Id, updateContainer]);
 
-  const handleAutoUpdateClick = useCallback(() => {
-    setAutoTooltipKey((key) => key + 1);
-    onToggleAutoUpdate?.(name);
-  }, [name, onToggleAutoUpdate]);
-
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
   const memUsage = container.metrics?.mem_usage ?? 0;
@@ -228,18 +211,6 @@ const ContainerCardBody = ({
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
-  const autoUpdateTooltip = autoUpdateDisabled
-    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-    : autoUpdatePending
-      ? "Saving auto-update setting"
-      : autoUpdateReason
-        ? autoUpdateSelected
-          ? `${autoUpdateReason} Disable this selection to stop automatic mutation attempts.`
-          : autoUpdateReason
-        : autoUpdateSelected
-          ? "Scheduled auto-update enabled"
-          : "Scheduled auto-update disabled";
-
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
@@ -296,29 +267,6 @@ const ContainerCardBody = ({
           </AppButton>
         </span>
       </AppTooltip>
-      {onToggleAutoUpdate && (
-        <AppTooltip
-          arrow
-          key={`selected-${autoTooltipKey}`}
-          placement="top"
-          title={autoUpdateTooltip}
-        >
-          <span>
-            <AppActionIconButton
-              color={
-                autoUpdateSelected ? theme.palette.primary.main : undefined
-              }
-              disabled={autoUpdateDisabled || autoUpdatePending}
-              icon="mdi:timer-cog-outline"
-              iconSize={16}
-              label={autoUpdateTooltip}
-              loading={autoUpdatePending}
-              onClick={handleAutoUpdateClick}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-      )}
       {container.updateAvailable && (
         <AppTooltip arrow placement="top" title="Update Container">
           <span>
@@ -486,22 +434,33 @@ const ContainerCardBody = ({
                   >
                     {container.Image}
                   </AppTypography>
-                  {container.updateAvailable && (
-                    <Chip
-                      color="warning"
-                      label="Update available"
-                      size="small"
-                      style={{ fontSize: "0.68rem", marginTop: 4 }}
-                      variant="soft"
-                    />
-                  )}
                 </div>
               </div>
-              <StatusDot
-                color={statusColor}
-                size={8}
-                style={{ marginTop: 4 }}
-              />
+              <div
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  gap: 4,
+                  marginTop: 4,
+                }}
+              >
+                {container.updateAvailable && (
+                  <AppTooltip arrow title="Update available">
+                    <span
+                      aria-label="Update available"
+                      role="img"
+                      style={{
+                        alignItems: "center",
+                        color: theme.palette.warning.main,
+                        display: "flex",
+                      }}
+                    >
+                      <Icon aria-hidden icon="mdi:alert" width={16} />
+                    </span>
+                  </AppTooltip>
+                )}
+                <StatusDot color={statusColor} size={8} />
+              </div>
             </div>
           </AppButton>
 
@@ -647,30 +606,6 @@ const ContainerCardBody = ({
                     />
                   </span>
                 </AppTooltip>
-                {onToggleAutoUpdate && (
-                  <AppTooltip
-                    arrow
-                    key={`compact-${autoTooltipKey}`}
-                    title={autoUpdateTooltip}
-                  >
-                    <span>
-                      <AppActionIconButton
-                        color={
-                          autoUpdateSelected
-                            ? theme.palette.primary.main
-                            : undefined
-                        }
-                        disabled={autoUpdateDisabled || autoUpdatePending}
-                        icon="mdi:timer-cog-outline"
-                        iconSize={16}
-                        label={autoUpdateTooltip}
-                        loading={autoUpdatePending}
-                        onClick={handleAutoUpdateClick}
-                        tooltip={false}
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
                 {container.updateAvailable && (
                   <AppTooltip arrow title="Update Container">
                     <span>

@@ -70,6 +70,7 @@ function TestTable({
   onRowClick,
   onRowDoubleClick,
   selectedRowId,
+  selectedRowIds,
 }: {
   columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
@@ -78,6 +79,7 @@ function TestTable({
   onRowClick?: () => void;
   onRowDoubleClick?: () => void;
   selectedRowId?: string;
+  selectedRowIds?: ReadonlySet<string>;
 }) {
   return (
     <AppDataTable
@@ -90,6 +92,7 @@ function TestTable({
       onRowDoubleClick={onRowDoubleClick}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
+      selectedRowIds={selectedRowIds}
     />
   );
 }
@@ -502,6 +505,25 @@ describe("AppDataTable", () => {
     await view.user.keyboard("{Escape}");
 
     expect(onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it("tints every row named by selectedRowIds", () => {
+    const view = render(<TestTable selectedRowIds={new Set(["one"])} />);
+    const alphaRow = () => screen.getByText("Alpha").closest('[role="row"]');
+    const betaRow = () => screen.getByText("Beta").closest('[role="row"]');
+
+    expect(alphaRow()).toHaveClass("app-vdt__row--selected");
+    expect(betaRow()).not.toHaveClass("app-vdt__row--selected");
+
+    view.rerender(<TestTable selectedRowIds={new Set(["one", "two"])} />);
+
+    expect(alphaRow()).toHaveClass("app-vdt__row--selected");
+    expect(betaRow()).toHaveClass("app-vdt__row--selected");
+
+    view.rerender(<TestTable selectedRowIds={new Set()} />);
+
+    expect(alphaRow()).not.toHaveClass("app-vdt__row--selected");
+    expect(betaRow()).not.toHaveClass("app-vdt__row--selected");
   });
 
   it("selects on the first checkbox press in a reorderable row", async () => {

@@ -24,22 +24,6 @@ export const normalizeOptions = (
 export const optionsKey = (options: DockerContainerAutoUpdateOptions) =>
   JSON.stringify(normalizeOptions(options));
 
-/** Names present in exactly one of the two sets (save still in flight). */
-export const diffNames = (confirmedNames: string[], desiredNames: string[]) => {
-  const confirmed = new Set(confirmedNames);
-  const desired = new Set(desiredNames);
-  const pending = new Set<string>();
-
-  for (const name of desired) {
-    if (!confirmed.has(name)) pending.add(name);
-  }
-  for (const name of confirmed) {
-    if (!desired.has(name)) pending.add(name);
-  }
-
-  return pending;
-};
-
 /** Re-derive the per-container `selected` flags for an options override. */
 export const stateWithOptions = (
   state: DockerContainerAutoUpdateState,

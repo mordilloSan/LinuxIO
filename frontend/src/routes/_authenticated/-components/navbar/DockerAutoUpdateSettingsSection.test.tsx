@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { DockerContainerAutoUpdateState } from "@/api";
 import { render, screen } from "@/test/render";
 
-import ContainerAutoUpdateDialog from "./ContainerAutoUpdateDialog";
-import type { ContainerAutoUpdateController } from "./useContainerAutoUpdateState";
+import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
+import type { DockerAutoUpdateController } from "./useDockerAutoUpdateState";
 
 const blockedReason =
   "Container is not running; start it before enabling automatic updates.";
 
-const createController = (): ContainerAutoUpdateController => {
+const createController = (): DockerAutoUpdateController => {
   const state: DockerContainerAutoUpdateState = {
     available: true,
     containers: [],
@@ -26,33 +26,26 @@ const createController = (): ContainerAutoUpdateController => {
   };
 
   return {
-    disabled: false,
     isPending: false,
     isSaving: false,
-    pendingNames: new Set(),
     queryError: undefined,
-    reason: undefined,
     saveOptions: vi.fn(),
-    selectedNames: new Set(["stopped"]),
     state,
     targetEligibility: new Map([
       ["stopped", { mutationAllowed: false, mutationReason: blockedReason }],
     ]),
-    toggleContainer: vi.fn(),
   };
 };
 
 const renderDialog = (autoUpdate = createController()) =>
   render(
-    <ContainerAutoUpdateDialog
+    <DockerAutoUpdateSettingsSection
       autoUpdate={autoUpdate}
       dockerUpdatesEnabled
-      onClose={vi.fn()}
-      open
     />,
   );
 
-describe("ContainerAutoUpdateDialog eligibility", () => {
+describe("DockerAutoUpdateSettingsSection eligibility", () => {
   it("labels the scheduler as update checks and explains its scope", () => {
     renderDialog();
 
@@ -92,11 +85,45 @@ describe("ContainerAutoUpdateDialog eligibility", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("selects automatic-update targets centrally from Settings", async () => {
+    const autoUpdate = createController();
+    autoUpdate.state = {
+      ...autoUpdate.state!,
+      containers: [
+        {
+          id: "web-id",
+          image: "example/web:latest",
+          mutationAllowed: true,
+          name: "web",
+          selected: false,
+          state: "running",
+        },
+      ],
+      options: {
+        ...autoUpdate.state!.options,
+        container_names: [],
+      },
+    };
+    autoUpdate.targetEligibility = new Map([
+      ["web", { mutationAllowed: true }],
+    ]);
+    const { user } = renderDialog(autoUpdate);
+
+    await user.click(screen.getAllByRole("combobox")[0]);
+    await user.click(screen.getByRole("option", { name: "web" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(autoUpdate.saveOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ container_names: ["web"] }),
+    );
+  });
+
   it("allows saving the same selection in check-only mode", async () => {
     const autoUpdate = createController();
     const { user } = renderDialog(autoUpdate);
 
-    await user.click(screen.getByRole("combobox"));
+    const comboboxes = screen.getAllByRole("combobox");
+    await user.click(comboboxes[1]);
     await user.click(screen.getByRole("option", { name: "Check only" }));
 
     expect(
