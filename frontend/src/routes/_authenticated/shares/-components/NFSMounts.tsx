@@ -1072,7 +1072,7 @@ const NFSMountTable = ({
       },
       {
         id: "actions",
-        header: "",
+        header: "Actions",
         enableSorting: false,
         cell: ({ row }) => (
           <MountEntryActions

@@ -397,11 +397,13 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
       accessorKey: "size",
       header: "Size",
       cell: ({ row }) => formatFileSize(row.original.size),
+      meta: { align: "right" },
     },
     {
       accessorKey: "free",
       header: "Free",
       cell: ({ row }) => formatFileSize(row.original.free),
+      meta: { align: "right" },
     },
     {
       accessorKey: "format",
@@ -440,19 +442,23 @@ const VGTable = ({ data }: { data: VolumeGroup[] }) => {
       accessorKey: "size",
       header: "Size",
       cell: ({ row }) => formatFileSize(row.original.size),
+      meta: { align: "right" },
     },
     {
       accessorKey: "free",
       header: "Free",
       cell: ({ row }) => formatFileSize(row.original.free),
+      meta: { align: "right" },
     },
     {
       accessorKey: "pvCount",
       header: "PVs",
+      meta: { align: "right" },
     },
     {
       accessorKey: "lvCount",
       header: "LVs",
+      meta: { align: "right" },
     },
   ];
 
@@ -504,6 +510,7 @@ const LVTable = ({ data, onResize, onDelete }: LVTableProps) => (
         accessorKey: "size",
         header: "Size",
         cell: ({ row }) => formatFileSize(row.original.size),
+        meta: { align: "right" },
       },
       {
         accessorKey: "mountpoint",

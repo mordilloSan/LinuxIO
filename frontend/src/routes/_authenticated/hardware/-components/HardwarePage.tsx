@@ -147,6 +147,7 @@ function MemoryModulesTable() {
         accessorKey: "size",
         header: "Size",
         cell: ({ row }) => row.original.size,
+        meta: { align: "right" },
       },
       {
         accessorKey: "state",
@@ -165,11 +166,13 @@ function MemoryModulesTable() {
         accessorKey: "rank",
         header: "Rank",
         cell: ({ row }) => row.original.rank,
+        meta: { align: "right" },
       },
       {
         accessorKey: "speed",
         header: "Speed",
         cell: ({ row }) => row.original.speed,
+        meta: { align: "right" },
       },
     ];
 

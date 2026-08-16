@@ -304,7 +304,7 @@ const VolumeList = ({
         </AppTypography>
       ),
       meta: {
-        align: "left",
+        align: "right",
         hideBelow: "lg",
         width: "120px",
       },
@@ -318,7 +318,7 @@ const VolumeList = ({
         </AppTypography>
       ),
       meta: {
-        align: "left",
+        align: "right",
         hideBelow: "lg",
         width: "120px",
       },

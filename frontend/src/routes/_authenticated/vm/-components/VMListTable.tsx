@@ -115,13 +115,13 @@ export default function VMListTable({
         accessorKey: "vcpus",
         header: "CPU",
         cell: ({ row }) => row.original.vcpus,
-        meta: { width: "80px" },
+        meta: { align: "right", width: "80px" },
       },
       {
         accessorKey: "memoryMB",
         header: "Memory",
         cell: ({ row }) => formatMemory(row.original.memoryMB),
-        meta: { width: "120px" },
+        meta: { align: "right", width: "120px" },
       },
       {
         id: "actions",

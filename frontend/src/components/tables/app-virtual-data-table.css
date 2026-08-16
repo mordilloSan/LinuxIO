@@ -63,8 +63,7 @@
 
 /* Brightening the row's own surface keeps zebra striping and selection legible
    underneath the hover, and keeps hovering from reading as selecting — a tinted
-   hover is hard to tell from the primary-tinted selected state. Same derivation
-   as .app-table-row and .file-row, so every row in the app responds alike. */
+   hover is hard to tell from the primary-tinted selected state. */
 .app-vdt__row--interactive:hover {
   background-color: color-mix(
     in srgb,
@@ -190,7 +189,7 @@
 }
 
 .expand-panel__mono {
-  font-family: monospace;
+  font-family: var(--app-font-mono);
   font-size: 0.85rem;
 }
 

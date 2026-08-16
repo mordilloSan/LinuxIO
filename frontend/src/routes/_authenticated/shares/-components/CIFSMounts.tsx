@@ -676,7 +676,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
       },
       {
         id: "actions",
-        header: "",
+        header: "Actions",
         enableSorting: false,
         cell: ({ row }) => {
           const mount = row.original;
