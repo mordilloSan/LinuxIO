@@ -390,7 +390,6 @@ setup:
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-# React Compiler requires oxc-transform 0.136.0; keep it out of dependency bumps.
 update-deps: ensure-node ensure-go
 	@echo ""
 	@echo "📦 Frontend dependency update (npm → latest)"
@@ -402,7 +401,7 @@ update-deps: ensure-node ensure-go
 	  npm outdated || true; \
 	  echo ""; \
 	  echo "⬆️  Bumping package.json to latest with npm-check-updates..."; \
-	  npx --yes npm-check-updates -u --reject oxc-transform; \
+	  npx --yes npm-check-updates -u; \
 	  echo ""; \
 	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
 	  npm install --no-audit --no-fund; \
@@ -1100,7 +1099,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-govulncheck $(COLOR_RESET) Install govulncheck (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
-	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies (keeps oxc-transform at 0.136.0)"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"

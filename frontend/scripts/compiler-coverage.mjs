@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Reports which src files the React Compiler (oxc-transform reactCompiler)
+// Reports which src files the React Compiler (oxc-transform-react)
 // memoizes and which it skips. A skipped file compiles fine but ships fully
-// unmemoized: on any "[ReactCompiler]" error the pinned oxc-transform emits
-// no code and the Vite plugin falls back to the plain pipeline (see
+// unmemoized: on a fatal React Compiler error the binding emits no usable code
+// and the Vite plugin falls back to the plain pipeline (see
 // config/oxc-react-compiler.ts). For per-function reasons run:
 //   npx oxlint -A all -W react/react-compiler src
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { transform } from "oxc-transform";
+import { transform } from "oxc-transform-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(__dirname, "..");
@@ -38,12 +38,17 @@ const files = collectSources(srcDir).filter(
 const results = await Promise.all(
   files.map(async (file) => {
     const result = await transform(file, readFileSync(file, "utf8"), {
-      reactCompiler: { target: "19" },
-      target: "es2022",
+      reactCompiler: {
+        target: "19",
+        environment: { enableFunctionOutlining: false },
+      },
+      jsx: { runtime: "automatic" },
       sourcemap: false,
     });
     const rel = path.relative(frontendRoot, file);
-    if (result.code.length === 0) return { rel, status: "skipped" };
+    if (result.fatal || result.code.length === 0) {
+      return { rel, status: "skipped" };
+    }
     if (result.code.includes("react/compiler-runtime")) {
       return { rel, status: "memoized" };
     }
