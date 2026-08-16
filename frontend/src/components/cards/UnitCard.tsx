@@ -51,7 +51,7 @@ function UnitCard<T extends UnitListItem>({
 
   return (
     <FrostedCard
-      accent={statusColor}
+      accent
       className="fc-svc-card"
       hoverLift={!isSelected}
       style={{
