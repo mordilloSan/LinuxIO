@@ -24,6 +24,7 @@ import "./settings-page.css";
 
 type SettingsTab =
   | "general"
+  | "updates"
   | "theme"
   | "capabilities"
   | "docker"
@@ -43,11 +44,14 @@ const SettingsPage = () => {
       activeTab === "monitoring")
       ? "general"
       : activeTab;
+  /* Polls list_timers every 5s while it is on, so it stays off until its own
+     tab is the one being looked at. */
   const updateSettingsState = useUpdateSettingsState(
-    effectiveTab === "general",
+    effectiveTab === "updates",
   );
   const tabs = [
     { value: "general", label: "General" },
+    { value: "updates", label: "Updates" },
     { value: "theme", label: "Theme" },
     { value: "capabilities", label: "Capabilities" },
     { value: "docker", label: "Docker" },
@@ -156,8 +160,27 @@ const SettingsPage = () => {
                     value={navigationMode ?? "sidebar"}
                   />
                 </FrostedCard>
+              </div>
+            ) : null}
+            {effectiveTab === "updates" ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: theme.spacing(1.5),
+                }}
+              >
+                <div>
+                  <AppTypography fontWeight={600} variant="body1">
+                    Automatic Updates
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    When the system downloads and installs package updates on
+                    its own.
+                  </AppTypography>
+                </div>
 
-                <UpdateSettings state={updateSettingsState} />
+                <UpdateSettings disablePadding state={updateSettingsState} />
               </div>
             ) : null}
             {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
