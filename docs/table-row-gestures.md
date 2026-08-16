@@ -45,14 +45,8 @@ volatile and reintroduces the remount hazard below.
 
 Dropping the checkbox does cost the affordance, though: double click and
 Ctrl/Cmd-A leave nothing on screen to find, and the tint is only feedback once
-you know the gesture. Pair a selectable table with
-[`RowSelectionHint`](../frontend/src/components/tables/RowSelectionHint.tsx),
-rendered in the slot the page's bulk action occupies so the hint gives way as
-soon as something is selected:
-
-```tsx
-{selected.size > 0 ? <DeleteAction /> : rows.length > 0 && <RowSelectionHint />}
-```
+you know the gesture. That is an open tradeoff — a selectable table currently
+teaches its gestures nowhere.
 
 ## Rules, and why they are rules
 
@@ -129,7 +123,6 @@ does. `meta.getCellRenderKey` then narrows which cells re-render.
 3. Add `onRowDoubleClick` only if the table has a genuine second row action, and
    accept the click delay and the loss of word selection.
 4. If rows can be selected, pass `selectedRowIds` so the selection is visible,
-   `onSelectAll` for Ctrl/Cmd-A, and `onClearSelection` so Escape can clear it —
-   then render `RowSelectionHint` where the bulk action goes.
+   `onSelectAll` for Ctrl/Cmd-A, and `onClearSelection` so Escape can clear it.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.
