@@ -19,6 +19,10 @@ describe("dock labels", () => {
     expect(stylesheet).toContain(
       ".app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label",
     );
+    expect(stylesheet).toContain(
+      ":root[data-pointer-active] .app-dock-link:hover .app-dock__label",
+    );
+    expect(stylesheet).not.toContain("\n.app-dock-link:hover .app-dock__label");
     expect(stylesheet).not.toContain(":focus-within");
   });
 });

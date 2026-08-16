@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getInputModality,
   installInputModalityTracking,
+  POINTER_ACTIVE_ATTRIBUTE,
   POINTER_FOCUS_ATTRIBUTE,
 } from "@/utils/inputModality";
 
@@ -41,6 +42,26 @@ describe("inputModality", () => {
 
     expect(getInputModality()).toBe("pointer");
     expect(button).toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
+  });
+
+  it("requires fresh pointer activity after the window deactivates", () => {
+    pointerDown(button);
+    expect(document.documentElement).toHaveAttribute(POINTER_ACTIVE_ATTRIBUTE);
+
+    window.dispatchEvent(new Event("blur"));
+    expect(document.documentElement).not.toHaveAttribute(
+      POINTER_ACTIVE_ATTRIBUTE,
+    );
+
+    // Regaining focus alone must not revive hover affordances. The browser can
+    // restore :hover here even though the app receives no pointer event.
+    window.dispatchEvent(new Event("focus"));
+    expect(document.documentElement).not.toHaveAttribute(
+      POINTER_ACTIVE_ATTRIBUTE,
+    );
+
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
+    expect(document.documentElement).toHaveAttribute(POINTER_ACTIVE_ATTRIBUTE);
   });
 
   it("leaves keyboard-taken focus unmarked", () => {
@@ -97,5 +118,8 @@ describe("inputModality", () => {
 
     expect(getInputModality()).toBe("keyboard");
     expect(button).not.toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
+    expect(document.documentElement).not.toHaveAttribute(
+      POINTER_ACTIVE_ATTRIBUTE,
+    );
   });
 });

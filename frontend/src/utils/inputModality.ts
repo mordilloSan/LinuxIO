@@ -1,6 +1,7 @@
 /**
- * Which kind of input the user last drove the page with, and a mark on the
- * element that a pointer press left focused.
+ * Which kind of input the user last drove the page with, a mark on the element
+ * that a pointer press left focused, and whether this window activation has
+ * received a live pointer event.
  *
  * `:focus-visible` is evaluated against the *current* input modality, not the
  * modality that placed the focus. A button the user only clicked draws no ring
@@ -28,6 +29,13 @@ export type InputModality = "keyboard" | "pointer";
  */
 export const POINTER_FOCUS_ATTRIBUTE = "data-pointer-focus";
 
+/**
+ * Set on the document root after a mouse or pen event, then cleared when the
+ * page deactivates. CSS hover affordances that must not resurrect on window
+ * restoration can require this mark in addition to `:hover`.
+ */
+export const POINTER_ACTIVE_ATTRIBUTE = "data-pointer-active";
+
 // Keyboard is the safe default: it is the modality that shows rings and shows
 // focus tooltips, so an uninstalled tracker never hides an affordance.
 let modality: InputModality = "keyboard";
@@ -41,6 +49,10 @@ const unmark = (element: EventTarget | null) => {
   }
 };
 
+const setPointerActive = (active: boolean) => {
+  document.documentElement.toggleAttribute(POINTER_ACTIVE_ATTRIBUTE, active);
+};
+
 /**
  * Starts tracking. Idempotent — the second call returns the first call's
  * teardown rather than double-binding. Returns a teardown so tests can unwind.
@@ -49,8 +61,15 @@ export const installInputModalityTracking = (): (() => void) => {
   if (uninstall) return uninstall;
   if (typeof document === "undefined") return () => {};
 
-  const handlePointerDown = () => {
+  const handlePointerActivity = (event: PointerEvent) => {
+    // Touchscreens commonly emulate a sticky :hover after a tap. That is not a
+    // pointing cursor and must not opt transient hover labels back in.
+    if (event.pointerType !== "touch") setPointerActive(true);
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
     modality = "pointer";
+    handlePointerActivity(event);
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -77,19 +96,42 @@ export const installInputModalityTracking = (): (() => void) => {
     unmark(event.target);
   };
 
+  const handleWindowBlur = () => {
+    // Chromium restores :hover when a window comes back without dispatching a
+    // pointermove. Requiring fresh pointer activity prevents a dock label (or
+    // another transient hover affordance) from appearing disconnected from
+    // the motion that normally accompanies it.
+    setPointerActive(false);
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState !== "visible") handleWindowBlur();
+  };
+
   // Capture phase throughout: a handler that stops propagation must not be able
   // to desynchronise the tracker from the modality the user is actually in.
   document.addEventListener("pointerdown", handlePointerDown, true);
+  document.addEventListener("pointermove", handlePointerActivity, true);
   document.addEventListener("keydown", handleKeyDown, true);
   document.addEventListener("focusin", handleFocusIn, true);
   document.addEventListener("focusout", handleFocusOut, true);
+  document.addEventListener("visibilitychange", handleVisibilityChange, true);
+  window.addEventListener("blur", handleWindowBlur, true);
 
   uninstall = () => {
     document.removeEventListener("pointerdown", handlePointerDown, true);
+    document.removeEventListener("pointermove", handlePointerActivity, true);
     document.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("focusin", handleFocusIn, true);
     document.removeEventListener("focusout", handleFocusOut, true);
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+      true,
+    );
+    window.removeEventListener("blur", handleWindowBlur, true);
     unmark(document.activeElement);
+    setPointerActive(false);
     modality = "keyboard";
     uninstall = null;
   };

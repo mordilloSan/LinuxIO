@@ -115,14 +115,15 @@
     transform 140ms ease;
 }
 
-/* Show the label for keyboard focus only, so a mouse click does not leave it
-   hanging under the tile after the pointer has moved on. :focus-visible alone
-   does not get there: the browser re-reads it against the current modality, so
-   the link a click focused starts matching the moment any key is pressed and
-   the label pops up with the pointer nowhere near the dock. The
-   [data-pointer-focus] mark is what tells the two apart — see
-   utils/inputModality.ts and the base rule in theme/variables.css. */
-.app-dock-link:hover .app-dock__label,
+/* Hover also needs evidence of a live pointer event during this window
+   activation. Chromium restores :hover when the app comes back without firing
+   the pointermove that drives dock magnification; without this root mark the
+   label appears on its own under a resting tile. See utils/inputModality.ts.
+
+   For focus, show the label only when the keyboard took that focus. A mouse
+   click can start matching :focus-visible after a later keypress, so the
+   pointer-focus mark distinguishes the two. */
+:root[data-pointer-active] .app-dock-link:hover .app-dock__label,
 .app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);

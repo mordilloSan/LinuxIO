@@ -4,6 +4,8 @@ import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 
+import "@/routes/_authenticated/-components/dock/dock.css";
+
 export default function AccessibilityPage() {
   const [activations, setActivations] = useState({
     button: 0,
@@ -43,6 +45,9 @@ export default function AccessibilityPage() {
         Button: {activations.button}; Icon: {activations.icon}; Chip:{" "}
         {activations.chip}
       </output>
+      <a className="app-dock-link" data-testid="dock-settings" href="#settings">
+        <span className="app-dock__label">Settings</span>
+      </a>
       <div style={{ height: "1600px" }} />
     </main>
   );
