@@ -261,13 +261,18 @@ const ContainerCardBody = ({
             <AppButton
               color="warning"
               disabled={isActionPending}
-              loading={isUpdatePending}
               onClick={handleUpdateClick}
               size="small"
-              startIcon={<Icon height={16} icon="mdi:update" width={16} />}
+              startIcon={
+                isUpdatePending ? (
+                  <AppCircularProgress color="inherit" size={14} />
+                ) : (
+                  <Icon height={16} icon="mdi:update" width={16} />
+                )
+              }
               variant="outlined"
             >
-              Update
+              {isUpdatePending ? "Updating" : "Update"}
             </AppButton>
           </span>
         </AppTooltip>
