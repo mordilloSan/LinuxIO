@@ -342,6 +342,7 @@ function AppDataTableBodyRow<TData extends RowData>({
   const rowAttributeOnClick = rowAttributes?.onClick;
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
+  const rowAttributeOnMouseDown = rowAttributes?.onMouseDown;
   const renderedCells = (
     <>
       {hasDragColumn && (
@@ -410,6 +411,22 @@ function AppDataTableBodyRow<TData extends RowData>({
     onDoubleClick: (event) => {
       rowAttributeOnDoubleClick?.(event);
       if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+    },
+    // The second mousedown of a double click is what starts the browser's word
+    // selection. A table that binds a double-click row gesture means something
+    // else by it, so that selection is litter left over the row it just acted
+    // on. Suppressing it here rather than clearing it afterwards avoids the
+    // highlight flashing up at all, and single-click drag-selection — how you
+    // copy an id out of a cell — is untouched.
+    onMouseDown: (event) => {
+      if (
+        onRowDoubleClick &&
+        event.detail > 1 &&
+        !targetIsRowControl(event.target)
+      ) {
+        event.preventDefault();
+      }
+      rowAttributeOnMouseDown?.(event);
     },
     role: "row",
     style: rowAttributes?.style,

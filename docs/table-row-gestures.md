@@ -99,9 +99,14 @@ guard the filebrowser keyboard hooks use) or when the press is already
 `defaultPrevented`, and marks the press handled once it acts so nested tables and
 page-level handlers leave it alone.
 
-**Double click still selects a word.** Binding `onRowDoubleClick` costs the
-native word-selection gesture inside that table's rows. Only bind it where
-selection is the table's real second action.
+**Binding a double click costs the word-selection gesture.** On a table that
+binds `onRowDoubleClick`, the row default-prevents the *second* mousedown of a
+double click, which is what would start the browser's word selection — otherwise
+every row gesture leaves a stray blue highlight over the row it just acted on.
+Suppressing the selection rather than clearing it afterwards means the highlight
+never flashes up. Single-click drag-selection is untouched, so copying an id out
+of a cell still works, and a press on a control inside the row is exempt. Only
+bind the gesture where selection is the table's real second action.
 
 ## Column defs must be stable
 

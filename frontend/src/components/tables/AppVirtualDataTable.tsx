@@ -350,6 +350,13 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   const rowAttributeOnClick = rowAttributes?.onClick;
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
+  // Both spreads can carry a mousedown — the reorder activator and the caller's
+  // own attributes — so the suppression below has to delegate to each of them
+  // rather than replace one.
+  const rowAttributeOnMouseDown = rowAttributes?.onMouseDown;
+  const reorderOnMouseDown = reorderListeners?.onMouseDown as
+    | ((event: MouseEvent) => void)
+    | undefined;
 
   return (
     <div
@@ -385,6 +392,20 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
         onDoubleClick={(event) => {
           rowAttributeOnDoubleClick?.(event);
           if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+        }}
+        // See AppDataTable: the second mousedown of a double click is what
+        // starts the browser's word selection, which is litter on a table that
+        // means something else by a double click.
+        onMouseDown={(event) => {
+          if (
+            onRowDoubleClick &&
+            event.detail > 1 &&
+            !targetIsRowControl(event.target)
+          ) {
+            event.preventDefault();
+          }
+          reorderOnMouseDown?.(event);
+          rowAttributeOnMouseDown?.(event);
         }}
         role="row"
         style={{ ...rowAttributes?.style, ...reorderStyle }}

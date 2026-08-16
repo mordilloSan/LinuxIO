@@ -6,7 +6,7 @@ import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { act, render, screen, waitFor } from "@/test/render";
+import { act, fireEvent, render, screen, waitFor } from "@/test/render";
 
 interface SelectableRow {
   id: string;
@@ -508,6 +508,46 @@ describe("AppDataTable", () => {
     await view.user.keyboard("{Escape}");
 
     expect(onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it("suppresses only the word selection a double click would start", () => {
+    // jsdom does not implement double-click word selection, so this asserts the
+    // mechanism: the second mousedown is what starts it, and that is the one
+    // default-prevented.
+    const withGesture = render(<TestTable onRowDoubleClick={vi.fn()} />);
+    const row = () => screen.getByText("Alpha").closest('[role="row"]')!;
+
+    // fireEvent returns false once preventDefault has been called.
+    expect(fireEvent.mouseDown(row(), { detail: 2 })).toBe(false);
+    // The first press of a click still selects text, so drag-selecting an id
+    // out of a cell keeps working.
+    expect(fireEvent.mouseDown(row(), { detail: 1 })).toBe(true);
+
+    withGesture.unmount();
+
+    // A table with no double-click gesture never interferes.
+    render(<TestTable />);
+    expect(fireEvent.mouseDown(row(), { detail: 2 })).toBe(true);
+  });
+
+  it("leaves the word selection alone on a control inside the row", () => {
+    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+      tableColumns[0],
+      {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <button type="button">{`Restart ${row.original.name}`}</button>
+        ),
+      },
+    ];
+    render(
+      <TestTable columns={columnsWithAction} onRowDoubleClick={vi.fn()} />,
+    );
+
+    const button = screen.getByRole("button", { name: "Restart Alpha" });
+
+    expect(fireEvent.mouseDown(button, { detail: 2 })).toBe(true);
   });
 
   it("selects every visible row on Ctrl-A and on Cmd-A", async () => {
