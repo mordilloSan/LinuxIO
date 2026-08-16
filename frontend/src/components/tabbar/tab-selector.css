@@ -10,6 +10,10 @@
   margin-bottom: 8px;
 }
 
+.tab-selector--mobile {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .tab-selector__scroller {
   display: flex;
   grid-column: 1;
@@ -92,4 +96,19 @@
 .tab-selector__mobile-actions {
   display: flex;
   flex-direction: row;
+}
+
+.tab-selector__mobile-actions > div {
+  display: flex;
+}
+
+.app-popover__paper.tab-selector__mobile-search-popover {
+  width: min(400px, calc(100vw - 16px));
+  padding: 8px;
+}
+
+.tab-selector__mobile-search,
+.tab-selector__mobile-search .app-header-search {
+  width: 100%;
+  max-width: none;
 }

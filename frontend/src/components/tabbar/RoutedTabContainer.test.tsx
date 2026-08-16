@@ -336,8 +336,8 @@ describe("RoutedTabContainer", () => {
     expect(container.querySelector(".app-icon-btn")).not.toBeInTheDocument();
   });
 
-  it("keeps child search controls visible in the parent tab strip", async () => {
-    mockViewport();
+  it("keeps child search controls visible in the desktop parent tab strip", async () => {
+    mockViewport(false);
     const rootRoute = createRootRoute({ component: Outlet });
     const accountsRoute = createRoute({
       component: () => (
@@ -375,6 +375,79 @@ describe("RoutedTabContainer", () => {
     expect(
       screen.queryByRole("button", { name: "Actions" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("puts child search beside the other actions in the mobile menu", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: () => (
+        <>
+          <RoutedTabSearch>
+            <input aria-label="Search users" />
+          </RoutedTabSearch>
+          <RoutedTabActions>
+            <button type="button">Refresh users</button>
+          </RoutedTabActions>
+        </>
+      ),
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { user } = render(<RouterProvider router={router} />);
+
+    const actionsTrigger = await screen.findByRole("button", {
+      name: "Actions",
+    });
+    expect(
+      screen.queryByRole("textbox", { name: "Search users" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(actionsTrigger);
+
+    const mobileActions = document.querySelector(
+      ".tab-selector__mobile-actions",
+    );
+    const searchAction = screen.getByRole("button", { name: "Search" });
+    expect(mobileActions).toContainElement(searchAction);
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Refresh users" }),
+    );
+
+    await user.click(searchAction);
+
+    const search = await screen.findByRole("textbox", {
+      name: "Search users",
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(search).toHaveFocus();
+    expect(
+      document.querySelector(".tab-selector__mobile-search"),
+    ).toContainElement(search);
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("textbox", { name: "Search users" }),
+    ).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveFocus();
   });
 
   it("preserves action-local state across breakpoint changes", async () => {
