@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
@@ -10,7 +10,6 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
 
 import { usePackageUpdateController } from "./PackageUpdateController";
-import UpdateSettingsDialog from "./UpdateSettingsDialog";
 import UpdateStatus from "./UpdateStatus";
 
 const UPDATES_TOAST_META = {
@@ -37,7 +36,6 @@ const UpdatesPage = () => {
 };
 
 const AvailableUpdatesPage = () => {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { data: rawUpdates, refetch } = useSuspenseQuery({
     ...linuxio.updates.get_updates_basic,
     refetchInterval: 50000,
@@ -85,13 +83,6 @@ const AvailableUpdatesPage = () => {
         loading={isRefreshingCache}
         onClick={() => refreshCache()}
       />
-      <AppActionIconButton
-        ariaLabel="Open update settings"
-        icon="mdi:cog"
-        iconSize={20}
-        label="Update settings"
-        onClick={() => setSettingsOpen(true)}
-      />
       {actionableUpdates.length > 0 ? (
         <AppActionIconButton
           ariaLabel={`Update All (${actionableUpdates.length})`}
@@ -121,11 +112,6 @@ const AvailableUpdatesPage = () => {
         status={status}
         updates={updates}
         updatingPackage={updatingPackage}
-      />
-
-      <UpdateSettingsDialog
-        onClose={() => setSettingsOpen(false)}
-        open={settingsOpen}
       />
     </>
   );

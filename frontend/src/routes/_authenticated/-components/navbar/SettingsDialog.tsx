@@ -20,6 +20,9 @@ import MonitoringSettingsSection from "./MonitoringSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
 import PowerSettingsSection from "./PowerSettingsSection";
 import ThemeColorsSection from "./ThemeColorsSection";
+import UpdateSettings, {
+  useUpdateSettingsState,
+} from "../../updates/-components/UpdateSettings";
 
 type SettingsTab =
   | "general"
@@ -45,6 +48,9 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
       activeTab === "monitoring")
       ? "general"
       : activeTab;
+  const updateSettingsState = useUpdateSettingsState(
+    effectiveTab === "general",
+  );
   const tabs = [
     { value: "general", label: "General" },
     { value: "theme", label: "Theme" },
@@ -199,6 +205,8 @@ const SettingsDialog = ({ open, onClose }: SettingsDialogProps) => {
                   value={navigationMode ?? "sidebar"}
                 />
               </FrostedCard>
+
+              <UpdateSettings state={updateSettingsState} />
             </div>
           ) : null}
           {effectiveTab === "theme" ? <ThemeColorsSection /> : null}
