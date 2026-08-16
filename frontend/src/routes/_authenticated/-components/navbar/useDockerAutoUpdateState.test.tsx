@@ -83,8 +83,7 @@ vi.mock("@/hooks/useScopedToast", () => ({
 const { act, createTestQueryClient, renderHook, waitFor } =
   await import("@/test/render");
 const { QueryClientProvider } = await import("@tanstack/react-query");
-const { useDockerAutoUpdateState } =
-  await import("./useDockerAutoUpdateState");
+const { useDockerAutoUpdateState } = await import("./useDockerAutoUpdateState");
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={createTestQueryClient()}>
@@ -100,10 +99,9 @@ describe("useDockerAutoUpdateState", () => {
     mocks.mutateAsync.mockImplementation(
       () => new Promise((resolve) => (resolveSave = resolve)),
     );
-    const { result, unmount } = renderHook(
-      () => useDockerAutoUpdateState(),
-      { wrapper },
-    );
+    const { result, unmount } = renderHook(() => useDockerAutoUpdateState(), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.state).toBeDefined());
 
     const firstOptions = {

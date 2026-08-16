@@ -43,9 +43,7 @@ const createController = (): DockerAutoUpdateController => {
     queryError: undefined,
     saveOptions: vi.fn(),
     state,
-    targetEligibility: new Map([
-      ["stopped", { mutationAllowed: true }],
-    ]),
+    targetEligibility: new Map([["stopped", { mutationAllowed: true }]]),
   };
 };
 
