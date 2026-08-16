@@ -875,7 +875,7 @@ function AppVirtualDataTable<TData extends RowData>({
         observer.disconnect();
       }
     },
-    [],
+    [cancelPendingExpand],
   );
 
   const isEmbedded = variant === "embedded";

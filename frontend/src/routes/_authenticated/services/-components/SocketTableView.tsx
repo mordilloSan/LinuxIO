@@ -81,7 +81,7 @@ const renderSocketMainRow = (socket: Socket, isMobile: boolean) => [
   ...(isMobile
     ? []
     : [
-        <SocketListenAddresses socket={socket} />,
+        <SocketListenAddresses key="listen" socket={socket} />,
         socket.n_connections,
         socket.n_accepted,
       ]),
