@@ -6,6 +6,7 @@ import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import { useAppTheme } from "@/theme";
 
 import DevToolsButton from "./DevToolsButton";
+import { NavbarNotificationsDropdown } from "../navbar/NavbarNotificationsDropdown";
 
 function Footer() {
   const theme = useAppTheme();
@@ -66,6 +67,9 @@ function Footer() {
         >
           <ErrorBoundary>
             <DevToolsButton />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <NavbarNotificationsDropdown />
           </ErrorBoundary>
         </div>
       </div>

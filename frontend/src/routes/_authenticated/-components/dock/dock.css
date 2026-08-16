@@ -21,50 +21,6 @@
   height: 60px;
 }
 
-/* Header action buttons relocated into the dock, behind a divider. Same
-   vertical geometry as the nav list so tiles share a baseline. */
-.app-dock__actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  height: 60px;
-  margin-left: 4px;
-  padding: 6px 8px 6px 12px;
-  border-left: 1px solid var(--app-palette-divider);
-}
-
-/* The wrapped control (button, or dropdown wrapper + button) fills its tile;
-   the tile provides the shape, hover feedback, and icon color. */
-.app-dock__action .app-navbar-dropdown,
-.app-dock__action .app-icon-btn {
-  width: 100%;
-  height: 100%;
-}
-
-.app-dock__action .app-icon-btn {
-  padding: 0;
-  border-radius: inherit;
-  color: inherit;
-  background: transparent;
-}
-
-/* Absolute focus/hover lengths inside the 64px layer need the same 1.6
-   compensation as the tile shadow to retain their prior rendered weight. */
-.app-dock__action .app-icon-btn:hover {
-  box-shadow: 0 3.2px 12.8px rgba(0, 0, 0, 0.05);
-}
-
-.app-dock__action .app-icon-btn:focus-visible {
-  outline-width: 3.2px;
-  outline-offset: 3.2px;
-}
-
-/* The notifications bell's inline transfer peek expands the button sideways,
-   which a fixed-size tile can't accommodate — the full dropdown still works. */
-.app-dock__action .app-navbar-notifications__peek {
-  display: none;
-}
-
 .app-dock__item {
   display: flex;
   align-items: flex-start;
@@ -152,19 +108,12 @@
     transform 140ms ease;
 }
 
-/* Action-tile focus lands on the wrapped button rather than the dock link.
-   Match only keyboard-visible focus so a mouse click does not leave the label
-   showing after the control's popup closes. */
+/* Match only keyboard-visible focus so a mouse click does not leave the label
+   showing after the pointer has moved on. */
 .app-dock-link:hover .app-dock__label,
-.app-dock-link:focus-visible .app-dock__label,
-.app-dock__action:has(:focus-visible) .app-dock__label {
+.app-dock-link:focus-visible .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
-}
-
-/* Keep the label out of the gap above an open relocated control. */
-.app-dock__action:has([aria-expanded="true"]) .app-dock__label {
-  opacity: 0;
 }
 
 /* Running-app style indicator for the active route, sitting above the tile

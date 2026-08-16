@@ -80,6 +80,13 @@
   border-radius: 8px;
 }
 
+/* Sits in the footer next to the dev-tools button, so it is sized to that row
+   rather than to the header's icon buttons. */
+.app-icon-btn.app-navbar-notifications__trigger {
+  padding: 4px;
+  border-radius: 4px;
+}
+
 .app-navbar-notifications__peek {
   display: inline-flex;
   align-items: center;

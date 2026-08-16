@@ -64,6 +64,7 @@ describe("generated application router", () => {
         "/services/",
         "/services/sockets",
         "/services/timers",
+        "/settings",
         "/shares",
         "/shares/",
         "/shares/mounts",
@@ -141,6 +142,7 @@ describe("generated application router", () => {
       "Hardware",
       "Navigator",
       "Terminal",
+      "Settings",
     ]);
   });
 

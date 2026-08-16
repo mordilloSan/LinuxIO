@@ -12,13 +12,11 @@ const stylesheet = fs.readFileSync(
 );
 
 describe("dock labels", () => {
-  it("shows action labels only for keyboard-visible focus", () => {
+  it("shows labels only for keyboard-visible focus", () => {
     expect(stylesheet).toContain(
-      ".app-dock__action:has(:focus-visible) .app-dock__label",
+      ".app-dock-link:focus-visible .app-dock__label",
     );
-    expect(stylesheet).not.toContain(
-      ".app-dock__action:focus-within .app-dock__label",
-    );
+    expect(stylesheet).not.toContain(":focus-within");
   });
 });
 

@@ -1,10 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect } from "react";
 
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import DockItem from "./DockItem";
-import DockTile from "./DockTile";
 import {
   DockMagnificationProvider,
   useDockPointer,
@@ -23,6 +22,7 @@ const TILE_GRADIENTS: Record<string, readonly [string, string]> = {
   "/logs": ["#aab4c2", "#6b7686"],
   "/network": ["#3fd4e0", "#0aa3b5"],
   "/services": ["#b57af2", "#7c3fd6"],
+  "/settings": ["#c3ccd8", "#5f6a78"],
   "/shares": ["#7f96f7", "#4356d6"],
   "/storage": ["#ff9f5a", "#ee6c1d"],
   "/terminal": ["#43494f", "#17191c"],
@@ -34,28 +34,7 @@ const FALLBACK_GRADIENTS = Object.values(TILE_GRADIENTS);
 const gradientFor = (to: string, index: number) =>
   TILE_GRADIENTS[to] ?? FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
 
-/* Tile gradients for the relocated header actions, assigned by slot order
-   (notifications, settings, account). */
-const ACTION_GRADIENTS: readonly (readonly [string, string])[] = [
-  ["#ffb74a", "#f57c00"],
-  ["#aab4c2", "#6b7686"],
-  ["#ff7b7b", "#e03131"],
-];
-
-export interface DockAction {
-  /** Dock tooltip text; replaces the control's own tooltip. */
-  label: string;
-  /** The header action control (icon button plus its popup). */
-  node: ReactNode;
-}
-
-export interface DockProps {
-  /** Header actions shown after the nav tiles, behind a divider, dressed as
-      dock tiles with the same magnification and hover label as nav items. */
-  actions?: readonly DockAction[];
-}
-
-const Dock = ({ actions }: DockProps) => {
+const Dock = () => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
   const setPointer = useDockPointer();
@@ -85,27 +64,13 @@ const Dock = ({ actions }: DockProps) => {
           />
         ))}
       </ul>
-      {actions?.length ? (
-        <div className="app-dock__actions">
-          {actions.map(({ label, node }, index) => (
-            <div className="app-dock-link app-dock__action" key={label}>
-              <DockTile
-                gradient={ACTION_GRADIENTS[index % ACTION_GRADIENTS.length]}
-                label={label}
-              >
-                {node}
-              </DockTile>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </nav>
   );
 };
 
-const DockWithMagnification = (props: DockProps) => (
+const DockWithMagnification = () => (
   <DockMagnificationProvider>
-    <Dock {...props} />
+    <Dock />
   </DockMagnificationProvider>
 );
 

@@ -241,14 +241,7 @@ const TransferItem = memo(function TransferItem({
 
 // --- Main component ---
 
-interface NavbarNotificationsDropdownProps {
-  /** false when the dock provides its own hover label for this control. */
-  tooltip?: boolean;
-}
-
-export function NavbarNotificationsDropdown({
-  tooltip = true,
-}: NavbarNotificationsDropdownProps) {
+export function NavbarNotificationsDropdown() {
   const theme = useAppTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const iconSize = iconSizes.md;
@@ -565,7 +558,7 @@ export function NavbarNotificationsDropdown({
       </AppButton>
 
       <div className="app-navbar-dropdown">
-        <AppTooltip title={tooltip ? "Notifications" : ""}>
+        <AppTooltip placement="top" title="Notifications">
           <AppIconButton
             aria-label="Notifications"
             aria-controls={
@@ -573,21 +566,25 @@ export function NavbarNotificationsDropdown({
             }
             aria-expanded={isFullOpen}
             aria-haspopup="dialog"
+            className="app-navbar-notifications__trigger"
             color="inherit"
             onClick={handleOpen}
             ref={ref}
+            size="small"
           >
-            <Icon height={22} icon="mdi:bell" width={22} />
+            <Icon height={16} icon="mdi:bell" width={16} />
           </AppIconButton>
         </AppTooltip>
 
+        {/* Anchored in the footer, so the panel grows upward out of the
+            trigger instead of off the bottom of the viewport. */}
         <AppPopover
           anchorEl={anchorEl}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          anchorOrigin={{ vertical: "top", horizontal: "right" }}
           onClose={handleClose}
           open={isFullOpen}
           paperClassName="app-navbar-panel app-navbar-panel--notifications"
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
+          transformOrigin={{ vertical: "bottom", horizontal: "right" }}
         >
           <div
             aria-label="Notifications"

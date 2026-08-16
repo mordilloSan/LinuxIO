@@ -104,6 +104,7 @@ describe("useSidebarItems", () => {
       "Hardware",
       "Navigator",
       "Terminal",
+      "Settings",
     ]);
   });
 

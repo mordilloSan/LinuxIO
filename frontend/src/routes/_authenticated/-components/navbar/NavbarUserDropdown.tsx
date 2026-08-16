@@ -19,12 +19,7 @@ import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 import { iconSize } from "@/theme/constants";
 
-interface NavbarUserDropdownProps {
-  /** false when the dock provides its own hover label for this control. */
-  tooltip?: boolean;
-}
-
-function NavbarUserDropdown({ tooltip = true }: NavbarUserDropdownProps) {
+function NavbarUserDropdown() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
@@ -82,7 +77,7 @@ function NavbarUserDropdown({ tooltip = true }: NavbarUserDropdownProps) {
   return (
     <>
       <div className="app-navbar-dropdown">
-        <AppTooltip title={tooltip ? "Account" : ""}>
+        <AppTooltip title="Account">
           <AppIconButton
             aria-label="Account"
             aria-controls={menuOpen ? "navbar-account-menu" : undefined}

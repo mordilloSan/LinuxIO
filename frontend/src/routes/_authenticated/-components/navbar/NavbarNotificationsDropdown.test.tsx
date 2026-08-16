@@ -105,8 +105,8 @@ describe("NavbarNotificationsDropdown peek timer", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("portals the notifications panel outside the dock tile", () => {
-    const view = render(<NavbarNotificationsDropdown tooltip={false} />);
+  it("portals the notifications panel outside the footer row", () => {
+    const view = render(<NavbarNotificationsDropdown />);
 
     fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
 

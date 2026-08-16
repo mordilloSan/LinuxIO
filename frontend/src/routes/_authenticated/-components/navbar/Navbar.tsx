@@ -7,23 +7,10 @@ import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
 
-import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
-import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import NavbarUserDropdown from "./NavbarUserDropdown";
-import Dock, { type DockAction } from "../dock/Dock";
+import Dock from "../dock/Dock";
 
 import "./navbar.css";
-
-/* In dock mode the actions render as dock tiles: the dock's own hover label
-   replaces each control's tooltip, so those are switched off. */
-const DOCK_ACTIONS: readonly DockAction[] = [
-  {
-    label: "Notifications",
-    node: <NavbarNotificationsDropdown tooltip={false} />,
-  },
-  { label: "Settings", node: <NavbarSettingsDialogTrigger tooltip={false} /> },
-  { label: "Account", node: <NavbarUserDropdown tooltip={false} /> },
-];
 
 interface NavbarProps {
   onDrawerToggle?: MouseEventHandler<HTMLElement>;
@@ -52,15 +39,14 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
           </AppIconButton>
         )}
 
-        {navigationMode === "dock" ? (
-          <Dock actions={DOCK_ACTIONS} />
-        ) : (
-          <div className="app-navbar__actions">
-            <NavbarNotificationsDropdown />
-            <NavbarSettingsDialogTrigger />
-            <NavbarUserDropdown />
-          </div>
-        )}
+        {navigationMode === "dock" ? <Dock /> : null}
+
+        {/* Power sits in the header corner in both navigation modes: it acts on
+            the machine rather than the app, so it stays out of the dock's row
+            of routes. */}
+        <div className="app-navbar__actions">
+          <NavbarUserDropdown />
+        </div>
       </div>
     </header>
   );
