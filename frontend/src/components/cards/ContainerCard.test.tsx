@@ -66,11 +66,11 @@ describe("ContainerCard", () => {
       <ContainerCard containerId={container.Id} selected={false} />,
     );
 
-    expect(screen.getByText("Update available")).toBeInTheDocument();
+    expect(screen.getByLabelText("Update available")).toBeInTheDocument();
 
     container.updateAvailable = false;
     rerender(<ContainerCard containerId={container.Id} selected={false} />);
 
-    expect(screen.queryByText("Update available")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Update available")).not.toBeInTheDocument();
   });
 });

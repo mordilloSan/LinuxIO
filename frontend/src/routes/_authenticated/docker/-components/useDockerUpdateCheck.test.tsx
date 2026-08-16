@@ -65,7 +65,9 @@ function CheckButton() {
 
 function RefreshProbe() {
   const query = useDockerUpdateStatusRefresh();
-  return <output data-testid="refresh-state">{String(query.isFetching)}</output>;
+  return (
+    <output data-testid="refresh-state">{String(query.isFetching)}</output>
+  );
 }
 
 describe("useDockerUpdateCheck feedback", () => {
