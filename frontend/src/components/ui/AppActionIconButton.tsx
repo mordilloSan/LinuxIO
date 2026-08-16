@@ -40,11 +40,12 @@ export default function AppActionIconButton({
   loading = false,
   onClick,
   size = "small",
-  tooltip = label !== undefined,
+  tooltip,
 }: AppActionIconButtonProps) {
   const theme = useAppTheme();
   const isDisabled = disabled || loading;
   const accessibleLabel = ariaLabel ?? labelToAria(label) ?? icon;
+  const showTooltip = tooltip === undefined ? label !== undefined : tooltip;
 
   const button = (
     <AppIconButton
@@ -75,7 +76,7 @@ export default function AppActionIconButton({
     </AppIconButton>
   );
 
-  if (!tooltip || label === undefined) {
+  if (!showTooltip || label === undefined) {
     return button;
   }
 

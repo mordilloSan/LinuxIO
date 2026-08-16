@@ -184,35 +184,36 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     if (!settingsReady) return;
 
     setIsSaving(true);
-    try {
-      if (timezone && timezone !== originalTimezone) {
-        await setTz({ timezone });
-      }
-      if (
-        timeMode !== originalMode ||
-        JSON.stringify(customServers) !== JSON.stringify(originalServers)
-      ) {
-        if (timeMode === "manual") {
-          await setNtp({ enabled: "false" });
-        } else {
-          await setNtp({ enabled: "true" });
-          const servers =
-            timeMode === "custom"
-              ? customServers.map((s) => s.trim()).filter(Boolean)
-              : [];
-          await setServers({ servers });
+    const save = async () => {
+      try {
+        if (timezone && timezone !== originalTimezone) {
+          await setTz({ timezone });
         }
+        if (
+          timeMode !== originalMode ||
+          JSON.stringify(customServers) !== JSON.stringify(originalServers)
+        ) {
+          if (timeMode === "manual") {
+            await setNtp({ enabled: "false" });
+          } else {
+            await setNtp({ enabled: "true" });
+            const servers =
+              timeMode === "custom"
+                ? customServers.map((s) => s.trim()).filter(Boolean)
+                : [];
+            await setServers({ servers });
+          }
+        }
+        if (timeMode === "manual" && manualTime) {
+          await setTime({ isoTime: new Date(manualTime).toISOString() });
+        }
+        toast.success("Date/time settings updated");
+        onClose();
+      } catch {
+        // individual errors already toasted by mutation onError
       }
-      if (timeMode === "manual" && manualTime) {
-        await setTime({ isoTime: new Date(manualTime).toISOString() });
-      }
-      toast.success("Date/time settings updated");
-      onClose();
-    } catch {
-      // individual errors already toasted by mutation onError
-    } finally {
-      setIsSaving(false);
-    }
+    };
+    await save().finally(() => setIsSaving(false));
   };
 
   const handleModeChange = (label: string) => {

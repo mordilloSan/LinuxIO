@@ -7,13 +7,15 @@ export interface SensorEmptyCardProps {
   message?: ReactNode;
 }
 
+const defaultMessage = (
+  <>
+    No sensor data available. Ensure <code>lm-sensors</code> is installed and
+    configured.
+  </>
+);
+
 export const SensorEmptyCard = ({
-  message = (
-    <>
-      No sensor data available. Ensure <code>lm-sensors</code> is installed and
-      configured.
-    </>
-  ),
+  message = defaultMessage,
 }: SensorEmptyCardProps) => (
   <FrostedCard style={{ padding: 16, textAlign: "center" }}>
     <AppTypography color="text.secondary" variant="body2">

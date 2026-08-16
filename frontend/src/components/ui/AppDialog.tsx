@@ -84,12 +84,12 @@ export const AppDialog = ({
     if (open) {
       lastFocusedElement.current = document.activeElement as HTMLElement | null;
       const releaseBodyScrollLock = acquireBodyScrollLock();
-      _openDialogCount++;
+      _openDialogCount += 1;
       if (_openDialogCount === 1) document.body.classList.add("dialog-open");
 
       return () => {
         releaseBodyScrollLock();
-        _openDialogCount--;
+        _openDialogCount -= 1;
         if (_openDialogCount === 0)
           document.body.classList.remove("dialog-open");
       };

@@ -85,17 +85,19 @@ const ComposeEditorDialog = ({
     setShowUnsavedDialog(false);
   };
   const handleValidate = async () => {
-    if (!onValidate || !editorRef.current) return;
+    const editor = editorRef.current;
+    if (!onValidate || !editor) return;
     setIsValidating(true);
-    try {
-      const content = editorRef.current.getContent();
-      const result = await onValidate(content);
-      setValidation(result);
-    } catch (error) {
-      console.error("Validation error:", error);
-    } finally {
-      setIsValidating(false);
-    }
+    const validate = async () => {
+      try {
+        const content = editor.getContent();
+        const result = await onValidate(content);
+        setValidation(result);
+      } catch (error) {
+        console.error("Validation error:", error);
+      }
+    };
+    await validate().finally(() => setIsValidating(false));
   };
   const handleSave = async (content: string): Promise<boolean> => {
     // Validate stack name for create mode
@@ -113,44 +115,47 @@ const ComposeEditorDialog = ({
     }
     setIsSaving(true);
     setIsValidating(true);
-    try {
-      let contentToSave = content;
+    const save = async (): Promise<boolean> => {
+      try {
+        let contentToSave = content;
 
-      // Run validation before save
-      if (onValidate) {
-        const validationResult = await onValidate(content);
-        setValidation(validationResult);
-        if (!validationResult.valid) {
-          setIsSaving(false);
-          setIsValidating(false);
-          return false;
+        // Run validation before save
+        if (onValidate) {
+          const validationResult = await onValidate(content);
+          setValidation(validationResult);
+          if (!validationResult.valid) {
+            setIsSaving(false);
+            setIsValidating(false);
+            return false;
+          }
+
+          // Use normalized content if available (auto-adds container_name)
+          if (validationResult.normalized_content) {
+            contentToSave = validationResult.normalized_content;
+          }
         }
 
-        // Use normalized content if available (auto-adds container_name)
-        if (validationResult.normalized_content) {
-          contentToSave = validationResult.normalized_content;
-        }
+        // Save the file (with normalized content)
+        return await onSave(contentToSave, stackName.trim(), filePath);
+      } catch (error) {
+        console.error("Save error:", error);
+        setValidation({
+          valid: false,
+          errors: [
+            {
+              message:
+                error instanceof Error ? error.message : "Failed to save file",
+              type: "error",
+            },
+          ],
+        });
+        return false;
       }
-
-      // Save the file (with normalized content)
-      return await onSave(contentToSave, stackName.trim(), filePath);
-    } catch (error) {
-      console.error("Save error:", error);
-      setValidation({
-        valid: false,
-        errors: [
-          {
-            message:
-              error instanceof Error ? error.message : "Failed to save file",
-            type: "error",
-          },
-        ],
-      });
-      return false;
-    } finally {
+    };
+    return save().finally(() => {
       setIsSaving(false);
       setIsValidating(false);
-    }
+    });
   };
 
   const requestSave = () => {

@@ -185,10 +185,10 @@ function ThemeColorsSection() {
     setThemeColors((prev) => {
       const modeColors = prev?.[editMode];
       if (!modeColors) return prev;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [key]: _, ...rest } = modeColors;
+      const rest = { ...modeColors };
+      delete rest[key];
       const newModeColors = Object.values(rest).some((v) => v != null)
-        ? (rest as ThemeColors)
+        ? rest
         : undefined;
       const next: ThemeColorsByMode = { ...prev, [editMode]: newModeColors };
       if (!next.light && !next.dark) return undefined;
