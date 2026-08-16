@@ -1,3 +1,21 @@
+import { useState } from "react";
+
+import { RoutedTabSearch } from "@/components/tabbar";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
+
 export default function UsersPage() {
-  return <h1>Users route content</h1>;
+  const [search, setSearch] = useState("");
+
+  return (
+    <>
+      <RoutedTabSearch>
+        <AppHeaderSearch
+          aria-label="Search users"
+          onChange={setSearch}
+          value={search}
+        />
+      </RoutedTabSearch>
+      <h1>Users route content</h1>
+    </>
+  );
 }

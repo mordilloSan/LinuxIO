@@ -16,6 +16,10 @@ import { createPortal } from "react-dom";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import {
+  getInputModality,
+  POINTER_FOCUS_ATTRIBUTE,
+} from "@/utils/inputModality";
 
 import AppIconButton from "../ui/AppIconButton";
 import AppMenu from "../ui/AppMenu";
@@ -221,6 +225,7 @@ const TabSelector = memo(function TabSelector({
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
+  const mobileSearchOpenedFromPointerRef = useRef(false);
   const handleMenuTriggerRef = useCallback(
     (element: HTMLButtonElement | null) => {
       if (!element) {
@@ -252,9 +257,17 @@ const TabSelector = memo(function TabSelector({
   const handleMobileSearchClose = useCallback(() => {
     const focusedElement = document.activeElement;
     const trigger = mobileSearchAnchorEl;
+    const openedFromPointer = mobileSearchOpenedFromPointerRef.current;
 
     setMobileSearchAnchorEl(null);
+    mobileSearchOpenedFromPointerRef.current = false;
     if (trigger && mobileSearchRef.current?.contains(focusedElement)) {
+      // Typing and Escape switch the current modality to keyboard. Preserve
+      // the pointer origin across this transient surface so restoring focus
+      // does not paint a ring that the pointer never asked for.
+      if (openedFromPointer) {
+        trigger.setAttribute(POINTER_FOCUS_ATTRIBUTE, "");
+      }
       trigger.focus();
     }
   }, [mobileSearchAnchorEl]);
@@ -321,6 +334,8 @@ const TabSelector = memo(function TabSelector({
                   <AppIconButton
                     aria-label="Search"
                     onClick={() => {
+                      mobileSearchOpenedFromPointerRef.current =
+                        getInputModality() === "pointer";
                       setMobileSearchAnchorEl(anchorEl);
                       setAnchorEl(null);
                     }}
