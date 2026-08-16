@@ -8,6 +8,10 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import {
+  EASING_STANDARD,
+  TRANSITION_DURATION_SLOW_MS,
+} from "@/theme/constants";
 
 import {
   UserActivityCard,
@@ -52,6 +56,9 @@ const UserCardsView = ({
     x: isCompactLayout ? 0 : 40,
     y: isCompactLayout ? 20 : 0,
   };
+  // Same beat as the other isolate-on-select views (docker containers,
+  // services, network): 0.6s/EASING_STANDARD, panels staggered in 0.04s steps.
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
 
   if (users.length === 0) {
     return (
@@ -87,7 +94,19 @@ const UserCardsView = ({
   }
 
   return (
-    <AppGrid alignItems="stretch" container spacing={2.5}>
+    <AppGrid
+      alignItems="stretch"
+      animate={{ opacity: 1, y: 0 }}
+      component={motion.div}
+      container
+      initial={{ opacity: 0, y: 14 }}
+      spacing={2.5}
+      transition={{
+        duration: slowTransitionDurationSeconds,
+        delay: 0.04,
+        ease: EASING_STANDARD,
+      }}
+    >
       <AppGrid size={{ xs: 12, lg: 4 }} style={{ display: "flex" }}>
         <UserCard
           currentUsername={currentUsername}
@@ -106,7 +125,11 @@ const UserCardsView = ({
         initial={enterFromSide}
         size={{ xs: 12, md: 6, lg: 4 }}
         style={{ display: "flex" }}
-        transition={{ duration: 0.25, delay: 0.05 }}
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          delay: 0.08,
+          ease: EASING_STANDARD,
+        }}
       >
         <UserHomeSSHPanel username={selectedUser.username} />
       </AppGrid>
@@ -116,7 +139,11 @@ const UserCardsView = ({
         initial={enterFromSide}
         size={{ xs: 12, md: 6, lg: 4 }}
         style={{ display: "flex" }}
-        transition={{ duration: 0.25, delay: 0.08 }}
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          delay: 0.12,
+          ease: EASING_STANDARD,
+        }}
       >
         <UserDetailsPanel
           currentUsername={currentUsername}
@@ -130,7 +157,11 @@ const UserCardsView = ({
         initial={{ opacity: 0, y: 20 }}
         size={{ xs: 12, lg: 8 }}
         style={{ display: "flex" }}
-        transition={{ duration: 0.25, delay: 0.1 }}
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          delay: 0.16,
+          ease: EASING_STANDARD,
+        }}
       >
         <UserActivityCard username={selectedUser.username} />
       </AppGrid>
@@ -140,7 +171,11 @@ const UserCardsView = ({
         initial={{ opacity: 0, y: 20 }}
         size={{ xs: 12, lg: 4 }}
         style={{ display: "flex" }}
-        transition={{ duration: 0.25, delay: 0.12 }}
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          delay: 0.2,
+          ease: EASING_STANDARD,
+        }}
       >
         <UserProcessPanel username={selectedUser.username} />
       </AppGrid>

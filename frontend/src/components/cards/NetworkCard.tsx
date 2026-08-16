@@ -18,7 +18,23 @@ export interface NetworkCardProps {
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
-  <FrostedCard accent hoverLift style={{ padding: 8 }}>
+  <FrostedCard
+    accent
+    hoverLift
+    style={{
+      padding: 8,
+      /*
+        Selection takes the accent line to full strength and holds the lift
+        shadow, the same treatment DockerImageCard gives its selected state —
+        so a checkbox-driven multi-select list reads as selected the same way
+        a click-to-toggle one does.
+      */
+      ...(selected && {
+        borderBottomColor: "var(--fc-accent)",
+        boxShadow: "var(--fc-lift-shadow)",
+      }),
+    }}
+  >
     {/* Header: checkbox + name + driver chip */}
     <div
       style={{
