@@ -131,8 +131,7 @@ function directiveIn(statements, directive) {
 function collectExplicitNoMemoBoundaries(sourceFile, boundaries) {
   return boundaries
     .map((boundary) => {
-      if (!ts.isBlock(boundary.node.body)) return undefined;
-      const directive = directiveIn(boundary.node.body.statements, "use no memo");
+      const directive = explicitNoMemoDirective(boundary);
       if (!directive) return undefined;
       const { column, line } = sourceLocation(
         sourceFile,
@@ -147,6 +146,45 @@ function collectExplicitNoMemoBoundaries(sourceFile, boundaries) {
         left.column - right.column ||
         left.functionName.localeCompare(right.functionName),
     );
+}
+
+function explicitNoMemoDirective(boundary) {
+  if (!boundary || !ts.isBlock(boundary.node.body)) return undefined;
+  return directiveIn(boundary.node.body.statements, "use no memo");
+}
+
+function isTransparentExpression(node) {
+  return (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  );
+}
+
+function isUseCallbackCall(expression) {
+  if (ts.isIdentifier(expression)) return expression.text === "useCallback";
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    expression.name.text === "useCallback" &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "React"
+  );
+}
+
+function isUseCallbackBoundary(boundary) {
+  if (!boundary) return false;
+  let node = boundary.node;
+  let parent = node.parent;
+  while (parent && isTransparentExpression(parent)) {
+    node = parent;
+    parent = parent.parent;
+  }
+  return (
+    !!parent &&
+    ts.isCallExpression(parent) &&
+    parent.arguments[0] === node &&
+    isUseCallbackCall(parent.expression)
+  );
 }
 
 function isRecoverableCompilerDiagnostic(diagnostic) {
@@ -182,6 +220,7 @@ function collectRecoverableBailouts(sourceFile, boundaries, diagnostics) {
       functionName: boundary?.name ?? "<module>",
       line: location.line,
       reasons: new Set(),
+      boundary,
     };
     if (
       location.line < existing.line ||
@@ -195,7 +234,10 @@ function collectRecoverableBailouts(sourceFile, boundaries, diagnostics) {
   }
 
   return [...grouped.values()]
-    .map((bailout) => ({ ...bailout, reasons: [...bailout.reasons].sort() }))
+    .map((bailout) => ({
+      ...bailout,
+      reasons: [...bailout.reasons].sort(),
+    }))
     .sort(
       (left, right) =>
         left.line - right.line ||
@@ -213,15 +255,32 @@ export function analyzeCompilerCoverage(filename, sourceText, result) {
   const sourceFile = sourceFileFor(filename, sourceText);
   const boundaries = collectFunctionBoundaries(sourceFile);
   const status = classifyTransformResult(result);
+  const recoverableBailouts =
+    status === "fatal"
+      ? []
+      : collectRecoverableBailouts(sourceFile, boundaries, result.errors);
+  const actionableBailouts = [];
+  const manualMemoFallbacks = [];
+  for (const bailout of recoverableBailouts) {
+    if (explicitNoMemoDirective(bailout.boundary)) continue;
+    if (isUseCallbackBoundary(bailout.boundary)) {
+      manualMemoFallbacks.push(bailout);
+    } else {
+      actionableBailouts.push(bailout);
+    }
+  }
+
+  const withoutInternalBoundary = (bailout) => {
+    const { boundary: _boundary, ...publicBailout } = bailout;
+    return publicBailout;
+  };
   return {
     explicitNoMemoBoundaries: collectExplicitNoMemoBoundaries(
       sourceFile,
       boundaries,
     ),
-    recoverableBailouts:
-      status === "fatal"
-        ? []
-        : collectRecoverableBailouts(sourceFile, boundaries, result.errors),
+    manualMemoFallbacks: manualMemoFallbacks.map(withoutInternalBoundary),
+    recoverableBailouts: actionableBailouts.map(withoutInternalBoundary),
     status,
   };
 }
@@ -230,15 +289,21 @@ function normalizedRelativePath(filename) {
   return filename.split(path.sep).join("/");
 }
 
-export function formatCompilerCoverageReport(results) {
+export function formatCompilerCoverageReport(results, { verbose = false } = {}) {
   const ordered = [...results].sort((left, right) =>
     left.rel.localeCompare(right.rel),
   );
   const withStatus = (status) =>
     ordered.filter((result) => result.status === status);
   const fatal = withStatus("fatal");
-  const recoverable = ordered.flatMap((result) =>
+  const actionable = ordered.flatMap((result) =>
     result.recoverableBailouts.map((bailout) => ({
+      ...bailout,
+      rel: result.rel,
+    })),
+  );
+  const manual = ordered.flatMap((result) =>
+    (result.manualMemoFallbacks ?? []).map((bailout) => ({
       ...bailout,
       rel: result.rel,
     })),
@@ -258,22 +323,54 @@ export function formatCompilerCoverageReport(results) {
   ];
   for (const { rel } of fatal) lines.push(`    - ${rel}`);
 
-  lines.push(`  recoverable function bailouts: ${recoverable.length}`);
-  for (const bailout of recoverable) {
+  lines.push(`  actionable recoverable function bailouts: ${actionable.length}`);
+  for (const bailout of actionable) {
     lines.push(
       `    - ${bailout.rel}:${bailout.line}:${bailout.column} ` +
         `${bailout.functionName} — ${bailout.reasons.join("; ")}`,
     );
   }
 
+  lines.push(`  manual memo fallback callbacks: ${manual.length}`);
+  if (verbose) {
+    for (const bailout of manual) {
+      lines.push(
+        `    - ${bailout.rel}:${bailout.line}:${bailout.column} ` +
+          `${bailout.functionName} — ${bailout.reasons.join("; ")}`,
+      );
+    }
+  }
+
   lines.push(`  explicit "use no memo" boundaries: ${explicit.length}`);
-  for (const boundary of explicit) {
+  if (verbose) {
+    for (const boundary of explicit) {
+      lines.push(
+        `    - ${boundary.rel}:${boundary.line}:${boundary.column} ` +
+          boundary.functionName,
+      );
+    }
+  }
+  if (!verbose && (manual.length > 0 || explicit.length > 0)) {
     lines.push(
-      `    - ${boundary.rel}:${boundary.line}:${boundary.column} ` +
-        boundary.functionName,
+      "  (rerun with COMPILER_COVERAGE_VERBOSE=1 to list accepted boundaries)",
     );
   }
   return lines.join("\n");
+}
+
+export function isVerboseCompilerCoverageRequested({
+  argv = process.argv,
+  env = process.env,
+} = {}) {
+  const verboseValues = new Set(["1", "true", "yes", "on"]);
+  return (
+    argv.includes("--verbose") ||
+    verboseValues.has(
+      String(env.COMPILER_COVERAGE_VERBOSE ?? "")
+        .trim()
+        .toLowerCase(),
+    )
+  );
 }
 
 async function main() {
@@ -297,7 +394,11 @@ async function main() {
       };
     }),
   );
-  console.log(formatCompilerCoverageReport(results));
+  console.log(
+    formatCompilerCoverageReport(results, {
+      verbose: isVerboseCompilerCoverageRequested(),
+    }),
+  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
