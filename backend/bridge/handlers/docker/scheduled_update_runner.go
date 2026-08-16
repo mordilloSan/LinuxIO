@@ -23,7 +23,7 @@ type scheduledComposeTarget struct {
 type scheduledPassOperations struct {
 	list   func(context.Context) ([]container.Summary, error)
 	check  func(context.Context, []container.Summary) error
-	update func(context.Context, []container.Summary, []container.Summary, bool) error
+	update func(context.Context, []container.Summary, []container.Summary, apischema.DockerContainerAutoUpdateOptions) error
 }
 
 // RunScheduledContainerUpdates executes one configured check or update pass.
@@ -62,8 +62,8 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 		check: func(ctx context.Context, summaries []container.Summary) error {
 			return runScheduledUpdateCheck(ctx, cli, summaries)
 		},
-		update: func(ctx context.Context, summaries, all []container.Summary, cleanup bool) error {
-			return runScheduledUpdates(ctx, cli, summaries, all, cleanup)
+		update: func(ctx context.Context, summaries, all []container.Summary, opts apischema.DockerContainerAutoUpdateOptions) error {
+			return runScheduledUpdates(ctx, cli, summaries, all, opts)
 		},
 	})
 }
@@ -97,15 +97,24 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 		selected = append(selected, summary)
 	}
 
-	// Every scheduled pass refreshes availability for all running containers.
+	checkTargets := running
+	if opts.IncludeStopped {
+		checkTargets = make([]container.Summary, 0, len(containers))
+		for _, summary := range containers {
+			if summary.State == container.StateRunning || summary.State == container.StateExited {
+				checkTargets = append(checkTargets, summary)
+			}
+		}
+	}
+	// Every scheduled pass refreshes availability for the configured scope.
 	// Selection only controls which containers are subsequently updated.
-	checkErr := operations.check(ctx, running)
+	checkErr := operations.check(ctx, checkTargets)
 	if opts.Mode == "check_only" {
 		return checkErr
 	}
 	var updateErr error
 	if len(selected) > 0 {
-		updateErr = operations.update(ctx, selected, containers, opts.Cleanup)
+		updateErr = operations.update(ctx, selected, containers, opts)
 	}
 	return errors.Join(append(runErrs, checkErr, updateErr)...)
 }
@@ -137,9 +146,11 @@ func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers
 	return nil
 }
 
-func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all []container.Summary, cleanup bool) error {
+func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all []container.Summary, opts apischema.DockerContainerAutoUpdateOptions) error {
 	state := newScheduledUpdateState(ctx, cli)
 	state.allContainers = all
+	state.updateStopped = opts.UpdateStopped
+	state.reviveStopped = opts.ReviveStopped
 	for _, summary := range summaries {
 		if err := state.prepare(summary); err != nil {
 			return err
@@ -148,7 +159,7 @@ func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all
 	if err := state.applyComposeGroups(); err != nil {
 		return err
 	}
-	if cleanup {
+	if opts.Cleanup {
 		if err := cleanupUnusedUpdateImages(ctx, cli, state.oldImageIDs); err != nil {
 			state.errs = append(state.errs, err)
 		}

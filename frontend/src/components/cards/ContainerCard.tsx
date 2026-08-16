@@ -255,7 +255,7 @@ const ContainerCardBody = ({
           </AppButton>
         </span>
       </AppTooltip>
-      {container.updateAvailable && (
+      {container.updateAvailable && container.State === "running" && (
         <AppTooltip arrow placement="top" title="Update Container">
           <span>
             <AppButton
@@ -600,7 +600,7 @@ const ContainerCardBody = ({
                     />
                   </span>
                 </AppTooltip>
-                {container.updateAvailable && (
+                {container.updateAvailable && container.State === "running" && (
                   <AppTooltip arrow title="Update Container">
                     <span>
                       <AppActionIconButton

@@ -92,16 +92,29 @@ const DockerAutoUpdateSettingsSection = ({
   const missingNames = (serverState?.missing_container_names ?? []).filter(
     (name) => currentOptions.container_names.includes(name),
   );
-  const blockedNames = currentOptions.container_names.filter((name) => {
-    if (currentOptions.mode !== "update") return false;
-    return autoUpdate.targetEligibility.get(name)?.mutationAllowed === false;
+  const blockedReasons = currentOptions.container_names.flatMap((name) => {
+    if (currentOptions.mode !== "update") return [];
+    const target = serverState?.containers.find(
+      (container) => container.name === name,
+    );
+    const eligibility = autoUpdate.targetEligibility.get(name);
+    if (eligibility?.mutationAllowed === false) {
+      return [{
+        name,
+        reason:
+          eligibility.mutationReason ??
+          "This container cannot be updated automatically.",
+      }];
+    }
+    if (target?.state === "exited" && !currentOptions.update_stopped) {
+      return [{
+        name,
+        reason:
+          "Enable stopped-container updates or remove this container from the automatic-update targets.",
+      }];
+    }
+    return [];
   });
-  const blockedReasons = blockedNames.map((name) => ({
-    name,
-    reason:
-      autoUpdate.targetEligibility.get(name)?.mutationReason ??
-      "This container cannot be updated automatically.",
-  }));
   const hasBlockedNames = blockedReasons.length > 0;
   const selectableNames = useMemo(() => {
     const names = new Set<string>([
@@ -228,7 +241,9 @@ const DockerAutoUpdateSettingsSection = ({
               variant="caption"
             >
               {currentOptions.enabled
-                ? "Enabled — all running containers are checked on schedule"
+                ? currentOptions.include_stopped
+                  ? "Enabled — running and stopped containers are checked on schedule"
+                  : "Enabled — all running containers are checked on schedule"
                 : "Paused — scheduled update checks are disabled"}
             </AppTypography>
           </div>
@@ -262,6 +277,91 @@ const DockerAutoUpdateSettingsSection = ({
               disabled={controlsDisabled}
               onChange={(_, checked) => updateDraft("enabled", checked)}
             />
+          </div>
+        </FrostedCard>
+
+        <FrostedCard
+          aria-label="Stopped container update settings"
+          style={{
+            display: loading ? "none" : "grid",
+            gap: theme.spacing(2),
+            padding: 14,
+          }}
+        >
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: theme.spacing(1),
+            }}
+          >
+            <Icon
+              color={theme.palette.primary.main}
+              height={19}
+              icon="mdi:power-sleep"
+              width={19}
+            />
+            <div>
+              <AppTypography fontWeight={600} variant="body2">
+                Stopped containers
+              </AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Control how scheduled checks and updates handle stopped containers
+              </AppTypography>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: theme.spacing(1.5) }}>
+            <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AppTypography variant="body2">Check stopped containers</AppTypography>
+                <AppTypography color="text.secondary" variant="caption">
+                  Include stopped containers in scheduled availability checks
+                </AppTypography>
+              </div>
+              <AppSwitch
+                aria-label="Check stopped containers"
+                checked={currentOptions.include_stopped}
+                disabled={controlsDisabled}
+                onChange={(_, checked) => updateDraft("include_stopped", checked)}
+                size="small"
+              />
+            </div>
+
+            <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AppTypography variant="body2">Update stopped containers</AppTypography>
+                <AppTypography color="text.secondary" variant="caption">
+                  Recreate selected standalone containers and keep them stopped
+                </AppTypography>
+              </div>
+              <AppSwitch
+                aria-label="Update stopped containers"
+                checked={currentOptions.update_stopped}
+                disabled={controlsDisabled}
+                onChange={(_, checked) => {
+                  updateDraft("update_stopped", checked);
+                  if (!checked) updateDraft("revive_stopped", false);
+                }}
+                size="small"
+              />
+            </div>
+
+            <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AppTypography variant="body2">Start after update</AppTypography>
+                <AppTypography color="text.secondary" variant="caption">
+                  Start and verify stopped containers after recreating them
+                </AppTypography>
+              </div>
+              <AppSwitch
+                aria-label="Start stopped containers after update"
+                checked={currentOptions.revive_stopped}
+                disabled={controlsDisabled || !currentOptions.update_stopped}
+                onChange={(_, checked) => updateDraft("revive_stopped", checked)}
+                size="small"
+              />
+            </div>
           </div>
         </FrostedCard>
 
@@ -307,7 +407,9 @@ const DockerAutoUpdateSettingsSection = ({
             helperText={
               currentOptions.mode === "update"
                 ? "Select the containers to update after each scheduled check."
-                : "Saved for Update automatically; scheduled checks always include all running containers."
+                : currentOptions.include_stopped
+                  ? "Saved for Update automatically; scheduled checks include running and stopped containers."
+                  : "Saved for Update automatically; scheduled checks include all running containers."
             }
             label="Automatic-update targets"
             maxListHeight={260}

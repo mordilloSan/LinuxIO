@@ -203,7 +203,7 @@ func TestValidateStandaloneUpdateRejectsUnsafeOwnership(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			inspect := standaloneTestInspect()
 			tc.mutate(&inspect)
-			if err := validateStandaloneUpdate(inspect); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			if err := validateStandaloneUpdate(inspect, false); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("validateStandaloneUpdate error = %v, want %q", err, tc.wantErr)
 			}
 		})
@@ -678,6 +678,136 @@ func TestUpdateStandaloneContainerReportsBackupCleanupFailure(t *testing.T) {
 	}
 	if !result.Updated || result.ContainerID != "replacement" {
 		t.Fatalf("result = %+v, want active replacement", result)
+	}
+}
+
+func TestUpdateStoppedStandaloneContainerPreservesStoppedState(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	before := standaloneTestInspect()
+	before.State = &container.State{Status: container.StateExited}
+	fake := newStandaloneUpdateFake()
+	fake.inspectResults["replacement"] = container.InspectResponse{
+		ID:     "replacement",
+		Name:   "/web",
+		Image:  "sha256:new",
+		State:  &container.State{Status: container.StateCreated},
+		Config: &container.Config{Image: "nginx:latest"},
+	}
+
+	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+		context.Background(),
+		fake,
+		before,
+		"docker.io/library/nginx:latest",
+		apischemaUpdateResult(before),
+		nil,
+		nil,
+		stoppedContainerUpdatePolicy{Allow: true},
+	)
+	if err != nil {
+		t.Fatalf("update stopped standalone container: %v", err)
+	}
+	if !result.Updated || result.ContainerID != "replacement" || result.NewImageID != "sha256:new" {
+		t.Fatalf("result = %+v", result)
+	}
+	calls := strings.Join(fake.calls, "|")
+	if strings.Contains(calls, "stop:old-container") || strings.Contains(calls, "start:replacement") {
+		t.Fatalf("stopped update changed lifecycle state: %v", fake.calls)
+	}
+	if !strings.Contains(calls, "remove:old-container:false") {
+		t.Fatalf("rollback container was not removed: %v", fake.calls)
+	}
+}
+
+func TestUpdateStoppedStandaloneContainerCanReviveReplacement(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	before := standaloneTestInspect()
+	before.State = &container.State{Status: container.StateExited}
+	fake := newStandaloneUpdateFake()
+
+	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+		context.Background(),
+		fake,
+		before,
+		"docker.io/library/nginx:latest",
+		apischemaUpdateResult(before),
+		nil,
+		nil,
+		stoppedContainerUpdatePolicy{Allow: true, Revive: true},
+	)
+	if err != nil || !result.Updated {
+		t.Fatalf("revive stopped update result = %+v, error = %v", result, err)
+	}
+	calls := strings.Join(fake.calls, "|")
+	if strings.Contains(calls, "stop:old-container") || !strings.Contains(calls, "start:replacement") {
+		t.Fatalf("revive lifecycle calls = %v", fake.calls)
+	}
+}
+
+func TestStoppedStandaloneRollbackDoesNotStartOriginal(t *testing.T) {
+	before := standaloneTestInspect()
+	before.State = &container.State{Status: container.StateExited}
+	fake := newStandaloneUpdateFake()
+	fake.createErr = errors.New("replacement create failed")
+
+	_, err := updateStandaloneContainerWithDependenciesAndPolicy(
+		context.Background(),
+		fake,
+		before,
+		"docker.io/library/nginx:latest",
+		apischemaUpdateResult(before),
+		nil,
+		nil,
+		stoppedContainerUpdatePolicy{Allow: true},
+	)
+	if err == nil {
+		t.Fatal("stopped update unexpectedly succeeded")
+	}
+	calls := strings.Join(fake.calls, "|")
+	if strings.Contains(calls, "start:old-container") {
+		t.Fatalf("rollback started the originally stopped container: %v", fake.calls)
+	}
+}
+
+func TestStoppedStandaloneJournalRecoversVerifiedCleanup(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	before := standaloneTestInspect()
+	before.State = &container.State{Status: container.StateExited}
+	fake := newStandaloneUpdateFake()
+	fake.inspectResults["replacement"] = container.InspectResponse{
+		ID:     "replacement",
+		Name:   "/web",
+		Image:  "sha256:new",
+		State:  &container.State{Status: container.StateCreated},
+		Config: &container.Config{Image: "nginx:latest"},
+	}
+	cleanupErr := errors.New("backup removal failed")
+	fake.removeErrors["old-container"] = cleanupErr
+
+	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+		context.Background(),
+		fake,
+		before,
+		"docker.io/library/nginx:latest",
+		apischemaUpdateResult(before),
+		&journal,
+		nil,
+		stoppedContainerUpdatePolicy{Allow: true},
+	)
+	if !result.Updated || !errors.Is(err, cleanupErr) {
+		t.Fatalf("stopped update result = %+v, error = %v", result, err)
+	}
+	backup := before
+	backup.Name = "/" + standaloneBackupName(before.ID)
+	fake.inspectResults[before.ID] = backup
+	delete(fake.removeErrors, before.ID)
+
+	if err := recoverStandaloneUpdate(context.Background(), fake, journal); err != nil {
+		t.Fatalf("recover stopped verified update: %v", err)
+	}
+	if _, err := os.Stat(journal.path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal still exists: %v", err)
 	}
 }
 

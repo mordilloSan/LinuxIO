@@ -7,8 +7,11 @@ export const DEFAULT_AUTO_UPDATE_OPTIONS: DockerContainerAutoUpdateOptions = {
   cleanup: false,
   container_names: [],
   enabled: false,
+  include_stopped: false,
   mode: "update",
+  revive_stopped: false,
   time: "04:00",
+  update_stopped: false,
 };
 
 const uniqueNames = (names: string[]) => [...new Set(names)].sort();

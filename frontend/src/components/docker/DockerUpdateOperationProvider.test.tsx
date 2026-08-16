@@ -97,7 +97,19 @@ describe("DockerUpdateOperationProvider", () => {
         phase: "pulling",
       }),
     );
-    expect(screen.getByText("Pulling image homepage:latest")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Pulling image homepage:latest/),
+    ).toHaveLength(2);
+    const details = screen.getByRole("button", { name: "Show details" });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    await user.click(details);
+    expect(
+      screen.getByRole("button", { name: "Hide details" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById("docker-update-details")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
 
     act(() =>
       mocks.config?.success?.({

@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -35,6 +36,8 @@ import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskReco
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
+
+import "./compose-operation-dialog.css";
 
 interface DockerUpdateTarget {
   id: string;
@@ -108,6 +111,8 @@ function DockerUpdateOperationDialog({
   target: DockerUpdateTarget | null;
 }) {
   const theme = useAppTheme();
+  const [showDetails, setShowDetails] = useState(false);
+  const outputBoxRef = useRef<HTMLDivElement>(null);
   const title = result?.containerName || target?.name || "Container";
   const outcomeColor = error
     ? theme.palette.error.main
@@ -120,13 +125,22 @@ function DockerUpdateOperationDialog({
     _reason?: "backdropClick" | "escapeKeyDown",
   ) => onClose();
 
+  useLayoutEffect(() => {
+    if (showDetails && outputBoxRef.current) {
+      outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
+    }
+  }, [events, showDetails]);
+
   return (
     <GeneralDialog
       fullWidth
-      maxWidth="sm"
+      maxWidth="md"
       onClose={handleClose}
       open={open}
-      paperStyle={{ backgroundColor: theme.palette.background.default }}
+      paperStyle={{
+        backgroundColor: theme.palette.background.default,
+        maxHeight: "80vh",
+      }}
     >
       <AppDialogTitle
         style={{
@@ -178,108 +192,179 @@ function DockerUpdateOperationDialog({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(2),
-          minHeight: 260,
-          padding: theme.spacing(2.5),
+          maxHeight: 450,
+          minHeight: 380,
+          overflow: "hidden",
+          padding: 0,
         }}
       >
         <div
           aria-live="polite"
-          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          className={`compose-progress-section ${showDetails ? "compose-progress-section--yielded" : ""}`.trim()}
         >
-          {events.length === 0 && running ? (
-            <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: theme.spacing(2),
+            }}
+          >
+            {events.length === 0 && running ? (
+              <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
               <AppCircularProgress size={18} />
               <AppTypography color="text.secondary" variant="body2">
                 Starting the update worker…
               </AppTypography>
-            </div>
-          ) : (
-            events.map((event, index) => {
-              const active = running && index === events.length - 1;
-              return (
-                <div
-                  key={`${event.phase}:${index}`}
-                  style={{
-                    alignItems: "center",
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: "24px minmax(0, 1fr)",
-                    minHeight: 32,
-                  }}
-                >
-                  {active ? (
-                    <AppCircularProgress size={18} />
-                  ) : (
-                    <Icon
-                      color={
-                        event.phase === "rolling_back"
-                          ? theme.palette.warning.main
-                          : theme.palette.text.secondary
-                      }
-                      height={20}
-                      icon={phaseIcon(event.phase)}
-                      width={20}
-                    />
-                  )}
-                  <div>
-                    <AppTypography
-                      style={{ fontWeight: active ? 600 : 400 }}
-                      variant="body2"
-                    >
-                      {event.message}
-                    </AppTypography>
-                    <AppTypography color="text.secondary" variant="caption">
-                      {event.phase.replaceAll("_", " ")}
-                    </AppTypography>
+              </div>
+            ) : (
+              events.map((event, index) => {
+                const active = running && index === events.length - 1;
+                return (
+                  <div
+                    key={`${event.phase}:${index}`}
+                    style={{
+                      alignItems: "center",
+                      display: "grid",
+                      gap: 10,
+                      gridTemplateColumns: "24px minmax(0, 1fr)",
+                      minHeight: 32,
+                    }}
+                  >
+                    {active ? (
+                      <AppCircularProgress size={18} />
+                    ) : (
+                      <Icon
+                        color={
+                          event.phase === "rolling_back"
+                            ? theme.palette.warning.main
+                            : theme.palette.text.secondary
+                        }
+                        height={20}
+                        icon={phaseIcon(event.phase)}
+                        width={20}
+                      />
+                    )}
+                    <div>
+                      <AppTypography
+                        style={{ fontWeight: active ? 600 : 400 }}
+                        variant="body2"
+                      >
+                        {event.message}
+                      </AppTypography>
+                      <AppTypography color="text.secondary" variant="caption">
+                        {event.phase.replaceAll("_", " ")}
+                      </AppTypography>
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {result && (
-          <div
-            style={{
-              borderTop: `1px solid ${theme.palette.divider}`,
-              display: "grid",
-              gap: 6,
-              gridTemplateColumns: "max-content minmax(0, 1fr)",
-              paddingTop: theme.spacing(2),
-            }}
-          >
-            <AppTypography color="text.secondary" variant="caption">
-              Image
-            </AppTypography>
-            <AppTypography variant="caption">{result.image}</AppTypography>
-            {result.previousImageId && (
-              <>
-                <AppTypography color="text.secondary" variant="caption">
-                  Previous
-                </AppTypography>
-                <AppTypography variant="caption">
-                  {shortImageId(result.previousImageId)}
-                </AppTypography>
-              </>
+                );
+              })
             )}
-            {result.newImageId && (
-              <>
+
+            {result && (
+              <div
+                style={{
+                  borderTop: `1px solid ${theme.palette.divider}`,
+                  display: "grid",
+                  gap: 6,
+                  gridTemplateColumns: "max-content minmax(0, 1fr)",
+                  paddingTop: theme.spacing(2),
+                }}
+              >
                 <AppTypography color="text.secondary" variant="caption">
-                  Current
+                  Image
                 </AppTypography>
-                <AppTypography variant="caption">
-                  {shortImageId(result.newImageId)}
-                </AppTypography>
-              </>
+                <AppTypography variant="caption">{result.image}</AppTypography>
+                {result.previousImageId && (
+                  <>
+                    <AppTypography color="text.secondary" variant="caption">
+                      Previous
+                    </AppTypography>
+                    <AppTypography variant="caption">
+                      {shortImageId(result.previousImageId)}
+                    </AppTypography>
+                  </>
+                )}
+                {result.newImageId && (
+                  <>
+                    <AppTypography color="text.secondary" variant="caption">
+                      Current
+                    </AppTypography>
+                    <AppTypography variant="caption">
+                      {shortImageId(result.newImageId)}
+                    </AppTypography>
+                  </>
+                )}
+              </div>
+            )}
+
+            {error && (
+              <AppTypography color="error" variant="body2">
+                {error}
+              </AppTypography>
             )}
           </div>
-        )}
+        </div>
 
-        {error && (
-          <AppTypography color="error" variant="body2">
-            {error}
-          </AppTypography>
+        {events.length > 0 && (
+          <div
+            className={`compose-log ${showDetails ? "compose-log--expanded" : ""}`.trim()}
+          >
+            <AppButton
+              aria-controls="docker-update-details"
+              aria-expanded={showDetails}
+              className="compose-log__toggle"
+              onClick={() => setShowDetails((previous) => !previous)}
+              style={{
+                appearance: "none",
+                background: "none",
+                border: 0,
+                borderTop: `1px solid ${theme.palette.divider}`,
+                color: "inherit",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                gap: theme.spacing(0.5),
+                font: "inherit",
+                padding: theme.spacing(1, 2),
+                textAlign: "left",
+                userSelect: "none",
+                width: "100%",
+              }}
+              type="button"
+            >
+              <Icon
+                className={`compose-log__chevron ${showDetails ? "compose-log__chevron--expanded" : ""}`.trim()}
+                height={18}
+                icon="mdi:chevron-right"
+                width={18}
+              />
+              <AppTypography color="text.secondary" style={{ fontSize: "0.8rem" }}>
+                {showDetails ? "Hide details" : "Show details"}
+              </AppTypography>
+            </AppButton>
+            <div className="compose-log__animator">
+              <div
+                aria-hidden={!showDetails}
+                className="compose-log__scroller custom-scrollbar"
+                id="docker-update-details"
+                ref={outputBoxRef}
+                style={{
+                  backgroundColor: theme.codeBlock.background,
+                  color: theme.codeBlock.color,
+                }}
+              >
+                <div className="compose-log__lines">
+                  {events.map((event, index) => (
+                    <div key={`${event.phase}:detail:${index}`}>
+                      [{event.phase.replaceAll("_", " ")}] {event.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </AppDialogContent>
 
@@ -415,6 +500,7 @@ export function DockerUpdateOperationProvider({
     <DockerUpdateOperationContext.Provider value={value}>
       {children}
       <DockerUpdateOperationDialog
+        key={`${target?.id ?? "none"}:${open ? "open" : "closed"}`}
         error={error}
         events={events}
         onClose={handleClose}

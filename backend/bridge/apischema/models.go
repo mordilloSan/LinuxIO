@@ -412,8 +412,11 @@ type DockerContainerAutoUpdateOptions struct {
 	Cleanup        bool                          `json:"cleanup"`
 	ContainerNames []string                      `json:"container_names"`
 	Enabled        bool                          `json:"enabled"`
+	IncludeStopped bool                          `json:"include_stopped"`
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
+	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`
+	UpdateStopped  bool                          `json:"update_stopped"`
 }
 
 type DockerContainerAutoUpdateTarget struct {

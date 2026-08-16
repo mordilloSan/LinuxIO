@@ -32,8 +32,8 @@ const alpha: ContainerInfo = {
   Id: "alpha-id",
   Image: "alpha:latest",
   Names: ["/alpha"],
-  State: "exited",
-  Status: "Exited",
+  State: "running",
+  Status: "Up 1 minute",
   updateAvailable: true,
 };
 

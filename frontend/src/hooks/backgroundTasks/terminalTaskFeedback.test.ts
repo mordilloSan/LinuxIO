@@ -12,6 +12,7 @@ vi.mock("sonner", () => ({
 
 const { LinuxIOError } = await import("@/api");
 const {
+  TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_SMART_TEST,
@@ -135,6 +136,43 @@ describe("terminalTaskFeedback", () => {
       deps,
     );
     expect(toastMocks.error).toHaveBeenCalledWith("Package update failed");
+  });
+
+  it("records Docker update completion and failure feedback", () => {
+    const route = { label: "Open Docker", to: "/docker" };
+    emitTerminalTaskFeedback(
+      task("docker-updated", TASK_TYPE_DOCKER_UPDATE),
+      {
+        kind: "completed",
+        result: { containerName: "homepage", updated: true },
+      },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith("homepage updated", {
+      meta: route,
+    });
+
+    emitTerminalTaskFeedback(
+      task("docker-current", TASK_TYPE_DOCKER_UPDATE),
+      {
+        kind: "completed",
+        result: { containerName: "pihole", updated: false },
+      },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "pihole is already up to date",
+      { meta: route },
+    );
+
+    emitTerminalTaskFeedback(
+      task("docker-failed", TASK_TYPE_DOCKER_UPDATE),
+      failed("registry unavailable"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith("registry unavailable", {
+      meta: route,
+    });
   });
 
   it("reports capability installs on every terminal state, cancel included", () => {

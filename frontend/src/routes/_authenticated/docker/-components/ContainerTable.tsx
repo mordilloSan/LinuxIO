@@ -321,6 +321,7 @@ function VersionCell({ version }: { version: string }) {
 interface UpdateCellProps {
   containerId: string;
   name: string;
+  state: string;
   updateAvailable?: boolean;
   updateCheckedAt?: ContainerInfo["updateCheckedAt"];
   updateCheckReason?: string;
@@ -331,6 +332,7 @@ interface UpdateCellProps {
 const UpdateCell = memo(function UpdateCell({
   containerId,
   name,
+  state,
   updateAvailable,
   updateCheckedAt,
   updateCheckReason,
@@ -380,6 +382,17 @@ const UpdateCell = memo(function UpdateCell({
   // state and the way to apply the update, and re-checking a container that
   // already has one pending buys nothing.
   if (updateAvailable === true) {
+    if (state !== "running") {
+      return (
+        <Chip
+          color="warning"
+          label="Available"
+          size="small"
+          title="Update available; stopped containers are handled by the scheduled update policy"
+          variant="soft"
+        />
+      );
+    }
     return (
       <Chip
         color="warning"
@@ -1076,6 +1089,7 @@ const ContainerTable = ({
               <UpdateCell
                 containerId={container.Id}
                 name={getContainerName(container)}
+                state={container.State}
                 updateAvailable={container.updateAvailable}
                 updateCheckedAt={container.updateCheckedAt}
                 updateCheckReason={container.updateCheckReason}

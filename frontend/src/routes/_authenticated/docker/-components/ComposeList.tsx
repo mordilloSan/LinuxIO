@@ -180,7 +180,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
         loading={isRestarting}
         onClick={() => restartContainer(request)}
       />
-      {container.updateAvailable && (
+      {container.updateAvailable && container.State === "running" && (
         <AppActionIconButton
           disabled={controlsDisabled}
           icon="mdi:update"

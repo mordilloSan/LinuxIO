@@ -46,13 +46,14 @@ func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
 				{ID: "stopped-id", Names: []string{"/stopped"}, State: container.StateExited},
+				{ID: "dead-id", Names: []string{"/dead"}, State: container.StateDead},
 			}, nil
 		},
 		check: func(_ context.Context, summaries []container.Summary) error {
 			checked = summaries
 			return checkErr
 		},
-		update: func(context.Context, []container.Summary, []container.Summary, bool) error {
+		update: func(context.Context, []container.Summary, []container.Summary, apischema.DockerContainerAutoUpdateOptions) error {
 			updateCalled = true
 			return nil
 		},
@@ -62,6 +63,35 @@ func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T
 	}
 	if len(checked) != 1 || checked[0].ID != "web-id" || updateCalled {
 		t.Fatalf("dispatch = checked %#v, update called %v", checked, updateCalled)
+	}
+}
+
+func TestRunScheduledPassCanCheckStoppedContainers(t *testing.T) {
+	var checked []container.Summary
+	err := runScheduledPass(context.Background(), apischema.DockerContainerAutoUpdateOptions{
+		IncludeStopped: true,
+		Mode:           "check_only",
+	}, scheduledPassOperations{
+		list: func(context.Context) ([]container.Summary, error) {
+			return []container.Summary{
+				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
+				{ID: "stopped-id", Names: []string{"/stopped"}, State: container.StateExited},
+				{ID: "dead-id", Names: []string{"/dead"}, State: container.StateDead},
+			}, nil
+		},
+		check: func(_ context.Context, summaries []container.Summary) error {
+			checked = summaries
+			return nil
+		},
+		update: func(context.Context, []container.Summary, []container.Summary, apischema.DockerContainerAutoUpdateOptions) error {
+			return errors.New("unexpected update")
+		},
+	})
+	if err != nil {
+		t.Fatalf("runScheduledPass: %v", err)
+	}
+	if len(checked) != 2 || checked[1].ID != "stopped-id" {
+		t.Fatalf("checked summaries = %#v", checked)
 	}
 }
 
@@ -84,9 +114,9 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 			}
 			return nil
 		},
-		update: func(_ context.Context, summaries, all []container.Summary, cleanup bool) error {
+		update: func(_ context.Context, summaries, all []container.Summary, opts apischema.DockerContainerAutoUpdateOptions) error {
 			called = len(summaries) == 1 && summaries[0].ID == "web-id" &&
-				len(all) == 2 && all[0].ID == "web-id" && cleanup
+				len(all) == 2 && all[0].ID == "web-id" && opts.Cleanup
 			return nil
 		},
 	})

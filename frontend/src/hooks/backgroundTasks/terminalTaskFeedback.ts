@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   CAPABILITIES,
   type CapabilityDef,
+  type DockerContainerUpdateResult,
   type InstallCapabilityResult,
   type TaskSnapshot,
   LinuxIOError,
@@ -131,6 +132,16 @@ const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   );
 };
 
+const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
+const dockerUpdateError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
+  _task,
+  error,
+) => {
+  toast.error(getMutationErrorMessage(error, "Docker container update failed"), {
+    meta: DOCKER_TOAST_META,
+  });
+};
+
 /**
  * What the global handler reports when a task of a given type ends. A handler
  * left undefined means that terminal state is deliberately silent; an empty
@@ -138,6 +149,18 @@ const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
  * feedback).
  */
 export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
+  [TaskTypes.TASK_TYPE_DOCKER_UPDATE]: {
+    onCompleted: (_task, value) => {
+      const result = value as DockerContainerUpdateResult | undefined;
+      const name = result?.containerName || "Container";
+      toast.success(
+        result?.updated ? `${name} updated` : `${name} is already up to date`,
+        { meta: DOCKER_TOAST_META },
+      );
+    },
+    onFailed: dockerUpdateError,
+    onCanceled: dockerUpdateError,
+  },
   // Owned by the global handler (not CapabilityManagerSection) so the toast
   // still fires when the Settings dialog has been closed mid-install. A
   // cancellation is deliberately reported as an error: an install that stopped

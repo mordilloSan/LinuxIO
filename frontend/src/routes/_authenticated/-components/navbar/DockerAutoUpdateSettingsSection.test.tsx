@@ -7,19 +7,31 @@ import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
 import type { DockerAutoUpdateController } from "./useDockerAutoUpdateState";
 
 const blockedReason =
-  "Container is not running; start it before enabling automatic updates.";
+  "Enable stopped-container updates or remove this container from the automatic-update targets.";
 
 const createController = (): DockerAutoUpdateController => {
   const state: DockerContainerAutoUpdateState = {
     available: true,
-    containers: [],
+    containers: [
+      {
+        id: "stopped-id",
+        image: "example/stopped:latest",
+        mutationAllowed: true,
+        name: "stopped",
+        selected: true,
+        state: "exited",
+      },
+    ],
     missing_container_names: [],
     options: {
       cleanup: false,
       container_names: ["stopped"],
       enabled: true,
+      include_stopped: false,
       mode: "update",
+      revive_stopped: false,
       time: "04:00",
+      update_stopped: false,
     },
     timer_active: false,
     timer_enabled: true,
@@ -32,7 +44,7 @@ const createController = (): DockerAutoUpdateController => {
     saveOptions: vi.fn(),
     state,
     targetEligibility: new Map([
-      ["stopped", { mutationAllowed: false, mutationReason: blockedReason }],
+      ["stopped", { mutationAllowed: true }],
     ]),
   };
 };
@@ -136,6 +148,32 @@ describe("DockerAutoUpdateSettingsSection eligibility", () => {
       expect.objectContaining({
         container_names: ["stopped"],
         mode: "check_only",
+      }),
+    );
+  });
+
+  it("saves stopped-container check, update, and revive policies", async () => {
+    const autoUpdate = createController();
+    const { user } = renderDialog(autoUpdate);
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Check stopped containers" }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "Update stopped containers" }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "Start stopped containers after update",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(autoUpdate.saveOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include_stopped: true,
+        revive_stopped: true,
+        update_stopped: true,
       }),
     );
   });

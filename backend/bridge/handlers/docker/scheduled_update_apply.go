@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -25,6 +26,8 @@ type scheduledUpdateState struct {
 	composeGroups map[string]*scheduledComposeTarget
 	oldImageIDs   []string
 	errs          []error
+	updateStopped bool
+	reviveStopped bool
 	composeUpdate func(context.Context, composeProjectTarget, []string, composeLineEmitter) error
 }
 
@@ -50,14 +53,8 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 	if !candidate.needsUpdate {
 		return nil
 	}
-	if skipped, skipErr := skipStoppedScheduledContainer(s.ctx, candidate.inspect); skipped {
-		if skipErr != nil {
-			s.recordCandidateError(candidate.inspect, skipErr)
-		}
-		return nil
-	}
-	if stateErr := validateContainerUpdateState(candidate.inspect); stateErr != nil {
-		s.recordCandidateError(candidate.inspect, stateErr)
+	stopped, eligible := s.prepareCandidateState(candidate.inspect)
+	if !eligible {
 		return nil
 	}
 
@@ -70,6 +67,10 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		return nil
 	}
 	if managedByCompose {
+		if stopped {
+			s.recordCandidateError(candidate.inspect, errors.New("stopped Compose services cannot be updated safely without changing their lifecycle state"))
+			return nil
+		}
 		if scopeErr := validateComposeServiceScope(s.ctx, s.cli, target.Name, service); scopeErr != nil {
 			s.recordCandidateError(candidate.inspect, scopeErr)
 			return nil
@@ -86,8 +87,43 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		s.recordCandidateError(candidate.inspect, err)
 		return nil
 	}
-	updated, err := updateStandaloneContainerWithDependencies(s.ctx, s.cli, candidate.inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal, dependencies)
+	updated, err := updateStandaloneContainerWithDependenciesAndPolicy(
+		s.ctx,
+		s.cli,
+		candidate.inspect,
+		candidate.normalizedRef,
+		candidate.result,
+		&defaultStandaloneUpdateJournal,
+		dependencies,
+		stoppedContainerUpdatePolicy{Allow: s.updateStopped, Revive: s.reviveStopped},
+	)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
+}
+
+func (s *scheduledUpdateState) prepareCandidateState(inspect container.InspectResponse) (bool, bool) {
+	stopped := isStoppedContainer(inspect)
+	if stopped && !s.updateStopped {
+		skipped, err := skipStoppedScheduledContainer(s.ctx, inspect)
+		if err != nil {
+			s.recordCandidateError(inspect, err)
+		}
+		if skipped {
+			return stopped, false
+		}
+	}
+	if err := validateContainerUpdateStateForPolicy(inspect, s.updateStopped); err != nil {
+		s.recordCandidateError(inspect, err)
+		return stopped, false
+	}
+	return stopped, true
+}
+
+func isStoppedContainer(inspect container.InspectResponse) bool {
+	return inspect.State != nil &&
+		!inspect.State.Running &&
+		!inspect.State.Paused &&
+		!inspect.State.Restarting &&
+		strings.EqualFold(string(inspect.State.Status), string(container.StateExited))
 }
 
 func skipStoppedScheduledContainer(ctx context.Context, inspect container.InspectResponse) (bool, error) {
