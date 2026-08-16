@@ -1,9 +1,11 @@
 import { useState } from "react";
 
+import type { DockTileColors } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppDivider from "@/components/ui/AppDivider";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -36,6 +38,7 @@ const SettingsPage = () => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
+  const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
     !privileged &&
@@ -159,6 +162,42 @@ const SettingsPage = () => {
                     }}
                     value={navigationMode ?? "sidebar"}
                   />
+                </FrostedCard>
+
+                <FrostedCard
+                  hoverLift
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: theme.spacing(1.5),
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <AppTypography fontWeight={600} variant="body2">
+                      Dock tile colors
+                    </AppTypography>
+                    <AppTypography color="text.secondary" variant="caption">
+                      How dock tiles take their color from the accent.
+                    </AppTypography>
+                  </div>
+                  <AppSelect
+                    onChange={(event) =>
+                      setDockTileColors(event.target.value as DockTileColors)
+                    }
+                    size="small"
+                    style={{
+                      flexShrink: 0,
+                      marginLeft: theme.spacing(1.5),
+                      minWidth: 190,
+                    }}
+                    value={dockTileColors ?? "accent"}
+                  >
+                    <option value="accent">Accent family</option>
+                    <option value="mono">Single accent</option>
+                    <option value="neutral">Neutral, accent on active</option>
+                    <option value="vibrant">Vibrant (per app)</option>
+                  </AppSelect>
                 </FrostedCard>
               </div>
             ) : null}

@@ -465,6 +465,7 @@ type ConfigAppSettingsPayload struct {
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
 	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitempty"`
 	NavigationMode          *string                         `json:"navigationMode,omitempty"`
+	DockTileColors          *string                         `json:"dockTileColors,omitempty"`
 	ShowHiddenFiles         *bool                           `json:"showHiddenFiles,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`

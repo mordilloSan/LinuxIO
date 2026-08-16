@@ -55,6 +55,13 @@
   transform-origin: 50% 0;
   will-change: transform;
   color: #fff;
+  /* Pair supplied per tile by DockTile; assembled here so the active-route rule
+     below can swap it wholesale. */
+  background: linear-gradient(
+    180deg,
+    var(--dock-tile-top),
+    var(--dock-tile-bottom)
+  );
   /* These lengths are the original shadow geometry multiplied by 1.6. The
      layer's 0.625 resting scale brings them back to the same rendered values. */
   box-shadow:
@@ -136,6 +143,17 @@
 
 .app-dock-link--active .app-dock__dot {
   opacity: 0.9;
+}
+
+/* The neutral palette publishes an accent pair on the dock and lets the route
+   you are on wear it, so the header has exactly one lit tile. Every other
+   palette leaves these unset and each tile keeps its own pair. */
+.app-dock-link--active .app-dock__tile {
+  background: linear-gradient(
+    180deg,
+    var(--dock-tile-active-top, var(--dock-tile-top)),
+    var(--dock-tile-active-bottom, var(--dock-tile-bottom))
+  );
 }
 
 /* When the header row gets tight, drop out of absolute centering and share

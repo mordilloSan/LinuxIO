@@ -19,6 +19,7 @@ type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
 type NavigationMode string
+type DockTileColors string
 type ValidationIssueType string
 
 var StringEnums = map[string][]string{
@@ -34,6 +35,7 @@ var StringEnums = map[string][]string{
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
 	"NavigationMode":                {"sidebar", "dock"},
+	"DockTileColors":                {"accent", "mono", "neutral", "vibrant"},
 	"ValidationIssueType":           {"error", "warning"},
 	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":                  {"iso", "imagePreset"},
@@ -1398,6 +1400,7 @@ type AppConfig struct {
 
 type AppSettings struct {
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
+	DockTileColors          DockTileColors                  `json:"dockTileColors,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`

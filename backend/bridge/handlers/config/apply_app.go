@@ -21,6 +21,9 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *api
 	if err := applyNavigationModeSetting(app, payload.NavigationMode); err != nil {
 		return err
 	}
+	if err := applyDockTileColorsSetting(app, payload.DockTileColors); err != nil {
+		return err
+	}
 	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
@@ -55,6 +58,18 @@ func applyNavigationModeSetting(app *bridgeconfig.PersistedAppSettings, mode *st
 		return fmt.Errorf("invalid navigationMode value (sidebar|dock)")
 	}
 	app.NavigationMode = normalized
+	return nil
+}
+
+func applyDockTileColorsSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+	if mode == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(*mode))
+	if !bridgeconfig.IsValidDockTileColors(normalized) {
+		return fmt.Errorf("invalid dockTileColors value (accent|mono|neutral|vibrant)")
+	}
+	app.DockTileColors = normalized
 	return nil
 }
 

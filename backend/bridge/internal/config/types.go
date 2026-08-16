@@ -77,6 +77,7 @@ type PersistedAppSettings struct {
 	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	NavigationMode          string                   `json:"navigationMode,omitempty" yaml:"navigationMode,omitempty"`
+	DockTileColors          string                   `json:"dockTileColors,omitempty" yaml:"dockTileColors,omitempty"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
@@ -125,6 +126,33 @@ const (
 // ("" counts: it means the default).
 func IsValidNavigationMode(s string) bool {
 	return s == "" || s == NavigationModeSidebar || s == NavigationModeDock
+}
+
+// Accepted PersistedAppSettings.DockTileColors values. These pick how the dock
+// derives its tile colors; only the palette changes, never the tile geometry.
+const (
+	// DockTileColorsAccent fans the tiles across a narrow band of hues around
+	// the theme accent.
+	DockTileColorsAccent = "accent"
+	// DockTileColorsMono paints every tile the theme accent.
+	DockTileColorsMono = "mono"
+	// DockTileColorsNeutral paints the tiles a neutral surface tone and gives
+	// the accent to the active route alone.
+	DockTileColorsNeutral = "neutral"
+	// DockTileColorsVibrant keeps the fixed per-route palette, which owes
+	// nothing to the theme.
+	DockTileColorsVibrant = "vibrant"
+)
+
+// IsValidDockTileColors reports whether s is a valid stored dock palette
+// ("" counts: it means the default).
+func IsValidDockTileColors(s string) bool {
+	switch s {
+	case "", DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant:
+		return true
+	default:
+		return false
+	}
 }
 
 // PersistedTheme represents a validated theme value (LIGHT or DARK).

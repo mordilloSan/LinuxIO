@@ -1,7 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 
+import type { DockTileColors } from "@/api";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { fromHsl, lighten, toHsl } from "@/utils/color";
 
 import DockItem from "./DockItem";
 import {
@@ -11,9 +14,13 @@ import {
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
 
-/* Per-route tile gradients (top → bottom), macOS-app-icon style. Routes
-   without an entry fall back to cycling through this palette. */
-const TILE_GRADIENTS: Record<string, readonly [string, string]> = {
+type TileGradient = readonly [string, string];
+
+/* Fixed per-route gradients (top → bottom), macOS-app-icon style. Routes
+   without an entry fall back to cycling through this palette. Owes nothing to
+   the theme, which is why it is no longer the default — see the accent
+   palettes below. */
+const VIBRANT_GRADIENTS: Record<string, TileGradient> = {
   "/": ["#4fa8f8", "#1670e0"],
   "/accounts": ["#ff86a3", "#e83e64"],
   "/docker": ["#57a8ff", "#1d63ed"],
@@ -29,17 +36,90 @@ const TILE_GRADIENTS: Record<string, readonly [string, string]> = {
   "/updates": ["#63de74", "#22a83a"],
 };
 
-const FALLBACK_GRADIENTS = Object.values(TILE_GRADIENTS);
+const VIBRANT_FALLBACK = Object.values(VIBRANT_GRADIENTS);
 
-const gradientFor = (to: string, index: number) =>
-  TILE_GRADIENTS[to] ?? FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
+/* Total hue arc the accent palette spans, centered on the accent. Wide enough
+   to tell one tile from the next, narrow enough that every tile still reads as
+   the same color family. */
+const ACCENT_HUE_SPREAD = 60;
+
+/* Neutral tiles keep a trace of the accent hue rather than being flat gray, and
+   are clamped to a lightness band that keeps a white icon legible whatever
+   accent the user picked. */
+const NEUTRAL_SATURATION = 0.08;
+const NEUTRAL_MIN_LIGHTNESS = 0.38;
+const NEUTRAL_MAX_LIGHTNESS = 0.55;
+
+/* A lit face over the base color: the same 26% white top that the notification
+   icons use (.app-navbar-notifications__icon), so a status icon and a dock tile
+   read as one object at two sizes. */
+const tileGradient = (base: string): TileGradient => [
+  lighten(base, 0.26),
+  base,
+];
+
+const neutralBase = (accent: string) => {
+  const hsl = toHsl(accent);
+  if (!hsl) return "#6b7686";
+  return fromHsl(
+    hsl.h,
+    NEUTRAL_SATURATION,
+    Math.min(NEUTRAL_MAX_LIGHTNESS, Math.max(NEUTRAL_MIN_LIGHTNESS, hsl.l)),
+  );
+};
+
+/* Fanned left to right across the arc so the row reads as a ramp through one
+   family. Hue is the only component that moves — saturation and lightness are
+   what make a palette look noisy, and those come from the accent unchanged. */
+const accentFamilyGradient = (
+  accent: string,
+  index: number,
+  count: number,
+): TileGradient => {
+  const hsl = toHsl(accent);
+  if (!hsl || count < 2) return tileGradient(accent);
+  const offset = (index / (count - 1) - 0.5) * ACCENT_HUE_SPREAD;
+  return tileGradient(fromHsl(hsl.h + offset, hsl.s, hsl.l));
+};
+
+const gradientFor = (
+  palette: DockTileColors,
+  accent: string,
+  to: string,
+  index: number,
+  count: number,
+): TileGradient => {
+  switch (palette) {
+    case "vibrant":
+      return (
+        VIBRANT_GRADIENTS[to] ??
+        VIBRANT_FALLBACK[index % VIBRANT_FALLBACK.length]
+      );
+    case "mono":
+      return tileGradient(accent);
+    case "neutral":
+      return tileGradient(neutralBase(accent));
+    default:
+      return accentFamilyGradient(accent, index, count);
+  }
+};
 
 const Dock = () => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
   const setPointer = useDockPointer();
   const theme = useAppTheme();
+  const [dockTileColors] = useConfigValue("dockTileColors");
   const magnificationEnabled = useAppMediaQuery(theme.breakpoints.up("sm"));
+
+  const palette = dockTileColors ?? "accent";
+  const accent = theme.palette.primary.main;
+
+  /* Only the neutral palette lights the current route differently, and which
+     tile that is already lives in CSS as .app-dock-link--active. Publishing the
+     accent pair here lets that rule do the swap without the dock having to
+     track the active route itself. */
+  const activeGradient = palette === "neutral" ? tileGradient(accent) : null;
 
   useEffect(() => {
     if (!magnificationEnabled) setPointer(Infinity);
@@ -53,13 +133,27 @@ const Dock = () => {
       onMouseMove={
         magnificationEnabled ? (event) => setPointer(event.clientX) : undefined
       }
+      style={
+        activeGradient
+          ? ({
+              "--dock-tile-active-top": activeGradient[0],
+              "--dock-tile-active-bottom": activeGradient[1],
+            } as CSSProperties)
+          : undefined
+      }
     >
       <ul className="app-dock__list">
         {items.map((page, index) => (
           <DockItem
             {...page}
             disabled={!canNavigate}
-            gradient={gradientFor(page.to, index)}
+            gradient={gradientFor(
+              palette,
+              accent,
+              page.to,
+              index,
+              items.length,
+            )}
             key={page.title}
           />
         ))}

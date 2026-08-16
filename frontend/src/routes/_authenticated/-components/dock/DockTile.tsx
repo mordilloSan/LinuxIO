@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, type MotionStyle } from "motion/react";
 import type { ReactNode } from "react";
 
 import { useDockMagnification } from "./useDockMagnification";
@@ -22,12 +22,20 @@ const DockTile = ({ children, gradient, label }: DockTileProps) => {
       <motion.span className="app-dock__dot" style={{ x }} />
       <motion.span
         className="app-dock__tile"
-        style={{
-          background: `linear-gradient(180deg, ${gradient[0]}, ${gradient[1]})`,
-          scale: renderScale,
-          x,
-          y: lift,
-        }}
+        style={
+          {
+            /* The gradient is assembled in CSS from these two, so that
+               .app-dock-link--active can substitute its own pair for the route
+               you are on without the tile knowing it is active. MotionStyle
+               does not admit custom properties, which motion itself passes
+               straight through. */
+            "--dock-tile-top": gradient[0],
+            "--dock-tile-bottom": gradient[1],
+            scale: renderScale,
+            x,
+            y: lift,
+          } as MotionStyle
+        }
       >
         {children}
       </motion.span>

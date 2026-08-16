@@ -109,6 +109,7 @@ const defaultConfig: AppConfig = {
     themeColors: defaultThemeColors,
     sidebarCollapsed: false,
     navigationMode: "sidebar",
+    dockTileColors: "accent",
     showHiddenFiles: true,
     hiddenCards: [],
     dockerDashboardSections: {
@@ -226,6 +227,8 @@ const applyDefaults = (
         app.sidebarCollapsed ?? defaultConfig.appSettings.sidebarCollapsed,
       navigationMode:
         app.navigationMode ?? defaultConfig.appSettings.navigationMode,
+      dockTileColors:
+        app.dockTileColors ?? defaultConfig.appSettings.dockTileColors,
       showHiddenFiles:
         app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
       hiddenCards:

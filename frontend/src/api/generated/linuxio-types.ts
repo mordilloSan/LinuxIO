@@ -136,6 +136,7 @@ export interface AppConfig {
 
 export interface AppSettings {
   chunkSizeMB?: number;
+  dockTileColors?: DockTileColors;
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
@@ -155,7 +156,21 @@ export interface AppUpdateRequest {
   version?: string;
 }
 
+export type AutoUpdateBackend =
+  | "apt-unattended"
+  | "mintupdate-automation"
+  | "dnf-automatic"
+  | "dnf5-automatic";
+
 export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
+
+export interface AutoUpdateOptionSupport {
+  download_only: boolean;
+  exclude_packages: boolean;
+  frequencies: AutoUpdateFrequency[];
+  reboot_policies: AutoUpdateRebootPolicy[];
+  scopes: AutoUpdateScope[];
+}
 
 export interface AutoUpdateOptions {
   download_only: boolean;
@@ -175,9 +190,11 @@ export type AutoUpdateRebootPolicy =
 export type AutoUpdateScope = "security" | "updates" | "all";
 
 export interface AutoUpdateState {
-  backend: string;
+  backend: AutoUpdateBackend;
+  can_configure: boolean;
   notes?: string[];
   options: AutoUpdateOptions;
+  support: AutoUpdateOptionSupport;
 }
 
 export interface AvgStat {
@@ -369,6 +386,7 @@ export interface ConfigAppSettingsPayload {
   themeColors?: ConfigThemeColorsByModePayload;
   sidebarCollapsed?: boolean;
   navigationMode?: string;
+  dockTileColors?: string;
   showHiddenFiles?: boolean;
   hiddenCards?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
@@ -636,6 +654,8 @@ export interface Dismissals {
   failedLoginAlertId?: string;
   uncleanShutdownBootId?: string;
 }
+
+export type DockTileColors = "accent" | "mono" | "neutral" | "vibrant";
 
 export interface DockerComposeRequest {
   action: string;

@@ -127,3 +127,75 @@ export function lighten(color: string, amount: number): string {
 export function darken(color: string, amount: number): string {
   return mix(color, { r: 0, g: 0, b: 0 }, amount);
 }
+
+export type HslColor = {
+  /** Hue in degrees, 0–360. */
+  h: number;
+  /** Saturation, 0–1. */
+  s: number;
+  /** Lightness, 0–1. */
+  l: number;
+};
+
+/**
+ * Reads a color as HSL. Returns null for values this module cannot parse
+ * (named colors, `color-mix(...)`, CSS variables), so callers can fall back.
+ *
+ * Paired with `fromHsl`, this is what lets a palette be derived from a single
+ * color by varying one component at a time — see the dock's tile palettes,
+ * which fan hue while holding saturation and lightness fixed.
+ */
+export function toHsl(color: string): HslColor | null {
+  const parsed = parseColor(color);
+
+  if (!parsed) {
+    return null;
+  }
+
+  const r = parsed.r / 255;
+  const g = parsed.g / 255;
+  const b = parsed.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const delta = max - min;
+
+  if (delta === 0) {
+    return { h: 0, s: 0, l };
+  }
+
+  const s = delta / (1 - Math.abs(2 * l - 1));
+  const h =
+    max === r
+      ? 60 * (((g - b) / delta + 6) % 6)
+      : max === g
+        ? 60 * ((b - r) / delta + 2)
+        : 60 * ((r - g) / delta + 4);
+
+  return { h, s, l };
+}
+
+/** Builds an rgb() color from HSL components. Inverse of `toHsl`. */
+export function fromHsl(h: number, s: number, l: number): string {
+  const hue = ((h % 360) + 360) % 360;
+  const saturation = Math.min(1, Math.max(0, s));
+  const lightness = Math.min(1, Math.max(0, l));
+  const c = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = lightness - c / 2;
+  const sector = Math.floor(hue / 60) % 6;
+  const [r, g, b] = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ][sector];
+
+  return formatRgb({
+    r: (r + m) * 255,
+    g: (g + m) * 255,
+    b: (b + m) * 255,
+  });
+}

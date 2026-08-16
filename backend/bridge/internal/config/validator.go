@@ -72,6 +72,10 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 		cfg.AppSettings.NavigationMode = defaults.AppSettings.NavigationMode
 		changed = true
 	}
+	if !IsValidDockTileColors(cfg.AppSettings.DockTileColors) {
+		cfg.AppSettings.DockTileColors = defaults.AppSettings.DockTileColors
+		changed = true
+	}
 	if themeColorsNeedReset(cfg.AppSettings.ThemeColors) {
 		cfg.AppSettings.ThemeColors = nil
 		changed = true
@@ -379,6 +383,10 @@ func ValidateConfig(cfg *Settings) []string {
 
 	if !IsValidNavigationMode(cfg.AppSettings.NavigationMode) {
 		errs = append(errs, "appSettings.navigationMode must be sidebar or dock")
+	}
+
+	if !IsValidDockTileColors(cfg.AppSettings.DockTileColors) {
+		errs = append(errs, "appSettings.dockTileColors must be accent, mono, neutral or vibrant")
 	}
 
 	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
