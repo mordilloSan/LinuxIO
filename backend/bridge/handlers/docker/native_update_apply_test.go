@@ -29,7 +29,7 @@ func updateStandaloneContainer(
 	imageRef string,
 	result apischema.DockerContainerUpdateResult,
 ) (apischema.DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithJournal(ctx, cli, before, imageRef, result, nil)
+	return updateStandaloneContainerWithProgress(ctx, cli, before, imageRef, result, nil, nil)
 }
 
 func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
@@ -818,8 +818,8 @@ func TestStandaloneUpdateJournalRetriesVerifiedBackupCleanup(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	fake.removeErrors["old-container"] = cleanupErr
 
-	result, err := updateStandaloneContainerWithJournal(
-		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()), &journal,
+	result, err := updateStandaloneContainerWithProgress(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", apischemaUpdateResult(standaloneTestInspect()), &journal, nil,
 	)
 	if !errors.Is(err, cleanupErr) || !result.Updated {
 		t.Fatalf("update result = %+v, error = %v", result, err)

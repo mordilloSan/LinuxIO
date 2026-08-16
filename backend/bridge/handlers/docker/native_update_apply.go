@@ -312,17 +312,6 @@ func resolveComposeUpdateWorkingDir(
 	return workingDir, nil
 }
 
-func updateComposeContainer(
-	ctx context.Context,
-	cli nativeContainerUpdateClient,
-	before container.InspectResponse,
-	target composeProjectTarget,
-	service string,
-	result apischema.DockerContainerUpdateResult,
-) (apischema.DockerContainerUpdateResult, error) {
-	return updateComposeContainerWithProgress(ctx, cli, before, target, service, result, nil)
-}
-
 func updateComposeContainerWithProgress(
 	ctx context.Context,
 	cli nativeContainerUpdateClient,
@@ -413,17 +402,6 @@ func validateContainerUpdateStateForPolicy(inspect container.InspectResponse, al
 	return fmt.Errorf("container %q must be running and stable before it can be updated", name)
 }
 
-func updateStandaloneContainerWithJournal(
-	ctx context.Context,
-	cli nativeContainerUpdateClient,
-	before container.InspectResponse,
-	imageRef string,
-	result apischema.DockerContainerUpdateResult,
-	journal *standaloneUpdateJournal,
-) (apischema.DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithDependencies(ctx, cli, before, imageRef, result, journal, nil)
-}
-
 func updateStandaloneContainerWithProgress(
 	ctx context.Context,
 	cli nativeContainerUpdateClient,
@@ -434,18 +412,6 @@ func updateStandaloneContainerWithProgress(
 	report dockerUpdateProgressReporter,
 ) (apischema.DockerContainerUpdateResult, error) {
 	return updateStandaloneContainerWithDependenciesAndPolicyAndProgress(ctx, cli, before, imageRef, result, journal, nil, stoppedContainerUpdatePolicy{}, report)
-}
-
-func updateStandaloneContainerWithDependencies(
-	ctx context.Context,
-	cli nativeContainerUpdateClient,
-	before container.InspectResponse,
-	imageRef string,
-	result apischema.DockerContainerUpdateResult,
-	journal *standaloneUpdateJournal,
-	dependencies *standaloneDependencyIndex,
-) (apischema.DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithDependenciesAndPolicyAndProgress(ctx, cli, before, imageRef, result, journal, dependencies, stoppedContainerUpdatePolicy{}, nil)
 }
 
 func updateStandaloneContainerWithDependenciesAndPolicy(

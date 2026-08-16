@@ -59,7 +59,7 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, updateResult)
+	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, updateResult, nil)
 	if err != nil {
 		t.Fatalf("production Compose update to %s: %v", secondImage, err)
 	}
@@ -112,7 +112,7 @@ func TestDockerUpdateComposeInterpolationRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainer(ctx, cli, initial, resolved, service, result); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
+	if _, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
 		t.Fatalf("interpolated Compose update error = %v, want reconstruction refusal", err)
 	}
 
@@ -140,7 +140,7 @@ func TestDockerUpdateComposeScaledServiceRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainer(fixture.ctx, fixture.cli, selected, fixture.target, service, result); err == nil || !strings.Contains(err.Error(), "replicas") {
+	if _, err := updateComposeContainerWithProgress(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
 		t.Fatalf("scaled Compose update error = %v, want replica-safety refusal", err)
 	}
 
