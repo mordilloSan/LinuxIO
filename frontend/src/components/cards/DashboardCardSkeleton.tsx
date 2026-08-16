@@ -1,8 +1,6 @@
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppSkeleton from "@/components/ui/AppSkeleton";
-import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
-import { getAccentCardStyles } from "@/theme/surfaces";
 
 import FrostedCard from "./FrostedCard";
 
@@ -19,8 +17,6 @@ const DashboardCardSkeleton = ({
   layout = "split",
   title,
 }: DashboardCardSkeletonProps) => {
-  const theme = useAppTheme();
-  const primaryColor = theme.palette.primary.main;
   const titleWidth = `${Math.min(Math.max(title.length, 6), 18)}ch`;
   const stats = (
     <div
@@ -39,6 +35,7 @@ const DashboardCardSkeleton = ({
 
   return (
     <FrostedCard
+      accent
       aria-busy="true"
       aria-label={`Loading ${title} card`}
       className="dashboard-card-skeleton"
@@ -46,7 +43,6 @@ const DashboardCardSkeleton = ({
         minHeight: cardHeight,
         display: "flex",
         flexDirection: "column",
-        ...getAccentCardStyles(primaryColor),
       }}
     >
       <AppCardContent>

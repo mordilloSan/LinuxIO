@@ -15,16 +15,9 @@
   transition:
     transform var(--hover-lift-duration) var(--hover-lift-ease),
     box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
-    border-bottom-color var(--hover-lift-duration) var(--hover-lift-ease),
-    border-bottom-width var(--hover-lift-duration) var(--hover-lift-ease),
-    margin var(--hover-lift-duration) var(--hover-lift-ease);
+    border-bottom-color var(--hover-lift-duration) var(--hover-lift-ease);
 }
-
-/* Image selection uses the same accent treatment as a hovered dashboard card,
-   but persists until the image is deselected. */
 .docker-image-card--selected {
   box-shadow: var(--docker-image-card-selected-shadow) !important;
-  border-bottom-width: 3px !important;
   border-bottom-color: var(--docker-image-card-accent) !important;
-  margin-block-end: -1px;
 }

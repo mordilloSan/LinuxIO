@@ -37,6 +37,7 @@ const UpdateCard = ({
 
   return (
     <FrostedCard
+      accent
       hoverLift
       style={{
         boxSizing: "border-box",

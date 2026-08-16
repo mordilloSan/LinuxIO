@@ -187,6 +187,7 @@ const NetworkInterfaceCard = ({
 
   return (
     <FrostedCard
+      accent
       hoverLift={!expanded}
       style={{ padding: 8, position: "relative" }}
     >

@@ -74,6 +74,7 @@ const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
 
   return (
     <FrostedCard
+      accent
       hoverLift
       style={{
         padding: 10,

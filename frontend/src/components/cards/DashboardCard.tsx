@@ -16,10 +16,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
-import {
-  getAccentCardStyles,
-  getFrostedCardLiftShadow,
-} from "@/theme/surfaces";
+import { getFrostedCardLiftShadow } from "@/theme/surfaces";
 
 import FrostedCard from "./FrostedCard";
 
@@ -277,14 +274,13 @@ const DashboardCard = ({
 
   return (
     <FrostedCard
+      accent
       className="hover-lift dc-accent-card"
       style={
         {
           minHeight: cardHeight,
           display: "flex",
           flexDirection: "column",
-          ...getAccentCardStyles(primaryColor),
-          "--dc-accent": primaryColor,
           "--dc-hover-shadow": getFrostedCardLiftShadow(theme),
         } as CSSProperties
       }

@@ -224,7 +224,7 @@ const WireguardPeerCard = ({
   onViewQrCode,
   pendingAction,
 }: WireguardPeerCardProps) => (
-  <FrostedCard hoverLift style={CARD_STYLE}>
+  <FrostedCard accent hoverLift style={CARD_STYLE}>
     {/* Header: icon + name + live status chip */}
     <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
       <Icon

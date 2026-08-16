@@ -278,7 +278,7 @@ export const SensorGroupCardShell = ({
   const theme = useAppTheme();
 
   return (
-    <FrostedCard hoverLift style={{ padding: 10, height: "100%" }}>
+    <FrostedCard accent hoverLift style={{ padding: 10, height: "100%" }}>
       <CardIconHeader
         icon={
           <Icon

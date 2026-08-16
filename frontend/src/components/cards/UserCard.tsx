@@ -241,6 +241,7 @@ const UserCard = ({
 
   return (
     <FrostedCard
+      accent
       hoverLift={!isSelected}
       style={{
         padding: isSelected ? 12 : 10,
@@ -251,11 +252,10 @@ const UserCard = ({
         width: isSelected ? "100%" : undefined,
         transition:
           "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border 0.3s ease-in-out, margin 0.3s ease-in-out",
-        borderBottomWidth: 2,
-        borderBottomStyle: "solid",
-        borderBottomColor: isSelected
-          ? "transparent"
-          : `color-mix(in srgb, ${accentColor}, transparent 70%)`,
+        // The line itself comes from `accent` above. Only the selected state is
+        // special: an open card reads as selected from its own chrome, so the
+        // line stands down rather than competing with it.
+        ...(isSelected && { borderBottomColor: "transparent" }),
       }}
     >
       {/* Header */}

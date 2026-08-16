@@ -691,6 +691,7 @@ const ContainerCardBody = ({
 
 const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
   <FrostedCard
+    accent
     hoverLift={!selected}
     style={{
       padding: 12,

@@ -139,7 +139,7 @@ const NFSMountCardLiveContent = ({
 };
 
 const NFSMountCard = (props: NFSMountCardProps) => (
-  <FrostedCard hoverLift style={{ padding: 8 }}>
+  <FrostedCard accent hoverLift style={{ padding: 8 }}>
     <NFSMountCardLiveContent {...props} />
   </FrostedCard>
 );

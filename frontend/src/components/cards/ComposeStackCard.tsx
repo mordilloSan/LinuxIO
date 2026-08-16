@@ -107,6 +107,7 @@ const ComposeStackCard = ({
 
   return (
     <FrostedCard
+      accent
       hoverLift
       style={{
         padding: 8,

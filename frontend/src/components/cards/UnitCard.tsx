@@ -16,23 +16,15 @@ export interface UnitListItem {
   unit_file_state: string;
 }
 
-const baseCardStyle: CSSProperties = {
+const cardStyle: CSSProperties = {
   padding: 12,
   display: "flex",
   flexDirection: "column",
   height: "100%",
-  borderBottomWidth: 2,
-  borderBottomStyle: "solid",
-};
-
-const cardStyle: CSSProperties = {
-  ...baseCardStyle,
-  borderBottomColor:
-    "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
 };
 
 const selectedCardStyle: CSSProperties = {
-  ...baseCardStyle,
+  ...cardStyle,
   width: "100%",
   borderBottomColor: "transparent",
 };
@@ -59,15 +51,13 @@ function UnitCard<T extends UnitListItem>({
 
   return (
     <FrostedCard
+      accent={statusColor}
       className="fc-svc-card"
       hoverLift={!isSelected}
-      style={
-        {
-          "--svc-status-color": statusColor,
-          ...(isSelected ? selectedCardStyle : cardStyle),
-          transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
-        } as CSSProperties
-      }
+      style={{
+        ...(isSelected ? selectedCardStyle : cardStyle),
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
+      }}
     >
       <AppButton
         aria-controls={detailsId}

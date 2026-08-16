@@ -25,7 +25,7 @@ const formatReferenceCount = (count?: number) => {
 };
 
 const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
-  <FrostedCard hoverLift style={{ padding: 8 }}>
+  <FrostedCard accent hoverLift style={{ padding: 8 }}>
     {/* Header: checkbox + name + driver chip */}
     <div
       style={{

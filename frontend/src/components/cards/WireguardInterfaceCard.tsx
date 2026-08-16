@@ -40,8 +40,6 @@ const cardStyle: CSSProperties = {
   flexDirection: "column",
   height: "100%",
   position: "relative",
-  borderBottomWidth: 2,
-  borderBottomStyle: "solid",
 };
 
 const InterfaceCard = ({
@@ -73,13 +71,14 @@ const InterfaceCard = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
+        accent={statusColor}
         hoverLift={!isSelected}
         ref={isSelected ? selectedCardRef : null}
         style={{
           ...cardStyle,
-          borderBottomColor: isSelected
-            ? statusColor
-            : `color-mix(in srgb, ${statusColor}, transparent 70%)`,
+          // The resting line comes from `accent` above, already the status
+          // colour at a hint. Selecting the interface takes it to full strength.
+          ...(isSelected && { borderBottomColor: statusColor }),
           transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
         }}
       >

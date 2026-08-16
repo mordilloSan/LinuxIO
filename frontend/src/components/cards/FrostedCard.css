@@ -32,9 +32,9 @@
   box-shadow: var(--devtools-hover-shadow);
 }
 
-/* DashboardCard: hover is the lift shadow only. The accent line deliberately
-   does not answer the pointer — brightening it is the hold-to-reorder
-   affordance now, so hovering a card must not preview that.
+/* Cards that lift only, no scale: large enough that scaling reads as a wobble.
+   The accent line deliberately does not answer the pointer — brightening it is
+   the hold-to-reorder affordance, so hovering must not preview that.
    !important beats the inline frosted/accent base styles. */
 .dc-accent-card {
   --hover-lift-y: -2px;
@@ -52,22 +52,32 @@
   box-shadow: var(--dc-hover-shadow) !important;
 }
 
-/* DashboardCard: hold-to-reorder feedback. A card that already carries an
-   accent line shows the hold in that line — and in nothing else. The hold must
-   not touch the card body: an overlay bright enough to read as a glow also
-   tints the content under it, which is a worse trade than a quieter line. So
-   the generic ring stands down and only the line moves.
+/* Same easing for accent cards that do not lift — .hover-lift already
+   transitions border-color, and cards that set their own inline transition
+   override this anyway, so this only reaches the ones that would otherwise
+   snap back when a hold is cancelled. */
+.accent-card:not(.hover-lift) {
+  transition: border-bottom-color var(--hover-lift-duration)
+    var(--hover-lift-ease);
+}
+
+/* Hold-to-reorder feedback, for every card wearing an accent line. The hold
+   shows in that line and in nothing else: the hold must not touch the card
+   body, since an overlay bright enough to read as a glow also tints the
+   content under it, which is a worse trade than a quieter line. So the generic
+   ring stands down and only the line moves. Cards with no accent line — none
+   in a sortable grid today — still get the ring.
    Intensity is --dc-hold-glow, how far past the plain accent the lit line goes.
    No !important needed: animations outrank inline styles. */
-.sc-hold:has(.dc-accent-card) {
+.sc-hold:has(.accent-card) {
   --dc-hold-glow: 30%;
 }
 
-.sc-hold:has(.dc-accent-card) .reorder-hold-ring {
+.sc-hold:has(.accent-card) .reorder-hold-ring {
   display: none;
 }
 
-.sc-hold .dc-accent-card {
+.sc-hold .accent-card {
   animation: dc-accent-hold-fill var(--reorder-hold-ms) ease-out forwards;
 }
 
@@ -82,7 +92,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sc-hold .dc-accent-card {
+  .sc-hold .accent-card {
     animation: none;
     border-bottom-color: color-mix(
       in srgb,
