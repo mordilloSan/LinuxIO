@@ -48,6 +48,17 @@
   background: transparent;
 }
 
+/* Absolute focus/hover lengths inside the 64px layer need the same 1.6
+   compensation as the tile shadow to retain their prior rendered weight. */
+.app-dock__action .app-icon-btn:hover {
+  box-shadow: 0 3.2px 12.8px rgba(0, 0, 0, 0.05);
+}
+
+.app-dock__action .app-icon-btn:focus-visible {
+  outline-width: 3.2px;
+  outline-offset: 3.2px;
+}
+
 /* The notifications bell's inline transfer peek expands the button sideways,
    which a fixed-size tile can't accommodate — the full dropdown still works. */
 .app-dock__action .app-navbar-notifications__peek {
@@ -76,17 +87,24 @@
 .app-dock__tile {
   position: relative;
   display: flex;
-  width: 40px;
-  height: 40px;
+  /* Rasterize at the 64px magnification peak and animate from 0.625 to 1.
+     The visible tile still spans 40–64px, but its SVG is never enlarged from
+     a smaller composited layer. */
+  width: 64px;
+  height: 64px;
   align-items: center;
   justify-content: center;
+  flex: 0 0 64px;
   border-radius: var(--app-tile-radius);
   transform-origin: 50% 0;
   will-change: transform;
   color: #fff;
+  /* These lengths are the original shadow geometry multiplied by 1.6. The
+     layer's 0.625 resting scale brings them back to the same rendered values. */
   box-shadow:
-    var(--app-tile-gloss),
-    0 6px 14px -6px rgba(0, 0, 0, 0.5);
+    inset 0 1.6px 1.6px rgba(255, 255, 255, 0.4),
+    inset 0 -3.2px 6.4px rgba(0, 0, 0, 0.15),
+    0 9.6px 22.4px -9.6px rgba(0, 0, 0, 0.5);
 }
 
 .app-dock__slot {

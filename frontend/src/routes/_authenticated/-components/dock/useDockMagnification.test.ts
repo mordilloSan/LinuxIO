@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateDockTargets } from "./useDockMagnification";
+import {
+  calculateDockRenderScale,
+  calculateDockTargets,
+  DOCK_TILE_SIZE,
+  DOCK_TILE_SIZE_MAX,
+} from "./useDockMagnification";
+
+describe("calculateDockRenderScale", () => {
+  it("renders the visible range from the maximum raster size", () => {
+    const restScale = calculateDockRenderScale(1);
+    const peakScale = calculateDockRenderScale(
+      DOCK_TILE_SIZE_MAX / DOCK_TILE_SIZE,
+    );
+
+    expect(restScale).toBe(0.625);
+    expect(restScale * DOCK_TILE_SIZE_MAX).toBe(DOCK_TILE_SIZE);
+    expect(peakScale).toBe(1);
+  });
+});
 
 describe("calculateDockTargets", () => {
   it("returns rest targets out of range", () => {

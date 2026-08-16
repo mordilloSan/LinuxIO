@@ -30,6 +30,13 @@ export interface DockTarget {
   x: number;
 }
 
+/* The tile layer is rasterized at its 64px peak size and only scaled down.
+   Keeping this conversion separate from the visual 1..1.6 scale lets the
+   displacement and lift calculations retain their existing geometry. */
+export function calculateDockRenderScale(visualScale: number): number {
+  return (visualScale * DOCK_TILE_SIZE) / DOCK_TILE_SIZE_MAX;
+}
+
 export function calculateDockTargets(
   centers: readonly number[],
   pointer: number,
@@ -197,6 +204,7 @@ export function useDockMagnification() {
   );
   const scale = useSpring(scaleTarget, SPRING);
   const x = useSpring(xTarget, SPRING);
+  const renderScale = useTransform(scale, calculateDockRenderScale);
   const lift = useTransform(
     scale,
     [1, DOCK_TILE_SIZE_MAX / DOCK_TILE_SIZE],
@@ -208,7 +216,7 @@ export function useDockMagnification() {
     [0, DOCK_TILE_SIZE_MAX - DOCK_TILE_SIZE + LIFT_MAX],
   );
 
-  return { labelY, lift, registerTile, scale, x };
+  return { labelY, lift, registerTile, renderScale, x };
 }
 
 export function useDockPointer() {
