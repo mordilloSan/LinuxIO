@@ -339,6 +339,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   rowIndex,
   virtualIndex,
 }: AppVirtualDataTableBodyRowProps<TData>) {
+  "use no memo";
   const rowAttributes = getRowAttributes?.(row);
   const {
     isReorderEditing,
@@ -351,8 +352,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
   // Both spreads can carry a mousedown — the reorder activator and the caller's
-  // own attributes — so the suppression below has to delegate to each of them
-  // rather than replace one.
+  // own attributes — so the suppression below has to delegate
   const rowAttributeOnMouseDown = rowAttributes?.onMouseDown;
   const reorderOnMouseDown = reorderListeners?.onMouseDown as
     | ((event: MouseEvent) => void)
