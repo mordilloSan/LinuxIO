@@ -55,37 +55,64 @@ test.describe("accessibility fixture controls", () => {
       .toBe(scrollBefore);
   });
 
-  test("does not restore a stale dock hover after window reactivation", async ({
-    context,
+  test("uses the dock label instead of Chromium's descendant outline for keyboard focus", async ({
     page,
   }) => {
-    const settings = page.getByTestId("dock-settings");
-    const label = settings.getByText("Settings");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
 
-    await settings.click();
-    await expect(settings).toHaveAttribute("data-pointer-focus", "");
+    const dashboard = page.getByTestId("dock-dashboard");
+    const label = dashboard.getByText("Dashboard");
+    await expect(dashboard).toBeFocused();
+    await expect(dashboard).not.toHaveAttribute("data-pointer-focus");
+    await expect(dashboard).toHaveCSS("outline-style", "none");
     await expect(label).toHaveCSS("opacity", "1");
+  });
 
-    // Chromium restores :hover when the page comes back, but no pointermove is
-    // dispatched. That used to reveal this label while the motion-driven dock
-    // itself remained at rest — the exact disconnected box seen in the app.
-    const otherPage = await context.newPage();
-    await otherPage.setContent("<title>Other task</title>");
-    // Headless pages do not share a desktop window manager, so bringing the
-    // second page forward does not produce the OS window's blur event.
-    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-    await page.bringToFront();
+  test("preserves pointer focus across window reactivation", async ({
+    page,
+  }) => {
+    const dashboard = page.getByTestId("dock-dashboard");
+    const label = dashboard.getByText("Dashboard");
 
-    await expect(settings).toHaveAttribute("data-pointer-focus", "");
+    await dashboard.click();
+    await expect(dashboard).toHaveAttribute("data-pointer-focus", "");
+    await expect(label).toHaveCSS("opacity", "1");
+    await page.keyboard.press("Alt");
+
+    // A headed Chromium window emits window blur, then focusout while
+    // document.hasFocus() is false. Headless pages do not have a desktop window
+    // manager, so reproduce those measured event semantics directly.
+    await dashboard.evaluate((element) => {
+      window.dispatchEvent(new Event("blur"));
+      const realHasFocus = document.hasFocus;
+      Object.defineProperty(document, "hasFocus", {
+        configurable: true,
+        value: () => false,
+      });
+      element.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      Object.defineProperty(document, "hasFocus", {
+        configurable: true,
+        value: realHasFocus,
+      });
+      window.dispatchEvent(new Event("focus"));
+      element.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    await page.keyboard.press("Shift");
+
+    await expect(dashboard).toBeFocused();
+    await expect(dashboard).toHaveAttribute("data-pointer-focus", "");
     await expect(page.locator("html")).not.toHaveAttribute(
       "data-pointer-active",
     );
+    await expect
+      .poll(() =>
+        dashboard.evaluate((element) => element.matches(":focus-visible")),
+      )
+      .toBe(true);
+    await expect(dashboard).toHaveCSS("outline-style", "none");
     await expect(label).toHaveCSS("opacity", "0");
-
-    const box = await settings.boundingBox();
-    expect(box).not.toBeNull();
-    await page.mouse.move(box!.x + 1, box!.y + 1);
-    await expect(label).toHaveCSS("opacity", "1");
-    await otherPage.close();
   });
 });

@@ -3,6 +3,8 @@ import { useState } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
+import DockTile from "@/routes/_authenticated/-components/dock/DockTile";
+import { DockMagnificationProvider } from "@/routes/_authenticated/-components/dock/useDockMagnification";
 
 import "@/routes/_authenticated/-components/dock/dock.css";
 
@@ -45,9 +47,24 @@ export default function AccessibilityPage() {
         Button: {activations.button}; Icon: {activations.icon}; Chip:{" "}
         {activations.chip}
       </output>
-      <a className="app-dock-link" data-testid="dock-settings" href="#settings">
-        <span className="app-dock__label">Settings</span>
-      </a>
+      <DockMagnificationProvider>
+        <nav aria-label="Dock fixture" className="app-dock">
+          <ul className="app-dock__list">
+            <li className="app-dock__item">
+              <a
+                aria-label="Dashboard"
+                className="app-dock-link"
+                data-testid="dock-dashboard"
+                href="#dashboard"
+              >
+                <DockTile gradient={["#4fa8f8", "#1670e0"]} label="Dashboard">
+                  <span aria-hidden="true">⌂</span>
+                </DockTile>
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </DockMagnificationProvider>
       <div style={{ height: "1600px" }} />
     </main>
   );

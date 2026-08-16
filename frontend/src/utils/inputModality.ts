@@ -49,6 +49,12 @@ const unmark = (element: EventTarget | null) => {
   }
 };
 
+const mark = (element: EventTarget | null) => {
+  if (element instanceof HTMLElement) {
+    element.setAttribute(POINTER_FOCUS_ATTRIBUTE, "");
+  }
+};
+
 const setPointerActive = (active: boolean) => {
   document.documentElement.toggleAttribute(POINTER_ACTIVE_ATTRIBUTE, active);
 };
@@ -70,6 +76,17 @@ export const installInputModalityTracking = (): (() => void) => {
   const handlePointerDown = (event: PointerEvent) => {
     modality = "pointer";
     handlePointerActivity(event);
+
+    // An already-focused control does not emit another focusin when clicked.
+    // Mark that pointer takeover here instead of leaving its old keyboard
+    // origin attached to the focus.
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement &&
+      event.composedPath().includes(activeElement)
+    ) {
+      mark(activeElement);
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -87,13 +104,15 @@ export const installInputModalityTracking = (): (() => void) => {
     // A pointer press focuses on mousedown, which the browser dispatches after
     // pointerdown — so the modality above is already current by the time this
     // runs, including for a focus a click handler moves programmatically.
-    if (modality === "pointer" && event.target instanceof HTMLElement) {
-      event.target.setAttribute(POINTER_FOCUS_ATTRIBUTE, "");
-    }
+    if (modality === "pointer") mark(event.target);
   };
 
   const handleFocusOut = (event: FocusEvent) => {
-    unmark(event.target);
+    // Moving to another control ends this focus origin. Losing the browser
+    // window does not: Chromium emits focusout with document.hasFocus() false,
+    // then restores the same element when the window returns. Keep the mark
+    // across that lifecycle so Alt-Tab cannot turn pointer focus into a ring.
+    if (event.relatedTarget || document.hasFocus()) unmark(event.target);
   };
 
   const handleWindowBlur = () => {

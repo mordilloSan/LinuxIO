@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getInputModality,
@@ -21,6 +21,7 @@ describe("inputModality", () => {
 
   afterEach(() => {
     uninstall();
+    vi.restoreAllMocks();
     button.remove();
     input.remove();
   });
@@ -72,6 +73,15 @@ describe("inputModality", () => {
     expect(button).not.toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
   });
 
+  it("marks a pointer takeover of an already-focused control", () => {
+    keyDown("Tab");
+    button.focus();
+    pointerDown(button);
+
+    expect(getInputModality()).toBe("pointer");
+    expect(button).toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
+  });
+
   it("keeps the mark through the keys that flip :focus-visible", () => {
     pointerDown(button);
     button.focus();
@@ -99,6 +109,19 @@ describe("inputModality", () => {
     input.focus();
 
     expect(button).not.toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
+  });
+
+  it("keeps the mark while the browser window loses focus", () => {
+    pointerDown(button);
+    button.focus();
+    keyDown("Alt");
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    button.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    button.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+
+    expect(getInputModality()).toBe("keyboard");
+    expect(button).toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
   });
 
   it("marks a focus moved programmatically during a pointer interaction", () => {

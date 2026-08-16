@@ -115,6 +115,13 @@
     transform 140ms ease;
 }
 
+/* The label below is the dock's keyboard-focus indicator. Chromium's default
+   link outline traces both the transformed tile and the absolutely positioned
+   label, producing a large stepped contour around unrelated boxes. */
+.app-dock-link:focus-visible {
+  outline: none;
+}
+
 /* Hover also needs evidence of a live pointer event during this window
    activation. Chromium restores :hover when the app comes back without firing
    the pointermove that drives dock magnification; without this root mark the
