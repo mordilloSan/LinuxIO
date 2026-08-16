@@ -6,7 +6,6 @@ import {
 } from "motion/react";
 import {
   createContext,
-  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -91,8 +90,6 @@ export const DockMagnificationProvider = ({
 }: {
   children: ReactNode;
 }) => {
-  "use no memo";
-
   const registrations = useRef(new Set<DockRegistration>());
   const layout = useRef<DockLayoutEntry[]>([]);
   const layoutDirty = useRef(true);
@@ -171,10 +168,9 @@ export const DockMagnificationProvider = ({
     () => ({ registerTile, setPointer }),
     [registerTile, setPointer],
   );
-  // The compiler follows callback-captured refs to this provider value even
-  // though they are only read by pointer/resize events outside render.
-  // oxlint-disable-next-line react/react-compiler
-  return createElement(DockContext.Provider, { value: context }, children);
+  return (
+    <DockContext.Provider value={context}>{children}</DockContext.Provider>
+  );
 };
 
 const useRequiredDockContext = () => {

@@ -16,7 +16,7 @@ export const EASING_LINEAR_PROGRESS_PRIMARY_CSS = `cubic-bezier(${EASING_LINEAR_
 export const EASING_LINEAR_PROGRESS_SECONDARY = [0.165, 0.84, 0.44, 1] as const;
 export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_SECONDARY.join(", ")})`;
 /* The dock's magnification spring (stiffness 170, damping 14, mass 0.1 — see
-   useDockMagnification.ts), sampled as an easing curve so CSS hover states move
+   useDockMagnification.tsx), sampled as an easing curve so CSS hover states move
    with the same physics as the dock tiles. The spring is overdamped (ζ ≈ 1.70),
    so it never overshoots: what reads as "alive" is the fast attack and the long
    decelerating tail, not bounce. Points are the step response at 16 even
