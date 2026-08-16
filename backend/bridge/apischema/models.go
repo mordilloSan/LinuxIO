@@ -10,6 +10,7 @@ import (
 type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
+type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
 type IndexerIntegrityCheck string
@@ -26,6 +27,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
+	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
@@ -584,10 +586,20 @@ type AutoUpdateOptions struct {
 	Scope           AutoUpdateScope        `json:"scope"`
 }
 
+type AutoUpdateOptionSupport struct {
+	DownloadOnly    bool                     `json:"download_only"`
+	ExcludePackages bool                     `json:"exclude_packages"`
+	Frequencies     []AutoUpdateFrequency    `json:"frequencies"`
+	RebootPolicies  []AutoUpdateRebootPolicy `json:"reboot_policies"`
+	Scopes          []AutoUpdateScope        `json:"scopes"`
+}
+
 type AutoUpdateState struct {
-	Backend string            `json:"backend"`
-	Notes   []string          `json:"notes,omitempty"`
-	Options AutoUpdateOptions `json:"options"`
+	Backend      AutoUpdateBackend       `json:"backend"`
+	CanConfigure bool                    `json:"can_configure"`
+	Notes        []string                `json:"notes,omitempty"`
+	Options      AutoUpdateOptions       `json:"options"`
+	Support      AutoUpdateOptionSupport `json:"support"`
 }
 
 type Service struct {

@@ -92,6 +92,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
   ) => {
     const [open, setOpen] = useState(false);
     const dropdownId = useId();
+    const labelId = useId();
     const containerRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLUListElement>(null);
     const [dropdownPos, setDropdownPos] = useState<{
@@ -210,12 +211,18 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
 
     return (
       <div className={wrapperClass} ref={ref} style={style}>
-        {label && <label className="app-select__label">{label}</label>}
+        {label && (
+          <label className="app-select__label" id={labelId}>
+            {label}
+          </label>
+        )}
         <div className="app-select__control" ref={containerRef}>
           <div
             aria-controls={open ? dropdownId : undefined}
+            aria-disabled={disabled || undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
+            aria-labelledby={label ? labelId : undefined}
             className={triggerClass}
             onClick={toggle}
             onKeyDown={onKeyDown}

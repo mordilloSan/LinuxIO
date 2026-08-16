@@ -39,6 +39,7 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
 });
 
 interface ManagedTimer {
+  allowedActive: boolean;
   label: string;
   name: string;
   required: boolean;
@@ -52,21 +53,42 @@ const autoUpdateTimerDefinitions = (
     case "apt-unattended":
       return [
         {
+          allowedActive: true,
           label: "Download schedule",
           name: "apt-daily.timer",
           required: state.options.enabled,
         },
         {
+          allowedActive: state.options.enabled && !state.options.download_only,
           label: "Install schedule",
           name: "apt-daily-upgrade.timer",
           required: state.options.enabled && !state.options.download_only,
         },
       ];
+    case "mintupdate-automation":
+      return [
+        {
+          allowedActive: state.options.enabled,
+          label: "Update schedule",
+          name: "mintupdate-automation-upgrade.timer",
+          required: state.options.enabled,
+        },
+      ];
     case "dnf-automatic":
       return [
         {
+          allowedActive: state.options.enabled,
           label: "Update schedule",
           name: "dnf-automatic.timer",
+          required: state.options.enabled,
+        },
+      ];
+    case "dnf5-automatic":
+      return [
+        {
+          allowedActive: state.options.enabled,
+          label: "Update schedule",
+          name: "dnf5-automatic.timer",
           required: state.options.enabled,
         },
       ];
@@ -101,7 +123,7 @@ const frequencyLabels: Record<AutoUpdateFrequency, string> = {
 const scopeLabels: Record<AutoUpdateScope, string> = {
   security: "Security only",
   updates: "Security + updates",
-  all: "All updates (including extras)",
+  all: "All enabled repositories",
 };
 
 const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
@@ -109,6 +131,13 @@ const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
   if_needed: "Reboot if needed",
   always: "Always reboot",
   schedule: "Scheduled reboot",
+};
+
+const backendLabels: Record<AutoUpdateState["backend"], string> = {
+  "apt-unattended": "APT unattended upgrades",
+  "dnf-automatic": "DNF Automatic",
+  "dnf5-automatic": "DNF5 Automatic",
+  "mintupdate-automation": "Mint Update Manager",
 };
 
 export const useUpdateSettingsState = (enabled = true) => {
@@ -346,10 +375,9 @@ const AutoUpdateRuntime = ({
 }: AutoUpdateRuntimeProps) => {
   const theme = useAppTheme();
   const units = managedTimers(serverState, timers);
-  const activeUnits = units.filter(({ timer }) => timerIsActive(timer));
   const requiredUnits = units.filter(({ required }) => required);
   const unexpectedActiveUnits = units.filter(
-    ({ required, timer }) => !required && timerIsActive(timer),
+    ({ allowedActive, timer }) => !allowedActive && timerIsActive(timer),
   );
   const schedulerHealthy =
     serverState.options.enabled &&
@@ -357,7 +385,7 @@ const AutoUpdateRuntime = ({
     requiredUnits.every(({ timer }) => timerIsActive(timer)) &&
     unexpectedActiveUnits.length === 0;
   const schedulerStopped =
-    !serverState.options.enabled && activeUnits.length === 0;
+    !serverState.options.enabled && unexpectedActiveUnits.length === 0;
   const schedulerLabel = runtimeLoading
     ? "Checking"
     : runtimeError || units.length === 0
@@ -465,6 +493,10 @@ const SavedConfiguration = ({
 }) => {
   const theme = useAppTheme();
   const values = [
+    {
+      label: "Provider",
+      value: backendLabels[state.backend],
+    },
     {
       label: "Status",
       value: state.options.enabled ? "Enabled" : "Disabled",
@@ -667,7 +699,7 @@ const UpdateSettings = ({
 
       <AutomaticUpdatesControl
         checked={currentOptions.enabled}
-        disabled={saving}
+        disabled={saving || !serverState.can_configure}
         onChange={(enabled) =>
           setDraftOverrides((previous) => ({
             ...previous,
@@ -698,7 +730,11 @@ const UpdateSettings = ({
           }}
         >
           <AppSelect
-            disabled={saving}
+            disabled={
+              saving ||
+              !serverState.can_configure ||
+              serverState.support.frequencies.length <= 1
+            }
             fullWidth
             label="Frequency"
             onChange={(event) =>
@@ -710,13 +746,19 @@ const UpdateSettings = ({
             size="small"
             value={currentOptions.frequency}
           >
-            <option value="hourly">Hourly</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
+            {serverState.support.frequencies.map((frequency) => (
+              <option key={frequency} value={frequency}>
+                {frequencyLabels[frequency]}
+              </option>
+            ))}
           </AppSelect>
 
           <AppSelect
-            disabled={saving}
+            disabled={
+              saving ||
+              !serverState.can_configure ||
+              serverState.support.scopes.length <= 1
+            }
             fullWidth
             label="Update scope"
             onChange={(event) =>
@@ -728,13 +770,19 @@ const UpdateSettings = ({
             size="small"
             value={currentOptions.scope}
           >
-            <option value="security">Security only</option>
-            <option value="updates">Security + updates</option>
-            <option value="all">All (incl. extras)</option>
+            {serverState.support.scopes.map((scope) => (
+              <option key={scope} value={scope}>
+                {scopeLabels[scope]}
+              </option>
+            ))}
           </AppSelect>
 
           <AppSelect
-            disabled={saving}
+            disabled={
+              saving ||
+              !serverState.can_configure ||
+              serverState.support.reboot_policies.length <= 1
+            }
             fullWidth
             label="Reboot policy"
             onChange={(event) =>
@@ -746,9 +794,11 @@ const UpdateSettings = ({
             size="small"
             value={currentOptions.reboot_policy}
           >
-            <option value="never">Never</option>
-            <option value="if_needed">If needed</option>
-            <option value="always">Always</option>
+            {serverState.support.reboot_policies.map((policy) => (
+              <option key={policy} value={policy}>
+                {rebootLabels[policy]}
+              </option>
+            ))}
           </AppSelect>
 
           <div
@@ -784,7 +834,11 @@ const UpdateSettings = ({
             <AppSwitch
               aria-label="Download only without automatic installation"
               checked={currentOptions.download_only}
-              disabled={saving}
+              disabled={
+                saving ||
+                !serverState.can_configure ||
+                !serverState.support.download_only
+              }
               onChange={(event) =>
                 setDraftOverrides((previous) => ({
                   ...previous,
@@ -802,8 +856,13 @@ const UpdateSettings = ({
           }}
         >
           <AppTextField
-            disabled={saving}
+            disabled={
+              saving ||
+              !serverState.can_configure ||
+              !serverState.support.exclude_packages
+            }
             fullWidth
+            id="automatic-update-exclusions"
             label="Package exclusions"
             onChange={(event) => setExcludeInputOverride(event.target.value)}
             placeholder="e.g. linux-headers-*, docker-ce"
@@ -832,11 +891,15 @@ const UpdateSettings = ({
           paddingTop: theme.spacing(1.5),
         }}
       >
-        <AppButton disabled={saving || !dirty} onClick={reset} variant="text">
+        <AppButton
+          disabled={saving || !dirty || !serverState.can_configure}
+          onClick={reset}
+          variant="text"
+        >
           Reset
         </AppButton>
         <AppButton
-          disabled={saving || !dirty}
+          disabled={saving || !dirty || !serverState.can_configure}
           onClick={save}
           startIcon={<Icon height={17} icon="mdi:content-save" width={17} />}
           variant="contained"

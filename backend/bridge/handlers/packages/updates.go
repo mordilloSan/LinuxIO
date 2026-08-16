@@ -64,7 +64,7 @@ func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
 	if err := ctx.Err(); err != nil {
 		return AutoUpdateState{}, err
 	}
-	return b.Read()
+	return b.Read(ctx)
 }
 
 func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateState, error) {
@@ -80,7 +80,7 @@ func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateStat
 	if err := b.Apply(ctx, opts); err != nil {
 		return AutoUpdateState{}, err
 	}
-	return b.Read()
+	return b.Read(ctx)
 }
 
 func applyOfflineUpdates(ctx context.Context) (apischema.OfflineUpdatesResponse, error) {

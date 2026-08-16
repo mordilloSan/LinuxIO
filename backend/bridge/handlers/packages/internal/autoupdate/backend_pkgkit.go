@@ -13,8 +13,8 @@ import (
 
 type pkgkitBackend struct{}
 
-func newPkgKitBackend() UpdateBackend { return &pkgkitBackend{} }
-func (*pkgkitBackend) Name() string   { return "packagekit" }
+func newPkgKitBackend() *pkgkitBackend         { return &pkgkitBackend{} }
+func (*pkgkitBackend) Name() AutoUpdateBackend { return "packagekit" }
 func (*pkgkitBackend) Detect(ctx context.Context) bool {
 	if ctx == nil || ctx.Err() != nil {
 		return false
@@ -25,9 +25,10 @@ func (*pkgkitBackend) Detect(ctx context.Context) bool {
 
 // Read returns a minimal state since PackageKit doesn't manage auto-update configuration
 // Auto-update config is handled by apt-unattended or dnf-automatic backends
-func (*pkgkitBackend) Read() (AutoUpdateState, error) {
+func (*pkgkitBackend) Read(context.Context) (AutoUpdateState, error) {
 	return AutoUpdateState{
-		Backend: "packagekit",
+		Backend:      "packagekit",
+		CanConfigure: false,
 		Options: AutoUpdateOptions{
 			Enabled:         false,
 			Frequency:       "daily",
@@ -36,6 +37,7 @@ func (*pkgkitBackend) Read() (AutoUpdateState, error) {
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
 		},
+		Support: AutoUpdateOptionSupport{},
 	}, nil
 }
 
