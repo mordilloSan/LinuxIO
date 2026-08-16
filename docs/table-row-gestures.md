@@ -18,8 +18,14 @@ The shared predicates live in
 | Click | Instead runs the table's own row action (open a detail view, select) | passing `onRowClick` |
 | Long press | Enters layout mode, then drags to reorder | passing `dnd` |
 | Double click | The table's second row action — normally toggling that row's selection | passing `onRowDoubleClick` |
+| Ctrl/Cmd-A | Selects every row the filter and sort leave visible | passing `onSelectAll` |
 | Escape | Collapses every expanded row | passing `renderExpandedContent` |
 | Escape again | Clears the selection | passing `onClearSelection` |
+
+Ctrl/Cmd-A stands down while the user is typing, so a search field keeps its
+native select-all (`isTypingTarget`), and it ignores Shift and Alt so combos like
+Ctrl+Shift+A stay inert. It reads the visible rows off the table instance and
+hands their ids to `onSelectAll`; the page owns the selection.
 
 ## Showing selection
 
@@ -36,6 +42,17 @@ reads as selected. That derivation is shared with `.app-table-row` and
 A checkbox column is not the way to do this. It costs a column of width on every
 row, and its cell has to close over the selection — which makes the column defs
 volatile and reintroduces the remount hazard below.
+
+Dropping the checkbox does cost the affordance, though: double click and
+Ctrl/Cmd-A leave nothing on screen to find, and the tint is only feedback once
+you know the gesture. Pair a selectable table with
+[`RowSelectionHint`](../frontend/src/components/tables/RowSelectionHint.tsx),
+rendered in the slot the page's bulk action occupies so the hint gives way as
+soon as something is selected:
+
+```tsx
+{selected.size > 0 ? <DeleteAction /> : rows.length > 0 && <RowSelectionHint />}
+```
 
 ## Rules, and why they are rules
 
@@ -106,7 +123,8 @@ does. `meta.getCellRenderKey` then narrows which cells re-render.
 2. Add `dnd` only if the row order is the user's to save.
 3. Add `onRowDoubleClick` only if the table has a genuine second row action, and
    accept the click delay and the loss of word selection.
-4. If rows can be selected, pass `selectedRowIds` so the selection is visible and
-   `onClearSelection` so Escape can clear it.
+4. If rows can be selected, pass `selectedRowIds` so the selection is visible,
+   `onSelectAll` for Ctrl/Cmd-A, and `onClearSelection` so Escape can clear it —
+   then render `RowSelectionHint` where the bulk action goes.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.

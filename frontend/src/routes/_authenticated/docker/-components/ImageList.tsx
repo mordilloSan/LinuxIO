@@ -8,6 +8,7 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import RowSelectionHint from "@/components/tables/RowSelectionHint";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -457,7 +458,7 @@ const ImageList = ({
         />
       </RoutedTabSearch>
       <RoutedTabActions>
-        {effectiveSelected.size > 0 && (
+        {effectiveSelected.size > 0 ? (
           <AppActionIconButton
             ariaLabel={`Delete ${effectiveSelected.size} selected image${effectiveSelected.size === 1 ? "" : "s"}`}
             color={theme.palette.error.main}
@@ -466,6 +467,8 @@ const ImageList = ({
             label={`Delete ${effectiveSelected.size} selected image${effectiveSelected.size === 1 ? "" : "s"}`}
             onClick={() => setDeleteDialogOpen(true)}
           />
+        ) : (
+          viewMode === "table" && filtered.length > 0 && <RowSelectionHint />
         )}
       </RoutedTabActions>
       {viewMode === "card" ? (
@@ -507,6 +510,7 @@ const ImageList = ({
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}
+          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
           selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: image }) =>

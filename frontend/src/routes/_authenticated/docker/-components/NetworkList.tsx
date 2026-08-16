@@ -9,6 +9,7 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import RowSelectionHint from "@/components/tables/RowSelectionHint";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -594,7 +595,7 @@ const NetworkList = ({
           value={search}
         />
       </RoutedTabSearch>
-      {effectiveSelected.size > 0 && (
+      {effectiveSelected.size > 0 ? (
         <div style={{ marginBottom: theme.spacing(2) }}>
           <AppButton
             color="error"
@@ -606,6 +607,13 @@ const NetworkList = ({
             Delete ({effectiveSelected.size})
           </AppButton>
         </div>
+      ) : (
+        viewMode === "table" &&
+        filtered.length > 0 && (
+          <div style={{ marginBottom: theme.spacing(2) }}>
+            <RowSelectionHint />
+          </div>
+        )
       )}
       {viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -645,6 +653,7 @@ const NetworkList = ({
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
+          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
           selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: network }) =>

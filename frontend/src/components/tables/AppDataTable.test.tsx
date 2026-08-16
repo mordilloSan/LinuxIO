@@ -69,6 +69,7 @@ function TestTable({
   onClearSelection,
   onRowClick,
   onRowDoubleClick,
+  onSelectAll,
   selectedRowId,
   selectedRowIds,
 }: {
@@ -78,6 +79,7 @@ function TestTable({
   onClearSelection?: () => void;
   onRowClick?: () => void;
   onRowDoubleClick?: () => void;
+  onSelectAll?: (rowIds: string[]) => void;
   selectedRowId?: string;
   selectedRowIds?: ReadonlySet<string>;
 }) {
@@ -90,6 +92,7 @@ function TestTable({
       onClearSelection={onClearSelection}
       onRowClick={onRowClick}
       onRowDoubleClick={onRowDoubleClick}
+      onSelectAll={onSelectAll}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
       selectedRowIds={selectedRowIds}
@@ -505,6 +508,48 @@ describe("AppDataTable", () => {
     await view.user.keyboard("{Escape}");
 
     expect(onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it("selects every visible row on Ctrl-A and on Cmd-A", async () => {
+    const onSelectAll = vi.fn();
+    const view = render(<TestTable onSelectAll={onSelectAll} />);
+
+    await view.user.keyboard("{Control>}a{/Control}");
+    expect(onSelectAll).toHaveBeenLastCalledWith(["one", "two"]);
+
+    await view.user.keyboard("{Meta>}a{/Meta}");
+    expect(onSelectAll).toHaveBeenCalledTimes(2);
+
+    // Combos that mean something else stay inert.
+    await view.user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await view.user.keyboard("a");
+    expect(onSelectAll).toHaveBeenCalledTimes(2);
+  });
+
+  it("names only the rows the current data leaves visible", async () => {
+    const onSelectAll = vi.fn();
+    const view = render(
+      <TestTable data={[tableRows[1]]} onSelectAll={onSelectAll} />,
+    );
+
+    await view.user.keyboard("{Control>}a{/Control}");
+
+    expect(onSelectAll).toHaveBeenCalledWith(["two"]);
+  });
+
+  it("leaves Ctrl-A to the field while the user is typing", async () => {
+    const onSelectAll = vi.fn();
+    const view = render(
+      <>
+        <input aria-label="Search" />
+        <TestTable onSelectAll={onSelectAll} />
+      </>,
+    );
+
+    await view.user.click(screen.getByRole("textbox", { name: "Search" }));
+    await view.user.keyboard("{Control>}a{/Control}");
+
+    expect(onSelectAll).not.toHaveBeenCalled();
   });
 
   it("tints every row named by selectedRowIds", () => {

@@ -61,6 +61,7 @@ import {
   shadowSm,
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
+import { isTypingTarget } from "@/utils/keyboardTarget";
 import { mergeRefs } from "@/utils/mergeRefs";
 
 import "./app-virtual-data-table.css";
@@ -146,6 +147,11 @@ export interface AppDataTableProps<TData extends RowData> {
    * table into the second stage of Escape — see `docs/table-row-gestures.md`.
    */
   onClearSelection?: () => void;
+  /**
+   * Select every row the current filter and sort leave visible. Supplying it is
+   * what opts a table into Ctrl/Cmd-A.
+   */
+  onSelectAll?: (rowIds: string[]) => void;
   onSortingChange?: OnChangeFn<SortingState>;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
@@ -720,6 +726,7 @@ function AppDataTable<TData extends RowData>({
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
+  onSelectAll,
   onSortingChange,
   renderExpandedContent,
   renderRow,
@@ -810,34 +817,52 @@ function AppDataTable<TData extends RowData>({
 
   const rows = table.getRowModel().rows;
 
-  // Escape peels one layer of row state at a time: open detail panels first,
-  // then the selection. Pressing it twice therefore gets a table back to rest.
-  // A table with nothing expanded skips straight to clearing the selection
-  // rather than swallowing a press on nothing.
-  const handleEscapeKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
-    // A dialog owns Escape while it is open, the same guard the filebrowser
-    // keyboard hooks use.
-    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
+  const handleTableKeyDown = useEffectEvent(
+    (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      // A dialog owns the keyboard while it is open, the same guard the
+      // filebrowser keyboard hooks use.
+      if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
 
-    // Read expansion off the table instance rather than a render-time boolean:
-    // the listener outlives the render it was created in.
-    if (table.getIsSomeRowsExpanded()) {
-      table.setExpanded({});
-    } else if (onClearSelection) {
-      onClearSelection();
-    } else {
-      return;
-    }
-    // Claim the press so a nested table, or a page-level handler, leaves it be.
-    event.preventDefault();
-  });
+      // Escape peels one layer of row state at a time: open detail panels
+      // first, then the selection. Pressing it twice therefore gets a table
+      // back to rest. A table with nothing expanded skips straight to clearing
+      // the selection rather than swallowing a press on nothing.
+      if (event.key === "Escape") {
+        // Read expansion off the table instance rather than a render-time
+        // boolean: the listener outlives the render it was created in.
+        if (table.getIsSomeRowsExpanded()) {
+          table.setExpanded({});
+        } else if (onClearSelection) {
+          onClearSelection();
+        } else {
+          return;
+        }
+        // Claim the press so a nested table, or a page-level handler, leaves
+        // it be.
+        event.preventDefault();
+        return;
+      }
+
+      // Ctrl/Cmd-A selects every row the filter and sort leave visible. Shift
+      // and Alt are excluded so combos like Ctrl+Shift+A stay inert, and the
+      // key is lowercased so CapsLock cannot break the match.
+      const isCtrlOrCmd =
+        (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
+      if (!isCtrlOrCmd || event.key.toLowerCase() !== "a") return;
+      // Typing keeps its native select-all.
+      if (!onSelectAll || isTypingTarget(event)) return;
+
+      event.preventDefault();
+      onSelectAll(table.getRowModel().rows.map((row) => row.id));
+    },
+  );
 
   useEffect(() => {
-    if (!renderExpandedContent && !onClearSelection) return;
-    window.addEventListener("keydown", handleEscapeKey);
-    return () => window.removeEventListener("keydown", handleEscapeKey);
-  }, [onClearSelection, renderExpandedContent]);
+    if (!renderExpandedContent && !onClearSelection && !onSelectAll) return;
+    window.addEventListener("keydown", handleTableKeyDown);
+    return () => window.removeEventListener("keydown", handleTableKeyDown);
+  }, [onClearSelection, onSelectAll, renderExpandedContent]);
 
   const isEmbedded = variant === "embedded";
   const headRowBg = isEmbedded

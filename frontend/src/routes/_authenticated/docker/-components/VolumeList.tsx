@@ -9,6 +9,7 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import RowSelectionHint from "@/components/tables/RowSelectionHint";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -340,7 +341,7 @@ const VolumeList = ({
           value={search}
         />
       </RoutedTabSearch>
-      {effectiveSelected.size > 0 && (
+      {effectiveSelected.size > 0 ? (
         <div style={{ marginBottom: theme.spacing(2) }}>
           <AppButton
             color="error"
@@ -352,6 +353,13 @@ const VolumeList = ({
             Delete ({effectiveSelected.size})
           </AppButton>
         </div>
+      ) : (
+        viewMode === "table" &&
+        filtered.length > 0 && (
+          <div style={{ marginBottom: theme.spacing(2) }}>
+            <RowSelectionHint />
+          </div>
+        )
       )}
       {viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -391,6 +399,7 @@ const VolumeList = ({
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}
+          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
           selectedRowIds={effectiveSelected}
           onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: volume }) =>
