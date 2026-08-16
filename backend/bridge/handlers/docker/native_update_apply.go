@@ -245,11 +245,23 @@ func composeTargetForContainer(
 	if err != nil {
 		return composeProjectTarget{}, "", true, err
 	}
+	environmentFiles, err := resolveComposeUpdateEnvironmentFiles(
+		ctx,
+		cli,
+		projectName,
+		workingDir,
+		labels["com.docker.compose.project.environment_file"],
+	)
+	if err != nil {
+		return composeProjectTarget{}, "", true, err
+	}
 
 	return composeProjectTarget{
-		Name:        projectName,
-		ConfigFiles: configFiles,
-		WorkingDir:  workingDir,
+		Name:               projectName,
+		ConfigFiles:        configFiles,
+		EnvironmentFiles:   environmentFiles,
+		IsolateEnvironment: true,
+		WorkingDir:         workingDir,
 	}, service, true, nil
 }
 
@@ -312,6 +324,38 @@ func resolveComposeUpdateWorkingDir(
 	return workingDir, nil
 }
 
+func resolveComposeUpdateEnvironmentFiles(
+	ctx context.Context,
+	cli *client.Client,
+	projectName string,
+	workingDir string,
+	environmentFilesLabel string,
+) ([]string, error) {
+	rawEnvironmentFiles := parseConfigFiles(environmentFilesLabel)
+	for i, environmentFile := range rawEnvironmentFiles {
+		if !filepath.IsAbs(environmentFile) {
+			rawEnvironmentFiles[i] = filepath.Join(workingDir, environmentFile)
+		}
+	}
+	if len(rawEnvironmentFiles) == 0 {
+		return nil, nil
+	}
+	environmentFiles := translateComposeConfigFiles(ctx, cli, rawEnvironmentFiles)
+	if len(environmentFiles) != len(rawEnvironmentFiles) {
+		return nil, fmt.Errorf("not all environment files for Compose project %q are accessible", projectName)
+	}
+	for _, environmentFile := range environmentFiles {
+		info, err := os.Stat(environmentFile)
+		if err != nil {
+			return nil, fmt.Errorf("stat Compose environment file %q: %w", environmentFile, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("Compose environment file %q is not a regular file", environmentFile)
+		}
+	}
+	return environmentFiles, nil
+}
+
 func updateComposeContainerWithProgress(
 	ctx context.Context,
 	cli nativeContainerUpdateClient,
@@ -321,14 +365,17 @@ func updateComposeContainerWithProgress(
 	result apischema.DockerContainerUpdateResult,
 	report dockerUpdateProgressReporter,
 ) (apischema.DockerContainerUpdateResult, error) {
-	reportDockerUpdateProgress(report, "pulling", fmt.Sprintf("Pulling the image for Compose service %s", service))
 	updated, err := updateComposeContainerWithRunner(ctx, cli, before, target, service, result, func(
 		ctx context.Context,
 		target composeProjectTarget,
 		service string,
 		emitter composeLineEmitter,
 	) error {
-		err := composePullAndUp(ctx, target, service, emitter)
+		if err := validateComposeUpdateInputs(ctx, target, emitter); err != nil {
+			return err
+		}
+		reportDockerUpdateProgress(report, "pulling", fmt.Sprintf("Pulling the image for Compose service %s", service))
+		err := composePullAndUpServicesValidated(ctx, target, []string{service}, emitter)
 		if err == nil {
 			reportDockerUpdateProgress(report, "verifying", fmt.Sprintf("Verifying Compose service %s", service))
 		}

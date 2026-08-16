@@ -168,7 +168,9 @@ func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all
 }
 
 func composeScheduleKey(target composeProjectTarget) string {
-	return target.Name + "\x00" + target.WorkingDir + "\x00" + strings.Join(target.ConfigFiles, "\x00")
+	return target.Name + "\x00" + target.WorkingDir + "\x00" +
+		strings.Join(target.ConfigFiles, "\x00") + "\x00" +
+		strings.Join(target.EnvironmentFiles, "\x00")
 }
 
 func scheduledUpdateError(ctx context.Context, inspect container.InspectResponse, err error) error {

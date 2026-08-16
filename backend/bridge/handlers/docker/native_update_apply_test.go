@@ -34,9 +34,10 @@ func updateStandaloneContainer(
 
 func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
 	target := composeProjectTarget{
-		Name:        "media",
-		ConfigFiles: []string{"/srv/media/compose.yml", "/srv/media/compose.prod.yml"},
-		WorkingDir:  "/srv/media",
+		Name:             "media",
+		ConfigFiles:      []string{"/srv/media/compose.yml", "/srv/media/compose.prod.yml"},
+		EnvironmentFiles: []string{"/srv/media/.env", "/srv/media/production.env"},
+		WorkingDir:       "/srv/media",
 	}
 	got, err := composeCommandArgs(target, "up", "-d", "--no-deps", "server")
 	if err != nil {
@@ -44,6 +45,9 @@ func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
 	}
 	want := []string{
 		"compose", "--progress=json", "--project-name", "media",
+		"--project-directory", "/srv/media",
+		"--env-file", "/srv/media/.env",
+		"--env-file", "/srv/media/production.env",
 		"--file", "/srv/media/compose.yml",
 		"--file", "/srv/media/compose.prod.yml",
 		"up", "-d", "--no-deps", "server",
@@ -60,24 +64,28 @@ func TestComposeCommandArgsRejectsIncompleteTarget(t *testing.T) {
 	if _, err := composeCommandArgs(composeProjectTarget{Name: "media"}, "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted a project without config files")
 	}
+	if _, err := composeCommandArgs(composeProjectTarget{Name: "media", ConfigFiles: []string{"compose.yml"}, EnvironmentFiles: []string{""}}, "up"); err == nil {
+		t.Fatal("composeCommandArgs accepted an empty environment file path")
+	}
 }
 
-func TestComposeUpdateInputsRejectEnvironmentInterpolation(t *testing.T) {
-	dir := t.TempDir()
-	plain := filepath.Join(dir, "plain.yml")
-	interpolated := filepath.Join(dir, "interpolated.yml")
-	if err := os.WriteFile(plain, []byte("services:\n  web:\n    image: nginx:latest\n    command: echo $$HOSTNAME\n"), 0o600); err != nil {
-		t.Fatal(err)
+func TestComposeCommandEnvironmentExcludesUntrackedInterpolationVariables(t *testing.T) {
+	got := filterComposeCommandEnvironment([]string{
+		"PATH=/usr/bin",
+		"HOME=/root",
+		"DOCKER_CONFIG=/root/.docker",
+		"LC_ALL=C",
+		"IMAGE_TAG=untracked",
+		"COMPOSE_ENV_FILES=/tmp/untracked.env",
+	})
+	want := []string{
+		"PATH=/usr/bin",
+		"HOME=/root",
+		"DOCKER_CONFIG=/root/.docker",
+		"LC_ALL=C",
 	}
-	if err := os.WriteFile(interpolated, []byte("services:\n  web:\n    image: nginx:${IMAGE_TAG}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateComposeUpdateInputs(composeProjectTarget{Name: "web", ConfigFiles: []string{plain}}); err != nil {
-		t.Fatalf("plain Compose config rejected: %v", err)
-	}
-	t.Setenv("IMAGE_TAG", "from-custom-env-file")
-	if err := composePullAndUpServices(context.Background(), composeProjectTarget{Name: "web", ConfigFiles: []string{interpolated}}, []string{"web"}, nil); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
-		t.Fatalf("interpolated Compose config error = %v", err)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterComposeCommandEnvironment = %#v, want %#v", got, want)
 	}
 }
 
