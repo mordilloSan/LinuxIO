@@ -585,6 +585,20 @@ const ContainerCardBody = ({
                   {name}
                 </AppTypography>
               </AppButton>
+              {container.updateAvailable && (
+                <Chip
+                  color="warning"
+                  label="Update available"
+                  size="small"
+                  style={{
+                    alignSelf: "flex-start",
+                    fontSize: "0.68rem",
+                    marginLeft: 4,
+                    marginTop: 2,
+                  }}
+                  variant="soft"
+                />
+              )}
               <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                 {container.State !== "running" && (
                   <AppTooltip arrow title="Start Container">

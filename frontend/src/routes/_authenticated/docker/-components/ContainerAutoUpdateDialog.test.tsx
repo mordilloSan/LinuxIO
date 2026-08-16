@@ -53,6 +53,25 @@ const renderDialog = (autoUpdate = createController()) =>
   );
 
 describe("ContainerAutoUpdateDialog eligibility", () => {
+  it("labels the scheduler as update checks and explains its scope", () => {
+    renderDialog();
+
+    expect(screen.getByText("Scheduled update checks")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Enabled — all running containers are checked on schedule",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Enable scheduled update checks" }),
+    ).toBeChecked();
+    expect(
+      screen.getByText(
+        "Choose whether selected containers are updated after each check",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps an ineligible selected target removable and blocks update-mode saves", async () => {
     const { user } = renderDialog();
 

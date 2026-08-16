@@ -263,7 +263,7 @@ const ContainerAutoUpdateDialog = ({
         )}
 
         <FrostedCard
-          aria-label="Scheduled auto-update control"
+          aria-label="Scheduled update checks control"
           style={{
             alignItems: "center",
             display: loading ? "none" : "flex",
@@ -296,7 +296,7 @@ const ContainerAutoUpdateDialog = ({
                 style={{ lineHeight: 1.25 }}
                 variant="body2"
               >
-                Scheduled auto-update
+                Scheduled update checks
               </AppTypography>
             </div>
             <AppTypography
@@ -310,8 +310,8 @@ const ContainerAutoUpdateDialog = ({
               variant="caption"
             >
               {currentOptions.enabled
-                ? "Enabled — selected containers follow the policy below"
-                : "Paused — no scheduled container checks or updates will run"}
+                ? "Enabled — all running containers are checked on schedule"
+                : "Paused — scheduled update checks are disabled"}
             </AppTypography>
           </div>
           <div
@@ -339,7 +339,7 @@ const ContainerAutoUpdateDialog = ({
               />
             )}
             <AppSwitch
-              aria-label="Enable scheduled auto-update"
+              aria-label="Enable scheduled update checks"
               checked={currentOptions.enabled}
               disabled={controlsDisabled}
               onChange={(_, checked) => updateDraft("enabled", checked)}
@@ -378,7 +378,7 @@ const ContainerAutoUpdateDialog = ({
                 Update policy
               </AppTypography>
               <AppTypography color="text.secondary" variant="caption">
-                Choose how and when selected containers are checked
+                Choose whether selected containers are updated after each check
               </AppTypography>
             </div>
           </div>
