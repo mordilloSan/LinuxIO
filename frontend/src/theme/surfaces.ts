@@ -36,20 +36,15 @@ export const getDialogSurfaceStyles = (theme: AppTheme) => ({
   boxShadow: `0 0 10px ${alpha(theme.dialog.glow, 0.5)}, 0 0 20px ${alpha(theme.dialog.glow, 0.3)}, inset 0 0 20px ${alpha(theme.dialog.glow, 0.1)}`,
 });
 
+/* The accent line along the bottom of a card. Its width is fixed: the line is
+   the hold-to-reorder indicator, and that gesture is expressed purely as the
+   line brightening (see .sc-hold in FrostedCard.css). Animating the width too
+   moves the card's own box mid-gesture and needs margin compensation to hide
+   it, which was tried and dropped. */
 export const getAccentCardStyles = (accentColor: string) => ({
-  borderBottomWidth: "2px",
+  borderBottomWidth: "3px",
   borderBottomStyle: "solid" as const,
   borderBottomColor: mixWithTransparency(accentColor, 0.3),
-});
-
-export const getAccentCardHoverStyles = (
-  theme: AppTheme,
-  accentColor: string,
-) => ({
-  boxShadow: getFrostedCardLiftShadow(theme),
-  borderBottomWidth: "3px",
-  borderBottomColor: accentColor,
-  marginBlockEnd: "-1px",
 });
 
 const CHROME_SURFACE_OPACITY = {
