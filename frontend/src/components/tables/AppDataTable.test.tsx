@@ -337,7 +337,15 @@ describe("AppDataTable", () => {
     expect(row).toHaveAttribute("aria-expanded", "true");
 
     await view.user.click(row);
-    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+    // The row reports itself closed the moment the click lands...
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    // ...but the panel has to stay mounted while it animates shut, so
+    // AppCollapse's unmountOnExit only drops it a slow transition later
+    // (TRANSITION_DURATION_SLOW_MS). Asserting its absence outright raced that
+    // timer and failed whenever the run was quick enough to beat it.
+    await expect
+      .poll(() => screen.queryByText("Details for Alpha"), { timeout: 2000 })
+      .toBeNull();
   });
 
   it("leaves clicks on row controls to the control", async () => {
