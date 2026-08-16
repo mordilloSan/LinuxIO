@@ -23,6 +23,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -47,6 +48,7 @@ import {
   targetIsRowControl,
 } from "@/components/tables/rowInteraction";
 import AppCollapse from "@/components/ui/AppCollapse";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -139,6 +141,11 @@ export interface AppDataTableProps<TData extends RowData> {
     row: Row<AppTableFeatures, TData>,
     event: MouseEvent,
   ) => void;
+  /**
+   * Clear whatever the table's rows have selected. Supplying it is what opts a
+   * table into the second stage of Escape — see `docs/table-row-gestures.md`.
+   */
+  onClearSelection?: () => void;
   onSortingChange?: OnChangeFn<SortingState>;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
@@ -702,6 +709,7 @@ function AppDataTable<TData extends RowData>({
   height,
   manualSorting = false,
   maxHeight,
+  onClearSelection,
   onExpandedChange,
   onRowClick,
   onRowContextMenu,
@@ -794,6 +802,36 @@ function AppDataTable<TData extends RowData>({
   });
 
   const rows = table.getRowModel().rows;
+
+  // Escape peels one layer of row state at a time: open detail panels first,
+  // then the selection. Pressing it twice therefore gets a table back to rest.
+  // A table with nothing expanded skips straight to clearing the selection
+  // rather than swallowing a press on nothing.
+  const handleEscapeKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    // A dialog owns Escape while it is open, the same guard the filebrowser
+    // keyboard hooks use.
+    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
+
+    // Read expansion off the table instance rather than a render-time boolean:
+    // the listener outlives the render it was created in.
+    if (table.getIsSomeRowsExpanded()) {
+      table.setExpanded({});
+    } else if (onClearSelection) {
+      onClearSelection();
+    } else {
+      return;
+    }
+    // Claim the press so a nested table, or a page-level handler, leaves it be.
+    event.preventDefault();
+  });
+
+  useEffect(() => {
+    if (!renderExpandedContent && !onClearSelection) return;
+    window.addEventListener("keydown", handleEscapeKey);
+    return () => window.removeEventListener("keydown", handleEscapeKey);
+  }, [onClearSelection, renderExpandedContent]);
+
   const isEmbedded = variant === "embedded";
   const headRowBg = isEmbedded
     ? "transparent"

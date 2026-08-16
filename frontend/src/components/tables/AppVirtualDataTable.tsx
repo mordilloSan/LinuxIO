@@ -21,6 +21,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   memo,
   useMemo,
@@ -48,6 +49,7 @@ import {
   rowBodyDragListeners,
   targetIsRowControl,
 } from "@/components/tables/rowInteraction";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -127,6 +129,11 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
     row: Row<AppTableFeatures, TData>,
     event: MouseEvent,
   ) => void;
+  /**
+   * Clear whatever the table's rows have selected. Supplying it is what opts a
+   * table into the second stage of Escape — see `docs/table-row-gestures.md`.
+   */
+  onClearSelection?: () => void;
   onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
@@ -463,6 +470,7 @@ function AppVirtualDataTable<TData extends RowData>({
   height,
   manualSorting = false,
   maxHeight,
+  onClearSelection,
   onExpandedChange,
   onScroll,
   onRowClick,
@@ -576,6 +584,30 @@ function AppVirtualDataTable<TData extends RowData>({
     }
     return next;
   }, [rows]);
+
+  // Escape peels one layer of row state at a time — see AppDataTable for the
+  // reasoning and `docs/table-row-gestures.md` for the contract.
+  const handleEscapeKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
+
+    // Read expansion off the table instance rather than a render-time value:
+    // the listener outlives the render it was created in.
+    if (table.getIsSomeRowsExpanded()) {
+      table.setExpanded({});
+    } else if (onClearSelection) {
+      onClearSelection();
+    } else {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  useEffect(() => {
+    if (!renderExpandedContent && !onClearSelection) return;
+    window.addEventListener("keydown", handleEscapeKey);
+    return () => window.removeEventListener("keydown", handleEscapeKey);
+  }, [onClearSelection, renderExpandedContent]);
 
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
     const entries: Array<VirtualTableEntry<TData>> = [];

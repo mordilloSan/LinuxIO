@@ -66,6 +66,7 @@ function TestTable({
   columns = tableColumns,
   data = tableRows,
   expandedContent,
+  onClearSelection,
   onRowClick,
   onRowDoubleClick,
   selectedRowId,
@@ -73,6 +74,7 @@ function TestTable({
   columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
+  onClearSelection?: () => void;
   onRowClick?: () => void;
   onRowDoubleClick?: () => void;
   selectedRowId?: string;
@@ -83,6 +85,7 @@ function TestTable({
       data={data}
       getRowAttributes={getRowAttributes}
       getRowId={getTableRowId}
+      onClearSelection={onClearSelection}
       onRowClick={onRowClick}
       onRowDoubleClick={onRowDoubleClick}
       renderExpandedContent={expandedContent}
@@ -434,6 +437,71 @@ describe("AppDataTable", () => {
     await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
 
     expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+  });
+
+  it("collapses every expanded row on Escape, then clears the selection", async () => {
+    const onClearSelection = vi.fn();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+        onClearSelection={onClearSelection}
+      />,
+    );
+
+    await view.user.click(
+      screen.getAllByRole("button", { name: "Expand row" })[0],
+    );
+    await view.user.click(
+      screen.getAllByRole("button", { name: "Expand row" })[0],
+    );
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Details for Beta")).toBeInTheDocument();
+
+    await view.user.keyboard("{Escape}");
+
+    // The first press bought the collapse, not the selection.
+    expect(onClearSelection).not.toHaveBeenCalled();
+    // Expanded state drops synchronously; the panels then animate out.
+    await waitFor(() =>
+      expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Details for Beta")).not.toBeInTheDocument();
+
+    await view.user.keyboard("{Escape}");
+
+    expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the selection on the first Escape when nothing is expanded", async () => {
+    const onClearSelection = vi.fn();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+        onClearSelection={onClearSelection}
+      />,
+    );
+
+    await view.user.keyboard("{Escape}");
+
+    expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape alone while a dialog owns it", async () => {
+    const onClearSelection = vi.fn();
+    const view = render(
+      <>
+        <div className="app-dialog-root" />
+        <TestTable onClearSelection={onClearSelection} />
+      </>,
+    );
+
+    await view.user.keyboard("{Escape}");
+
+    expect(onClearSelection).not.toHaveBeenCalled();
   });
 
   it("selects on the first checkbox press in a reorderable row", async () => {

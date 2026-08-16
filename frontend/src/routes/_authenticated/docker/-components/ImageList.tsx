@@ -185,9 +185,14 @@ const ImageList = ({
   // Card selection is transient. Escape dismisses it without entering the
   // destructive flow; the open confirmation dialog retains its own Escape
   // handling and therefore keeps this selection intact.
+  //
+  // This covers the card view only: in table view the table handles Escape
+  // itself (collapse, then clear) and marks the press handled, so the check
+  // below stands aside rather than clearing on the collapse press.
   useEffect(() => {
     if (selected.size === 0 || deleteDialogOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === "Escape" || event.key === "Esc") {
         setSelected(new Set());
         const activeElement = document.activeElement;
@@ -543,6 +548,7 @@ const ImageList = ({
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}
+          onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: image }) =>
             handleSelectOne(image.id, !effectiveSelected.has(image.id))
           }

@@ -687,6 +687,7 @@ const NetworkList = ({
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
+          onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: network }) =>
             handleSelectOne(network.Id, !effectiveSelected.has(network.Id))
           }

@@ -432,6 +432,7 @@ const VolumeList = ({
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}
+          onClearSelection={() => setSelected(new Set())}
           onRowDoubleClick={({ original: volume }) =>
             handleSelectOne(volume.Name, !effectiveSelected.has(volume.Name))
           }

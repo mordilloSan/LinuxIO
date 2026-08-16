@@ -19,6 +19,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | Doc | Use |
 |-----|-----|
 | [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
+| [Table Row Gestures](./table-row-gestures.md) | The one row-interaction contract for every data table: click, long press, double click, Escape; which props opt a table in, and why column defs must be stable. |
 | [E2E Testing](./e2e-testing.md) | End-to-end test setup and conventions. |
 
 ## Product Areas
