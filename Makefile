@@ -503,6 +503,14 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck en
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"
 
+# Experimental CPU-adaptive scheduler. Keep `test` above as the fixed-lane
+# baseline so both implementations can be measured independently.
+test-adaptive: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep
+	@cd "$(BACKEND_DIR)" && \
+		LINUXIO_CHECK_START_NS="$(TEST_TIMER_START)" \
+		LINUXIO_CHECK_MAKE="$(MAKE)" \
+		$(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-check
+
 check-frontend: ensure-node setup
 	@set -uo pipefail; \
 	ST=0; \
@@ -1133,6 +1141,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + modernize + govulncheck + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-adaptive    $(COLOR_RESET) Run the CPU-adaptive scheduler (compare with 'make test')"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
@@ -1183,7 +1192,7 @@ cloc:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli build-docker-update check-c-build-deps \
-  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test test-adaptive check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall print-toolchain-versions \
   cloc
