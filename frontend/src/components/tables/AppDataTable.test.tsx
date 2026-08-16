@@ -63,11 +63,13 @@ function TestTable({
   columns = tableColumns,
   data = tableRows,
   expandedContent,
+  onRowClick,
   selectedRowId,
 }: {
   columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
+  onRowClick?: () => void;
   selectedRowId?: string;
 }) {
   return (
@@ -76,6 +78,7 @@ function TestTable({
       data={data}
       getRowAttributes={getRowAttributes}
       getRowId={getTableRowId}
+      onRowClick={onRowClick}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
     />
@@ -248,6 +251,72 @@ describe("AppDataTable", () => {
     );
 
     expect(renderExpandedContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles the detail panel when the row itself is clicked", async () => {
+    const renderExpandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(<TestTable expandedContent={renderExpandedContent} />);
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
+
+    expect(row).toHaveClass("app-vdt__row--interactive");
+    expect(row).toHaveAttribute("aria-expanded", "false");
+
+    await view.user.click(row);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-expanded", "true");
+
+    await view.user.click(row);
+    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+  });
+
+  it("leaves clicks on row controls to the control", async () => {
+    const onControlClick = vi.fn();
+    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+      tableColumns[0],
+      {
+        id: "action",
+        header: "Action",
+        cell: ({ row }) => (
+          <button onClick={onControlClick} type="button">
+            {`Restart ${row.original.name}`}
+          </button>
+        ),
+      },
+    ];
+    const view = render(
+      <TestTable
+        columns={columnsWithAction}
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+
+    await view.user.click(
+      screen.getByRole("button", { name: "Restart Alpha" }),
+    );
+
+    expect(onControlClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+  });
+
+  it("lets a table's own row-click handler keep the click", async () => {
+    const onRowClick = vi.fn();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+        onRowClick={onRowClick}
+      />,
+    );
+
+    await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
   });
 
   it("keeps rows expanded when polled data is replaced", async () => {

@@ -5,9 +5,9 @@ import {
   type DockerContainerAutoUpdateMode,
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -16,11 +16,12 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -123,52 +124,94 @@ const ContainerAutoUpdateDialog = ({
 
   return (
     <GeneralDialog
+      aria-busy={saving}
+      disableEscapeKeyDown={saving}
       fullWidth
       maxWidth="md"
       onClose={() => !saving && onClose()}
       open={open}
-      paperStyle={{ borderRadius: 8 }}
+      paperStyle={{ borderRadius: 12 }}
     >
       <AppDialogTitle
         style={{
-          alignItems: "center",
-          display: "flex",
-          gap: theme.spacing(1),
-          justifyContent: "space-between",
+          backgroundColor: theme.palette.background.paper,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          padding: "10px 12px",
         }}
       >
-        <span
+        <div
           style={{
             alignItems: "center",
             display: "flex",
             gap: theme.spacing(1),
-            minWidth: 0,
           }}
         >
-          <Icon height={22} icon="mdi:timer-cog-outline" width={22} />
-          <AppTypography component="span" variant="subtitle1">
-            Container Auto-Update
-          </AppTypography>
-        </span>
-        <AppActionIconButton
-          ariaLabel="Close container auto-update settings"
-          disabled={saving}
-          icon="mdi:close"
-          iconSize={20}
-          label="Close"
-          onClick={onClose}
-        />
+          <div
+            style={{
+              alignItems: "center",
+              background: theme.palette.action.hover,
+              borderRadius: 9,
+              color: theme.palette.primary.main,
+              display: "inline-flex",
+              flexShrink: 0,
+              height: 36,
+              justifyContent: "center",
+              width: 36,
+            }}
+          >
+            <Icon height={22} icon="mdi:timer-cog-outline" width={22} />
+          </div>
+          <div
+            style={{
+              alignSelf: "stretch",
+              display: "flex",
+              flexDirection: "column",
+              flexGrow: 1,
+              justifyContent: "center",
+              minWidth: 0,
+            }}
+          >
+            <AppTypography
+              fontWeight={600}
+              style={{ lineHeight: 1.25 }}
+              variant="subtitle1"
+            >
+              Container Auto-Update
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              style={{ lineHeight: 1.35 }}
+              variant="caption"
+            >
+              Schedule image checks and automatic container updates
+            </AppTypography>
+          </div>
+          <AppIconButton
+            aria-label="Close container auto-update settings"
+            disabled={saving}
+            onClick={onClose}
+            size="small"
+          >
+            <Icon height={18} icon="mdi:close" width={18} />
+          </AppIconButton>
+        </div>
       </AppDialogTitle>
 
       <AppDialogContent
         style={{
           display: "grid",
-          gap: theme.spacing(2),
-          paddingTop: theme.spacing(1),
+          gap: theme.spacing(1.5),
+          padding: 10,
         }}
       >
         {loading && (
-          <div style={{ padding: theme.spacing(3) }}>
+          <div
+            style={{
+              display: "grid",
+              minHeight: 160,
+              placeItems: "center",
+            }}
+          >
             <ComponentLoader />
           </div>
         )}
@@ -220,98 +263,225 @@ const ContainerAutoUpdateDialog = ({
           </AppAlert>
         )}
 
-        <div
+        <FrostedCard
+          aria-label="Scheduled auto-update control"
           style={{
             alignItems: "center",
             display: loading ? "none" : "flex",
             flexWrap: "wrap",
-            gap: theme.spacing(2),
+            gap: theme.spacing(1.5),
+            justifyContent: "space-between",
+            minHeight: 66,
+            padding: 14,
           }}
         >
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={currentOptions.enabled}
-                disabled={controlsDisabled}
-                onChange={(_, checked) => updateDraft("enabled", checked)}
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div
+              style={{
+                alignItems: "center",
+                display: "flex",
+                gap: theme.spacing(0.75),
+              }}
+            >
+              <StatusDot
+                color={
+                  currentOptions.enabled
+                    ? theme.palette.success.main
+                    : theme.palette.text.disabled
+                }
+                size={8}
               />
-            }
-            label="Scheduled auto-update"
-          />
-          <AppChip
-            color={serverState?.timer_enabled ? "success" : "default"}
-            label={
-              serverState?.timer_enabled ? "Timer enabled" : "Timer disabled"
-            }
-            size="small"
-            variant="soft"
-          />
-          {serverState?.timer_active && (
+              <AppTypography
+                component="h3"
+                fontWeight={600}
+                style={{ lineHeight: 1.25 }}
+                variant="body2"
+              >
+                Scheduled auto-update
+              </AppTypography>
+            </div>
+            <AppTypography
+              color="text.secondary"
+              style={{
+                display: "block",
+                lineHeight: 1.35,
+                marginLeft: theme.spacing(1.75),
+                marginTop: 3,
+              }}
+              variant="caption"
+            >
+              {currentOptions.enabled
+                ? "Enabled — selected containers follow the policy below"
+                : "Paused — no scheduled container checks or updates will run"}
+            </AppTypography>
+          </div>
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: theme.spacing(1),
+            }}
+          >
             <AppChip
-              color="info"
-              label="Timer active"
+              color={serverState?.timer_enabled ? "success" : "default"}
+              label={
+                serverState?.timer_enabled
+                  ? "Timer enabled"
+                  : "Timer disabled"
+              }
               size="small"
               variant="soft"
             />
-          )}
-        </div>
+            {serverState?.timer_active && (
+              <AppChip
+                color="info"
+                label="Timer active"
+                size="small"
+                variant="soft"
+              />
+            )}
+            <AppSwitch
+              aria-label="Enable scheduled auto-update"
+              checked={currentOptions.enabled}
+              disabled={controlsDisabled}
+              onChange={(_, checked) => updateDraft("enabled", checked)}
+            />
+          </div>
+        </FrostedCard>
 
-        <div
+        <FrostedCard
+          aria-label="Edit container update policy"
           style={{
             display: loading ? "none" : "grid",
             gap: theme.spacing(2),
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            padding: 14,
           }}
         >
-          <AppSelect
-            disabled={controlsDisabled}
-            label="Mode"
-            onChange={(event) =>
-              updateDraft(
-                "mode",
-                event.target.value as DockerContainerAutoUpdateMode,
-              )
-            }
-            size="small"
-            value={currentOptions.mode}
-          >
-            <option value="update">Update automatically</option>
-            <option value="check_only">Check only</option>
-          </AppSelect>
-          <AppTextField
-            disabled={controlsDisabled}
-            fullWidth
-            label="Daily time"
-            onChange={(event) => updateDraft("time", event.target.value)}
-            shrinkLabel
-            size="small"
-            type="time"
-            value={currentOptions.time}
-          />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={currentOptions.cleanup}
-                disabled={controlsDisabled}
-                onChange={(_, checked) => updateDraft("cleanup", checked)}
-              />
-            }
-            label="Cleanup old images"
-            style={{ alignSelf: "end", minHeight: 40 }}
-          />
-        </div>
-
-        {!loading && missingNames.length > 0 && (
           <div
             style={{
-              borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-              display: "grid",
-              gap: theme.spacing(1.25),
-              paddingTop: theme.spacing(2),
+              alignItems: "center",
+              display: "flex",
+              gap: theme.spacing(1.5),
             }}
           >
-            <AppTypography color="text.secondary" variant="subtitle2">
-              Missing Containers
+            <div
+              style={{
+                alignItems: "center",
+                background: theme.palette.action.hover,
+                borderRadius: 9,
+                color: theme.palette.primary.main,
+                display: "inline-flex",
+                flexShrink: 0,
+                height: 38,
+                justifyContent: "center",
+                width: 38,
+              }}
+            >
+              <Icon height={22} icon="mdi:tune-variant" width={22} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AppTypography
+                component="h3"
+                fontWeight={600}
+                style={{ lineHeight: 1.25 }}
+                variant="body2"
+              >
+                Update policy
+              </AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Choose how and when selected containers are checked
+              </AppTypography>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: theme.spacing(2),
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            }}
+          >
+            <AppSelect
+              disabled={controlsDisabled}
+              fullWidth
+              label="Mode"
+              onChange={(event) =>
+                updateDraft(
+                  "mode",
+                  event.target.value as DockerContainerAutoUpdateMode,
+                )
+              }
+              size="small"
+              value={currentOptions.mode}
+            >
+              <option value="update">Update automatically</option>
+              <option value="check_only">Check only</option>
+            </AppSelect>
+            <AppTextField
+              disabled={controlsDisabled}
+              fullWidth
+              label="Daily time"
+              onChange={(event) => updateDraft("time", event.target.value)}
+              shrinkLabel
+              size="small"
+              type="time"
+              value={currentOptions.time}
+            />
+          </div>
+
+          <div
+            style={{
+              alignItems: "center",
+              background: theme.palette.action.hover,
+              borderRadius: 9,
+              display: "flex",
+              gap: theme.spacing(1),
+              minHeight: 44,
+              padding: `0 ${theme.spacing(1.25)}`,
+            }}
+          >
+            <Icon
+              color={theme.palette.primary.main}
+              height={19}
+              icon="mdi:image-remove-outline"
+              width={19}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AppTypography fontWeight={600} variant="caption">
+                Cleanup old images
+              </AppTypography>
+              <AppTypography
+                color="text.secondary"
+                style={{ display: "block" }}
+                variant="caption"
+              >
+                Remove superseded images after successful updates
+              </AppTypography>
+            </div>
+            <AppSwitch
+              aria-label="Cleanup old images"
+              checked={currentOptions.cleanup}
+              disabled={controlsDisabled}
+              onChange={(_, checked) => updateDraft("cleanup", checked)}
+              size="small"
+            />
+          </div>
+        </FrostedCard>
+
+        {!loading && missingNames.length > 0 && (
+          <FrostedCard
+            style={{
+              display: "grid",
+              gap: theme.spacing(1.25),
+              padding: 14,
+            }}
+          >
+            <AppTypography fontWeight={600} variant="body2">
+              Missing containers
+            </AppTypography>
+            <AppTypography color="text.secondary" variant="caption">
+              These selected containers are not currently present.
             </AppTypography>
             <div
               style={{
@@ -333,24 +503,29 @@ const ContainerAutoUpdateDialog = ({
                 />
               ))}
             </div>
-          </div>
+          </FrostedCard>
         )}
       </AppDialogContent>
 
-      <AppDialogActions>
-        <AppButton disabled={saving} onClick={onClose}>
+      <AppDialogActions
+        style={{
+          backgroundColor: theme.palette.background.paper,
+          borderTop: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+          padding: 8,
+        }}
+      >
+        <AppButton color="inherit" disabled={saving} onClick={onClose}>
           Close
         </AppButton>
-        <AppButton
-          disabled={!dirty || saving}
-          onClick={reset}
-          variant="outlined"
-        >
+        <AppButton disabled={!dirty || saving} onClick={reset}>
           Reset
         </AppButton>
         <AppButton
           disabled={controlsDisabled || !dirty || hasBlockedNames}
           onClick={save}
+          startIcon={
+            <Icon height={17} icon="mdi:content-save-outline" width={17} />
+          }
           variant="contained"
         >
           {saving ? "Saving..." : "Save"}

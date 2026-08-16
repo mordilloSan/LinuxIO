@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
@@ -74,10 +75,12 @@ const initialRows: TableRow[] = [
 
 function TestTable({
   data = initialRows,
+  expandedContent,
   selectedRowId,
   tableColumns = columns,
 }: {
   data?: TableRow[];
+  expandedContent?: (row: { original: TableRow }) => ReactNode;
   selectedRowId?: string;
   tableColumns?: AppVirtualDataTableColumnDef<TableRow>[];
 }) {
@@ -88,6 +91,7 @@ function TestTable({
       fillAvailable={false}
       getRowId={(row) => row.id}
       height={200}
+      renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
     />
   );
@@ -133,6 +137,24 @@ describe("AppVirtualDataTable", () => {
 
     expect(screen.getByText("renamed:Alpha")).toBeInTheDocument();
     expect(screen.getByText("renamed:Beta")).toBeInTheDocument();
+  });
+
+  it("toggles the detail panel when the row itself is clicked", async () => {
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
+
+    expect(row).toHaveClass("app-vdt__row--interactive");
+    expect(row).toHaveAttribute("aria-expanded", "false");
+
+    await view.user.click(row);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-expanded", "true");
   });
 
   it("does not rerender stable explicit-key cells when live rows prepend", () => {

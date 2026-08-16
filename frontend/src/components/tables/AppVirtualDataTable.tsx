@@ -42,6 +42,7 @@ import type {
   AppDataTableColumnMeta,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
+import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -346,6 +347,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
       <div
         {...reorderListeners}
         {...rowAttributes}
+        aria-expanded={canExpand ? isExpanded : undefined}
         ref={setReorderNodeRef}
         className={[
           "app-vdt__row",
@@ -817,6 +819,11 @@ function AppVirtualDataTable<TData extends RowData>({
     : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
+  // See AppDataTable: the row itself is the disclosure control unless the table
+  // gives a row click another meaning, or layout mode has claimed the press.
+  const isReorderEditing =
+    Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
+  const rowClickExpands = hasExpandColumn && !onRowClick && !isReorderEditing;
   const visibleColumns = table.getVisibleLeafColumns();
   const gridTemplate = [
     ...visibleColumns.map((column) => columnTrack(column)),
@@ -833,6 +840,15 @@ function AppVirtualDataTable<TData extends RowData>({
     });
     row.toggleExpanded();
   }, []);
+
+  const handleExpandOnRowClick = useCallback(
+    (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
+      if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
+      handleExpandRow(row);
+    },
+    [handleExpandRow],
+  );
+  const handleRowClick = rowClickExpands ? handleExpandOnRowClick : onRowClick;
 
   useEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
@@ -993,20 +1009,22 @@ function AppVirtualDataTable<TData extends RowData>({
               );
             }
 
+            const canExpand = row.getCanExpand();
+
             return (
               <MemoizedAppVirtualDataTableBodyRow
-                canExpand={row.getCanExpand()}
+                canExpand={canExpand}
                 columnVersion={columns}
                 dnd={dndOptions}
                 getRowAttributes={getRowAttributes}
                 hasExpandColumn={hasExpandColumn}
                 isExpanded={isExpanded}
-                isInteractive={isInteractive}
+                isInteractive={isInteractive || (rowClickExpands && canExpand)}
                 isSelected={row.id === selectedRowId}
                 key={entry.key}
                 measureElement={virtualizer.measureElement}
                 onExpand={handleExpandRow}
-                onRowClick={onRowClick}
+                onRowClick={handleRowClick}
                 onRowContextMenu={onRowContextMenu}
                 onRowDoubleClick={onRowDoubleClick}
                 row={row}

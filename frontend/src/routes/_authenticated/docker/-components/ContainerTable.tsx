@@ -25,6 +25,7 @@ import type {
   AppDataTableColumnDef,
   AppDataTableDndOptions,
 } from "@/components/tables/AppDataTable";
+import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -269,10 +270,6 @@ const getContainerTableSignature = (container: ContainerInfo) => {
 };
 
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
-
-// AppTooltip marks its click-to-copy triggers with this class; a click on one
-// copies a value and must not double as a row selection.
-const INTERACTIVE_CELL_SELECTOR = ".app-tooltip-trigger--copy";
 
 const areStringSetsEqual = (
   left: ReadonlySet<string>,
@@ -1170,13 +1167,7 @@ const ContainerTable = ({
       // A row is a container of controls before it is a link: the action
       // buttons, the "+N more" expander, the update dot and the copy-on-click
       // cells all bubble up to here and must not navigate.
-      if (
-        (event.target as HTMLElement).closest(
-          `button, a, input, ${INTERACTIVE_CELL_SELECTOR}`,
-        )
-      ) {
-        return;
-      }
+      if (!clickTargetsRowBody(event.target)) return;
       onSelectContainer?.(row.original.Id);
     },
     [onSelectContainer],

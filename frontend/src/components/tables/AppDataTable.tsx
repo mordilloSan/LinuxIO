@@ -37,6 +37,7 @@ import type {
   AppDataTableColumnDef,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
+import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -385,6 +386,7 @@ function AppDataTableBodyRow<TData extends RowData>({
     },
     role: "row",
     style: rowAttributes?.style,
+    "aria-expanded": canExpand ? isExpanded : undefined,
   };
 
   if (renderRow) {
@@ -788,6 +790,17 @@ function AppDataTable<TData extends RowData>({
   // normal column widths.
   const hasDragColumn =
     Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
+  // The whole row is the disclosure control: clicking anywhere on it opens or
+  // closes the detail panel, so the chevron reads as a hint rather than the
+  // only target. A table that gives a row click another meaning keeps it —
+  // its handler wins — and in layout mode the press belongs to the drag.
+  const rowClickExpands = hasExpandColumn && !onRowClick && !hasDragColumn;
+  const handleRowClick = rowClickExpands
+    ? (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
+        if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
+        row.toggleExpanded();
+      }
+    : onRowClick;
   const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
   // TanStack can preserve Column objects while swapping their definitions.
@@ -871,9 +884,11 @@ function AppDataTable<TData extends RowData>({
                     getRowAttributes={getRowAttributes}
                     hasExpandColumn={hasExpandColumn}
                     isExpanded={isExpanded}
-                    isInteractive={isInteractive}
+                    isInteractive={
+                      isInteractive || (rowClickExpands && canExpand)
+                    }
                     isSelected={isSelected}
-                    onRowClick={onRowClick}
+                    onRowClick={handleRowClick}
                     onRowContextMenu={onRowContextMenu}
                     onRowDoubleClick={onRowDoubleClick}
                     renderRow={renderRow}
@@ -888,9 +903,11 @@ function AppDataTable<TData extends RowData>({
                     hasDragColumn={false}
                     hasExpandColumn={hasExpandColumn}
                     isExpanded={isExpanded}
-                    isInteractive={isInteractive}
+                    isInteractive={
+                      isInteractive || (rowClickExpands && canExpand)
+                    }
                     isSelected={isSelected}
-                    onRowClick={onRowClick}
+                    onRowClick={handleRowClick}
                     onRowContextMenu={onRowContextMenu}
                     onRowDoubleClick={onRowDoubleClick}
                     renderRow={renderRow}
