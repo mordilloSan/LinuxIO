@@ -137,9 +137,12 @@ const dockerUpdateError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   _task,
   error,
 ) => {
-  toast.error(getMutationErrorMessage(error, "Docker container update failed"), {
-    meta: DOCKER_TOAST_META,
-  });
+  toast.error(
+    getMutationErrorMessage(error, "Docker container update failed"),
+    {
+      meta: DOCKER_TOAST_META,
+    },
+  );
 };
 
 /**

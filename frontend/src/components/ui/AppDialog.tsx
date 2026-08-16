@@ -94,7 +94,13 @@ export const AppDialog = ({
           document.body.classList.remove("dialog-open");
       };
     } else if (lastFocusedElement.current) {
-      lastFocusedElement.current.focus();
+      const trigger = lastFocusedElement.current;
+      lastFocusedElement.current = null;
+      // Restore only to a node still in the document. The dialog's own action
+      // routinely removes the row or card it was opened from, and there
+      // .focus() is a silent no-op while the ref goes on pinning that detached
+      // node and its whole subtree.
+      if (trigger.isConnected) trigger.focus();
     }
   }, [open]);
 

@@ -123,6 +123,20 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
       if (open) updatePosition();
     }, [open, updatePosition]);
 
+    // The portaled listbox is position:fixed, so its open-time coordinates stop
+    // describing the trigger the moment anything scrolls: the list stays parked
+    // over whatever content has slid under it. Capture phase is required —
+    // scrolling an element does not bubble. Mirrors AppPopover.
+    useEffect(() => {
+      if (!open) return undefined;
+      window.addEventListener("resize", updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+      return () => {
+        window.removeEventListener("resize", updatePosition);
+        window.removeEventListener("scroll", updatePosition, true);
+      };
+    }, [open, updatePosition]);
+
     useEffect(() => {
       if (!open) return;
       const handler = (e: MouseEvent) => {

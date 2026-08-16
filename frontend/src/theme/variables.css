@@ -212,6 +212,21 @@ a {
   background: transparent;
 }
 
+/* ── Pointer-taken focus ──
+   A focus ring the pointer summoned is litter; one the keyboard summoned is the
+   user's position on the page. The browser cannot tell them apart after the
+   fact — it re-reads :focus-visible against whatever modality is current, so a
+   button that was merely clicked lights up on the next keystroke and stays lit.
+   utils/inputModality.ts marks the pointer-taken focus and this rule drops the
+   ring for that element alone; the focus itself, and therefore tab order and
+   the AT cursor, is untouched.
+
+   Text-entry controls are excluded: they match :focus-visible on a plain click
+   by design, and there the ring marks where the caret lives. */
+[data-pointer-focus]:focus-visible:not(input, textarea, select, [contenteditable]) {
+  outline: none;
+}
+
 .custom-scrollbar {
   --custom-scrollbar-thumb: rgba(127, 127, 127, 0.06);
   --custom-scrollbar-thumb-hover: rgba(127, 127, 127, 0.45);

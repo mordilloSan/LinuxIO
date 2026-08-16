@@ -194,13 +194,6 @@ const ImageList = ({
       if (event.defaultPrevented) return;
       if (event.key === "Escape" || event.key === "Esc") {
         setSelected(new Set());
-        const activeElement = document.activeElement;
-        if (
-          activeElement instanceof HTMLButtonElement &&
-          activeElement.classList.contains("docker-image-card-button")
-        ) {
-          activeElement.blur();
-        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);

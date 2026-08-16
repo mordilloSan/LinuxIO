@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as core from "@/api/linuxio-core";
 import { act, fireEvent, render, screen, waitFor } from "@/test/render";
@@ -26,6 +26,12 @@ const queryData = vi.hoisted(() => ({
     },
   ],
 }));
+
+const allContainers = queryData.containers;
+
+afterEach(() => {
+  queryData.containers = allContainers;
+});
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
@@ -136,5 +142,20 @@ describe("dashboard Docker mutation feedback", () => {
         screen.queryByRole("progressbar", { name: "Restarting beta" }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("drops an open menu when a poll removes the container it targets", () => {
+    const { rerender } = render(<DockerInfo />);
+
+    fireEvent.contextMenu(screen.getByRole("group", { name: "alpha" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    queryData.containers = allContainers.filter((c) => c.Id !== "alpha-id");
+    rerender(<DockerInfo />);
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "alpha" }),
+    ).not.toBeInTheDocument();
   });
 });

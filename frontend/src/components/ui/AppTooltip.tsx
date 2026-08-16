@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import type { ToastMeta } from "@/types/navigation";
+import { getInputModality } from "@/utils/inputModality";
 import "./app-tooltip.css";
 
 type TooltipPlacement =
@@ -170,7 +171,14 @@ const AppTooltip = ({
 
   const show = useCallback(() => {
     refreshCopyAvailability();
+    // Re-arming has to cancel first. A trigger can be entered and focused
+    // within the same 100ms, and overwriting the handle orphaned the earlier
+    // timer: hide() only ever holds the newest one, so the orphan fired after
+    // the pointer had already left and put the bubble back on a page with
+    // nothing left to dismiss it.
+    if (enterTimer.current) clearTimeout(enterTimer.current);
     enterTimer.current = setTimeout(() => {
+      enterTimer.current = null;
       if (!shouldShowTooltip()) {
         setVisible(false);
         return;
@@ -183,8 +191,18 @@ const AppTooltip = ({
 
   const hide = useCallback(() => {
     if (enterTimer.current) clearTimeout(enterTimer.current);
+    enterTimer.current = null;
     setVisible(false);
   }, []);
+
+  const handleFocus = useCallback(() => {
+    // Only keyboard focus may summon the bubble, because only keyboard focus
+    // has a blur coming to take it away. A pointer press fires focusin too, and
+    // so does a dialog restoring focus to the trigger it was opened from — both
+    // with the pointer somewhere else entirely, which leaves a bubble parked
+    // over the page that no mouseleave will ever reach.
+    if (getInputModality() === "keyboard") show();
+  }, [show]);
 
   const handleClick = useCallback(async () => {
     if (!copyText || !refreshCopyAvailability()) return;
@@ -308,7 +326,7 @@ const AppTooltip = ({
           .filter(Boolean)
           .join(" ")}
         onBlur={hide}
-        onFocus={show}
+        onFocus={handleFocus}
         onClick={handleClick}
         onMouseEnter={show}
         onMouseLeave={hide}

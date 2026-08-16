@@ -153,6 +153,15 @@ const AppPopover = ({
   }, [anchorEl, anchorOrigin, anchorPosition, open, transformOrigin]);
 
   const handleReposition = useEffectEvent(() => {
+    // A detached anchor still answers getBoundingClientRect(), just with an
+    // all-zero box — which sails past updatePosition's `!anchorBox` guard and
+    // clamps the surface into the top-left corner, an orphan menu acting on a
+    // row that is no longer there. Close instead of repositioning.
+    if (anchorEl && !anchorEl.isConnected) {
+      onClose?.();
+      return;
+    }
+
     updatePosition();
   });
 
