@@ -95,6 +95,7 @@ const HardwareCard = ({
   actions?: ReactNode;
 }) => (
   <FrostedCard
+    accent
     hoverLift
     style={{
       display: "flex",

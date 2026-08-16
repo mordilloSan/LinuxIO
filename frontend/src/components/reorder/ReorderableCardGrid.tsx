@@ -1,16 +1,20 @@
 import type { ReactNode } from "react";
 
 import SortableCard from "@/components/cards/SortableCard";
+import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import {
   CARD_LIFT_SHADOW_GUTTER,
   DASHBOARD_CARD_SPACING,
+  GAP_XS,
   HOVER_LIFT_HEADROOM,
 } from "@/theme/constants";
 
 interface ReorderableCardGridProps<TItem> {
+  /** Accessible name for the grid. `virtualized` only. */
+  ariaLabel?: string;
   /** Equal-width columns at each breakpoint. When present, each card spans one column. */
   columns?: GridSize;
   /** Leaves the rendered cards interactive without arming hold-to-reorder. */
@@ -26,7 +30,8 @@ interface ReorderableCardGridProps<TItem> {
   getId: (item: TItem) => string;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
-  size: GridSize;
+  /** Breakpoint spans for each card. Ignored when `virtualized`. */
+  size?: GridSize;
   surface: ReorderableSurface<TItem>;
   /**
    * Items to render. Defaults to `surface.items`; pass a filtered slice when a
@@ -34,6 +39,22 @@ interface ReorderableCardGridProps<TItem> {
    */
   items?: readonly TItem[];
   spacing?: number;
+  /** Shown in place of the cards when there are none. `virtualized` only. */
+  emptyMessage?: string;
+  /** Row-height hint for the virtualizer. `virtualized` only. */
+  estimateItemHeight?: number;
+  /** Column width floor. `virtualized` only. */
+  minItemWidth?: number;
+  /**
+   * Render through `AppVirtualGrid` instead of `AppGrid`, for lists long enough
+   * that mounting every card costs — the services list is the case. The trade
+   * is that only the cards the virtualizer has mounted are drop targets, so a
+   * long list is rearranged in steps, scrolling between drags. Cards are then
+   * sized by `minItemWidth`/`estimateItemHeight` rather than `size`/`columns`,
+   * and the virtualizer owns the scrollport, so `fillAvailable` passes straight
+   * through to it.
+   */
+  virtualized?: boolean;
 }
 
 /**
@@ -43,35 +64,62 @@ interface ReorderableCardGridProps<TItem> {
  * this component.
  */
 function ReorderableCardGrid<TItem>({
+  ariaLabel,
   columns,
   disableReordering = false,
+  emptyMessage,
+  estimateItemHeight,
   fillAvailable = false,
   getId,
   items,
+  minItemWidth,
   renderItem,
   size,
   spacing = DASHBOARD_CARD_SPACING,
   surface,
+  virtualized = false,
 }: ReorderableCardGridProps<TItem>) {
   const rendered = items ?? surface.items;
 
+  // The one place a card is armed for the hold gesture. Both layouts go through
+  // it, so a route never wires SortableCard itself.
+  const renderSortableCard = (item: TItem, index: number) => (
+    <SortableCard
+      disabled={disableReordering}
+      editMode={surface.editMode}
+      id={getId(item)}
+      pending={surface.pendingId === getId(item)}
+    >
+      {renderItem(item, index)}
+    </SortableCard>
+  );
+
+  if (virtualized) {
+    return (
+      <ReorderableArea surface={surface}>
+        <AppVirtualGrid
+          ariaLabel={ariaLabel}
+          emptyMessage={emptyMessage}
+          estimateItemHeight={estimateItemHeight}
+          fillAvailable={fillAvailable}
+          gap={spacing * GAP_XS}
+          getItemKey={(item) => getId(item)}
+          items={rendered as TItem[]}
+          minItemWidth={minItemWidth}
+          padding={0}
+          renderItem={renderSortableCard}
+        />
+      </ReorderableArea>
+    );
+  }
+
   const grid = (
     <AppGrid columns={columns} container spacing={spacing}>
-      {rendered.map((item, index) => {
-        const id = getId(item);
-        return (
-          <AppGrid key={id} size={columns ? 1 : size}>
-            <SortableCard
-              disabled={disableReordering}
-              editMode={surface.editMode}
-              id={id}
-              pending={surface.pendingId === id}
-            >
-              {renderItem(item, index)}
-            </SortableCard>
-          </AppGrid>
-        );
-      })}
+      {rendered.map((item, index) => (
+        <AppGrid key={getId(item)} size={columns ? 1 : size}>
+          {renderSortableCard(item, index)}
+        </AppGrid>
+      ))}
     </AppGrid>
   );
 

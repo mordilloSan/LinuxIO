@@ -4,22 +4,21 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useCallback, useEffect, useEffectEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NetworkInterface } from "@/api";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
-import SortableCard from "@/components/cards/SortableCard";
 import { appendLiveSample } from "@/components/charts/liveSeriesStore";
 import {
   type LiveSeriesPoint,
   useLiveSeries,
 } from "@/components/charts/useLiveSeries";
-import ReorderableArea from "@/components/reorder/ReorderableArea";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppTheme } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   DASHBOARD_CARD_SPACING,
   TRANSITION_DURATION_SLOW_MS,
@@ -239,7 +238,11 @@ const NetworkInterfaceList = () => {
     [expanded, navigate],
   );
 
+  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  // Matches UnitCardsView: below md the side panel wraps under the card, so it
+  // has to arrive from below rather than from the right.
+  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const selectedIface = interfaces.find((iface) => iface.name === expanded);
   const surface = useReorderableSurface({
     getId: getNetworkInterfaceId,
@@ -247,69 +250,80 @@ const NetworkInterfaceList = () => {
     surface: "network.interfaces",
   });
 
-  return (
-    <div>
-      <ReorderableArea surface={surface}>
-        <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
-          <AnimatePresence>
-            {surface.items.map((iface) =>
-              expanded && expanded !== iface.name ? null : (
-                <AppGrid
-                  animate={{ opacity: 1, scale: 1 }}
-                  component={motion.div}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  key={iface.name}
-                  layout
-                  size={
-                    expanded === iface.name
-                      ? { xs: 12, md: 4, lg: 3 }
-                      : { xs: 12, sm: 6, md: 4, lg: 2 }
-                  }
-                  transition={{
-                    duration: slowTransitionDurationSeconds,
-                    ease: EASING_STANDARD,
-                  }}
-                >
-                  <SortableCard
-                    editMode={surface.editMode}
-                    id={iface.name}
-                    pending={surface.pendingId === iface.name}
-                  >
-                    <NetworkInterfaceCard
-                      expanded={expanded === iface.name}
-                      name={iface.name}
-                      onClose={handleClose}
-                      onToggle={surface.editMode ? noopToggle : handleToggle}
-                      type={iface.type}
-                    />
-                  </SortableCard>
-                </AppGrid>
-              ),
-            )}
-
-            {/* Traffic graphs — appear on the right when a NIC is selected */}
-            {selectedIface && (
-              <AppGrid
-                animate={{ opacity: 1, x: 0 }}
-                component={motion.div}
-                exit={{ opacity: 0, x: 40 }}
-                initial={{ opacity: 0, x: 40 }}
-                key="traffic-graphs"
-                size={{ xs: 12, md: 8, lg: 9 }}
-                transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.05,
-                  ease: EASING_STANDARD,
-                }}
-              >
-                <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
-              </AppGrid>
-            )}
-          </AnimatePresence>
+  /*
+    Selecting an interface leaves the grid rather than resizing inside it. That
+    is the shape the services and docker card views already use — one branch
+    that isolates the selection, one that is nothing but the sortable grid — so
+    all three routes now isolate on select the same way, and this one no longer
+    has to hand-roll ReorderableArea + SortableCard to do it.
+  */
+  if (selectedIface) {
+    /*
+      The isolated view settles in two beats, the same ones UnitCardsView uses:
+      the whole layout rises and fades at 0.04s, then the side panel arrives at
+      0.08s — from the right on a wide screen, from below once it has wrapped
+      under the card. Durations and easing come from the shared slow transition,
+      so services and network read as one gesture rather than two.
+    */
+    return (
+      <AppGrid
+        animate={{ opacity: 1, y: 0 }}
+        component={motion.div}
+        container
+        initial={{ opacity: 0, y: 14 }}
+        spacing={DASHBOARD_CARD_SPACING}
+        transition={{
+          duration: slowTransitionDurationSeconds,
+          delay: 0.04,
+          ease: EASING_STANDARD,
+        }}
+      >
+        <AppGrid size={{ xs: 12, md: 4, lg: 3 }}>
+          <NetworkInterfaceCard
+            expanded
+            name={selectedIface.name}
+            onClose={handleClose}
+            onToggle={handleToggle}
+            type={selectedIface.type}
+          />
         </AppGrid>
-      </ReorderableArea>
-    </div>
+        <AppGrid
+          animate={{ opacity: 1, x: 0, y: 0 }}
+          component={motion.div}
+          initial={{
+            opacity: 0,
+            x: isCompactLayout ? 0 : 40,
+            y: isCompactLayout ? 20 : 0,
+          }}
+          size={{ xs: 12, md: 8, lg: 9 }}
+          transition={{
+            duration: slowTransitionDurationSeconds,
+            delay: 0.08,
+            ease: EASING_STANDARD,
+          }}
+        >
+          <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
+        </AppGrid>
+      </AppGrid>
+    );
+  }
+
+  return (
+    <ReorderableCardGrid
+      fillAvailable={false}
+      getId={getNetworkInterfaceId}
+      renderItem={(iface) => (
+        <NetworkInterfaceCard
+          expanded={false}
+          name={iface.name}
+          onClose={handleClose}
+          onToggle={surface.editMode ? noopToggle : handleToggle}
+          type={iface.type}
+        />
+      )}
+      size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+      surface={surface}
+    />
   );
 };
 

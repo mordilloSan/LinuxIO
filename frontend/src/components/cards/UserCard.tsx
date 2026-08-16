@@ -19,7 +19,7 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
-import { GAP_SM } from "@/theme/constants";
+import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
@@ -250,8 +250,9 @@ const UserCard = ({
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        transition:
-          "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border 0.3s ease-in-out, margin 0.3s ease-in-out",
+        // Same string as UnitCard and WireguardInterfaceCard — the three cards
+        // that expand in place have to settle at one speed.
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
         // The line itself comes from `accent` above. Only the selected state is
         // special: an open card reads as selected from its own chrome, so the
         // line stands down rather than competing with it.

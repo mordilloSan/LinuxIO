@@ -32,30 +32,10 @@
   box-shadow: var(--devtools-hover-shadow);
 }
 
-/* Cards that lift only, no scale: large enough that scaling reads as a wobble.
-   The accent line deliberately does not answer the pointer — brightening it is
-   the hold-to-reorder affordance, so hovering must not preview that.
-   !important beats the inline frosted/accent base styles. */
-.dc-accent-card {
-  --hover-lift-y: -2px;
-  --hover-lift-scale: 1;
-  --hover-lift-press-scale: 0.997;
-  /* border-bottom-color rides the lift curve so a cancelled hold fades the
-     accent back down instead of snapping. */
-  transition:
-    transform var(--hover-lift-duration) var(--hover-lift-ease),
-    box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
-    border-bottom-color var(--hover-lift-duration) var(--hover-lift-ease);
-}
-
-.dc-accent-card:hover {
-  box-shadow: var(--dc-hover-shadow) !important;
-}
-
-/* Same easing for accent cards that do not lift — .hover-lift already
-   transitions border-color, and cards that set their own inline transition
-   override this anyway, so this only reaches the ones that would otherwise
-   snap back when a hold is cancelled. */
+/* Accent cards that do not lift get the same easing on the line — .hover-lift
+   already transitions border-color, and cards that set their own inline
+   transition override this anyway, so this only reaches the ones that would
+   otherwise snap back when a hold is cancelled. */
 .accent-card:not(.hover-lift) {
   transition: border-bottom-color var(--hover-lift-duration)
     var(--hover-lift-ease);

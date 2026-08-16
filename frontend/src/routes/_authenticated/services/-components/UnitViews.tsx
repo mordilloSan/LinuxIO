@@ -10,12 +10,10 @@ import {
 
 import type { UnitInfo } from "@/api";
 import { linuxio, useCallMutation } from "@/api";
-import SortableCard from "@/components/cards/SortableCard";
 import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
-import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
-import ReorderableArea from "@/components/reorder/ReorderableArea";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type {
   AppVirtualDataTableColumnDef,
@@ -28,7 +26,6 @@ import { getServiceStatusColor } from "@/constants/statusColors";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
-  DASHBOARD_CARD_GAP,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
@@ -42,6 +39,7 @@ export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
 
 // In layout mode a card press belongs to the drag, not to opening the unit.
 const noopExpand = () => {};
+const getUnitId = (item: UnitListItem) => item.name;
 
 const UNIT_CARD_MIN_WIDTH = 360;
 const UNIT_CARD_ESTIMATE_HEIGHT = 150;
@@ -544,35 +542,25 @@ export function UnitCardsView<T extends UnitListItem>({
 
   if (!expandedItem) {
     return (
-      // Only the cards the virtualizer has mounted are drop targets, so a long
-      // list is rearranged in steps, scrolling between drags.
-      <ReorderableArea surface={surface}>
-        <AppVirtualGrid
-          ariaLabel="Units"
-          emptyMessage={emptyMessage}
-          estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
-          fillAvailable
-          gap={DASHBOARD_CARD_GAP}
-          getItemKey={(item) => item.name}
-          items={items}
-          minItemWidth={UNIT_CARD_MIN_WIDTH}
-          padding={0}
-          renderItem={(item) => (
-            <SortableCard
-              editMode={surface.editMode}
-              id={item.name}
-              pending={surface.pendingId === item.name}
-            >
-              <UnitCard
-                isSelected={false}
-                item={item}
-                onExpand={surface.editMode ? noopExpand : onExpand}
-                renderSummaryRows={renderSummaryRows}
-              />
-            </SortableCard>
-          )}
-        />
-      </ReorderableArea>
+      <ReorderableCardGrid
+        ariaLabel="Units"
+        emptyMessage={emptyMessage}
+        estimateItemHeight={UNIT_CARD_ESTIMATE_HEIGHT}
+        fillAvailable
+        getId={getUnitId}
+        items={items}
+        minItemWidth={UNIT_CARD_MIN_WIDTH}
+        renderItem={(item) => (
+          <UnitCard
+            isSelected={false}
+            item={item}
+            onExpand={surface.editMode ? noopExpand : onExpand}
+            renderSummaryRows={renderSummaryRows}
+          />
+        )}
+        surface={surface}
+        virtualized
+      />
     );
   }
 

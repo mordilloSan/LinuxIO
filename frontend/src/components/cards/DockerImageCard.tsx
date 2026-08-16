@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 import type { DockerUpdateCheckState } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -7,7 +5,6 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { getFrostedCardLiftShadow } from "@/theme/surfaces";
 import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
 
 import "./DockerImageCard.css";
@@ -54,14 +51,17 @@ const DockerImageCard = ({
         accent
         className={`docker-image-card${selected ? " docker-image-card--selected" : ""}`}
         hoverLift
-        style={
-          {
-            padding: 8,
-            "--docker-image-card-accent": theme.palette.primary.main,
-            "--docker-image-card-selected-shadow":
-              getFrostedCardLiftShadow(theme),
-          } as CSSProperties
-        }
+        style={{
+          padding: 8,
+          /*
+            Selection takes the accent line to full strength. Inline, the way
+            every other selectable card does it — a stylesheet rule would need
+            !important to beat FrostedCard's inline accent colour, and important
+            declarations outrank animations, which would silence the hold
+            feedback on a selected card. Inline styles do not.
+          */
+          ...(selected && { borderBottomColor: "var(--dc-accent)" }),
+        }}
       >
         <div
           style={{

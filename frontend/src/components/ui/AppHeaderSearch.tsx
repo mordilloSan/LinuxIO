@@ -1,5 +1,10 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react";
 
 import "./app-header-search.css";
 
