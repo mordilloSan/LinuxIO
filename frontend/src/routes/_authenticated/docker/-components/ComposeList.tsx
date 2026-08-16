@@ -26,7 +26,6 @@ import {
 } from "@/constants/statusColors";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import "./compose-list.css";
@@ -107,7 +106,6 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
   onOpenTerminal,
 }: ComposeContainerActionsProps) {
   const name = getContainerName(container);
-  const toast = useScopedToast(DOCKER_TOAST_META);
   const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
   const { mutate: startContainer, isPending: isStarting } = useCallMutation(
     linuxio.docker.start_container,

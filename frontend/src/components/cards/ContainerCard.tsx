@@ -13,7 +13,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -94,7 +93,6 @@ const ContainerCardBody = ({
   selected,
 }: ContainerCardBodyProps) => {
   const theme = useAppTheme();
-  const toast = useScopedToast(DOCKER_TOAST_META);
   const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   // dialogs
@@ -263,6 +261,7 @@ const ContainerCardBody = ({
             <AppButton
               color="warning"
               disabled={isActionPending}
+              loading={isUpdatePending}
               onClick={handleUpdateClick}
               size="small"
               startIcon={<Icon height={16} icon="mdi:update" width={16} />}
@@ -603,6 +602,7 @@ const ContainerCardBody = ({
                         icon="mdi:update"
                         iconSize={16}
                         label="Update Container"
+                        loading={isUpdatePending}
                         onClick={handleUpdateClick}
                         tooltip={false}
                       />
