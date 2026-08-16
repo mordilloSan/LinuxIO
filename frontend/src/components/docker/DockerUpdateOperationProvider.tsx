@@ -212,10 +212,10 @@ function DockerUpdateOperationDialog({
           >
             {events.length === 0 && running ? (
               <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
-              <AppCircularProgress size={18} />
-              <AppTypography color="text.secondary" variant="body2">
-                Starting the update worker…
-              </AppTypography>
+                <AppCircularProgress size={18} />
+                <AppTypography color="text.secondary" variant="body2">
+                  Starting the update worker…
+                </AppTypography>
               </div>
             ) : (
               events.map((event, index) => {
@@ -340,7 +340,10 @@ function DockerUpdateOperationDialog({
                 icon="mdi:chevron-right"
                 width={18}
               />
-              <AppTypography color="text.secondary" style={{ fontSize: "0.8rem" }}>
+              <AppTypography
+                color="text.secondary"
+                style={{ fontSize: "0.8rem" }}
+              >
                 {showDetails ? "Hide details" : "Show details"}
               </AppTypography>
             </AppButton>
@@ -390,8 +393,9 @@ export function DockerUpdateOperationProvider({
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [target, setTarget] = useState<DockerUpdateTarget | null>(null);
   const [events, setEvents] = useState<DockerUpdateEvent[]>([]);
-  const [result, setResult] =
-    useState<DockerContainerUpdateResult | null>(null);
+  const [result, setResult] = useState<DockerContainerUpdateResult | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const streamRef = useRef<Stream | null>(null);
@@ -407,9 +411,7 @@ export function DockerUpdateOperationProvider({
     onOpen: (stream) => {
       streamRef.current = stream;
     },
-    onProgress: (
-      progress: TaskProgress<DockerContainerUpdateProgress>,
-    ) => {
+    onProgress: (progress: TaskProgress<DockerContainerUpdateProgress>) => {
       const detail = progress.detail;
       const phase = detail?.phase || progress.phase || "running";
       const message = detail?.message || progress.message;
@@ -462,7 +464,10 @@ export function DockerUpdateOperationProvider({
     onRecover: (task) => {
       const containerId = task.metadata?.identity?.[0];
       if (!containerId || isPending) return;
-      const recoveredTarget = { id: containerId, name: containerId.slice(0, 12) };
+      const recoveredTarget = {
+        id: containerId,
+        name: containerId.slice(0, 12),
+      };
       setTarget(recoveredTarget);
       setEvents([]);
       setResult(null);
@@ -488,8 +493,7 @@ export function DockerUpdateOperationProvider({
 
   const value = useMemo<DockerUpdateOperationContextValue>(
     () => ({
-      isUpdating: (containerId) =>
-        isPending && target?.id === containerId,
+      isUpdating: (containerId) => isPending && target?.id === containerId,
       startUpdate,
       updating: isPending,
     }),

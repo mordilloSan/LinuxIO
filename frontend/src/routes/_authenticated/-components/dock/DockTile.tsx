@@ -15,8 +15,7 @@ interface DockTileProps {
    with cursor magnification, and the hover label. The slot keeps flex geometry
    fixed while the visible parts move on compositor transforms. */
 const DockTile = ({ children, gradient, label }: DockTileProps) => {
-  const { labelY, lift, registerTile, renderScale, x } =
-    useDockMagnification();
+  const { labelY, lift, registerTile, renderScale, x } = useDockMagnification();
 
   return (
     <span className="app-dock__slot" ref={registerTile}>

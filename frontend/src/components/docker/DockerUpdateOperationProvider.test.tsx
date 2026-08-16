@@ -14,9 +14,7 @@ import {
 } from "./DockerUpdateOperationProvider";
 
 interface TaskStreamConfig {
-  onProgress?: (
-    progress: TaskProgress<DockerContainerUpdateProgress>,
-  ) => void;
+  onProgress?: (progress: TaskProgress<DockerContainerUpdateProgress>) => void;
   success?: (result: DockerContainerUpdateResult) => void;
 }
 
@@ -97,9 +95,9 @@ describe("DockerUpdateOperationProvider", () => {
         phase: "pulling",
       }),
     );
-    expect(
-      screen.getAllByText(/Pulling image homepage:latest/),
-    ).toHaveLength(2);
+    expect(screen.getAllByText(/Pulling image homepage:latest/)).toHaveLength(
+      2,
+    );
     const details = screen.getByRole("button", { name: "Show details" });
     expect(details).toHaveAttribute("aria-expanded", "false");
     await user.click(details);

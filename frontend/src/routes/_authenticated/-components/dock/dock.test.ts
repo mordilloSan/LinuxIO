@@ -24,8 +24,9 @@ describe("dock labels", () => {
 
 describe("dock magnification rasterization", () => {
   it("lays out the tile layer at its 64px magnification peak", () => {
-    const tileRule = stylesheet.match(/\.app-dock__tile \{(?<body>[\s\S]*?)\n\}/)
-      ?.groups?.body;
+    const tileRule = stylesheet.match(
+      /\.app-dock__tile \{(?<body>[\s\S]*?)\n\}/,
+    )?.groups?.body;
 
     expect(tileRule).toContain("width: 64px");
     expect(tileRule).toContain("height: 64px");
