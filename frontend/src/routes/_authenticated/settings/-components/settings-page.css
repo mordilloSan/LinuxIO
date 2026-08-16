@@ -2,11 +2,17 @@
    keeps the header — and the dock inside it — visible and sharp while you
    change what it does, which a modal covering the viewport could not do.
    The sheet keeps the dialog's chrome (see getDialogSurfaceStyles) so nothing
-   about how settings look changed, only where they sit. */
+   about how settings look changed, only where they sit.
+
+   This fills the page rather than hugging the sheet, so the sheet has a
+   definite height to cap against; flex-start keeps a short tab a short card
+   instead of a tall empty one. */
 .settings-page {
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   width: 100%;
+  height: 100%;
 }
 
 /* Capped rather than full-bleed: the sections are rows of a label on the left
@@ -18,17 +24,29 @@
   flex-direction: column;
   width: 100%;
   max-width: 900px;
+  /* Never taller than the page, so a long tab scrolls the sheet's own body and
+     the layout's scrollport stays still. A card whose scrollbar belongs to the
+     page instead drags the whole surface — corners, glow and all — up past the
+     header on the way down. */
+  max-height: 100%;
   overflow: hidden;
 }
 
 .settings-page__header {
+  flex: 0 0 auto;
   padding: 14px 20px 10px;
 }
 
 .settings-page__tabs {
+  flex: 0 0 auto;
   padding-inline: 12px;
 }
 
+/* The one scrolling box: the title and the tab strip stay put above it, the
+   way they did as a dialog title over dialog content. */
 .settings-page__body {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 12px;
+  overflow-y: auto;
 }

@@ -84,7 +84,7 @@ const SettingsPage = () => {
           <AppDivider />
         </div>
 
-        <div className="settings-page__body">
+        <div className="settings-page__body custom-scrollbar">
           <ErrorBoundary key={effectiveTab} fallback={sectionErrorFallback}>
             {effectiveTab === "general" ? (
               <div
