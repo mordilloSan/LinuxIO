@@ -134,11 +134,12 @@
     transform 140ms ease;
 }
 
-/* :focus-within covers the action tiles, whose focus lands on the wrapped
-   button rather than the dock link (matching their old tooltip-on-focus). */
+/* Action-tile focus lands on the wrapped button rather than the dock link.
+   Match only keyboard-visible focus so a mouse click does not leave the label
+   showing after the control's popup closes. */
 .app-dock-link:hover .app-dock__label,
 .app-dock-link:focus-visible .app-dock__label,
-.app-dock__action:focus-within .app-dock__label {
+.app-dock__action:has(:focus-visible) .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
 }
