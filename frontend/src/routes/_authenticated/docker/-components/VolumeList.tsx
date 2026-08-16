@@ -432,6 +432,9 @@ const VolumeList = ({
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}
+          onRowDoubleClick={({ original: volume }) =>
+            handleSelectOne(volume.Name, !effectiveSelected.has(volume.Name))
+          }
           renderExpandedContent={({ original: volume }) => (
             <div className="expand-panel">
               <div>

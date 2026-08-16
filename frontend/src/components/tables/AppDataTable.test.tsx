@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import { act, render, screen } from "@/test/render";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { act, render, screen, waitFor } from "@/test/render";
 
 interface SelectableRow {
   id: string;
@@ -64,12 +67,14 @@ function TestTable({
   data = tableRows,
   expandedContent,
   onRowClick,
+  onRowDoubleClick,
   selectedRowId,
 }: {
   columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   onRowClick?: () => void;
+  onRowDoubleClick?: () => void;
   selectedRowId?: string;
 }) {
   return (
@@ -79,6 +84,7 @@ function TestTable({
       getRowAttributes={getRowAttributes}
       getRowId={getTableRowId}
       onRowClick={onRowClick}
+      onRowDoubleClick={onRowDoubleClick}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
     />
@@ -129,6 +135,60 @@ function SelectableTable() {
       data={rows}
       getRowId={(row) => row.id}
     />
+  );
+}
+
+/**
+ * The docker list tables: hold-to-reorder rows, an expandable detail row, and a
+ * leading checkbox column whose defs are rebuilt whenever the selection changes.
+ * Arming the hold re-renders the surface, and a rebuilt column def replaces the
+ * pressed input's DOM node — which used to swallow the click outright.
+ */
+function ReorderableSelectableTable() {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const surface = useReorderableSurface({
+    getId: getTableRowId,
+    items: tableRows,
+    surface: "test.rows",
+  });
+  const dnd = useReorderableTableDnd<TableRow, TableRow>({ surface });
+  const columns: AppDataTableColumnDef<TableRow>[] = [
+    {
+      id: "select",
+      header: "Select",
+      cell: ({ row }) => (
+        <AppCheckbox
+          aria-label={`Select ${row.original.name}`}
+          checked={selected.has(row.original.id)}
+          onChange={(event) =>
+            setSelected((current) => {
+              const next = new Set(current);
+              if (event.target.checked) next.add(row.original.id);
+              else next.delete(row.original.id);
+              return next;
+            })
+          }
+          size="small"
+        />
+      ),
+      meta: { align: "center", width: "40px" },
+    },
+    tableColumns[0],
+  ];
+
+  return (
+    <>
+      <div data-testid="selected-count">{selected.size}</div>
+      <AppDataTable
+        columns={columns}
+        data={tableRows}
+        dnd={dnd}
+        getRowId={getTableRowId}
+        renderExpandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />
+    </>
   );
 }
 
@@ -317,6 +377,79 @@ describe("AppDataTable", () => {
 
     expect(onRowClick).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+  });
+
+  it("waits out the double-click window before expanding, then expands", async () => {
+    const onRowDoubleClick = vi.fn();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+        onRowDoubleClick={onRowDoubleClick}
+      />,
+    );
+
+    await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+
+    // Still closed the instant the click lands — the second click of a double
+    // click would otherwise close it again.
+    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Details for Alpha")).toBeInTheDocument(),
+    );
+    expect(onRowDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it("double-clicking a row selects it and leaves the panel closed", async () => {
+    const onRowDoubleClick = vi.fn();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+        onRowDoubleClick={onRowDoubleClick}
+      />,
+    );
+
+    await view.user.dblClick(
+      screen.getByText("Alpha").closest('[role="row"]')!,
+    );
+
+    expect(onRowDoubleClick).toHaveBeenCalledTimes(1);
+    // The deferred expand from the first click was cancelled, so the panel
+    // never flashes open.
+    await expect.poll(() => screen.queryByText("Details for Alpha")).toBeNull();
+  });
+
+  it("expands with no delay when no double-click gesture is bound", async () => {
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+
+    await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+  });
+
+  it("selects on the first checkbox press in a reorderable row", async () => {
+    const view = render(<ReorderableSelectableTable />);
+    const checkbox = screen.getByRole("checkbox", { name: "Select Alpha" });
+
+    await view.user.click(checkbox);
+
+    expect(screen.getByTestId("selected-count")).toHaveTextContent("1");
+    expect(checkbox).toBeChecked();
+    // The press belonged to the checkbox, so it neither armed the reorder hold
+    // nor toggled the row.
+    expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
+    expect(screen.getByText("Alpha").closest('[role="row"]')).not.toHaveClass(
+      "app-vdt__row--reorder-pending",
+    );
   });
 
   it("keeps rows expanded when polled data is replaced", async () => {

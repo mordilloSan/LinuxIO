@@ -543,6 +543,9 @@ const ImageList = ({
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}
+          onRowDoubleClick={({ original: image }) =>
+            handleSelectOne(image.id, !effectiveSelected.has(image.id))
+          }
           renderExpandedContent={({ original: image }) => (
             <div className="expand-panel">
               <div>

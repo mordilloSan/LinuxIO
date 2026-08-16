@@ -21,7 +21,10 @@ import type {
 import {
   Fragment,
   memo,
+  useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type HTMLAttributes,
@@ -37,7 +40,12 @@ import type {
   AppDataTableColumnDef,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
-import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
+import {
+  ROW_DOUBLE_CLICK_MS,
+  clickTargetsRowBody,
+  rowBodyDragListeners,
+  targetIsRowControl,
+} from "@/components/tables/rowInteraction";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -496,8 +504,8 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
       rowAttributes={{
         // The whole row carries the press listeners, not just the handle: the
         // handle only exists once layout mode is open, and the hold is what
-        // opens it.
-        ...(isArmed ? listeners : undefined),
+        // opens it. A press on one of the row's own controls is exempt.
+        ...(isArmed ? rowBodyDragListeners(listeners) : undefined),
         ...rowAttributes,
         className: [
           rowAttributes?.className,
@@ -715,6 +723,16 @@ function AppDataTable<TData extends RowData>({
   const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
   const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+  // The table owns the deferred single click, not the row: rows are memoized and
+  // remount when column defs are rebuilt, which would drop a pending expand.
+  const pendingExpandRef = useRef<number | null>(null);
+  const cancelPendingExpand = useCallback(() => {
+    if (pendingExpandRef.current === null) return;
+    window.clearTimeout(pendingExpandRef.current);
+    pendingExpandRef.current = null;
+  }, []);
+
+  useEffect(() => cancelPendingExpand, [cancelPendingExpand]);
 
   const columnVisibility = useMemo<ColumnVisibilityState>(() => {
     const below: Record<AppDataTableBreakpoint, boolean> = {
@@ -795,12 +813,39 @@ function AppDataTable<TData extends RowData>({
   // only target. A table that gives a row click another meaning keeps it —
   // its handler wins — and in layout mode the press belongs to the drag.
   const rowClickExpands = hasExpandColumn && !onRowClick && !hasDragColumn;
+  // Only a table that binds both gestures has to wait out the double-click
+  // window; a click-only table expands on the spot.
+  const expandClickDelayMs =
+    rowClickExpands && onRowDoubleClick ? ROW_DOUBLE_CLICK_MS : 0;
   const handleRowClick = rowClickExpands
     ? (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
         if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
-        row.toggleExpanded();
+
+        cancelPendingExpand();
+        if (!expandClickDelayMs) {
+          row.toggleExpanded();
+          return;
+        }
+        // The second click of a double click carries detail 2 — leave the row
+        // alone and let the double-click handler have it.
+        if (event.detail > 1) return;
+
+        pendingExpandRef.current = window.setTimeout(() => {
+          pendingExpandRef.current = null;
+          row.toggleExpanded();
+        }, expandClickDelayMs);
       }
     : onRowClick;
+  // A double click is how a word gets selected, so the text-selection half of
+  // `clickTargetsRowBody` would veto every one of these — only the control check
+  // applies here.
+  const handleRowDoubleClick = onRowDoubleClick
+    ? (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
+        cancelPendingExpand();
+        if (targetIsRowControl(event.target)) return;
+        onRowDoubleClick(row, event);
+      }
+    : undefined;
   const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
   // TanStack can preserve Column objects while swapping their definitions.
@@ -890,7 +935,7 @@ function AppDataTable<TData extends RowData>({
                     isSelected={isSelected}
                     onRowClick={handleRowClick}
                     onRowContextMenu={onRowContextMenu}
-                    onRowDoubleClick={onRowDoubleClick}
+                    onRowDoubleClick={handleRowDoubleClick}
                     renderRow={renderRow}
                     row={row}
                     rowIndex={rowIndex}
@@ -909,7 +954,7 @@ function AppDataTable<TData extends RowData>({
                     isSelected={isSelected}
                     onRowClick={handleRowClick}
                     onRowContextMenu={onRowContextMenu}
-                    onRowDoubleClick={onRowDoubleClick}
+                    onRowDoubleClick={handleRowDoubleClick}
                     renderRow={renderRow}
                     row={row}
                     rowIndex={rowIndex}

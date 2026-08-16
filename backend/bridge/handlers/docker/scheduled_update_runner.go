@@ -38,10 +38,6 @@ func RunScheduledContainerUpdates(ctx context.Context, configPath string) error 
 	if err != nil {
 		return err
 	}
-	if len(opts.ContainerNames) == 0 {
-		slog.Info("Docker update schedule has no selected containers", "component", "docker", "subsystem", "update")
-		return nil
-	}
 
 	release, err := acquireDockerUpdateLock(ctx)
 	if err != nil {
@@ -83,6 +79,12 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 			targetByName[name] = summary
 		}
 	}
+	running := make([]container.Summary, 0, len(containers))
+	for _, summary := range containers {
+		if summary.State == container.StateRunning {
+			running = append(running, summary)
+		}
+	}
 
 	selected := make([]container.Summary, 0, len(opts.ContainerNames))
 	var runErrs []error
@@ -95,12 +97,17 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 		selected = append(selected, summary)
 	}
 
+	// Every scheduled pass refreshes availability for all running containers.
+	// Selection only controls which containers are subsequently updated.
+	checkErr := operations.check(ctx, running)
 	if opts.Mode == "check_only" {
-		checkErr := operations.check(ctx, selected)
-		return errors.Join(append(runErrs, checkErr)...)
+		return checkErr
 	}
-	updateErr := operations.update(ctx, selected, containers, opts.Cleanup)
-	return errors.Join(append(runErrs, updateErr)...)
+	var updateErr error
+	if len(selected) > 0 {
+		updateErr = operations.update(ctx, selected, containers, opts.Cleanup)
+	}
+	return errors.Join(append(runErrs, checkErr, updateErr)...)
 }
 
 func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers []container.Summary) error {

@@ -42,7 +42,12 @@ import type {
   AppDataTableColumnMeta,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
-import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
+import {
+  ROW_DOUBLE_CLICK_MS,
+  clickTargetsRowBody,
+  rowBodyDragListeners,
+  targetIsRowControl,
+} from "@/components/tables/rowInteraction";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -270,7 +275,8 @@ function useVirtualRowReorder<TData extends RowData>(
   return {
     isReorderEditing: dnd.editing ?? false,
     isReorderPending: dnd.pendingItemId != null && dnd.pendingItemId === itemId,
-    reorderListeners: listeners,
+    // A press on one of the row's own controls is not a drag.
+    reorderListeners: rowBodyDragListeners(listeners),
     reorderStyle: {
       opacity: isDragging ? 0.45 : undefined,
       transform: CSS.Transform.toString(transform) || undefined,
@@ -494,6 +500,9 @@ function AppVirtualDataTable<TData extends RowData>({
     new Map(),
   );
   const detailNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // The table owns the deferred single click, not the row: virtualized rows
+  // unmount as they scroll out, which would drop a pending expand.
+  const pendingExpandRef = useRef<number | null>(null);
   const detailSizesRef = useRef<Map<string, number>>(new Map());
   const latestVirtualEntriesRef = useRef<Array<VirtualTableEntry<TData>>>([]);
   const [mountedDetailRowIds, setMountedDetailRowIds] = useState<Set<string>>(
@@ -624,6 +633,12 @@ function AppVirtualDataTable<TData extends RowData>({
   useLayoutEffect(() => {
     latestVirtualEntriesRef.current = virtualEntries;
   }, [virtualEntries]);
+
+  const cancelPendingExpand = useCallback(() => {
+    if (pendingExpandRef.current === null) return;
+    window.clearTimeout(pendingExpandRef.current);
+    pendingExpandRef.current = null;
+  }, []);
 
   const scheduleMeasure = useCallback(() => {
     if (measureFrameRef.current !== null) return;
@@ -796,6 +811,7 @@ function AppVirtualDataTable<TData extends RowData>({
 
   useEffect(
     () => () => {
+      cancelPendingExpand();
       if (measureFrameRef.current !== null) {
         window.cancelAnimationFrame(measureFrameRef.current);
       }
@@ -841,14 +857,45 @@ function AppVirtualDataTable<TData extends RowData>({
     row.toggleExpanded();
   }, []);
 
+  // Only a table that binds both gestures has to wait out the double-click
+  // window; a click-only table expands on the spot.
+  const expandClickDelayMs =
+    rowClickExpands && onRowDoubleClick ? ROW_DOUBLE_CLICK_MS : 0;
   const handleExpandOnRowClick = useCallback(
     (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
       if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
-      handleExpandRow(row);
+
+      cancelPendingExpand();
+      if (!expandClickDelayMs) {
+        handleExpandRow(row);
+        return;
+      }
+      // The second click of a double click carries detail 2 — leave the row
+      // alone and let the double-click handler have it.
+      if (event.detail > 1) return;
+
+      pendingExpandRef.current = window.setTimeout(() => {
+        pendingExpandRef.current = null;
+        handleExpandRow(row);
+      }, expandClickDelayMs);
     },
-    [handleExpandRow],
+    [cancelPendingExpand, expandClickDelayMs, handleExpandRow],
   );
   const handleRowClick = rowClickExpands ? handleExpandOnRowClick : onRowClick;
+  // A double click is how a word gets selected, so the text-selection half of
+  // `clickTargetsRowBody` would veto every one of these — only the control check
+  // applies here.
+  const handleGuardedRowDoubleClick = useCallback(
+    (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
+      cancelPendingExpand();
+      if (targetIsRowControl(event.target)) return;
+      onRowDoubleClick?.(row, event);
+    },
+    [cancelPendingExpand, onRowDoubleClick],
+  );
+  const handleRowDoubleClick = onRowDoubleClick
+    ? handleGuardedRowDoubleClick
+    : undefined;
 
   useEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
@@ -1026,7 +1073,7 @@ function AppVirtualDataTable<TData extends RowData>({
                 onExpand={handleExpandRow}
                 onRowClick={handleRowClick}
                 onRowContextMenu={onRowContextMenu}
-                onRowDoubleClick={onRowDoubleClick}
+                onRowDoubleClick={handleRowDoubleClick}
                 row={row}
                 rowIndex={entry.rowIndex}
                 virtualIndex={virtualRow.index}

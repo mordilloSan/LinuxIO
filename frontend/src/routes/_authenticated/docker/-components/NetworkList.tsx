@@ -687,6 +687,9 @@ const NetworkList = ({
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
+          onRowDoubleClick={({ original: network }) =>
+            handleSelectOne(network.Id, !effectiveSelected.has(network.Id))
+          }
           renderExpandedContent={({ original: network }) => (
             <div className="expand-panel">
               <div>

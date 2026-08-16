@@ -436,46 +436,11 @@ const UsersTab = ({
           emptyMessage="No users found."
           fillAvailable
           getRowId={(user) => user.username}
+          // A row's one action is opening the user's card, which already shows
+          // the home directory, shell and groups an inline panel would repeat.
           onRowClick={({ original: user }) =>
             setSelectedUsername(user.username)
           }
-          renderExpandedContent={({ original: user }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Home Directory:</b>
-                </AppTypography>
-                <AppTypography className="expand-panel__mono" variant="body2">
-                  {user.homeDir}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Shell:</b>
-                </AppTypography>
-                <AppTypography className="expand-panel__mono" variant="body2">
-                  {user.shell}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>All Groups:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {getAllGroups(user).map((group, idx) => (
-                    <Chip
-                      key={group}
-                      label={idx === 0 ? `${group} (primary)` : group}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
           selectedRowId={selectedUsername}
         />
       )}
