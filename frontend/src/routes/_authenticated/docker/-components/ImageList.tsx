@@ -1,9 +1,11 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -16,6 +18,7 @@ import {
   AppDialogContent,
   AppDialogContentText,
   AppDialogTitle,
+  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
@@ -169,12 +172,17 @@ const getImageRowId = (image: { id: string }) => image.id;
 
 // A press in layout mode belongs to the drag, not to selecting the image.
 const noopSelect = () => {};
+const dockerRouteApi = getRouteApi("/_authenticated/docker/images");
 
 const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedImageId =
+    typeof searchParams.image === "string" ? searchParams.image : undefined;
   const { data: rawImages } = useSuspenseQuery({
     ...linuxio.docker.list_images,
     ...{
@@ -232,7 +240,10 @@ const ImageList = ({
     surface: "docker.images",
   });
   useCardSelectionEscape({
-    enabled: viewMode === "card" && (selected.size > 0 || surface.editMode),
+    enabled:
+      viewMode === "card" &&
+      !focusedImageId &&
+      (selected.size > 0 || surface.editMode),
     isReordering: surface.editMode,
     onClearSelection: () => setSelected(new Set()),
     onExitReordering: surface.exitEditMode,
@@ -268,6 +279,12 @@ const ImageList = ({
     return result;
   }, [selected, filtered]);
 
+  const clearFocusedImage = useCallback(() => {
+    void navigate({
+      to: "/docker/images",
+      search: (previous) => ({ ...previous, image: undefined }),
+    });
+  }, [navigate]);
   const handleSelectOne = (id: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -278,13 +295,115 @@ const ImageList = ({
       }
       return next;
     });
+    if (checked) {
+      void navigate({
+        to: "/docker/images",
+        search: (previous) => ({ ...previous, image: id }),
+      });
+    } else if (focusedImageId === id) {
+      clearFocusedImage();
+    }
   };
   const handleDeleteSuccess = () => {
     setSelected(new Set());
+    clearFocusedImage();
   };
   const selectedImages = filtered.filter((img) =>
     effectiveSelected.has(img.id),
   );
+  const focusedImage = useMemo(
+    () => orderedRows.find((image) => image.id === focusedImageId) ?? null,
+    [focusedImageId, orderedRows],
+  );
+
+  useEffect(() => {
+    if (focusedImageId && !focusedImage) clearFocusedImage();
+  }, [clearFocusedImage, focusedImage, focusedImageId]);
+
+  useEffect(() => {
+    if (!focusedImage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
+      }
+      clearFocusedImage();
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clearFocusedImage, focusedImage]);
+  const renderExpandedContent = useCallback(
+    (image: (typeof imageRows)[number]) => (
+      <div className="expand-panel">
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Full Image ID:</b>
+          </AppTypography>
+          <AppTypography
+            className="expand-panel__mono"
+            style={longTextStyles}
+            variant="body2"
+          >
+            {image.id}
+          </AppTypography>
+        </div>
+
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Labels:</b>
+          </AppTypography>
+          <div className="expand-panel__chips">
+            {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
+              Object.entries(image.raw.Labels).map(([key, val]) => (
+                <Chip
+                  key={key}
+                  label={`${key}: ${val}`}
+                  size="small"
+                  style={wrappableChipStyle}
+                  labelStyle={wrappableChipLabelStyle}
+                  variant="soft"
+                />
+              ))
+            ) : (
+              <AppTypography color="text.secondary" variant="body2">
+                (no labels)
+              </AppTypography>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Image Digests:</b>
+          </AppTypography>
+          <div>
+            {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
+              image.raw.RepoDigests.map((digest) => (
+                <AppTypography
+                  key={digest}
+                  className="expand-panel__mono"
+                  style={longTextStyles}
+                  variant="body2"
+                >
+                  {digest}
+                </AppTypography>
+              ))
+            ) : (
+              <AppTypography color="text.secondary" variant="body2">
+                (no digests)
+              </AppTypography>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+    [],
+  );
+
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
       accessorKey: "repo",
@@ -442,7 +561,23 @@ const ImageList = ({
           />
         )}
       </RoutedTabActions>
-      {viewMode === "card" ? (
+      {focusedImage ? (
+        <DockerResourceDetailsLayout
+          onClose={clearFocusedImage}
+          resourceLabel="image"
+          subtitle={`${focusedImage.size} MB · ${focusedImage.created}`}
+          summary={
+            <DockerImageCard
+              image={focusedImage}
+              onSelect={(checked) => handleSelectOne(focusedImage.id, checked)}
+              selected={effectiveSelected.has(focusedImage.id)}
+            />
+          }
+          title={focusedImage.repo}
+        >
+          {renderExpandedContent(focusedImage)}
+        </DockerResourceDetailsLayout>
+      ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
             fillAvailable
@@ -490,71 +625,9 @@ const ImageList = ({
           onRowDoubleClick={({ original: image }) =>
             handleSelectOne(image.id, !effectiveSelected.has(image.id))
           }
-          renderExpandedContent={({ original: image }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Full Image ID:</b>
-                </AppTypography>
-                <AppTypography
-                  className="expand-panel__mono"
-                  style={longTextStyles}
-                  variant="body2"
-                >
-                  {image.id}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Labels:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {image.raw.Labels &&
-                  Object.keys(image.raw.Labels).length > 0 ? (
-                    Object.entries(image.raw.Labels).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no labels)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Image Digests:</b>
-                </AppTypography>
-                <div>
-                  {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
-                    image.raw.RepoDigests.map((digest) => (
-                      <AppTypography
-                        key={digest}
-                        className="expand-panel__mono"
-                        style={longTextStyles}
-                        variant="body2"
-                      >
-                        {digest}
-                      </AppTypography>
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no digests)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          renderExpandedContent={({ original: image }) =>
+            renderExpandedContent(image)
+          }
         />
       )}
 
