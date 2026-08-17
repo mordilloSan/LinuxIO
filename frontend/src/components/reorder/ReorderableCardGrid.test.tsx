@@ -14,10 +14,6 @@ vi.mock("@/components/cards/SortableCard", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/reorder/ReorderableArea", () => ({
-  default: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
 interface TestItem {
   id: string;
 }

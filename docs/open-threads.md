@@ -32,12 +32,16 @@ or instead of code.
   `constants.ts` comment instead of "no documented reason".
   *Verify: `make check-frontend`, visual pass over docker + shares tabs*
 
-- [ ] **A3. (decision) Prune or keep the reorder escape hatches.**
-  Two primitives now have zero production consumers:
-  `disableReordering` prop (`ReorderableCardGrid.tsx:21`) and the
-  `ReorderableArea` component (only `ReorderableCardGrid` itself consumes it;
-  the network route mention is just a comment). Prune both, keep both as
-  documented escape hatches, or split the decision.
+- [x] **A3. Reorder escape hatches — pruned both.** *(done 2026-08-17)*
+  Decision: prune. `disableReordering` deleted (zero callers; `SortableCard`'s
+  own `disabled` default covers it, and its removal makes the docblock's
+  "there is no unarmed variant" literally true). `ReorderableArea.tsx` deleted
+  — its only consumer was `ReorderableCardGrid` itself and its `layout="list"`
+  branch was dead too; the grid now wraps its body once in
+  `DndContext`/`SortableContext` directly (`rectSortingStrategy`). Test mock
+  removed (the real contexts render in jsdom); the stale hand-roll comment in
+  `NetworkInterfaceList.tsx` reworded. Reintroducible from git if a bespoke
+  layout ever needs the escape hatch.
   *Verify: `make check-frontend`*
 
 - [ ] **A4. (decision) `color-mix` normalisation — parked on request.**

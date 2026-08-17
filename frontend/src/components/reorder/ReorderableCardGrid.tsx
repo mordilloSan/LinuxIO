@@ -1,8 +1,9 @@
+import { DndContext } from "@dnd-kit/core";
+import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import type { ReactNode } from "react";
 
 import SortableCard from "@/components/cards/SortableCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
-import ReorderableArea from "@/components/reorder/ReorderableArea";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import {
@@ -17,8 +18,6 @@ interface ReorderableCardGridProps<TItem> {
   ariaLabel?: string;
   /** Equal-width columns at each breakpoint. When present, each card spans one column. */
   columns?: GridSize;
-  /** Leaves the rendered cards interactive without arming hold-to-reorder. */
-  disableReordering?: boolean;
   /**
    * Scroll the cards inside the grid rather than growing the page, the way
    * `fillAvailable` works on AppVirtualGrid and AppDataTable. Set it where the
@@ -66,7 +65,6 @@ interface ReorderableCardGridProps<TItem> {
 function ReorderableCardGrid<TItem>({
   ariaLabel,
   columns,
-  disableReordering = false,
   emptyMessage,
   estimateItemHeight,
   fillAvailable = false,
@@ -85,7 +83,6 @@ function ReorderableCardGrid<TItem>({
   // it, so a route never wires SortableCard itself.
   const renderSortableCard = (item: TItem, index: number) => (
     <SortableCard
-      disabled={disableReordering}
       editMode={surface.editMode}
       id={getId(item)}
       pending={surface.pendingId === getId(item)}
@@ -94,68 +91,70 @@ function ReorderableCardGrid<TItem>({
     </SortableCard>
   );
 
+  let body: ReactNode;
   if (virtualized) {
-    return (
-      <ReorderableArea surface={surface}>
-        <AppVirtualGrid
-          ariaLabel={ariaLabel}
-          emptyMessage={emptyMessage}
-          estimateItemHeight={estimateItemHeight}
-          fillAvailable={fillAvailable}
-          gap={spacing * GAP_XS}
-          getItemKey={(item) => getId(item)}
-          items={rendered as TItem[]}
-          minItemWidth={minItemWidth}
-          padding={0}
-          renderItem={renderSortableCard}
-        />
-      </ReorderableArea>
+    body = (
+      <AppVirtualGrid
+        ariaLabel={ariaLabel}
+        emptyMessage={emptyMessage}
+        estimateItemHeight={estimateItemHeight}
+        fillAvailable={fillAvailable}
+        gap={spacing * GAP_XS}
+        getItemKey={(item) => getId(item)}
+        items={rendered as TItem[]}
+        minItemWidth={minItemWidth}
+        padding={0}
+        renderItem={renderSortableCard}
+      />
+    );
+  } else {
+    const grid = (
+      <AppGrid columns={columns} container spacing={spacing}>
+        {rendered.map((item, index) => (
+          <AppGrid key={getId(item)} size={columns ? 1 : size}>
+            {renderSortableCard(item, index)}
+          </AppGrid>
+        ))}
+      </AppGrid>
+    );
+    body = fillAvailable ? (
+      <div
+        className="custom-scrollbar"
+        style={{
+          flex: "1 1 0",
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "auto",
+          /*
+            This scrollport clips, so the room a hover-lifted card needs is
+            reserved inside it and handed straight back by the matching
+            negative margin — the cards land exactly where they did before,
+            and the space they rise into now travels with them. Same trade
+            AppVirtualGrid makes; the top headroom is the gap the tab strip
+            leaves below itself (--tab-strip-headroom).
+          */
+          paddingTop: HOVER_LIFT_HEADROOM,
+          marginTop: -HOVER_LIFT_HEADROOM,
+          paddingInline: CARD_LIFT_SHADOW_GUTTER,
+          marginInline: -CARD_LIFT_SHADOW_GUTTER,
+          // Not reclaimed: the last row's shadow falls below the cards, and
+          // scrolling a little past the end is what a list should do anyway.
+          paddingBottom: CARD_LIFT_SHADOW_GUTTER,
+        }}
+      >
+        {grid}
+      </div>
+    ) : (
+      grid
     );
   }
 
-  const grid = (
-    <AppGrid columns={columns} container spacing={spacing}>
-      {rendered.map((item, index) => (
-        <AppGrid key={getId(item)} size={columns ? 1 : size}>
-          {renderSortableCard(item, index)}
-        </AppGrid>
-      ))}
-    </AppGrid>
-  );
-
   return (
-    <ReorderableArea surface={surface}>
-      {fillAvailable ? (
-        <div
-          className="custom-scrollbar"
-          style={{
-            flex: "1 1 0",
-            minHeight: 0,
-            minWidth: 0,
-            overflow: "auto",
-            /*
-              This scrollport clips, so the room a hover-lifted card needs is
-              reserved inside it and handed straight back by the matching
-              negative margin — the cards land exactly where they did before,
-              and the space they rise into now travels with them. Same trade
-              AppVirtualGrid makes; the top headroom is the gap the tab strip
-              leaves below itself (--tab-strip-headroom).
-            */
-            paddingTop: HOVER_LIFT_HEADROOM,
-            marginTop: -HOVER_LIFT_HEADROOM,
-            paddingInline: CARD_LIFT_SHADOW_GUTTER,
-            marginInline: -CARD_LIFT_SHADOW_GUTTER,
-            // Not reclaimed: the last row's shadow falls below the cards, and
-            // scrolling a little past the end is what a list should do anyway.
-            paddingBottom: CARD_LIFT_SHADOW_GUTTER,
-          }}
-        >
-          {grid}
-        </div>
-      ) : (
-        grid
-      )}
-    </ReorderableArea>
+    <DndContext {...surface.dndContextProps}>
+      <SortableContext items={surface.ids} strategy={rectSortingStrategy}>
+        {body}
+      </SortableContext>
+    </DndContext>
   );
 }
 
