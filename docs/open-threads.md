@@ -67,46 +67,43 @@ or instead of code.
   covers the card-density split between the same tabs.
   *Verify: `make check-frontend`, visual pass over the docker tabs*
 
-## Thread B — dock focus artifacts (committed through 23bc7542; open items
-from `docs/focus-artifact-investigation-2026-08-16.md`)
+## Thread B — dock focus artifacts (simplified 2026-08-17; history in
+`docs/focus-artifact-investigation-2026-08-16.md`)
 
-- [ ] **B1. Post-fix headed re-verification.**
-  The pre-fix bug was reproduced in headed Chromium under a real window
-  manager (Xephyr `:99` + Muffin); the fix has only synthetic-event coverage.
-  Re-run the exact switch-away/return sequence against current HEAD and record
-  at each step: `document.activeElement`, `document.hasFocus()`,
-  `relatedTarget`, `data-pointer-focus`, root `data-pointer-active`,
-  `:focus-visible`, computed outline, label opacity. Confirm the stepped white
-  outline and stale label no longer appear.
-  *Verify: manual headed run; `make test-frontend-browser`*
+Decision (2026-08-17): delete the per-element focus-origin system and adopt
+native `:focus-visible` semantics everywhere. Keyboard activity revealing
+focus on the currently focused control is accepted platform behavior, not
+fought.
 
-- [ ] **B2. Fix `body`-marking in the pointer tracker.**
-  `handlePointerDown` (`frontend/src/utils/inputModality.ts:83-88`) marks
-  `document.activeElement` whenever it's in the composed path; on an initial
-  page click that's `document.body`, so `data-pointer-focus` lands on `body`.
-  Add a focused regression test first, then exclude `body`/`documentElement`
-  (or whatever the test shows is right).
-  *Verify: `make check-frontend`, `make test-frontend-browser`*
+- [ ] **B1. Headed re-verification — once, against the finished state.**
+  Real switch-away/return under a window manager (Xephyr `:99` + Muffin):
+  confirm no stepped user-agent outline appears; keyboard focus shows the
+  tile ring with the label as its caption; hover labels stay hidden after
+  returning until the pointer actually moves over the dock; the mobile
+  `Actions` ring after search close is the clean designed ring.
+  *Verify: manual headed run*
 
-- [ ] **B3. Re-check the mobile `Actions` ring separately.**
-  Small-screen tune-button focus ring after search close was patched in
-  `541e411d`. Confirm whether it still reproduces on current HEAD. Keep
-  diagnosis and tests separate from the dock thread.
-  *Verify: manual small-screen check; `make test-frontend-browser`*
-
-- [ ] **B4. (decision) Dock keyboard-focus indicator a11y.**
-  `.app-dock-link:focus-visible { outline: none; }` suppresses Chromium's
-  malformed descendant outline; the dock label is currently the only keyboard
-  focus indicator. Decide: label alone is sufficient, or add a deliberate
-  tile-local focus ring (never the user-agent outline around transformed
-  descendants).
-  *Verify: keyboard-only pass over the dock; `make test-frontend-browser`*
-
-- [ ] **B5. Simplification pass — only after B1–B4.**
-  Decide whether `data-pointer-active` (root marker), the mobile search's
-  manual marker restoration, and the global origin tracker each still have
-  distinct justified responsibilities; remove what's redundant.
-  *Verify: `make check-frontend`, `make test-frontend-browser`*
+- [x] **B2–B5 collapsed into one simplification.** *(done 2026-08-17)*
+  Deleted `utils/inputModality.ts` and its tests, `data-pointer-focus`
+  marking, the global outline kill rule in `variables.css`, the
+  `:not([data-pointer-focus])` clauses (dock, section-header,
+  container-table), and the mobile search's marker restoration — the
+  `trigger.focus()` restore itself stays, and the ring it paints is
+  intentional, which settles B3. B2 (body-marking bug) skipped: the code it
+  lived in is gone. B4 resolved: `.app-dock-link:focus-visible { outline:
+  none }` stays, and a deliberate two-colour tile-local ring (white outline
+  over a dark separator, lengths authored ×1.6 for the scaled layer) is the
+  focus indicator; the label now shows on plain `:focus-visible` as its
+  caption. B5 resolved: only the hover-liveness gate survives, moved into the
+  dock as `useDockPointerLiveness` — one owner arms `data-dock-pointer` on
+  `.app-dock` (non-touch pointers only) and feeds magnification from the same
+  handler, and resets both on pointerleave, window blur, or document hiding.
+  `AppTooltip` asks the platform directly (`matches(":focus-visible")`,
+  text-entry controls excluded); jsdom never matches `:focus-visible`, so the
+  Chromium heuristic (keyboard, pointer, programmatic restoration, text-entry
+  exclusion) is covered in the browser suite instead.
+  *Verified: `make check-frontend` (172 files / 822 tests) and
+  `make test-frontend-browser` (20 tests) pass, 2026-08-17.*
 
 ## Thread C — sensors (hp_wmi investigation, 2026-08-17)
 

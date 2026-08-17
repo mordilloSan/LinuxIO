@@ -115,23 +115,37 @@
     transform 140ms ease;
 }
 
-/* The label below is the dock's keyboard-focus indicator. Chromium's default
-   link outline traces both the transformed tile and the absolutely positioned
-   label, producing a large stepped contour around unrelated boxes. */
+/* Chromium's default link outline traces both the transformed tile and the
+   absolutely positioned label, producing a large stepped contour around
+   unrelated boxes. The tile ring below is the designed replacement. */
 .app-dock-link:focus-visible {
   outline: none;
 }
 
-/* Hover also needs evidence of a live pointer event during this window
-   activation. Chromium restores :hover when the app comes back without firing
-   the pointermove that drives dock magnification; without this root mark the
-   label appears on its own under a resting tile. See utils/inputModality.ts.
+/* Keyboard-focus indicator: a two-colour ring on the tile itself. Tile
+   gradients are user-configurable, so a light ring with a dark separator keeps
+   contrast whatever the tile and the surface behind it look like. Lengths are
+   authored ×1.6 like the tile shadows above — the layer's 0.625 resting scale
+   renders them at 2px/1px — and the ring magnifies with its tile. The light
+   half is an outline rather than a shadow so forced-colors mode keeps it. */
+.app-dock-link:focus-visible .app-dock__tile {
+  outline: 3.2px solid #fff;
+  outline-offset: 1.6px;
+  box-shadow:
+    0 0 0 6.4px rgba(0, 0, 0, 0.6),
+    inset 0 1.6px 1.6px rgba(255, 255, 255, 0.4),
+    inset 0 -3.2px 6.4px rgba(0, 0, 0, 0.15),
+    0 9.6px 22.4px -9.6px rgba(0, 0, 0, 0.5);
+}
 
-   For focus, show the label only when the keyboard took that focus. A mouse
-   click can start matching :focus-visible after a later keypress, so the
-   pointer-focus mark distinguishes the two. */
-:root[data-pointer-active] .app-dock-link:hover .app-dock__label,
-.app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label {
+/* Hover labels need evidence of live pointer movement over the dock in this
+   window activation: Chromium restores :hover when the window comes back
+   without firing the pointermove that drives magnification, and a label under
+   a resting tile reads as a glitch. The dock owns the attribute together with
+   the magnification pointer (useDockPointerLiveness), so both always reset
+   together. Keyboard focus also shows the label, captioning the tile ring. */
+.app-dock[data-dock-pointer] .app-dock-link:hover .app-dock__label,
+.app-dock-link:focus-visible .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
 }

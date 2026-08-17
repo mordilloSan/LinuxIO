@@ -11,10 +11,6 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
-import {
-  installInputModalityTracking,
-  POINTER_FOCUS_ATTRIBUTE,
-} from "@/utils/inputModality";
 
 import {
   RoutedTabActions,
@@ -135,11 +131,7 @@ const StatefulAction = () => {
 };
 
 describe("RoutedTabContainer", () => {
-  let stopInputModalityTracking: (() => void) | null = null;
-
   afterEach(() => {
-    stopInputModalityTracking?.();
-    stopInputModalityTracking = null;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -386,7 +378,6 @@ describe("RoutedTabContainer", () => {
   });
 
   it("puts child search beside the other actions in the mobile menu", async () => {
-    stopInputModalityTracking = installInputModalityTracking();
     mockViewport();
     const rootRoute = createRootRoute({ component: Outlet });
     const accountsRoute = createRoute({
@@ -458,19 +449,6 @@ describe("RoutedTabContainer", () => {
       screen.queryByRole("textbox", { name: "Search users" }),
     ).not.toBeInTheDocument();
     expect(actionsTrigger).toHaveFocus();
-    expect(actionsTrigger).toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
-
-    // A search opened from the keyboard still restores a visible keyboard
-    // position instead of inheriting the pointer-only suppression above.
-    await user.keyboard("{Enter}");
-    searchAction.focus();
-    await user.keyboard("{Enter}");
-    expect(search).toHaveFocus();
-
-    await user.keyboard("{Escape}");
-
-    expect(actionsTrigger).toHaveFocus();
-    expect(actionsTrigger).not.toHaveAttribute(POINTER_FOCUS_ATTRIBUTE);
   });
 
   it("preserves action-local state across breakpoint changes", async () => {

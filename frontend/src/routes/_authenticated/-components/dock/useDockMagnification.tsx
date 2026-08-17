@@ -11,6 +11,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  type PointerEvent,
   type ReactNode,
 } from "react";
 
@@ -217,4 +218,55 @@ export function useDockMagnification() {
 
 export function useDockPointer() {
   return useRequiredDockContext().setPointer;
+}
+
+/**
+ * Set on the dock while a pointing device has moved over it during this window
+ * activation. Hover labels require it in addition to `:hover` — see dock.css.
+ */
+export const DOCK_POINTER_ATTRIBUTE = "data-dock-pointer";
+
+/* Pointer liveness for the dock element. Chromium restores :hover when the
+   window comes back without dispatching the pointermove that drives
+   magnification, which would show a label under a resting tile. One owner for
+   both prevents that: the same handler feeds the magnification pointer and
+   arms the label gate, and window deactivation resets both, so the two can
+   never disagree. */
+export function useDockPointerLiveness(magnificationEnabled: boolean) {
+  const setPointer = useDockPointer();
+  const navRef = useRef<HTMLElement | null>(null);
+
+  const reset = useCallback(() => {
+    setPointer(Infinity);
+    navRef.current?.removeAttribute(DOCK_POINTER_ATTRIBUTE);
+  }, [setPointer]);
+
+  useEffect(() => {
+    if (!magnificationEnabled) setPointer(Infinity);
+  }, [magnificationEnabled, setPointer]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") reset();
+    };
+    window.addEventListener("blur", reset);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", reset);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [reset]);
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      // Touchscreens emulate a sticky :hover after a tap. That is not a
+      // pointing cursor and must not arm the label gate.
+      if (event.pointerType === "touch") return;
+      navRef.current?.setAttribute(DOCK_POINTER_ATTRIBUTE, "");
+      if (magnificationEnabled) setPointer(event.clientX);
+    },
+    [magnificationEnabled, setPointer],
+  );
+
+  return { navRef, onPointerLeave: reset, onPointerMove: handlePointerMove };
 }

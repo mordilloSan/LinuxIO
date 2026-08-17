@@ -11,13 +11,8 @@ import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
-import { installInputModalityTracking } from "@/utils/inputModality";
 
 import "@/theme/variables.css";
-
-// Match production startup: pointer-origin focus has to be classified before
-// React handles the first press.
-installInputModalityTracking();
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));

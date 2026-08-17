@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 import { render } from "@/test/render";
-import { installInputModalityTracking } from "@/utils/inputModality";
 
 const rect = (left: number, top: number, width: number, height: number) =>
   ({
@@ -92,37 +91,9 @@ describe("AppTooltip", () => {
     vi.useRealTimers();
   });
 
-  it("summons the bubble on keyboard focus but not on pointer focus", async () => {
-    vi.useFakeTimers();
-    const uninstall = installInputModalityTracking();
-    render(
-      <AppTooltip title="Collapse row">
-        <button data-testid="chevron" type="button">
-          chevron
-        </button>
-      </AppTooltip>,
-    );
-    const chevron = screen.getByTestId("chevron");
-
-    // A press fires focusin with the pointer on the trigger — but the pointer
-    // may be gone by the time the bubble would appear, and a focus that a
-    // dialog restores on close has no pointer near it at all.
-    fireEvent.pointerDown(chevron);
-    fireEvent.focus(chevron);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
-    });
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-
-    // Keyboard focus keeps its label: it is the one focus with a blur coming.
-    fireEvent.keyDown(document, { key: "Tab" });
-    fireEvent.focus(chevron);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
-    });
-    expect(screen.getByRole("tooltip")).toBeInTheDocument();
-
-    uninstall();
-    vi.useRealTimers();
-  });
+  // Focus behavior is intentionally untested here: the bubble is summoned by
+  // event.target.matches(":focus-visible"), and jsdom parses that selector but
+  // never matches it, even for a focused element. The browser suite covers the
+  // real Chromium heuristic (keyboard focus, pointer focus, programmatic
+  // restoration, and the text-entry exclusion).
 });

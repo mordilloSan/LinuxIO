@@ -3,10 +3,47 @@ import { useState } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppTextField from "@/components/ui/AppTextField";
+import AppTooltip from "@/components/ui/AppTooltip";
 import DockTile from "@/routes/_authenticated/-components/dock/DockTile";
-import { DockMagnificationProvider } from "@/routes/_authenticated/-components/dock/useDockMagnification";
+import {
+  DockMagnificationProvider,
+  useDockPointerLiveness,
+} from "@/routes/_authenticated/-components/dock/useDockMagnification";
 
 import "@/routes/_authenticated/-components/dock/dock.css";
+
+/* The production dock structure with the production pointer-liveness wiring,
+   so the browser tests exercise the same hover-label gate Dock.tsx uses. */
+function DockFixture() {
+  const { navRef, onPointerLeave, onPointerMove } =
+    useDockPointerLiveness(true);
+
+  return (
+    <nav
+      aria-label="Dock fixture"
+      className="app-dock"
+      onPointerLeave={onPointerLeave}
+      onPointerMove={onPointerMove}
+      ref={navRef}
+    >
+      <ul className="app-dock__list">
+        <li className="app-dock__item">
+          <a
+            aria-label="Dashboard"
+            className="app-dock-link"
+            data-testid="dock-dashboard"
+            href="#dashboard"
+          >
+            <DockTile gradient={["#4fa8f8", "#1670e0"]} label="Dashboard">
+              <span aria-hidden="true">⌂</span>
+            </DockTile>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  );
+}
 
 export default function AccessibilityPage() {
   const [activations, setActivations] = useState({
@@ -48,23 +85,17 @@ export default function AccessibilityPage() {
         {activations.chip}
       </output>
       <DockMagnificationProvider>
-        <nav aria-label="Dock fixture" className="app-dock">
-          <ul className="app-dock__list">
-            <li className="app-dock__item">
-              <a
-                aria-label="Dashboard"
-                className="app-dock-link"
-                data-testid="dock-dashboard"
-                href="#dashboard"
-              >
-                <DockTile gradient={["#4fa8f8", "#1670e0"]} label="Dashboard">
-                  <span aria-hidden="true">⌂</span>
-                </DockTile>
-              </a>
-            </li>
-          </ul>
-        </nav>
+        <DockFixture />
       </DockMagnificationProvider>
+      {/* Tooltip triggers stay below the dock so the Tab counts above hold. */}
+      <div style={{ display: "flex", gap: "16px", marginTop: "24px" }}>
+        <AppTooltip title="Collapse row">
+          <AppButton>Tooltip button</AppButton>
+        </AppTooltip>
+        <AppTooltip title="Search syntax">
+          <AppTextField aria-label="Tooltip query" />
+        </AppTooltip>
+      </div>
       <div style={{ height: "1600px" }} />
     </main>
   );

@@ -212,33 +212,6 @@ a {
   background: transparent;
 }
 
-/* ── Pointer-taken focus ──
-   A focus ring the pointer summoned is litter; one the keyboard summoned is the
-   user's position on the page. The browser cannot tell them apart after the
-   fact — it re-reads :focus-visible against whatever modality is current, so a
-   button that was merely clicked lights up on the next keystroke and stays lit.
-   utils/inputModality.ts marks the pointer-taken focus and this rule drops the
-   ring for that element alone; the focus itself, and therefore tab order and
-   the AT cursor, is untouched.
-
-   Text-entry controls are excluded: they match :focus-visible on a plain click
-   by design, and there the ring marks where the caret lives.
-
-   This rule only covers `outline`, which is all most rings are. A
-   :focus-visible rule that reveals something else — an opacity, a background,
-   a colour — has to opt out itself, because CSS cannot reach inside another
-   declaration. The convention for those is to spell the intent in full:
-
-     .thing:focus-visible:not([data-pointer-focus]) { ... }
-
-   as dock.css (tile label), section-header.css (toggle) and container-table.css
-   (stack toggle) do. Rules that only style something inside an already-open
-   surface — menu items, autocomplete options, a focused select's border — are
-   left alone: they are gone or irrelevant before a stray keystroke can land. */
-[data-pointer-focus]:focus-visible:not(input, textarea, select, [contenteditable]) {
-  outline: none;
-}
-
 .custom-scrollbar {
   --custom-scrollbar-thumb: rgba(127, 127, 127, 0.06);
   --custom-scrollbar-thumb-hover: rgba(127, 127, 127, 0.45);

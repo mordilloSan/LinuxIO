@@ -8,13 +8,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import type { ToastMeta } from "@/types/navigation";
-import { getInputModality } from "@/utils/inputModality";
 import "./app-tooltip.css";
 
 type TooltipPlacement =
@@ -195,14 +195,25 @@ const AppTooltip = ({
     setVisible(false);
   }, []);
 
-  const handleFocus = useCallback(() => {
-    // Only keyboard focus may summon the bubble, because only keyboard focus
-    // has a blur coming to take it away. A pointer press fires focusin too, and
-    // so does a dialog restoring focus to the trigger it was opened from — both
-    // with the pointer somewhere else entirely, which leaves a bubble parked
-    // over the page that no mouseleave will ever reach.
-    if (getInputModality() === "keyboard") show();
-  }, [show]);
+  const handleFocus = useCallback(
+    (event: FocusEvent<HTMLSpanElement>) => {
+      // Only keyboard-visible focus may summon the bubble, because only that
+      // focus has a blur coming to take it away. A pointer press fires focusin
+      // too, and so does a dialog restoring focus to the trigger it was opened
+      // from — both with the pointer somewhere else entirely, which leaves a
+      // bubble parked over the page that no mouseleave will ever reach.
+      // Text-entry controls are excluded: they match :focus-visible on a plain
+      // click by design, and a click into a field must not park a bubble.
+      if (
+        event.target.matches(
+          ":focus-visible:not(input, textarea, select, [contenteditable])",
+        )
+      ) {
+        show();
+      }
+    },
+    [show],
+  );
 
   const handleClick = useCallback(async () => {
     if (!copyText || !refreshCopyAvailability()) return;

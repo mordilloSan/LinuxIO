@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import type { DockTileColors } from "@/api";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -9,7 +9,7 @@ import { fromHsl, lighten, toHsl } from "@/utils/color";
 import DockItem from "./DockItem";
 import {
   DockMagnificationProvider,
-  useDockPointer,
+  useDockPointerLiveness,
 } from "./useDockMagnification";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
@@ -107,10 +107,11 @@ const gradientFor = (
 const Dock = () => {
   const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
-  const setPointer = useDockPointer();
   const theme = useAppTheme();
   const [dockTileColors] = useConfigValue("dockTileColors");
   const magnificationEnabled = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const { navRef, onPointerLeave, onPointerMove } =
+    useDockPointerLiveness(magnificationEnabled);
 
   const palette = dockTileColors ?? "accent";
   const accent = theme.palette.primary.main;
@@ -121,18 +122,13 @@ const Dock = () => {
      track the active route itself. */
   const activeGradient = palette === "neutral" ? tileGradient(accent) : null;
 
-  useEffect(() => {
-    if (!magnificationEnabled) setPointer(Infinity);
-  }, [magnificationEnabled, setPointer]);
-
   return (
     <nav
       aria-label="Primary navigation"
       className="app-dock"
-      onMouseLeave={() => setPointer(Infinity)}
-      onMouseMove={
-        magnificationEnabled ? (event) => setPointer(event.clientX) : undefined
-      }
+      onPointerLeave={onPointerLeave}
+      onPointerMove={onPointerMove}
+      ref={navRef}
       style={
         activeGradient
           ? ({

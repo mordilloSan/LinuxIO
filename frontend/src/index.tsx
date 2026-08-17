@@ -8,12 +8,8 @@ import "./icons/shell";
 import App from "./App";
 import { applyCssVariables } from "./theme";
 import { MOTION_CSS_VARS } from "./theme/constants";
-import { installInputModalityTracking } from "./utils/inputModality";
 
 applyCssVariables(document.documentElement, MOTION_CSS_VARS);
-// Before the first render: the tracker has to see the very first pointerdown to
-// classify the focus it takes.
-installInputModalityTracking();
 const container = document.getElementById("root");
 const root = createRoot(container!);
 

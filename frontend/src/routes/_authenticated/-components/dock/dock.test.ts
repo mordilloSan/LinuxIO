@@ -12,18 +12,29 @@ const stylesheet = fs.readFileSync(
 );
 
 describe("dock labels", () => {
-  it("shows labels only for keyboard-visible focus", () => {
-    // :focus-visible is necessary but not sufficient — the browser starts
-    // matching it on the click-focused link as soon as any key is pressed, so
-    // the pointer-focus mark has to be excluded too or the label sticks.
+  it("gates hover labels on live dock pointer activity", () => {
+    // Chromium revives :hover on window return without a pointermove, so bare
+    // :hover would show a label under a resting tile. The dock-owned attribute
+    // (useDockPointerLiveness) supplies the missing evidence.
     expect(stylesheet).toContain(
-      ".app-dock-link:focus-visible:not([data-pointer-focus]) .app-dock__label",
+      ".app-dock[data-dock-pointer] .app-dock-link:hover .app-dock__label",
     );
     expect(stylesheet).toContain(
-      ":root[data-pointer-active] .app-dock-link:hover .app-dock__label",
+      ".app-dock-link:focus-visible .app-dock__label",
     );
     expect(stylesheet).not.toContain("\n.app-dock-link:hover .app-dock__label");
     expect(stylesheet).not.toContain(":focus-within");
+  });
+
+  it("replaces the user-agent anchor outline with a tile-local focus ring", () => {
+    // The default outline traces the transformed tile and the absolutely
+    // positioned label as one stepped contour around unrelated boxes.
+    expect(stylesheet).toContain(
+      ".app-dock-link:focus-visible {\n  outline: none;",
+    );
+    expect(stylesheet).toContain(
+      ".app-dock-link:focus-visible .app-dock__tile",
+    );
   });
 });
 
