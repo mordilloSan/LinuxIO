@@ -60,18 +60,26 @@ describe("ImageList focused details", () => {
     );
   });
 
-  it("opens rich details for a selected image and closes only route focus", async () => {
-    const { user } = render(<ImageList viewMode="card" />);
+  it("opens rich details on one click and closes only route focus", async () => {
+    const { rerender, user } = render(<ImageList viewMode="card" />);
 
-    await user.dblClick(
-      screen.getByRole("button", { name: "Select image example/image" }),
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open image example/image details",
+      }),
     );
+    rerender(<ImageList viewMode="card" />);
 
     expect(
       await screen.findByRole("button", { name: "Close image details" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Full Image ID:")).toBeInTheDocument();
     expect(screen.getByText("example/image@sha256:digest")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Delete image example/image",
+      }),
+    ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: "Close image details" }),

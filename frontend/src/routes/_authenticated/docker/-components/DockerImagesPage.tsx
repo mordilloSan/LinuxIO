@@ -12,6 +12,14 @@ import { useViewMode } from "@/hooks/useViewMode";
 
 import ImageList from "./ImageList";
 
+const IMAGE_PRUNE_OPTIONS = {
+  buildCache: false,
+  containers: false,
+  images: true,
+  networks: false,
+  volumes: false,
+} as const;
+
 const DockerImagesPage = () => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [imagesView, setImagesView] = useViewMode("docker.images");
@@ -73,6 +81,7 @@ const DockerImagesPage = () => {
         isLoading={isPruning}
         onClose={() => !isPruning && setPruneDialogOpen(false)}
         onConfirm={(options: PruneOptions) => systemPrune(options)}
+        initialOptions={IMAGE_PRUNE_OPTIONS}
         open={pruneDialogOpen}
       />
     </>

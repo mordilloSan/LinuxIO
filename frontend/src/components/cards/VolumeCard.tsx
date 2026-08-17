@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { type DockerVolume } from "@/api";
 import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
@@ -7,8 +9,9 @@ import { longTextStyles } from "@/theme/tableStyles";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface VolumeCardProps {
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  actions?: ReactNode;
+  onOpen?: () => void;
+  selected?: boolean;
   volume: DockerVolume;
 }
 
@@ -22,11 +25,12 @@ const formatReferenceCount = (count?: number) => {
   return `References: ${count}`;
 };
 
-const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
+const VolumeCard = ({ actions, volume, selected, onOpen }: VolumeCardProps) => (
   <DockerResourceCard
     icon="mdi:database-outline"
+    actions={actions}
     label={`volume ${volume.Name}`}
-    onSelect={onSelect}
+    onOpen={onOpen}
     selected={selected}
     subtitle={`${volume.Driver} · ${volume.Scope || "local"}`}
     title={volume.Name}

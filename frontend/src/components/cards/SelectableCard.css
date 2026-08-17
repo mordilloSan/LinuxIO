@@ -1,11 +1,18 @@
-.selectable-card-button {
+.selectable-card-shell,
+.selectable-card-button,
+.selectable-card-static {
+  position: relative;
   display: block;
   height: 100%;
   width: 100%;
   min-width: 0;
+}
+
+.selectable-card-button {
   padding: 0;
   color: inherit;
   text-align: inherit;
+  cursor: pointer;
 }
 
 .selectable-card-button:hover {

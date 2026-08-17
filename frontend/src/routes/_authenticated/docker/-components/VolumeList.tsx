@@ -7,7 +7,7 @@ import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
-import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -168,8 +167,6 @@ const DeleteVolumeDialog = ({
   );
 };
 const getVolumeId = (volume: { Name: string }) => volume.Name;
-// A press in layout mode belongs to the drag, not to selecting the volume.
-const noopSelect = () => {};
 
 const VolumeList = ({
   onMountCreateHandler,
@@ -186,7 +183,6 @@ const VolumeList = ({
     },
   });
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Ensure volumes is an array (handle null/undefined from API)
@@ -237,15 +233,6 @@ const VolumeList = ({
     items: volumesList,
     surface: "docker.volumes",
   });
-  useCardSelectionEscape({
-    enabled:
-      viewMode === "card" &&
-      !focusedVolume &&
-      (selected.size > 0 || surface.editMode),
-    isReordering: surface.editMode,
-    onClearSelection: () => setSelected(new Set()),
-    onExitReordering: surface.exitEditMode,
-  });
   const tableDnd = useReorderableTableDnd<
     (typeof volumesList)[number],
     (typeof volumesList)[number]
@@ -257,37 +244,9 @@ const VolumeList = ({
       vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredNames = new Set(filtered.map((v) => v.Name));
-    const result = new Set<string>();
-    selected.forEach((name) => {
-      if (filteredNames.has(name)) {
-        result.add(name);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-
-  const handleSelectOne = useCallback(
-    (name: string, checked: boolean) => {
-      setSelected((previous) => {
-        const next = new Set(previous);
-        if (checked) next.add(name);
-        else next.delete(name);
-        return next;
-      });
-      if (checked) updateFocusedVolume(name);
-      else if (focusedVolumeName === name) updateFocusedVolume(null);
-    },
-    [focusedVolumeName, updateFocusedVolume],
-  );
-
   const handleDeleteSuccess = () => {
-    setSelected(new Set());
     updateFocusedVolume(null);
   };
-  const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
       accessorKey: "Name",
@@ -532,18 +491,6 @@ const VolumeList = ({
           value={search}
         />
       </RoutedTabSearch>
-      <RoutedTabActions>
-        {effectiveSelected.size > 0 && (
-          <AppActionIconButton
-            ariaLabel={`Delete ${effectiveSelected.size} selected volume${effectiveSelected.size === 1 ? "" : "s"}`}
-            color={theme.palette.error.main}
-            icon="mdi:delete"
-            iconSize={20}
-            label={`Delete ${effectiveSelected.size} selected volume${effectiveSelected.size === 1 ? "" : "s"}`}
-            onClick={() => setDeleteDialogOpen(true)}
-          />
-        )}
-      </RoutedTabActions>
       {focusedVolume ? (
         <DockerResourceDetailsLayout
           onClose={() => updateFocusedVolume(null)}
@@ -551,10 +498,17 @@ const VolumeList = ({
           subtitle={`${focusedVolume.Driver} · ${focusedVolume.Scope || "local"}`}
           summary={
             <VolumeCard
-              onSelect={(checked) =>
-                handleSelectOne(focusedVolume.Name, checked)
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete volume ${focusedVolume.Name}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete volume"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
               }
-              selected={effectiveSelected.has(focusedVolume.Name)}
+              selected
               volume={focusedVolume}
             />
           }
@@ -570,12 +524,11 @@ const VolumeList = ({
             items={filtered}
             renderItem={(volume) => (
               <VolumeCard
-                onSelect={
+                onOpen={
                   surface.editMode
-                    ? noopSelect
-                    : (checked) => handleSelectOne(volume.Name, checked)
+                    ? undefined
+                    : () => updateFocusedVolume(volume.Name)
                 }
-                selected={effectiveSelected.has(volume.Name)}
                 volume={volume}
               />
             )}
@@ -604,15 +557,12 @@ const VolumeList = ({
           emptyMessage="No volumes found."
           fillAvailable
           getRowId={(volume) => volume.Name}
-          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
-          selectedRowIds={effectiveSelected}
-          onClearSelection={() => setSelected(new Set())}
-          onRowDoubleClick={({ original: volume }) =>
-            handleSelectOne(volume.Name, !effectiveSelected.has(volume.Name))
+          onRowClick={
+            surface.editMode
+              ? undefined
+              : ({ original: volume }) => updateFocusedVolume(volume.Name)
           }
-          renderExpandedContent={({ original: volume }) =>
-            renderExpandedContent(volume)
-          }
+          selectedRowId={focusedVolumeName}
         />
       )}
 
@@ -620,7 +570,7 @@ const VolumeList = ({
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
-        volumeNames={selectedVolumes.map((v) => v.Name)}
+        volumeNames={focusedVolume ? [focusedVolume.Name] : []}
       />
     </div>
   );

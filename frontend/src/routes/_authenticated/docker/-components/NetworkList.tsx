@@ -7,7 +7,7 @@ import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -26,7 +26,6 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -618,7 +617,6 @@ const NetworkList = ({
   const networks = rawNetworks;
 
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -639,15 +637,6 @@ const NetworkList = ({
     getId: getNetworkId,
     items: networks,
     surface: "docker.networks",
-  });
-  useCardSelectionEscape({
-    enabled:
-      viewMode === "card" &&
-      !focusedNetworkId &&
-      (selected.size > 0 || surface.editMode),
-    isReordering: surface.editMode,
-    onClearSelection: () => setSelected(new Set()),
-    onExitReordering: surface.exitEditMode,
   });
   const tableDnd = useReorderableTableDnd<
     (typeof networks)[number],
@@ -683,18 +672,6 @@ const NetworkList = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusedNetwork, updateFocusedNetwork]);
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredIds = new Set(filtered.map((n) => n.Id));
-    const result = new Set<string>();
-    selected.forEach((id) => {
-      if (filteredIds.has(id)) {
-        result.add(id);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
     setCreateDialogOpen(true);
@@ -702,29 +679,9 @@ const NetworkList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
-  const handleSelectOne = (id: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-    if (checked) {
-      updateFocusedNetwork(id);
-    } else if (focusedNetworkId === id) {
-      updateFocusedNetwork(null);
-    }
-  };
-
   const handleDeleteSuccess = () => {
-    setSelected(new Set());
     updateFocusedNetwork(null);
   };
-
-  const selectedNetworks = filtered.filter((n) => effectiveSelected.has(n.Id));
 
   const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
     {
@@ -897,18 +854,6 @@ const NetworkList = ({
           value={search}
         />
       </RoutedTabSearch>
-      <RoutedTabActions>
-        {effectiveSelected.size > 0 && (
-          <AppActionIconButton
-            ariaLabel={`Delete ${effectiveSelected.size} selected network${effectiveSelected.size === 1 ? "" : "s"}`}
-            color={theme.palette.error.main}
-            icon="mdi:delete"
-            iconSize={20}
-            label={`Delete ${effectiveSelected.size} selected network${effectiveSelected.size === 1 ? "" : "s"}`}
-            onClick={() => setDeleteDialogOpen(true)}
-          />
-        )}
-      </RoutedTabActions>
       {focusedNetwork ? (
         <DockerResourceDetailsLayout
           onClose={() => updateFocusedNetwork(null)}
@@ -916,11 +861,18 @@ const NetworkList = ({
           subtitle={`${focusedNetwork.Driver} · ${focusedNetwork.Scope}`}
           summary={
             <NetworkCard
-              network={focusedNetwork}
-              onSelect={(checked) =>
-                handleSelectOne(focusedNetwork.Id, checked)
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete network ${focusedNetwork.Name}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete network"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
               }
-              selected={effectiveSelected.has(focusedNetwork.Id)}
+              network={focusedNetwork}
+              selected
             />
           }
           title={focusedNetwork.Name}
@@ -936,12 +888,11 @@ const NetworkList = ({
             renderItem={(network) => (
               <NetworkCard
                 network={network}
-                onSelect={
+                onOpen={
                   surface.editMode
-                    ? () => {}
-                    : (checked) => handleSelectOne(network.Id, checked)
+                    ? undefined
+                    : () => updateFocusedNetwork(network.Id)
                 }
-                selected={effectiveSelected.has(network.Id)}
               />
             )}
             size={CARD_GRID_SIZE_STANDARD}
@@ -969,15 +920,12 @@ const NetworkList = ({
           emptyMessage="No networks found."
           fillAvailable
           getRowId={(network) => network.Id}
-          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
-          selectedRowIds={effectiveSelected}
-          onClearSelection={() => setSelected(new Set())}
-          onRowDoubleClick={({ original: network }) =>
-            handleSelectOne(network.Id, !effectiveSelected.has(network.Id))
+          onRowClick={
+            surface.editMode
+              ? undefined
+              : ({ original: network }) => updateFocusedNetwork(network.Id)
           }
-          renderExpandedContent={({ original: network }) => (
-            <NetworkDetailsContent network={network} />
-          )}
+          selectedRowId={focusedNetworkId}
         />
       )}
 
@@ -988,8 +936,8 @@ const NetworkList = ({
       />
 
       <DeleteNetworkDialog
-        networkIds={selectedNetworks.map((n) => n.Id)}
-        networkNames={selectedNetworks.map((n) => n.Name)}
+        networkIds={focusedNetwork ? [focusedNetwork.Id] : []}
+        networkNames={focusedNetwork ? [focusedNetwork.Name] : []}
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}

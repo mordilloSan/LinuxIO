@@ -39,14 +39,14 @@ describe("DockerImagesPage", () => {
     expect(screen.getByRole("heading", { name: "Prune System" })).toBeVisible();
 
     await user.click(
-      screen.getByRole("button", { name: "Prune Selected (3)" }),
+      screen.getByRole("button", { name: "Prune Selected (1)" }),
     );
 
     expect(mocks.systemPrune).toHaveBeenCalledWith({
       buildCache: false,
-      containers: true,
+      containers: false,
       images: true,
-      networks: true,
+      networks: false,
       volumes: false,
     });
   });

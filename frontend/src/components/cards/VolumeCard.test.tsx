@@ -13,16 +13,15 @@ const volume: DockerVolume = {
 };
 
 describe("VolumeCard", () => {
-  it("uses double click selection without a checkbox", async () => {
-    const onSelect = vi.fn();
-    const { rerender, user } = render(
-      <VolumeCard volume={volume} onSelect={onSelect} selected={false} />,
+  it("opens on one click and keyboard activation", async () => {
+    const onOpen = vi.fn();
+    const { user } = render(
+      <VolumeCard volume={volume} onOpen={onOpen} selected={false} />,
     );
 
     const card = screen.getByRole("button", {
-      name: `Select volume ${volume.Name}`,
+      name: `Open volume ${volume.Name} details`,
     });
-    expect(card).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(
       screen.getByRole("heading", { name: volume.Name }),
@@ -30,21 +29,8 @@ describe("VolumeCard", () => {
     expect(screen.getByText("local · local")).toBeInTheDocument();
 
     await user.click(card);
-    expect(onSelect).not.toHaveBeenCalled();
-
-    await user.dblClick(card);
-    expect(onSelect).toHaveBeenCalledWith(true);
-    expect(card).not.toHaveFocus();
-
-    rerender(<VolumeCard volume={volume} onSelect={onSelect} selected />);
-    const selectedCard = screen.getByRole("button", {
-      name: `Deselect volume ${volume.Name}`,
-    });
-    expect(selectedCard).toHaveAttribute("aria-pressed", "true");
-
-    selectedCard.focus();
+    expect(onOpen).toHaveBeenCalledTimes(1);
     await user.keyboard("{Enter}");
-    expect(onSelect).toHaveBeenLastCalledWith(false);
-    expect(selectedCard).toHaveFocus();
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });

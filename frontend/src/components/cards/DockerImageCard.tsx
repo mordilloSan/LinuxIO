@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -14,15 +16,17 @@ export interface DockerImageRow {
 }
 
 export interface DockerImageCardProps {
+  actions?: ReactNode;
   image: DockerImageRow;
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
 
 const DockerImageCard = ({
   image,
+  actions,
+  onOpen,
   selected,
-  onSelect,
 }: DockerImageCardProps) => {
   const usageTooltip = `Used by ${image.containers} ${
     image.containers === 1 ? "container" : "containers"
@@ -40,9 +44,10 @@ const DockerImageCard = ({
           />
         </AppTooltip>
       }
+      actions={actions}
       icon="mdi:layers"
       label={`image ${image.repo}`}
-      onSelect={onSelect}
+      onOpen={onOpen}
       selected={selected}
       subtitle={`${image.size} MB · ${image.created}`}
       title={image.repo}

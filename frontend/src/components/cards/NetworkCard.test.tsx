@@ -20,16 +20,15 @@ const network: DockerNetwork = {
 };
 
 describe("NetworkCard", () => {
-  it("uses double click selection without a checkbox", async () => {
-    const onSelect = vi.fn();
-    const { rerender, user } = render(
-      <NetworkCard network={network} onSelect={onSelect} selected={false} />,
+  it("opens on one click and keyboard activation", async () => {
+    const onOpen = vi.fn();
+    const { user } = render(
+      <NetworkCard network={network} onOpen={onOpen} selected={false} />,
     );
 
     const card = screen.getByRole("button", {
-      name: `Select network ${network.Name}`,
+      name: `Open network ${network.Name} details`,
     });
-    expect(card).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(
       screen.getByRole("heading", { name: network.Name }),
@@ -37,21 +36,8 @@ describe("NetworkCard", () => {
     expect(screen.getByText("bridge · local")).toBeInTheDocument();
 
     await user.click(card);
-    expect(onSelect).not.toHaveBeenCalled();
-
-    await user.dblClick(card);
-    expect(onSelect).toHaveBeenCalledWith(true);
-    expect(card).not.toHaveFocus();
-
-    rerender(<NetworkCard network={network} onSelect={onSelect} selected />);
-    const selectedCard = screen.getByRole("button", {
-      name: `Deselect network ${network.Name}`,
-    });
-    expect(selectedCard).toHaveAttribute("aria-pressed", "true");
-
-    selectedCard.focus();
+    expect(onOpen).toHaveBeenCalledTimes(1);
     await user.keyboard(" ");
-    expect(onSelect).toHaveBeenLastCalledWith(false);
-    expect(selectedCard).toHaveFocus();
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });

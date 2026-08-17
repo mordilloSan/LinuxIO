@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { type DockerNetwork } from "@/api";
 import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
@@ -10,16 +12,18 @@ import {
 } from "@/theme/tableStyles";
 
 export interface NetworkCardProps {
+  actions?: ReactNode;
   network: DockerNetwork;
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
 
-const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
+const NetworkCard = ({ actions, network, selected, onOpen }: NetworkCardProps) => (
   <DockerResourceCard
     icon="mdi:lan"
+    actions={actions}
     label={`network ${network.Name}`}
-    onSelect={onSelect}
+    onOpen={onOpen}
     selected={selected}
     subtitle={`${network.Driver} · ${network.Scope}`}
     title={network.Name}

@@ -7,7 +7,7 @@ import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
-import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -170,8 +169,6 @@ const DeleteImageDialog = ({
 };
 const getImageRowId = (image: { id: string }) => image.id;
 
-// A press in layout mode belongs to the drag, not to selecting the image.
-const noopSelect = () => {};
 const dockerRouteApi = getRouteApi("/_authenticated/docker/images");
 
 const ImageList = ({
@@ -191,7 +188,6 @@ const ImageList = ({
   });
   const images = rawImages;
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Create image handler
@@ -239,15 +235,6 @@ const ImageList = ({
     items: imageRows,
     surface: "docker.images",
   });
-  useCardSelectionEscape({
-    enabled:
-      viewMode === "card" &&
-      !focusedImageId &&
-      (selected.size > 0 || surface.editMode),
-    isReordering: surface.editMode,
-    onClearSelection: () => setSelected(new Set()),
-    onExitReordering: surface.exitEditMode,
-  });
   const tableDnd = useReorderableTableDnd<
     (typeof imageRows)[number],
     (typeof imageRows)[number]
@@ -267,50 +254,25 @@ const ImageList = ({
     );
   }, [orderedRows, search]);
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredIds = new Set(filtered.map((img) => img.id));
-    const result = new Set<string>();
-    selected.forEach((id) => {
-      if (filteredIds.has(id)) {
-        result.add(id);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-
   const clearFocusedImage = useCallback(() => {
     void navigate({
       to: "/docker/images",
       search: (previous) => ({ ...previous, image: undefined }),
     });
   }, [navigate]);
-  const handleSelectOne = (id: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-    if (checked) {
+  const handleOpenImage = useCallback(
+    (id: string) => {
+      if (surface.editMode) return;
       void navigate({
         to: "/docker/images",
         search: (previous) => ({ ...previous, image: id }),
       });
-    } else if (focusedImageId === id) {
-      clearFocusedImage();
-    }
-  };
+    },
+    [navigate, surface.editMode],
+  );
   const handleDeleteSuccess = () => {
-    setSelected(new Set());
     clearFocusedImage();
   };
-  const selectedImages = filtered.filter((img) =>
-    effectiveSelected.has(img.id),
-  );
   const focusedImage = useMemo(
     () => orderedRows.find((image) => image.id === focusedImageId) ?? null,
     [focusedImageId, orderedRows],
@@ -549,18 +511,6 @@ const ImageList = ({
           value={search}
         />
       </RoutedTabSearch>
-      <RoutedTabActions>
-        {effectiveSelected.size > 0 && (
-          <AppActionIconButton
-            ariaLabel={`Delete ${effectiveSelected.size} selected image${effectiveSelected.size === 1 ? "" : "s"}`}
-            color={theme.palette.error.main}
-            icon="mdi:delete"
-            iconSize={20}
-            label={`Delete ${effectiveSelected.size} selected image${effectiveSelected.size === 1 ? "" : "s"}`}
-            onClick={() => setDeleteDialogOpen(true)}
-          />
-        )}
-      </RoutedTabActions>
       {focusedImage ? (
         <DockerResourceDetailsLayout
           onClose={clearFocusedImage}
@@ -569,8 +519,17 @@ const ImageList = ({
           summary={
             <DockerImageCard
               image={focusedImage}
-              onSelect={(checked) => handleSelectOne(focusedImage.id, checked)}
-              selected={effectiveSelected.has(focusedImage.id)}
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete image ${focusedImage.repo}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete image"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
+              }
+              selected
             />
           }
           title={focusedImage.repo}
@@ -586,12 +545,9 @@ const ImageList = ({
             renderItem={(image) => (
               <DockerImageCard
                 image={image}
-                onSelect={
-                  surface.editMode
-                    ? noopSelect
-                    : (checked) => handleSelectOne(image.id, checked)
+                onOpen={
+                  surface.editMode ? undefined : () => handleOpenImage(image.id)
                 }
-                selected={effectiveSelected.has(image.id)}
               />
             )}
             size={CARD_GRID_SIZE_STANDARD}
@@ -619,24 +575,27 @@ const ImageList = ({
           emptyMessage="No images found."
           fillAvailable
           getRowId={(image) => image.id}
-          onSelectAll={(rowIds) => setSelected(new Set(rowIds))}
-          selectedRowIds={effectiveSelected}
-          onClearSelection={() => setSelected(new Set())}
-          onRowDoubleClick={({ original: image }) =>
-            handleSelectOne(image.id, !effectiveSelected.has(image.id))
+          onRowClick={
+            surface.editMode
+              ? undefined
+              : ({ original: image }) => handleOpenImage(image.id)
           }
-          renderExpandedContent={({ original: image }) =>
-            renderExpandedContent(image)
-          }
+          selectedRowId={focusedImageId ?? null}
         />
       )}
 
       <DeleteImageDialog
-        images={selectedImages.map((img) => ({
-          id: img.id,
-          label: img.refs[0] ?? img.shortId,
-          refs: img.refs,
-        }))}
+        images={
+          focusedImage
+            ? [
+                {
+                  id: focusedImage.id,
+                  label: focusedImage.refs[0] ?? focusedImage.shortId,
+                  refs: focusedImage.refs,
+                },
+              ]
+            : []
+        }
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}

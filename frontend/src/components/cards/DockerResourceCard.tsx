@@ -5,33 +5,36 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import SelectableCard from "@/components/cards/SelectableCard";
 import { useAppTheme } from "@/theme";
-import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_MD, GAP_SM } from "@/theme/constants";
 
 export interface DockerResourceCardProps {
+  /** Actions shown on the static focused card, never inside its opener. */
+  actions?: ReactNode;
   children: ReactNode;
   headerRight?: ReactNode;
   icon: string;
   label: string;
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
   subtitle: ReactNode;
   title: string;
 }
 
 const DockerResourceCard = ({
   children,
+  actions,
   headerRight,
   icon,
   label,
-  onSelect,
-  selected,
+  onOpen,
+  selected = false,
   subtitle,
   title,
 }: DockerResourceCardProps) => {
   const theme = useAppTheme();
 
   return (
-    <SelectableCard label={label} onSelect={onSelect} selected={selected}>
+    <SelectableCard label={label} onOpen={onOpen}>
       <FrostedCard
         accent
         className={selected ? "docker-resource-card--selected" : undefined}
@@ -62,7 +65,20 @@ const DockerResourceCard = ({
           style={{ marginBottom: GAP_MD }}
           subtitle={subtitle}
           title={title}
-          right={headerRight}
+          right={
+            headerRight || (!onOpen && actions) ? (
+              <div
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  gap: GAP_SM,
+                }}
+              >
+                {headerRight}
+                {!onOpen && actions}
+              </div>
+            ) : undefined
+          }
         />
         {children}
       </FrostedCard>

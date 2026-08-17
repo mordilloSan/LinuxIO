@@ -24,7 +24,7 @@ describe("DockerImageCard", () => {
     render(
       <DockerImageCard
         image={imageWithUpdateStatus}
-        onSelect={vi.fn()}
+        onOpen={vi.fn()}
         selected={false}
       />,
     );
@@ -35,7 +35,7 @@ describe("DockerImageCard", () => {
 
   it("shows only the full image ID", () => {
     render(
-      <DockerImageCard image={image} onSelect={vi.fn()} selected={false} />,
+      <DockerImageCard image={image} onOpen={vi.fn()} selected={false} />,
     );
 
     const fullId = screen.getByText(image.id);
@@ -48,7 +48,7 @@ describe("DockerImageCard", () => {
 
   it("shows the container count in the header with an explanatory tooltip", async () => {
     const { user } = render(
-      <DockerImageCard image={image} onSelect={vi.fn()} selected={false} />,
+      <DockerImageCard image={image} onOpen={vi.fn()} selected={false} />,
     );
 
     const usageChip = screen.getByText(String(image.containers), {
@@ -62,17 +62,16 @@ describe("DockerImageCard", () => {
     );
   });
 
-  it("selects on double click and keeps the dashboard-style accent", async () => {
-    const onSelect = vi.fn();
-    const { container, rerender, user } = render(
-      <DockerImageCard image={image} onSelect={onSelect} selected={false} />,
+  it("opens on one click and supports keyboard activation", async () => {
+    const onOpen = vi.fn();
+    const { container, user } = render(
+      <DockerImageCard image={image} onOpen={onOpen} selected={false} />,
     );
 
     const card = screen.getByRole("button", {
-      name: `Select image ${image.repo}`,
+      name: `Open image ${image.repo} details`,
     });
-    expect(card).toBe(container.firstElementChild);
-    expect(card).toHaveAttribute("aria-pressed", "false");
+    expect(card.parentElement).toBe(container.firstElementChild);
     expect(card).toHaveClass("selectable-card-button");
     expect(card.firstElementChild).not.toHaveClass(
       "docker-resource-card--selected",
@@ -86,24 +85,27 @@ describe("DockerImageCard", () => {
     ).toBeInTheDocument();
 
     await user.click(card);
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
 
-    await user.dblClick(card);
-    expect(onSelect).toHaveBeenCalledWith(true);
-    expect(card).not.toHaveFocus();
-
-    rerender(<DockerImageCard image={image} onSelect={onSelect} selected />);
-    const selectedCard = screen.getByRole("button", {
-      name: `Deselect image ${image.repo}`,
-    });
-    expect(selectedCard).toHaveAttribute("aria-pressed", "true");
-    expect(selectedCard.firstElementChild).toHaveClass(
-      "docker-resource-card--selected",
+  it("keeps action controls separate from the card opener", async () => {
+    const onDelete = vi.fn();
+    const { user } = render(
+      <DockerImageCard
+        actions={<button onClick={onDelete}>Delete</button>}
+        image={image}
+        selected
+      />,
     );
 
-    selectedCard.focus();
-    await user.keyboard("{Enter}");
-    expect(onSelect).toHaveBeenLastCalledWith(false);
-    expect(selectedCard).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("button", {
+        name: `Open image ${image.repo} details`,
+      }),
+    ).toBeNull();
   });
 });
