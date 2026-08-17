@@ -19,7 +19,7 @@ import ThemeColorsSection from "@/routes/_authenticated/-components/navbar/Theme
 import UpdateSettings, {
   useUpdateSettingsState,
 } from "@/routes/_authenticated/updates/-components/UpdateSettings";
-import { useAppTheme } from "@/theme";
+import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
 import "./settings-page.css";
@@ -36,6 +36,7 @@ type SettingsTab =
 
 const SettingsPage = () => {
   const theme = useAppTheme();
+  const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
   const { privileged } = useAuth();
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
@@ -151,7 +152,9 @@ const SettingsPage = () => {
                     onChange={(value) => setNavigationMode(value)}
                     options={[
                       { label: "Sidebar", value: "sidebar" },
-                      { label: "Dock", value: "dock" },
+                      ...(isDesktop
+                        ? [{ label: "Dock", value: "dock" } as const]
+                        : []),
                     ]}
                     style={{
                       flexShrink: 0,
@@ -160,7 +163,9 @@ const SettingsPage = () => {
                       marginLeft: theme.spacing(1.5),
                       width: "max-content",
                     }}
-                    value={navigationMode ?? "sidebar"}
+                    value={
+                      isDesktop ? (navigationMode ?? "sidebar") : "sidebar"
+                    }
                   />
                 </FrostedCard>
 

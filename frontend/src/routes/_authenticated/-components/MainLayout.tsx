@@ -20,8 +20,8 @@ const MainLayout = () => {
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
   const [navigationMode] = useConfigValue("navigationMode");
-  const dockMode = navigationMode === "dock";
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
+  const dockMode = isDesktop && navigationMode === "dock";
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
@@ -95,7 +95,10 @@ const MainLayout = () => {
                 : "100%",
           }}
         >
-          <Navbar onDrawerToggle={dockMode ? undefined : toggleMobileOpen} />
+          <Navbar
+            dockMode={dockMode}
+            onDrawerToggle={dockMode ? undefined : toggleMobileOpen}
+          />
 
           {updateInfo?.available && (
             <div

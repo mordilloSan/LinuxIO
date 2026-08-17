@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import { memo, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
@@ -13,13 +12,13 @@ import Dock from "../dock/Dock";
 import "./navbar.css";
 
 interface NavbarProps {
+  dockMode: boolean;
   onDrawerToggle?: MouseEventHandler<HTMLElement>;
 }
 
-const Navbar = ({ onDrawerToggle }: NavbarProps) => {
+const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
   const theme = useAppTheme();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
-  const [navigationMode] = useConfigValue("navigationMode");
 
   return (
     <header
@@ -39,7 +38,7 @@ const Navbar = ({ onDrawerToggle }: NavbarProps) => {
           </AppIconButton>
         )}
 
-        {navigationMode === "dock" ? <Dock /> : null}
+        {dockMode ? <Dock /> : null}
 
         {/* Power sits in the header corner in both navigation modes: it acts on
             the machine rather than the app, so it stays out of the dock's row
