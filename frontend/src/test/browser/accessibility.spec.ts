@@ -82,11 +82,20 @@ test.describe("accessibility fixture controls", () => {
   }) => {
     const dock = page.getByRole("navigation", { name: "Dock fixture" });
     const dashboard = page.getByTestId("dock-dashboard");
+    const tile = dashboard.locator(".app-dock__tile");
     const label = dashboard.getByText("Dashboard");
+    const restTransform = await tile.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
 
     await dashboard.hover();
     await expect(dock).toHaveAttribute("data-dock-pointer", "");
     await expect(label).toHaveCSS("opacity", "1");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .not.toBe(restTransform);
 
     // Losing the window clears the gate. Chromium revives :hover when the
     // window returns without dispatching a pointermove, so the label must
@@ -94,12 +103,134 @@ test.describe("accessibility fixture controls", () => {
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));
     await expect(dock).not.toHaveAttribute("data-dock-pointer");
     await expect(label).toHaveCSS("opacity", "0");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .toBe(restTransform);
 
     const box = await dashboard.boundingBox();
     if (!box) throw new Error("dock link has no layout box");
     await page.mouse.move(box.x + box.width / 2 + 2, box.y + box.height / 2);
     await expect(dock).toHaveAttribute("data-dock-pointer", "");
     await expect(label).toHaveCSS("opacity", "1");
+  });
+
+  test("resets the label and magnification for touch takeover", async ({
+    page,
+  }) => {
+    const dock = page.getByRole("navigation", { name: "Dock fixture" });
+    const dashboard = page.getByTestId("dock-dashboard");
+    const tile = dashboard.locator(".app-dock__tile");
+    const label = dashboard.getByText("Dashboard");
+    const restTransform = await tile.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
+
+    await dashboard.hover();
+    await expect(dock).toHaveAttribute("data-dock-pointer", "");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .not.toBe(restTransform);
+
+    await dashboard.dispatchEvent("pointerdown", {
+      bubbles: true,
+      clientX: 100,
+      pointerType: "touch",
+    });
+    await expect(dock).not.toHaveAttribute("data-dock-pointer");
+    await expect(label).toHaveCSS("opacity", "0");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .toBe(restTransform);
+  });
+
+  test("resets the label and magnification on pointerleave", async ({
+    page,
+  }) => {
+    const dock = page.getByRole("navigation", { name: "Dock fixture" });
+    const dashboard = page.getByTestId("dock-dashboard");
+    const tile = dashboard.locator(".app-dock__tile");
+    const restTransform = await tile.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
+
+    await dashboard.hover();
+    await expect(dock).toHaveAttribute("data-dock-pointer", "");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .not.toBe(restTransform);
+
+    await page.mouse.move(0, 0);
+    await expect(dock).not.toHaveAttribute("data-dock-pointer");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .toBe(restTransform);
+  });
+
+  test("resets the label and magnification when the document is hidden", async ({
+    page,
+  }) => {
+    const dock = page.getByRole("navigation", { name: "Dock fixture" });
+    const dashboard = page.getByTestId("dock-dashboard");
+    const tile = dashboard.locator(".app-dock__tile");
+    const label = dashboard.getByText("Dashboard");
+    const restTransform = await tile.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
+
+    await dashboard.hover();
+    await expect(dock).toHaveAttribute("data-dock-pointer", "");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .not.toBe(restTransform);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(dock).not.toHaveAttribute("data-dock-pointer");
+    await expect(label).toHaveCSS("opacity", "0");
+    await expect
+      .poll(() =>
+        tile.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .toBe(restTransform);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      });
+    });
+  });
+
+  test("keeps the tile-local focus outline in forced-colors mode", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors: "active" });
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+
+    const tile = page.getByTestId("dock-dashboard").locator(".app-dock__tile");
+    await expect(tile).toHaveCSS("outline-style", "solid");
+    await expect(tile).toHaveCSS("outline-width", /^3(\.2)?px$/);
+    await expect(tile).toHaveCSS("box-shadow", "none");
   });
 
   test("summons tooltips for keyboard focus on non-text controls only", async ({

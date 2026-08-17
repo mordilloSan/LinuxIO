@@ -9,6 +9,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type PointerEvent,
@@ -221,8 +222,9 @@ export function useDockPointer() {
 }
 
 /**
- * Set on the dock while a pointing device has moved over it during this window
- * activation. Hover labels require it in addition to `:hover` — see dock.css.
+ * Set on the dock while a non-touch pointing device has interacted with it
+ * during this window activation. Hover labels require it in addition to
+ * `:hover` — see dock.css.
  */
 export const DOCK_POINTER_ATTRIBUTE = "data-dock-pointer";
 
@@ -230,8 +232,9 @@ export const DOCK_POINTER_ATTRIBUTE = "data-dock-pointer";
    window comes back without dispatching the pointermove that drives
    magnification, which would show a label under a resting tile. One owner for
    both prevents that: the same handler feeds the magnification pointer and
-   arms the label gate, and window deactivation resets both, so the two can
-   never disagree. */
+   arms the label gate, while pointer departure or window deactivation resets
+   both. At phone widths magnification is intentionally disabled, but labels
+   still require fresh non-touch pointer activity. */
 export function useDockPointerLiveness(magnificationEnabled: boolean) {
   const setPointer = useDockPointer();
   const navRef = useRef<HTMLElement | null>(null);
@@ -241,9 +244,12 @@ export function useDockPointerLiveness(magnificationEnabled: boolean) {
     navRef.current?.removeAttribute(DOCK_POINTER_ATTRIBUTE);
   }, [setPointer]);
 
-  useEffect(() => {
-    if (!magnificationEnabled) setPointer(Infinity);
-  }, [magnificationEnabled, setPointer]);
+  useLayoutEffect(() => {
+    // Either breakpoint transition invalidates the shared pointer evidence:
+    // narrowing disables magnification, while widening must not let an armed
+    // small-screen hover label appear over a still-resting tile.
+    reset();
+  }, [magnificationEnabled, reset]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -257,16 +263,24 @@ export function useDockPointerLiveness(magnificationEnabled: boolean) {
     };
   }, [reset]);
 
-  const handlePointerMove = useCallback(
+  const handlePointer = useCallback(
     (event: PointerEvent<HTMLElement>) => {
       // Touchscreens emulate a sticky :hover after a tap. That is not a
       // pointing cursor and must not arm the label gate.
-      if (event.pointerType === "touch") return;
+      if (event.pointerType === "touch") {
+        reset();
+        return;
+      }
       navRef.current?.setAttribute(DOCK_POINTER_ATTRIBUTE, "");
       if (magnificationEnabled) setPointer(event.clientX);
     },
-    [magnificationEnabled, setPointer],
+    [magnificationEnabled, reset, setPointer],
   );
 
-  return { navRef, onPointerLeave: reset, onPointerMove: handlePointerMove };
+  return {
+    navRef,
+    onPointerDown: handlePointer,
+    onPointerLeave: reset,
+    onPointerMove: handlePointer,
+  };
 }

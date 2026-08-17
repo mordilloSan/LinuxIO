@@ -96,14 +96,19 @@ fought.
   focus indicator; the label now shows on plain `:focus-visible` as its
   caption. B5 resolved: only the hover-liveness gate survives, moved into the
   dock as `useDockPointerLiveness` — one owner arms `data-dock-pointer` on
-  `.app-dock` (non-touch pointers only) and feeds magnification from the same
-  handler, and resets both on pointerleave, window blur, or document hiding.
+  `.app-dock` from non-touch pointer movement or presses and feeds
+  magnification from the same handler. Touch takeover, pointerleave, window
+  blur, document hiding, and either magnification-breakpoint transition reset
+  both systems.
   `AppTooltip` asks the platform directly (`matches(":focus-visible")`,
   text-entry controls excluded); jsdom never matches `:focus-visible`, so the
   Chromium heuristic (keyboard, pointer, programmatic restoration, text-entry
-  exclusion) is covered in the browser suite instead.
-  *Verified: `make check-frontend` (172 files / 822 tests) and
-  `make test-frontend-browser` (20 tests) pass, 2026-08-17.*
+  exclusion) is covered in the browser suite instead. Direct and Chromium
+  coverage also exercise touch takeover, pointerleave, blur, document hiding,
+  breakpoint changes, magnification returning to rest, and the focus outline
+  in forced-colors mode.
+  *Verified: `make check-frontend` (172 files / 827 tests) and
+  `make test-frontend-browser` (24 tests) pass, 2026-08-17.*
 
 ## Thread C — sensors (hp_wmi investigation, 2026-08-17)
 

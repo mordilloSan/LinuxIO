@@ -16,7 +16,7 @@ import "@/routes/_authenticated/-components/dock/dock.css";
 /* The production dock structure with the production pointer-liveness wiring,
    so the browser tests exercise the same hover-label gate Dock.tsx uses. */
 function DockFixture() {
-  const { navRef, onPointerLeave, onPointerMove } =
+  const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
     useDockPointerLiveness(true);
 
   return (
@@ -24,6 +24,7 @@ function DockFixture() {
       aria-label="Dock fixture"
       className="app-dock"
       onPointerLeave={onPointerLeave}
+      onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       ref={navRef}
     >

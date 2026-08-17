@@ -110,7 +110,7 @@ const Dock = () => {
   const theme = useAppTheme();
   const [dockTileColors] = useConfigValue("dockTileColors");
   const magnificationEnabled = useAppMediaQuery(theme.breakpoints.up("sm"));
-  const { navRef, onPointerLeave, onPointerMove } =
+  const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
     useDockPointerLiveness(magnificationEnabled);
 
   const palette = dockTileColors ?? "accent";
@@ -126,6 +126,7 @@ const Dock = () => {
     <nav
       aria-label="Primary navigation"
       className="app-dock"
+      onPointerDown={onPointerDown}
       onPointerLeave={onPointerLeave}
       onPointerMove={onPointerMove}
       ref={navRef}
