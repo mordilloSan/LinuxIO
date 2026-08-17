@@ -16,6 +16,7 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM } from "@/theme/constants";
 import {
   getFileEntryBackground,
   getSubtleDividerColor,
@@ -208,7 +209,7 @@ const FileCard = memo<FileCardProps>(
           display: "flex",
           alignItems: "center",
           gap: theme.spacing(1.5),
-          padding: theme.spacing(1.5),
+          padding: CARD_PADDING_SM,
           border: "3px solid",
           borderColor: borderColor,
           borderRadius: 20,

@@ -74,12 +74,14 @@ or instead of code.
   checkboxes (hover tints), directory tree selection, icon buttons, login
   alert*
 
-- [ ] **A5. (decision) Pull the off-scale 6px cards onto the padding scale.**
-  Deliberate visual change (6px → 8px body inset): LVMMetricCard,
-  DockerSectionCard and LVMSectionCard pad with `GAP_SM` (= 6), FileCard with
-  `theme.spacing(1.5)` (= 6 on the 4px unit). Converting them to
-  `CARD_PADDING_SM` unifies the scale but visibly loosens those cards —
-  Miguel's call, then a small sweep.
+- [x] **A5. Off-scale 6px cards pulled onto the padding scale.**
+  *(done 2026-08-17)* Decision: convert all four. Body insets moved from 6px
+  to `CARD_PADDING_SM` (8px) in LVMMetricCard, DockerSectionCard,
+  LVMSectionCard (were `GAP_SM`) and FileCard (was `theme.spacing(1.5)`) — a
+  deliberate, visible loosening of those cards. Gaps and margins that used
+  the same tokens stay at 6px: only the card inset was the off-scale outlier.
+  The constants.ts padding comment now lists just the remaining off-scale
+  exceptions (16px empty/error states, sub-element refinements).
   *Verify: `make check-frontend`, visual pass over LVM, docker dashboard,
   file browser card view*
 

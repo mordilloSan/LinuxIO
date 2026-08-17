@@ -105,11 +105,11 @@ export const CARD_GRID_SIZE_STANDARD: GridSize = {
 };
 export const CARD_GRID_SIZE_DENSE: GridSize = { xs: 12, sm: 6, md: 4, lg: 2 };
 
-/* Card body padding scale, adopted across src/components/cards wherever a
-   card (or a full-bleed inner element that carries the card's inset, like
-   DriveCard's body button) pads by 8/10/12. Deliberately off-scale and left
-   raw: 6px insets (GAP_SM paddings, FileCard's spacing(1.5)), 16px empty/error
-   states, and sub-element refinements like chip labels and row paddings. */
+/* Card body padding scale, adopted across src/components/cards for every
+   card body inset (or the full-bleed inner element that carries the card's
+   inset, like DriveCard's body button). Deliberately off-scale and left raw:
+   16px empty/error states, and sub-element refinements like chip labels and
+   row paddings. */
 export const CARD_PADDING_SM = 8;
 export const CARD_PADDING_MD = 10;
 export const CARD_PADDING_LG = 12;
