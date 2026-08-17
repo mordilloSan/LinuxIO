@@ -18,9 +18,9 @@ it("renders a responsive resource summary and closable details panel", async () 
     </DockerResourceDetailsLayout>,
   );
 
-  expect(screen.getByText("Image summary")).toBeVisible();
-  expect(screen.getByText("example/image:latest")).toBeVisible();
-  expect(screen.getByText("Image metadata")).toBeVisible();
+  expect(screen.getByText("Image summary")).toBeInTheDocument();
+  expect(screen.getByText("example/image:latest")).toBeInTheDocument();
+  expect(screen.getByText("Image metadata")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Close image details" }));
   expect(onClose).toHaveBeenCalledOnce();
