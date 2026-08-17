@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ComposeProject, ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
@@ -79,6 +79,23 @@ const noopProject = (_project: ComposeProject) => {};
 const noopName = (_name: string) => {};
 const mocks = vi.hoisted(() => ({ startUpdate: vi.fn() }));
 
+const routeMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  search: {} as { stack?: string },
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    getRouteApi: () => ({
+      useNavigate: () => routeMocks.navigate,
+      useSearch: () => routeMocks.search,
+    }),
+  };
+});
+
 vi.mock("@/components/docker/DockerUpdateOperationProvider", () => ({
   useDockerUpdateOperation: () => ({
     isUpdating: () => false,
@@ -88,6 +105,21 @@ vi.mock("@/components/docker/DockerUpdateOperationProvider", () => ({
 }));
 
 describe("ComposeList expanded-container mutation feedback", () => {
+  beforeEach(() => {
+    routeMocks.search = {};
+    routeMocks.navigate.mockReset();
+    routeMocks.navigate.mockImplementation(
+      ({
+        search,
+      }: {
+        search: (current: typeof routeMocks.search) => object;
+      }) => {
+        routeMocks.search = search(routeMocks.search);
+        return Promise.resolve();
+      },
+    );
+  });
+
   it("keeps action progress scoped to each expanded container", async () => {
     const restarting = createDeferred<void>();
     mocks.startUpdate.mockReset();
@@ -157,5 +189,45 @@ describe("ComposeList expanded-container mutation feedback", () => {
         ).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("opens stack details with its compose configuration and services", async () => {
+    const { rerender, user } = render(
+      <ComposeList
+        onDelete={noopProject}
+        onRestart={noopName}
+        onStart={noopName}
+        onStop={noopName}
+        projects={[project]}
+        viewMode="card"
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Open stack demo details" }),
+    );
+    rerender(
+      <ComposeList
+        onDelete={noopProject}
+        onRestart={noopName}
+        onStart={noopName}
+        onStop={noopName}
+        projects={[project]}
+        viewMode="card"
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Close stack details" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search stacks…")).toBeNull();
+    expect(screen.getByText("Compose files:")).toBeInTheDocument();
+    expect(screen.getByText("Services:")).toBeInTheDocument();
+    expect(screen.getByText("Containers:")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Close stack details" }),
+    );
+    expect(routeMocks.search.stack).toBeUndefined();
   });
 });

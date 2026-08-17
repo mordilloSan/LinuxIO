@@ -1,5 +1,14 @@
 import { Icon } from "@iconify/react";
-import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   linuxio,
@@ -10,6 +19,7 @@ import {
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
@@ -17,6 +27,7 @@ import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -35,6 +46,8 @@ const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
+const dockerRouteApi = getRouteApi("/_authenticated/docker/compose");
+
 interface ComposeListProps {
   isLoading?: boolean;
   onDelete: (project: ComposeProject) => void;
@@ -92,6 +105,65 @@ const getTotalContainers = (project: ComposeProject) => {
 };
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
+
+interface ComposeServiceDetail {
+  containerCount: number;
+  image: string;
+  name: string;
+  ports: string[];
+  state: string;
+}
+
+const composeServiceColumns: AppDataTableColumnDef<ComposeServiceDetail>[] = [
+  {
+    accessorKey: "name",
+    header: "Service",
+    cell: ({ row }) => (
+      <AppTypography fontWeight={700} noWrap variant="body2">
+        {row.original.name}
+      </AppTypography>
+    ),
+  },
+  {
+    accessorKey: "state",
+    header: "State",
+    cell: ({ row }) => (
+      <Chip
+        color={getComposeStatusColor(row.original.state)}
+        label={row.original.state || "Unknown"}
+        size="small"
+        variant="soft"
+      />
+    ),
+    meta: { width: "110px" },
+  },
+  {
+    accessorKey: "containerCount",
+    header: "Containers",
+    meta: { align: "center", width: "110px" },
+  },
+  {
+    accessorKey: "image",
+    header: "Image",
+    cell: ({ row }) => (
+      <AppTypography noWrap title={row.original.image} variant="body2">
+        {row.original.image || "-"}
+      </AppTypography>
+    ),
+    meta: { hideBelow: "sm" },
+  },
+  {
+    id: "ports",
+    header: "Ports",
+    accessorFn: (service) => service.ports.join(", "),
+    cell: ({ row }) => (
+      <AppTypography noWrap variant="body2">
+        {row.original.ports.join(", ") || "-"}
+      </AppTypography>
+    ),
+    meta: { hideBelow: "md" },
+  },
+];
 
 interface ComposeContainerActionsProps {
   container: ContainerInfo;
@@ -238,6 +310,10 @@ const ComposeList = ({
   isLoading = false,
   viewMode = "table",
 }: ComposeListProps) => {
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedProjectName =
+    typeof searchParams.stack === "string" ? searchParams.stack : undefined;
   const [search, setSearch] = useState("");
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
     null,
@@ -251,11 +327,50 @@ const ComposeList = ({
     items: projects,
     surface: "docker.stacks",
   });
+  const updateFocusedProject = useCallback(
+    (projectName: string | null) => {
+      void navigate({
+        to: "/docker/compose",
+        search: (previous) => ({
+          ...previous,
+          stack: projectName ?? undefined,
+        }),
+      });
+    },
+    [navigate],
+  );
   const tableDnd = useReorderableTableDnd<ComposeProject, ComposeProject>({
     handleAriaLabel: "Reorder stack",
     surface,
   });
   const orderedProjects = surface.items;
+  const focusedProject = useMemo(
+    () =>
+      orderedProjects.find((project) => project.name === focusedProjectName) ??
+      null,
+    [focusedProjectName, orderedProjects],
+  );
+
+  useEffect(() => {
+    if (focusedProjectName && !focusedProject) updateFocusedProject(null);
+  }, [focusedProject, focusedProjectName, updateFocusedProject]);
+
+  useEffect(() => {
+    if (!focusedProject) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
+      }
+      updateFocusedProject(null);
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedProject, updateFocusedProject]);
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (!normalizedSearch) return orderedProjects;
@@ -493,7 +608,7 @@ const ComposeList = ({
                   />
                   <AppActionIconButton
                     disabled={isLoading}
-                    icon="mdi:stop-circle"
+                    icon="mdi:stop"
                     iconSize={20}
                     label="Stop"
                     onClick={() => onStop(project.name)}
@@ -764,6 +879,81 @@ const ComposeList = ({
     },
     [containersByProject, expandedContainerColumns],
   );
+  const renderFocusedProjectDetails = (project: ComposeProject) => {
+    const services = Object.entries(project.services)
+      .map(([name, service]) => ({
+        containerCount: service.container_count,
+        image: service.image,
+        name: service.name || name,
+        ports: service.ports,
+        state: service.state,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return (
+      <div className="expand-panel">
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Compose files:</b>
+          </AppTypography>
+          {project.config_files.length > 0 ? (
+            project.config_files.map((filePath) => (
+              <AppTypography
+                className="expand-panel__mono"
+                copyText={filePath}
+                key={filePath}
+                noWrap
+                title={filePath}
+                variant="body2"
+              >
+                {filePath}
+              </AppTypography>
+            ))
+          ) : (
+            <AppTypography color="text.secondary" variant="body2">
+              No compose files found.
+            </AppTypography>
+          )}
+        </div>
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Working directory:</b>
+          </AppTypography>
+          <AppTypography
+            className="expand-panel__mono"
+            copyText={project.working_dir}
+            noWrap
+            title={project.working_dir}
+            variant="body2"
+          >
+            {project.working_dir || "-"}
+          </AppTypography>
+        </div>
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Services:</b>
+          </AppTypography>
+          <AppDataTable
+            ariaLabel={`Services in ${project.name}`}
+            columns={composeServiceColumns}
+            data={services}
+            density="compact"
+            emptyMessage="No services found for this stack."
+            enableSorting={false}
+            getRowId={(service) => service.name}
+            maxHeight={240}
+            variant="embedded"
+          />
+        </div>
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Containers:</b>
+          </AppTypography>
+          {renderExpandedContent(project)}
+        </div>
+      </div>
+    );
+  };
   const searchControl = (
     <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
@@ -794,6 +984,40 @@ const ComposeList = ({
       )}
     </Suspense>
   );
+  if (focusedProject) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
+        <DockerResourceDetailsLayout
+          onClose={() => updateFocusedProject(null)}
+          resourceLabel="stack"
+          subtitle={`${focusedProject.status} · ${Object.keys(focusedProject.services).length} services`}
+          summary={
+            <ComposeStackCard
+              isLoading={isLoading}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onRestart={onRestart}
+              onStart={onStart}
+              onStop={onStop}
+              project={focusedProject}
+              selected
+            />
+          }
+          title={focusedProject.name}
+        >
+          {renderFocusedProjectDetails(focusedProject)}
+        </DockerResourceDetailsLayout>
+        {containerDialogs}
+      </div>
+    );
+  }
   if (viewMode === "card") {
     return (
       <div
@@ -831,6 +1055,11 @@ const ComposeList = ({
                 onRestart={onRestart}
                 onStart={onStart}
                 onStop={onStop}
+                onOpen={
+                  surface.editMode
+                    ? undefined
+                    : () => updateFocusedProject(project.name)
+                }
                 project={project}
               />
             )}
@@ -860,6 +1089,11 @@ const ComposeList = ({
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
         fillAvailable
         getRowId={(project) => project.name}
+        onRowClick={
+          surface.editMode
+            ? undefined
+            : ({ original: project }) => updateFocusedProject(project.name)
+        }
         renderExpandedContent={({ original: project }) =>
           renderExpandedContent(project)
         }

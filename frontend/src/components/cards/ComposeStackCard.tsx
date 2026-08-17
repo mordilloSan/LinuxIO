@@ -4,6 +4,7 @@ import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
@@ -24,6 +25,8 @@ interface ComposeStackCardProps {
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
 
 function areStringArraysEqual(previous: string[], next: string[]) {
@@ -60,7 +63,9 @@ function areComposeStackCardPropsEqual(
     previous.onEdit !== next.onEdit ||
     previous.onRestart !== next.onRestart ||
     previous.onStart !== next.onStart ||
-    previous.onStop !== next.onStop
+    previous.onStop !== next.onStop ||
+    previous.onOpen !== next.onOpen ||
+    previous.selected !== next.selected
   ) {
     return false;
   }
@@ -94,6 +99,8 @@ const ComposeStackCard = ({
   onDelete,
   onEdit,
   isLoading = false,
+  onOpen,
+  selected = false,
 }: ComposeStackCardProps) => {
   const totalContainers = Object.values(project.services).reduce(
     (acc, service) => acc + service.container_count,
@@ -105,11 +112,56 @@ const ComposeStackCard = ({
   const totalServices = Object.keys(project.services).length;
   const isRunning =
     project.status === "running" || project.status === "partial";
+  const summary = (
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          paddingRight: 32,
+        }}
+      >
+        <DockerIcon alt={project.name} identifier={project.icon} size={36} />
+        <AppTypography
+          fontWeight={600}
+          noWrap
+          title={project.name}
+          toastMeta={DOCKER_TOAST_META}
+          variant="subtitle1"
+        >
+          {project.name}
+        </AppTypography>
+      </div>
+
+      <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+        <AppTypography color="text.secondary" variant="body2">
+          {totalServices > 0
+            ? `${runningServices}/${totalServices} services`
+            : "No services"}
+        </AppTypography>
+        {totalContainers > 0 && (
+          <AppTypography color="text.secondary" variant="body2">
+            {totalContainers} container{totalContainers !== 1 ? "s" : ""}
+          </AppTypography>
+        )}
+        {project.update_available && (
+          <Chip
+            color="warning"
+            label="Update available"
+            size="small"
+            style={{ fontSize: "0.68rem" }}
+            variant="soft"
+          />
+        )}
+      </div>
+    </>
+  );
 
   return (
     <FrostedCard
       accent
-      hoverLift
+      hoverLift={!selected}
       style={{
         padding: CARD_PADDING_SM,
         display: "flex",
@@ -133,49 +185,26 @@ const ComposeStackCard = ({
         />
       </div>
 
-      {/* Icon + Name */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          paddingRight: 32,
-        }}
-      >
-        <DockerIcon alt={project.name} identifier={project.icon} size={36} />
-        <AppTypography
-          fontWeight={600}
-          noWrap
-          title={project.name}
-          toastMeta={DOCKER_TOAST_META}
-          variant="subtitle1"
+      {onOpen ? (
+        <AppButton
+          aria-label={`Open stack ${project.name} details`}
+          color="inherit"
+          fullWidth
+          onClick={onOpen}
+          style={{
+            alignItems: "stretch",
+            color: "inherit",
+            flexDirection: "column",
+            justifyContent: "flex-start",
+            padding: 0,
+            textAlign: "left",
+          }}
         >
-          {project.name}
-        </AppTypography>
-      </div>
-
-      {/* Stats */}
-      <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-        <AppTypography color="text.secondary" variant="body2">
-          {totalServices > 0
-            ? `${runningServices}/${totalServices} services`
-            : "No services"}
-        </AppTypography>
-        {totalContainers > 0 && (
-          <AppTypography color="text.secondary" variant="body2">
-            {totalContainers} container{totalContainers !== 1 ? "s" : ""}
-          </AppTypography>
-        )}
-        {project.update_available && (
-          <Chip
-            color="warning"
-            label="Update available"
-            size="small"
-            style={{ fontSize: "0.68rem" }}
-            variant="soft"
-          />
-        )}
-      </div>
+          {summary}
+        </AppButton>
+      ) : (
+        summary
+      )}
 
       <AppDivider style={{ marginBlock: 12 }} />
 
@@ -210,7 +239,7 @@ const ComposeStackCard = ({
                 />
                 <AppActionIconButton
                   disabled={isLoading}
-                  icon="mdi:stop-circle"
+                  icon="mdi:stop"
                   iconSize={20}
                   label="Stop"
                   onClick={() => onStop(project.name)}
