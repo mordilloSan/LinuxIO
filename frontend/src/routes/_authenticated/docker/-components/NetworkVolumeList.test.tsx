@@ -83,6 +83,7 @@ describe("Docker network and volume focused details", () => {
     expect(
       screen.getByRole("button", { name: "Delete network example-network" }),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search networks…")).toBeNull();
   });
 
   it("opens a volume on one click with its delete action in the focused card", async () => {
@@ -108,5 +109,6 @@ describe("Docker network and volume focused details", () => {
     expect(
       screen.getByRole("button", { name: "Delete volume example-volume" }),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search volumes…")).toBeNull();
   });
 });

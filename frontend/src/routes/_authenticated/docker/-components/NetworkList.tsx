@@ -847,13 +847,15 @@ const NetworkList = ({
         minHeight: 0,
       }}
     >
-      <RoutedTabSearch>
-        <AppHeaderSearch
-          onChange={setSearch}
-          placeholder="Search networks…"
-          value={search}
-        />
-      </RoutedTabSearch>
+      {!focusedNetwork && (
+        <RoutedTabSearch>
+          <AppHeaderSearch
+            onChange={setSearch}
+            placeholder="Search networks…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
       {focusedNetwork ? (
         <DockerResourceDetailsLayout
           onClose={() => updateFocusedNetwork(null)}

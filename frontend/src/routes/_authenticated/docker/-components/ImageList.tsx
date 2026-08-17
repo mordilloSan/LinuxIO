@@ -504,13 +504,15 @@ const ImageList = ({
         minHeight: 0,
       }}
     >
-      <RoutedTabSearch>
-        <AppHeaderSearch
-          onChange={setSearch}
-          placeholder="Search images…"
-          value={search}
-        />
-      </RoutedTabSearch>
+      {!focusedImage && (
+        <RoutedTabSearch>
+          <AppHeaderSearch
+            onChange={setSearch}
+            placeholder="Search images…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
       {focusedImage ? (
         <DockerResourceDetailsLayout
           onClose={clearFocusedImage}

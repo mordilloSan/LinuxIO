@@ -73,6 +73,7 @@ describe("ImageList focused details", () => {
     expect(
       await screen.findByRole("button", { name: "Close image details" }),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search images…")).toBeNull();
     expect(screen.getByText("Full Image ID:")).toBeInTheDocument();
     expect(screen.getByText("example/image@sha256:digest")).toBeInTheDocument();
     expect(

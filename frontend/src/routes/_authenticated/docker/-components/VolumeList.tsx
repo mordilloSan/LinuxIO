@@ -484,13 +484,15 @@ const VolumeList = ({
         minHeight: 0,
       }}
     >
-      <RoutedTabSearch>
-        <AppHeaderSearch
-          onChange={setSearch}
-          placeholder="Search volumes…"
-          value={search}
-        />
-      </RoutedTabSearch>
+      {!focusedVolume && (
+        <RoutedTabSearch>
+          <AppHeaderSearch
+            onChange={setSearch}
+            placeholder="Search volumes…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
       {focusedVolume ? (
         <DockerResourceDetailsLayout
           onClose={() => updateFocusedVolume(null)}
