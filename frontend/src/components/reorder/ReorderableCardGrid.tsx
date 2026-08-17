@@ -1,13 +1,6 @@
-import { DndContext } from "@dnd-kit/core";
+import { DndContext, DragOverlay, useDndMonitor } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import type { ReactNode } from "react";
-
-// The rect strategy previews a drag by reassigning whole rects, which only
-// reads as a reflow when every sortable is the same size. A custom body mixes
-// sizes (stack bands among cards), where those previews scatter cards
-// off-screen — so it keeps resting items still, marks the drop target with a
-// ring instead, and lets the grid reflow on drop.
-const staticSortingStrategy = () => null;
+import { useState, type ReactNode } from "react";
 
 import SortableCard from "@/components/cards/SortableCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
@@ -20,11 +13,42 @@ import {
   HOVER_LIFT_HEADROOM,
 } from "@/theme/constants";
 
+// In overlay mode the caller previews a drag by re-rendering the grid with a
+// provisional order, so the resting items' slots are shown by real layout —
+// at their real widths — and strategy transforms would only fight that
+// reflow with stale drag-start rects.
+const staticSortingStrategy = () => null;
+
+// Rendered inside the DndContext so it can watch the active drag. The overlay
+// is a fixed-size copy of the dragged item that follows the pointer, leaving
+// the source card in the grid as the dimmed ghost at wherever the layout puts
+// it — the pairing dnd-kit expects when a drag is previewed by re-rendering
+// rather than by strategy transforms.
+function CardGridDragOverlay({
+  render,
+}: {
+  render: (activeId: string) => ReactNode;
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  useDndMonitor({
+    onDragStart: (event) => setActiveId(String(event.active.id)),
+    onDragEnd: () => setActiveId(null),
+    onDragCancel: () => setActiveId(null),
+  });
+  return <DragOverlay>{activeId ? render(activeId) : null}</DragOverlay>;
+}
+
 interface ReorderableCardGridProps<TItem> {
   /** Accessible name for the grid. `virtualized` only. */
   ariaLabel?: string;
   /** Equal-width columns at each breakpoint. When present, each card spans one column. */
   columns?: GridSize;
+  /**
+   * Backfill the row gap a wide item (a stack band) leaves with the items that
+   * follow it, via `grid-auto-flow: dense`. A no-op while every item is
+   * card-sized. Ignored when `virtualized`.
+   */
+  dense?: boolean;
   /**
    * Scroll the cards inside the grid rather than growing the page, the way
    * `fillAvailable` works on AppVirtualGrid and AppDataTable. Set it where the
@@ -35,23 +59,22 @@ interface ReorderableCardGridProps<TItem> {
   fillAvailable?: boolean;
   getId: (item: TItem) => string;
   /**
-   * Replaces the default flat grid with a caller-built layout — grouped
-   * sections, say — while the hold-to-reorder arming stays here: a card is only
-   * draggable if it is rendered through the `renderCard` this receives. Chrome
-   * the caller adds around or between cards simply isn't draggable. The
-   * `fillAvailable` scrollport still applies. Non-virtualized grids only.
+   * Per-item span, overriding `size` — how one grid mixes card-sized items
+   * with wider ones (stack bands). Mixed sizes are also why SortableCard
+   * applies only the translation half of its drag transform. Ignored when
+   * `virtualized` or `columns` is set.
    */
-  renderBody?: (
-    renderCard: (item: TItem, index: number) => ReactNode,
-  ) => ReactNode;
+  getItemSize?: (item: TItem, index: number) => GridSize;
+  /**
+   * A fixed-size copy of the dragged item, rendered in a `DragOverlay` that
+   * follows the pointer. Pair it with a live `onDragOver` reorder on the
+   * surface's dnd props: the grid then previews the drag by reflowing for
+   * real, which is how variable-width items keep their true widths mid-drag.
+   * Must be presentational — no sortable hooks.
+   */
+  renderDragOverlay?: (activeId: string) => ReactNode;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
-  /**
-   * Overrides the `SortableContext` items when `renderBody` lays out composite
-   * sortables — a stack band whose drag id isn't in `surface.ids`. Defaults to
-   * `surface.ids`.
-   */
-  sortableIds?: string[];
   /** Breakpoint spans for each card. Ignored when `virtualized`. */
   size?: GridSize;
   surface: ReorderableSurface<TItem>;
@@ -88,16 +111,17 @@ interface ReorderableCardGridProps<TItem> {
 function ReorderableCardGrid<TItem>({
   ariaLabel,
   columns,
+  dense = false,
   emptyMessage,
   estimateItemHeight,
   fillAvailable = false,
   getId,
+  getItemSize,
   items,
   minItemWidth,
-  renderBody,
+  renderDragOverlay,
   renderItem,
   size,
-  sortableIds,
   spacing = DASHBOARD_CARD_SPACING,
   surface,
   virtualized = false,
@@ -133,12 +157,18 @@ function ReorderableCardGrid<TItem>({
       />
     );
   } else {
-    const grid = renderBody ? (
-      renderBody(renderSortableCard)
-    ) : (
-      <AppGrid columns={columns} container spacing={spacing}>
+    const grid = (
+      <AppGrid
+        columns={columns}
+        container
+        spacing={spacing}
+        style={dense ? { gridAutoFlow: "row dense" } : undefined}
+      >
         {rendered.map((item, index) => (
-          <AppGrid key={getId(item)} size={columns ? 1 : size}>
+          <AppGrid
+            key={getId(item)}
+            size={columns ? 1 : (getItemSize?.(item, index) ?? size)}
+          >
             {renderSortableCard(item, index)}
           </AppGrid>
         ))}
@@ -179,11 +209,14 @@ function ReorderableCardGrid<TItem>({
   return (
     <DndContext {...surface.dndContextProps}>
       <SortableContext
-        items={sortableIds ?? surface.ids}
-        strategy={rectSortingStrategy}
+        items={surface.ids}
+        strategy={
+          renderDragOverlay ? staticSortingStrategy : rectSortingStrategy
+        }
       >
         {body}
       </SortableContext>
+      {renderDragOverlay && <CardGridDragOverlay render={renderDragOverlay} />}
     </DndContext>
   );
 }

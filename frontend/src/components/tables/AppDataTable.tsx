@@ -84,6 +84,7 @@ export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
 
 export interface AppDataTableRowRenderProps<TData extends RowData> {
   cells: ReactNode;
+  dragHandle?: ReactNode;
   isSelected: boolean;
   row: Row<AppTableFeatures, TData>;
   rowIndex: number;
@@ -445,6 +446,7 @@ function AppDataTableBodyRow<TData extends RowData>({
   if (renderRow) {
     return renderRow({
       cells: renderedCells,
+      dragHandle,
       isSelected,
       row,
       rowIndex,

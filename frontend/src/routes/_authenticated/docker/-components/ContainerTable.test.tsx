@@ -334,6 +334,9 @@ describe("ContainerTable mutation feedback", () => {
     const solo = rowNamed("solo-app");
 
     expect(stackHeader).toHaveClass("app-dt__row--reordering");
+    expect(
+      within(stackHeader).getByLabelText("Reorder container"),
+    ).toBeInTheDocument();
     expect(mediaWeb).not.toHaveClass("app-dt__row--reordering");
     expect(mediaDb).not.toHaveClass("app-dt__row--reordering");
     expect(within(mediaWeb).queryByLabelText("Reorder container")).toBeNull();

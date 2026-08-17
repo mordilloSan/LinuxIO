@@ -169,6 +169,17 @@
   padding-inline-end: 10px;
 }
 
+.container-table__stack-group-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  /* Reclaims the normal cell padding so this real handle occupies the same
+     leading grid slot as a regular reorderable row. */
+  margin-inline-start: -16px;
+  margin-inline-end: 8px;
+}
+
 .container-table__stack-group-icon {
   flex-shrink: 0;
   color: var(--app-palette-text-secondary);

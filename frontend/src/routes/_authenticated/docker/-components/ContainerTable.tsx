@@ -10,6 +10,7 @@ import {
   useMemo,
   useState,
   type MouseEvent,
+  type ReactNode,
 } from "react";
 
 import {
@@ -335,18 +336,26 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
 }
 
 interface StackHeaderCellProps {
+  dragHandle?: ReactNode;
   header: ContainerStackHeaderRow;
   onToggleStack?: (project: string) => void;
 }
 
 // The one cell of a stack header row, spanning every column. The row click
 // toggles the stack too; the chevron button is what keyboard users get.
-function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
+function StackHeaderCell({
+  dragHandle,
+  header,
+  onToggleStack,
+}: StackHeaderCellProps) {
   const theme = useAppTheme();
   const summary = summarizeStack(header.containers);
 
   return (
     <div className="app-dt__cell container-table__stack-group-cell" role="cell">
+      {dragHandle && (
+        <span className="container-table__stack-group-drag">{dragHandle}</span>
+      )}
       {/* The stack glyph fills the member row's status-dot slot; its project
           image then stays in the same position as every container icon. */}
       <Icon
@@ -1203,6 +1212,7 @@ const ContainerTable = ({
   const renderRow = useCallback(
     ({
       cells,
+      dragHandle,
       row,
       rowProps,
     }: AppDataTableRowRenderProps<ContainerTableRow>) => {
@@ -1216,7 +1226,11 @@ const ContainerTable = ({
               .filter(Boolean)
               .join(" ")}
           >
-            <StackHeaderCell header={original} onToggleStack={onToggleStack} />
+            <StackHeaderCell
+              dragHandle={dragHandle}
+              header={original}
+              onToggleStack={onToggleStack}
+            />
           </div>
         );
       }

@@ -1,6 +1,8 @@
 import {
   closestCenter,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragPendingEvent,
   type DragStartEvent,
   KeyboardSensor,
@@ -60,10 +62,22 @@ export interface ReorderableSurfaceOptions<TItem> {
 
 /** Props for the `DndContext` that wraps a reorderable surface. */
 export interface ReorderableSurfaceDndProps {
-  collisionDetection: typeof closestCenter;
+  /**
+   * `closestCenter` from the hook. A caller may substitute its own — the
+   * stack-band grid wraps it to pin collisions to the drag-start rects, so its
+   * reflow preview can never feed back into the collision that drives it.
+   */
+  collisionDetection: CollisionDetection;
   onDragAbort: () => void;
   onDragCancel: () => void;
   onDragEnd: (event: DragEndEvent) => void;
+  /**
+   * The hook leaves this unset. A grid whose sortables vary in size (the
+   * stack-band grid) previews a drag by re-rendering with the provisional
+   * order instead of with strategy transforms — dnd-kit's supported pattern
+   * for variable sizes — and layers its own handler onto the returned props.
+   */
+  onDragOver?: (event: DragOverEvent) => void;
   onDragPending: (event: DragPendingEvent) => void;
   onDragStart: (event: DragStartEvent) => void;
   sensors: ReturnType<typeof useSensors>;

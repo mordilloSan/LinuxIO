@@ -3,11 +3,12 @@
    10px inset — and the fill stays faint enough that the cards keep reading as
    the page's surfaces, with the band as grouping chrome around them. */
 .container-stack-band {
-  /* Anchors the hold ring, which follows the band's own radius. */
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Fills the SortableCard wrapper, which fills its grid cell — so a band
+     stands as tall as the cards sharing its row, like any other card. */
+  height: 100%;
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--app-palette-divider);
@@ -17,41 +18,6 @@
     transparent,
     var(--app-palette-text-primary) 3%
   );
-}
-
-/* The band's drag handle: holding anywhere on the header row picks the whole
-   stack up. dnd-kit makes it a tab stop, so it carries the shared focus ring;
-   touch-action is off so a touch hold cannot turn into a scroll, same as the
-   table's handle. */
-.container-stack-band__handle {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-radius: 16px;
-  touch-action: none;
-}
-
-.container-stack-band__handle:focus-visible {
-  outline: 2px solid var(--app-palette-primary-main);
-  outline-offset: 2px;
-}
-
-/* In layout mode the handle drags on movement alone, so it reads as one. */
-.container-stack-band__handle--editing {
-  cursor: grab;
-}
-
-.container-stack-band__handle--editing:active {
-  cursor: grabbing;
-}
-
-/* While the band itself is being dragged, its member cards are also sortables
-   and the strategy keeps handing them reassigned slots. They must ride along
-   with the band instead, so their own transforms are parked until it lands —
-   !important because dnd-kit writes them as inline styles. */
-.container-stack-band--dragging .sortable-card {
-  transform: none !important;
-  transition: none !important;
 }
 
 /* The whole header is the collapse control, like the table rows below it. */

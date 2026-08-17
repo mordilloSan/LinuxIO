@@ -1,7 +1,5 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -10,7 +8,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { REORDER_HOLD_MS } from "@/constants/reorder";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG } from "@/theme/constants";
@@ -18,7 +15,6 @@ import { CARD_PADDING_LG } from "@/theme/constants";
 import {
   formatStackSummary,
   getStackDisplayState,
-  getStackDragId,
   summarizeStack,
 } from "./containerStacks";
 
@@ -27,109 +23,53 @@ import "./container-stacks.css";
 interface ContainerStackBandProps {
   children: ReactNode;
   containers: ContainerInfo[];
-  /** Layout mode is open — drags start on movement alone, like the cards. */
-  editMode: boolean;
   onToggle: () => void;
-  /** The band is being held, waiting for the hold to complete. */
-  pending: boolean;
   project: string;
 }
 
 /**
  * The expanded form of a compose stack in card view: chrome drawn around the
  * member cards rather than a surface of its own, so the cards inside stay
- * exactly the cards they are when loose. The band is itself a sortable unit:
- * holding its header picks the whole stack up, the way holding a card picks
- * the card up, and the drop moves every member as one block.
+ * exactly the cards they are when loose. Purely presentational — the grid
+ * wraps it in the same SortableCard as every other card, so the whole band
+ * holds, drags, and reorders as one wide item.
  */
 export function ContainerStackBand({
   children,
   containers,
-  editMode,
   onToggle,
-  pending,
   project,
 }: ContainerStackBandProps) {
-  const theme = useAppTheme();
   const summary = summarizeStack(containers);
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: getStackDragId(project) });
-  const holding = pending && !editMode;
 
   return (
-    <section
-      aria-label={`Stack ${project}`}
-      className={[
-        "container-stack-band",
-        isDragging && "container-stack-band--dragging",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      ref={setNodeRef}
-      style={
-        {
-          // Translation only, like SortableCard: the strategy's scale half
-          // would squash the band down to a card's rect mid-drag.
-          transform: CSS.Translate.toString(transform),
-          transition,
-          opacity: isDragging ? 0.5 : 1,
-          zIndex: isDragging ? 5 : undefined,
-          "--reorder-hold-color": theme.palette.primary.main,
-          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
-        } as CSSProperties
-      }
-    >
-      {holding && <div className="reorder-hold-ring" />}
-      {/* The header is the band's drag handle; the members below it keep
-          their own card gestures. */}
-      <div
-        className={[
-          "container-stack-band__handle",
-          editMode && "container-stack-band__handle--editing",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        {...attributes}
-        {...listeners}
+    <section aria-label={`Stack ${project}`} className="container-stack-band">
+      <button
+        aria-expanded
+        aria-label={`Collapse stack ${project}`}
+        className="container-stack-band__header"
+        onClick={onToggle}
+        type="button"
       >
-        <button
-          aria-expanded
-          aria-label={`Collapse stack ${project}`}
-          className="container-stack-band__header"
-          onClick={onToggle}
-          type="button"
-        >
-          <Icon
-            className="container-stack__chevron"
-            height={18}
-            icon="mdi:chevron-down"
-            width={18}
-          />
-          <Icon
-            className="container-stack__icon"
-            height={18}
-            icon="mdi:layers-outline"
-            width={18}
-          />
-          <AppTypography
-            fontWeight={600}
-            noWrap
-            title={project}
-            variant="body2"
-          >
-            {project}
-          </AppTypography>
-          <AppTypography color="text.secondary" noWrap variant="caption">
-            {formatStackSummary(summary)}
-          </AppTypography>
-        </button>
-      </div>
+        <Icon
+          className="container-stack__chevron"
+          height={18}
+          icon="mdi:chevron-down"
+          width={18}
+        />
+        <Icon
+          className="container-stack__icon"
+          height={18}
+          icon="mdi:layers-outline"
+          width={18}
+        />
+        <AppTypography fontWeight={600} noWrap title={project} variant="body2">
+          {project}
+        </AppTypography>
+        <AppTypography color="text.secondary" noWrap variant="caption">
+          {formatStackSummary(summary)}
+        </AppTypography>
+      </button>
       {children}
     </section>
   );
