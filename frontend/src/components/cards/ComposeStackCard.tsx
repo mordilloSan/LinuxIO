@@ -167,7 +167,9 @@ const ComposeStackCard = ({
         display: "flex",
         flexDirection: "column",
         height: "100%",
+        minWidth: 0,
         position: "relative",
+        width: "100%",
       }}
     >
       {/* Status chip top-right */}

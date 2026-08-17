@@ -18,6 +18,7 @@ import {
   useCallMutation,
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
+import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
@@ -164,6 +165,15 @@ const composeServiceColumns: AppDataTableColumnDef<ComposeServiceDetail>[] = [
     meta: { hideBelow: "md" },
   },
 ];
+
+const stackDetailSectionStyle = {
+  color: "var(--app-palette-text-secondary)",
+  fontSize: "0.6rem",
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  marginBottom: 4,
+  textTransform: "uppercase",
+} as const;
 
 interface ComposeContainerActionsProps {
   container: ContainerInfo;
@@ -892,49 +902,57 @@ const ComposeList = ({
 
     return (
       <div className="expand-panel">
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Compose files:</b>
-          </AppTypography>
+        <DetailRow label="Compose files" noBorder>
           {project.config_files.length > 0 ? (
-            project.config_files.map((filePath) => (
-              <AppTypography
-                className="expand-panel__mono"
-                copyText={filePath}
-                key={filePath}
-                noWrap
-                title={filePath}
-                variant="body2"
-              >
-                {filePath}
-              </AppTypography>
-            ))
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {project.config_files.map((filePath) => (
+                <AppTypography
+                  className="expand-panel__mono"
+                  component="span"
+                  copyText={filePath}
+                  fontSize="0.75rem"
+                  fontWeight={500}
+                  key={filePath}
+                  noWrap
+                  title={filePath}
+                  variant="body2"
+                >
+                  {filePath}
+                </AppTypography>
+              ))}
+            </div>
           ) : (
-            <AppTypography color="text.secondary" variant="body2">
+            <AppTypography
+              color="text.secondary"
+              component="span"
+              fontSize="0.75rem"
+              variant="body2"
+            >
               No compose files found.
             </AppTypography>
           )}
-        </div>
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Working directory:</b>
-          </AppTypography>
+        </DetailRow>
+        <DetailRow label="Location">
           <AppTypography
             className="expand-panel__mono"
+            component="span"
             copyText={project.working_dir}
+            fontSize="0.75rem"
+            fontWeight={500}
             noWrap
             title={project.working_dir}
             variant="body2"
           >
             {project.working_dir || "-"}
           </AppTypography>
-        </div>
+        </DetailRow>
         <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Services:</b>
+          <AppTypography component="div" style={stackDetailSectionStyle}>
+            Services
           </AppTypography>
           <AppDataTable
             ariaLabel={`Services in ${project.name}`}
+            className="compose-expanded-table"
             columns={composeServiceColumns}
             data={services}
             density="compact"
@@ -946,8 +964,8 @@ const ComposeList = ({
           />
         </div>
         <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Containers:</b>
+          <AppTypography component="div" style={stackDetailSectionStyle}>
+            Containers
           </AppTypography>
           {renderExpandedContent(project)}
         </div>
