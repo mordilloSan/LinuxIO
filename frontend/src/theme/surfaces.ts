@@ -81,10 +81,10 @@ export const getFileEntryBackground = (
   { hidden, selected }: { hidden?: boolean; selected?: boolean },
 ) => {
   if (selected) {
-    return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
+    return mixWithTransparency("var(--app-palette-primary-main)", 0.4);
   }
   if (hidden) {
-    return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
+    return mixWithTransparency(theme.fileBrowser.surface, 0.5);
   }
   return theme.fileBrowser.surface;
 };

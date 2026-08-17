@@ -44,14 +44,18 @@ or instead of code.
   layout ever needs the escape hatch.
   *Verify: `make check-frontend`*
 
-- [ ] **A4. (decision) `color-mix` normalisation — parked on request.**
-  ~25 files, two inverted argument shapes (`X 10%, transparent` = 10% opacity
-  vs `X, transparent 60%` = 40%). Each conversion must be recomputed by hand —
-  pattern substitution silently changes colours. `mixWithTransparency` is now
-  exported from `theme/surfaces.ts` so TSX sites can route through it; CSS
-  sites can only pick one argument order. Scope options: TSX half only
-  (recommended last session), both, or neither.
-  *Verify: `make check-frontend`, visual spot-check of touched surfaces*
+- [x] **A4. `color-mix` normalisation — TSX half done, CSS half declined.**
+  *(done 2026-08-17)* Decision: TSX half only. Nine transparency-mix sites now
+  route through `mixWithTransparency`, each opacity hand-recomputed and
+  exactly representable (zero visual change): SelectionBox (0.1), FileListRow
+  (0.15 / 0.1), CompressFormatDialog (0.1, was the inverted `10%, transparent`
+  shape), LVMManagement ×2 (0.12, inverted shape), MultiFileDetail (0.4 /
+  0.05), and surfaces.ts's own `getFileEntryBackground` (0.4 / 0.5). Left raw
+  on purpose: two-colour mixes the helper can't express
+  (`getFileEntryHoverBackground`, `utils/color.ts` `mixWith`) and all 18 CSS
+  files — the CSS half keeps both argument shapes, per the scope decision.
+  *Verify: `make check-frontend`, visual spot-check of file browser
+  (selection box, hidden/selected rows, size chips), compress dialog, LVM*
 
 - [ ] **A5. (decision) Pull the off-scale 6px cards onto the padding scale.**
   Deliberate visual change (6px → 8px body inset): LVMMetricCard,

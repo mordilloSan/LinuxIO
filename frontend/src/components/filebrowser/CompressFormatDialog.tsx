@@ -4,6 +4,7 @@ import { useState, type SubmitEventHandler } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { mixWithTransparency } from "@/theme/surfaces";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -91,7 +92,7 @@ const CompressFormatDialog = ({
                   borderRadius: 12,
                   border: `2px solid ${isSelected ? theme.palette.primary.main : theme.palette.divider}`,
                   background: isSelected
-                    ? `color-mix(in srgb, ${theme.palette.primary.main} 10%, transparent)`
+                    ? mixWithTransparency(theme.palette.primary.main, 0.1)
                     : "transparent",
                   cursor: "pointer",
                   color: "inherit",

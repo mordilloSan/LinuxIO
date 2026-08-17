@@ -30,6 +30,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
+import { mixWithTransparency } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
 const STORAGE_TOAST_META = {
@@ -157,7 +158,7 @@ const CreateLVDialog = ({
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
                 border:
-                  "1px solid color-mix(in srgb, currentColor 12%, transparent)",
+                  `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
               }}
             >
               <AppTypography color="text.secondary" variant="caption">
@@ -259,7 +260,7 @@ const ResizeLVDialog = ({
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
                 border:
-                  "1px solid color-mix(in srgb, currentColor 12%, transparent)",
+                  `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
                 display: "grid",
                 gap: 4,
               }}

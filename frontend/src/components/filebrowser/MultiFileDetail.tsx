@@ -6,6 +6,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { mixWithTransparency } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
 import type { MultiStatsItem } from "../../types/filebrowser";
@@ -130,7 +131,7 @@ const MultiFileItemRow = ({
       style={{
         border: "1px solid",
         borderColor: hovered
-          ? "color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)"
+          ? mixWithTransparency("var(--app-palette-primary-main)", 0.4)
           : theme.palette.divider,
         borderRadius: baseBorderRadius * 1.5,
         padding: theme.spacing(1.5),
@@ -138,7 +139,7 @@ const MultiFileItemRow = ({
         flexDirection: "column",
         gap: theme.spacing(0.5),
         backgroundColor: hovered
-          ? "color-mix(in srgb, var(--app-palette-primary-main), transparent 95%)"
+          ? mixWithTransparency("var(--app-palette-primary-main)", 0.05)
           : "transparent",
         transition:
           "background-color 120ms ease, border-color 120ms ease, transform 120ms ease",

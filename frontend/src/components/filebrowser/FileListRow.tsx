@@ -20,6 +20,7 @@ import { useAppTheme } from "@/theme";
 import {
   getFileEntryBackground,
   getFileEntryHoverBackground,
+  mixWithTransparency,
 } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -329,8 +330,8 @@ const FileListRow = memo<FileListRowProps>(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? `color-mix(in srgb, var(--app-palette-primary-main), transparent 85%)`
-                      : `color-mix(in srgb, var(--app-palette-text-secondary), transparent 90%)`,
+                      ? mixWithTransparency("var(--app-palette-primary-main)", 0.15)
+                      : mixWithTransparency("var(--app-palette-text-secondary)", 0.1),
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",
