@@ -5,6 +5,7 @@ import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_LG } from "@/theme/constants";
 import { isDeferredUpdate } from "@/utils/packageUpdates";
 
 export interface UpdateCardProps {
@@ -44,7 +45,7 @@ const UpdateCard = ({
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        padding: 12,
+        padding: CARD_PADDING_LG,
       }}
     >
       <div

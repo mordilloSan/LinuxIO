@@ -14,6 +14,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_LG } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -694,7 +695,7 @@ const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
     accent
     hoverLift={!selected}
     style={{
-      padding: 12,
+      padding: CARD_PADDING_LG,
       display: "flex",
       flexDirection: "column",
       height: "100%",

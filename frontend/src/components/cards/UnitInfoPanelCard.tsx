@@ -7,6 +7,7 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_LG } from "@/theme/constants";
 
 export interface UnitInfoRow {
   hidden?: boolean;
@@ -79,7 +80,7 @@ export function UnitInfoPanel({
   return (
     <FrostedCard
       style={{
-        padding: 12,
+        padding: CARD_PADDING_LG,
         height: "100%",
         flex: 1,
         display: "flex",

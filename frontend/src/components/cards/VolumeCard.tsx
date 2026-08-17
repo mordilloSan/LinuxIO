@@ -3,6 +3,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_SM } from "@/theme/constants";
 import { longTextStyles } from "@/theme/tableStyles";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -29,7 +30,7 @@ const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
     accent
     hoverLift
     style={{
-      padding: 8,
+      padding: CARD_PADDING_SM,
       /*
         Selection takes the accent line to full strength and holds the lift
         shadow, the same treatment DockerImageCard gives its selected state —

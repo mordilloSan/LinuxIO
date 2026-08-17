@@ -19,7 +19,12 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
-import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
+import {
+  CARD_PADDING_LG,
+  CARD_PADDING_MD,
+  GAP_SM,
+  TRANSITION_SLOW_CSS,
+} from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
@@ -244,7 +249,7 @@ const UserCard = ({
       accent
       hoverLift={!isSelected}
       style={{
-        padding: isSelected ? 12 : 10,
+        padding: isSelected ? CARD_PADDING_LG : CARD_PADDING_MD,
         display: "flex",
         flexDirection: "column",
         height: "100%",

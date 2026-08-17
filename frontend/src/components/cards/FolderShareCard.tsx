@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_MD } from "@/theme/constants";
 
 export interface FolderShareCardProps {
   actions: ReactNode;
@@ -18,7 +19,7 @@ const FolderShareCard = ({
   actions,
   protocolSummary,
 }: FolderShareCardProps) => (
-  <FrostedCard accent hoverLift style={{ padding: 10 }}>
+  <FrostedCard accent hoverLift style={{ padding: CARD_PADDING_MD }}>
     {/* Header: name + actions */}
     <div
       style={{

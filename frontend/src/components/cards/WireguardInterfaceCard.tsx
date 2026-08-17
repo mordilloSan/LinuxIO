@@ -12,7 +12,11 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { getWireguardStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
-import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
+import {
+  CARD_PADDING_SM,
+  GAP_SM,
+  TRANSITION_SLOW_CSS,
+} from "@/theme/constants";
 
 export type WireguardInterfaceAction =
   | "add-peer"
@@ -35,7 +39,7 @@ interface InterfaceCardProps {
 }
 
 const cardStyle: CSSProperties = {
-  padding: 8,
+  padding: CARD_PADDING_SM,
   display: "flex",
   flexDirection: "column",
   height: "100%",

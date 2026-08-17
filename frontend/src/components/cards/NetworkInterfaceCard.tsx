@@ -9,6 +9,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM } from "@/theme/constants";
 
 const getStatusTooltip = (state: number) => {
   if (state === 100) return "Connected";
@@ -190,7 +191,7 @@ const NetworkInterfaceCard = ({
       accent
       hoverLift={!expanded}
       style={{
-        padding: 8,
+        padding: CARD_PADDING_SM,
         position: "relative",
         // Expanding pulls the interface out of the grid, where it can no longer
         // be held to reorder — so the line stands down with the lift.

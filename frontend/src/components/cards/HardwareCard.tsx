@@ -5,7 +5,7 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { GAP_MD } from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 
 export type SummaryRow = {
   label: string;
@@ -103,7 +103,7 @@ const HardwareCard = ({
       flexDirection: "column",
       boxSizing: "border-box",
       height: "100%",
-      padding: 8,
+      padding: CARD_PADDING_SM,
     }}
   >
     <CardIconHeader

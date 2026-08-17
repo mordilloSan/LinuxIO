@@ -5,6 +5,7 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM } from "@/theme/constants";
 import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
 
 import "./DockerImageCard.css";
@@ -52,7 +53,7 @@ const DockerImageCard = ({
         className={selected ? "docker-image-card--selected" : undefined}
         hoverLift
         style={{
-          padding: 8,
+          padding: CARD_PADDING_SM,
           /*
             Selection takes the accent line to full strength. Inline, the way
             every other selectable card does it — a stylesheet rule would need

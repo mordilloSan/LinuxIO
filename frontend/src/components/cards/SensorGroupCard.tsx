@@ -9,6 +9,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_MD } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 import {
@@ -278,7 +279,11 @@ export const SensorGroupCardShell = ({
   const theme = useAppTheme();
 
   return (
-    <FrostedCard accent hoverLift style={{ padding: 10, height: "100%" }}>
+    <FrostedCard
+      accent
+      hoverLift
+      style={{ padding: CARD_PADDING_MD, height: "100%" }}
+    >
       <CardIconHeader
         icon={
           <Icon

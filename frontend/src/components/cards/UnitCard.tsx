@@ -5,7 +5,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
+import { CARD_PADDING_LG, TRANSITION_SLOW_CSS } from "@/theme/constants";
 
 export interface UnitListItem {
   active_state: string;
@@ -17,7 +17,7 @@ export interface UnitListItem {
 }
 
 const cardStyle: CSSProperties = {
-  padding: 12,
+  padding: CARD_PADDING_LG,
   display: "flex",
   flexDirection: "column",
   height: "100%",

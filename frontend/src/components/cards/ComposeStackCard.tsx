@@ -8,6 +8,7 @@ import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
+import { CARD_PADDING_SM } from "@/theme/constants";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
@@ -110,7 +111,7 @@ const ComposeStackCard = ({
       accent
       hoverLift
       style={{
-        padding: 8,
+        padding: CARD_PADDING_SM,
         display: "flex",
         flexDirection: "column",
         height: "100%",

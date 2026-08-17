@@ -6,6 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface NFSMountCardProps {
@@ -139,7 +140,7 @@ const NFSMountCardLiveContent = ({
 };
 
 const NFSMountCard = (props: NFSMountCardProps) => (
-  <FrostedCard accent hoverLift style={{ padding: 8 }}>
+  <FrostedCard accent hoverLift style={{ padding: CARD_PADDING_SM }}>
     <NFSMountCardLiveContent {...props} />
   </FrostedCard>
 );

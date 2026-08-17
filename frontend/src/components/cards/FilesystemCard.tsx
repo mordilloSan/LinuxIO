@@ -9,7 +9,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { GAP_MD } from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 const SYSTEM_MOUNTPOINTS = new Set(["/", "/boot", "/boot/efi"]);
@@ -295,7 +295,7 @@ const FilesystemCard = ({
     <FrostedCard
       hoverLift={!selected}
       style={{
-        padding: 8,
+        padding: CARD_PADDING_SM,
       }}
     >
       <AppButton
