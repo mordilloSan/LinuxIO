@@ -107,13 +107,19 @@
     color-mix(in srgb, transparent, var(--app-palette-primary-main) 50%);
 }
 
-/* The header's single cell spans every column of the row grid. */
+/* The header's single cell spans every column of the row grid. Its minimum
+   matches the three-line port/volume reserve in ordinary rows, keeping the
+   group rhythm stable even though its own label is only one line. */
 .container-table__stack-group-cell {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 66px;
   min-width: 0;
+  /* The action cell ends with 8px padding; the chevron button adds 2px around
+     its 18px glyph, so the group cell needs 10px here for glyph alignment. */
+  padding-inline-end: 10px;
 }
 
 .container-table__stack-group-icon {
