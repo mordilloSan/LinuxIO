@@ -24,6 +24,10 @@ describe("VolumeCard", () => {
     });
     expect(card).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: volume.Name }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("local · local")).toBeInTheDocument();
 
     await user.click(card);
     expect(onSelect).not.toHaveBeenCalled();

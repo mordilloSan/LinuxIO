@@ -31,6 +31,10 @@ describe("NetworkCard", () => {
     });
     expect(card).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: network.Name }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("bridge · local")).toBeInTheDocument();
 
     await user.click(card);
     expect(onSelect).not.toHaveBeenCalled();

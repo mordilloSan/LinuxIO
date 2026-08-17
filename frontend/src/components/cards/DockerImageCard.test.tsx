@@ -28,9 +28,15 @@ describe("DockerImageCard", () => {
     expect(card).toHaveAttribute("aria-pressed", "false");
     expect(card).toHaveClass("selectable-card-button");
     expect(card.firstElementChild).not.toHaveClass(
-      "docker-image-card--selected",
+      "docker-resource-card--selected",
     );
     expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: image.repo }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`${image.size} MB · ${image.created}`),
+    ).toBeInTheDocument();
 
     await user.click(card);
     expect(onSelect).not.toHaveBeenCalled();
@@ -45,7 +51,7 @@ describe("DockerImageCard", () => {
     });
     expect(selectedCard).toHaveAttribute("aria-pressed", "true");
     expect(selectedCard.firstElementChild).toHaveClass(
-      "docker-image-card--selected",
+      "docker-resource-card--selected",
     );
 
     selectedCard.focus();

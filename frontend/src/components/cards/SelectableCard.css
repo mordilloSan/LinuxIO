@@ -1,5 +1,6 @@
 .selectable-card-button {
   display: block;
+  height: 100%;
   width: 100%;
   min-width: 0;
   padding: 0;

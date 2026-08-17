@@ -20,7 +20,10 @@ const DockerSectionCard = ({
   fullHeight,
 }: DockerSectionCardProps) => (
   <FrostedCard
-    style={{ padding: CARD_PADDING_SM, ...(fullHeight ? { height: "100%" } : {}) }}
+    style={{
+      padding: CARD_PADDING_SM,
+      ...(fullHeight ? { height: "100%" } : {}),
+    }}
   >
     <CardIconHeader
       icon={icon}

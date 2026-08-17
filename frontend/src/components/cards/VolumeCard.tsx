@@ -1,9 +1,8 @@
 import { type DockerVolume } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import SelectableCard from "@/components/cards/SelectableCard";
+import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { CARD_PADDING_SM } from "@/theme/constants";
+import { GAP_SM } from "@/theme/constants";
 import { longTextStyles } from "@/theme/tableStyles";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -12,8 +11,6 @@ export interface VolumeCardProps {
   selected: boolean;
   volume: DockerVolume;
 }
-
-const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const formatVolumeSize = (size?: number) => {
   if (size === undefined || size < 0) return "Size unavailable";
@@ -26,97 +23,50 @@ const formatReferenceCount = (count?: number) => {
 };
 
 const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
-  <SelectableCard
+  <DockerResourceCard
+    icon="mdi:database-outline"
     label={`volume ${volume.Name}`}
     onSelect={onSelect}
     selected={selected}
+    subtitle={`${volume.Driver} · ${volume.Scope || "local"}`}
+    title={volume.Name}
   >
-    <FrostedCard
-      accent
-      hoverLift
+    <AppTypography
+      color="text.secondary"
       style={{
-        padding: CARD_PADDING_SM,
-        ...(selected && {
-          borderBottomColor: "var(--fc-accent)",
-          boxShadow: "var(--fc-lift-shadow)",
-        }),
+        marginBottom: GAP_SM,
+        fontFamily: "var(--app-font-mono)",
+        ...longTextStyles,
       }}
+      variant="body2"
     >
-      {/* Header: name + driver chip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
-        <div
-          style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
-        >
-          <AppTypography
-            fontWeight={700}
-            noWrap
-            title={volume.Name}
-            toastMeta={DOCKER_TOAST_META}
-            variant="body2"
-          >
-            {volume.Name}
-          </AppTypography>
-        </div>
-        <Chip
-          label={volume.Driver}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
-      </div>
+      {volume.Mountpoint || "-"}
+    </AppTypography>
 
-      {/* Mountpoint */}
-      <AppTypography
-        style={{
-          marginBottom: 4,
-          fontFamily: "var(--app-font-mono)",
-          fontSize: "0.8rem",
-          ...longTextStyles,
-        }}
-        variant="body2"
-      >
-        {volume.Mountpoint || "-"}
-      </AppTypography>
-
-      {/* Meta chips */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: GAP_SM }}>
+      {volume.CreatedAt && (
         <Chip
-          label={`Scope: ${volume.Scope || "local"}`}
+          label={new Date(volume.CreatedAt).toLocaleDateString()}
           size="small"
           variant="soft"
         />
-        {volume.CreatedAt && (
+      )}
+      {volume.UsageData && (
+        <>
           <Chip
-            label={new Date(volume.CreatedAt).toLocaleDateString()}
+            label={formatVolumeSize(volume.UsageData.Size)}
             size="small"
             variant="soft"
           />
-        )}
-        {volume.UsageData && (
-          <>
-            <Chip
-              label={formatVolumeSize(volume.UsageData.Size)}
-              size="small"
-              variant="soft"
-            />
-            <Chip
-              label={formatReferenceCount(volume.UsageData.RefCount)}
-              size="small"
-              variant="soft"
-            />
-          </>
-        )}
-      </div>
-    </FrostedCard>
-  </SelectableCard>
+          <Chip
+            label={formatReferenceCount(volume.UsageData.RefCount)}
+            size="small"
+            variant="soft"
+          />
+        </>
+      )}
+    </div>
+  </DockerResourceCard>
 );
 
 export default VolumeCard;
