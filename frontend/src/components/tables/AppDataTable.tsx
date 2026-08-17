@@ -108,6 +108,12 @@ export interface AppDataTableDndOptions<TData extends RowData> {
   enabled?: boolean;
   handleAriaLabel?: string;
   handleColumnWidth?: string | number;
+  /**
+   * Rows this returns false for render as plain rows: synthetic rows a caller
+   * interleaves with its data — group headers — that must not register with
+   * dnd-kit. Omitting it keeps every row sortable.
+   */
+  isRowSortable?: (row: Row<AppTableFeatures, TData>) => boolean;
   /** Row currently being held, before the hold completes. */
   pendingItemId?: UniqueIdentifier | null;
 }
@@ -1013,7 +1019,7 @@ function AppDataTable<TData extends RowData>({
 
             return (
               <Fragment key={row.id}>
-                {dndOptions ? (
+                {dndOptions && (dndOptions.isRowSortable?.(row) ?? true) ? (
                   <AppDataTableSortableBodyRow
                     canExpand={canExpand}
                     cells={cells}
@@ -1037,7 +1043,9 @@ function AppDataTable<TData extends RowData>({
                     canExpand={canExpand}
                     cells={cells}
                     getRowAttributes={getRowAttributes}
-                    hasDragColumn={false}
+                    // A non-sortable row amid sortable ones still renders the
+                    // empty handle cell so its columns stay on the grid.
+                    hasDragColumn={hasDragColumn}
                     hasExpandColumn={hasExpandColumn}
                     isExpanded={isExpanded}
                     isInteractive={

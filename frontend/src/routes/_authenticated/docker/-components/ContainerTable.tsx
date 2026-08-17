@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import type { Row } from "@tanstack/react-table";
 import {
   createContext,
   lazy,
@@ -25,7 +26,13 @@ import AppDataTable from "@/components/tables/AppDataTable";
 import type {
   AppDataTableColumnDef,
   AppDataTableDndOptions,
+  AppDataTableRowAttributes,
+  AppDataTableRowRenderProps,
 } from "@/components/tables/AppDataTable";
+import type {
+  AppDataTableCellRenderKey,
+  AppTableFeatures,
+} from "@/components/tables/AppDataTable.types";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -40,6 +47,17 @@ import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
+
+import {
+  buildContainerTableRows,
+  formatStackSummary,
+  getComposeProject,
+  getStackDisplayState,
+  isStackHeaderRow,
+  summarizeStack,
+  type ContainerStackHeaderRow,
+  type ContainerTableRow,
+} from "./containerStacks";
 
 import "./container-table.css";
 
@@ -226,6 +244,8 @@ const getContainerTableSignature = (container: ContainerInfo) => {
     container.State,
     container.Status,
     container.Created,
+    // Grouping input: a changed project label regroups the rows.
+    getComposeProject(container) ?? "",
     container.icon ?? "",
     container.url ?? "",
     container.updateAvailable === undefined
@@ -276,7 +296,23 @@ const areContainerArraysEquivalent = (
   return true;
 };
 
+// Cells only ever mount against container rows — `renderRow` swaps the whole
+// row out for stack headers — so the cast is safe there. The render-key metas
+// do run against header rows while the cell models are built, so they go
+// through the guard below, which hands headers a stable key instead.
 const asContainer = (row: unknown) => row as ContainerInfo;
+
+const containerCellRenderKey =
+  (getKey: (container: ContainerInfo) => AppDataTableCellRenderKey) =>
+  (row: unknown): AppDataTableCellRenderKey =>
+    isStackHeaderRow(row) ? [row.project] : getKey(asContainer(row));
+
+const isContainerRowSortable = (
+  row: Row<AppTableFeatures, ContainerTableRow>,
+) => !isStackHeaderRow(row.original);
+
+const getContainerTableRowId = (row: ContainerTableRow) =>
+  isStackHeaderRow(row) ? `stack:${row.project}` : row.Id;
 
 function ContainerNameCell({ container }: { container: ContainerInfo }) {
   const name = getContainerName(container);
@@ -299,6 +335,77 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
       >
         {name}
       </AppTypography>
+    </div>
+  );
+}
+
+interface StackHeaderCellProps {
+  header: ContainerStackHeaderRow;
+  onToggleStack?: (project: string) => void;
+}
+
+// The one cell of a stack header row, spanning every column. The row click
+// toggles the stack too; the chevron button is what keyboard users get.
+function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
+  const theme = useAppTheme();
+  const summary = summarizeStack(header.containers);
+  const displayState = getStackDisplayState(summary);
+
+  return (
+    <div className="app-dt__cell container-table__stack-group-cell" role="cell">
+      <button
+        aria-expanded={!header.collapsed}
+        aria-label={`${header.collapsed ? "Expand" : "Collapse"} stack ${header.project}`}
+        className="container-table__stack-group-toggle"
+        onClick={() => onToggleStack?.(header.project)}
+        type="button"
+      >
+        <Icon
+          className="container-table__stack-chevron"
+          height={18}
+          icon="mdi:chevron-down"
+          width={18}
+        />
+      </button>
+      <StatusDot
+        color={getContainerStatusColor(displayState)}
+        size={8}
+        tooltip={displayState}
+      />
+      <Icon
+        className="container-table__stack-group-icon"
+        height={18}
+        icon="mdi:layers-outline"
+        width={18}
+      />
+      <AppTypography
+        fontWeight={600}
+        noWrap
+        title={header.project}
+        toastMeta={DOCKER_TOAST_META}
+        variant="body2"
+      >
+        {header.project}
+      </AppTypography>
+      <AppTypography color="text.secondary" noWrap variant="caption">
+        {formatStackSummary(summary)}
+      </AppTypography>
+      {/* Expanded stacks show this per row; folded ones surface it here. */}
+      {header.collapsed && summary.updateAvailable && (
+        <AppTooltip arrow title="Update available">
+          <span
+            aria-label="Update available"
+            role="img"
+            style={{
+              alignItems: "center",
+              color: theme.palette.warning.main,
+              display: "flex",
+            }}
+          >
+            <Icon aria-hidden icon="mdi:alert" width={14} />
+          </span>
+        </AppTooltip>
+      )}
     </div>
   );
 }
@@ -997,10 +1104,14 @@ const ActionsCell = memo(function ActionsCell({
 
 interface ContainerTableProps {
   checkingUpdates?: boolean;
+  /** Stacks folded down to their header row. Owned by the page, so the fold
+   * survives the card/table toggle. */
+  collapsedStackIds?: ReadonlySet<string>;
   containers: ContainerInfo[];
   /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
-  dnd?: AppDataTableDndOptions<ContainerInfo>;
+  dnd?: AppDataTableDndOptions<ContainerTableRow>;
   onSelectContainer?: (containerId: string) => void;
+  onToggleStack?: (project: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
 }
 
@@ -1009,17 +1120,77 @@ interface ContainerDialogTarget {
   name: string;
 }
 
+const EMPTY_COLLAPSED_STACK_IDS = new Set<string>();
+
 const ContainerTable = ({
   checkingUpdates = false,
+  collapsedStackIds = EMPTY_COLLAPSED_STACK_IDS,
   containers,
   dnd,
   onSelectContainer,
+  onToggleStack,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
   const theme = useAppTheme();
   // Same breakpoint the Version and Uptime columns hide at, so the strip
   // collapses exactly when Actions starts crowding the name.
   const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
+  const editMode = dnd?.editing ?? false;
+  // Layout mode flattens the grouping: the saved order is the flat list being
+  // rearranged, and header rows would sit between drop targets meaning nothing.
+  const rows = useMemo<ContainerTableRow[]>(
+    () =>
+      editMode
+        ? containers
+        : buildContainerTableRows(containers, collapsedStackIds),
+    [collapsedStackIds, containers, editMode],
+  );
+  const stackAwareDnd = useMemo(
+    () => (dnd ? { ...dnd, isRowSortable: isContainerRowSortable } : undefined),
+    [dnd],
+  );
+  const stackMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of rows) {
+      if (isStackHeaderRow(row) && !row.collapsed) {
+        for (const member of row.containers) ids.add(member.Id);
+      }
+    }
+    return ids;
+  }, [rows]);
+  const getRowAttributes = useCallback(
+    (
+      row: Row<AppTableFeatures, ContainerTableRow>,
+    ): AppDataTableRowAttributes => ({
+      className:
+        !isStackHeaderRow(row.original) && stackMemberIds.has(row.original.Id)
+          ? "container-table__stack-member-row"
+          : undefined,
+    }),
+    [stackMemberIds],
+  );
+  const renderRow = useCallback(
+    ({
+      cells,
+      row,
+      rowProps,
+    }: AppDataTableRowRenderProps<ContainerTableRow>) => {
+      const original = row.original;
+      if (!isStackHeaderRow(original)) return <div {...rowProps}>{cells}</div>;
+      return (
+        <div
+          {...rowProps}
+          aria-expanded={!original.collapsed}
+          className={[rowProps.className, "container-table__stack-group-row"]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <StackHeaderCell header={original} onToggleStack={onToggleStack} />
+        </div>
+      );
+    },
+    [onToggleStack],
+  );
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1049,32 +1220,35 @@ const ContainerTable = ({
     [],
   );
   const handleRowClick = useCallback(
-    (row: { original: ContainerInfo }, event: MouseEvent) => {
+    (row: { original: ContainerTableRow }, event: MouseEvent) => {
       // A row is a container of controls before it is a link: the action
       // buttons, the "+N more" expander, the update dot and the copy-on-click
       // cells all bubble up to here and must not navigate.
       if (!clickTargetsRowBody(event.target)) return;
+      if (isStackHeaderRow(row.original)) {
+        onToggleStack?.(row.original.project);
+        return;
+      }
       onSelectContainer?.(row.original.Id);
     },
-    [onSelectContainer],
+    [onSelectContainer, onToggleStack],
   );
-  const columns = useMemo<AppDataTableColumnDef<ContainerInfo>[]>(
+  const columns = useMemo<AppDataTableColumnDef<ContainerTableRow>[]>(
     () => [
       {
         id: "name",
         header: "Name",
-        cell: ({ row }) => <ContainerNameCell container={row.original} />,
+        cell: ({ row }) => (
+          <ContainerNameCell container={asContainer(row.original)} />
+        ),
         meta: {
           align: "left",
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              getContainerName(container),
-              getDisplayState(container),
-              container.icon,
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            getContainerName(container),
+            getDisplayState(container),
+            container.icon,
+          ]),
           width: "minmax(0, 1.6fr)",
         },
       },
@@ -1082,7 +1256,7 @@ const ContainerTable = ({
         id: "version",
         header: "Version",
         cell: ({ row }) => {
-          const container = row.original;
+          const container = asContainer(row.original);
           return (
             <div className="container-table__version-stack">
               <VersionCell version={getVersionDisplay(container)} />
@@ -1103,19 +1277,16 @@ const ContainerTable = ({
           align: "center",
           // No `checkingUpdates` here for the same reason the actions column
           // omits the auto-update state: the cell subscribes to it directly.
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              getVersionDisplay(container),
-              getContainerName(container),
-              container.updateAvailable,
-              container.updateCheckedAt,
-              container.updateCheckReason,
-              container.updateCheckState,
-              container.updateError,
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            getVersionDisplay(container),
+            getContainerName(container),
+            container.updateAvailable,
+            container.updateCheckedAt,
+            container.updateCheckReason,
+            container.updateCheckState,
+            container.updateError,
+          ]),
           hideBelow: "md",
           width: "170px",
         },
@@ -1123,7 +1294,9 @@ const ContainerTable = ({
       {
         id: "uptime",
         header: "Uptime",
-        cell: ({ row }) => <UptimeCell created={row.original.Created} />,
+        cell: ({ row }) => (
+          <UptimeCell created={asContainer(row.original).Created} />
+        ),
         meta: { hideBelow: "md", width: "90px" },
       },
       {
@@ -1132,20 +1305,17 @@ const ContainerTable = ({
         cell: ({ row }) => (
           <NetworkCell
             networks={Object.entries(
-              row.original.NetworkSettings?.Networks ?? {},
+              asContainer(row.original).NetworkSettings?.Networks ?? {},
             )}
           />
         ),
         meta: {
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              Object.keys(container.NetworkSettings?.Networks ?? {})
-                .sort()
-                .join("|"),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            Object.keys(container.NetworkSettings?.Networks ?? {})
+              .sort()
+              .join("|"),
+          ]),
           hideBelow: "lg",
         },
       },
@@ -1155,24 +1325,21 @@ const ContainerTable = ({
         cell: ({ row }) => (
           <NetworkAddressCell
             networks={Object.entries(
-              row.original.NetworkSettings?.Networks ?? {},
+              asContainer(row.original).NetworkSettings?.Networks ?? {},
             )}
           />
         ),
         meta: {
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              Object.entries(container.NetworkSettings?.Networks ?? {})
-                .sort(([left], [right]) => left.localeCompare(right))
-                .map(
-                  ([networkName, endpoint]) =>
-                    `${networkName}:${endpoint.IPAddress || "-"}`,
-                )
-                .join("|"),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            Object.entries(container.NetworkSettings?.Networks ?? {})
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(
+                ([networkName, endpoint]) =>
+                  `${networkName}:${endpoint.IPAddress || "-"}`,
+              )
+              .join("|"),
+          ]),
           hideBelow: "lg",
           width: "130px",
         },
@@ -1184,29 +1351,29 @@ const ContainerTable = ({
             <span>Ports</span>
           </AppTooltip>
         ),
-        cell: ({ row }) => (
-          <PortsCell
-            containerId={row.original.Id}
-            onToggleExpanded={toggleExpanded}
-            ports={getDedupedPorts(row.original)}
-          />
-        ),
+        cell: ({ row }) => {
+          const container = asContainer(row.original);
+          return (
+            <PortsCell
+              containerId={container.Id}
+              onToggleExpanded={toggleExpanded}
+              ports={getDedupedPorts(container)}
+            />
+          );
+        },
         meta: {
           hideBelow: "xl",
           width: "minmax(130px, 155px)",
           cellStyle: { alignItems: "flex-start" },
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              getDedupedPorts(container)
-                .map(
-                  (port) =>
-                    `${port.PrivatePort}:${port.PublicPort ?? "-"}:${port.Type}`,
-                )
-                .join("|"),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            getDedupedPorts(container)
+              .map(
+                (port) =>
+                  `${port.PrivatePort}:${port.PublicPort ?? "-"}:${port.Type}`,
+              )
+              .join("|"),
+          ]),
         },
       },
       {
@@ -1216,45 +1383,43 @@ const ContainerTable = ({
             <span>Volumes</span>
           </AppTooltip>
         ),
-        cell: ({ row }) => (
-          <VolumesCell
-            containerId={row.original.Id}
-            mounts={getMounts(row.original)}
-            onToggleExpanded={toggleExpanded}
-          />
-        ),
+        cell: ({ row }) => {
+          const container = asContainer(row.original);
+          return (
+            <VolumesCell
+              containerId={container.Id}
+              mounts={getMounts(container)}
+              onToggleExpanded={toggleExpanded}
+            />
+          );
+        },
         meta: {
           hideBelow: "xl",
           width: "minmax(0, 2.2fr)",
           cellStyle: { alignItems: "flex-start" },
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              getMounts(container)
-                .map(
-                  (mount) =>
-                    `${mount.Type}:${mount.Destination}:${mount.Source}`,
-                )
-                .join("|"),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            getMounts(container)
+              .map(
+                (mount) => `${mount.Type}:${mount.Destination}:${mount.Source}`,
+              )
+              .join("|"),
+          ]),
         },
       },
       {
         id: "metrics",
         header: "CPU / Mem",
-        cell: ({ row }) => <MetricsCell container={row.original} />,
+        cell: ({ row }) => (
+          <MetricsCell container={asContainer(row.original)} />
+        ),
         meta: {
           align: "center",
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              (container.metrics?.cpu_percent ?? 0).toFixed(1),
-              formatFileSize(container.metrics?.mem_usage ?? 0),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            (container.metrics?.cpu_percent ?? 0).toFixed(1),
+            formatFileSize(container.metrics?.mem_usage ?? 0),
+          ]),
           hideBelow: "xl",
           width: "110px",
         },
@@ -1264,7 +1429,7 @@ const ContainerTable = ({
         header: "Actions",
         enableSorting: false,
         cell: ({ row }) => {
-          const container = row.original;
+          const container = asContainer(row.original);
           const name = getContainerName(container);
           return (
             <ActionsCell
@@ -1289,16 +1454,13 @@ const ContainerTable = ({
           // A compact row holds nothing but the menu button, so the rest of the
           // track goes back to the name.
           width: compactActions ? "56px" : "215px",
-          getCellRenderKey: (row) => {
-            const container = asContainer(row);
-            return [
-              container.Id,
-              getContainerName(container),
-              container.State,
-              container.url,
-              stoppingContainerIds.has(container.Id),
-            ];
-          },
+          getCellRenderKey: containerCellRenderKey((container) => [
+            container.Id,
+            getContainerName(container),
+            container.State,
+            container.url,
+            stoppingContainerIds.has(container.Id),
+          ]),
         },
       },
     ],
@@ -1310,7 +1472,6 @@ const ContainerTable = ({
       toggleExpanded,
     ],
   );
-  const editMode = dnd?.editing ?? false;
   return (
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
@@ -1318,18 +1479,22 @@ const ContainerTable = ({
           <AppDataTable
             ariaLabel="Docker containers"
             columns={columns}
-            data={containers}
-            dnd={dnd}
+            data={rows}
+            dnd={stackAwareDnd}
             emptyMessage="No containers found."
             enableSorting={false}
             fillAvailable
-            getRowId={(container) => container.Id}
+            getRowAttributes={getRowAttributes}
+            getRowId={getContainerTableRowId}
             // Dragging rows is the point of edit mode; selecting one there
             // would fight the drag and immediately swap the table for a
             // detail view.
             onRowClick={
-              onSelectContainer && !editMode ? handleRowClick : undefined
+              (onSelectContainer || onToggleStack) && !editMode
+                ? handleRowClick
+                : undefined
             }
+            renderRow={renderRow}
           />
         </CheckingUpdatesContext.Provider>
       </ExpandedContainersContext.Provider>
@@ -1362,6 +1527,11 @@ const areContainerTablePropsEqual = (
   previous.checkingUpdates === next.checkingUpdates &&
   previous.dnd === next.dnd &&
   previous.onSelectContainer === next.onSelectContainer &&
+  previous.onToggleStack === next.onToggleStack &&
+  areStringSetsEqual(
+    previous.collapsedStackIds ?? EMPTY_COLLAPSED_STACK_IDS,
+    next.collapsedStackIds ?? EMPTY_COLLAPSED_STACK_IDS,
+  ) &&
   areStringSetsEqual(
     previous.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,
     next.stoppingContainerIds ?? EMPTY_STOPPING_CONTAINER_IDS,

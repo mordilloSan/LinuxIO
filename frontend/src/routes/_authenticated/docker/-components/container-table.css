@@ -96,3 +96,65 @@
 .container-table__update-hint {
   opacity: 0.7;
 }
+
+/* Compose stacks: one synthetic header row per multi-container project, its
+   member rows beneath it. The shared inset line is what binds header and
+   members into one band inside a striped table; collapsing removes the member
+   rows and leaves just the header. The doubled selector outweighs the zebra
+   `--alt` background, which sets the same custom property. */
+.app-dt__row.container-table__stack-group-row {
+  --app-dt-row-bg: color-mix(
+    in srgb,
+    transparent,
+    var(--app-palette-text-primary) 7%
+  );
+}
+
+.app-dt__row.container-table__stack-group-row,
+.app-dt__row.container-table__stack-member-row {
+  box-shadow: inset 2px 0 0
+    color-mix(in srgb, transparent, var(--app-palette-primary-main) 50%);
+}
+
+/* The header's single cell spans every column of the row grid. */
+.container-table__stack-group-cell {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.container-table__stack-group-icon {
+  flex-shrink: 0;
+  color: var(--app-palette-text-secondary);
+}
+
+/* The whole row toggles the stack; this button is the keyboard's way in. */
+.container-table__stack-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--app-palette-text-secondary);
+  cursor: pointer;
+}
+
+.container-table__stack-group-toggle:hover,
+.container-table__stack-group-toggle:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.container-table__stack-group-toggle:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 1px;
+}
+
+.container-table__stack-group-toggle[aria-expanded="true"]
+  .container-table__stack-chevron {
+  transform: rotate(180deg);
+}

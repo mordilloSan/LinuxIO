@@ -27,6 +27,16 @@ interface ReorderableCardGridProps<TItem> {
    */
   fillAvailable?: boolean;
   getId: (item: TItem) => string;
+  /**
+   * Replaces the default flat grid with a caller-built layout — grouped
+   * sections, say — while the hold-to-reorder arming stays here: a card is only
+   * draggable if it is rendered through the `renderCard` this receives. Chrome
+   * the caller adds around or between cards simply isn't draggable. The
+   * `fillAvailable` scrollport still applies. Non-virtualized grids only.
+   */
+  renderBody?: (
+    renderCard: (item: TItem, index: number) => ReactNode,
+  ) => ReactNode;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
   /** Breakpoint spans for each card. Ignored when `virtualized`. */
@@ -71,6 +81,7 @@ function ReorderableCardGrid<TItem>({
   getId,
   items,
   minItemWidth,
+  renderBody,
   renderItem,
   size,
   spacing = DASHBOARD_CARD_SPACING,
@@ -108,7 +119,9 @@ function ReorderableCardGrid<TItem>({
       />
     );
   } else {
-    const grid = (
+    const grid = renderBody ? (
+      renderBody(renderSortableCard)
+    ) : (
       <AppGrid columns={columns} container spacing={spacing}>
         {rendered.map((item, index) => (
           <AppGrid key={getId(item)} size={columns ? 1 : size}>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
@@ -98,6 +99,38 @@ function rowNamed(name: string) {
   return screen.getByRole("row", { name: new RegExp(name, "i") });
 }
 
+function composeContainer(
+  id: string,
+  name: string,
+  project: string,
+  state: "exited" | "running" = "running",
+) {
+  return container(id, name, state, {
+    Labels: { "com.docker.compose.project": project },
+  });
+}
+
+// The collapse state lives with the page (ContainerList); this stands in for
+// it so the toggle round-trips.
+function StatefulStackTable({ containers }: { containers: ContainerInfo[] }) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  return (
+    <ContainerTable
+      collapsedStackIds={collapsed}
+      containers={containers}
+      onToggleStack={(project) =>
+        setCollapsed((previous) => {
+          const next = new Set(previous);
+          if (!next.delete(project)) next.add(project);
+          return next;
+        })
+      }
+    />
+  );
+}
+
 describe("ContainerTable mutation feedback", () => {
   it("shows a warning and never claims up to date after a failed per-container scan", async () => {
     media.compact = false;
@@ -193,6 +226,59 @@ describe("ContainerTable mutation feedback", () => {
       });
     },
   );
+
+  it("groups a multi-container compose project under a header row, singletons not", () => {
+    media.compact = false;
+    renderTable([
+      composeContainer("media-web-id", "media-web", "media"),
+      composeContainer("media-db-id", "media-db", "media"),
+      composeContainer("solo-id", "solo-app", "solo"),
+    ]);
+
+    const toggle = screen.getByRole("button", {
+      name: "Collapse stack media",
+    });
+    const header = toggle.closest('[role="row"]') as HTMLElement;
+    expect(
+      within(header).getByText("2 containers · 2 running"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Collapse stack solo" }),
+    ).not.toBeInTheDocument();
+    // Members still render as ordinary rows below the header.
+    expect(rowNamed("media-web")).toBeInTheDocument();
+    expect(rowNamed("media-db")).toBeInTheDocument();
+  });
+
+  it("collapses a stack to its header row and expands it back", async () => {
+    media.compact = false;
+    const { user } = render(
+      <StatefulStackTable
+        containers={[
+          composeContainer("media-web-id", "media-web", "media"),
+          composeContainer("media-db-id", "media-db", "media", "exited"),
+          composeContainer("solo-id", "solo-app", "solo"),
+        ]}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse stack media" }),
+    );
+
+    expect(screen.queryAllByText("media-web")).toHaveLength(0);
+    expect(screen.queryAllByText("media-db")).toHaveLength(0);
+    // The summary keeps counting the hidden members; the loose row stays.
+    expect(screen.getByText("2 containers · 1 running")).toBeInTheDocument();
+    expect(rowNamed("solo-app")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Expand stack media" }),
+    );
+
+    expect(rowNamed("media-web")).toBeInTheDocument();
+    expect(rowNamed("media-db")).toBeInTheDocument();
+  });
 
   it("keeps a compact row spinner after its action menu closes", async () => {
     media.compact = true;

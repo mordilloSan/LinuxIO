@@ -1,0 +1,68 @@
+/* Card view: each multi-container compose project renders inside one of these
+   bands. The radius hugs the member cards — their 16px corner plus the band's
+   10px inset — and the fill stays faint enough that the cards keep reading as
+   the page's surfaces, with the band as grouping chrome around them. */
+.container-stack-band {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: 26px;
+  background: color-mix(
+    in srgb,
+    transparent,
+    var(--app-palette-text-primary) 3%
+  );
+}
+
+/* The whole header is the collapse control, like the table rows below it. */
+.container-stack-band__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 16px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.container-stack-band__header:hover,
+.container-stack-band__header:focus-visible {
+  background: color-mix(
+    in srgb,
+    transparent,
+    var(--app-palette-text-primary) 6%
+  );
+}
+
+.container-stack-band__header:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+.container-stack-band__spacer {
+  flex: 1;
+}
+
+.container-stack__icon {
+  flex-shrink: 0;
+  color: var(--app-palette-text-secondary);
+}
+
+.container-stack__chevron {
+  flex-shrink: 0;
+  color: var(--app-palette-text-secondary);
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-standard);
+}
+
+[aria-expanded="true"] > .container-stack__chevron {
+  transform: rotate(180deg);
+}
