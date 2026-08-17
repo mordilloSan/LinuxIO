@@ -9,7 +9,6 @@ const image: DockerImageRow = {
   created: "7/29/2026, 1:00:57 AM",
   id: "sha256:10a08318f473",
   repo: "lscr.io/linuxserver/speedtest-tracker",
-  shortId: "10a08318f473",
   size: "339.13",
   tags: ["latest"],
 };
@@ -32,6 +31,19 @@ describe("DockerImageCard", () => {
 
     expect(screen.queryByText("Update available")).toBeNull();
     expect(screen.queryByText("Cannot check")).toBeNull();
+  });
+
+  it("shows only the full image ID", () => {
+    render(
+      <DockerImageCard image={image} onSelect={vi.fn()} selected={false} />,
+    );
+
+    const fullId = screen.getByText(image.id);
+    expect(screen.getByText("Full ID:")).toHaveStyle("font-weight: 700");
+    expect(fullId).toHaveStyle("font-family: var(--app-font-mono)");
+    expect(fullId).toHaveStyle("font-size: 12px");
+    expect(fullId.parentElement).toHaveClass("app-typo--nowrap");
+    expect(screen.queryByText(/^ID:/)).toBeNull();
   });
 
   it("shows the container count in the header with an explanatory tooltip", async () => {

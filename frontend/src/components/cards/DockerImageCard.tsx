@@ -3,14 +3,12 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { GAP_MD, GAP_XS } from "@/theme/constants";
-import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
 
 export interface DockerImageRow {
   containers: number;
   created: string;
   id: string;
   repo: string;
-  shortId: string;
   size: string;
   tags: string[];
 }
@@ -71,30 +69,24 @@ const DockerImageCard = ({
       </div>
 
       <AppTypography
-        color="text.secondary"
+        copyText={image.id}
+        noWrap
         style={{
-          fontFamily: "var(--app-font-mono)",
-          marginBottom: GAP_MD,
-          ...responsiveTextStyles,
-        }}
-        variant="body2"
-      >
-        ID: {image.shortId}
-      </AppTypography>
-
-      <AppTypography color="text.secondary" variant="caption">
-        Full ID
-      </AppTypography>
-      <AppTypography
-        color="text.secondary"
-        style={{
-          fontFamily: "var(--app-font-mono)",
           marginBottom: GAP_XS,
-          ...longTextStyles,
         }}
+        title={image.id}
         variant="body2"
       >
-        {image.id}
+        <span style={{ fontWeight: 700 }}>Full ID: </span>
+        <span
+          style={{
+            color: "var(--app-palette-text-secondary)",
+            fontFamily: "var(--app-font-mono)",
+            fontSize: "0.75rem",
+          }}
+        >
+          {image.id}
+        </span>
       </AppTypography>
     </DockerResourceCard>
   );

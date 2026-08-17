@@ -334,23 +334,34 @@ const ImageList = ({
       },
     },
     {
-      accessorKey: "shortId",
-      header: "Image ID",
+      accessorKey: "id",
+      header: "Full ID",
       cell: ({ row }) => (
         <AppTypography
+          copyText={row.original.id}
+          noWrap
           style={{
-            fontFamily: "var(--app-font-mono)",
             ...responsiveTextStyles,
           }}
+          title={row.original.id}
           variant="body2"
         >
-          {row.original.shortId}
+          <span style={{ fontWeight: 700 }}>Full ID: </span>
+          <span
+            style={{
+              color: "var(--app-palette-text-secondary)",
+              fontFamily: "var(--app-font-mono)",
+              fontSize: "0.75rem",
+            }}
+          >
+            {row.original.id}
+          </span>
         </AppTypography>
       ),
       meta: {
         align: "left",
-        hideBelow: "md",
-        width: "140px",
+        hideBelow: "lg",
+        width: "260px",
       },
     },
     {
