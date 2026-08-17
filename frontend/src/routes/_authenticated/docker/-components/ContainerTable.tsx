@@ -318,7 +318,7 @@ function ContainerNameCell({ container }: { container: ContainerInfo }) {
   const displayState = getDisplayState(container);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <StatusDot
         color={getContainerStatusColor(displayState)}
         size={8}
@@ -355,9 +355,9 @@ function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
           image then stays in the same position as every container icon. */}
       <Icon
         className="container-table__stack-group-icon"
-        height={12}
+        height={14}
         icon="mdi:layers-outline"
-        width={12}
+        width={14}
       />
       <DockerIcon
         alt={header.project}

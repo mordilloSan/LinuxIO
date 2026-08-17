@@ -110,7 +110,7 @@
 /* Only the member name cell moves inward: that makes the hierarchy readable
    without disturbing the grid's other columns or the aligned action strip. */
 .container-table__stack-member-row > .app-dt__cell:first-child {
-  padding-inline-start: 28px;
+  padding-inline-start: 32px;
 }
 
 /* The header's single cell spans every column of the row grid. Its minimum
@@ -131,6 +131,9 @@
 .container-table__stack-group-icon {
   flex-shrink: 0;
   color: var(--app-palette-text-secondary);
+  /* Keep the following project image on the same line as member-row icons
+     while letting the stack marker gain a little visual weight. */
+  margin-inline-end: -2px;
 }
 
 /* The whole row toggles the stack; this button is the keyboard's way in. */
