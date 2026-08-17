@@ -1,6 +1,6 @@
 import { type DockerVolume } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import SelectableCard from "@/components/cards/SelectableCard";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
@@ -26,102 +26,97 @@ const formatReferenceCount = (count?: number) => {
 };
 
 const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
-  <FrostedCard
-    accent
-    hoverLift
-    style={{
-      padding: CARD_PADDING_SM,
-      /*
-        Selection takes the accent line to full strength and holds the lift
-        shadow, the same treatment DockerImageCard gives its selected state —
-        so a checkbox-driven multi-select list reads as selected the same way
-        a click-to-toggle one does.
-      */
-      ...(selected && {
-        borderBottomColor: "var(--fc-accent)",
-        boxShadow: "var(--fc-lift-shadow)",
-      }),
-    }}
+  <SelectableCard
+    label={`volume ${volume.Name}`}
+    onSelect={onSelect}
+    selected={selected}
   >
-    {/* Header: checkbox + name + driver chip */}
-    <div
+    <FrostedCard
+      accent
+      hoverLift
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
+        padding: CARD_PADDING_SM,
+        ...(selected && {
+          borderBottomColor: "var(--fc-accent)",
+          boxShadow: "var(--fc-lift-shadow)",
+        }),
       }}
     >
+      {/* Header: name + driver chip */}
       <div
-        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 8,
+        }}
       >
-        <AppCheckbox
-          checked={selected}
-          onChange={(e) => onSelect(e.target.checked)}
-          size="small"
-        />
-        <AppTypography
-          fontWeight={700}
-          noWrap
-          title={volume.Name}
-          toastMeta={DOCKER_TOAST_META}
-          variant="body2"
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
         >
-          {volume.Name}
-        </AppTypography>
-      </div>
-      <Chip
-        label={volume.Driver}
-        size="small"
-        style={{ fontSize: "0.75rem" }}
-        variant="soft"
-      />
-    </div>
-
-    {/* Mountpoint */}
-    <AppTypography
-      style={{
-        marginBottom: 4,
-        fontFamily: "var(--app-font-mono)",
-        fontSize: "0.8rem",
-        ...longTextStyles,
-      }}
-      variant="body2"
-    >
-      {volume.Mountpoint || "-"}
-    </AppTypography>
-
-    {/* Meta chips */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Chip
-        label={`Scope: ${volume.Scope || "local"}`}
-        size="small"
-        variant="soft"
-      />
-      {volume.CreatedAt && (
+          <AppTypography
+            fontWeight={700}
+            noWrap
+            title={volume.Name}
+            toastMeta={DOCKER_TOAST_META}
+            variant="body2"
+          >
+            {volume.Name}
+          </AppTypography>
+        </div>
         <Chip
-          label={new Date(volume.CreatedAt).toLocaleDateString()}
+          label={volume.Driver}
+          size="small"
+          style={{ fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      </div>
+
+      {/* Mountpoint */}
+      <AppTypography
+        style={{
+          marginBottom: 4,
+          fontFamily: "var(--app-font-mono)",
+          fontSize: "0.8rem",
+          ...longTextStyles,
+        }}
+        variant="body2"
+      >
+        {volume.Mountpoint || "-"}
+      </AppTypography>
+
+      {/* Meta chips */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <Chip
+          label={`Scope: ${volume.Scope || "local"}`}
           size="small"
           variant="soft"
         />
-      )}
-      {volume.UsageData && (
-        <>
+        {volume.CreatedAt && (
           <Chip
-            label={formatVolumeSize(volume.UsageData.Size)}
+            label={new Date(volume.CreatedAt).toLocaleDateString()}
             size="small"
             variant="soft"
           />
-          <Chip
-            label={formatReferenceCount(volume.UsageData.RefCount)}
-            size="small"
-            variant="soft"
-          />
-        </>
-      )}
-    </div>
-  </FrostedCard>
+        )}
+        {volume.UsageData && (
+          <>
+            <Chip
+              label={formatVolumeSize(volume.UsageData.Size)}
+              size="small"
+              variant="soft"
+            />
+            <Chip
+              label={formatReferenceCount(volume.UsageData.RefCount)}
+              size="small"
+              variant="soft"
+            />
+          </>
+        )}
+      </div>
+    </FrostedCard>
+  </SelectableCard>
 );
 
 export default VolumeCard;

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -162,6 +163,8 @@ const DeleteVolumeDialog = ({
   );
 };
 const getVolumeId = (volume: { Name: string }) => volume.Name;
+// A press in layout mode belongs to the drag, not to selecting the volume.
+const noopSelect = () => {};
 
 const VolumeList = ({
   onMountCreateHandler,
@@ -192,6 +195,12 @@ const VolumeList = ({
     getId: getVolumeId,
     items: volumesList,
     surface: "docker.volumes",
+  });
+  useCardSelectionEscape({
+    enabled: viewMode === "card" && (selected.size > 0 || surface.editMode),
+    isReordering: surface.editMode,
+    onClearSelection: () => setSelected(new Set()),
+    onExitReordering: surface.exitEditMode,
   });
   const tableDnd = useReorderableTableDnd<
     (typeof volumesList)[number],
@@ -362,7 +371,11 @@ const VolumeList = ({
             items={filtered}
             renderItem={(volume) => (
               <VolumeCard
-                onSelect={(checked) => handleSelectOne(volume.Name, checked)}
+                onSelect={
+                  surface.editMode
+                    ? noopSelect
+                    : (checked) => handleSelectOne(volume.Name, checked)
+                }
                 selected={effectiveSelected.has(volume.Name)}
                 volume={volume}
               />
