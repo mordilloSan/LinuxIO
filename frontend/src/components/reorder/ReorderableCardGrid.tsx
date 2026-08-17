@@ -1,5 +1,6 @@
 import { DndContext, DragOverlay, useDndMonitor } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
+import { motion } from "motion/react";
 import { useState, type ReactNode } from "react";
 
 import SortableCard from "@/components/cards/SortableCard";
@@ -9,9 +10,16 @@ import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import {
   CARD_LIFT_SHADOW_GUTTER,
   DASHBOARD_CARD_SPACING,
+  EASING_STANDARD,
   GAP_XS,
   HOVER_LIFT_HEADROOM,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
+
+const LAYOUT_TRANSITION = {
+  duration: TRANSITION_DURATION_STANDARD_MS / 500,
+  ease: EASING_STANDARD,
+};
 
 // In overlay mode the caller previews a drag by re-rendering the grid with a
 // provisional order, so the resting items' slots are shown by real layout —
@@ -39,6 +47,14 @@ function CardGridDragOverlay({
 }
 
 interface ReorderableCardGridProps<TItem> {
+  /**
+   * Slide resting cards to their new slots (framer FLIP) whenever the grid
+   * repacks — a stack collapsing, or the mid-drag reflow. Only for grids that
+   * preview drags by reflowing (`renderDragOverlay`): under strategy
+   * transforms the same movement is already animated by dnd-kit, and the two
+   * would fight.
+   */
+  animateLayout?: boolean;
   /** Accessible name for the grid. `virtualized` only. */
   ariaLabel?: string;
   /** Equal-width columns at each breakpoint. When present, each card spans one column. */
@@ -109,6 +125,7 @@ interface ReorderableCardGridProps<TItem> {
  * this component.
  */
 function ReorderableCardGrid<TItem>({
+  animateLayout = false,
   ariaLabel,
   columns,
   dense = false,
@@ -168,6 +185,11 @@ function ReorderableCardGrid<TItem>({
           <AppGrid
             key={getId(item)}
             size={columns ? 1 : (getItemSize?.(item, index) ?? size)}
+            {...(animateLayout && {
+              component: motion.div,
+              layout: "position",
+              transition: LAYOUT_TRANSITION,
+            })}
           >
             {renderSortableCard(item, index)}
           </AppGrid>

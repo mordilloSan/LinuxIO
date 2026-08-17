@@ -39,6 +39,7 @@ import {
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
   TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
@@ -124,6 +125,14 @@ const getStackEntryId = (entry: ContainerStackEntry): string =>
   entry.type === "container"
     ? entry.container.Id
     : getStackDragId(entry.project);
+
+// The collapse toggle swaps a stack's band for its summary card while the
+// neighbours slide (the grid's layout animation); the incoming form fades in
+// on the same beat.
+const STACK_TOGGLE_TRANSITION = {
+  duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+  ease: EASING_STANDARD,
+};
 
 const areSameOrder = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
@@ -422,43 +431,59 @@ const ContainerList = ({
     }
     if (collapsedStacks.has(entry.project)) {
       return (
-        <ContainerStackSummaryCard
-          containers={entry.containers}
-          onExpand={() => toggleStack(entry.project)}
-          project={entry.project}
-        />
+        <motion.div
+          animate={{ opacity: 1 }}
+          initial={{ opacity: 0 }}
+          key="summary"
+          style={{ height: "100%" }}
+          transition={STACK_TOGGLE_TRANSITION}
+        >
+          <ContainerStackSummaryCard
+            containers={entry.containers}
+            onExpand={() => toggleStack(entry.project)}
+            project={entry.project}
+          />
+        </motion.div>
       );
     }
     return (
-      <ContainerStackBand
-        containers={entry.containers}
-        onToggle={() => toggleStack(entry.project)}
-        project={entry.project}
+      <motion.div
+        animate={{ opacity: 1 }}
+        initial={{ opacity: 0 }}
+        key="band"
+        style={{ height: "100%" }}
+        transition={STACK_TOGGLE_TRANSITION}
       >
-        <AppGrid
-          columns={getStackBandColumns(entry.containers.length)}
-          container
-          spacing={DASHBOARD_CARD_SPACING}
+        <ContainerStackBand
+          containers={entry.containers}
+          onToggle={() => toggleStack(entry.project)}
+          project={entry.project}
         >
-          {entry.containers.map((container) => (
-            <AppGrid key={container.Id} size={1}>
-              <ContainerCard
-                actionPending={stoppingContainerIds.has(container.Id)}
-                // The band's header and padding must not make this grid row
-                // taller than a row of loose cards; the members give that
-                // height back by folding their metric bars into one line.
-                compactMetrics
-                containerId={container.Id}
-                onSelect={
-                  editMode
-                    ? undefined
-                    : () => handleSelectContainer(container.Id)
-                }
-              />
-            </AppGrid>
-          ))}
-        </AppGrid>
-      </ContainerStackBand>
+          <AppGrid
+            columns={getStackBandColumns(entry.containers.length)}
+            container
+            spacing={DASHBOARD_CARD_SPACING}
+          >
+            {entry.containers.map((container) => (
+              <AppGrid key={container.Id} size={1}>
+                <ContainerCard
+                  actionPending={stoppingContainerIds.has(container.Id)}
+                  // The band's header and padding must not make this grid row
+                  // taller than a row of loose cards; the members give that
+                  // height back by folding their metric bars into one line.
+                  compactMetrics
+                  containerId={container.Id}
+                  onSelect={
+                    editMode
+                      ? undefined
+                      : () => handleSelectContainer(container.Id)
+                  }
+                />
+              </AppGrid>
+            ))}
+          </AppGrid>
+        </ContainerStackBand>
+      </motion.div>
     );
   };
 
@@ -661,6 +686,7 @@ const ContainerList = ({
             </div>
           ) : (
             <ReorderableCardGrid
+              animateLayout
               // Backfills the slot a band can't use with the cards that
               // follow, so the lines stay full without giving up the saved
               // entry order.
