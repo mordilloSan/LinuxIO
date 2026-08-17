@@ -21,7 +21,7 @@ describe("DockerImageCard", () => {
     );
 
     const usageChip = screen.getByText(String(image.containers), {
-      selector: ".app-chip",
+      selector: ".app-chip__label",
     });
     expect(screen.queryByText(`Used by ${image.containers}`)).toBeNull();
 
