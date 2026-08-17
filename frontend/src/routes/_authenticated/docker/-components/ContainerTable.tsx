@@ -1203,10 +1203,9 @@ const ContainerTable = ({
             ...dnd,
             contextProps: {
               ...dnd.contextProps,
-              collisionDetection:
-                hasStackGroups
-                  ? containerTableCollisionDetection
-                  : dnd.contextProps.collisionDetection,
+              collisionDetection: hasStackGroups
+                ? containerTableCollisionDetection
+                : dnd.contextProps.collisionDetection,
             },
             // `itemIds` contains loose containers and stack headers only.
             // Group members still render underneath their header but never

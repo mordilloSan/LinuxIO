@@ -73,7 +73,7 @@ describe("containerTableCollisionDetection", () => {
       pointerCoordinates: { x: 20, y: 30 },
     });
 
-    expect(collisions.map(({ id }) => id).toContain("vaultwarden");
-    expect(collisions.map(({ id }) => id).not.toContain("stack:immich");
+    expect(collisions.map(({ id }) => id)).toContain("vaultwarden");
+    expect(collisions.map(({ id }) => id)).not.toContain("stack:immich");
   });
 });

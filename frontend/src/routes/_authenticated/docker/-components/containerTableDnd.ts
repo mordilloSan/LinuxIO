@@ -14,7 +14,5 @@ export const containerTableCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args).filter(
     ({ id }) => id !== args.active.id,
   );
-  return pointerCollisions.length > 0
-    ? pointerCollisions
-    : closestCenter(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
 };
