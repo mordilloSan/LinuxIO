@@ -1,17 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import {
-  linuxio,
-  type NetworkInterface,
-  type WireGuardInterface,
-  useCallMutation,
-} from "@/api";
+import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
+import { getEgressNICOptions } from "./wireguardEgressNICs";
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
@@ -59,36 +55,6 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         );
       },
     });
-
-  // Memoize helper to get physical NICs
-  const getPhysicalNICs = useCallback(
-    (
-      data: NetworkInterface[] | undefined,
-    ): { name: string; label: string }[] => {
-      if (!Array.isArray(data)) return [];
-      return data
-        .filter(
-          (nic) =>
-            nic.type === "ethernet" &&
-            nic.name.startsWith("enp") &&
-            nic.mac &&
-            !nic.name.startsWith("veth") &&
-            !nic.name.startsWith("docker") &&
-            !nic.name.startsWith("br-"),
-        )
-        .map((nic) => {
-          const ip =
-            Array.isArray(nic.ipv4) && nic.ipv4.length > 0
-              ? nic.ipv4[0]
-              : "disconnected";
-          return {
-            name: nic.name,
-            label: `${nic.name} (${ip})`,
-          };
-        });
-    },
-    [],
-  );
 
   const nextAvailableWgName = useCallback((existing: string[]): string => {
     let n = 0;
@@ -150,7 +116,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
     setShowDialog(true);
   }, [interfaces, nextAvailableWgName, nextAvailablePort, nextAvailableCIDR]);
 
-  const availableNICs = networkData ? getPhysicalNICs(networkData) : [];
+  const availableNICs = getEgressNICOptions(networkData);
   const firstOnlineNIC = availableNICs.find(
     (candidate) => !candidate.label.includes("disconnected"),
   );
