@@ -191,6 +191,12 @@ type ContentRequest struct {
 	Content string `json:"content"`
 }
 
+type ValidateComposeRequest struct {
+	Content    string `json:"content"`
+	EnvContent string `json:"envContent,omitempty"`
+	WorkingDir string `json:"workingDir,omitempty"`
+}
+
 type DirPathRequest struct {
 	DirPath string `json:"dirPath"`
 }

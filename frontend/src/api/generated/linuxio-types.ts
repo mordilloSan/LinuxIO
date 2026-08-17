@@ -2225,6 +2225,12 @@ export interface ValidateComposeError {
   type: ValidationIssueType;
 }
 
+export interface ValidateComposeRequest {
+  content: string;
+  envContent?: string;
+  workingDir?: string;
+}
+
 export interface ValidateComposeResponse {
   valid: boolean;
   errors: ValidateComposeError[];
@@ -2568,8 +2574,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<DockerContainerUpdateProgress>;
     };
     validate_compose: {
-      input: [content: string];
-      request: ContentRequest;
+      input: [request: ValidateComposeRequest];
+      request: ValidateComposeRequest;
       result: ValidateComposeResponse;
     };
     validate_stack_directory: {
@@ -3304,7 +3310,7 @@ export interface LinuxIOCallSchema {
     result: DockerSystemPruneResponse;
   };
   "docker.validate_compose": {
-    request: ContentRequest;
+    request: ValidateComposeRequest;
     result: ValidateComposeResponse;
   };
   "docker.validate_stack_directory": {

@@ -39,6 +39,32 @@ interface ComposeStacksPageProps {
   viewMode?: "table" | "card";
 }
 
+const parentDirOf = (filePath: string): string => {
+  const idx = filePath.lastIndexOf("/");
+  return idx > 0 ? filePath.slice(0, idx) : "";
+};
+
+const envPathFor = (composeFilePath: string): string => {
+  const dir = parentDirOf(composeFilePath);
+  return dir ? `${dir}/.env` : "";
+};
+
+// Returns the env file's content, or null when it doesn't exist (or can't be
+// read) — the editor uses null to mean "will be created on save".
+const loadEnvContent = async (envPath: string): Promise<string | null> => {
+  if (!envPath) return null;
+  try {
+    const result = await call(linuxio.filebrowser.resource_get.route, {
+      path: envPath,
+      unused: "",
+      getContent: "true",
+    });
+    return result?.content ?? "";
+  } catch {
+    return null;
+  }
+};
+
 const ComposeStacksPage = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -56,6 +82,10 @@ const ComposeStacksPage = ({
   const [editingStackName, setEditingStackName] = useState("");
   const [editingFilePath, setEditingFilePath] = useState("");
   const [editingContent, setEditingContent] = useState("");
+  const [editingEnvPath, setEditingEnvPath] = useState("");
+  const [editingEnvContent, setEditingEnvContent] = useState<string | null>(
+    null,
+  );
 
   // Post-save dialog state
   const [postSaveDialogOpen, setPostSaveDialogOpen] = useState(false);
@@ -71,6 +101,7 @@ const ComposeStacksPage = ({
     content: string;
     stackName: string;
     filePath: string;
+    envContent?: string;
   } | null>(null);
 
   // Compose operation dialog state
@@ -215,32 +246,44 @@ const ComposeStacksPage = ({
   const handleSetupConfirm = useCallback(
     (stackName: string, workingDir: string) => {
       setSetupDialogOpen(false);
-      setEditorMode("create");
-      setEditingStackName(stackName);
-      setEditingFilePath(`${workingDir}/docker-compose.yml`);
-      setEditingContent("");
-      setEditorOpen(true);
+      const envPath = `${workingDir}/.env`;
+      // The chosen directory may already hold a .env; surface it for editing.
+      void loadEnvContent(envPath).then((envContent) => {
+        setEditorMode("create");
+        setEditingStackName(stackName);
+        setEditingFilePath(`${workingDir}/docker-compose.yml`);
+        setEditingContent("");
+        setEditingEnvPath(envPath);
+        setEditingEnvContent(envContent);
+        setEditorOpen(true);
+      });
     },
     [],
   );
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateStack);
 
-  // Open the editor with a stack's compose file loaded.
+  // Open the editor with a stack's compose file (and sibling .env) loaded.
   const openStackEditor = useCallback(
     async (projectName: string, configPath: string) => {
       try {
-        const result = await call(linuxio.filebrowser.resource_get.route, {
-          path: configPath,
-          unused: "",
-          getContent: "true",
-        });
+        const envPath = envPathFor(configPath);
+        const [result, envContent] = await Promise.all([
+          call(linuxio.filebrowser.resource_get.route, {
+            path: configPath,
+            unused: "",
+            getContent: "true",
+          }),
+          loadEnvContent(envPath),
+        ]);
 
         if (result && result.content) {
           setEditorMode("edit");
           setEditingStackName(projectName);
           setEditingFilePath(configPath);
           setEditingContent(result.content);
+          setEditingEnvPath(envPath);
+          setEditingEnvContent(envContent);
           setEditorOpen(true);
         } else {
           toast.error("Failed to load compose file content");
@@ -260,11 +303,17 @@ const ComposeStacksPage = ({
     [openStackEditor],
   );
 
-  // Validate compose file
+  // Validate compose file against the stack's real directory and the env
+  // buffer currently in the editor, so ${VAR} interpolation sees the same
+  // values a deploy would.
   const handleValidate = useCallback(
-    async (content: string): Promise<ValidationResult> => {
+    async (content: string, envContent: string): Promise<ValidationResult> => {
       try {
-        return await validateCompose({ content });
+        return await validateCompose({
+          content,
+          envContent: envContent || undefined,
+          workingDir: parentDirOf(editingFilePath) || undefined,
+        });
       } catch (error) {
         return {
           valid: false,
@@ -278,7 +327,7 @@ const ComposeStacksPage = ({
         };
       }
     },
-    [validateCompose],
+    [editingFilePath, validateCompose],
   );
 
   // Internal save function that performs the actual save
@@ -288,6 +337,7 @@ const ComposeStacksPage = ({
       stackName: string,
       filePath: string,
       override: boolean = false,
+      envContent?: string,
     ) => {
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
@@ -300,7 +350,24 @@ const ComposeStacksPage = ({
         overwrite: override || undefined,
       });
 
-      toast.success("Compose file saved successfully");
+      // Persist the sibling .env when its buffer changed. The editor is
+      // authoritative for it (loaded fresh on open), so overwrite is safe.
+      if (envContent !== undefined) {
+        const envPath = envPathFor(filePath);
+        if (envPath) {
+          await uploadContent(envPath, encoder.encode(envContent), {
+            chunkSize,
+            onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
+            overwrite: true,
+          });
+        }
+      }
+
+      toast.success(
+        envContent !== undefined
+          ? "Compose and .env files saved successfully"
+          : "Compose file saved successfully",
+      );
 
       // Invalidate queries
       void refetch();
@@ -330,7 +397,12 @@ const ComposeStacksPage = ({
 
   // Save compose file with overwrite protection
   const handleSave = useCallback(
-    async (content: string, stackName: string, existingFilePath: string) => {
+    async (
+      content: string,
+      stackName: string,
+      existingFilePath: string,
+      envContent?: string,
+    ) => {
       let filePath = existingFilePath;
 
       try {
@@ -341,13 +413,13 @@ const ComposeStacksPage = ({
         }
 
         // Try to save without override first
-        await performSave(content, stackName, filePath, false);
+        await performSave(content, stackName, filePath, false, envContent);
         return true;
       } catch (error) {
         // The upload task reports an existing destination as a structured 409.
         if (error instanceof LinuxIOError && error.code === 409) {
           // Store pending save data and show confirmation dialog
-          setPendingSaveData({ content, stackName, filePath });
+          setPendingSaveData({ content, stackName, filePath, envContent });
           setOverwriteDialogOpen(true);
           return false;
         } else {
@@ -373,6 +445,7 @@ const ComposeStacksPage = ({
         pendingSaveData.stackName,
         pendingSaveData.filePath,
         true, // override = true
+        pendingSaveData.envContent,
       );
     } catch (error) {
       toast.error(
@@ -427,8 +500,10 @@ const ComposeStacksPage = ({
         />
 
         <ComposeEditorDialog
+          envFilePath={editingEnvPath}
           filePath={editingFilePath}
           initialContent={editingContent}
+          initialEnvContent={editingEnvContent}
           mode={editorMode}
           onClose={() => setEditorOpen(false)}
           onSave={handleSave}

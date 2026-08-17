@@ -143,7 +143,7 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"export interface DockerContainerUpdateProgress",
 		"set_ntp_servers: { input: [servers: string[]]; request: NTPServersRequest; result: void };",
 		"validate_compose: {",
-		"input: [content: string]; request: ContentRequest;",
+		"input: [request: ValidateComposeRequest]; request: ValidateComposeRequest;",
 		"export interface InstallCapabilityResult",
 		"export interface TaskEvent",
 		"export interface ComposeTaskMessage",

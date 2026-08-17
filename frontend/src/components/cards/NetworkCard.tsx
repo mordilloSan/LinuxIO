@@ -18,7 +18,12 @@ export interface NetworkCardProps {
   selected?: boolean;
 }
 
-const NetworkCard = ({ actions, network, selected, onOpen }: NetworkCardProps) => (
+const NetworkCard = ({
+  actions,
+  network,
+  selected,
+  onOpen,
+}: NetworkCardProps) => (
   <DockerResourceCard
     icon="mdi:lan"
     actions={actions}

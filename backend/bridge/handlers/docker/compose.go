@@ -799,8 +799,11 @@ func NormalizeComposeFile(ctx context.Context, content string) (string, error) {
 	return string(normalized), nil
 }
 
-// ValidateComposeFile validates docker-compose YAML syntax and structure
-func ValidateComposeFile(ctx context.Context, content string) (apischema.ValidateComposeResponse, error) {
+// ValidateComposeFile validates docker-compose YAML syntax and structure.
+// envContent, when non-empty, is used as the interpolation env file (the
+// editor's possibly-unsaved buffer); workingDir, when it exists, anchors
+// relative paths and the default .env lookup to the stack's real directory.
+func ValidateComposeFile(ctx context.Context, content, envContent, workingDir string) (apischema.ValidateComposeResponse, error) {
 	result := apischema.ValidateComposeResponse{
 		Valid:  true,
 		Errors: []apischema.ValidateComposeError{},
@@ -811,7 +814,7 @@ func ValidateComposeFile(ctx context.Context, content string) (apischema.Validat
 		return result, nil
 	}
 
-	if sdkErr := composeValidateContent(ctx, content); sdkErr != nil {
+	if sdkErr := composeValidateContent(ctx, content, envContent, workingDir); sdkErr != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, apischema.ValidateComposeError{
 			Message: strings.TrimPrefix(sdkErr.Error(), "load compose project: "),

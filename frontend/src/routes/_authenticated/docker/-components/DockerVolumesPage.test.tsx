@@ -11,7 +11,13 @@ vi.mock("@/api", async (importOriginal) => {
   return {
     ...actual,
     useCallMutation: () => ({ mutate: mocks.systemPrune, isPending: false }),
-    linuxio: { ...actual.linuxio, docker: { ...actual.linuxio.docker, system_prune: { route: "docker.system_prune" } } },
+    linuxio: {
+      ...actual.linuxio,
+      docker: {
+        ...actual.linuxio.docker,
+        system_prune: { route: "docker.system_prune" },
+      },
+    },
   };
 });
 
@@ -23,8 +29,12 @@ describe("DockerVolumesPage", () => {
   it("prunes only unused volumes by default", async () => {
     const { user } = render(<DockerVolumesPage />);
     await user.click(screen.getByRole("button", { name: "Prune All" }));
-    expect(screen.getByRole("button", { name: "Prune Selected (1)" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Prune Selected (1)" }));
+    expect(
+      screen.getByRole("button", { name: "Prune Selected (1)" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Prune Selected (1)" }),
+    );
     expect(mocks.systemPrune).toHaveBeenCalledWith({
       buildCache: false,
       containers: false,

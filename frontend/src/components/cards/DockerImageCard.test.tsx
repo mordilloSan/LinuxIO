@@ -34,9 +34,7 @@ describe("DockerImageCard", () => {
   });
 
   it("shows only the full image ID", () => {
-    render(
-      <DockerImageCard image={image} onOpen={vi.fn()} selected={false} />,
-    );
+    render(<DockerImageCard image={image} onOpen={vi.fn()} selected={false} />);
 
     const fullId = screen.getByText(image.id);
     expect(screen.getByText("Full ID:")).toHaveStyle("font-weight: 700");

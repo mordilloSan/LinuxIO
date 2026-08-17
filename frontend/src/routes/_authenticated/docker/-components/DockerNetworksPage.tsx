@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
-import PruneDialog, { type PruneOptions } from "@/components/docker/PruneDialog";
+import PruneDialog, {
+  type PruneOptions,
+} from "@/components/docker/PruneDialog";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";

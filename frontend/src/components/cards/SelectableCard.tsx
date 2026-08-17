@@ -14,11 +14,7 @@ interface SelectableCardProps {
  * Opens card details with the standard button interaction. A focused card is
  * rendered statically so its own action buttons are never nested controls.
  */
-const SelectableCard = ({
-  children,
-  label,
-  onOpen,
-}: SelectableCardProps) => (
+const SelectableCard = ({ children, label, onOpen }: SelectableCardProps) => (
   <div className="selectable-card-shell">
     {onOpen ? (
       <AppButton

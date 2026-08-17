@@ -292,21 +292,37 @@ func composeStop(
 	return runCompose(ctx, projectName, configFile, workingDir, emitter, "stop")
 }
 
-func composeValidateContent(ctx context.Context, content string) error {
-	f, err := os.CreateTemp("", "linuxio-compose-*.yml")
+func composeValidateContent(ctx context.Context, content, envContent, workingDir string) error {
+	dir, err := os.MkdirTemp("", "linuxio-compose-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.Remove(f.Name())
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
+	defer os.RemoveAll(dir)
+	composeFile := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(composeFile, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("failed to write temp compose file: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", f.Name(), "config")
+	args := []string{"compose"}
+	// Anchor interpolation and relative paths to the stack's real directory so
+	// its .env and env_file references resolve; without this every ${VAR}
+	// defaults to "" and specs like "${DIR}:/data" fail as ":/data".
+	if workingDir != "" {
+		if info, statErr := os.Stat(workingDir); statErr == nil && info.IsDir() {
+			args = append(args, "--project-directory", workingDir)
+		}
+	}
+	// The editor's env buffer takes precedence over the on-disk .env.
+	if envContent != "" {
+		envFile := filepath.Join(dir, ".env")
+		if err := os.WriteFile(envFile, []byte(envContent), 0o600); err != nil {
+			return fmt.Errorf("failed to write temp env file: %w", err)
+		}
+		args = append(args, "--env-file", envFile)
+	}
+	args = append(args, "-f", composeFile, "config")
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdout = nil
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
