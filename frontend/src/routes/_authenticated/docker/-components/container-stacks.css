@@ -28,10 +28,13 @@
   min-height: 0;
 }
 
-/* The whole header is the collapse control, like the table rows below it. */
+/* The whole header is the collapse control, like the table rows below it.
+   AppButton centers its content by default; this header reads left-to-right
+   like the table's stack header, so it pins to the start. */
 .container-stack-band__header {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
   padding: 0 8px;
