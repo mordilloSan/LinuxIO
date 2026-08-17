@@ -30,8 +30,22 @@ const DockerImageCard = ({
   selected,
   onSelect,
 }: DockerImageCardProps) => {
+  const usageTooltip = `Used by ${image.containers} ${
+    image.containers === 1 ? "container" : "containers"
+  }`;
+
   return (
     <DockerResourceCard
+      headerRight={
+        <AppTooltip title={usageTooltip}>
+          <Chip
+            color={image.containers > 0 ? "success" : "default"}
+            label={image.containers}
+            size="small"
+            variant="soft"
+          />
+        </AppTooltip>
+      }
       icon="mdi:layers"
       label={`image ${image.repo}`}
       onSelect={onSelect}
@@ -72,38 +86,34 @@ const DockerImageCard = ({
         ID: {image.shortId}
       </AppTypography>
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: GAP_SM,
-          marginBottom: GAP_MD,
-        }}
-      >
-        <Chip
-          color={image.containers > 0 ? "success" : "default"}
-          label={`Used by ${image.containers}`}
-          size="small"
-          variant="soft"
-        />
-        {image.updateAvailable && (
-          <Chip
-            color="warning"
-            label="Update available"
-            size="small"
-            variant="soft"
-          />
-        )}
-        {image.updateCheckState === "uncheckable" && (
-          <Chip
-            color="info"
-            label="Cannot check"
-            size="small"
-            title={image.updateCheckReason}
-            variant="soft"
-          />
-        )}
-      </div>
+      {(image.updateAvailable || image.updateCheckState === "uncheckable") && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: GAP_SM,
+            marginBottom: GAP_MD,
+          }}
+        >
+          {image.updateAvailable && (
+            <Chip
+              color="warning"
+              label="Update available"
+              size="small"
+              variant="soft"
+            />
+          )}
+          {image.updateCheckState === "uncheckable" && (
+            <Chip
+              color="info"
+              label="Cannot check"
+              size="small"
+              title={image.updateCheckReason}
+              variant="soft"
+            />
+          )}
+        </div>
+      )}
 
       <AppTypography color="text.secondary" variant="caption">
         Full ID

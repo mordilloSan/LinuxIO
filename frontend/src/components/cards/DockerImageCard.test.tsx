@@ -15,6 +15,22 @@ const image: DockerImageRow = {
 };
 
 describe("DockerImageCard", () => {
+  it("shows the container count in the header with an explanatory tooltip", async () => {
+    const { user } = render(
+      <DockerImageCard image={image} onSelect={vi.fn()} selected={false} />,
+    );
+
+    const usageChip = screen.getByText(String(image.containers), {
+      selector: ".app-chip",
+    });
+    expect(screen.queryByText(`Used by ${image.containers}`)).toBeNull();
+
+    await user.hover(usageChip);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Used by 1 container",
+    );
+  });
+
   it("selects on double click and keeps the dashboard-style accent", async () => {
     const onSelect = vi.fn();
     const { container, rerender, user } = render(

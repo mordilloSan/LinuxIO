@@ -9,6 +9,7 @@ import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 
 export interface DockerResourceCardProps {
   children: ReactNode;
+  headerRight?: ReactNode;
   icon: string;
   label: string;
   onSelect: (checked: boolean) => void;
@@ -19,6 +20,7 @@ export interface DockerResourceCardProps {
 
 const DockerResourceCard = ({
   children,
+  headerRight,
   icon,
   label,
   onSelect,
@@ -60,6 +62,7 @@ const DockerResourceCard = ({
           style={{ marginBottom: GAP_MD }}
           subtitle={subtitle}
           title={title}
+          right={headerRight}
         />
         {children}
       </FrostedCard>
