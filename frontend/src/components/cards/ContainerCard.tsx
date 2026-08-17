@@ -52,6 +52,12 @@ const resolveColor = (palette: any, path: string): string => {
 
 interface ContainerCardProps {
   actionPending?: boolean;
+  /**
+   * One "CPU - x% · MEM - y" caption line in place of the two metric bars.
+   * For cards inside a stack band, whose chrome would otherwise make their
+   * grid row taller than a row of loose cards.
+   */
+  compactMetrics?: boolean;
   containerId: string;
   onSelect?: () => void;
   selected?: boolean;
@@ -89,6 +95,7 @@ type ContainerCardBodyProps = Omit<ContainerCardLiveProps, "containerId"> & {
 
 const ContainerCardBody = ({
   actionPending = false,
+  compactMetrics = false,
   container,
   onSelect,
   selected,
@@ -667,22 +674,67 @@ const ContainerCardBody = ({
             </div>
           </div>
 
-          {/* Metrics area: full width */}
+          {/* Metrics area: full width. Compact trades the two bars for one
+              caption line, the tooltip keeping the memory limit detail. */}
           <div style={{ marginTop: 8, width: "100%" }}>
-            <MetricBar
-              color={theme.palette.primary.main}
-              label="CPU"
-              percent={cpuPercent}
-              rightLabel={`${cpuPercent.toFixed(1)}%`}
-              tooltip="CPU Usage"
-            />
-            <MetricBar
-              color={theme.palette.primary.main}
-              label="MEM"
-              percent={memPercent}
-              rightLabel={formatFileSize(memUsage)}
-              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-            />
+            {compactMetrics ? (
+              <AppTooltip
+                title={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    width: "100%",
+                  }}
+                >
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    noWrap
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                    variant="caption"
+                  >
+                    <span style={{ color: theme.palette.text.primary }}>
+                      CPU
+                    </span>
+                    {" - "}
+                    {cpuPercent.toFixed(1)}%
+                  </AppTypography>
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    noWrap
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                    variant="caption"
+                  >
+                    <span style={{ color: theme.palette.text.primary }}>
+                      MEM
+                    </span>
+                    {" - "}
+                    {formatFileSize(memUsage)}
+                  </AppTypography>
+                </div>
+              </AppTooltip>
+            ) : (
+              <>
+                <MetricBar
+                  color={theme.palette.primary.main}
+                  label="CPU"
+                  percent={cpuPercent}
+                  rightLabel={`${cpuPercent.toFixed(1)}%`}
+                  tooltip="CPU Usage"
+                />
+                <MetricBar
+                  color={theme.palette.primary.main}
+                  label="MEM"
+                  percent={memPercent}
+                  rightLabel={formatFileSize(memUsage)}
+                  tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+                />
+              </>
+            )}
           </div>
         </>
       )}

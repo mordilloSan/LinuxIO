@@ -1,23 +1,31 @@
 /* Card view: each multi-container compose project renders inside one of these
    bands. The radius hugs the member cards — their 16px corner plus the band's
-   10px inset — and the fill stays faint enough that the cards keep reading as
-   the page's surfaces, with the band as grouping chrome around them. */
+   8px inset — and the fill stays faint enough that the cards keep reading as
+   the page's surfaces, with the band as grouping chrome around them. The
+   chrome is deliberately slimmer than what the members' compact metrics save,
+   so a band's own height stays under a loose card's and the stretch below is
+   what sets it — a band stands exactly as tall as the cards sharing its row. */
 .container-stack-band {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  /* Fills the SortableCard wrapper, which fills its grid cell — so a band
-     stands as tall as the cards sharing its row, like any other card. */
+  gap: 4px;
   height: 100%;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--app-palette-divider);
-  border-radius: 26px;
+  border-radius: 24px;
   background: color-mix(
     in srgb,
     transparent,
     var(--app-palette-text-primary) 3%
   );
+}
+
+/* The members area takes whatever height the header leaves, so the member
+   cards stretch to the band's bottom edge like cards fill their grid cells. */
+.container-stack-band > .app-grid {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* The whole header is the collapse control, like the table rows below it. */
@@ -26,7 +34,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 2px 8px;
+  padding: 0 8px;
   border: none;
   border-radius: 16px;
   background: none;

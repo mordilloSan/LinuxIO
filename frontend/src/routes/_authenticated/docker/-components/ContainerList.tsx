@@ -444,6 +444,10 @@ const ContainerList = ({
             <AppGrid key={container.Id} size={1}>
               <ContainerCard
                 actionPending={stoppingContainerIds.has(container.Id)}
+                // The band's header and padding must not make this grid row
+                // taller than a row of loose cards; the members give that
+                // height back by folding their metric bars into one line.
+                compactMetrics
                 containerId={container.Id}
                 onSelect={
                   editMode
