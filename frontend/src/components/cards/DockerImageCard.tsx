@@ -1,9 +1,8 @@
-import type { DockerUpdateCheckState } from "@/api";
 import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { GAP_MD, GAP_SM, GAP_XS } from "@/theme/constants";
+import { GAP_MD, GAP_XS } from "@/theme/constants";
 import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
 
 export interface DockerImageRow {
@@ -14,9 +13,6 @@ export interface DockerImageRow {
   shortId: string;
   size: string;
   tags: string[];
-  updateAvailable?: boolean;
-  updateCheckReason?: string;
-  updateCheckState?: DockerUpdateCheckState;
 }
 
 export interface DockerImageCardProps {
@@ -85,35 +81,6 @@ const DockerImageCard = ({
       >
         ID: {image.shortId}
       </AppTypography>
-
-      {(image.updateAvailable || image.updateCheckState === "uncheckable") && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: GAP_SM,
-            marginBottom: GAP_MD,
-          }}
-        >
-          {image.updateAvailable && (
-            <Chip
-              color="warning"
-              label="Update available"
-              size="small"
-              variant="soft"
-            />
-          )}
-          {image.updateCheckState === "uncheckable" && (
-            <Chip
-              color="info"
-              label="Cannot check"
-              size="small"
-              title={image.updateCheckReason}
-              variant="soft"
-            />
-          )}
-        </div>
-      )}
 
       <AppTypography color="text.secondary" variant="caption">
         Full ID

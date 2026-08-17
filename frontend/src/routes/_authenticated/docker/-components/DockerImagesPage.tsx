@@ -11,11 +11,9 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import ImageList from "./ImageList";
-import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DockerImagesPage = () => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  const { button: checkUpdatesButton } = useDockerUpdateCheck();
   const [imagesView, setImagesView] = useViewMode("docker.images");
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [createImageHandler, setCreateImageHandler] = useState<
@@ -38,7 +36,6 @@ const DockerImagesPage = () => {
 
   const actions = (
     <>
-      {checkUpdatesButton}
       <AppActionIconButton
         ariaLabel="Prune All"
         disabled={isPruning}

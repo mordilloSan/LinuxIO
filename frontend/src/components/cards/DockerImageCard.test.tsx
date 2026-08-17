@@ -15,6 +15,25 @@ const image: DockerImageRow = {
 };
 
 describe("DockerImageCard", () => {
+  it("does not present image update status", () => {
+    const imageWithUpdateStatus = {
+      ...image,
+      updateAvailable: true,
+      updateCheckState: "uncheckable",
+    } as DockerImageRow;
+
+    render(
+      <DockerImageCard
+        image={imageWithUpdateStatus}
+        onSelect={vi.fn()}
+        selected={false}
+      />,
+    );
+
+    expect(screen.queryByText("Update available")).toBeNull();
+    expect(screen.queryByText("Cannot check")).toBeNull();
+  });
+
   it("shows the container count in the header with an explanatory tooltip", async () => {
     const { user } = render(
       <DockerImageCard image={image} onSelect={vi.fn()} selected={false} />,

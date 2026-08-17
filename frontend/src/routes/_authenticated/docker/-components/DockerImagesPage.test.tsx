@@ -27,10 +27,6 @@ vi.mock("./ImageList", () => ({
   default: () => <div>Image list</div>,
 }));
 
-vi.mock("./useDockerUpdateCheck", () => ({
-  useDockerUpdateCheck: () => ({ button: null }),
-}));
-
 describe("DockerImagesPage", () => {
   beforeEach(() => {
     mocks.systemPrune.mockReset();

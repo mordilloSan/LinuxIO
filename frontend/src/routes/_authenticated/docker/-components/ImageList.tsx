@@ -221,9 +221,6 @@ const ImageList = ({
           size: (img.Size / (1024 * 1024)).toFixed(2),
           created: new Date(img.Created * 1000).toLocaleString(),
           containers: img.Containers || 0,
-          updateAvailable: img.updateAvailable,
-          updateCheckReason: img.updateCheckReason,
-          updateCheckState: img.updateCheckState,
           raw: img,
         };
       }),
@@ -307,25 +304,6 @@ const ImageList = ({
               size="small"
               style={{ fontSize: "0.68rem" }}
               title={row.original.repos.slice(1).join(", ")}
-              variant="soft"
-            />
-          )}
-          {row.original.updateAvailable && (
-            <Chip
-              color="warning"
-              label="Update"
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              variant="soft"
-            />
-          )}
-          {row.original.updateCheckState === "uncheckable" && (
-            <Chip
-              color="info"
-              label="Cannot check"
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              title={row.original.updateCheckReason}
               variant="soft"
             />
           )}
