@@ -211,7 +211,7 @@ const GroupsTab = ({
         minHeight: 0,
       }}
     >
-      <RoutedTabSearch>
+      <RoutedTabSearch active={search !== ""}>
         <AppHeaderSearch
           onChange={setSearch}
           placeholder="Search groups…"

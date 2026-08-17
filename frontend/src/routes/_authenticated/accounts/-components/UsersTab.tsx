@@ -407,7 +407,7 @@ const UsersTab = ({
       }}
     >
       {!detailUser && (
-        <RoutedTabSearch>
+        <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
             onChange={setSearch}
             placeholder="Search users…"

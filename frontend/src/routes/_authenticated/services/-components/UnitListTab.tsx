@@ -109,7 +109,7 @@ function UnitListTab<T extends UnitListItem>({
     : null;
 
   const searchControl = (
-    <RoutedTabSearch>
+    <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
         onChange={setSearch}
         placeholder={searchPlaceholder}

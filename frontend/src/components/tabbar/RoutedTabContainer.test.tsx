@@ -130,6 +130,20 @@ const StatefulAction = () => {
   );
 };
 
+const StatefulSearch = () => {
+  const [search, setSearch] = useState("");
+
+  return (
+    <RoutedTabSearch active={search !== ""}>
+      <input
+        aria-label="Search users"
+        onChange={(event) => setSearch(event.target.value)}
+        value={search}
+      />
+    </RoutedTabSearch>
+  );
+};
+
 describe("RoutedTabContainer", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -449,6 +463,60 @@ describe("RoutedTabContainer", () => {
       screen.queryByRole("textbox", { name: "Search users" }),
     ).not.toBeInTheDocument();
     expect(actionsTrigger).toHaveFocus();
+  });
+
+  it("tints the collapsed mobile icons while the search carries a query", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: StatefulSearch,
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { user } = render(<RouterProvider router={router} />);
+
+    const actionsTrigger = await screen.findByRole("button", {
+      name: "Actions",
+    });
+    expect(actionsTrigger).not.toHaveClass("tab-selector__search-active");
+
+    await user.click(actionsTrigger);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "Search users" }),
+      "root",
+    );
+    await user.keyboard("{Escape}");
+
+    expect(actionsTrigger).toHaveClass("tab-selector__search-active");
+    await user.click(actionsTrigger);
+    expect(screen.getByRole("button", { name: "Search" })).toHaveClass(
+      "tab-selector__search-active",
+    );
+
+    // Emptying the field hands the icons back their resting color.
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.clear(
+      await screen.findByRole("textbox", { name: "Search users" }),
+    );
+    await user.keyboard("{Escape}");
+    expect(actionsTrigger).not.toHaveClass("tab-selector__search-active");
   });
 
   it("preserves action-local state across breakpoint changes", async () => {

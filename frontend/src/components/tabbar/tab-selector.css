@@ -66,6 +66,15 @@
   outline-offset: 2px;
 }
 
+/* While the collapsed search field carries a query, the mobile trigger and
+   the menu's search entry take the theme accent so a filtered list isn't
+   mistaken for the full one. Doubled with .app-icon-btn to outrank the
+   button's own color variants; the menu entry renders in a portal, so no
+   .tab-selector ancestor is available to scope by. */
+.app-icon-btn.tab-selector__search-active {
+  color: var(--app-palette-primary-main);
+}
+
 .tab-selector__pill--active,
 .tab-selector__pill--active:hover {
   background: var(--tab-selector-active-bg);

@@ -8,7 +8,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <RoutedTabSearch>
+      <RoutedTabSearch active={search !== ""}>
         <AppHeaderSearch
           aria-label="Search users"
           onChange={setSearch}

@@ -485,7 +485,7 @@ const VolumeList = ({
       }}
     >
       {!focusedVolume && (
-        <RoutedTabSearch>
+        <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
             onChange={setSearch}
             placeholder="Search volumes…"

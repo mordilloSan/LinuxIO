@@ -848,7 +848,7 @@ const NetworkList = ({
       }}
     >
       {!focusedNetwork && (
-        <RoutedTabSearch>
+        <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
             onChange={setSearch}
             placeholder="Search networks…"

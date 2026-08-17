@@ -765,7 +765,7 @@ const ComposeList = ({
     [containersByProject, expandedContainerColumns],
   );
   const searchControl = (
-    <RoutedTabSearch>
+    <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
         onChange={setSearch}
         placeholder="Search stacks…"

@@ -51,6 +51,7 @@ interface RoutedTabContainerProps {
 
 interface TabSelectorProps {
   actionHostMountRef?: (element: HTMLDivElement | null) => void;
+  hasActiveSlotSearch?: boolean;
   hasSlotActions?: boolean;
   hasSlotSearch?: boolean;
   searchHostMountRef?: (element: HTMLDivElement | null) => void;
@@ -66,6 +67,7 @@ const TabActionSlotContext = createContext<{
 
 const TabSearchSlotContext = createContext<{
   host: HTMLElement;
+  registerActiveSearch: () => () => void;
   registerSearch: () => () => void;
 } | null>(null);
 
@@ -96,7 +98,18 @@ export const RoutedTabActions = ({ children }: { children: ReactNode }) => {
 };
 
 /** Places a child route's search field in the persistent parent tab strip. */
-export const RoutedTabSearch = ({ children }: { children: ReactNode }) => {
+export const RoutedTabSearch = ({
+  active = false,
+  children,
+}: {
+  /**
+   * The field carries a query right now. While true, the collapsed mobile
+   * icons take the theme accent so a filtered list isn't mistaken for the
+   * full one.
+   */
+  active?: boolean;
+  children: ReactNode;
+}) => {
   const parentSearchSlot = useContext(TabSearchSlotContext);
   const hasSearch = children != null && typeof children !== "boolean";
 
@@ -104,6 +117,11 @@ export const RoutedTabSearch = ({ children }: { children: ReactNode }) => {
     if (!parentSearchSlot || !hasSearch) return;
     return parentSearchSlot.registerSearch();
   }, [hasSearch, parentSearchSlot]);
+
+  useLayoutEffect(() => {
+    if (!parentSearchSlot || !hasSearch || !active) return;
+    return parentSearchSlot.registerActiveSearch();
+  }, [active, hasSearch, parentSearchSlot]);
 
   if (!hasSearch) {
     return null;
@@ -135,6 +153,7 @@ export const RoutedTabLayout = ({
   });
   const [slotActionCount, setSlotActionCount] = useState(0);
   const [slotSearchCount, setSlotSearchCount] = useState(0);
+  const [activeSearchCount, setActiveSearchCount] = useState(0);
   const registerActions = useCallback(() => {
     setSlotActionCount((count) => count + 1);
     return () => setSlotActionCount((count) => Math.max(0, count - 1));
@@ -151,6 +170,10 @@ export const RoutedTabLayout = ({
     setSlotSearchCount((count) => count + 1);
     return () => setSlotSearchCount((count) => Math.max(0, count - 1));
   }, []);
+  const registerActiveSearch = useCallback(() => {
+    setActiveSearchCount((count) => count + 1);
+    return () => setActiveSearchCount((count) => Math.max(0, count - 1));
+  }, []);
   const mountSearchHost = useCallback(
     (element: HTMLDivElement | null) => {
       if (element) {
@@ -164,13 +187,14 @@ export const RoutedTabLayout = ({
     [actionHost, registerActions],
   );
   const searchSlot = useMemo(
-    () => ({ host: searchHost, registerSearch }),
-    [registerSearch, searchHost],
+    () => ({ host: searchHost, registerActiveSearch, registerSearch }),
+    [registerActiveSearch, registerSearch, searchHost],
   );
   return (
     <div className="tab-container" style={containerStyle}>
       <TabSelector
         actionHostMountRef={mountActionHost}
+        hasActiveSlotSearch={activeSearchCount > 0}
         hasSlotActions={slotActionCount > 0}
         hasSlotSearch={slotSearchCount > 0}
         searchHostMountRef={mountSearchHost}
@@ -213,6 +237,7 @@ const RoutedTabLink = memo(function RoutedTabLink({
 const TabSelector = memo(function TabSelector({
   tabs,
   actionHostMountRef,
+  hasActiveSlotSearch = false,
   hasSlotActions = false,
   hasSlotSearch = false,
   searchHostMountRef,
@@ -295,6 +320,9 @@ const TabSelector = memo(function TabSelector({
             <AppIconButton
               aria-expanded={Boolean(anchorEl)}
               aria-label="Actions"
+              className={
+                hasActiveSlotSearch ? "tab-selector__search-active" : undefined
+              }
               onClick={(event) => {
                 setMobileSearchAnchorEl(null);
                 setAnchorEl(event.currentTarget);
@@ -323,6 +351,11 @@ const TabSelector = memo(function TabSelector({
                 {hasSlotSearch ? (
                   <AppIconButton
                     aria-label="Search"
+                    className={
+                      hasActiveSlotSearch
+                        ? "tab-selector__search-active"
+                        : undefined
+                    }
                     onClick={() => {
                       setMobileSearchAnchorEl(anchorEl);
                       setAnchorEl(null);
