@@ -1,5 +1,6 @@
 import {
   closestCenter,
+  pointerWithin,
   type CollisionDetection,
   type DragOverEvent,
 } from "@dnd-kit/core";
@@ -262,10 +263,14 @@ const ContainerList = ({
   const dragStartRectsRef = useRef<DroppableRects | null>(null);
   const entryCollisionDetection = useCallback<CollisionDetection>((args) => {
     dragStartRectsRef.current ??= new Map(args.droppableRects);
-    return closestCenter({
-      ...args,
-      droppableRects: dragStartRectsRef.current,
-    });
+    const frozen = { ...args, droppableRects: dragStartRectsRef.current };
+    // The pointer is what the user aims with: the slot under it reacts the
+    // moment the cursor crosses in. Judging by the dragged rect's own center
+    // (closestCenter alone) makes a wide band lag half its width behind the
+    // cursor. Keyboard drags have no pointer, and a cursor in the gutters
+    // matches nothing — both fall back to nearest-center.
+    const underPointer = pointerWithin(frozen);
+    return underPointer.length > 0 ? underPointer : closestCenter(frozen);
   }, []);
   const handleEntryDragOver = useCallback(
     (event: DragOverEvent) => {
