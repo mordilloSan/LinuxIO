@@ -34,12 +34,12 @@
 }
 
 .directory-tree__node--selected {
-  background: color-mix(in srgb, var(--app-palette-primary-main) 18%, transparent);
+  background: color-mix(in srgb, var(--app-palette-primary-main), transparent 82%);
   color: var(--app-palette-primary-main);
 }
 
 .directory-tree__node--selected:hover {
-  background: color-mix(in srgb, var(--app-palette-primary-main) 24%, transparent);
+  background: color-mix(in srgb, var(--app-palette-primary-main), transparent 76%);
 }
 
 .directory-tree__chevron,

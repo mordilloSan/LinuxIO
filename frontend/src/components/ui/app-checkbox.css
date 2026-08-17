@@ -83,7 +83,7 @@
 
 .app-checkbox:has(.app-checkbox__input:checked):hover,
 .app-checkbox:has(.app-checkbox__input:indeterminate):hover {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 92%);
 }
 
 /* ── color="error" variant ────────────────────── */
@@ -94,13 +94,13 @@
 
 .app-checkbox--error:has(.app-checkbox__input:checked):hover,
 .app-checkbox--error:has(.app-checkbox__input:indeterminate):hover {
-  background-color: color-mix(in srgb, var(--app-palette-error-main) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main), transparent 92%);
 }
 
 .app-checkbox--error:not(:has(.app-checkbox__input:checked)):not(
     :has(.app-checkbox__input:indeterminate)
   ):hover {
-  background-color: color-mix(in srgb, var(--app-palette-error-main) 8%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main), transparent 92%);
 }
 
 /* ── disabled ─────────────────────────────────── */

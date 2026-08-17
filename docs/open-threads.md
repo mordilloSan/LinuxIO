@@ -53,9 +53,26 @@ or instead of code.
   0.05), and surfaces.ts's own `getFileEntryBackground` (0.4 / 0.5). Left raw
   on purpose: two-colour mixes the helper can't express
   (`getFileEntryHoverBackground`, `utils/color.ts` `mixWith`) and all 18 CSS
-  files — the CSS half keeps both argument shapes, per the scope decision.
+  files — the CSS half was initially declined, then revisited as A4b.
   *Verify: `make check-frontend`, visual spot-check of file browser
   (selection box, hidden/selected rows, size chips), compress dialog, LVM*
+
+- [x] **A4b. CSS `color-mix` shape normalisation + guard test.**
+  *(done 2026-08-17)* The 20 inverted transparency sites (`X N%, transparent`)
+  flipped to the canonical shape (`X, transparent (100−N)%`), each percentage
+  hand-recomputed — exact integer flips, identical computed colour: app-button
+  ×5, app-select ×7, app-checkbox ×3, directory-tree ×2, app-icon-button ×2,
+  login ×1. The 17 two-colour CSS mixes are exempt (both components named,
+  nothing to misread) and stay. `theme/colorMix.usage.test.ts` now walks
+  css/ts/tsx (skipping tests) and fails with file:line on any inverted
+  transparency mix, so the two shapes can't creep back. TS two-colour sites
+  stay raw by design: `mix()` in `utils/color.ts` is the lighten/darken
+  primitive, and `getFileEntryHoverBackground` is the codebase's only
+  two-colour call site — a helper earns its place at the second consumer.
+  *Verify: `make check-frontend`, visual spot-check of buttons (text/outlined
+  hover, dialog actions), selects (borders, dropdown, option states),
+  checkboxes (hover tints), directory tree selection, icon buttons, login
+  alert*
 
 - [ ] **A5. (decision) Pull the off-scale 6px cards onto the padding scale.**
   Deliberate visual change (6px → 8px body inset): LVMMetricCard,

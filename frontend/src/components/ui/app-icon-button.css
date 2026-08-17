@@ -54,7 +54,7 @@
 }
 
 .app-icon-btn--error:hover {
-  background-color: color-mix(in srgb, var(--app-palette-error-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main), transparent 96%);
 }
 
 .app-icon-btn--primary {
@@ -62,7 +62,7 @@
 }
 
 .app-icon-btn--primary:hover {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 96%);
 }
 
 /* The muted icon tone the app uses for standing action buttons, brightening on
