@@ -144,14 +144,18 @@ fought.
 
 ## Thread C — sensors (hp_wmi investigation, 2026-08-17)
 
-- [ ] **C1. (decision) Honest rendering for dead fan channels.**
-  `hp_wmi` on the HP 15s exposes `fan1_input`/`fan2_input` that always read 0;
-  `sensorGroupHelpers.ts:34` maps 0 RPM → "Off" and `SensorGroupCard.tsx:187`
-  greys the icon, making "driver reports nothing" indistinguishable from "fan
-  stopped". Options: show `—`/"n/a" for RPM channels that have never read
-  above 0 since boot (generalises to other broken drivers), or suppress the
-  reading on `hp-isa-*` adapters. Pick one, implement.
-  *Verify: `make check-frontend`, visual check on the hardware page*
+- [x] **C1. Dead fan channels render "—" until proven alive.**
+  *(done 2026-08-17)* Decision: the generalising option, no quirk list. An
+  RPM channel shows "—" until it has read above 0 once this session; after
+  that, 0 renders as "Off". Implemented as a monotonic session latch in
+  `sensorGroupHelpers.ts` (`observeFanChannel`, keyed adapter+label) plus a
+  fan-specific formatter (`formatFanSensorValue`); the RPM branch left
+  `formatNumericSensorValue` since the fans row was its only RPM caller.
+  Known trade-off, accepted: a genuinely stopped fan also shows "—" until it
+  first spins while the app is watching. hp_wmi's fan1/fan2 now read "—"
+  instead of a false "Off".
+  *Verify: `make check-frontend`, visual check on the hardware page (HP 15s
+  fans show "—"; spin a real fan on another box to see RPM → Off behave)*
 
 ---
 

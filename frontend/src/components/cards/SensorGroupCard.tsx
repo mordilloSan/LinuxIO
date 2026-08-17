@@ -13,9 +13,11 @@ import { CARD_PADDING_MD } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 import {
+  formatFanSensorValue,
   formatNumericSensorValue,
   isPrimarySensorReading,
   isTemperatureReading,
+  observeFanChannel,
 } from "./sensorGroupHelpers";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -201,7 +203,7 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
                 style={{ fontVariantNumeric: "tabular-nums" }}
                 variant="caption"
               >
-                {formatNumericSensorValue(r.value, r.unit)}
+                {formatFanSensorValue(r.value, observeFanChannel(adapter, r))}
               </AppTypography>
             </div>
           ))}
