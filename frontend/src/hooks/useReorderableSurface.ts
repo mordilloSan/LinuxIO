@@ -104,7 +104,7 @@ function applySavedOrder<TItem>(
  * The hold is dnd-kit's own delay constraint, so the gesture that opens layout
  * mode is the same gesture that picks the item up — by the time the mode turns
  * on at `onDragStart`, the held item is already moving. dnd-kit also swallows
- * the trailing click and clears the text selection on activation, so a 4s press
+ * the trailing click and clears the text selection on activation, so the hold
  * cannot double as a row click or smear a selection across the list.
  */
 export function useReorderableSurface<TItem>({
@@ -154,8 +154,9 @@ export function useReorderableSurface<TItem>({
   const sensors = useSensors(
     useSensor(MouseSensor, sensorOptions),
     useSensor(TouchSensor, sensorOptions),
-    // A 4s press is a mouse gesture with no keyboard equivalent. The keyboard
-    // sensor is the way in without one: focus a card, press Space, use arrows.
+    // The REORDER_HOLD_MS hold is a mouse gesture with no keyboard equivalent.
+    // The keyboard sensor is the way in without one: focus a card, press
+    // Space, use arrows.
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),

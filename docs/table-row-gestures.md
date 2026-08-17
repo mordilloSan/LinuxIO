@@ -31,7 +31,7 @@ hands their ids to `onSelectAll`; the page owns the selection.
 
 Selected rows are tinted, not checkboxed. `selectedRowIds` takes the whole
 selected set and `selectedRowId` the single open/focused row; both paint the same
-`--app-vdt-selected-bg`, which is the theme's `primary.main` at 10% (15% in dark).
+`--app-dt-selected-bg`, which is the theme's `primary.main` at 10% (15% in dark).
 
 The tint is applied as the row's *own* surface rather than an overlay, so zebra
 striping stays legible underneath it and hover brightens the tinted surface

@@ -27,6 +27,7 @@ import {
   TRANSITION_DURATION_MEDIUM_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
+import { getFrostedCardShadow } from "@/theme/surfaces";
 import variants from "@/theme/variants";
 import { alpha, darken, lighten } from "@/utils/color";
 
@@ -193,7 +194,9 @@ interface AppThemeProviderProps {
 }
 
 const APP_THEME_CONTEXT = createContext<AppTheme | undefined>(undefined);
-const BASE_SPACING_UNIT = 4;
+// The single source for the app's 4px spacing unit. AppGrid's gap math
+// imports this directly rather than restating the literal.
+export const BASE_SPACING_UNIT = 4;
 const FONT_FAMILY = [
   '"Inter Variable"',
   "Inter",
@@ -632,13 +635,13 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"
-        ? "color-mix(in srgb, var(--app-palette-info-main) 30%, #fff)"
+        ? lighten("var(--app-palette-info-main)", 0.7)
         : "var(--app-palette-info-main)",
     "--app-panel-text": theme.palette.text.primary,
     "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":
       theme.palette.mode === "dark"
-        ? "0 16px 40px -28px rgba(0, 0, 0, 0.6)"
+        ? getFrostedCardShadow(theme)
         : "rgba(50, 50, 93, 0.025) 0px 2px 5px -1px, rgba(0, 0, 0, 0.05) 0px 1px 3px -1px",
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,

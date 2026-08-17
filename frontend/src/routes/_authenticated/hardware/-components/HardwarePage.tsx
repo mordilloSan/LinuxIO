@@ -3,9 +3,9 @@ import { Suspense, useCallback, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
+import { SensorEmptyCard } from "@/components/cards/SensorEmptyCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
-import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";

@@ -23,7 +23,6 @@ function NetworkLayout() {
 export const Route = createFileRoute("/_authenticated/network")({
   validateSearch: (search) => ({
     ...optionalString(search, "iface"),
-    ...optionalString(search, "sort"),
     ...optionalString(search, "tab"),
   }),
   loader: (loaderArgs) =>

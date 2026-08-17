@@ -16,6 +16,10 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
+import {
+  getFileEntryBackground,
+  getSubtleDividerColor,
+} from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface FileCardProps {
@@ -148,21 +152,14 @@ const FileCard = memo<FileCardProps>(
       return date.toLocaleDateString("en-GB");
     }, [modTime]);
 
-    const baseBg = useMemo(() => {
-      if (selected) {
-        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
-      }
-      if (hidden) {
-        return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
-      }
-      return theme.fileBrowser.surface;
-    }, [hidden, selected, theme.fileBrowser.surface]);
-
-    const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
+    const baseBg = useMemo(
+      () => getFileEntryBackground(theme, { hidden, selected }),
+      [hidden, selected, theme],
+    );
 
     const baseBorderColor = useMemo(
-      () => `rgba(var(--app-palette-dividerChannel) / ${baseBorderAlpha})`,
-      [baseBorderAlpha],
+      () => getSubtleDividerColor(theme),
+      [theme],
     );
 
     const borderColor = useMemo(() => {

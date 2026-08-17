@@ -47,7 +47,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
-import { GAP_LG, GAP_XL } from "@/theme/constants";
+import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
@@ -1252,7 +1252,7 @@ const SharesPage = () => {
                 protocolSummary={renderProtocolSummary(group)}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            size={CARD_GRID_SIZE_DENSE}
             surface={sharesSurface}
           />
         ) : (

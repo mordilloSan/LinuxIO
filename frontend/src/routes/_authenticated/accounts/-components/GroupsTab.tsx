@@ -14,6 +14,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -230,7 +231,7 @@ const GroupsTab = ({
                 onEditMembers={() => handleEditMembers(group)}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (

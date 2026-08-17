@@ -10,6 +10,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import {
+  CARD_GRID_SIZE_STANDARD,
+  EASING_STANDARD,
+  TRANSITION_DURATION_SLOW_MS,
+} from "@/theme/constants";
 
 import InterfaceDetails from "./InterfaceClients";
 
@@ -189,56 +194,59 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     <>
       {interfaces.length > 0 ? (
         <>
+          <ReorderableCardGrid
+            fillAvailable={false}
+            getId={getWireguardInterfaceId}
+            renderItem={(iface) => (
+              <WireguardInterfaceCard
+                handleAddPeer={handleAddPeer}
+                handleDelete={handleDelete}
+                handleSelectInterface={handleSelectInterface}
+                handleToggleBootPersistence={handleToggleBootPersistence}
+                handleToggleInterface={handleToggleInterface}
+                iface={iface}
+                pendingAction={pendingActions.get(iface.name)}
+                selectedCardRef={
+                  iface.name === selectedInterface ? selectedCardRef : null
+                }
+                selectedInterface={selectedInterface}
+              />
+            )}
+            size={CARD_GRID_SIZE_STANDARD}
+            surface={surface}
+          />
           <AnimatePresence>
-            <ReorderableCardGrid
-              fillAvailable={false}
-              getId={getWireguardInterfaceId}
-              renderItem={(iface) => (
-                <WireguardInterfaceCard
-                  handleAddPeer={handleAddPeer}
-                  handleDelete={handleDelete}
-                  handleSelectInterface={handleSelectInterface}
-                  handleToggleBootPersistence={handleToggleBootPersistence}
-                  handleToggleInterface={handleToggleInterface}
-                  iface={iface}
-                  pendingAction={pendingActions.get(iface.name)}
-                  selectedCardRef={
-                    iface.name === selectedInterface ? selectedCardRef : null
-                  }
-                  selectedInterface={selectedInterface}
-                />
-              )}
-              size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-              surface={surface}
-            />
-          </AnimatePresence>
-          {selectedInterface && (
-            <AppGrid container spacing={3}>
-              <AppGrid size={{ xs: 12 }}>
-                <motion.div
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  initial={{ opacity: 0, x: -20 }}
-                  layout
-                  transition={{ duration: 0.5 }}
-                >
-                  <div
-                    style={{
-                      marginTop: theme.spacing(4),
-                      marginBottom: theme.spacing(2),
+            {selectedInterface && (
+              <AppGrid container spacing={3}>
+                <AppGrid size={{ xs: 12 }}>
+                  <motion.div
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    initial={{ opacity: 0, x: -20 }}
+                    layout
+                    transition={{
+                      duration: TRANSITION_DURATION_SLOW_MS / 1000,
+                      ease: EASING_STANDARD,
                     }}
                   >
-                    <AppTypography gutterBottom variant="h5">
-                      Clients for {selectedInterface}
-                    </AppTypography>
-                  </div>
-                  <div ref={interfaceDetailsRef}>
-                    <InterfaceDetails params={{ id: selectedInterface }} />
-                  </div>
-                </motion.div>
+                    <div
+                      style={{
+                        marginTop: theme.spacing(4),
+                        marginBottom: theme.spacing(2),
+                      }}
+                    >
+                      <AppTypography gutterBottom variant="h5">
+                        Clients for {selectedInterface}
+                      </AppTypography>
+                    </div>
+                    <div ref={interfaceDetailsRef}>
+                      <InterfaceDetails params={{ id: selectedInterface }} />
+                    </div>
+                  </motion.div>
+                </AppGrid>
               </AppGrid>
-            </AppGrid>
-          )}
+            )}
+          </AnimatePresence>
         </>
       ) : (
         <AppTypography color="text.secondary">

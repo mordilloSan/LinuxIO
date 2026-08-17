@@ -24,6 +24,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
   responsiveTextStyles,
@@ -366,7 +367,7 @@ const VolumeList = ({
                 volume={volume}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (

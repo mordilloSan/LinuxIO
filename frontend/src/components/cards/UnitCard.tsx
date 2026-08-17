@@ -58,14 +58,13 @@ function UnitCard<T extends UnitListItem>({
       hoverLift={!isSelected}
       style={{
         ...(isSelected ? selectedCardStyle : cardStyle),
-        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
       }}
     >
       <AppButton
         aria-controls={detailsId}
         aria-expanded={isSelected}
         aria-label={`${isSelected ? "Collapse" : "Expand"} ${item.name}`}
-        className="fc-svc-card__trigger"
         color="inherit"
         fullWidth
         onClick={() => onExpand(isSelected ? null : item.name)}

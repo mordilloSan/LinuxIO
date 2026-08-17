@@ -24,6 +24,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
   responsiveTextStyles,
@@ -164,6 +165,9 @@ const DeleteImageDialog = ({
   );
 };
 const getImageRowId = (image: { id: string }) => image.id;
+
+// A press in layout mode belongs to the drag, not to selecting the image.
+const noopSelect = () => {};
 
 const ImageList = ({
   onMountCreateHandler,
@@ -464,18 +468,21 @@ const ImageList = ({
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
-            disableReordering
             fillAvailable
             getId={getImageRowId}
             items={filtered}
             renderItem={(image) => (
               <DockerImageCard
                 image={image}
-                onSelect={(checked) => handleSelectOne(image.id, checked)}
+                onSelect={
+                  surface.editMode
+                    ? noopSelect
+                    : (checked) => handleSelectOne(image.id, checked)
+                }
                 selected={effectiveSelected.has(image.id)}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (

@@ -110,7 +110,6 @@ const UpdateList = ({
             update={update}
           />
         )}
-        size={1}
         surface={surface}
       />
     </div>

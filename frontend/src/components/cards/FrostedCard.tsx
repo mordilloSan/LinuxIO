@@ -12,15 +12,14 @@ import {
 
 type FrostedCardProps = HTMLAttributes<HTMLDivElement> & {
   hoverLift?: boolean;
-  accent?: boolean | string;
+  accent?: boolean;
 };
 
 const FrostedCard = forwardRef<HTMLDivElement, FrostedCardProps>(
   ({ accent, children, style, hoverLift, className, ...props }, ref) => {
     const theme = useAppTheme();
 
-    const accentColor =
-      accent === true ? theme.palette.primary.main : accent || undefined;
+    const accentColor = accent ? theme.palette.primary.main : undefined;
 
     const frostedStyles = {
       overflow: "hidden",

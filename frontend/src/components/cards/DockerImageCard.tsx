@@ -49,7 +49,7 @@ const DockerImageCard = ({
     >
       <FrostedCard
         accent
-        className={`docker-image-card${selected ? " docker-image-card--selected" : ""}`}
+        className={selected ? "docker-image-card--selected" : undefined}
         hoverLift
         style={{
           padding: 8,

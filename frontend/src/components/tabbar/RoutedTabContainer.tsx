@@ -21,6 +21,7 @@ import {
   POINTER_FOCUS_ATTRIBUTE,
 } from "@/utils/inputModality";
 
+import { getTabSelectorThemeVars } from "./TabSelector";
 import AppIconButton from "../ui/AppIconButton";
 import AppMenu from "../ui/AppMenu";
 import AppPopover from "../ui/AppPopover";
@@ -277,15 +278,7 @@ const TabSelector = memo(function TabSelector({
   return (
     <div
       className={`tab-selector tab-container__selector${isMobile ? " tab-selector--mobile" : ""}`}
-      style={
-        {
-          "--tab-selector-active-bg": theme.palette.primary.main,
-          "--tab-selector-active-color": theme.palette.primary.contrastText,
-          "--tab-selector-border": theme.palette.divider,
-          "--tab-selector-hover": theme.palette.action.hover,
-          "--tab-selector-text": theme.palette.text.secondary,
-        } as CSSProperties
-      }
+      style={getTabSelectorThemeVars(theme)}
     >
       <div className="tab-selector__scroller custom-scrollbar">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">

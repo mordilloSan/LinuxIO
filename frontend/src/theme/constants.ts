@@ -1,3 +1,5 @@
+import type { GridSize } from "@/components/ui/AppGrid";
+
 // Themes
 export const drawerWidth = 200; //full width
 export const collapsedDrawerWidth = 70; // mini sidebar width
@@ -87,3 +89,27 @@ export const iconSize = {
   md: 24,
   lg: 28,
 } as const;
+
+/* ReorderableCardGrid `size` maps: how many cards sit across a row at each
+   breakpoint (a card spans size.lg columns out of AppGrid's 12). STANDARD is
+   4-across at lg and is what most card grids use. DENSE is 6-across at lg,
+   for grids a route deliberately wants tighter (docker containers/compose
+   stacks, share folders). Which routes use which is a per-route call, not
+   something these constants decide — some sibling views currently pick
+   differently from one another with no documented reason. */
+export const CARD_GRID_SIZE_STANDARD: GridSize = {
+  xs: 12,
+  sm: 6,
+  md: 4,
+  lg: 3,
+};
+export const CARD_GRID_SIZE_DENSE: GridSize = { xs: 12, sm: 6, md: 4, lg: 2 };
+
+/* Card body padding values currently in use across src/components/cards,
+   picked by hand per card with no shared name. This scale exists so cards can
+   start choosing from named steps instead of restating raw numbers; adopting
+   it in the existing cards is a separate follow-up (they are owned by other
+   workers and are intentionally left untouched here). */
+export const CARD_PADDING_SM = 8;
+export const CARD_PADDING_MD = 10;
+export const CARD_PADDING_LG = 12;

@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import type { CSSProperties } from "react";
 
 import type { VMPreflight, VirtualMachine } from "@/api";
@@ -8,6 +7,7 @@ import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 import { type AppTheme, useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
@@ -34,31 +34,19 @@ const cardGridStyle = (theme: AppTheme): CSSProperties => ({
   gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
 });
 
-const metricCardStyle = (theme: AppTheme): CSSProperties => ({
+// Shared by the status-metric tiles and the image-path tiles — both are
+// non-interactive "label + value" cards laid out identically.
+const gridTileStyle = (theme: AppTheme): CSSProperties => ({
   display: "flex",
   flexDirection: "column",
   gap: theme.spacing(2),
   minWidth: 0,
   padding: theme.spacing(3.5),
-});
-
-const metricIconStyle = (theme: AppTheme): CSSProperties => ({
-  alignItems: "center",
-  color: theme.palette.primary.main,
-  display: "inline-flex",
 });
 
 const secondarySmallTextStyle = (theme: AppTheme): CSSProperties => ({
   color: theme.palette.text.secondary,
   fontSize: "0.75rem",
-});
-
-const pathCardStyle = (theme: AppTheme): CSSProperties => ({
-  display: "flex",
-  flexDirection: "column",
-  gap: theme.spacing(2),
-  minWidth: 0,
-  padding: theme.spacing(3.5),
 });
 
 const preflightCardStyle = (theme: AppTheme): CSSProperties => ({
@@ -81,33 +69,6 @@ const messageListStyle: CSSProperties = {
 const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
 };
-
-function StatusMetric({
-  detail,
-  icon,
-  label,
-  value,
-}: {
-  detail?: string;
-  icon: string;
-  label: string;
-  value: string | number;
-}) {
-  const theme = useAppTheme();
-
-  return (
-    <FrostedCard style={metricCardStyle(theme)}>
-      <div style={metricIconStyle(theme)}>
-        <Icon height={20} icon={icon} width={20} />
-      </div>
-      <span style={secondarySmallTextStyle(theme)}>{label}</span>
-      <strong style={{ fontSize: "1.35rem", lineHeight: 1.2 }}>{value}</strong>
-      {detail ? (
-        <small style={secondarySmallTextStyle(theme)}>{detail}</small>
-      ) : null}
-    </FrostedCard>
-  );
-}
 
 export function VMPreflightCard({ preflight }: { preflight?: VMPreflight }) {
   const theme = useAppTheme();
@@ -155,30 +116,44 @@ export function VMDashboardTab({
   return (
     <div style={tabPanelStyle(theme)}>
       <div style={cardGridStyle(theme)}>
-        <StatusMetric
-          detail={`${running} running, ${paused} paused`}
-          icon="mdi:server"
-          label="Configured VMs"
-          value={vms.length}
-        />
-        <StatusMetric
-          detail={preflight?.defaultNetworkActive ? "default active" : "check"}
-          icon="mdi:lan"
-          label="Default Network"
-          value={preflight?.defaultNetworkExists ? "Ready" : "Missing"}
-        />
-        <StatusMetric
-          detail={preflight?.defaultPoolActive ? "default active" : "check"}
-          icon="mdi:database"
-          label="Default Pool"
-          value={preflight?.defaultPoolExists ? "Ready" : "Missing"}
-        />
-        <StatusMetric
-          detail={`${totalDiskGB} GB provisioned`}
-          icon="mdi:memory"
-          label="Assigned Memory"
-          value={formatMemory(totalMemoryMB)}
-        />
+        <FrostedCard style={gridTileStyle(theme)}>
+          <StatusMetric
+            detail={`${running} running, ${paused} paused`}
+            icon="mdi:server"
+            label="Configured VMs"
+            value={vms.length}
+            variant="stat"
+          />
+        </FrostedCard>
+        <FrostedCard style={gridTileStyle(theme)}>
+          <StatusMetric
+            detail={
+              preflight?.defaultNetworkActive ? "default active" : "check"
+            }
+            icon="mdi:lan"
+            label="Default Network"
+            value={preflight?.defaultNetworkExists ? "Ready" : "Missing"}
+            variant="stat"
+          />
+        </FrostedCard>
+        <FrostedCard style={gridTileStyle(theme)}>
+          <StatusMetric
+            detail={preflight?.defaultPoolActive ? "default active" : "check"}
+            icon="mdi:database"
+            label="Default Pool"
+            value={preflight?.defaultPoolExists ? "Ready" : "Missing"}
+            variant="stat"
+          />
+        </FrostedCard>
+        <FrostedCard style={gridTileStyle(theme)}>
+          <StatusMetric
+            detail={`${totalDiskGB} GB provisioned`}
+            icon="mdi:memory"
+            label="Assigned Memory"
+            value={formatMemory(totalMemoryMB)}
+            variant="stat"
+          />
+        </FrostedCard>
       </div>
       <VMPreflightCard preflight={preflight} />
     </div>
@@ -284,26 +259,26 @@ export function VMImagesTab({ preflight }: { preflight?: VMPreflight }) {
   return (
     <div style={tabPanelStyle(theme)}>
       <div style={cardGridStyle(theme)}>
-        <FrostedCard style={pathCardStyle(theme)}>
+        <FrostedCard style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             ISO folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{isoPath}</code>
         </FrostedCard>
-        <FrostedCard style={pathCardStyle(theme)}>
+        <FrostedCard style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Cloud image folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{cloudPath}</code>
         </FrostedCard>
-        <FrostedCard style={pathCardStyle(theme)}>
+        <FrostedCard style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Custom installers
           </AppTypography>
           <span style={secondarySmallTextStyle(theme)}>ISO installer</span>
         </FrostedCard>
         {IMAGE_PRESETS.map((preset) => (
-          <FrostedCard key={preset.id} style={pathCardStyle(theme)}>
+          <FrostedCard key={preset.id} style={gridTileStyle(theme)}>
             <div>
               <AppTypography component="div" fontWeight={700} variant="body2">
                 {preset.label}

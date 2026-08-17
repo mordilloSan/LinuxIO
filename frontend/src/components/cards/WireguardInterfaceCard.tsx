@@ -71,21 +71,21 @@ const InterfaceCard = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
-        accent={statusColor}
+        accent
         hoverLift={!isSelected}
         ref={isSelected ? selectedCardRef : null}
         style={{
           ...cardStyle,
           /*
-            The resting line comes from `accent` above, already the status
-            colour at a hint. Selecting takes it to full strength rather than
-            standing it down the way the user, unit, container and interface
-            cards do: this dashboard keeps every card in the grid and opens the
-            detail below it, so a selected interface is still wrapped in a
-            SortableCard and can still be held. The line stays live because the
-            affordance does.
+            The resting line comes from `accent` above, already the theme's
+            primary colour at a hint. Selecting takes it to full strength
+            rather than standing it down the way the user, unit, container and
+            interface cards do: this dashboard keeps every card in the grid
+            and opens the detail below it, so a selected interface is still
+            wrapped in a SortableCard and can still be held. The line stays
+            live because the affordance does.
           */
-          ...(isSelected && { borderBottomColor: statusColor }),
+          ...(isSelected && { borderBottomColor: "var(--fc-accent)" }),
           transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
         }}
       >

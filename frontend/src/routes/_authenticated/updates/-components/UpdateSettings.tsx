@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import {
   type AutoUpdateFrequency,
@@ -12,6 +12,7 @@ import {
   linuxio,
   useCallMutation,
 } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
@@ -21,6 +22,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 import { useAppTheme } from "@/theme";
 
 const UPDATES_TOAST_META = {
@@ -237,106 +239,6 @@ interface AutoUpdateRuntimeProps {
   timers: Timer[];
 }
 
-const UpdateCardHeader = ({
-  icon,
-  indicator,
-  subtitle,
-  title,
-}: {
-  icon: string;
-  indicator?: ReactNode;
-  subtitle: string;
-  title: string;
-}) => {
-  const theme = useAppTheme();
-
-  return (
-    <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        gap: theme.spacing(1.5),
-        marginBottom: theme.spacing(2),
-      }}
-    >
-      <div
-        style={{
-          alignItems: "center",
-          background: theme.palette.action.hover,
-          borderRadius: 9,
-          color: theme.palette.primary.main,
-          display: "inline-flex",
-          flexShrink: 0,
-          height: 38,
-          justifyContent: "center",
-          width: 38,
-        }}
-      >
-        <Icon height={22} icon={icon} width={22} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <AppTypography
-          component="h3"
-          fontWeight={600}
-          style={{ lineHeight: 1.25 }}
-          variant="body2"
-        >
-          {title}
-        </AppTypography>
-        <AppTypography color="text.secondary" variant="caption">
-          {subtitle}
-        </AppTypography>
-      </div>
-      {indicator}
-    </div>
-  );
-};
-
-const StatusMetric = ({
-  detail,
-  label,
-  statusColor,
-  value,
-}: {
-  detail?: string;
-  label: string;
-  statusColor?: string;
-  value: string;
-}) => (
-  <div style={{ minWidth: 0 }}>
-    <AppTypography color="text.secondary" variant="caption">
-      {label}
-    </AppTypography>
-    <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        gap: 6,
-        minWidth: 0,
-      }}
-    >
-      {statusColor ? <StatusDot color={statusColor} size={7} /> : null}
-      <AppTypography fontWeight={600} noWrap variant="body2">
-        {value}
-      </AppTypography>
-    </div>
-    {detail ? (
-      <AppTypography
-        color="text.secondary"
-        noWrap
-        style={{
-          display: "block",
-          fontFamily: "var(--app-font-mono)",
-        }}
-        title={detail}
-        variant="caption"
-      >
-        {detail}
-      </AppTypography>
-    ) : null}
-  </div>
-);
-
 const AptServiceNote = () => {
   const theme = useAppTheme();
 
@@ -412,9 +314,11 @@ const AutoUpdateRuntime = ({
         padding: 14,
       }}
     >
-      <UpdateCardHeader
-        icon="mdi:calendar-clock-outline"
-        indicator={
+      <CardIconHeader
+        headingVariant="section"
+        icon={<Icon height={22} icon="mdi:calendar-clock-outline" width={22} />}
+        iconTint
+        right={
           <div
             style={{
               alignItems: "center",
@@ -432,6 +336,7 @@ const AutoUpdateRuntime = ({
             </AppTypography>
           </div>
         }
+        style={{ marginBottom: theme.spacing(2) }}
         subtitle="Live systemd timer state"
         title="Scheduler status"
       />
@@ -456,12 +361,14 @@ const AutoUpdateRuntime = ({
                 detail={name}
                 key={name}
                 label={label}
+                monoDetail
                 statusColor={
                   active
                     ? theme.palette.success.main
                     : theme.palette.text.disabled
                 }
                 value={`${active ? "Active" : "Inactive"}${!required ? " · not required" : ""}`}
+                variant="compact"
               />
             );
           })}
@@ -472,6 +379,7 @@ const AutoUpdateRuntime = ({
                 ? formatTimerDate(nextRun)
                 : "Not scheduled"
             }
+            variant="compact"
           />
         </div>
       ) : (
@@ -537,9 +445,11 @@ const SavedConfiguration = ({
         padding: 14,
       }}
     >
-      <UpdateCardHeader
-        icon="mdi:file-check-outline"
-        indicator={
+      <CardIconHeader
+        headingVariant="section"
+        icon={<Icon height={22} icon="mdi:file-check-outline" width={22} />}
+        iconTint
+        right={
           dirty ? (
             <div
               style={{
@@ -561,6 +471,7 @@ const SavedConfiguration = ({
             />
           )
         }
+        style={{ marginBottom: theme.spacing(2) }}
         subtitle="Settings currently applied on this server"
         title="Applied configuration"
       />
@@ -577,6 +488,7 @@ const SavedConfiguration = ({
             label={label}
             statusColor={statusColor}
             value={value}
+            variant="compact"
           />
         ))}
       </div>
@@ -714,8 +626,11 @@ const UpdateSettings = ({
           padding: 14,
         }}
       >
-        <UpdateCardHeader
-          icon="mdi:tune-variant"
+        <CardIconHeader
+          headingVariant="section"
+          icon={<Icon height={22} icon="mdi:tune-variant" width={22} />}
+          iconTint
+          style={{ marginBottom: theme.spacing(2) }}
           subtitle="Choose what Linux installs and when it runs"
           title="Update policy"
         />

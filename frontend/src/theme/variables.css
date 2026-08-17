@@ -288,10 +288,6 @@ a {
   background-color: var(--custom-scrollbar-thumb-active);
 }
 
-.svc-detail-row:last-child {
-  border-bottom: none;
-}
-
 .xterm .scrollbar {
   width: 4px !important;
   opacity: 1 !important;

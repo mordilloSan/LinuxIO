@@ -6,6 +6,8 @@ import {
   type Ref,
 } from "react";
 
+import { BASE_SPACING_UNIT } from "@/theme";
+
 import "./app-grid.css";
 
 export type GridSize =
@@ -77,7 +79,7 @@ function AppGrid(
         className={cls}
         ref={ref}
         style={{
-          gap: spacing ? spacing * 4 : undefined,
+          gap: spacing ? spacing * BASE_SPACING_UNIT : undefined,
           alignItems,
           ...columnVars,
           ...style,

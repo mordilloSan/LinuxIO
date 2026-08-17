@@ -22,6 +22,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
+  CARD_GRID_SIZE_DENSE,
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
   TRANSITION_DURATION_SLOW_MS,
@@ -70,7 +71,7 @@ const ContainerList = ({
   viewMode = "card",
 }: ContainerListProps) => {
   const theme = useAppTheme();
-  const detailTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
@@ -179,7 +180,7 @@ const ContainerList = ({
         <motion.div
           layout="position"
           transition={{
-            duration: detailTransitionDurationSeconds,
+            duration: slowTransitionDurationSeconds,
             ease: EASING_STANDARD,
           }}
         >
@@ -200,7 +201,7 @@ const ContainerList = ({
                 gap: DETAIL_PANEL_GAP,
               }}
               transition={{
-                duration: detailTransitionDurationSeconds,
+                duration: slowTransitionDurationSeconds,
                 delay: 0.04,
                 ease: EASING_STANDARD,
               }}
@@ -215,7 +216,7 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: detailTransitionDurationSeconds,
+                  duration: slowTransitionDurationSeconds,
                   delay: 0.04,
                   ease: EASING_STANDARD,
                 }}
@@ -237,7 +238,7 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: detailTransitionDurationSeconds,
+                  duration: slowTransitionDurationSeconds,
                   delay: 0.08,
                   ease: EASING_STANDARD,
                 }}
@@ -264,7 +265,7 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: detailTransitionDurationSeconds,
+                  duration: slowTransitionDurationSeconds,
                   delay: 0.12,
                   ease: EASING_STANDARD,
                 }}
@@ -279,7 +280,7 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 20 }}
               transition={{
-                duration: detailTransitionDurationSeconds,
+                duration: slowTransitionDurationSeconds,
                 delay: 0.16,
                 ease: EASING_STANDARD,
               }}
@@ -340,7 +341,7 @@ const ContainerList = ({
           minHeight: 0,
         }}
         transition={{
-          duration: detailTransitionDurationSeconds,
+          duration: slowTransitionDurationSeconds,
           ease: EASING_STANDARD,
         }}
       >
@@ -374,7 +375,7 @@ const ContainerList = ({
                   }
                 />
               )}
-              size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+              size={CARD_GRID_SIZE_DENSE}
               surface={surface}
             />
           )}

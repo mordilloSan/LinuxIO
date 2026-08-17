@@ -1,7 +1,11 @@
 import type { AppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
-const mixWithTransparency = (color: string, opacity: number) => {
+// Unlike alpha() in utils/color.ts, this goes through color-mix so var(...)
+// and other unparseable inputs still get a real mix instead of passing
+// through opaque. Exported so other call sites that need var-safe
+// transparency mixing aren't forced back onto alpha()'s footgun.
+export const mixWithTransparency = (color: string, opacity: number) => {
   const transparentShare = `${Math.round((1 - opacity) * 100)}%`;
   return `color-mix(in srgb, ${color}, transparent ${transparentShare})`;
 };
@@ -68,3 +72,25 @@ export const getChromeSurfaceColor = (
 
 export const getSubtleDividerColor = (theme: AppTheme) =>
   alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1);
+
+/* Shared by FileCard and FileListRow: a listing entry's resting background,
+   keyed off selection and hidden-file dimming. Selected wins over hidden so a
+   selected dotfile still reads as selected. */
+export const getFileEntryBackground = (
+  theme: AppTheme,
+  { hidden, selected }: { hidden?: boolean; selected?: boolean },
+) => {
+  if (selected) {
+    return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
+  }
+  if (hidden) {
+    return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
+  }
+  return theme.fileBrowser.surface;
+};
+
+/* Brightening the entry's own resting background toward the theme's text
+   color — rather than painting a fixed hover color over it — keeps the
+   selected and hidden variants distinguishable while hovered. */
+export const getFileEntryHoverBackground = (baseBackground: string) =>
+  `color-mix(in srgb, ${baseBackground}, var(--app-palette-text-primary) 7%)`;

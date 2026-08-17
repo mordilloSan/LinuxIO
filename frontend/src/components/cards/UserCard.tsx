@@ -250,9 +250,10 @@ const UserCard = ({
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        // Same string as UnitCard and WireguardInterfaceCard — the three cards
-        // that expand in place have to settle at one speed.
-        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
+        // This card, UnitCard, and WireguardInterfaceCard all settle their
+        // border at TRANSITION_SLOW_CSS so the three expand-in-place cards
+        // read as one speed.
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
         // The line itself comes from `accent` above. Opening a user isolates the
         // card outside the grid, where it can no longer be held to reorder — so
         // the line stands down with the lift.

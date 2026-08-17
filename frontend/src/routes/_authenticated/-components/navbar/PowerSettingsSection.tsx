@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import "./power-settings.css";
 
 import { linuxio, type PowerStatus, useCallMutation } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -195,66 +196,61 @@ const PowerSettingsSection = () => {
       ) : null}
 
       <FrostedCard className="power-settings__card">
-        <div className="power-settings__card-header">
-          <div className="power-settings__card-title">
-            <div className="power-settings__card-icon">
-              <Icon height={22} icon="mdi:tune-variant" width={22} />
+        <CardIconHeader
+          align="flex-start"
+          headingVariant="section"
+          icon={<Icon height={22} icon="mdi:tune-variant" width={22} />}
+          iconTint
+          right={
+            <div className="power-settings__card-actions">
+              <StatusBadge status={status} />
+              <AppActionIconButton
+                ariaLabel={
+                  startMutation.isPending
+                    ? "Starting TuneD"
+                    : disableMutation.isPending
+                      ? "Disabling TuneD"
+                      : status.tuned_active
+                        ? "Turn Off TuneD"
+                        : "Start TuneD"
+                }
+                color={
+                  status.tuned_active
+                    ? "var(--app-palette-success-main)"
+                    : status.tuned_available && status.tuned_startable
+                      ? "var(--app-palette-error-main)"
+                      : "var(--app-palette-text-disabled)"
+                }
+                disabled={
+                  busy ||
+                  !status.tuned_available ||
+                  (!status.tuned_active && !status.tuned_startable)
+                }
+                icon="mdi:power"
+                iconSize={22}
+                label={
+                  startMutation.isPending
+                    ? "Starting TuneD"
+                    : disableMutation.isPending
+                      ? "Disabling TuneD"
+                      : status.tuned_active
+                        ? "Turn Off"
+                        : status.tuned_startable
+                          ? "Start TuneD"
+                          : "TuneD cannot be started automatically"
+                }
+                loading={startMutation.isPending || disableMutation.isPending}
+                onClick={() =>
+                  status.tuned_active
+                    ? disableMutation.mutate()
+                    : startMutation.mutate()
+                }
+              />
             </div>
-            <div className="power-settings__title-block">
-              <AppTypography component="h3" fontWeight={600} variant="body2">
-                TuneD Status
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                System power tuning service.
-              </AppTypography>
-            </div>
-          </div>
-          <div className="power-settings__card-actions">
-            <StatusBadge status={status} />
-            <AppActionIconButton
-              ariaLabel={
-                startMutation.isPending
-                  ? "Starting TuneD"
-                  : disableMutation.isPending
-                    ? "Disabling TuneD"
-                    : status.tuned_active
-                      ? "Turn Off TuneD"
-                      : "Start TuneD"
-              }
-              color={
-                status.tuned_active
-                  ? "var(--app-palette-success-main)"
-                  : status.tuned_available && status.tuned_startable
-                    ? "var(--app-palette-error-main)"
-                    : "var(--app-palette-text-disabled)"
-              }
-              disabled={
-                busy ||
-                !status.tuned_available ||
-                (!status.tuned_active && !status.tuned_startable)
-              }
-              icon="mdi:power"
-              iconSize={22}
-              label={
-                startMutation.isPending
-                  ? "Starting TuneD"
-                  : disableMutation.isPending
-                    ? "Disabling TuneD"
-                    : status.tuned_active
-                      ? "Turn Off"
-                      : status.tuned_startable
-                        ? "Start TuneD"
-                        : "TuneD cannot be started automatically"
-              }
-              loading={startMutation.isPending || disableMutation.isPending}
-              onClick={() =>
-                status.tuned_active
-                  ? disableMutation.mutate()
-                  : startMutation.mutate()
-              }
-            />
-          </div>
-        </div>
+          }
+          subtitle="System power tuning service."
+          title="TuneD Status"
+        />
         <div className="power-settings__metrics">
           <InfoMetric
             label="Active profile"
@@ -277,21 +273,14 @@ const PowerSettingsSection = () => {
       </FrostedCard>
 
       <FrostedCard className="power-settings__card">
-        <div className="power-settings__card-header">
-          <div className="power-settings__card-title">
-            <div className="power-settings__card-icon">
-              <Icon height={22} icon="mdi:speedometer" width={22} />
-            </div>
-            <div className="power-settings__title-block">
-              <AppTypography component="h3" fontWeight={600} variant="body2">
-                Profile
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Available TuneD profiles.
-              </AppTypography>
-            </div>
-          </div>
-        </div>
+        <CardIconHeader
+          align="flex-start"
+          headingVariant="section"
+          icon={<Icon height={22} icon="mdi:speedometer" width={22} />}
+          iconTint
+          subtitle="Available TuneD profiles."
+          title="Profile"
+        />
         <div className="power-settings__profile-control">
           <span className="power-settings__label power-settings__label--span">
             Available profiles

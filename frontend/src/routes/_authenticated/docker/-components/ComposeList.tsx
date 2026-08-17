@@ -27,6 +27,7 @@ import {
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
 
 import "./compose-list.css";
 
@@ -832,7 +833,7 @@ const ComposeList = ({
                 project={project}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            size={CARD_GRID_SIZE_DENSE}
             surface={surface}
           />
         )}

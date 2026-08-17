@@ -1,6 +1,19 @@
-import { render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import buildAppTheme, { AppThemeProvider } from "@/theme";
+
+/*
+  This section's card header reads the theme, so it needs a provider — but not
+  the full @/test/render, which drags in AuthContext and therefore the whole
+  @/api surface this file only partially mocks. The theme is the single context
+  under test here, so supply just that.
+*/
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <AppThemeProvider value={buildAppTheme("DARK")}>{ui}</AppThemeProvider>,
+  );
 
 const { pending, status, setQueryData } = vi.hoisted(() => ({
   pending: {

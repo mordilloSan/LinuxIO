@@ -20,7 +20,7 @@ const LVMMetricCard = ({
   icon,
   color,
 }: LVMMetricCardProps) => (
-  <FrostedCard hoverLift style={{ padding: GAP_SM, minWidth: 0 }}>
+  <FrostedCard style={{ padding: GAP_SM, minWidth: 0 }}>
     <CardIconHeader
       icon={<Icon color={color} height={22} icon={icon} width={22} />}
       style={{ marginBottom: GAP_SM }}

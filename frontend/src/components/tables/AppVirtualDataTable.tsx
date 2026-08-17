@@ -63,7 +63,9 @@ import {
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
-import "./app-virtual-data-table.css";
+// Shared with the non-virtualized AppDataTable too — see the same note
+// over there.
+import "./app-data-table.css";
 import "../reorder/reorder.css";
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
@@ -227,7 +229,7 @@ function AppVirtualDataTableCell<TData extends RowData>({
 
   return (
     <div
-      className={["app-vdt__cell", meta?.className, meta?.cellClassName]
+      className={["app-dt__cell", meta?.className, meta?.cellClassName]
         .filter(Boolean)
         .join(" ")}
       role="cell"
@@ -360,7 +362,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
 
   return (
     <div
-      className="app-vdt__virtual-row"
+      className="app-dt__virtual-row"
       data-index={virtualIndex}
       ref={measureElement}
     >
@@ -370,13 +372,13 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
         aria-expanded={canExpand ? isExpanded : undefined}
         ref={setReorderNodeRef}
         className={[
-          "app-vdt__row",
-          "app-vdt__row--body",
-          isInteractive && "app-vdt__row--interactive",
-          isSelected && "app-vdt__row--selected",
-          rowIndex % 2 === 1 && "app-vdt__row--alt",
-          isReorderPending && "app-vdt__row--reorder-pending",
-          isReorderEditing && "app-vdt__row--reordering",
+          "app-dt__row",
+          "app-dt__row--body",
+          isInteractive && "app-dt__row--interactive",
+          isSelected && "app-dt__row--selected",
+          rowIndex % 2 === 1 && "app-dt__row--alt",
+          isReorderPending && "app-dt__row--reorder-pending",
+          isReorderEditing && "app-dt__row--reordering",
           rowAttributes?.className,
         ]
           .filter(Boolean)
@@ -418,7 +420,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
           />
         ))}
         {hasExpandColumn && (
-          <div className="app-vdt__cell app-vdt__cell--expand" role="cell">
+          <div className="app-dt__cell app-dt__cell--expand" role="cell">
             {canExpand && (
               <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
                 <AppIconButton
@@ -959,10 +961,10 @@ function AppVirtualDataTable<TData extends RowData>({
   const content = (
     <div
       className={[
-        "app-vdt",
-        fillAvailable && "app-vdt--fill",
-        isEmbedded && "app-vdt--embedded",
-        density === "compact" && "app-vdt--compact",
+        "app-dt",
+        fillAvailable && "app-dt--fill",
+        isEmbedded && "app-dt--embedded",
+        density === "compact" && "app-dt--compact",
         className,
       ]
         .filter(Boolean)
@@ -971,10 +973,10 @@ function AppVirtualDataTable<TData extends RowData>({
       aria-label={ariaLabel}
       style={
         {
-          "--app-vdt-alt-bg": altBg,
-          "--app-vdt-grid": gridTemplate,
-          "--app-vdt-head-bg": headRowBg,
-          "--app-vdt-selected-bg": selectedBg,
+          "--app-dt-alt-bg": altBg,
+          "--app-dt-grid": gridTemplate,
+          "--app-dt-head-bg": headRowBg,
+          "--app-dt-selected-bg": selectedBg,
           "--reorder-hold-color": theme.palette.primary.main,
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,
@@ -986,10 +988,10 @@ function AppVirtualDataTable<TData extends RowData>({
       }
     >
       {showHeader && (
-        <div className="app-vdt__head" role="rowgroup">
+        <div className="app-dt__head" role="rowgroup">
           {table.getHeaderGroups().map((headerGroup) => (
             <div
-              className="app-vdt__row app-vdt__row--head"
+              className="app-dt__row app-dt__row--head"
               key={headerGroup.id}
               role="row"
             >
@@ -1001,8 +1003,8 @@ function AppVirtualDataTable<TData extends RowData>({
                 return (
                   <div
                     className={[
-                      "app-vdt__cell",
-                      "app-vdt__cell--head",
+                      "app-dt__cell",
+                      "app-dt__cell--head",
                       meta?.className,
                       meta?.headerClassName,
                     ]
@@ -1019,11 +1021,11 @@ function AppVirtualDataTable<TData extends RowData>({
                   >
                     {header.isPlaceholder ? null : canSort ? (
                       <button
-                        className="app-vdt__sort-button"
+                        className="app-dt__sort-button"
                         onClick={header.column.getToggleSortingHandler()}
                         type="button"
                       >
-                        <span className="app-vdt__sort-label">
+                        <span className="app-dt__sort-label">
                           {flexRender(
                             header.column.columnDef.header,
                             header.getContext(),
@@ -1047,7 +1049,7 @@ function AppVirtualDataTable<TData extends RowData>({
               {hasExpandColumn && (
                 <div
                   aria-hidden="true"
-                  className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
+                  className="app-dt__cell app-dt__cell--head app-dt__cell--expand"
                   role="columnheader"
                 />
               )}
@@ -1057,13 +1059,13 @@ function AppVirtualDataTable<TData extends RowData>({
       )}
 
       <div
-        className="app-vdt__scroll custom-scrollbar"
+        className="app-dt__scroll custom-scrollbar"
         onScroll={onScroll}
         ref={scrollRef}
         role="presentation"
       >
         <div
-          className="app-vdt__body"
+          className="app-dt__body"
           ref={virtualizer.containerRef}
           role="rowgroup"
         >
@@ -1075,13 +1077,13 @@ function AppVirtualDataTable<TData extends RowData>({
             if (entry.kind === "detail") {
               return (
                 <div
-                  className="app-vdt__virtual-row app-vdt__virtual-row--detail"
+                  className="app-dt__virtual-row app-dt__virtual-row--detail"
                   data-index={virtualRow.index}
                   key={entry.key}
                   ref={virtualizer.measureElement}
                 >
                   <div
-                    className="app-vdt__detail"
+                    className="app-dt__detail"
                     ref={(node) => {
                       if (node) {
                         detailNodeRefs.current.set(row.id, node);
@@ -1098,7 +1100,7 @@ function AppVirtualDataTable<TData extends RowData>({
                       aria-colspan={
                         visibleColumns.length + (hasExpandColumn ? 1 : 0)
                       }
-                      className="app-vdt__detail-cell"
+                      className="app-dt__detail-cell"
                       ref={(node) => setDetailContentRef(row.id, node)}
                       role="cell"
                     >
@@ -1136,7 +1138,7 @@ function AppVirtualDataTable<TData extends RowData>({
         </div>
 
         {rows.length === 0 && (
-          <div className="app-vdt__empty">
+          <div className="app-dt__empty">
             <AppTypography color="text.secondary" variant="body2">
               {emptyMessage}
             </AppTypography>

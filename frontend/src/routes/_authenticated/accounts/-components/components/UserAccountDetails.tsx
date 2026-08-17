@@ -23,6 +23,7 @@ import {
   linuxio,
   useCallMutation,
 } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -198,66 +199,6 @@ const topCardHeaderStyle: CSSProperties = {
   marginBottom: 12,
 };
 
-const TopCardHeader = ({
-  icon,
-  iconColor,
-  title,
-  subtitle,
-  right,
-}: {
-  icon: string;
-  iconColor: string;
-  title: string;
-  subtitle: string;
-  right?: ReactNode;
-}) => (
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      gap: 8,
-      ...topCardHeaderStyle,
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        minWidth: 0,
-        flex: 1,
-      }}
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon color={iconColor} height={30} icon={icon} width={30} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <AppTypography fontWeight={700} noWrap variant="subtitle2">
-          {title}
-        </AppTypography>
-        <AppTypography
-          color="text.secondary"
-          style={{ display: "block", marginTop: 2 }}
-          variant="caption"
-        >
-          {subtitle}
-        </AppTypography>
-      </div>
-    </div>
-    {right && <div style={{ flexShrink: 0 }}>{right}</div>}
-  </div>
-);
-
 const DetailText = ({
   children,
   color,
@@ -411,9 +352,17 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
         flexDirection: "column",
       }}
     >
-      <TopCardHeader
-        icon="mdi:shield-account"
-        iconColor={securityIconColor}
+      <CardIconHeader
+        align="flex-start"
+        headingVariant="compact"
+        icon={
+          <Icon
+            color={securityIconColor}
+            height={30}
+            icon="mdi:shield-account"
+            width={30}
+          />
+        }
         right={
           <AppActionIconButton
             icon="mdi:close"
@@ -422,6 +371,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
             onClick={onClose}
           />
         }
+        style={topCardHeaderStyle}
         subtitle="Admin privileges, password status, and elevated groups"
         title="Access & security"
       />
@@ -874,9 +824,18 @@ const HomeAndSSHCard = ({ details }: { details: AccountUserDetails }) => {
 
   return (
     <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
-      <TopCardHeader
-        icon="mdi:home-lock"
-        iconColor={theme.palette.primary.main}
+      <CardIconHeader
+        align="flex-start"
+        headingVariant="compact"
+        icon={
+          <Icon
+            color={theme.palette.primary.main}
+            height={30}
+            icon="mdi:home-lock"
+            width={30}
+          />
+        }
+        style={topCardHeaderStyle}
         subtitle="Directory ownership, permissions, and authorized keys"
         title="Home & SSH access"
       />

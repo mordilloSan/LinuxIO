@@ -9,6 +9,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
+  CARD_GRID_SIZE_STANDARD,
   EASING_STANDARD,
   TRANSITION_DURATION_SLOW_MS,
 } from "@/theme/constants";
@@ -87,7 +88,7 @@ const UserCardsView = ({
             user={user}
           />
         )}
-        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+        size={CARD_GRID_SIZE_STANDARD}
         surface={surface}
       />
     );

@@ -2,6 +2,7 @@ import AppCardContent from "@/components/ui/AppCardContent";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import { cardHeight } from "@/theme/constants";
 
+import { DASHBOARD_CARD_LAYOUT } from "./DashboardCard";
 import FrostedCard from "./FrostedCard";
 
 export type DashboardCardSkeletonLayout = "split" | "stats";
@@ -39,6 +40,7 @@ const DashboardCardSkeleton = ({
       aria-busy="true"
       aria-label={`Loading ${title} card`}
       className="dashboard-card-skeleton"
+      hoverLift
       style={{
         minHeight: cardHeight,
         display: "flex",
@@ -51,11 +53,15 @@ const DashboardCardSkeleton = ({
             alignItems: "center",
             display: "flex",
             justifyContent: "space-between",
-            marginBottom: 4,
+            marginBottom: DASHBOARD_CARD_LAYOUT.headerMarginBottom,
           }}
         >
           <AppSkeleton textVariant="h5" width={titleWidth} />
-          <AppSkeleton height={38} variant="circular" width={38} />
+          <AppSkeleton
+            height={DASHBOARD_CARD_LAYOUT.avatarSize}
+            variant="circular"
+            width={DASHBOARD_CARD_LAYOUT.avatarSize}
+          />
         </div>
 
         {layout === "split" ? (
@@ -63,8 +69,8 @@ const DashboardCardSkeleton = ({
             style={{
               display: "flex",
               flexDirection: "row",
-              gap: 8,
-              marginTop: 12,
+              gap: DASHBOARD_CARD_LAYOUT.splitRowGap,
+              marginTop: DASHBOARD_CARD_LAYOUT.contentMarginTop,
             }}
           >
             <div
@@ -83,7 +89,7 @@ const DashboardCardSkeleton = ({
                 alignItems: "center",
                 display: "flex",
                 flex: 1,
-                height: 120,
+                height: DASHBOARD_CARD_LAYOUT.chartHeight,
                 justifyContent: "center",
                 minWidth: 0,
                 overflow: "hidden",
@@ -98,7 +104,9 @@ const DashboardCardSkeleton = ({
             </div>
           </div>
         ) : (
-          <div style={{ marginTop: 28 }}>{stats}</div>
+          <div style={{ marginTop: DASHBOARD_CARD_LAYOUT.statsOnlyMarginTop }}>
+            {stats}
+          </div>
         )}
       </AppCardContent>
     </FrostedCard>

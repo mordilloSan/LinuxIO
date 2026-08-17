@@ -51,13 +51,13 @@ const nativeControlExceptions: ReviewedException[] = [
   },
   {
     file: "components/tables/AppDataTable.tsx",
-    pattern: /<button\s+className="app-vdt__sort-button"/,
+    pattern: /<button\s+className="app-dt__sort-button"/,
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",
   },
   {
     file: "components/tables/AppVirtualDataTable.tsx",
-    pattern: /<button\s+className="app-vdt__sort-button"/,
+    pattern: /<button\s+className="app-dt__sort-button"/,
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",
   },

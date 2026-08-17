@@ -11,27 +11,6 @@
   box-shadow: var(--fc-lift-shadow) !important;
 }
 
-/* UnitViews: hide bottom border on last detail row inside a card */
-.fc-svc-card .svc-rows-wrapper > .svc-detail-row:last-of-type {
-  border-bottom: none;
-}
-
-/* SortableCard: drag overlay hover */
-.sc-drag-overlay:hover {
-  background-color: var(--sc-hover-bg);
-}
-
-/* ContainerTable: drag handle active state */
-.drag-handle:active {
-  cursor: grabbing;
-}
-
-/* DevToolsButton: hover border and shadow */
-.devtools-btn:hover {
-  border-color: var(--devtools-hover-border) !important;
-  box-shadow: var(--devtools-hover-shadow);
-}
-
 /* Accent cards that do not lift get the same easing on the line — .hover-lift
    already transitions border-color, and cards that set their own inline
    transition override this anyway, so this only reaches the ones that would
@@ -80,16 +59,4 @@
       var(--fc-accent)
     ) !important;
   }
-}
-
-/* DashboardCard: truncate typography in stats columns */
-.dc-stats-col > * {
-  min-width: 0;
-  margin-top: 16px;
-}
-
-.dc-stats-truncate .app-typo {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

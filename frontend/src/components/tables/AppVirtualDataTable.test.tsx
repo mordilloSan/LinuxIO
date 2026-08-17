@@ -107,7 +107,7 @@ describe("AppVirtualDataTable", () => {
     view.rerender(<TestTable selectedRowId="two" />);
 
     expect(screen.getByText("Beta").closest('[role="row"]')).toHaveClass(
-      "app-vdt__row--selected",
+      "app-dt__row--selected",
     );
     expect(renderName).toHaveBeenCalledTimes(2);
     expect(renderStatus).toHaveBeenCalledTimes(2);
@@ -149,7 +149,7 @@ describe("AppVirtualDataTable", () => {
     );
     const row = screen.getByText("Alpha").closest('[role="row"]')!;
 
-    expect(row).toHaveClass("app-vdt__row--interactive");
+    expect(row).toHaveClass("app-dt__row--interactive");
     expect(row).toHaveAttribute("aria-expanded", "false");
 
     await view.user.click(row);

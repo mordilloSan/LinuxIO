@@ -42,7 +42,7 @@
     content keeps the strip pinned for the whole scroll.
 
     Panels claim the remaining space with `flex: 1 1 auto` against a `flex-basis:
-    0` child (.app-vdt--fill, AppVirtualGrid), so a self-scrolling panel still
+    0` child (.app-dt--fill, AppVirtualGrid), so a self-scrolling panel still
     contributes no height of its own and the floor below is what sizes it. The
     inset is added back so that floor still reaches the padding edge the page
     laid out — the negative margin above must not shorten the panel.

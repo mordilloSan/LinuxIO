@@ -17,6 +17,10 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
+import {
+  getFileEntryBackground,
+  getFileEntryHoverBackground,
+} from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface FileListRowProps {
@@ -193,21 +197,13 @@ const FileListRow = memo<FileListRowProps>(
       [onDoubleClick],
     );
 
-    const baseBg = useMemo(() => {
-      if (selected) {
-        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
-      }
-      if (hidden) {
-        return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
-      }
-      return theme.fileBrowser.surface;
-    }, [hidden, selected, theme.fileBrowser.surface]);
+    const baseBg = useMemo(
+      () => getFileEntryBackground(theme, { hidden, selected }),
+      [hidden, selected, theme],
+    );
 
-    // Brightening the row's own surface rather than painting a fixed hover
-    // colour over it keeps the selected and hidden variants distinguishable
-    // while hovered.
     const hoverBg = useMemo(
-      () => `color-mix(in srgb, ${baseBg}, var(--app-palette-text-primary) 7%)`,
+      () => getFileEntryHoverBackground(baseBg),
       [baseBg],
     );
 

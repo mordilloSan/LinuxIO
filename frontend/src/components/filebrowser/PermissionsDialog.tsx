@@ -220,7 +220,7 @@ const PermissionsDialog = ({
         ),
         meta: {
           align: "center",
-          cellClassName: "app-vdt__cell--select",
+          cellClassName: "app-dt__cell--select",
           getCellRenderKey: (row) => {
             const permissionRow = row as PermissionMatrixRow;
             return [

@@ -64,7 +64,10 @@ import { alpha } from "@/utils/color";
 import { isTypingTarget } from "@/utils/keyboardTarget";
 import { mergeRefs } from "@/utils/mergeRefs";
 
-import "./app-virtual-data-table.css";
+// Shared by both AppDataTable (non-virtualized) and AppVirtualDataTable —
+// the app-dt__* prefix and --app-dt-* custom properties are not scoped to
+// either table alone.
+import "./app-data-table.css";
 import "../reorder/reorder.css";
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
@@ -267,7 +270,7 @@ function AppDataTableCell<TData extends RowData>({
 
   return (
     <div
-      className={["app-vdt__cell", meta?.className, meta?.cellClassName]
+      className={["app-dt__cell", meta?.className, meta?.cellClassName]
         .filter(Boolean)
         .join(" ")}
       role="cell"
@@ -346,7 +349,7 @@ function AppDataTableBodyRow<TData extends RowData>({
   const renderedCells = (
     <>
       {hasDragColumn && (
-        <div className="app-vdt__cell app-vdt__cell--drag" role="cell">
+        <div className="app-dt__cell app-dt__cell--drag" role="cell">
           {dragHandle}
         </div>
       )}
@@ -360,7 +363,7 @@ function AppDataTableBodyRow<TData extends RowData>({
         />
       ))}
       {hasExpandColumn && (
-        <div className="app-vdt__cell app-vdt__cell--expand" role="cell">
+        <div className="app-dt__cell app-dt__cell--expand" role="cell">
           {canExpand && (
             <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
               <AppIconButton
@@ -391,11 +394,11 @@ function AppDataTableBodyRow<TData extends RowData>({
   const rowProps: AppDataTableRowAttributes = {
     ...rowAttributes,
     className: [
-      "app-vdt__row",
-      "app-vdt__row--body",
-      isInteractive && "app-vdt__row--interactive",
-      isSelected && "app-vdt__row--selected",
-      rowIndex % 2 === 1 && "app-vdt__row--alt",
+      "app-dt__row",
+      "app-dt__row--body",
+      isInteractive && "app-dt__row--interactive",
+      isSelected && "app-dt__row--selected",
+      rowIndex % 2 === 1 && "app-dt__row--alt",
       rowAttributes?.className,
     ]
       .filter(Boolean)
@@ -515,7 +518,7 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
       {...attributes}
       {...listeners}
       aria-label={dnd.handleAriaLabel ?? "Reorder row"}
-      className="app-vdt__drag-handle"
+      className="app-dt__drag-handle"
     >
       <Icon height={20} icon="mdi:drag" width={20} />
     </span>
@@ -545,8 +548,8 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
         ...rowAttributes,
         className: [
           rowAttributes?.className,
-          isPending && "app-vdt__row--reorder-pending",
-          isEditing && "app-vdt__row--reordering",
+          isPending && "app-dt__row--reorder-pending",
+          isEditing && "app-dt__row--reordering",
         ]
           .filter(Boolean)
           .join(" "),
@@ -578,17 +581,17 @@ function AppDataTableHeader<TData extends RowData>({
   headerGroups,
 }: AppDataTableHeaderProps<TData>) {
   return (
-    <div className="app-vdt__head" role="rowgroup">
+    <div className="app-dt__head" role="rowgroup">
       {headerGroups.map((headerGroup) => (
         <div
-          className="app-vdt__row app-vdt__row--head"
+          className="app-dt__row app-dt__row--head"
           key={headerGroup.id}
           role="row"
         >
           {hasDragColumn && (
             <div
               aria-hidden="true"
-              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--drag"
+              className="app-dt__cell app-dt__cell--head app-dt__cell--drag"
               role="columnheader"
             />
           )}
@@ -600,8 +603,8 @@ function AppDataTableHeader<TData extends RowData>({
             return (
               <div
                 className={[
-                  "app-vdt__cell",
-                  "app-vdt__cell--head",
+                  "app-dt__cell",
+                  "app-dt__cell--head",
                   meta?.className,
                   meta?.headerClassName,
                 ]
@@ -618,11 +621,11 @@ function AppDataTableHeader<TData extends RowData>({
               >
                 {header.isPlaceholder ? null : canSort ? (
                   <button
-                    className="app-vdt__sort-button"
+                    className="app-dt__sort-button"
                     onClick={header.column.getToggleSortingHandler()}
                     type="button"
                   >
-                    <span className="app-vdt__sort-label">
+                    <span className="app-dt__sort-label">
                       {flexRender(
                         header.column.columnDef.header,
                         header.getContext(),
@@ -646,7 +649,7 @@ function AppDataTableHeader<TData extends RowData>({
           {hasExpandColumn && (
             <div
               aria-hidden="true"
-              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
+              className="app-dt__cell app-dt__cell--head app-dt__cell--expand"
               role="columnheader"
             />
           )}
@@ -678,10 +681,10 @@ function AppDataTableExpandedContent<TData extends RowData>({
   row,
 }: AppDataTableExpandedContentProps<TData>) {
   return (
-    <div className="app-vdt__detail" role="row">
+    <div className="app-dt__detail" role="row">
       <div
         aria-colspan={columnCount}
-        className="app-vdt__detail-cell"
+        className="app-dt__detail-cell"
         role="cell"
       >
         {renderExpandedContent(row)}
@@ -957,11 +960,11 @@ function AppDataTable<TData extends RowData>({
     <div
       aria-label={ariaLabel}
       className={[
-        "app-vdt",
-        "app-vdt--normal",
-        fillAvailable && "app-vdt--fill",
-        isEmbedded && "app-vdt--embedded",
-        density === "compact" && "app-vdt--compact",
+        "app-dt",
+        "app-dt--normal",
+        fillAvailable && "app-dt--fill",
+        isEmbedded && "app-dt--embedded",
+        density === "compact" && "app-dt--compact",
         className,
       ]
         .filter(Boolean)
@@ -969,10 +972,10 @@ function AppDataTable<TData extends RowData>({
       role="table"
       style={
         {
-          "--app-vdt-alt-bg": altBg,
-          "--app-vdt-grid": gridTemplate,
-          "--app-vdt-head-bg": headRowBg,
-          "--app-vdt-selected-bg": selectedBg,
+          "--app-dt-alt-bg": altBg,
+          "--app-dt-grid": gridTemplate,
+          "--app-dt-head-bg": headRowBg,
+          "--app-dt-selected-bg": selectedBg,
           "--reorder-hold-color": theme.palette.primary.main,
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,
@@ -993,8 +996,8 @@ function AppDataTable<TData extends RowData>({
         />
       )}
 
-      <div className="app-vdt__scroll custom-scrollbar" role="presentation">
-        <div className="app-vdt__body" role="rowgroup">
+      <div className="app-dt__scroll custom-scrollbar" role="presentation">
+        <div className="app-dt__body" role="rowgroup">
           {rows.map((row, rowIndex) => {
             const isExpanded = row.getIsExpanded();
             const isSelected =
@@ -1065,7 +1068,7 @@ function AppDataTable<TData extends RowData>({
         </div>
 
         {rows.length === 0 && (
-          <div className="app-vdt__empty">
+          <div className="app-dt__empty">
             <AppTypography color="text.secondary" variant="body2">
               {emptyMessage}
             </AppTypography>

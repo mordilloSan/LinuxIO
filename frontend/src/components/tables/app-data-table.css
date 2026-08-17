@@ -1,4 +1,8 @@
-.app-vdt {
+/* Shared by AppDataTable (non-virtualized) and AppVirtualDataTable — the
+   app-dt__* classes and --app-dt-* custom properties are not specific to
+   either table, so don't re-narrow this file to just one of them. */
+
+.app-dt {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -8,71 +12,71 @@
   background-color: transparent;
 }
 
-.app-vdt--fill {
+.app-dt--fill {
   flex: 1 1 0;
   height: 100%;
   min-height: 0;
 }
 
-.app-vdt__head {
+.app-dt__head {
   display: grid;
   flex: 0 0 auto;
   min-width: 100%;
 }
 
-.app-vdt__scroll {
+.app-dt__scroll {
   flex: 1 1 auto;
   min-width: 100%;
   min-height: 0;
   overflow: auto;
 }
 
-.app-vdt__body {
+.app-dt__body {
   position: relative;
   min-width: 100%;
 }
 
-.app-vdt__row {
-  --app-vdt-row-bg: transparent;
+.app-dt__row {
+  --app-dt-row-bg: transparent;
   display: grid;
-  grid-template-columns: var(--app-vdt-grid);
+  grid-template-columns: var(--app-dt-grid);
   min-width: 100%;
   color: inherit;
-  background-color: var(--app-vdt-row-bg);
+  background-color: var(--app-dt-row-bg);
 }
 
-.app-vdt__row--head {
-  --app-vdt-row-bg: var(--app-vdt-head-bg);
+.app-dt__row--head {
+  --app-dt-row-bg: var(--app-dt-head-bg);
 }
 
-.app-vdt__row--body {
+.app-dt__row--body {
   transition: background-color var(--hover-lift-duration) var(--hover-lift-ease);
 }
 
-.app-vdt__row--alt {
-  --app-vdt-row-bg: var(--app-vdt-alt-bg);
+.app-dt__row--alt {
+  --app-dt-row-bg: var(--app-dt-alt-bg);
 }
 
-.app-vdt__row--selected {
-  --app-vdt-row-bg: var(--app-vdt-selected-bg);
+.app-dt__row--selected {
+  --app-dt-row-bg: var(--app-dt-selected-bg);
 }
 
-.app-vdt__row--interactive {
+.app-dt__row--interactive {
   cursor: pointer;
 }
 
 /* Brightening the row's own surface keeps zebra striping and selection legible
    underneath the hover, and keeps hovering from reading as selecting — a tinted
    hover is hard to tell from the primary-tinted selected state. */
-.app-vdt__row--interactive:hover {
+.app-dt__row--interactive:hover {
   background-color: color-mix(
     in srgb,
-    var(--app-vdt-row-bg),
+    var(--app-dt-row-bg),
     var(--app-palette-text-primary) 7%
   );
 }
 
-.app-vdt__virtual-row {
+.app-dt__virtual-row {
   position: absolute;
   top: 0;
   left: 0;
@@ -80,7 +84,7 @@
   min-width: 100%;
 }
 
-.app-vdt__cell {
+.app-dt__cell {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -91,36 +95,36 @@
   color: inherit;
 }
 
-.app-vdt--compact .app-vdt__cell {
+.app-dt--compact .app-dt__cell {
   padding: 4px 16px;
 }
 
-.app-vdt__cell.app-vdt__cell--select {
+.app-dt__cell.app-dt__cell--select {
   overflow: visible;
   padding-inline: 3px;
 }
 
-.app-vdt__cell > * {
+.app-dt__cell > * {
   min-width: 0;
   max-width: 100%;
 }
 
-.app-vdt__cell--head {
+.app-dt__cell--head {
   font-weight: 500;
   line-height: 1.5rem;
 }
 
-.app-vdt__cell--expand {
+.app-dt__cell--expand {
   justify-content: center;
   padding-inline: 4px;
 }
 
-.app-vdt__cell--drag {
+.app-dt__cell--drag {
   justify-content: center;
   padding-inline: 4px;
 }
 
-.app-vdt__drag-handle {
+.app-dt__drag-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,11 +133,11 @@
   touch-action: none;
 }
 
-.app-vdt__drag-handle:active {
+.app-dt__drag-handle:active {
   cursor: grabbing;
 }
 
-.app-vdt__sort-button {
+.app-dt__sort-button {
   display: inline-flex;
   align-items: center;
   justify-content: inherit;
@@ -149,28 +153,28 @@
   cursor: pointer;
 }
 
-.app-vdt__sort-button svg {
+.app-dt__sort-button svg {
   color: var(--app-palette-text-secondary);
   opacity: 0.72;
 }
 
-.app-vdt__sort-label {
+.app-dt__sort-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.app-vdt__detail {
+.app-dt__detail {
   overflow: hidden;
 }
 
-.app-vdt__detail-cell {
+.app-dt__detail-cell {
   padding: 10px 16px;
   overflow-x: auto;
 }
 
-.app-vdt--compact .app-vdt__detail-cell {
+.app-dt--compact .app-dt__detail-cell {
   padding: 6px 16px;
 }
 
@@ -193,26 +197,26 @@
   font-size: 0.85rem;
 }
 
-.app-vdt__empty {
+.app-dt__empty {
   padding-block: 32px;
   text-align: center;
 }
 
-.app-vdt--compact .app-vdt__empty {
+.app-dt--compact .app-dt__empty {
   padding-block: 16px;
 }
 
 @media (max-width: 600px) {
-  .app-vdt__cell {
+  .app-dt__cell {
     padding: 8px 4px;
     font-size: 0.75rem;
   }
 
-  .app-vdt--compact .app-vdt__cell {
+  .app-dt--compact .app-dt__cell {
     padding: 6px 4px;
   }
 
-  .app-vdt__cell--expand {
+  .app-dt__cell--expand {
     padding-inline: 2px;
   }
 }

@@ -7,34 +7,114 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 
+/**
+ * "default" is the original settings-panel stack (body2 label, single-line
+ * value/detail). "compact" trims the label to caption size for dense grids
+ * of many metrics (auto-update status, etc) and can show a status dot next
+ * to the value. "stat" is the bigger icon+value tile used for headline
+ * numbers, and allows the value/detail to wrap instead of truncating.
+ */
 export const StatusMetric = ({
-  label,
-  value,
   detail,
+  icon,
+  label,
+  monoDetail,
+  statusColor,
+  value,
+  variant = "default",
 }: {
-  label: ReactNode;
-  value: ReactNode;
   detail?: ReactNode;
+  icon?: string;
+  label: ReactNode;
+  monoDetail?: boolean;
+  statusColor?: string;
+  value: ReactNode;
+  variant?: "compact" | "default" | "stat";
 }) => {
+  const theme = useAppTheme();
+  const isStat = variant === "stat";
   const title =
     typeof value === "string" || typeof value === "number"
       ? String(value)
       : undefined;
+  const detailTitle = typeof detail === "string" ? detail : undefined;
+
+  const valueNode = isStat ? (
+    <AppTypography
+      fontWeight={700}
+      style={{ fontSize: "1.35rem", lineHeight: 1.2 }}
+      variant="body2"
+    >
+      {value}
+    </AppTypography>
+  ) : (
+    <AppTypography
+      fontWeight={500}
+      noWrap
+      title={variant === "default" ? title : undefined}
+      variant="body2"
+    >
+      {value}
+    </AppTypography>
+  );
+
   return (
-    <div style={{ minWidth: 0 }}>
-      <AppTypography color="text.secondary" variant="body2">
+    <div
+      style={
+        isStat
+          ? {
+              display: "flex",
+              flexDirection: "column",
+              gap: theme.spacing(2),
+              minWidth: 0,
+            }
+          : { minWidth: 0 }
+      }
+    >
+      {icon ? (
+        <div
+          style={{
+            alignItems: "center",
+            color: theme.palette.primary.main,
+            display: "inline-flex",
+          }}
+        >
+          <Icon height={20} icon={icon} width={20} />
+        </div>
+      ) : null}
+      <AppTypography
+        color="text.secondary"
+        variant={variant === "default" ? "body2" : "caption"}
+      >
         {label}
       </AppTypography>
-      <AppTypography fontWeight={500} noWrap title={title} variant="body2">
-        {value}
-      </AppTypography>
+      {statusColor ? (
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: 6,
+            minWidth: 0,
+          }}
+        >
+          <StatusDot color={statusColor} size={7} />
+          {valueNode}
+        </div>
+      ) : (
+        valueNode
+      )}
       {detail ? (
         <AppTypography
           color="text.secondary"
-          noWrap
-          style={{ display: "block" }}
+          noWrap={!isStat}
+          style={{
+            display: "block",
+            ...(monoDetail ? { fontFamily: "var(--app-font-mono)" } : {}),
+          }}
+          title={monoDetail ? detailTitle : undefined}
           variant="caption"
         >
           {detail}

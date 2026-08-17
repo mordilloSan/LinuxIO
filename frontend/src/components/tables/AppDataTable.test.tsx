@@ -231,7 +231,7 @@ describe("AppDataTable", () => {
     view.rerender(<TestTable selectedRowId="two" />);
 
     expect(screen.getByText("Beta").closest('[role="row"]')).toHaveClass(
-      "app-vdt__row--selected",
+      "app-dt__row--selected",
     );
     // The row boundary updates selection chrome without re-running cell
     // formatters; the compiler may also reuse pure row-attribute derivation.
@@ -329,7 +329,7 @@ describe("AppDataTable", () => {
     const view = render(<TestTable expandedContent={renderExpandedContent} />);
     const row = screen.getByText("Alpha").closest('[role="row"]')!;
 
-    expect(row).toHaveClass("app-vdt__row--interactive");
+    expect(row).toHaveClass("app-dt__row--interactive");
     expect(row).toHaveAttribute("aria-expanded", "false");
 
     await view.user.click(row);
@@ -605,18 +605,18 @@ describe("AppDataTable", () => {
     const alphaRow = () => screen.getByText("Alpha").closest('[role="row"]');
     const betaRow = () => screen.getByText("Beta").closest('[role="row"]');
 
-    expect(alphaRow()).toHaveClass("app-vdt__row--selected");
-    expect(betaRow()).not.toHaveClass("app-vdt__row--selected");
+    expect(alphaRow()).toHaveClass("app-dt__row--selected");
+    expect(betaRow()).not.toHaveClass("app-dt__row--selected");
 
     view.rerender(<TestTable selectedRowIds={new Set(["one", "two"])} />);
 
-    expect(alphaRow()).toHaveClass("app-vdt__row--selected");
-    expect(betaRow()).toHaveClass("app-vdt__row--selected");
+    expect(alphaRow()).toHaveClass("app-dt__row--selected");
+    expect(betaRow()).toHaveClass("app-dt__row--selected");
 
     view.rerender(<TestTable selectedRowIds={new Set()} />);
 
-    expect(alphaRow()).not.toHaveClass("app-vdt__row--selected");
-    expect(betaRow()).not.toHaveClass("app-vdt__row--selected");
+    expect(alphaRow()).not.toHaveClass("app-dt__row--selected");
+    expect(betaRow()).not.toHaveClass("app-dt__row--selected");
   });
 
   it("selects on the first checkbox press in a reorderable row", async () => {
@@ -631,7 +631,7 @@ describe("AppDataTable", () => {
     // nor toggled the row.
     expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument();
     expect(screen.getByText("Alpha").closest('[role="row"]')).not.toHaveClass(
-      "app-vdt__row--reorder-pending",
+      "app-dt__row--reorder-pending",
     );
   });
 
