@@ -131,9 +131,9 @@
 .container-table__stack-group-icon {
   flex-shrink: 0;
   color: var(--app-palette-text-secondary);
-  /* Keep the following project image on the same line as member-row icons
-     while letting the stack marker gain a little visual weight. */
-  margin-inline-end: -2px;
+  /* Shift the marker left without moving the following project image off the
+     member-row icon line. */
+  margin-inline: -2px 0;
 }
 
 /* The whole row toggles the stack; this button is the keyboard's way in. */
