@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { acquireBodyScrollLock } from "./bodyScrollLock";
+import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
 import "./app-dialog.css";
 
@@ -77,31 +78,23 @@ export const AppDialog = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const prevOpen = useRef(open);
-  const lastFocusedElement = useRef<HTMLElement | null>(null);
+
+  useDialogFocusRestore(open);
 
   // scroll lock + background blur class
   useEffect(() => {
-    if (open) {
-      lastFocusedElement.current = document.activeElement as HTMLElement | null;
-      const releaseBodyScrollLock = acquireBodyScrollLock();
-      _openDialogCount += 1;
-      if (_openDialogCount === 1) document.body.classList.add("dialog-open");
-
-      return () => {
-        releaseBodyScrollLock();
-        _openDialogCount -= 1;
-        if (_openDialogCount === 0)
-          document.body.classList.remove("dialog-open");
-      };
-    } else if (lastFocusedElement.current) {
-      const trigger = lastFocusedElement.current;
-      lastFocusedElement.current = null;
-      // Restore only to a node still in the document. The dialog's own action
-      // routinely removes the row or card it was opened from, and there
-      // .focus() is a silent no-op while the ref goes on pinning that detached
-      // node and its whole subtree.
-      if (trigger.isConnected) trigger.focus();
+    if (!open) {
+      return;
     }
+    const releaseBodyScrollLock = acquireBodyScrollLock();
+    _openDialogCount += 1;
+    if (_openDialogCount === 1) document.body.classList.add("dialog-open");
+
+    return () => {
+      releaseBodyScrollLock();
+      _openDialogCount -= 1;
+      if (_openDialogCount === 0) document.body.classList.remove("dialog-open");
+    };
   }, [open]);
 
   // fire transition callbacks

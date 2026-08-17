@@ -21,6 +21,7 @@ import { getTabSelectorThemeVars } from "./TabSelector";
 import AppIconButton from "../ui/AppIconButton";
 import AppMenu from "../ui/AppMenu";
 import AppPopover from "../ui/AppPopover";
+import { useLastInputWasKeyboard } from "../ui/useDialogFocusRestore";
 
 import "./tab-container.css";
 import "./tab-panel.css";
@@ -221,6 +222,9 @@ const TabSelector = memo(function TabSelector({
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
+  const lastSearchInputWasKeyboard = useLastInputWasKeyboard(
+    mobileSearchAnchorEl !== null,
+  );
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const handleMenuTriggerRef = useCallback(
     (element: HTMLButtonElement | null) => {
@@ -256,11 +260,15 @@ const TabSelector = memo(function TabSelector({
 
     setMobileSearchAnchorEl(null);
     if (trigger && mobileSearchRef.current?.contains(focusedElement)) {
-      // Typing or Escape put the user on the keyboard, so the focus ring the
-      // restored trigger may paint is the designed indicator, not litter.
-      trigger.focus();
+      // An Escape close shows the restored trigger's ring — the keyboard user
+      // needs it — while a tap close restores silently; without the hint the
+      // auto-focused search input makes even tap-only flows ring. Same
+      // contract as useDialogFocusRestore.
+      trigger.focus({
+        focusVisible: lastSearchInputWasKeyboard.current,
+      } as FocusOptions);
     }
-  }, [mobileSearchAnchorEl]);
+  }, [lastSearchInputWasKeyboard, mobileSearchAnchorEl]);
 
   const hasMobileActions = hasSlotActions || hasSlotSearch;
 

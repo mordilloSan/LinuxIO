@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 
 import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
 import { acquireBodyScrollLock } from "./bodyScrollLock";
+import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
 import "./app-fullscreen-dialog.css";
 
@@ -34,25 +35,16 @@ const AppFullscreenDialog = ({
   contentStyle,
 }: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
-  const lastFocusedElement = useRef<HTMLElement | null>(null);
+
+  useDialogFocusRestore(open);
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    lastFocusedElement.current = document.activeElement as HTMLElement | null;
     const releaseBodyScrollLock = acquireBodyScrollLock();
-
-    return () => {
-      releaseBodyScrollLock();
-      const trigger = lastFocusedElement.current;
-      lastFocusedElement.current = null;
-      // This cleanup runs on unmount as well as on close, so the trigger may
-      // well be gone. .focus() on a detached node drops focus onto <body>
-      // instead of restoring it, and the ref would keep that node alive.
-      if (trigger?.isConnected) trigger.focus();
-    };
+    return releaseBodyScrollLock;
   }, [open]);
 
   const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
