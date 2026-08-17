@@ -3,6 +3,8 @@
    10px inset — and the fill stays faint enough that the cards keep reading as
    the page's surfaces, with the band as grouping chrome around them. */
 .container-stack-band {
+  /* Anchors the hold ring, which follows the band's own radius. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -15,6 +17,32 @@
     transparent,
     var(--app-palette-text-primary) 3%
   );
+}
+
+/* The band's drag handle: holding anywhere on the header row picks the whole
+   stack up. dnd-kit makes it a tab stop, so it carries the shared focus ring;
+   touch-action is off so a touch hold cannot turn into a scroll, same as the
+   table's handle. */
+.container-stack-band__handle {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 16px;
+  touch-action: none;
+}
+
+.container-stack-band__handle:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+/* In layout mode the handle drags on movement alone, so it reads as one. */
+.container-stack-band__handle--editing {
+  cursor: grab;
+}
+
+.container-stack-band__handle--editing:active {
+  cursor: grabbing;
 }
 
 /* The whole header is the collapse control, like the table rows below it. */
@@ -45,10 +73,6 @@
 .container-stack-band__header:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
-}
-
-.container-stack-band__spacer {
-  flex: 1;
 }
 
 .container-stack__icon {

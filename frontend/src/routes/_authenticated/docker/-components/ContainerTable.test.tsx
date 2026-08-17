@@ -58,7 +58,11 @@ beforeEach(() => {
 });
 
 vi.mock("@/components/docker/DockerIcon", () => ({
-  default: ({ alt }: { alt: string }) => <span>{alt}</span>,
+  default: ({ alt, identifier }: { alt: string; identifier: string }) => (
+    <span data-identifier={identifier} data-testid="docker-icon">
+      {alt}
+    </span>
+  ),
 }));
 
 interface Deferred<T> {
@@ -266,11 +270,30 @@ describe("ContainerTable mutation feedback", () => {
       screen.getByRole("button", { name: "Collapse stack media" }),
     );
 
-    expect(screen.queryAllByText("media-web")).toHaveLength(0);
-    expect(screen.queryAllByText("media-db")).toHaveLength(0);
+    // Stack members remain mounted through the shared AppCollapse exit motion.
+    expect(rowNamed("media-web").closest(".app-collapse")).toHaveClass(
+      "app-collapse",
+    );
+    expect(rowNamed("media-db").closest(".app-collapse")).toHaveClass(
+      "app-collapse",
+    );
     // The summary keeps counting the hidden members; the loose row stays.
     expect(screen.getByText("2 containers · 1 running")).toBeInTheDocument();
     expect(rowNamed("solo-app")).toBeInTheDocument();
+    const collapsedHeader = screen
+      .getByRole("button", { name: "Expand stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    expect(within(collapsedHeader).getByTestId("docker-icon")).toHaveAttribute(
+      "data-identifier",
+      "media",
+    );
+
+    await expect
+      .poll(() => screen.queryAllByText("media-web").length, { timeout: 2000 })
+      .toBe(0);
+    await expect
+      .poll(() => screen.queryAllByText("media-db").length, { timeout: 2000 })
+      .toBe(0);
 
     await user.click(
       screen.getByRole("button", { name: "Expand stack media" }),

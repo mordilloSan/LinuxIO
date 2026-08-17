@@ -13,6 +13,7 @@ import {
 
 import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
+import SortableCard from "@/components/cards/SortableCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
@@ -38,7 +39,9 @@ import {
 import {
   COMPOSE_PROJECT_LABEL,
   getComposeProject,
+  getStackDragId,
   groupContainersByStack,
+  resolveStackDrag,
   type ContainerTableRow,
 } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
@@ -157,12 +160,29 @@ const ContainerList = ({
     [navigate],
   );
 
+  // The saved order is flat container ids; a drag that involves a stack band
+  // moves the whole member block through it. The resolver needs the id→project
+  // mapping to rebuild the blocks from the flat order.
+  const projectById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const container of containers) {
+      const project = getComposeProject(container);
+      if (project) map.set(container.Id, project);
+    }
+    return map;
+  }, [containers]);
+  const resolveStackDragEnd = useCallback(
+    (ids: readonly string[], activeId: string, overId: string) =>
+      resolveStackDrag(ids, activeId, overId, projectById),
+    [projectById],
+  );
   const surface = useReorderableSurface({
     getId: getContainerId,
     items: containers,
+    resolveDragEnd: resolveStackDragEnd,
     surface: "docker.containers",
   });
-  const { editMode, items: orderedContainers } = surface;
+  const { editMode, items: orderedContainers, pendingId } = surface;
   const tableDnd = useReorderableTableDnd<
     ContainerTableRow,
     (typeof containers)[number]
@@ -197,6 +217,20 @@ const ContainerList = ({
     [filteredContainers],
   );
   const hasStacks = stackEntries.some((entry) => entry.type === "stack");
+  // SortableContext items in display order: the bands' drag ids sort alongside
+  // the container ids they stand for.
+  const cardSortableIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const entry of stackEntries) {
+      if (entry.type === "container") {
+        ids.push(entry.container.Id);
+        continue;
+      }
+      ids.push(getStackDragId(entry.project));
+      for (const container of entry.containers) ids.push(container.Id);
+    }
+    return ids;
+  }, [stackEntries]);
   const selectedContainer = useMemo(
     () =>
       orderedContainers.find(
@@ -428,37 +462,49 @@ const ContainerList = ({
               getId={getContainerId}
               items={filteredContainers}
               renderBody={
-                editMode || !hasStacks
+                !hasStacks
                   ? undefined
                   : (renderCard) => (
-                      // Loose cards render first so they pack the rows; the
-                      // stacks follow, each only as wide as its members need,
-                      // so auto-placement can still seat a band next to a
-                      // leftover card.
-                      <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
-                        {stackEntries.map((entry, index) =>
-                          entry.type === "container" ? (
-                            <AppGrid
-                              key={entry.container.Id}
-                              size={CARD_GRID_SIZE_DENSE}
-                            >
-                              {renderCard(entry.container, index)}
-                            </AppGrid>
-                          ) : null,
-                        )}
+                      // Entries render in the saved order — dragging a band is
+                      // what places a stack — and dense flow backfills the slot
+                      // a wide band can't use with the cards that follow, so
+                      // the lines stay full either way. The grouped layout
+                      // stays up in layout mode too: flattening there would
+                      // remount the very card the hold just picked up.
+                      <AppGrid
+                        container
+                        spacing={DASHBOARD_CARD_SPACING}
+                        style={{ gridAutoFlow: "row dense" }}
+                      >
                         {stackEntries.map((entry, index) => {
-                          if (entry.type !== "stack") return null;
+                          if (entry.type === "container") {
+                            return (
+                              <AppGrid
+                                key={entry.container.Id}
+                                size={CARD_GRID_SIZE_DENSE}
+                              >
+                                {renderCard(entry.container, index)}
+                              </AppGrid>
+                            );
+                          }
+                          const dragId = getStackDragId(entry.project);
                           if (collapsedStacks.has(entry.project)) {
                             return (
                               <AppGrid
                                 key={`stack:${entry.project}`}
                                 size={CARD_GRID_SIZE_DENSE}
                               >
-                                <ContainerStackSummaryCard
-                                  containers={entry.containers}
-                                  onExpand={() => toggleStack(entry.project)}
-                                  project={entry.project}
-                                />
+                                <SortableCard
+                                  editMode={editMode}
+                                  id={dragId}
+                                  pending={pendingId === dragId}
+                                >
+                                  <ContainerStackSummaryCard
+                                    containers={entry.containers}
+                                    onExpand={() => toggleStack(entry.project)}
+                                    project={entry.project}
+                                  />
+                                </SortableCard>
                               </AppGrid>
                             );
                           }
@@ -469,7 +515,9 @@ const ContainerList = ({
                             >
                               <ContainerStackBand
                                 containers={entry.containers}
+                                editMode={editMode}
                                 onToggle={() => toggleStack(entry.project)}
+                                pending={pendingId === dragId}
                                 project={entry.project}
                               >
                                 <AppGrid
@@ -492,6 +540,7 @@ const ContainerList = ({
                       </AppGrid>
                     )
               }
+              sortableIds={hasStacks ? cardSortableIds : undefined}
               renderItem={(container) => (
                 <ContainerCard
                   actionPending={stoppingContainerIds.has(container.Id)}

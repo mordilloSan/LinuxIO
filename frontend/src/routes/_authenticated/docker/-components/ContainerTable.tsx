@@ -52,7 +52,6 @@ import {
   buildContainerTableRows,
   formatStackSummary,
   getComposeProject,
-  getStackDisplayState,
   isStackHeaderRow,
   summarizeStack,
   type ContainerStackHeaderRow,
@@ -349,35 +348,23 @@ interface StackHeaderCellProps {
 function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
   const theme = useAppTheme();
   const summary = summarizeStack(header.containers);
-  const displayState = getStackDisplayState(summary);
 
   return (
     <div className="app-dt__cell container-table__stack-group-cell" role="cell">
-      <button
-        aria-expanded={!header.collapsed}
-        aria-label={`${header.collapsed ? "Expand" : "Collapse"} stack ${header.project}`}
-        className="container-table__stack-group-toggle"
-        onClick={() => onToggleStack?.(header.project)}
-        type="button"
-      >
+      {header.collapsed ? (
+        <DockerIcon
+          alt={header.project}
+          identifier={header.project.toLowerCase()}
+          size={18}
+        />
+      ) : (
         <Icon
-          className="container-table__stack-chevron"
+          className="container-table__stack-group-icon"
           height={18}
-          icon="mdi:chevron-down"
+          icon="mdi:layers-outline"
           width={18}
         />
-      </button>
-      <StatusDot
-        color={getContainerStatusColor(displayState)}
-        size={8}
-        tooltip={displayState}
-      />
-      <Icon
-        className="container-table__stack-group-icon"
-        height={18}
-        icon="mdi:layers-outline"
-        width={18}
-      />
+      )}
       <AppTypography
         fontWeight={600}
         noWrap
@@ -406,6 +393,20 @@ function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
           </span>
         </AppTooltip>
       )}
+      <button
+        aria-expanded={!header.collapsed}
+        aria-label={`${header.collapsed ? "Expand" : "Collapse"} stack ${header.project}`}
+        className="container-table__stack-group-toggle"
+        onClick={() => onToggleStack?.(header.project)}
+        type="button"
+      >
+        <Icon
+          className="container-table__stack-chevron"
+          height={18}
+          icon="mdi:chevron-down"
+          width={18}
+        />
+      </button>
     </div>
   );
 }
@@ -1149,14 +1150,21 @@ const ContainerTable = ({
     () => (dnd ? { ...dnd, isRowSortable: isContainerRowSortable } : undefined),
     [dnd],
   );
-  const stackMemberIds = useMemo(() => {
-    const ids = new Set<string>();
+  const { collapsedStackMemberIds, stackMemberIds } = useMemo(() => {
+    const collapsedMemberIds = new Set<string>();
+    const memberIds = new Set<string>();
     for (const row of rows) {
-      if (isStackHeaderRow(row) && !row.collapsed) {
-        for (const member of row.containers) ids.add(member.Id);
+      if (isStackHeaderRow(row)) {
+        for (const member of row.containers) {
+          memberIds.add(member.Id);
+          if (row.collapsed) collapsedMemberIds.add(member.Id);
+        }
       }
     }
-    return ids;
+    return {
+      collapsedStackMemberIds: collapsedMemberIds,
+      stackMemberIds: memberIds,
+    };
   }, [rows]);
   const getRowAttributes = useCallback(
     (
@@ -1176,20 +1184,32 @@ const ContainerTable = ({
       rowProps,
     }: AppDataTableRowRenderProps<ContainerTableRow>) => {
       const original = row.original;
-      if (!isStackHeaderRow(original)) return <div {...rowProps}>{cells}</div>;
+      if (isStackHeaderRow(original)) {
+        return (
+          <div
+            {...rowProps}
+            aria-expanded={!original.collapsed}
+            className={[rowProps.className, "container-table__stack-group-row"]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <StackHeaderCell header={original} onToggleStack={onToggleStack} />
+          </div>
+        );
+      }
+      if (!stackMemberIds.has(original.Id)) {
+        return <div {...rowProps}>{cells}</div>;
+      }
       return (
-        <div
-          {...rowProps}
-          aria-expanded={!original.collapsed}
-          className={[rowProps.className, "container-table__stack-group-row"]
-            .filter(Boolean)
-            .join(" ")}
+        <AppCollapse
+          in={!collapsedStackMemberIds.has(original.Id)}
+          unmountOnExit
         >
-          <StackHeaderCell header={original} onToggleStack={onToggleStack} />
-        </div>
+          <div {...rowProps}>{cells}</div>
+        </AppCollapse>
       );
     },
-    [onToggleStack],
+    [collapsedStackMemberIds, onToggleStack, stackMemberIds],
   );
   const [expandedContainerIds, setExpandedContainerIds] = useState<Set<string>>(
     () => new Set(),

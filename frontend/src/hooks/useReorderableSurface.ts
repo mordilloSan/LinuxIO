@@ -44,6 +44,18 @@ export interface ReorderableSurfaceOptions<TItem> {
    * order is in charge (an active column sort) or the list is read-only.
    */
   disabled?: boolean;
+  /**
+   * Maps a finished drag onto the next saved order, for surfaces whose layout
+   * renders composite sortables — a stack band whose drag id stands for a
+   * block of member ids. Called with the current ids and the raw active/over
+   * ids; return null to keep the default single-id move. Read through a ref,
+   * so it doesn't need a stable identity.
+   */
+  resolveDragEnd?: (
+    ids: readonly string[],
+    activeId: string,
+    overId: string,
+  ) => string[] | null;
 }
 
 /** Props for the `DndContext` that wraps a reorderable surface. */
@@ -111,12 +123,17 @@ export function useReorderableSurface<TItem>({
   disabled = false,
   getId,
   items,
+  resolveDragEnd,
   surface,
 }: ReorderableSurfaceOptions<TItem>): ReorderableSurface<TItem> {
   const [layoutOrders, setLayoutOrders] = useConfigValue("layoutOrders");
   const [editMode, setEditMode] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
+  const resolveDragEndRef = useRef(resolveDragEnd);
+  useEffect(() => {
+    resolveDragEndRef.current = resolveDragEnd;
+  }, [resolveDragEnd]);
   // The element the opening press incidentally focused, kept so leaving layout
   // mode can give that focus up again. Null when the drag came from the
   // keyboard, where the focus is the user's own and has to stay put.
@@ -209,8 +226,19 @@ export function useReorderableSurface<TItem>({
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const oldIndex = ids.indexOf(String(active.id));
-      const newIndex = ids.indexOf(String(over.id));
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      const resolvedOrder = resolveDragEndRef.current?.(ids, activeId, overId);
+      if (resolvedOrder) {
+        setLayoutOrders((previous) => ({
+          ...(previous ?? {}),
+          [surface]: resolvedOrder,
+        }));
+        return;
+      }
+
+      const oldIndex = ids.indexOf(activeId);
+      const newIndex = ids.indexOf(overId);
       if (oldIndex < 0 || newIndex < 0) return;
 
       const nextOrder = arrayMove(ids, oldIndex, newIndex);

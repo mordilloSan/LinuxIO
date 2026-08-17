@@ -98,17 +98,8 @@
 }
 
 /* Compose stacks: one synthetic header row per multi-container project, its
-   member rows beneath it. The shared inset line is what binds header and
-   members into one band inside a striped table; collapsing removes the member
-   rows and leaves just the header. The doubled selector outweighs the zebra
-   `--alt` background, which sets the same custom property. */
-.app-dt__row.container-table__stack-group-row {
-  --app-dt-row-bg: color-mix(
-    in srgb,
-    transparent,
-    var(--app-palette-text-primary) 7%
-  );
-}
+   member rows beneath it. The shared inset line binds the group while every
+   row keeps the table's ordinary zebra/selection background. */
 
 .app-dt__row.container-table__stack-group-row,
 .app-dt__row.container-table__stack-member-row {
@@ -136,6 +127,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  margin-left: auto;
   padding: 2px;
   border: none;
   border-radius: 50%;

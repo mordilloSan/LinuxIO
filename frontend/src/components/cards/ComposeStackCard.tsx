@@ -215,9 +215,7 @@ const ComposeStackCard = ({
         <div style={{ display: "flex", flexDirection: "column" }}>
           <DetailRow label="Compose files" noBorder>
             {project.config_files.length > 0 ? (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 2 }}
-              >
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {project.config_files.map((filePath) => (
                   <AppTypography
                     className="expand-panel__mono"

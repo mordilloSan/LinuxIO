@@ -7,6 +7,7 @@ import {
   getStackDisplayState,
   groupContainersByStack,
   isStackHeaderRow,
+  resolveStackDrag,
   summarizeStack,
 } from "./containerStacks";
 
@@ -79,12 +80,12 @@ describe("buildContainerTableRows", () => {
     expect(rows[0]).toMatchObject({ collapsed: false, project: "media" });
   });
 
-  it("folds a collapsed stack down to its header row", () => {
+  it("keeps collapsed stack members in the model for the disclosure animation", () => {
     const rows = buildContainerTableRows(containers, new Set(["media"]));
 
     expect(
       rows.map((row) => (isStackHeaderRow(row) ? "header" : row.Id)),
-    ).toEqual(["header", "plain"]);
+    ).toEqual(["header", "media-web", "media-db", "plain"]);
     expect(rows[0]).toMatchObject({ collapsed: true, project: "media" });
   });
 });
@@ -120,5 +121,54 @@ describe("stack summaries", () => {
       container("b", "s", { updateAvailable: true }),
     ]);
     expect(summary.updateAvailable).toBe(true);
+  });
+});
+
+describe("resolveStackDrag", () => {
+  const projectById = new Map([
+    ["media-web", "media"],
+    ["media-db", "media"],
+    ["web-a", "web"],
+    ["web-b", "web"],
+  ]);
+  const ids = ["media-web", "media-db", "plain", "web-a", "web-b"];
+
+  it("moves a dragged stack's members as one block", () => {
+    expect(resolveStackDrag(ids, "stack:media", "plain", projectById)).toEqual([
+      "plain",
+      "media-web",
+      "media-db",
+      "web-a",
+      "web-b",
+    ]);
+  });
+
+  it("reorders one stack relative to another", () => {
+    expect(
+      resolveStackDrag(ids, "stack:web", "stack:media", projectById),
+    ).toEqual(["web-a", "web-b", "media-web", "media-db", "plain"]);
+  });
+
+  it("drops a loose card beside a stack, not inside it", () => {
+    expect(resolveStackDrag(ids, "plain", "stack:media", projectById)).toEqual([
+      "plain",
+      "media-web",
+      "media-db",
+      "web-a",
+      "web-b",
+    ]);
+  });
+
+  it("leaves plain and within-stack drags to the default move", () => {
+    expect(resolveStackDrag(ids, "plain", "media-db", projectById)).toBeNull();
+    expect(
+      resolveStackDrag(ids, "media-web", "media-db", projectById),
+    ).toBeNull();
+  });
+
+  it("declines a member dragged onto another stack", () => {
+    expect(
+      resolveStackDrag(ids, "media-web", "stack:web", projectById),
+    ).toBeNull();
   });
 });

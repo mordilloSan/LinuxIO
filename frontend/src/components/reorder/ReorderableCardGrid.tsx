@@ -39,6 +39,12 @@ interface ReorderableCardGridProps<TItem> {
   ) => ReactNode;
   /** Rendered inside the sortable wrapper, one call per item. */
   renderItem: (item: TItem, index: number) => ReactNode;
+  /**
+   * Overrides the `SortableContext` items when `renderBody` lays out composite
+   * sortables — a stack band whose drag id isn't in `surface.ids`. Defaults to
+   * `surface.ids`.
+   */
+  sortableIds?: string[];
   /** Breakpoint spans for each card. Ignored when `virtualized`. */
   size?: GridSize;
   surface: ReorderableSurface<TItem>;
@@ -84,6 +90,7 @@ function ReorderableCardGrid<TItem>({
   renderBody,
   renderItem,
   size,
+  sortableIds,
   spacing = DASHBOARD_CARD_SPACING,
   surface,
   virtualized = false,
@@ -164,7 +171,10 @@ function ReorderableCardGrid<TItem>({
 
   return (
     <DndContext {...surface.dndContextProps}>
-      <SortableContext items={surface.ids} strategy={rectSortingStrategy}>
+      <SortableContext
+        items={sortableIds ?? surface.ids}
+        strategy={rectSortingStrategy}
+      >
         {body}
       </SortableContext>
     </DndContext>
