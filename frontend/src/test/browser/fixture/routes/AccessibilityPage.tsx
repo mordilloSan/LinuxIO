@@ -17,7 +17,7 @@ import "@/routes/_authenticated/-components/dock/dock.css";
    so the browser tests exercise the same hover-label gate Dock.tsx uses. */
 function DockFixture() {
   const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
-    useDockPointerLiveness(true);
+    useDockPointerLiveness();
 
   return (
     <nav

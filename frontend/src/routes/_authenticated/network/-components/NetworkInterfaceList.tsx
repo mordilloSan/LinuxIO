@@ -250,13 +250,6 @@ const NetworkInterfaceList = () => {
     surface: "network.interfaces",
   });
 
-  /*
-    Selecting an interface leaves the grid rather than resizing inside it. That
-    is the shape the services and docker card views already use — one branch
-    that isolates the selection, one that is nothing but the sortable grid — so
-    all three routes now isolate on select the same way, and this one no longer
-    has to hand-roll ReorderableArea + SortableCard to do it.
-  */
   if (selectedIface) {
     /*
       The isolated view settles in two beats, the same ones UnitCardsView uses:

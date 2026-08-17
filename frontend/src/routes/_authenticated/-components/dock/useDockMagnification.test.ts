@@ -23,12 +23,8 @@ const wrapper = ({ children }: { children: ReactNode }) =>
 const pointer = (pointerType: "mouse" | "touch", clientX = 100) =>
   ({ pointerType, clientX }) as unknown as ReactPointerEvent<HTMLElement>;
 
-function setupLiveness(enabled = true) {
-  const hook = renderHook(
-    ({ magnificationEnabled }: { magnificationEnabled: boolean }) =>
-      useDockPointerLiveness(magnificationEnabled),
-    { initialProps: { magnificationEnabled: enabled }, wrapper },
-  );
+function setupLiveness() {
+  const hook = renderHook(() => useDockPointerLiveness(), { wrapper });
   const nav = document.createElement("nav");
   document.body.append(nav);
   hook.result.current.navRef.current = nav;
@@ -147,7 +143,7 @@ describe("useDockPointerLiveness", () => {
     nav.remove();
   });
 
-  it("resets liveness across either magnification breakpoint transition", () => {
+  it("resumes magnification after touch resets pointer liveness", () => {
     const frames: FrameRequestCallback[] = [];
     const requestFrame = vi
       .spyOn(window, "requestAnimationFrame")
@@ -155,26 +151,20 @@ describe("useDockPointerLiveness", () => {
         frames.push(callback);
         return frames.length;
       });
-    const { result, nav, rerender, unmount } = setupLiveness();
+    const { result, nav, unmount } = setupLiveness();
 
     act(() => result.current.onPointerMove(pointer("mouse", 120)));
     expect(nav).toHaveAttribute(DOCK_POINTER_ATTRIBUTE, "");
     expect(requestFrame).toHaveBeenCalledTimes(1);
     act(() => frames.splice(0).forEach((frame) => frame(0)));
 
-    rerender({ magnificationEnabled: false });
+    act(() => result.current.onPointerMove(pointer("touch", 140)));
     expect(nav).not.toHaveAttribute(DOCK_POINTER_ATTRIBUTE);
     expect(requestFrame).toHaveBeenCalledTimes(2);
     act(() => frames.splice(0).forEach((frame) => frame(0)));
 
-    // Pointer liveness remains useful for labels while magnification is off,
-    // but it must not feed another magnification frame.
-    act(() => result.current.onPointerMove(pointer("mouse", 140)));
+    act(() => result.current.onPointerMove(pointer("mouse", 160)));
     expect(nav).toHaveAttribute(DOCK_POINTER_ATTRIBUTE, "");
-    expect(requestFrame).toHaveBeenCalledTimes(2);
-
-    rerender({ magnificationEnabled: true });
-    expect(nav).not.toHaveAttribute(DOCK_POINTER_ATTRIBUTE);
     expect(requestFrame).toHaveBeenCalledTimes(3);
     act(() => frames.splice(0).forEach((frame) => frame(0)));
 

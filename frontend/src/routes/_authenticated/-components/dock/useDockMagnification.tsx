@@ -9,7 +9,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   type PointerEvent,
@@ -233,9 +232,9 @@ export const DOCK_POINTER_ATTRIBUTE = "data-dock-pointer";
    magnification, which would show a label under a resting tile. One owner for
    both prevents that: the same handler feeds the magnification pointer and
    arms the label gate, while pointer departure or window deactivation resets
-   both. At phone widths magnification is intentionally disabled, but labels
-   still require fresh non-touch pointer activity. */
-export function useDockPointerLiveness(magnificationEnabled: boolean) {
+   both. The production dock is only mounted at the desktop breakpoint, so a
+   second responsive gate here can only leave a rendered dock inert. */
+export function useDockPointerLiveness() {
   const setPointer = useDockPointer();
   const navRef = useRef<HTMLElement | null>(null);
 
@@ -243,13 +242,6 @@ export function useDockPointerLiveness(magnificationEnabled: boolean) {
     setPointer(Infinity);
     navRef.current?.removeAttribute(DOCK_POINTER_ATTRIBUTE);
   }, [setPointer]);
-
-  useLayoutEffect(() => {
-    // Either breakpoint transition invalidates the shared pointer evidence:
-    // narrowing disables magnification, while widening must not let an armed
-    // small-screen hover label appear over a still-resting tile.
-    reset();
-  }, [magnificationEnabled, reset]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -272,9 +264,9 @@ export function useDockPointerLiveness(magnificationEnabled: boolean) {
         return;
       }
       navRef.current?.setAttribute(DOCK_POINTER_ATTRIBUTE, "");
-      if (magnificationEnabled) setPointer(event.clientX);
+      setPointer(event.clientX);
     },
-    [magnificationEnabled, reset, setPointer],
+    [reset, setPointer],
   );
 
   return {

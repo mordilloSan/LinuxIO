@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import type { DockTileColors } from "@/api";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppTheme } from "@/theme";
 import { fromHsl, lighten, toHsl } from "@/utils/color";
 
 import DockItem from "./DockItem";
@@ -109,9 +109,8 @@ const Dock = () => {
   const canNavigate = useUpdateCanNavigate();
   const theme = useAppTheme();
   const [dockTileColors] = useConfigValue("dockTileColors");
-  const magnificationEnabled = useAppMediaQuery(theme.breakpoints.up("sm"));
   const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
-    useDockPointerLiveness(magnificationEnabled);
+    useDockPointerLiveness();
 
   const palette = dockTileColors ?? "accent";
   const accent = theme.palette.primary.main;
