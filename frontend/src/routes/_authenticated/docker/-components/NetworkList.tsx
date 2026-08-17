@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -6,9 +5,10 @@ import { linuxio, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { RoutedTabSearch } from "@/components/tabbar";
+import { RoutedTabActions, RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
@@ -605,19 +605,18 @@ const NetworkList = ({
           value={search}
         />
       </RoutedTabSearch>
-      {effectiveSelected.size > 0 && (
-        <div style={{ marginBottom: theme.spacing(2) }}>
-          <AppButton
-            color="error"
+      <RoutedTabActions>
+        {effectiveSelected.size > 0 && (
+          <AppActionIconButton
+            ariaLabel={`Delete ${effectiveSelected.size} selected network${effectiveSelected.size === 1 ? "" : "s"}`}
+            color={theme.palette.error.main}
+            icon="mdi:delete"
+            iconSize={20}
+            label={`Delete ${effectiveSelected.size} selected network${effectiveSelected.size === 1 ? "" : "s"}`}
             onClick={() => setDeleteDialogOpen(true)}
-            size="small"
-            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
-            variant="contained"
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        </div>
-      )}
+          />
+        )}
+      </RoutedTabActions>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
