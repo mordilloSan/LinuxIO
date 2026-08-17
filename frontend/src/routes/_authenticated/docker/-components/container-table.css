@@ -107,6 +107,12 @@
     color-mix(in srgb, transparent, var(--app-palette-primary-main) 50%);
 }
 
+/* Only the member name cell moves inward: that makes the hierarchy readable
+   without disturbing the grid's other columns or the aligned action strip. */
+.container-table__stack-member-row > .app-dt__cell:first-child {
+  padding-inline-start: 28px;
+}
+
 /* The header's single cell spans every column of the row grid. Its minimum
    matches the three-line port/volume reserve in ordinary rows, keeping the
    group rhythm stable even though its own label is only one line. */

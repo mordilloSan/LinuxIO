@@ -351,20 +351,19 @@ function StackHeaderCell({ header, onToggleStack }: StackHeaderCellProps) {
 
   return (
     <div className="app-dt__cell container-table__stack-group-cell" role="cell">
-      {header.collapsed ? (
-        <DockerIcon
-          alt={header.project}
-          identifier={header.project.toLowerCase()}
-          size={18}
-        />
-      ) : (
-        <Icon
-          className="container-table__stack-group-icon"
-          height={18}
-          icon="mdi:layers-outline"
-          width={18}
-        />
-      )}
+      {/* The stack glyph fills the member row's status-dot slot; its project
+          image then stays in the same position as every container icon. */}
+      <Icon
+        className="container-table__stack-group-icon"
+        height={12}
+        icon="mdi:layers-outline"
+        width={12}
+      />
+      <DockerIcon
+        alt={header.project}
+        identifier={header.project.toLowerCase()}
+        size={24}
+      />
       <AppTypography
         fontWeight={600}
         noWrap
