@@ -507,6 +507,7 @@ const ImageList = ({
       {!focusedImage && (
         <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
+            clearOnDocumentEscape
             onChange={setSearch}
             placeholder="Search images…"
             value={search}

@@ -213,6 +213,7 @@ const GroupsTab = ({
     >
       <RoutedTabSearch active={search !== ""}>
         <AppHeaderSearch
+          clearOnDocumentEscape
           onChange={setSearch}
           placeholder="Search groups…"
           value={search}

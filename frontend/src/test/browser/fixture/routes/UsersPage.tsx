@@ -11,6 +11,7 @@ export default function UsersPage() {
       <RoutedTabSearch active={search !== ""}>
         <AppHeaderSearch
           aria-label="Search users"
+          clearOnDocumentEscape
           onChange={setSearch}
           value={search}
         />

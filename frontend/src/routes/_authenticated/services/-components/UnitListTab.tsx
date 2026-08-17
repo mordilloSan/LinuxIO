@@ -111,6 +111,7 @@ function UnitListTab<T extends UnitListItem>({
   const searchControl = (
     <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
+        clearOnDocumentEscape
         onChange={setSearch}
         placeholder={searchPlaceholder}
         value={search}

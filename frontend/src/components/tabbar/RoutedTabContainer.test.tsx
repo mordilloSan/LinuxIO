@@ -10,6 +10,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import { render } from "@/test/render";
 
 import {
@@ -135,9 +136,10 @@ const StatefulSearch = () => {
 
   return (
     <RoutedTabSearch active={search !== ""}>
-      <input
+      <AppHeaderSearch
         aria-label="Search users"
-        onChange={(event) => setSearch(event.target.value)}
+        clearOnDocumentEscape
+        onChange={setSearch}
         value={search}
       />
     </RoutedTabSearch>
@@ -406,9 +408,7 @@ describe("RoutedTabContainer", () => {
     const usersRoute = createRoute({
       component: () => (
         <>
-          <RoutedTabSearch>
-            <input aria-label="Search users" />
-          </RoutedTabSearch>
+          <StatefulSearch />
           <RoutedTabActions>
             <button type="button">Refresh users</button>
           </RoutedTabActions>
@@ -459,6 +459,12 @@ describe("RoutedTabContainer", () => {
     await user.type(search, "apparmor");
     await user.keyboard("{Escape}");
 
+    // First Escape clears the query and keeps the field: the popover stays.
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+
     expect(
       screen.queryByRole("textbox", { name: "Search users" }),
     ).not.toBeInTheDocument();
@@ -502,10 +508,11 @@ describe("RoutedTabContainer", () => {
       await screen.findByRole("textbox", { name: "Search users" }),
       "root",
     );
-    await user.keyboard("{Escape}");
+    // Close the popover without touching the query: clicking the trigger
+    // dismisses the search and opens the actions menu in one press.
+    await user.click(actionsTrigger);
 
     expect(actionsTrigger).toHaveClass("tab-selector__search-active");
-    await user.click(actionsTrigger);
     expect(screen.getByRole("button", { name: "Search" })).toHaveClass(
       "tab-selector__search-active",
     );

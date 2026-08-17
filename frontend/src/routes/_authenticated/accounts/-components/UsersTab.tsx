@@ -409,6 +409,7 @@ const UsersTab = ({
       {!detailUser && (
         <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
+            clearOnDocumentEscape
             onChange={setSearch}
             placeholder="Search users…"
             value={search}

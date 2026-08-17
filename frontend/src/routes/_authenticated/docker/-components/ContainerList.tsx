@@ -324,6 +324,7 @@ const ContainerList = ({
     <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
       <RoutedTabSearch active={search !== ""}>
         <AppHeaderSearch
+          clearOnDocumentEscape
           onChange={setSearch}
           placeholder="Search containers…"
           value={search}

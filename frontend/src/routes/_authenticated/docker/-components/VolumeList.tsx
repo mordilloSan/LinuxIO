@@ -487,6 +487,7 @@ const VolumeList = ({
       {!focusedVolume && (
         <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
+            clearOnDocumentEscape
             onChange={setSearch}
             placeholder="Search volumes…"
             value={search}

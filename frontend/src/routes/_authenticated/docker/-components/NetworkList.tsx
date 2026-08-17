@@ -850,6 +850,7 @@ const NetworkList = ({
       {!focusedNetwork && (
         <RoutedTabSearch active={search !== ""}>
           <AppHeaderSearch
+            clearOnDocumentEscape
             onChange={setSearch}
             placeholder="Search networks…"
             value={search}

@@ -767,6 +767,7 @@ const ComposeList = ({
   const searchControl = (
     <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
+        clearOnDocumentEscape
         onChange={setSearch}
         placeholder="Search stacks…"
         value={search}
