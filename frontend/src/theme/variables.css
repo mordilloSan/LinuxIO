@@ -198,6 +198,19 @@ a {
   text-underline-offset: 3px;
 }
 
+.log-identifier-link:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+/* The standard focus ring for focusable elements that have no stylesheet of
+   their own (inline-styled links, wrapper divs given tabIndex). Every control
+   must paint a ring itself: the global outline kill rule is gone on purpose. */
+.app-focus-ring:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
 /* App-owned side effects. */
 
 .xterm-helper-textarea,

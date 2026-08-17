@@ -61,7 +61,7 @@ const SortableCard = ({
     // The listeners live on the card itself, not just on the edit-mode overlay:
     // holding anywhere on a card is what opens layout mode in the first place.
     <div
-      className={holding ? "sc-hold" : undefined}
+      className={holding ? "sortable-card sc-hold" : "sortable-card"}
       ref={setNodeRef}
       style={style}
       {...attributes}

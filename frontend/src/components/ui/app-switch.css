@@ -26,6 +26,14 @@
   z-index: 1;
 }
 
+/* The focusable element is the transparent native input, so its UA ring is
+   invisible — the wrapper paints the designed ring for it. */
+.app-switch:has(.app-switch__input:focus-visible) {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -6px;
+  border-radius: 999px;
+}
+
 /* ── track ────────────────────────────────────── */
 .app-switch__track {
   width: 34px;

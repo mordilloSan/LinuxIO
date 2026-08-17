@@ -209,6 +209,7 @@ const TerminalDialog = ({
           </div>
         ) : availableShells.length > 0 ? (
           <div
+            className="app-focus-ring"
             onContextMenu={handleContextMenu}
             ref={termRef}
             style={{

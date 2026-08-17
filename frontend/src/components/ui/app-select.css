@@ -140,9 +140,13 @@
   border-bottom: none !important;
 }
 
+/* No underline to repaint on focus, so this variant gets the standard ring —
+   without it keyboard focus on the inline sort selects is invisible. */
 .app-select--no-underline .app-select__input:focus-visible {
   border-bottom: none !important;
   padding-bottom: 5px;
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
 .app-select--small.app-select--no-underline .app-select__input:focus-visible {

@@ -60,6 +60,12 @@
   background: var(--tab-selector-hover);
 }
 
+/* Covers both pill kinds: TabSelector's <button> and the routed <a>. */
+.tab-selector__pill:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
 .tab-selector__pill--active,
 .tab-selector__pill--active:hover {
   background: var(--tab-selector-active-bg);

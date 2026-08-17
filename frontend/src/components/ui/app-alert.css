@@ -65,6 +65,11 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+.app-alert__close:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
 /* ── centered variant (align-items: center on parent) ─ */
 .app-alert--centered .app-alert__icon {
   padding-top: 0;

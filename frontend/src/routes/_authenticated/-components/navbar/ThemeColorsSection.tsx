@@ -460,6 +460,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             height: 0,
             pointerEvents: "none",
           }}
+          tabIndex={-1}
           type="color"
           value={normalized}
         />

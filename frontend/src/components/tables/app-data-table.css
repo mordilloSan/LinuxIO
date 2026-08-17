@@ -137,6 +137,12 @@
   cursor: grabbing;
 }
 
+/* dnd-kit puts the handle in the tab order (tabIndex 0). */
+.app-dt__drag-handle:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
 .app-dt__sort-button {
   display: inline-flex;
   align-items: center;
@@ -151,6 +157,11 @@
   font: inherit;
   text-align: inherit;
   cursor: pointer;
+}
+
+.app-dt__sort-button:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
 .app-dt__sort-button svg {

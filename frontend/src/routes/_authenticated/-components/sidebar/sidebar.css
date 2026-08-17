@@ -84,6 +84,12 @@
   background: var(--app-sidebar-item-hover-bg);
 }
 
+/* Inset so the ring clears the link's flush left edge and the sidebar wall. */
+.app-sidebar-link:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -2px;
+}
+
 .app-sidebar-link--active {
   background:
     linear-gradient(

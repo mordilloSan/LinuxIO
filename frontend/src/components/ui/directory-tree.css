@@ -6,8 +6,10 @@
   padding: 4px 0;
 }
 
-.directory-tree:focus {
-  outline: none;
+/* Inset so the ring survives the container's own scrollport clipping. */
+.directory-tree:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -2px;
 }
 
 .directory-tree__node {

@@ -316,15 +316,25 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     };
     const navigationContent =
       item.to === "/services" ? (
-        <Link search={item.serviceSearch} style={actionStyle} to="/services">
+        <Link
+          className="app-focus-ring"
+          search={item.serviceSearch}
+          style={actionStyle}
+          to="/services"
+        >
           {mainContent}
         </Link>
       ) : item.to === "/accounts" ? (
-        <Link search={item.accountSearch} style={actionStyle} to="/accounts">
+        <Link
+          className="app-focus-ring"
+          search={item.accountSearch}
+          style={actionStyle}
+          to="/accounts"
+        >
           {mainContent}
         </Link>
       ) : item.to ? (
-        <Link style={actionStyle} to={item.to}>
+        <Link className="app-focus-ring" style={actionStyle} to={item.to}>
           {mainContent}
         </Link>
       ) : null;

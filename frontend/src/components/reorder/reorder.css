@@ -68,3 +68,10 @@
 .sc-drag-overlay:hover {
   background-color: var(--sc-hover-bg);
 }
+
+/* dnd-kit makes every sortable card a tab stop (tabIndex 0, role button);
+   the wrapper carries the card's border radius, so the ring follows it. */
+.sortable-card:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
