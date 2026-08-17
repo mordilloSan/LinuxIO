@@ -37,6 +37,7 @@ describe("DockerImageCard", () => {
 
     await user.dblClick(card);
     expect(onSelect).toHaveBeenCalledWith(true);
+    expect(card).not.toHaveFocus();
 
     rerender(<DockerImageCard image={image} onSelect={onSelect} selected />);
     const selectedCard = screen.getByRole("button", {
@@ -50,5 +51,6 @@ describe("DockerImageCard", () => {
     selectedCard.focus();
     await user.keyboard("{Enter}");
     expect(onSelect).toHaveBeenLastCalledWith(false);
+    expect(selectedCard).toHaveFocus();
   });
 });

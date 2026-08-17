@@ -27,11 +27,18 @@ describe("useCardSelectionEscape", () => {
       }),
     );
 
+    const card = document.createElement("button");
+    card.className = "selectable-card-button";
+    document.body.append(card);
+    card.focus();
+
     const event = pressEscape();
 
     expect(onClearSelection).toHaveBeenCalledOnce();
     expect(onExitReordering).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(true);
+    expect(card).not.toHaveFocus();
+    card.remove();
   });
 
   it("leaves Escape to dialogs and handlers that already claimed it", () => {
@@ -76,15 +83,22 @@ describe("useCardSelectionEscape", () => {
       { initialProps: { isReordering: true } },
     );
 
+    const card = document.createElement("button");
+    card.className = "selectable-card-button";
+    document.body.append(card);
+    card.focus();
+
     const firstEscape = pressEscape();
     expect(onClearSelection).not.toHaveBeenCalled();
     expect(onExitReordering).toHaveBeenCalledOnce();
     expect(firstEscape.defaultPrevented).toBe(true);
+    expect(card).not.toHaveFocus();
 
     rerender({ isReordering: false });
     const secondEscape = pressEscape();
 
     expect(onClearSelection).toHaveBeenCalledOnce();
     expect(secondEscape.defaultPrevented).toBe(true);
+    card.remove();
   });
 });

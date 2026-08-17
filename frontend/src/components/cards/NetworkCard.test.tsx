@@ -37,6 +37,7 @@ describe("NetworkCard", () => {
 
     await user.dblClick(card);
     expect(onSelect).toHaveBeenCalledWith(true);
+    expect(card).not.toHaveFocus();
 
     rerender(<NetworkCard network={network} onSelect={onSelect} selected />);
     const selectedCard = screen.getByRole("button", {
@@ -47,5 +48,6 @@ describe("NetworkCard", () => {
     selectedCard.focus();
     await user.keyboard(" ");
     expect(onSelect).toHaveBeenLastCalledWith(false);
+    expect(selectedCard).toHaveFocus();
   });
 });

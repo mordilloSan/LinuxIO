@@ -29,6 +29,14 @@ const SelectableCard = ({
       toggleSelection();
     }
   };
+  const handleDoubleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    toggleSelection();
+    // Pointer selection is complete. Do not leave the button holding focus:
+    // the next Escape would switch :focus-visible on and paint a second,
+    // full-card outline over the selected bottom accent. Keyboard activation
+    // still keeps its focus because it arrives through handleClick above.
+    event.currentTarget.blur();
+  };
 
   return (
     <AppButton
@@ -36,7 +44,7 @@ const SelectableCard = ({
       aria-pressed={selected}
       className="selectable-card-button"
       onClick={handleClick}
-      onDoubleClick={toggleSelection}
+      onDoubleClick={handleDoubleClick}
     >
       {children}
     </AppButton>
