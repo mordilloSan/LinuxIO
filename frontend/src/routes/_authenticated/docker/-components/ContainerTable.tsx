@@ -306,10 +306,6 @@ const containerCellRenderKey =
   (row: unknown): AppDataTableCellRenderKey =>
     isStackHeaderRow(row) ? [row.project] : getKey(asContainer(row));
 
-const isContainerRowSortable = (
-  row: Row<AppTableFeatures, ContainerTableRow>,
-) => !isStackHeaderRow(row.original);
-
 const getContainerTableRowId = (row: ContainerTableRow) =>
   isStackHeaderRow(row) ? `stack:${row.project}` : row.Id;
 
@@ -1136,45 +1132,73 @@ const ContainerTable = ({
   // collapses exactly when Actions starts crowding the name.
   const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
   const editMode = dnd?.editing ?? false;
-  // Layout mode flattens the grouping: the saved order is the flat list being
-  // rearranged, and header rows would sit between drop targets meaning nothing.
+  // Table mode keeps the same stack entries as card mode even while editing:
+  // headers move whole blocks, while their visible member rows stay inert.
   const rows = useMemo<ContainerTableRow[]>(
-    () =>
-      editMode
-        ? containers
-        : buildContainerTableRows(containers, collapsedStackIds),
-    [collapsedStackIds, containers, editMode],
+    () => buildContainerTableRows(containers, collapsedStackIds),
+    [collapsedStackIds, containers],
   );
-  const stackAwareDnd = useMemo(
-    () => (dnd ? { ...dnd, isRowSortable: isContainerRowSortable } : undefined),
-    [dnd],
-  );
-  const { collapsedStackMemberIds, stackMemberIds } = useMemo(() => {
-    const collapsedMemberIds = new Set<string>();
-    const memberIds = new Set<string>();
-    for (const row of rows) {
-      if (isStackHeaderRow(row)) {
-        for (const member of row.containers) {
-          memberIds.add(member.Id);
-          if (row.collapsed) collapsedMemberIds.add(member.Id);
+  const { collapsedStackMemberIds, stackMemberIds, stackMemberRowClasses } =
+    useMemo(() => {
+      const collapsedMemberIds = new Set<string>();
+      const memberIds = new Set<string>();
+      const memberRowClasses = new Map<string, string>();
+      for (const row of rows) {
+        if (isStackHeaderRow(row)) {
+          for (const [index, member] of row.containers.entries()) {
+            memberIds.add(member.Id);
+            if (row.collapsed) collapsedMemberIds.add(member.Id);
+            memberRowClasses.set(
+              member.Id,
+              [
+                "container-table__stack-member-row",
+                index === 0 && "container-table__stack-member-row--first",
+                index === row.containers.length - 1 &&
+                  "container-table__stack-member-row--last",
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+          }
         }
       }
-    }
-    return {
-      collapsedStackMemberIds: collapsedMemberIds,
-      stackMemberIds: memberIds,
-    };
-  }, [rows]);
+      return {
+        collapsedStackMemberIds: collapsedMemberIds,
+        stackMemberIds: memberIds,
+        stackMemberRowClasses: memberRowClasses,
+      };
+    }, [rows]);
+  const sortableRowIds = useMemo(
+    () =>
+      rows
+        .filter((row) => isStackHeaderRow(row) || !stackMemberIds.has(row.Id))
+        .map(getContainerTableRowId),
+    [rows, stackMemberIds],
+  );
+  const stackAwareDnd = useMemo(
+    () =>
+      dnd
+        ? {
+            ...dnd,
+            // `itemIds` contains loose containers and stack headers only.
+            // Group members still render underneath their header but never
+            // register with dnd-kit, so a stack can move only as one block.
+            isRowSortable: (row: Row<AppTableFeatures, ContainerTableRow>) =>
+              sortableRowIds.includes(String(dnd.getItemId(row))),
+            itemIds: sortableRowIds,
+          }
+        : undefined,
+    [dnd, sortableRowIds],
+  );
   const getRowAttributes = useCallback(
     (
       row: Row<AppTableFeatures, ContainerTableRow>,
     ): AppDataTableRowAttributes => ({
-      className:
-        !isStackHeaderRow(row.original) && stackMemberIds.has(row.original.Id)
-          ? "container-table__stack-member-row"
-          : undefined,
+      className: !isStackHeaderRow(row.original)
+        ? stackMemberRowClasses.get(row.original.Id)
+        : undefined,
     }),
-    [stackMemberIds],
+    [stackMemberRowClasses],
   );
   const renderRow = useCallback(
     ({

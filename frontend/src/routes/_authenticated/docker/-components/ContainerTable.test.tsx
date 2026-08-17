@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
+import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
+import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
 
 const media = vi.hoisted(() => ({ compact: false }));
@@ -134,6 +136,14 @@ function StatefulStackTable({ containers }: { containers: ContainerInfo[] }) {
     />
   );
 }
+
+const reorderDnd: AppDataTableDndOptions<ContainerTableRow> = {
+  contextProps: {} as never,
+  editing: true,
+  getItemId: (row) => row.id,
+  handleAriaLabel: "Reorder container",
+  itemIds: [],
+};
 
 describe("ContainerTable mutation feedback", () => {
   it("shows a warning and never claims up to date after a failed per-container scan", async () => {
@@ -301,6 +311,37 @@ describe("ContainerTable mutation feedback", () => {
 
     expect(rowNamed("media-web")).toBeInTheDocument();
     expect(rowNamed("media-db")).toBeInTheDocument();
+  });
+
+  it("keeps stack members inert while reordering their header", () => {
+    media.compact = false;
+    render(
+      <ContainerTable
+        containers={[
+          composeContainer("media-web-id", "media-web", "media"),
+          composeContainer("media-db-id", "media-db", "media"),
+          container("solo-id", "solo-app", "running"),
+        ]}
+        dnd={reorderDnd}
+      />,
+    );
+
+    const stackHeader = screen
+      .getByRole("button", { name: "Collapse stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    const mediaWeb = rowNamed("media-web");
+    const mediaDb = rowNamed("media-db");
+    const solo = rowNamed("solo-app");
+
+    expect(stackHeader).toHaveClass("app-dt__row--reordering");
+    expect(mediaWeb).not.toHaveClass("app-dt__row--reordering");
+    expect(mediaDb).not.toHaveClass("app-dt__row--reordering");
+    expect(within(mediaWeb).queryByLabelText("Reorder container")).toBeNull();
+    expect(within(mediaDb).queryByLabelText("Reorder container")).toBeNull();
+    expect(solo).toHaveClass("app-dt__row--reordering");
+    expect(
+      within(solo).getByLabelText("Reorder container"),
+    ).toBeInTheDocument();
   });
 
   it("keeps a compact row spinner after its action menu closes", async () => {
