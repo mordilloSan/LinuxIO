@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /* Ctrl+click must still read as pointer input, so bare modifier presses never
    count as keyboard activity. */
@@ -8,14 +8,14 @@ const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
  * Tracks whether the last user input seen while `active` was a key press, for
  * deciding whether a programmatic focus restore should paint a ring: a
  * keyboard-driven close must show where focus went, a pointer-driven close
- * must not. Read the ref at restore time and pass it as `focusVisible`
- * (honored by Chrome 145+ / Firefox 104+ / Safari 18.4+; older browsers
- * ignore the hint and keep their own heuristic — which rings the trigger
- * whenever the dialog held a text field, even for pure-mouse flows). Resets
- * to true on each activation: with no input seen, the ring is kept, erring
- * toward the keyboard user.
+ * must not. Returns a stable reader — call it at restore time and pass the
+ * result as `focusVisible` (honored by Chrome 145+ / Firefox 104+ /
+ * Safari 18.4+; older browsers ignore the hint and keep their own heuristic —
+ * which rings the trigger whenever the dialog held a text field, even for
+ * pure-mouse flows). Resets to true on each activation: with no input seen,
+ * the ring is kept, erring toward the keyboard user.
  */
-export function useLastInputWasKeyboard(active: boolean): RefObject<boolean> {
+export function useLastInputWasKeyboard(active: boolean): () => boolean {
   const lastInputWasKeyboard = useRef(true);
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export function useLastInputWasKeyboard(active: boolean): RefObject<boolean> {
     };
   }, [active]);
 
-  return lastInputWasKeyboard;
+  return useCallback(() => lastInputWasKeyboard.current, []);
 }
 
 /**
@@ -67,9 +67,7 @@ export function useDialogFocusRestore(open: boolean) {
       // from, and .focus() on a detached node drops focus onto <body> while
       // the ref would keep pinning that node's whole subtree.
       if (trigger?.isConnected) {
-        trigger.focus({
-          focusVisible: lastInputWasKeyboard.current,
-        });
+        trigger.focus({ focusVisible: lastInputWasKeyboard() });
       }
     };
   }, [open, lastInputWasKeyboard]);

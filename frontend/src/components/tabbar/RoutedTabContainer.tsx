@@ -290,7 +290,7 @@ const TabSelector = memo(function TabSelector({
       // auto-focused search input makes even tap-only flows ring. Same
       // contract as useDialogFocusRestore.
       trigger.focus({
-        focusVisible: lastSearchInputWasKeyboard.current,
+        focusVisible: lastSearchInputWasKeyboard(),
       });
     }
   }, [lastSearchInputWasKeyboard, mobileSearchAnchorEl]);
