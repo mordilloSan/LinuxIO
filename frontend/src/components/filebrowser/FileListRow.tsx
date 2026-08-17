@@ -330,8 +330,14 @@ const FileListRow = memo<FileListRowProps>(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? mixWithTransparency("var(--app-palette-primary-main)", 0.15)
-                      : mixWithTransparency("var(--app-palette-text-secondary)", 0.1),
+                      ? mixWithTransparency(
+                          "var(--app-palette-primary-main)",
+                          0.15,
+                        )
+                      : mixWithTransparency(
+                          "var(--app-palette-text-secondary)",
+                          0.1,
+                        ),
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",

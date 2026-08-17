@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -185,25 +186,6 @@ const ImageList = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Card selection is transient. Escape dismisses it without entering the
-  // destructive flow; the open confirmation dialog retains its own Escape
-  // handling and therefore keeps this selection intact.
-  //
-  // This covers the card view only: in table view the table handles Escape
-  // itself (collapse, then clear) and marks the press handled, so the check
-  // below stands aside rather than clearing on the collapse press.
-  useEffect(() => {
-    if (selected.size === 0 || deleteDialogOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      if (event.key === "Escape" || event.key === "Esc") {
-        setSelected(new Set());
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deleteDialogOpen, selected.size]);
-
   // Create image handler
   const handleCreateImage = useCallback(() => {
     // TODO: Open image pull/import dialog
@@ -251,6 +233,12 @@ const ImageList = ({
     getId: getImageRowId,
     items: imageRows,
     surface: "docker.images",
+  });
+  useCardSelectionEscape({
+    enabled: viewMode === "card" && (selected.size > 0 || surface.editMode),
+    isReordering: surface.editMode,
+    onClearSelection: () => setSelected(new Set()),
+    onExitReordering: surface.exitEditMode,
   });
   const tableDnd = useReorderableTableDnd<
     (typeof imageRows)[number],

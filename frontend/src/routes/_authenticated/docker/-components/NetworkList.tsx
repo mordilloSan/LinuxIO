@@ -23,6 +23,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useCardSelectionEscape } from "@/hooks/useCardSelectionEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -356,6 +357,9 @@ const DeleteNetworkDialog = ({
 
 const getNetworkId = (network: { Id: string }) => network.Id;
 
+// A press in layout mode belongs to the drag, not to selecting the network.
+const noopSelect = () => {};
+
 const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
@@ -378,6 +382,12 @@ const NetworkList = ({
     getId: getNetworkId,
     items: networks,
     surface: "docker.networks",
+  });
+  useCardSelectionEscape({
+    enabled: viewMode === "card" && (selected.size > 0 || surface.editMode),
+    isReordering: surface.editMode,
+    onClearSelection: () => setSelected(new Set()),
+    onExitReordering: surface.exitEditMode,
   });
   const tableDnd = useReorderableTableDnd<
     (typeof networks)[number],
@@ -617,7 +627,11 @@ const NetworkList = ({
             renderItem={(network) => (
               <NetworkCard
                 network={network}
-                onSelect={(checked) => handleSelectOne(network.Id, checked)}
+                onSelect={
+                  surface.editMode
+                    ? noopSelect
+                    : (checked) => handleSelectOne(network.Id, checked)
+                }
                 selected={effectiveSelected.has(network.Id)}
               />
             )}

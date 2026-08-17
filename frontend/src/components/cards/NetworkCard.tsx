@@ -1,6 +1,6 @@
 import { type DockerNetwork } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import SelectableCard from "@/components/cards/SelectableCard";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
@@ -19,41 +19,36 @@ export interface NetworkCardProps {
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
-  <FrostedCard
-    accent
-    hoverLift
-    style={{
-      padding: CARD_PADDING_SM,
-      /*
-        Selection takes the accent line to full strength and holds the lift
-        shadow, the same treatment DockerImageCard gives its selected state —
-        so a checkbox-driven multi-select list reads as selected the same way
-        a click-to-toggle one does.
-      */
-      ...(selected && {
-        borderBottomColor: "var(--fc-accent)",
-        boxShadow: "var(--fc-lift-shadow)",
-      }),
-    }}
+  <SelectableCard
+    label={`network ${network.Name}`}
+    onSelect={onSelect}
+    selected={selected}
   >
-    {/* Header: checkbox + name + driver chip */}
-    <div
+    <FrostedCard
+      accent
+      hoverLift
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
+        padding: CARD_PADDING_SM,
+        /*
+          Selection takes the accent line to full strength and holds the lift
+          shadow, the same treatment DockerImageCard gives its selected state.
+        */
+        ...(selected && {
+          borderBottomColor: "var(--fc-accent)",
+          boxShadow: "var(--fc-lift-shadow)",
+        }),
       }}
     >
+      {/* Header: name + driver chip */}
       <div
-        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 8,
+        }}
       >
-        <AppCheckbox
-          checked={selected}
-          onChange={(e) => onSelect(e.target.checked)}
-          size="small"
-        />
         <AppTypography
           fontWeight={700}
           noWrap
@@ -63,92 +58,92 @@ const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
         >
           {network.Name}
         </AppTypography>
-      </div>
-      <Chip
-        color="primary"
-        label={network.Driver}
-        size="small"
-        style={{ fontSize: "0.75rem" }}
-        variant="soft"
-      />
-    </div>
-
-    {/* Network flags */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
-      <Chip
-        label={`Internal: ${network.Internal ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      <Chip
-        label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      <Chip
-        label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      <Chip
-        label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      <Chip
-        label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      <Chip
-        label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
-        size="small"
-        variant="soft"
-      />
-      {network.Created && (
         <Chip
-          label={`Created: ${new Date(network.Created).toLocaleDateString()}`}
+          color="primary"
+          label={network.Driver}
+          size="small"
+          style={{ fontSize: "0.75rem" }}
+          variant="soft"
+        />
+      </div>
+
+      {/* Network flags */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
+        <Chip
+          label={`Internal: ${network.Internal ? "Yes" : "No"}`}
           size="small"
           variant="soft"
         />
-      )}
-    </div>
-
-    {/* ID */}
-    <AppTypography
-      style={{
-        marginTop: 4,
-        marginBottom: 4,
-        fontFamily: "var(--app-font-mono)",
-        fontSize: "0.78rem",
-        ...longTextStyles,
-      }}
-      variant="body2"
-    >
-      ID: {network.Id}
-    </AppTypography>
-
-    {/* IPAM subnets */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
-        network.IPAM.Config.slice(0, 2).map((ipam, i) => (
+        <Chip
+          label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
+          size="small"
+          variant="soft"
+        />
+        {network.Created && (
           <Chip
-            key={`${network.Id}-ipam-${i}`}
-            label={ipam.Subnet}
+            label={`Created: ${new Date(network.Created).toLocaleDateString()}`}
             size="small"
-            style={wrappableChipStyle}
-            labelStyle={wrappableChipLabelStyle}
-            variant="outlined"
+            variant="soft"
           />
-        ))
-      ) : (
-        <AppTypography color="text.secondary" variant="caption">
-          No IPAM config
-        </AppTypography>
-      )}
-    </div>
-  </FrostedCard>
+        )}
+      </div>
+
+      {/* ID */}
+      <AppTypography
+        style={{
+          marginTop: 4,
+          marginBottom: 4,
+          fontFamily: "var(--app-font-mono)",
+          fontSize: "0.78rem",
+          ...longTextStyles,
+        }}
+        variant="body2"
+      >
+        ID: {network.Id}
+      </AppTypography>
+
+      {/* IPAM subnets */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
+          network.IPAM.Config.slice(0, 2).map((ipam, i) => (
+            <Chip
+              key={`${network.Id}-ipam-${i}`}
+              label={ipam.Subnet}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="outlined"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="caption">
+            No IPAM config
+          </AppTypography>
+        )}
+      </div>
+    </FrostedCard>
+  </SelectableCard>
 );
 
 export default NetworkCard;

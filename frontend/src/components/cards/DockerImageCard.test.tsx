@@ -15,7 +15,7 @@ const image: DockerImageRow = {
 };
 
 describe("DockerImageCard", () => {
-  it("selects the whole card and keeps the dashboard-style accent", async () => {
+  it("selects on double click and keeps the dashboard-style accent", async () => {
     const onSelect = vi.fn();
     const { container, rerender, user } = render(
       <DockerImageCard image={image} onSelect={onSelect} selected={false} />,
@@ -26,13 +26,16 @@ describe("DockerImageCard", () => {
     });
     expect(card).toBe(container.firstElementChild);
     expect(card).toHaveAttribute("aria-pressed", "false");
-    expect(card).toHaveClass("docker-image-card-button");
+    expect(card).toHaveClass("selectable-card-button");
     expect(card.firstElementChild).not.toHaveClass(
       "docker-image-card--selected",
     );
     expect(screen.queryByRole("checkbox")).toBeNull();
 
     await user.click(card);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await user.dblClick(card);
     expect(onSelect).toHaveBeenCalledWith(true);
 
     rerender(<DockerImageCard image={image} onSelect={onSelect} selected />);

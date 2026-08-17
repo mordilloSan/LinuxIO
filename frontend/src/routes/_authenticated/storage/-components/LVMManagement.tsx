@@ -157,8 +157,7 @@ const CreateLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border:
-                  `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
+                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
               }}
             >
               <AppTypography color="text.secondary" variant="caption">
@@ -259,8 +258,7 @@ const ResizeLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border:
-                  `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
+                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
                 display: "grid",
                 gap: 4,
               }}

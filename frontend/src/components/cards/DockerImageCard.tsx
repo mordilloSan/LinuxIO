@@ -1,6 +1,6 @@
 import type { DockerUpdateCheckState } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppButton from "@/components/ui/AppButton";
+import SelectableCard from "@/components/cards/SelectableCard";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -37,16 +37,12 @@ const DockerImageCard = ({
   onSelect,
 }: DockerImageCardProps) => {
   const theme = useAppTheme();
-  const selectionLabel = `${selected ? "Deselect" : "Select"} image ${image.repo}`;
-
-  const toggleSelection = () => onSelect(!selected);
 
   return (
-    <AppButton
-      aria-label={selectionLabel}
-      onClick={toggleSelection}
-      aria-pressed={selected}
-      className="docker-image-card-button"
+    <SelectableCard
+      label={`image ${image.repo}`}
+      onSelect={onSelect}
+      selected={selected}
     >
       <FrostedCard
         accent
@@ -192,7 +188,7 @@ const DockerImageCard = ({
           {image.id}
         </AppTypography>
       </FrostedCard>
-    </AppButton>
+    </SelectableCard>
   );
 };
 

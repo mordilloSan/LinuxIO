@@ -1,16 +1,3 @@
-.docker-image-card-button {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  color: inherit;
-  text-align: inherit;
-}
-
-.docker-image-card-button:hover {
-  background: transparent;
-}
-
 /* Selection holds the card at the depth hovering gives it, until the image is
    deselected. The shadow is the one `hoverLift` already put on the element —
    this card used to recompute the identical value under a private name. It

@@ -1,0 +1,12 @@
+.selectable-card-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: inherit;
+}
+
+.selectable-card-button:hover {
+  background: transparent;
+}
