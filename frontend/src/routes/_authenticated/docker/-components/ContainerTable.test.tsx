@@ -345,6 +345,13 @@ describe("ContainerTable mutation feedback", () => {
     expect(
       within(solo).getByLabelText("Reorder container"),
     ).toBeInTheDocument();
+
+    const stackDragBlock = stackHeader.closest(
+      ".app-dt__sortable-group",
+    ) as HTMLElement;
+    expect(stackDragBlock).toContainElement(mediaWeb);
+    expect(stackDragBlock).toContainElement(mediaDb);
+    expect(stackDragBlock).not.toContainElement(solo);
   });
 
   it("keeps a compact row spinner after its action menu closes", async () => {

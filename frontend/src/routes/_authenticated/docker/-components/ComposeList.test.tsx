@@ -222,7 +222,9 @@ describe("ComposeList expanded-container mutation feedback", () => {
     ).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Search stacks…")).toBeNull();
     expect(screen.getByText("Compose files")).toBeInTheDocument();
-    expect(screen.getByText("Containers:")).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "Containers in demo" }),
+    ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: "Close stack details" }),

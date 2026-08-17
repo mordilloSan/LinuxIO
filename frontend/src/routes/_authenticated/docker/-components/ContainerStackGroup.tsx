@@ -44,12 +44,13 @@ export function ContainerStackBand({
 
   return (
     <section aria-label={`Stack ${project}`} className="container-stack-band">
-      <button
+      <AppButton
         aria-expanded
         aria-label={`Collapse stack ${project}`}
         className="container-stack-band__header"
+        color="inherit"
+        fullWidth
         onClick={onToggle}
-        type="button"
       >
         <Icon
           className="container-stack__chevron"
@@ -69,7 +70,7 @@ export function ContainerStackBand({
         <AppTypography color="text.secondary" noWrap variant="caption">
           {formatStackSummary(summary)}
         </AppTypography>
-      </button>
+      </AppButton>
       {children}
     </section>
   );

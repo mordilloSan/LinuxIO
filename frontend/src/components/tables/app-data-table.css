@@ -36,6 +36,15 @@
   min-width: 100%;
 }
 
+/* Adjacent rows may form one sortable entry (a Docker stack, for example).
+   The wrapper owns the DnD transform while each child remains an ordinary
+   grid row, so column tracks and row surfaces stay unchanged. */
+.app-dt__sortable-group {
+  position: relative;
+  width: 100%;
+  min-width: 100%;
+}
+
 .app-dt__row {
   --app-dt-row-bg: transparent;
   display: grid;

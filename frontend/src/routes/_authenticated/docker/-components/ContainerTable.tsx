@@ -40,6 +40,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -58,6 +59,7 @@ import {
   type ContainerStackHeaderRow,
   type ContainerTableRow,
 } from "./containerStacks";
+import { containerTableCollisionDetection } from "./containerTableDnd";
 
 import "./container-table.css";
 
@@ -397,12 +399,13 @@ function StackHeaderCell({
           </span>
         </AppTooltip>
       )}
-      <button
+      <AppIconButton
         aria-expanded={!header.collapsed}
         aria-label={`${header.collapsed ? "Expand" : "Collapse"} stack ${header.project}`}
         className="container-table__stack-group-toggle"
+        color="secondary"
         onClick={() => onToggleStack?.(header.project)}
-        type="button"
+        size="small"
       >
         <Icon
           className="container-table__stack-chevron"
@@ -410,7 +413,7 @@ function StackHeaderCell({
           icon="mdi:chevron-down"
           width={18}
         />
-      </button>
+      </AppIconButton>
     </div>
   );
 }
@@ -1147,36 +1150,44 @@ const ContainerTable = ({
     () => buildContainerTableRows(containers, collapsedStackIds),
     [collapsedStackIds, containers],
   );
-  const { collapsedStackMemberIds, stackMemberIds, stackMemberRowClasses } =
-    useMemo(() => {
-      const collapsedMemberIds = new Set<string>();
-      const memberIds = new Set<string>();
-      const memberRowClasses = new Map<string, string>();
-      for (const row of rows) {
-        if (isStackHeaderRow(row)) {
-          for (const [index, member] of row.containers.entries()) {
-            memberIds.add(member.Id);
-            if (row.collapsed) collapsedMemberIds.add(member.Id);
-            memberRowClasses.set(
-              member.Id,
-              [
-                "container-table__stack-member-row",
-                index === 0 && "container-table__stack-member-row--first",
-                index === row.containers.length - 1 &&
-                  "container-table__stack-member-row--last",
-              ]
-                .filter(Boolean)
-                .join(" "),
-            );
-          }
+  const {
+    collapsedStackMemberIds,
+    stackGroupIdsByMemberId,
+    stackMemberIds,
+    stackMemberRowClasses,
+  } = useMemo(() => {
+    const collapsedMemberIds = new Set<string>();
+    const groupIdsByMemberId = new Map<string, string>();
+    const memberIds = new Set<string>();
+    const memberRowClasses = new Map<string, string>();
+    for (const row of rows) {
+      if (isStackHeaderRow(row)) {
+        const groupId = getContainerTableRowId(row);
+        for (const [index, member] of row.containers.entries()) {
+          memberIds.add(member.Id);
+          groupIdsByMemberId.set(member.Id, groupId);
+          if (row.collapsed) collapsedMemberIds.add(member.Id);
+          memberRowClasses.set(
+            member.Id,
+            [
+              "container-table__stack-member-row",
+              index === 0 && "container-table__stack-member-row--first",
+              index === row.containers.length - 1 &&
+                "container-table__stack-member-row--last",
+            ]
+              .filter(Boolean)
+              .join(" "),
+          );
         }
       }
-      return {
-        collapsedStackMemberIds: collapsedMemberIds,
-        stackMemberIds: memberIds,
-        stackMemberRowClasses: memberRowClasses,
-      };
-    }, [rows]);
+    }
+    return {
+      collapsedStackMemberIds: collapsedMemberIds,
+      stackGroupIdsByMemberId: groupIdsByMemberId,
+      stackMemberIds: memberIds,
+      stackMemberRowClasses: memberRowClasses,
+    };
+  }, [rows]);
   const sortableRowIds = useMemo(
     () =>
       rows
@@ -1184,20 +1195,34 @@ const ContainerTable = ({
         .map(getContainerTableRowId),
     [rows, stackMemberIds],
   );
+  const hasStackGroups = stackMemberIds.size > 0;
   const stackAwareDnd = useMemo(
     () =>
       dnd
         ? {
             ...dnd,
+            contextProps: {
+              ...dnd.contextProps,
+              collisionDetection:
+                hasStackGroups
+                  ? containerTableCollisionDetection
+                  : dnd.contextProps.collisionDetection,
+            },
             // `itemIds` contains loose containers and stack headers only.
             // Group members still render underneath their header but never
             // register with dnd-kit, so a stack can move only as one block.
+            getSortableGroupId: (
+              row: Row<AppTableFeatures, ContainerTableRow>,
+            ) =>
+              isStackHeaderRow(row.original)
+                ? getContainerTableRowId(row.original)
+                : stackGroupIdsByMemberId.get(row.original.Id),
             isRowSortable: (row: Row<AppTableFeatures, ContainerTableRow>) =>
               sortableRowIds.includes(String(dnd.getItemId(row))),
             itemIds: sortableRowIds,
           }
         : undefined,
-    [dnd, sortableRowIds],
+    [dnd, hasStackGroups, sortableRowIds, stackGroupIdsByMemberId],
   );
   const getRowAttributes = useCallback(
     (
