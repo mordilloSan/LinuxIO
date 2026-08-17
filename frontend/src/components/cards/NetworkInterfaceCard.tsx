@@ -189,7 +189,13 @@ const NetworkInterfaceCard = ({
     <FrostedCard
       accent
       hoverLift={!expanded}
-      style={{ padding: 8, position: "relative" }}
+      style={{
+        padding: 8,
+        position: "relative",
+        // Expanding pulls the interface out of the grid, where it can no longer
+        // be held to reorder — so the line stands down with the lift.
+        ...(expanded && { borderBottomColor: "transparent" }),
+      }}
     >
       <NetworkInterfaceCardContent
         editorId={editorId}

@@ -11,18 +11,7 @@ import {
 } from "@/theme/surfaces";
 
 type FrostedCardProps = HTMLAttributes<HTMLDivElement> & {
-  /** When true, card lifts on hover (translateY + stronger shadow). */
   hoverLift?: boolean;
-  /**
-   * Draws the accent line along the card's bottom edge. It is the shared mark
-   * of a card that can be held to reorder — holding lights the line, which is
-   * the whole affordance (see `.accent-card` in FrostedCard.css) — so every
-   * card in a sortable grid should carry it and cards outside one should not.
-   *
-   * `true` uses the theme's primary. Pass a colour instead to key the line to
-   * the card's own state, as the interface cards do with their status colour;
-   * the hold then lights that colour rather than the primary.
-   */
   accent?: boolean | string;
 };
 

@@ -701,6 +701,9 @@ const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
       width: "100%",
       minWidth: 0,
       position: "relative",
+      // Selecting a container isolates it outside the grid, where it can no
+      // longer be held to reorder — so the line stands down with the lift.
+      ...(selected && { borderBottomColor: "transparent" }),
     }}
   >
     <ContainerCardLive {...props} selected={selected} />

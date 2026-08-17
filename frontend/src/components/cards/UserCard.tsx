@@ -253,9 +253,9 @@ const UserCard = ({
         // Same string as UnitCard and WireguardInterfaceCard — the three cards
         // that expand in place have to settle at one speed.
         transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
-        // The line itself comes from `accent` above. Only the selected state is
-        // special: an open card reads as selected from its own chrome, so the
-        // line stands down rather than competing with it.
+        // The line itself comes from `accent` above. Opening a user isolates the
+        // card outside the grid, where it can no longer be held to reorder — so
+        // the line stands down with the lift.
         ...(isSelected && { borderBottomColor: "transparent" }),
       }}
     >

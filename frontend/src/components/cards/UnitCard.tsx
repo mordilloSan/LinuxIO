@@ -23,6 +23,8 @@ const cardStyle: CSSProperties = {
   height: "100%",
 };
 
+/* Expanding a unit isolates the card outside the grid, where it can no longer
+   be held to reorder — so the accent line stands down with the lift. */
 const selectedCardStyle: CSSProperties = {
   ...cardStyle,
   width: "100%",
