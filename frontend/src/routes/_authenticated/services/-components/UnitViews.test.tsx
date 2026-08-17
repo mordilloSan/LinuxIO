@@ -1,8 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
 import { UnitTableView } from "./UnitViews";
+
+const mocks = vi.hoisted(() => ({ isMobile: false }));
+
+vi.mock("@/theme", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/theme")>();
+  return {
+    ...actual,
+    useAppMediaQuery: () => mocks.isMobile,
+  };
+});
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
@@ -40,7 +50,13 @@ const initialRows: UnitRow[] = [
   { id: "two", name: "Beta", status: "stopped" },
 ];
 
-function TestUnitTable({ data }: { data: UnitRow[] }) {
+function TestUnitTable({
+  data,
+  onSelect,
+}: {
+  data: UnitRow[];
+  onSelect?: (key: string | number | null) => void;
+}) {
   return (
     <UnitTableView
       data={data}
@@ -48,12 +64,18 @@ function TestUnitTable({ data }: { data: UnitRow[] }) {
       emptyMessage="No units"
       getRowKey={getRowKey}
       mobileColumns={tableColumns}
+      onSelect={onSelect}
       renderMainRow={renderMainRow}
     />
   );
 }
 
 describe("UnitTableView", () => {
+  beforeEach(() => {
+    mocks.isMobile = false;
+    renderMainRow.mockClear();
+  });
+
   it("reuses unchanged formatted rows and refreshes changed or reordered rows", () => {
     const view = render(<TestUnitTable data={initialRows} />);
 
@@ -71,5 +93,17 @@ describe("UnitTableView", () => {
     view.rerender(<TestUnitTable data={[changedSecondRow, initialRows[0]]} />);
 
     expect(renderMainRow).toHaveBeenCalledTimes(5);
+  });
+
+  it("opens the focused unit layout from a mobile row click", async () => {
+    mocks.isMobile = true;
+    const onSelect = vi.fn();
+    const { user } = render(
+      <TestUnitTable data={initialRows} onSelect={onSelect} />,
+    );
+
+    await user.click(screen.getByText("Alpha"));
+
+    expect(onSelect).toHaveBeenCalledWith("one");
   });
 });

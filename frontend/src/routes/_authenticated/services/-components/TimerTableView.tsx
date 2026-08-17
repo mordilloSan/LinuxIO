@@ -6,7 +6,7 @@ import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import { formatUsec } from "./unitFormatters";
 import UnitStatusDot from "./UnitStatusDot";
-import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
+import { UnitTableView } from "./UnitViews";
 
 interface TimerTableViewProps {
   onSelect?: (name: string | null) => void;
@@ -61,16 +61,6 @@ const renderTimerMainRow = (timer: Timer, isMobile: boolean) => [
       ]),
 ];
 
-const renderTimerMobileExpandedContent = (timer: Timer) => (
-  <MobileExpandedDetails
-    rows={[
-      { label: "Unit", value: timer.unit || "—" },
-      { label: "Next", value: formatUsec(timer.next_elapse_usec) },
-      { label: "Last", value: formatUsec(timer.last_trigger_usec) },
-    ]}
-  />
-);
-
 const TimerTableView = ({ surface, timers, onSelect }: TimerTableViewProps) => {
   const handleSelect = useCallback(
     (key: string | number | null) =>
@@ -90,7 +80,6 @@ const TimerTableView = ({ surface, timers, onSelect }: TimerTableViewProps) => {
       mobileColumns={mobileColumns}
       onSelect={handleSelect}
       renderMainRow={renderTimerMainRow}
-      renderMobileExpandedContent={renderTimerMobileExpandedContent}
     />
   );
 };

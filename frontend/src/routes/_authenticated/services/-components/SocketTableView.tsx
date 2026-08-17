@@ -7,7 +7,7 @@ import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppTheme } from "@/theme";
 
 import UnitStatusDot from "./UnitStatusDot";
-import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
+import { UnitTableView } from "./UnitViews";
 
 interface SocketTableViewProps {
   onSelect?: (name: string | null) => void;
@@ -87,16 +87,6 @@ const renderSocketMainRow = (socket: Socket, isMobile: boolean) => [
       ]),
 ];
 
-const renderSocketMobileExpandedContent = (socket: Socket) => (
-  <MobileExpandedDetails
-    rows={[
-      { label: "Listen", value: socket.listen.join(", ") || "—" },
-      { label: "Connections", value: String(socket.n_connections) },
-      { label: "Accepted", value: String(socket.n_accepted) },
-    ]}
-  />
-);
-
 const SocketTableView = ({
   surface,
   sockets,
@@ -120,7 +110,6 @@ const SocketTableView = ({
       mobileColumns={mobileColumns}
       onSelect={handleSelect}
       renderMainRow={renderSocketMainRow}
-      renderMobileExpandedContent={renderSocketMobileExpandedContent}
     />
   );
 };

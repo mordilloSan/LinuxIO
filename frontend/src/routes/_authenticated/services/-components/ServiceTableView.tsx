@@ -5,7 +5,7 @@ import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import UnitStatusDot from "./UnitStatusDot";
-import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
+import { UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
   onSelect?: (name: string | null) => void;
@@ -61,16 +61,6 @@ const renderServiceMainRow = (service: Service, isMobile: boolean) => [
     : [service.load_state, service.sub_state, service.description || "-"]),
 ];
 
-const renderServiceMobileExpandedContent = (service: Service) => (
-  <MobileExpandedDetails
-    rows={[
-      { label: "Load", value: service.load_state },
-      { label: "Sub", value: service.sub_state },
-      { label: "Description", value: service.description || "—" },
-    ]}
-  />
-);
-
 const ServiceTableView = ({
   surface,
   services,
@@ -94,7 +84,6 @@ const ServiceTableView = ({
       mobileColumns={mobileColumns}
       onSelect={handleSelect}
       renderMainRow={renderServiceMainRow}
-      renderMobileExpandedContent={renderServiceMobileExpandedContent}
     />
   );
 };

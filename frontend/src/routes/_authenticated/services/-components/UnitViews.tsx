@@ -59,7 +59,6 @@ interface UnitTableViewProps<T extends RowData> {
   onSelect?: (key: string | number | null) => void;
   /** One node per column of the active `desktopColumns`/`mobileColumns` set. */
   renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode[];
-  renderMobileExpandedContent?: (row: T, index: number) => ReactNode;
 }
 
 interface UnitTableColumn {
@@ -81,47 +80,6 @@ interface UnitCardsViewProps<T extends UnitListItem> {
   renderDetailPanel: (item: T) => ReactNode;
   renderSelectedRows?: (item: T) => ReactNode;
   renderSummaryRows: (item: T) => ReactNode;
-}
-
-interface MobileExpandedDetail {
-  label: string;
-  value: ReactNode;
-}
-
-export function MobileExpandedDetails({
-  rows,
-}: {
-  rows: readonly MobileExpandedDetail[];
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: "2px 0",
-      }}
-    >
-      {rows.map(({ label, value }) => (
-        <div key={label} style={{ display: "flex", gap: 12 }}>
-          <span
-            style={{
-              fontSize: "0.6rem",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--app-palette-text-secondary)",
-              width: 80,
-              flexShrink: 0,
-              paddingTop: 2,
-            }}
-          >
-            {label}
-          </span>
-          <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{value}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
@@ -446,7 +404,6 @@ export function UnitTableView<T extends RowData>({
   mobileColumns,
   getRowKey,
   renderMainRow,
-  renderMobileExpandedContent,
   onSelect,
   emptyMessage,
 }: UnitTableViewProps<T>) {
@@ -499,12 +456,6 @@ export function UnitTableView<T extends RowData>({
     },
     [getRowKey, onSelect],
   );
-  const renderExpandedContent = useCallback(
-    ({ original, index }: { original: T; index: number }) =>
-      renderMobileExpandedContent?.(original, index),
-    [renderMobileExpandedContent],
-  );
-
   return (
     <AppVirtualDataTable
       ariaLabel="Units"
@@ -514,12 +465,7 @@ export function UnitTableView<T extends RowData>({
       emptyMessage={emptyMessage}
       fillAvailable
       getRowId={getTableRowId}
-      onRowClick={isMobile ? undefined : handleRowClick}
-      renderExpandedContent={
-        isMobile && renderMobileExpandedContent
-          ? renderExpandedContent
-          : undefined
-      }
+      onRowClick={handleRowClick}
     />
   );
 }
