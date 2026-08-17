@@ -41,9 +41,15 @@ const SortableCard = ({
   const holding = pending && !editMode;
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    // Translation only: the rect-sorting strategy reassigns whole rects, and in
+    // a grid with mixed-size sortables (a stack band among cards) the scale
+    // half of that transform would squash or blow up whatever it touches. In a
+    // uniform grid the scale is 1, so dropping it changes nothing there.
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    // The dragged card rides above its neighbours instead of under them.
+    zIndex: isDragging ? 5 : undefined,
     position: "relative",
     borderRadius: cardBorderRadius,
     // This wrapper sits between a stretched grid cell and a card that sizes

@@ -45,6 +45,15 @@
   cursor: grabbing;
 }
 
+/* While the band itself is being dragged, its member cards are also sortables
+   and the strategy keeps handing them reassigned slots. They must ride along
+   with the band instead, so their own transforms are parked until it lands —
+   !important because dnd-kit writes them as inline styles. */
+.container-stack-band--dragging .sortable-card {
+  transform: none !important;
+  transition: none !important;
+}
+
 /* The whole header is the collapse control, like the table rows below it. */
 .container-stack-band__header {
   display: flex;

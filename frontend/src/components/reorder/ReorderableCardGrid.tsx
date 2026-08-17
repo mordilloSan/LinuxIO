@@ -2,6 +2,13 @@ import { DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import type { ReactNode } from "react";
 
+// The rect strategy previews a drag by reassigning whole rects, which only
+// reads as a reflow when every sortable is the same size. A custom body mixes
+// sizes (stack bands among cards), where those previews scatter cards
+// off-screen — so it keeps resting items still, marks the drop target with a
+// ring instead, and lets the grid reflow on drop.
+const staticSortingStrategy = () => null;
+
 import SortableCard from "@/components/cards/SortableCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";

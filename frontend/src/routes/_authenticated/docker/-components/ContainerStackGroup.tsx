@@ -65,13 +65,21 @@ export function ContainerStackBand({
   return (
     <section
       aria-label={`Stack ${project}`}
-      className="container-stack-band"
+      className={[
+        "container-stack-band",
+        isDragging && "container-stack-band--dragging",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       ref={setNodeRef}
       style={
         {
-          transform: CSS.Transform.toString(transform),
+          // Translation only, like SortableCard: the strategy's scale half
+          // would squash the band down to a card's rect mid-drag.
+          transform: CSS.Translate.toString(transform),
           transition,
           opacity: isDragging ? 0.5 : 1,
+          zIndex: isDragging ? 5 : undefined,
           "--reorder-hold-color": theme.palette.primary.main,
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
         } as CSSProperties
