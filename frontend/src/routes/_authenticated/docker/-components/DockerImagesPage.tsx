@@ -10,7 +10,7 @@ import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DockerImagesPage = () => {
   const { button: checkUpdatesButton } = useDockerUpdateCheck();
-  const [imagesView, setImagesView] = useViewMode("docker.images", "table");
+  const [imagesView, setImagesView] = useViewMode("docker.images");
   const [createImageHandler, setCreateImageHandler] = useState<
     (() => void) | null
   >(null);

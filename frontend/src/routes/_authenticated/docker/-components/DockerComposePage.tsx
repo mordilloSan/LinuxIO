@@ -10,7 +10,7 @@ import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DockerComposePage = () => {
   const { button: checkUpdatesButton } = useDockerUpdateCheck();
-  const [stacksView, setStacksView] = useViewMode("docker.stacks", "table");
+  const [stacksView, setStacksView] = useViewMode("docker.stacks");
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);

@@ -85,16 +85,19 @@ or instead of code.
   *Verify: `make check-frontend`, visual pass over LVM, docker dashboard,
   file browser card view*
 
-- [ ] **A6. (decision) View-mode default divergence.**
-  Docker stacks *do* use the normal accent card (`ComposeStackCard` →
-  `FrostedCard accent hoverLift` in a `ReorderableCardGrid`) — but only in
-  card view, and `useViewMode("docker.stacks", "table")` defaults to the
-  table. Across the app, `docker.containers` is the *only* surface defaulting
-  to `"card"`; stacks/images/networks/volumes, accounts, shares, services,
-  sockets and timers all default to `"table"`. Decide the intended default per
-  surface (or one app-wide rule) and align. Pairs naturally with A2, which
-  covers the card-density split between the same tabs.
-  *Verify: `make check-frontend`, visual pass over the docker tabs*
+- [x] **A6. View-mode defaults unified: everything defaults to card.**
+  *(done 2026-08-17)* Decision: one app-wide rule, card view. The default now
+  lives in exactly one place — `DEFAULT_VIEW_MODE = "card"` in
+  `hooks/useViewMode.ts` — and the hook's per-site `fallback` parameter is
+  gone (zero callers kept it): all 12 call sites now pass only their key.
+  Storage stays sparse (a mode is stored only when it differs from the
+  default), so users who explicitly chose table on a previously
+  table-default surface had nothing stored and will see card until they
+  toggle once — inherent to changing a sparse default. Hook tests updated to
+  the card default.
+  *Verify: `make check-frontend`, visual pass over docker tabs, accounts,
+  shares, services/sockets/timers — each should open in card view on a
+  fresh profile*
 
 ## Thread B — dock focus artifacts (simplified 2026-08-17; history in
 `docs/focus-artifact-investigation-2026-08-16.md`)

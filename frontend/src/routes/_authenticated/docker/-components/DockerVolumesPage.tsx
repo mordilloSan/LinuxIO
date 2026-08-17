@@ -8,7 +8,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import VolumeList from "./VolumeList";
 
 const DockerVolumesPage = () => {
-  const [volumesView, setVolumesView] = useViewMode("docker.volumes", "table");
+  const [volumesView, setVolumesView] = useViewMode("docker.volumes");
   const [createVolumeHandler, setCreateVolumeHandler] = useState<
     (() => void) | null
   >(null);

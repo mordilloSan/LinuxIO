@@ -8,10 +8,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import DockerNetworksTable from "./NetworkList";
 
 const DockerNetworksPage = () => {
-  const [networksView, setNetworksView] = useViewMode(
-    "docker.networks",
-    "table",
-  );
+  const [networksView, setNetworksView] = useViewMode("docker.networks");
   const [createNetworkHandler, setCreateNetworkHandler] = useState<
     (() => void) | null
   >(null);

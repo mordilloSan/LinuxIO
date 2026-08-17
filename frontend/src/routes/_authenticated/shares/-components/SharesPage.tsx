@@ -1159,7 +1159,7 @@ function renderExpandedContent(
 }
 
 const SharesPage = () => {
-  const [viewMode, setViewMode] = useViewMode("shares", "table");
+  const [viewMode, setViewMode] = useViewMode("shares");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);

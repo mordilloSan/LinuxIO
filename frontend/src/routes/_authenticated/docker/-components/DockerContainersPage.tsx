@@ -8,10 +8,8 @@ import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 const DockerContainersPage = () => {
   const { button: checkUpdatesButton, isCheckingUpdates } =
     useDockerUpdateCheck();
-  const [containerView, setContainerView] = useViewMode(
-    "docker.containers",
-    "card",
-  );
+  const [containerView, setContainerView] =
+    useViewMode("docker.containers");
   const actions = (
     <>
       {checkUpdatesButton}

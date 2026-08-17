@@ -29,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
 function SocketsRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
+  const [viewMode, setViewMode] = useViewMode("sockets.list");
   const setSelected = useCallback(
     (socket: string | null) =>
       navigate({

@@ -24,7 +24,7 @@ const MountsPage = () => {
   const [mountSMBHandler, setMountSMBHandler] = useState<(() => void) | null>(
     null,
   );
-  const [nfsView, setNfsView] = useViewMode("shares.mounts", "table");
+  const [nfsView, setNfsView] = useViewMode("shares.mounts");
 
   const actions = (
     <>

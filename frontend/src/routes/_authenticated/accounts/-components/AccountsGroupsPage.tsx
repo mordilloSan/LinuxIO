@@ -11,7 +11,7 @@ const AccountsGroupsPage = () => {
   const [createGroupHandler, setCreateGroupHandler] = useState<
     (() => void) | null
   >(null);
-  const [groupsView, setGroupsView] = useViewMode("accounts.groups", "table");
+  const [groupsView, setGroupsView] = useViewMode("accounts.groups");
 
   const actions = (
     <>

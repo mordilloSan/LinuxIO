@@ -14,7 +14,7 @@ const AccountsUsersPage = () => {
   const [createUserHandler, setCreateUserHandler] = useState<
     (() => void) | null
   >(null);
-  const [usersView, setUsersView] = useViewMode("accounts.users", "table");
+  const [usersView, setUsersView] = useViewMode("accounts.users");
   const search = accountsUsersRouteApi.useSearch();
   const isUserDetailOpen = typeof search.user === "string";
 

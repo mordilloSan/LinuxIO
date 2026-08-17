@@ -29,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/services/")({
 function ServicesRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("services.list", "table");
+  const [viewMode, setViewMode] = useViewMode("services.list");
   const setSelected = useCallback(
     (service: string | null) =>
       navigate({

@@ -29,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/services/timers")({
 function TimersRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("timers.list", "table");
+  const [viewMode, setViewMode] = useViewMode("timers.list");
   const setSelected = useCallback(
     (timer: string | null) =>
       navigate({
