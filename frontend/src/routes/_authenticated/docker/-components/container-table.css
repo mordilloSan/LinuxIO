@@ -97,11 +97,12 @@
   opacity: 0.7;
 }
 
-/* The header remains a normal table row. Only its members form the quiet,
-   rounded card: clipping the painted rows at the card edge leaves their grid
+/* The header remains a normal table row. Only its members form a quiet group:
+   clipping the painted rows at the card edge leaves their grid
    boxes (and therefore every column/action alignment) completely unchanged. */
 .app-dt__row.container-table__stack-member-row {
   --container-table-stack-card-gap: 8px;
+  --container-table-stack-border: var(--app-palette-divider);
 
   position: relative;
   clip-path: inset(0 0 0 var(--container-table-stack-card-gap));
@@ -111,12 +112,7 @@
   position: absolute;
   z-index: 0;
   inset: 0 0 0 var(--container-table-stack-card-gap);
-  border-inline: 1px solid var(--app-palette-divider);
-  background: color-mix(
-    in srgb,
-    var(--app-dt-row-bg),
-    var(--app-palette-text-primary) 3%
-  );
+  border-inline-start: 1px solid var(--container-table-stack-border);
   content: "";
   pointer-events: none;
 }
@@ -124,40 +120,32 @@
 .app-dt__row.container-table__stack-member-row--first {
   clip-path: inset(
     var(--container-table-stack-card-gap)
-      0 0 var(--container-table-stack-card-gap) round 16px 16px 0 0
+      0 0 var(--container-table-stack-card-gap) round 16px 0 0 0
   );
 }
 
 .app-dt__row.container-table__stack-member-row--first::before {
   inset-block-start: var(--container-table-stack-card-gap);
-  border-block-start: 1px solid var(--app-palette-divider);
-  border-radius: 16px 16px 0 0;
+  border-block-start: 1px solid var(--container-table-stack-border);
+  border-radius: 16px 0 0 0;
 }
 
 .app-dt__row.container-table__stack-member-row--last {
   clip-path: inset(
     0 0 var(--container-table-stack-card-gap)
-      var(--container-table-stack-card-gap) round 0 0 16px 16px
+      var(--container-table-stack-card-gap) round 0 0 0 16px
   );
 }
 
 .app-dt__row.container-table__stack-member-row--last::before {
   inset-block-end: var(--container-table-stack-card-gap);
-  border-block-end: 1px solid var(--app-palette-divider);
-  border-radius: 0 0 16px 16px;
+  border-block-end: 1px solid var(--container-table-stack-border);
+  border-radius: 0 0 0 16px;
 }
 
 .app-dt__row.container-table__stack-member-row > .app-dt__cell {
   position: relative;
   z-index: 1;
-}
-
-.app-dt__row--interactive.container-table__stack-member-row:hover::before {
-  background: color-mix(
-    in srgb,
-    var(--app-dt-row-bg),
-    var(--app-palette-text-primary) 7%
-  );
 }
 
 /* Only the member name cell moves inward: that makes the hierarchy readable

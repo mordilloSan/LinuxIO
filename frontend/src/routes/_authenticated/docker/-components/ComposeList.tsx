@@ -106,15 +106,6 @@ const getTotalContainers = (project: ComposeProject) => {
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
 
-const stackDetailSectionStyle = {
-  color: "var(--app-palette-text-secondary)",
-  fontSize: "0.6rem",
-  fontWeight: 700,
-  letterSpacing: "0.06em",
-  marginBottom: 4,
-  textTransform: "uppercase",
-} as const;
-
 interface ComposeContainerActionsProps {
   container: ContainerInfo;
   disabled: boolean;
