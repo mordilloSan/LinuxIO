@@ -702,6 +702,9 @@ const ContainerList = ({
               renderDragOverlay={renderEntryDragOverlay}
               renderItem={renderEntry}
               size={CARD_GRID_SIZE_DENSE}
+              // Drag reflows snap like the table's; only the collapse/expand
+              // toggle animates positions.
+              suspendLayoutAnimation={editMode}
               surface={entrySurface}
             />
           )}

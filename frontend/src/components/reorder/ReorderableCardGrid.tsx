@@ -93,6 +93,15 @@ interface ReorderableCardGridProps<TItem> {
   renderItem: (item: TItem, index: number) => ReactNode;
   /** Breakpoint spans for each card. Ignored when `virtualized`. */
   size?: GridSize;
+  /**
+   * Park the `animateLayout` FLIP without unmounting the motion cells (the
+   * cells must never remount mid-drag — that kills the drag). Set while
+   * layout mode is open: a drag commits a reflow per over-change, and
+   * animations restarting that fast read as jumping, their mid-flight
+   * transforms poking past the scrollport. Toggles still animate — they
+   * happen outside layout mode.
+   */
+  suspendLayoutAnimation?: boolean;
   surface: ReorderableSurface<TItem>;
   /**
    * Items to render. Defaults to `surface.items`; pass a filtered slice when a
@@ -141,6 +150,7 @@ function ReorderableCardGrid<TItem>({
   size,
   spacing = DASHBOARD_CARD_SPACING,
   surface,
+  suspendLayoutAnimation = false,
   virtualized = false,
 }: ReorderableCardGridProps<TItem>) {
   const rendered = items ?? surface.items;
@@ -187,7 +197,7 @@ function ReorderableCardGrid<TItem>({
             size={columns ? 1 : (getItemSize?.(item, index) ?? size)}
             {...(animateLayout && {
               component: motion.div,
-              layout: "position",
+              layout: suspendLayoutAnimation ? false : "position",
               transition: LAYOUT_TRANSITION,
             })}
           >
@@ -203,7 +213,11 @@ function ReorderableCardGrid<TItem>({
           flex: "1 1 0",
           minHeight: 0,
           minWidth: 0,
-          overflow: "auto",
+          // Never sideways: the cards are fluid-width, so any horizontal
+          // overflow is transient animation spill, and the scrollbar it
+          // summons would itself shift the layout.
+          overflowX: "hidden",
+          overflowY: "auto",
           /*
             This scrollport clips, so the room a hover-lifted card needs is
             reserved inside it and handed straight back by the matching
