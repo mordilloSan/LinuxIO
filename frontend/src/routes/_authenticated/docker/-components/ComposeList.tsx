@@ -18,7 +18,6 @@ import {
   useCallMutation,
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
-import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
@@ -106,65 +105,6 @@ const getTotalContainers = (project: ComposeProject) => {
 };
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
-
-interface ComposeServiceDetail {
-  containerCount: number;
-  image: string;
-  name: string;
-  ports: string[];
-  state: string;
-}
-
-const composeServiceColumns: AppDataTableColumnDef<ComposeServiceDetail>[] = [
-  {
-    accessorKey: "name",
-    header: "Service",
-    cell: ({ row }) => (
-      <AppTypography fontWeight={700} noWrap variant="body2">
-        {row.original.name}
-      </AppTypography>
-    ),
-  },
-  {
-    accessorKey: "state",
-    header: "State",
-    cell: ({ row }) => (
-      <Chip
-        color={getComposeStatusColor(row.original.state)}
-        label={row.original.state || "Unknown"}
-        size="small"
-        variant="soft"
-      />
-    ),
-    meta: { width: "110px" },
-  },
-  {
-    accessorKey: "containerCount",
-    header: "Containers",
-    meta: { align: "center", width: "110px" },
-  },
-  {
-    accessorKey: "image",
-    header: "Image",
-    cell: ({ row }) => (
-      <AppTypography noWrap title={row.original.image} variant="body2">
-        {row.original.image || "-"}
-      </AppTypography>
-    ),
-    meta: { hideBelow: "sm" },
-  },
-  {
-    id: "ports",
-    header: "Ports",
-    accessorFn: (service) => service.ports.join(", "),
-    cell: ({ row }) => (
-      <AppTypography noWrap variant="body2">
-        {row.original.ports.join(", ") || "-"}
-      </AppTypography>
-    ),
-    meta: { hideBelow: "md" },
-  },
-];
 
 const stackDetailSectionStyle = {
   color: "var(--app-palette-text-secondary)",
@@ -889,89 +829,6 @@ const ComposeList = ({
     },
     [containersByProject, expandedContainerColumns],
   );
-  const renderFocusedProjectDetails = (project: ComposeProject) => {
-    const services = Object.entries(project.services)
-      .map(([name, service]) => ({
-        containerCount: service.container_count,
-        image: service.image,
-        name: service.name || name,
-        ports: service.ports,
-        state: service.state,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    return (
-      <div className="expand-panel">
-        <DetailRow label="Compose files" noBorder>
-          {project.config_files.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {project.config_files.map((filePath) => (
-                <AppTypography
-                  className="expand-panel__mono"
-                  component="span"
-                  copyText={filePath}
-                  fontSize="0.75rem"
-                  fontWeight={500}
-                  key={filePath}
-                  noWrap
-                  title={filePath}
-                  variant="body2"
-                >
-                  {filePath}
-                </AppTypography>
-              ))}
-            </div>
-          ) : (
-            <AppTypography
-              color="text.secondary"
-              component="span"
-              fontSize="0.75rem"
-              variant="body2"
-            >
-              No compose files found.
-            </AppTypography>
-          )}
-        </DetailRow>
-        <DetailRow label="Location">
-          <AppTypography
-            className="expand-panel__mono"
-            component="span"
-            copyText={project.working_dir}
-            fontSize="0.75rem"
-            fontWeight={500}
-            noWrap
-            title={project.working_dir}
-            variant="body2"
-          >
-            {project.working_dir || "-"}
-          </AppTypography>
-        </DetailRow>
-        <div>
-          <AppTypography component="div" style={stackDetailSectionStyle}>
-            Services
-          </AppTypography>
-          <AppDataTable
-            ariaLabel={`Services in ${project.name}`}
-            className="compose-expanded-table"
-            columns={composeServiceColumns}
-            data={services}
-            density="compact"
-            emptyMessage="No services found for this stack."
-            enableSorting={false}
-            getRowId={(service) => service.name}
-            maxHeight={240}
-            variant="embedded"
-          />
-        </div>
-        <div>
-          <AppTypography component="div" style={stackDetailSectionStyle}>
-            Containers
-          </AppTypography>
-          {renderExpandedContent(project)}
-        </div>
-      </div>
-    );
-  };
   const searchControl = (
     <RoutedTabSearch active={search !== ""}>
       <AppHeaderSearch
@@ -1015,7 +872,7 @@ const ComposeList = ({
         <DockerResourceDetailsLayout
           onClose={() => updateFocusedProject(null)}
           resourceLabel="stack"
-          subtitle={`${focusedProject.status} · ${Object.keys(focusedProject.services).length} services`}
+          subtitle={`${focusedProject.status} · ${getTotalContainers(focusedProject)} containers`}
           summary={
             <ComposeStackCard
               isLoading={isLoading}
@@ -1030,7 +887,7 @@ const ComposeList = ({
           }
           title={focusedProject.name}
         >
-          {renderFocusedProjectDetails(focusedProject)}
+          {renderExpandedContent(focusedProject)}
         </DockerResourceDetailsLayout>
         {containerDialogs}
       </div>

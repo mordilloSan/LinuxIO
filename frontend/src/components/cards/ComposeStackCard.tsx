@@ -2,6 +2,7 @@ import { memo } from "react";
 
 import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -209,6 +210,57 @@ const ComposeStackCard = ({
       )}
 
       <AppDivider style={{ marginBlock: 12 }} />
+
+      {selected && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <DetailRow label="Compose files" noBorder>
+            {project.config_files.length > 0 ? (
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 2 }}
+              >
+                {project.config_files.map((filePath) => (
+                  <AppTypography
+                    className="expand-panel__mono"
+                    component="span"
+                    copyText={filePath}
+                    fontSize="0.75rem"
+                    fontWeight={500}
+                    key={filePath}
+                    noWrap
+                    title={filePath}
+                    variant="body2"
+                  >
+                    {filePath}
+                  </AppTypography>
+                ))}
+              </div>
+            ) : (
+              <AppTypography
+                color="text.secondary"
+                component="span"
+                fontSize="0.75rem"
+                variant="body2"
+              >
+                No compose files found.
+              </AppTypography>
+            )}
+          </DetailRow>
+          <DetailRow label="Location">
+            <AppTypography
+              className="expand-panel__mono"
+              component="span"
+              copyText={project.working_dir}
+              fontSize="0.75rem"
+              fontWeight={500}
+              noWrap
+              title={project.working_dir}
+              variant="body2"
+            >
+              {project.working_dir || "-"}
+            </AppTypography>
+          </DetailRow>
+        </div>
+      )}
 
       {/* Actions */}
       <div

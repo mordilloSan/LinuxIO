@@ -191,7 +191,7 @@ describe("ComposeList expanded-container mutation feedback", () => {
     });
   });
 
-  it("opens stack details with its compose configuration and services", async () => {
+  it("opens stack details with its compose configuration and containers", async () => {
     const { rerender, user } = render(
       <ComposeList
         onDelete={noopProject}
@@ -222,7 +222,6 @@ describe("ComposeList expanded-container mutation feedback", () => {
     ).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Search stacks…")).toBeNull();
     expect(screen.getByText("Compose files")).toBeInTheDocument();
-    expect(screen.getByText("Services:")).toBeInTheDocument();
     expect(screen.getByText("Containers:")).toBeInTheDocument();
 
     await user.click(
