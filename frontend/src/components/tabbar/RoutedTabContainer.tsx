@@ -291,7 +291,7 @@ const TabSelector = memo(function TabSelector({
       // contract as useDialogFocusRestore.
       trigger.focus({
         focusVisible: lastSearchInputWasKeyboard.current,
-      } as FocusOptions);
+      });
     }
   }, [lastSearchInputWasKeyboard, mobileSearchAnchorEl]);
 

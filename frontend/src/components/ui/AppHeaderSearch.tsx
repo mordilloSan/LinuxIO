@@ -85,8 +85,7 @@ const AppHeaderSearch = ({
     };
 
     document.addEventListener("keydown", handleDocumentKeyDown);
-    return () =>
-      document.removeEventListener("keydown", handleDocumentKeyDown);
+    return () => document.removeEventListener("keydown", handleDocumentKeyDown);
   }, [clearOnDocumentEscape, onChange, value]);
 
   return (

@@ -69,7 +69,7 @@ export function useDialogFocusRestore(open: boolean) {
       if (trigger?.isConnected) {
         trigger.focus({
           focusVisible: lastInputWasKeyboard.current,
-        } as FocusOptions);
+        });
       }
     };
   }, [open, lastInputWasKeyboard]);
