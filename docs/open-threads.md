@@ -23,11 +23,13 @@ or instead of code.
   refinements (chip labels, row paddings, UserCard's footer `paddingTop: 8`).
   *Verified: `make check-frontend` passed (173 files / 833 tests).*
 
-- [ ] **A2. (decision) Grid-density divergence.**
-  Now explicit in constants, values untouched: docker images/networks/volumes
-  use `CARD_GRID_SIZE_STANDARD` (lg:3, 4-across) while containers/compose use
-  `CARD_GRID_SIZE_DENSE` (lg:2, 6-across); shares' folder cards disagree with
-  NFS mounts one tab over. Decide intent per route, then unify or document.
+- [x] **A2. Grid-density divergence — decided and applied.** *(done 2026-08-17)*
+  Decisions: docker keeps the split deliberately — containers/compose stay
+  DENSE (busiest surfaces, compact cards), images/networks/volumes stay
+  STANDARD (wider text: tags, subnets); shares unify to DENSE, so NFS mounts
+  moved from `CARD_GRID_SIZE_STANDARD` to `CARD_GRID_SIZE_DENSE` to match the
+  folder-shares tab (only visual change). Intent is now documented in the
+  `constants.ts` comment instead of "no documented reason".
   *Verify: `make check-frontend`, visual pass over docker + shares tabs*
 
 - [ ] **A3. (decision) Prune or keep the reorder escape hatches.**
