@@ -27,6 +27,7 @@ Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 | Doc | Use |
 |-----|-----|
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |
+| [Docker Management Roadmap](./docker-management-roadmap.md) | Planned backend/frontend phases for container monitoring, local Compose, resource management, activity, remote environments, and security; shared table customization is a deferred TODO. |
 | [Durable Operations Architecture](./durable-operations-architecture.md) | Implemented durable-operation records, recovery, transient-unit adapter, and the `control.app_update` and `docker.update_container` routes. |
 | [Notifications](./notifications.md) | Planned persistent per-user notification store, Calls, Channel, and frontend behavior. |
 | [Automatic Updates](./automatic-updates.md) | Supported native update providers, managed timers, option compatibility, and configuration ownership. |
