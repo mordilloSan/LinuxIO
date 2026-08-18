@@ -136,7 +136,9 @@ describe("FileBrowserHeader", () => {
     expect(container.querySelector(".file-browser-header__search")).toHaveStyle(
       { gridColumn: "2" },
     );
-    expect(container.querySelector(".header-right")).toHaveStyle({
+    expect(
+      container.querySelector(".file-browser-header__actions"),
+    ).toHaveStyle({
       gridColumn: "3",
       justifySelf: "end",
     });

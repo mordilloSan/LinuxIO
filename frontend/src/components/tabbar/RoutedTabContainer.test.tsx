@@ -243,10 +243,8 @@ describe("RoutedTabContainer", () => {
     );
   });
 
-  it("creates a route layout with the supplied container style", async () => {
-    const AccountsLayout = makeTabLayout(tabs, {
-      paddingInline: 0,
-    });
+  it("creates a route layout that renders the tabs and the child route", async () => {
+    const AccountsLayout = makeTabLayout(tabs);
     const rootRoute = createRootRoute({ component: Outlet });
     const accountsRoute = createRoute({
       component: AccountsLayout,
@@ -265,12 +263,10 @@ describe("RoutedTabContainer", () => {
       ]),
     });
     await router.load();
-    const { container } = render(<RouterProvider router={router} />);
+    render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("Users route")).toBeInTheDocument();
-    expect(container.querySelector(".tab-container")).toHaveStyle({
-      paddingInline: "0",
-    });
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
   });
 
   it("does not register a mobile action slot for null children", async () => {

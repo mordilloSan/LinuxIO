@@ -20,10 +20,7 @@ export const Route = createFileRoute("/_authenticated/updates")({
 function UpdatesLayout() {
   return (
     <PackageUpdateControllerProvider>
-      <RoutedTabLayout
-        containerStyle={{ paddingInline: 0 }}
-        tabs={UPDATES_TABS}
-      >
+      <RoutedTabLayout tabs={UPDATES_TABS}>
         <Outlet />
       </RoutedTabLayout>
     </PackageUpdateControllerProvider>

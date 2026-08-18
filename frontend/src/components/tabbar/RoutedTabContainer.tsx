@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -44,7 +43,6 @@ export interface RoutedTab {
 
 interface RoutedTabContainerProps {
   children?: ReactNode;
-  containerStyle?: CSSProperties;
   tabs: readonly RoutedTab[];
 }
 
@@ -56,8 +54,6 @@ interface TabSelectorProps {
   searchHostMountRef?: (element: HTMLDivElement | null) => void;
   tabs: readonly RoutedTab[];
 }
-
-const EMPTY_CONTAINER_STYLE: CSSProperties = {};
 
 const TabActionSlotContext = createContext<{
   host: HTMLElement;
@@ -133,11 +129,7 @@ export const RoutedTabSearch = ({
   return createPortal(children, parentSearchSlot.host);
 };
 
-export const RoutedTabLayout = ({
-  children,
-  containerStyle = EMPTY_CONTAINER_STYLE,
-  tabs,
-}: RoutedTabContainerProps) => {
+export const RoutedTabLayout = ({ children, tabs }: RoutedTabContainerProps) => {
   // Keep the portal targets for the layout's lifetime so moving route content
   // does not reset state held by its header controls.
   const [actionHost] = useState(() => {
@@ -190,7 +182,7 @@ export const RoutedTabLayout = ({
     [registerActiveSearch, registerSearch, searchHost],
   );
   return (
-    <div className="tab-container" style={containerStyle}>
+    <div className="tab-container">
       <TabSelector
         actionHostMountRef={mountActionHost}
         hasActiveSlotSearch={activeSearchCount > 0}

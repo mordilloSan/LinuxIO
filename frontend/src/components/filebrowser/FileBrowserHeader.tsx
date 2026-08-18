@@ -165,143 +165,136 @@ const FileBrowserHeader = ({
         )}
         {/* Right section - Action buttons */}
         <div
-          className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
+          className="file-browser-header__actions"
           style={{
             display: "flex",
+            alignItems: "center",
             gridColumn: isBrowsing ? 3 : undefined,
             justifySelf: isBrowsing ? "end" : undefined,
             marginLeft: isBrowsing ? 0 : "auto",
           }}
         >
-          <div
-            className="quick-actions-group"
-            style={{
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            {showQuickSave && (
-              <>
-                <AppTooltip title="Close editor">
-                  <AppIconButton
-                    aria-label="Close editor"
-                    disabled={isSaving || !onCloseEditor}
-                    onClick={onCloseEditor}
-                  >
-                    <Icon height={22} icon="mdi:close" width={22} />
-                  </AppIconButton>
-                </AppTooltip>
+          {showQuickSave && (
+            <>
+              <AppTooltip title="Close editor">
+                <AppIconButton
+                  aria-label="Close editor"
+                  disabled={isSaving || !onCloseEditor}
+                  onClick={onCloseEditor}
+                >
+                  <Icon height={22} icon="mdi:close" width={22} />
+                </AppIconButton>
+              </AppTooltip>
 
-                <AppTooltip title="Save changes">
-                  <AppIconButton
-                    aria-label="Save changes"
-                    disabled={isSaving || !onSaveFile}
-                    onClick={onSaveFile}
-                  >
-                    <Icon height={22} icon="mdi:content-save" width={22} />
-                  </AppIconButton>
-                </AppTooltip>
-              </>
-            )}
+              <AppTooltip title="Save changes">
+                <AppIconButton
+                  aria-label="Save changes"
+                  disabled={isSaving || !onSaveFile}
+                  onClick={onSaveFile}
+                >
+                  <Icon height={22} icon="mdi:content-save" width={22} />
+                </AppIconButton>
+              </AppTooltip>
+            </>
+          )}
 
-            {!showQuickSave && (
-              <>
-                {isMobile ? (
-                  <>
-                    <AppIconButton
-                      aria-label="Actions"
-                      onClick={(e) => setActionsAnchorEl(e.currentTarget)}
-                      size="small"
+          {!showQuickSave && (
+            <>
+              {isMobile ? (
+                <>
+                  <AppIconButton
+                    aria-label="Actions"
+                    onClick={(e) => setActionsAnchorEl(e.currentTarget)}
+                    size="small"
+                  >
+                    <Icon height={20} icon="mdi:tune" width={20} />
+                  </AppIconButton>
+                  <AppMenu
+                    anchorEl={actionsAnchorEl}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                    minWidth="unset"
+                    onClose={() => setActionsAnchorEl(null)}
+                    open={Boolean(actionsAnchorEl)}
+                    transformOrigin={{ vertical: "top", horizontal: "right" }}
+                  >
+                    <div
+                      style={{ display: "flex", gap: 8, padding: "4px 8px" }}
                     >
-                      <Icon height={20} icon="mdi:tune" width={20} />
-                    </AppIconButton>
-                    <AppMenu
-                      anchorEl={actionsAnchorEl}
-                      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                      minWidth="unset"
-                      onClose={() => setActionsAnchorEl(null)}
-                      open={Boolean(actionsAnchorEl)}
-                      transformOrigin={{ vertical: "top", horizontal: "right" }}
-                    >
-                      <div
-                        style={{ display: "flex", gap: 8, padding: "4px 8px" }}
-                      >
-                        <ViewModeToggle
-                          alternateMode="list"
-                          onViewModeChange={() => {
-                            setActionsAnchorEl(null);
-                            onSwitchView();
-                          }}
-                          viewMode={viewMode}
-                        />
-                        <AppActionIconButton
-                          icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
-                          iconSize={20}
-                          label={
-                            showHiddenFiles
-                              ? "Hide hidden files"
-                              : "Show hidden files"
-                          }
-                          onClick={() => {
-                            setActionsAnchorEl(null);
-                            onToggleHiddenFiles();
-                          }}
-                        />
-                        <AppActionIconButton
-                          ariaLabel="Index filesystem"
-                          disabled={isIndexing || !indexerEnabled}
-                          icon="mdi:sync"
-                          iconSize={20}
-                          label={
-                            isIndexing
-                              ? "Indexing..."
-                              : !indexerEnabled
-                                ? indexerReason
-                                : "Index filesystem"
-                          }
-                          loading={isIndexing}
-                          onClick={handleIndexer}
-                        />
-                      </div>
-                    </AppMenu>
-                  </>
-                ) : (
-                  <>
-                    <ViewModeToggle
-                      alternateMode="list"
-                      onViewModeChange={onSwitchView}
-                      viewMode={viewMode}
-                    />
-                    <AppActionIconButton
-                      icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
-                      iconSize={20}
-                      label={
-                        showHiddenFiles
-                          ? "Hide hidden files"
-                          : "Show hidden files"
-                      }
-                      onClick={onToggleHiddenFiles}
-                    />
-                    <AppActionIconButton
-                      ariaLabel="Index filesystem"
-                      disabled={isIndexing || !indexerEnabled}
-                      icon="mdi:sync"
-                      iconSize={20}
-                      label={
-                        isIndexing
-                          ? "Indexing..."
-                          : !indexerEnabled
-                            ? indexerReason
-                            : "Index filesystem"
-                      }
-                      loading={isIndexing}
-                      onClick={handleIndexer}
-                    />
-                  </>
-                )}
-              </>
-            )}
-          </div>
+                      <ViewModeToggle
+                        alternateMode="list"
+                        onViewModeChange={() => {
+                          setActionsAnchorEl(null);
+                          onSwitchView();
+                        }}
+                        viewMode={viewMode}
+                      />
+                      <AppActionIconButton
+                        icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
+                        iconSize={20}
+                        label={
+                          showHiddenFiles
+                            ? "Hide hidden files"
+                            : "Show hidden files"
+                        }
+                        onClick={() => {
+                          setActionsAnchorEl(null);
+                          onToggleHiddenFiles();
+                        }}
+                      />
+                      <AppActionIconButton
+                        ariaLabel="Index filesystem"
+                        disabled={isIndexing || !indexerEnabled}
+                        icon="mdi:sync"
+                        iconSize={20}
+                        label={
+                          isIndexing
+                            ? "Indexing..."
+                            : !indexerEnabled
+                              ? indexerReason
+                              : "Index filesystem"
+                        }
+                        loading={isIndexing}
+                        onClick={handleIndexer}
+                      />
+                    </div>
+                  </AppMenu>
+                </>
+              ) : (
+                <>
+                  <ViewModeToggle
+                    alternateMode="list"
+                    onViewModeChange={onSwitchView}
+                    viewMode={viewMode}
+                  />
+                  <AppActionIconButton
+                    icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
+                    iconSize={20}
+                    label={
+                      showHiddenFiles
+                        ? "Hide hidden files"
+                        : "Show hidden files"
+                    }
+                    onClick={onToggleHiddenFiles}
+                  />
+                  <AppActionIconButton
+                    ariaLabel="Index filesystem"
+                    disabled={isIndexing || !indexerEnabled}
+                    icon="mdi:sync"
+                    iconSize={20}
+                    label={
+                      isIndexing
+                        ? "Indexing..."
+                        : !indexerEnabled
+                          ? indexerReason
+                          : "Index filesystem"
+                    }
+                    loading={isIndexing}
+                    onClick={handleIndexer}
+                  />
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
       <IndexerDialog />

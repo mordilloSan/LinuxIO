@@ -106,8 +106,8 @@ const MainLayout = () => {
           {updateInfo?.available && (
             <div
               style={{
-                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-                paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+                paddingLeft: pageInsetInline,
+                paddingRight: pageInsetInline,
                 paddingTop: 0,
                 paddingBottom: theme.spacing(1),
               }}
