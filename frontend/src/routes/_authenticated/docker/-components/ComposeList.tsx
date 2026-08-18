@@ -24,7 +24,7 @@ import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperat
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";

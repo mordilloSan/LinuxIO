@@ -55,9 +55,6 @@ import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
 import "./app-data-table.css";
 import "../reorder/reorder.css";
 
-// Call sites import the column type from the component, not the registry.
-export type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
-
 export interface AppDataTableDndOptions<TData extends RowData> {
   contextProps: ReorderableSurfaceDndProps;
   getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
@@ -1131,8 +1128,6 @@ function AppDataTable<TData extends RowData>({
   );
 }
 
-const MemoizedAppDataTable = memo(
-  AppDataTable,
-) as typeof AppDataTable;
+const MemoizedAppDataTable = memo(AppDataTable) as typeof AppDataTable;
 
 export default MemoizedAppDataTable;

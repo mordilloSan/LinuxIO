@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { type CountProgress, linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";

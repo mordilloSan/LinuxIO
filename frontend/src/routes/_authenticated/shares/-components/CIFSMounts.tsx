@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { CACHE_TTL_MS, linuxio, type CIFSMount, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";

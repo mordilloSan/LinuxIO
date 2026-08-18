@@ -13,7 +13,7 @@ import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";

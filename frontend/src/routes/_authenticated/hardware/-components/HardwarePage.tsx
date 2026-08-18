@@ -10,7 +10,7 @@ import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";

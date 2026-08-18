@@ -12,7 +12,7 @@ import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import type { UserLockAction } from "@/components/cards/UserCard";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -296,12 +296,18 @@ const UsersTab = ({
           return (
             <AppTypography
               color={
-                user.username === currentUser?.name ? "success" : "text.secondary"
+                user.username === currentUser?.name
+                  ? "success"
+                  : "text.secondary"
               }
               style={responsiveTextStyles}
               variant="body2"
             >
-              {formatLastLogin(user.lastLogin, user.username, currentUser?.name)}
+              {formatLastLogin(
+                user.lastLogin,
+                user.username,
+                currentUser?.name,
+              )}
             </AppTypography>
           );
         },

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import type { VMPreflight, VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";

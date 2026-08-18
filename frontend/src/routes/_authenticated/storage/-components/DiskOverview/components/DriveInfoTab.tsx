@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";

@@ -18,7 +18,7 @@ import type { Service } from "@/api";
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";

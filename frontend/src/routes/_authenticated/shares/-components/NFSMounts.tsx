@@ -6,7 +6,7 @@ import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";

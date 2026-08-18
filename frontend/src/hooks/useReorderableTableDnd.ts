@@ -1,8 +1,8 @@
 import type { Row, RowData } from "@tanstack/react-table";
 import { useMemo } from "react";
 
-import type { AppTableFeatures } from "@/components/tables/AppDataTable.types";
 import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
+import type { AppTableFeatures } from "@/components/tables/AppDataTable.types";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 interface ReorderableTableDndOptions<TData extends RowData, TItem> {
@@ -52,4 +52,3 @@ export function useReorderableTableDnd<TData extends RowData, TItem>({
     ],
   );
 }
-

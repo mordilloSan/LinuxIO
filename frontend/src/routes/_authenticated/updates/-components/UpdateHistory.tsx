@@ -3,7 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";

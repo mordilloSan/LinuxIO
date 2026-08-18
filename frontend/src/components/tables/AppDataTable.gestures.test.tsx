@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";

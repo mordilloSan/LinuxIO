@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";

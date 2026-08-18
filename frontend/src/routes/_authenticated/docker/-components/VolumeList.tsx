@@ -9,7 +9,7 @@ import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetai
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -255,9 +255,7 @@ const VolumeList = ({
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
-  const columns = useMemo<
-    AppDataTableColumnDef<(typeof filtered)[number]>[]
-  >(
+  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
     () => [
       {
         accessorKey: "Name",
