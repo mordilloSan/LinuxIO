@@ -31,7 +31,7 @@ const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
         {!isDesktop && onDrawerToggle && (
           <AppIconButton
             aria-label="Open drawer"
-            color="inherit"
+            color="secondary"
             onClick={onDrawerToggle}
           >
             <Icon height={iconSize.md} icon="mdi:menu" width={iconSize.md} />
