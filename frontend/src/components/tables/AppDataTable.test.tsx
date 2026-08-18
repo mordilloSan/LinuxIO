@@ -5,6 +5,10 @@ import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import { render, screen } from "@/test/render";
 
+const virtualizerSpies = vi.hoisted(() => ({
+  measure: vi.fn(),
+}));
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({
     count,
@@ -23,7 +27,7 @@ vi.mock("@tanstack/react-virtual", () => ({
         size: 48,
         start: index * 48,
       })),
-    measure: vi.fn(),
+    measure: virtualizerSpies.measure,
     measureElement: vi.fn(),
     resizeItem: vi.fn(),
     scrollToIndex: vi.fn(),
@@ -155,6 +159,25 @@ describe("AppDataTable", () => {
     await view.user.click(row);
     expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
     expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("toggles detail entries without resetting the virtualizer", async () => {
+    virtualizerSpies.measure.mockClear();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
+
+    await view.user.click(row);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(virtualizerSpies.measure).not.toHaveBeenCalled();
+
+    await view.user.click(row);
+    expect(virtualizerSpies.measure).not.toHaveBeenCalled();
   });
 
   it("does not rerender stable explicit-key cells when live rows prepend", () => {

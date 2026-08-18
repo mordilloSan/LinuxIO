@@ -621,7 +621,6 @@ function AppDataTable<TData extends RowData>({
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
   const expandedRowIdsRef = useRef<Set<string>>(new Set());
-  const measureFrameRef = useRef<number | null>(null);
   const detailAnimationFrameRefs = useRef<Map<string, number>>(new Map());
   const detailContentHeightsRef = useRef<Map<string, number>>(new Map());
   const detailContentObserverRefs = useRef<Map<string, ResizeObserver>>(
@@ -634,7 +633,7 @@ function AppDataTable<TData extends RowData>({
     () => new Set(),
   );
 
-  const { dndOptions, resolvedExpanded, table } = useAppTableInstance({
+  const { dndOptions, table } = useAppTableInstance({
     columns,
     data,
     dnd,
@@ -741,15 +740,6 @@ function AppDataTable<TData extends RowData>({
     latestVirtualEntriesRef.current = virtualEntries;
   }, [virtualEntries]);
 
-  const scheduleMeasure = useCallback(() => {
-    if (measureFrameRef.current !== null) return;
-
-    measureFrameRef.current = window.requestAnimationFrame(() => {
-      measureFrameRef.current = null;
-      virtualizer.measure();
-    });
-  }, [virtualizer]);
-
   const setDetailSize = useCallback(
     (rowId: string, size: number) => {
       const normalizedSize = Math.max(0, Math.round(size));
@@ -824,14 +814,13 @@ function AppDataTable<TData extends RowData>({
             return next;
           });
           detailSizesRef.current.delete(rowId);
-          scheduleMeasure();
         }
       };
 
       const frame = window.requestAnimationFrame(step);
       detailAnimationFrameRefs.current.set(rowId, frame);
     },
-    [scheduleMeasure, setDetailSize],
+    [setDetailSize],
   );
 
   const measureDetailContent = useCallback(
@@ -887,10 +876,6 @@ function AppDataTable<TData extends RowData>({
   );
 
   useLayoutEffect(() => {
-    scheduleMeasure();
-  }, [resolvedExpanded, scheduleMeasure]);
-
-  useLayoutEffect(() => {
     if (!renderExpandedContent) return;
 
     for (const rowId of mountedDetailRowIds) {
@@ -912,9 +897,6 @@ function AppDataTable<TData extends RowData>({
 
   useEffect(
     () => () => {
-      if (measureFrameRef.current !== null) {
-        window.cancelAnimationFrame(measureFrameRef.current);
-      }
       for (const frame of detailAnimationFrameRefs.current.values()) {
         window.cancelAnimationFrame(frame);
       }

@@ -21,6 +21,9 @@ const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
 const ScrollingTabsPage = lazy(() => import("./routes/ScrollingTabsPage"));
+const VirtualExpansionTablePage = lazy(
+  () => import("./routes/VirtualExpansionTablePage"),
+);
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -88,6 +91,11 @@ const cardTabsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "scrolling-tabs/cards",
 });
+const virtualExpansionRoute = createRoute({
+  component: VirtualExpansionTablePage,
+  getParentRoute: () => rootRoute,
+  path: "tables/virtual-expansion",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -117,6 +125,7 @@ const routeTree = rootRoute.addChildren([
   growingTabsRoute,
   fillingTabsRoute,
   cardTabsRoute,
+  virtualExpansionRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

@@ -482,7 +482,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
     },
   });
 
-  return { dndOptions, resolvedExpanded, resolvedSorting, table };
+  return { dndOptions, table };
 }
 
 interface UseTableGestureKeysOptions<TData extends RowData> {
