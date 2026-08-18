@@ -389,7 +389,6 @@ export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
   data: TData[];
   dnd?: TDnd;
   enableSorting: boolean;
-  expanded?: ExpandedState;
   getRowCanExpand?: (row: Row<AppTableFeatures, TData>) => boolean;
   getRowId: (
     row: TData,
@@ -397,15 +396,14 @@ export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
     parent?: Row<AppTableFeatures, TData>,
   ) => string;
   manualSorting: boolean;
-  onExpandedChange?: OnChangeFn<ExpandedState>;
   onSortingChange?: OnChangeFn<SortingState>;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   sorting?: SortingState;
 }
 
 /**
- * The TanStack instance both tables build: controlled-or-internal expansion
- * and sorting, breakpoint-driven column visibility from `meta.hideBelow`, and
+ * The TanStack instance both tables build: internal expansion and sorting,
+ * breakpoint-driven column visibility from `meta.hideBelow`, and
  * the sort/reorder exclusion.
  */
 export function useAppTableInstance<TData extends RowData, TDnd>({
@@ -413,11 +411,9 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   data,
   dnd,
   enableSorting,
-  expanded,
   getRowCanExpand,
   getRowId,
   manualSorting,
-  onExpandedChange,
   onSortingChange,
   renderExpandedContent,
   sorting,
@@ -448,7 +444,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
     return next;
   }, [belowLg, belowMd, belowSm, belowXl, columns]);
 
-  const resolvedExpanded = expanded ?? internalExpanded;
+  const resolvedExpanded = internalExpanded;
   const resolvedSorting = sorting ?? internalSorting;
   // A column sort already decides the row order, and a saved manual order would
   // be invisible underneath it. Sorted tables therefore aren't reorderable at
@@ -456,10 +452,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
 
   const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
-    if (expanded === undefined) {
-      setInternalExpanded(updater);
-    }
-    onExpandedChange?.(updater);
+    setInternalExpanded(updater);
   };
 
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {

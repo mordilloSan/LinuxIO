@@ -119,6 +119,7 @@ const UpdateHistory = () => {
       emptyMessage="No update history available."
       fillAvailable
       getRowId={(_, index) => String(index)}
+      getRowCanExpand={(row) => row.original.upgrades.length > 0}
       renderExpandedContent={({ original: row }) => (
         <>
           <AppTypography gutterBottom variant="subtitle2">

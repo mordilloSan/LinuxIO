@@ -4,7 +4,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import type {
   Cell,
-  ExpandedState,
   OnChangeFn,
   Row,
   RowData,
@@ -109,7 +108,6 @@ export interface AppDataTableProps<TData extends RowData> {
   estimateExpandedRowHeight?: number;
   enableSorting?: boolean;
   estimateRowHeight?: number;
-  expanded?: ExpandedState;
   /**
    * Fill the parent height and make the body the scroll viewport.
    * Defaults to true for app-page data tables; set false for compact embedded tables.
@@ -127,7 +125,6 @@ export interface AppDataTableProps<TData extends RowData> {
   height?: CSSProperties["height"];
   manualSorting?: boolean;
   maxHeight?: CSSProperties["maxHeight"];
-  onExpandedChange?: OnChangeFn<ExpandedState>;
   onScroll?: UIEventHandler<HTMLDivElement>;
   onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
   onRowContextMenu?: (
@@ -595,7 +592,6 @@ function AppDataTable<TData extends RowData>({
   estimateExpandedRowHeight = 0,
   enableSorting = false,
   estimateRowHeight = 48,
-  expanded,
   fillAvailable = true,
   getRowCanExpand,
   getRowAttributes,
@@ -604,7 +600,6 @@ function AppDataTable<TData extends RowData>({
   manualSorting = false,
   maxHeight,
   onClearSelection,
-  onExpandedChange,
   onScroll,
   onRowClick,
   onRowContextMenu,
@@ -644,11 +639,9 @@ function AppDataTable<TData extends RowData>({
     data,
     dnd,
     enableSorting,
-    expanded,
     getRowCanExpand,
     getRowId,
     manualSorting,
-    onExpandedChange,
     onSortingChange,
     renderExpandedContent,
     sorting,

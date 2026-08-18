@@ -956,6 +956,9 @@ const ComposeList = ({
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
         fillAvailable
         getRowId={(project) => project.name}
+        getRowCanExpand={(row) =>
+          (containersByProject.get(row.original.name)?.length ?? 0) > 0
+        }
         onRowClick={
           surface.editMode
             ? undefined

@@ -235,4 +235,22 @@ describe("ComposeList expanded-container mutation feedback", () => {
     );
     expect(routeMocks.search.stack).toBeUndefined();
   });
+
+  it("does not offer inline expansion without rendered containers", () => {
+    render(
+      <ComposeList
+        onDelete={noopProject}
+        onRestart={noopName}
+        onStart={noopName}
+        onStop={noopName}
+        projects={[{ ...project, containers: [] }]}
+      />,
+    );
+
+    // Service metadata still reports two containers, but the detail table is
+    // backed by project.containers and therefore has nothing it can reveal.
+    expect(
+      screen.queryByRole("button", { name: "Expand row" }),
+    ).not.toBeInTheDocument();
+  });
 });
