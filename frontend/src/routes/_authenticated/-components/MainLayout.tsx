@@ -29,29 +29,32 @@ const MainLayout = () => {
 
   /*
    * The gap between the header and the first thing on the page. A routed tab
-   * strip reclaims it and carries it as its own top padding, so the strip sits
-   * the same distance below the header whether it is parked or stuck — see
-   * --page-inset-block-start in components/tabbar/tab-container.css. Routes
-   * without that strip just get the padding.
+   * strip reclaims it — and the inline padding, handed down as
+   * --page-inset-inline — to sit flush under the header as a full-bleed bar
+   * with the same geometry as the file browser header; see
+   * components/tabbar/tab-container.css. Routes without that strip just get
+   * the padding.
    */
   const pageInsetBlockStart =
     location.pathname === "/" || location.pathname.includes("/filebrowser")
       ? theme.spacing(0)
       : theme.spacing(5);
 
+  const pageInsetInline = isSmallUp ? theme.spacing(5) : theme.spacing(4);
+
   const contentSpacing =
     location.pathname === "/"
       ? {
-          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-          paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+          paddingLeft: pageInsetInline,
+          paddingRight: pageInsetInline,
           paddingTop: 0,
           paddingBottom: 0,
         }
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-            paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+            paddingLeft: pageInsetInline,
+            paddingRight: pageInsetInline,
             paddingTop: pageInsetBlockStart,
             paddingBottom: theme.spacing(5),
           };
@@ -138,7 +141,11 @@ const MainLayout = () => {
                   minHeight: "100%",
                   ...contentSpacing,
                   "--page-inset-block-start": pageInsetBlockStart,
-                } as CSSProperties & { "--page-inset-block-start": string }
+                  "--page-inset-inline": pageInsetInline,
+                } as CSSProperties & {
+                  "--page-inset-block-start": string;
+                  "--page-inset-inline": string;
+                }
               }
             >
               <Outlet />

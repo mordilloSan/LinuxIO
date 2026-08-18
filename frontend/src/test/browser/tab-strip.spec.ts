@@ -7,8 +7,10 @@ import { expect, test } from "@playwright/test";
  *  - a sticky box cannot leave its containing block, so the strip stays put
  *    only for as long as `.tab-container` is on screen. Sized to one scrollport
  *    it ran out, and a page taller than that dragged the strip off the top;
- *  - the page's top inset scrolls away unless the strip carries it, which
- *    collapsed the gap under the header over the first 20 scrolled pixels.
+ *  - the strip discards the page's top inset and sits flush under the header
+ *    as a fixed-height bar; the gap from the header to the pills is the bar's
+ *    own centering and must not drift over the first scrolled pixels the way
+ *    the old carried-inset model could.
  *
  * Both are geometry, so both are measured here rather than in jsdom.
  */

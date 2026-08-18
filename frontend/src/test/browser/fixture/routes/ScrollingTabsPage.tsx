@@ -104,6 +104,7 @@ export default function ScrollingTabsPage({
                 minHeight: "100%",
                 padding: "20px",
                 "--page-inset-block-start": "20px",
+                "--page-inset-inline": "20px",
               } as CSSProperties
             }
           >

@@ -94,6 +94,27 @@ describe("FileBrowserHeader", () => {
     expect(onSwitchView).toHaveBeenCalledOnce();
   });
 
+  it("centers the search with the tab strip's columns on desktop", () => {
+    const { container } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        breadcrumbs={<div>Home</div>}
+        showQuickSave={false}
+      />,
+    );
+
+    // Mirrors .tab-selector in tab-selector.css — the search must sit at the
+    // same screen-centered spot here as on tab routes.
+    expect(container.querySelector(".file-browser-header")).toHaveStyle({
+      display: "grid",
+      gridTemplateColumns:
+        "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)",
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Search files and folders..." }),
+    ).toBeVisible();
+  });
+
   it("centers the visible search between equal mobile side columns", () => {
     mockMobileViewport();
     const { container } = render(

@@ -324,7 +324,6 @@ const TabSelector = memo(function TabSelector({
               style={{
                 gridColumn: 2,
                 justifySelf: "end",
-                marginTop: 2,
                 flexShrink: 0,
               }}
             >

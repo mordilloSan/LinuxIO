@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useCallback, useState, type ReactNode } from "react";
 
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
@@ -58,7 +58,7 @@ const FileBrowserHeader = ({
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
-  const useMobileBrowsingLayout = isMobile && !showQuickSave;
+  const isBrowsing = !showQuickSave;
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
     openIndexerDialog();
@@ -69,10 +69,17 @@ const FileBrowserHeader = ({
       <div
         className="file-browser-header"
         style={{
-          display: useMobileBrowsingLayout ? "grid" : "flex",
-          gridTemplateColumns: useMobileBrowsingLayout
-            ? "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)"
+          display: isBrowsing ? "grid" : "flex",
+          // The desktop columns mirror .tab-selector (tab-selector.css), so
+          // the search sits at the same screen-centered spot here as on tab
+          // routes. Mobile keeps a wider minimum so the inline field stays
+          // usable.
+          gridTemplateColumns: isBrowsing
+            ? isMobile
+              ? "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)"
+              : "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)"
             : undefined,
+          gap: isBrowsing ? 6 : undefined,
           alignItems: "center",
           paddingInline: theme.spacing(2),
           minHeight: 64,
@@ -126,7 +133,7 @@ const FileBrowserHeader = ({
             <div
               className="file-browser-header__breadcrumbs"
               style={{
-                gridColumn: useMobileBrowsingLayout ? 1 : undefined,
+                gridColumn: isBrowsing ? 1 : undefined,
                 minWidth: 0,
                 display: "flex",
                 alignItems: "center",
@@ -139,22 +146,20 @@ const FileBrowserHeader = ({
               className="file-browser-header__search"
               style={{
                 flex: 1,
-                gridColumn: useMobileBrowsingLayout ? 2 : undefined,
+                gridColumn: isBrowsing ? 2 : undefined,
                 minWidth: 0,
                 display: "flex",
                 justifyContent: "center",
-                marginInline: 8,
+                marginInline: isBrowsing ? 0 : 8,
               }}
             >
-              <div style={{ width: "100%", maxWidth: 420 }}>
-                <AppHeaderSearch
-                  onChange={onSearchChange}
-                  placeholder={
-                    isMobile ? "Search..." : "Search files and folders..."
-                  }
-                  value={searchQuery}
-                />
-              </div>
+              <AppHeaderSearch
+                onChange={onSearchChange}
+                placeholder={
+                  isMobile ? "Search..." : "Search files and folders..."
+                }
+                value={searchQuery}
+              />
             </div>
           </>
         )}
@@ -163,9 +168,9 @@ const FileBrowserHeader = ({
           className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
           style={{
             display: "flex",
-            gridColumn: useMobileBrowsingLayout ? 3 : undefined,
-            justifySelf: useMobileBrowsingLayout ? "end" : undefined,
-            marginLeft: useMobileBrowsingLayout ? 0 : "auto",
+            gridColumn: isBrowsing ? 3 : undefined,
+            justifySelf: isBrowsing ? "end" : undefined,
+            marginLeft: isBrowsing ? 0 : "auto",
           }}
         >
           <div
@@ -173,7 +178,6 @@ const FileBrowserHeader = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "0.4em",
             }}
           >
             {showQuickSave && (
@@ -230,63 +234,34 @@ const FileBrowserHeader = ({
                           }}
                           viewMode={viewMode}
                         />
-                        <AppTooltip
-                          title={
+                        <AppActionIconButton
+                          icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
+                          iconSize={20}
+                          label={
                             showHiddenFiles
                               ? "Hide hidden files"
                               : "Show hidden files"
                           }
-                        >
-                          <AppIconButton
-                            aria-label={
-                              showHiddenFiles
-                                ? "Hide hidden files"
-                                : "Show hidden files"
-                            }
-                            onClick={() => {
-                              setActionsAnchorEl(null);
-                              onToggleHiddenFiles();
-                            }}
-                          >
-                            {showHiddenFiles ? (
-                              <Icon height={22} icon="mdi:eye" width={22} />
-                            ) : (
-                              <Icon height={22} icon="mdi:eye-off" width={22} />
-                            )}
-                          </AppIconButton>
-                        </AppTooltip>
-                        <AppTooltip
-                          title={
+                          onClick={() => {
+                            setActionsAnchorEl(null);
+                            onToggleHiddenFiles();
+                          }}
+                        />
+                        <AppActionIconButton
+                          ariaLabel="Index filesystem"
+                          disabled={isIndexing || !indexerEnabled}
+                          icon="mdi:sync"
+                          iconSize={20}
+                          label={
                             isIndexing
                               ? "Indexing..."
                               : !indexerEnabled
                                 ? indexerReason
                                 : "Index filesystem"
                           }
-                        >
-                          <span>
-                            <AppIconButton
-                              aria-label="Index filesystem"
-                              disabled={isIndexing || !indexerEnabled}
-                              onClick={handleIndexer}
-                            >
-                              {isIndexing ? (
-                                <AppCircularProgress size={24} />
-                              ) : (
-                                <Icon
-                                  height={22}
-                                  icon="mdi:sync"
-                                  style={{
-                                    color: !indexerEnabled
-                                      ? theme.palette.text.disabled
-                                      : "inherit",
-                                  }}
-                                  width={22}
-                                />
-                              )}
-                            </AppIconButton>
-                          </span>
-                        </AppTooltip>
+                          loading={isIndexing}
+                          onClick={handleIndexer}
+                        />
                       </div>
                     </AppMenu>
                   </>
@@ -297,61 +272,31 @@ const FileBrowserHeader = ({
                       onViewModeChange={onSwitchView}
                       viewMode={viewMode}
                     />
-                    <AppTooltip
-                      title={
+                    <AppActionIconButton
+                      icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
+                      iconSize={20}
+                      label={
                         showHiddenFiles
                           ? "Hide hidden files"
                           : "Show hidden files"
                       }
-                    >
-                      <AppIconButton
-                        aria-label={
-                          showHiddenFiles
-                            ? "Hide hidden files"
-                            : "Show hidden files"
-                        }
-                        onClick={onToggleHiddenFiles}
-                      >
-                        {showHiddenFiles ? (
-                          <Icon height={22} icon="mdi:eye" width={22} />
-                        ) : (
-                          <Icon height={22} icon="mdi:eye-off" width={22} />
-                        )}
-                      </AppIconButton>
-                    </AppTooltip>
-                    <AppTooltip
-                      title={
+                      onClick={onToggleHiddenFiles}
+                    />
+                    <AppActionIconButton
+                      ariaLabel="Index filesystem"
+                      disabled={isIndexing || !indexerEnabled}
+                      icon="mdi:sync"
+                      iconSize={20}
+                      label={
                         isIndexing
                           ? "Indexing..."
                           : !indexerEnabled
                             ? indexerReason
                             : "Index filesystem"
                       }
-                    >
-                      <span>
-                        <AppIconButton
-                          aria-label="Index filesystem"
-                          disabled={isIndexing || !indexerEnabled}
-                          onClick={handleIndexer}
-                          style={{ position: "relative" }}
-                        >
-                          {isIndexing ? (
-                            <AppCircularProgress size={24} />
-                          ) : (
-                            <Icon
-                              height={22}
-                              icon="mdi:sync"
-                              style={{
-                                color: !indexerEnabled
-                                  ? theme.palette.text.disabled
-                                  : "inherit",
-                              }}
-                              width={22}
-                            />
-                          )}
-                        </AppIconButton>
-                      </span>
-                    </AppTooltip>
+                      loading={isIndexing}
+                      onClick={handleIndexer}
+                    />
                   </>
                 )}
               </>
