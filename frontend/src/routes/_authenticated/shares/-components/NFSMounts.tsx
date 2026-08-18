@@ -5,8 +5,8 @@ import { CACHE_TTL_MS, linuxio, type NFSMount, useCallMutation } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -954,7 +954,7 @@ const NFSMountTable = ({
       mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
       getMountStatusLabel(mount).toLowerCase().includes(normalizedSearch),
   );
-  const columns = useMemo<AppDataTableColumnDef<NFSMount>[]>(
+  const columns = useMemo<AppVirtualDataTableColumnDef<NFSMount>[]>(
     () => [
       {
         accessorKey: "source",
@@ -1116,13 +1116,15 @@ const NFSMountTable = ({
   );
 
   return (
-    <AppDataTable
+    <AppVirtualDataTable
       dnd={tableDnd}
       ariaLabel="NFS mounts"
       columns={columns}
       data={filtered}
       emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
+      fillAvailable={false}
       getRowId={(mount) => mount.mountpoint}
+      maxHeight={400}
       renderExpandedContent={({ original: mount }) => (
         <div className="expand-panel">
           <AppTypography gutterBottom variant="subtitle2">

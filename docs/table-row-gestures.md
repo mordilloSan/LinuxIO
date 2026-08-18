@@ -7,8 +7,12 @@ so a table declares which gestures it supports and gets the behaviour, the
 guards and the animations for free. Do not re-implement any of this in a route
 component.
 
-The shared predicates live in
-[`rowInteraction.ts`](../frontend/src/components/tables/rowInteraction.ts).
+The implementation is shared: the gesture handlers, header, cells and table
+chrome live in
+[`tableShared.tsx`](../frontend/src/components/tables/tableShared.tsx), and the
+event predicates in
+[`rowInteraction.ts`](../frontend/src/components/tables/rowInteraction.ts). The
+two primitives own only what genuinely differs — body and row rendering.
 
 ## The gestures
 

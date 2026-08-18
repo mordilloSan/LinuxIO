@@ -9,8 +9,8 @@ import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
@@ -126,7 +126,7 @@ function MemoryModulesTable() {
     ...linuxio.system.get_memory_modules,
     ...hardwareStableQueryOptions,
   });
-  const memoryColumns: AppDataTableColumnDef<(typeof memoryModules)[number]>[] =
+  const memoryColumns: AppVirtualDataTableColumnDef<(typeof memoryModules)[number]>[] =
     [
       {
         accessorKey: "id",
@@ -178,7 +178,7 @@ function MemoryModulesTable() {
 
   return (
     <HardwareTableCard>
-      <AppDataTable
+      <AppVirtualDataTable
         ariaLabel="Memory modules"
         columns={memoryColumns}
         data={memoryModules}
@@ -197,7 +197,7 @@ function PciDevicesTable() {
     ...linuxio.system.get_pci_devices,
     ...hardwareStableQueryOptions,
   });
-  const pciColumns: AppDataTableColumnDef<(typeof pciDevices)[number]>[] = [
+  const pciColumns: AppVirtualDataTableColumnDef<(typeof pciDevices)[number]>[] = [
     {
       accessorKey: "class",
       header: "Class",
@@ -228,7 +228,7 @@ function PciDevicesTable() {
 
   return (
     <HardwareTableCard>
-      <AppDataTable
+      <AppVirtualDataTable
         ariaLabel="PCI devices"
         columns={pciColumns}
         data={pciDevices}

@@ -2,8 +2,8 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -24,7 +24,7 @@ const UpdateHistory = () => {
   const theme = useAppTheme();
   const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
 
-  const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
+  const columns: AppVirtualDataTableColumnDef<(typeof rows)[number]>[] = [
     {
       id: "history",
       header: "",
@@ -84,7 +84,7 @@ const UpdateHistory = () => {
       },
     },
   ];
-  const packageColumns: AppDataTableColumnDef<PackageChunkRow>[] = Array.from(
+  const packageColumns: AppVirtualDataTableColumnDef<PackageChunkRow>[] = Array.from(
     { length: 5 },
     (_, index) => ({
       id: `package-${index}`,
@@ -112,7 +112,7 @@ const UpdateHistory = () => {
   );
 
   return (
-    <AppDataTable
+    <AppVirtualDataTable
       ariaLabel="Update history"
       columns={columns}
       data={rows}
@@ -124,7 +124,7 @@ const UpdateHistory = () => {
           <AppTypography gutterBottom variant="subtitle2">
             <b>Packages Installed:</b>
           </AppTypography>
-          <AppDataTable
+          <AppVirtualDataTable
             ariaLabel={`Packages installed on ${row.date}`}
             columns={packageColumns}
             data={chunkArray(row.upgrades, 5).map((upgrades, index) => ({
@@ -133,6 +133,7 @@ const UpdateHistory = () => {
             }))}
             density="compact"
             emptyMessage="No packages recorded."
+            fillAvailable={false}
             getRowId={(packageRow) => packageRow.id}
             maxHeight={260}
             showHeader={false}

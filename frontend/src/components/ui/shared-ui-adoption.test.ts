@@ -50,13 +50,7 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "tab semantics and selected state",
   },
   {
-    file: "components/tables/AppDataTable.tsx",
-    pattern: /<button\s+className="app-dt__sort-button"/,
-    reason: "table-library sort control",
-    protects: "column sorting and table header semantics",
-  },
-  {
-    file: "components/tables/AppVirtualDataTable.tsx",
+    file: "components/tables/tableShared.tsx",
     pattern: /<button\s+className="app-dt__sort-button"/,
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",

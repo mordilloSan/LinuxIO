@@ -13,6 +13,10 @@ import {
 import VMMachinesLayout from "./VMMachinesLayout";
 import VMPage from "./VMPage";
 
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
 const mocks = vi.hoisted(() => {
   const managedISOPath = "/var/lib/libvirt/images/linuxio/isos";
   const readyPreflight = {

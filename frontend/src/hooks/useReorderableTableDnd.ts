@@ -3,7 +3,6 @@ import { useMemo } from "react";
 
 import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
 import type { AppTableFeatures } from "@/components/tables/AppDataTable.types";
-import type { AppVirtualDataTableDndOptions } from "@/components/tables/AppVirtualDataTable";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 interface ReorderableTableDndOptions<TData extends RowData, TItem> {
@@ -22,9 +21,9 @@ const defaultGetItemId = <TData extends RowData>(
 ) => row.id;
 
 /**
- * Builds the `dnd` prop for an `AppDataTable` from a reorderable surface. Kept
- * memoized because the table is memoized: a fresh object each render would
- * rerender every row.
+ * Builds the `dnd` prop for a data table from a reorderable surface — both
+ * table primitives accept it. Kept memoized because the tables are memoized:
+ * a fresh object each render would rerender every row.
  */
 export function useReorderableTableDnd<TData extends RowData, TItem>({
   getItemId = defaultGetItemId,
@@ -54,31 +53,3 @@ export function useReorderableTableDnd<TData extends RowData, TItem>({
   );
 }
 
-/**
- * The `AppVirtualDataTable` variant. Virtualized rows drag from the row body, so
- * there is no handle column to configure.
- */
-export function useVirtualReorderableTableDnd<TData extends RowData, TItem>({
-  getItemId = defaultGetItemId,
-  surface,
-}: Omit<
-  ReorderableTableDndOptions<TData, TItem>,
-  "handleAriaLabel" | "handleColumnWidth"
->): AppVirtualDataTableDndOptions<TData> {
-  return useMemo(
-    () => ({
-      contextProps: surface.dndContextProps,
-      editing: surface.editMode,
-      getItemId,
-      itemIds: surface.ids,
-      pendingItemId: surface.pendingId,
-    }),
-    [
-      getItemId,
-      surface.dndContextProps,
-      surface.editMode,
-      surface.ids,
-      surface.pendingId,
-    ],
-  );
-}

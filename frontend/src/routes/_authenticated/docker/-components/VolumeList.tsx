@@ -8,8 +8,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -247,100 +247,113 @@ const VolumeList = ({
   const handleDeleteSuccess = () => {
     updateFocusedVolume(null);
   };
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      accessorKey: "Name",
-      header: "Volume Name",
-      cell: ({ row }) => (
-        <AppTypography
-          fontWeight={500}
-          style={responsiveTextStyles}
-          variant="body2"
-        >
-          {row.original.Name}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "Driver",
-      header: "Driver",
-      cell: ({ row }) => (
-        <Chip
-          label={row.original.Driver}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "120px",
+  const handleVolumeRowClick = useCallback(
+    ({ original: volume }: { original: { Name: string } }) =>
+      updateFocusedVolume(volume.Name),
+    [updateFocusedVolume],
+  );
+
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<
+    AppVirtualDataTableColumnDef<(typeof filtered)[number]>[]
+  >(
+    () => [
+      {
+        accessorKey: "Name",
+        header: "Volume Name",
+        cell: ({ row }) => (
+          <AppTypography
+            fontWeight={500}
+            style={responsiveTextStyles}
+            variant="body2"
+          >
+            {row.original.Name}
+          </AppTypography>
+        ),
+        meta: { align: "left" },
       },
-    },
-    {
-      accessorKey: "Mountpoint",
-      header: "Mountpoint",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...longTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.Mountpoint || "-"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
+      {
+        accessorKey: "Driver",
+        header: "Driver",
+        cell: ({ row }) => (
+          <Chip
+            label={row.original.Driver}
+            size="small"
+            style={{ fontSize: "0.75rem" }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+          width: "120px",
+        },
       },
-    },
-    {
-      accessorKey: "Scope",
-      header: "Scope",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Scope || "local"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "100px",
+      {
+        accessorKey: "Mountpoint",
+        header: "Mountpoint",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{
+              fontFamily: "var(--app-font-mono)",
+              ...longTextStyles,
+            }}
+            variant="body2"
+          >
+            {row.original.Mountpoint || "-"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+        },
       },
-    },
-    {
-      id: "size",
-      header: "Size",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {formatVolumeSize(row.original.UsageData?.Size)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "right",
-        hideBelow: "lg",
-        width: "120px",
+      {
+        accessorKey: "Scope",
+        header: "Scope",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Scope || "local"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+          width: "100px",
+        },
       },
-    },
-    {
-      id: "references",
-      header: "References",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {formatReferenceCount(row.original.UsageData?.RefCount)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "right",
-        hideBelow: "lg",
-        width: "120px",
+      {
+        id: "size",
+        header: "Size",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {formatVolumeSize(row.original.UsageData?.Size)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          hideBelow: "lg",
+          width: "120px",
+        },
       },
-    },
-  ];
+      {
+        id: "references",
+        header: "References",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {formatReferenceCount(row.original.UsageData?.RefCount)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          hideBelow: "lg",
+          width: "120px",
+        },
+      },
+    ],
+    [],
+  );
   // Shared by the focused details layout; table expansion retains its existing
   // markup below so its inline expansion behavior remains unchanged.
   const renderExpandedContent = (volume: (typeof volumesList)[number]) => (
@@ -552,19 +565,15 @@ const VolumeList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="Docker volumes"
           columns={columns}
           data={filtered}
           dnd={tableDnd}
           emptyMessage="No volumes found."
           fillAvailable
-          getRowId={(volume) => volume.Name}
-          onRowClick={
-            surface.editMode
-              ? undefined
-              : ({ original: volume }) => updateFocusedVolume(volume.Name)
-          }
+          getRowId={getVolumeId}
+          onRowClick={surface.editMode ? undefined : handleVolumeRowClick}
           selectedRowId={focusedVolumeName}
         />
       )}

@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppTheme } from "@/theme";
 
 import UnitStatusDot from "./UnitStatusDot";
@@ -98,7 +98,10 @@ const SocketTableView = ({
     [onSelect],
   );
 
-  const dnd = useVirtualReorderableTableDnd<Socket, Socket>({ surface });
+  const dnd = useReorderableTableDnd<Socket, Socket>({
+    handleAriaLabel: "Reorder socket",
+    surface,
+  });
 
   return (
     <UnitTableView

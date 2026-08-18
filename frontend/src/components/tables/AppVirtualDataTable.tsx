@@ -1,16 +1,9 @@
-import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import type { UniqueIdentifier } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { flexRender, useTable } from "@tanstack/react-table";
 import type {
   Cell,
-  Column,
-  ColumnVisibilityState,
   ExpandedState,
   OnChangeFn,
   Row,
@@ -21,7 +14,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   memo,
   useMemo,
@@ -35,40 +27,35 @@ import {
   type UIEventHandler,
 } from "react";
 
-import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
   AppDataTableBreakpoint,
-  AppDataTableCellRenderKey,
   AppDataTableColumnDef,
   AppDataTableColumnMeta,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
 import {
-  ROW_DOUBLE_CLICK_MS,
-  clickTargetsRowBody,
   rowBodyDragListeners,
   targetIsRowControl,
 } from "@/components/tables/rowInteraction";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
-import AppTypography from "@/components/ui/AppTypography";
-import { REORDER_HOLD_MS } from "@/constants/reorder";
-import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
-  EASING_STANDARD_CSS,
-  TRANSITION_DURATION_STANDARD_MS,
-  shadowSm,
-} from "@/theme/constants";
-import { alpha } from "@/utils/color";
+  AppTableHeader,
+  AppTableShell,
+  MemoizedAppTableCell,
+  TableDndBoundary,
+  TableEmptyState,
+  TableExpandCell,
+  columnTrack,
+  useAppTableInstance,
+  useRowClickGestures,
+  useTableGestureKeys,
+} from "@/components/tables/tableShared";
+import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
+import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
 
 // Shared with the non-virtualized AppDataTable too — see the same note
 // over there.
 import "./app-data-table.css";
 import "../reorder/reorder.css";
-
-const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
 export type AppVirtualDataTableBreakpoint = AppDataTableBreakpoint;
 export type AppVirtualDataTableColumnMeta = AppDataTableColumnMeta;
@@ -83,6 +70,8 @@ export interface AppVirtualDataTableDndOptions<TData extends RowData> {
   itemIds: UniqueIdentifier[];
   editing?: boolean;
   enabled?: boolean;
+  handleAriaLabel?: string;
+  handleColumnWidth?: string | number;
   pendingItemId?: UniqueIdentifier | null;
 }
 
@@ -93,9 +82,9 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
   data: TData[];
   density?: "comfortable" | "compact";
   /**
-   * Hold-to-reorder wiring from `useReorderableTableDnd`. Virtualized rows drag
-   * from the row body — there is no handle column, so the column template stays
-   * identical whether or not layout mode is open.
+   * Hold-to-reorder wiring from `useReorderableTableDnd`. Rows drag from the
+   * row body, and layout mode adds the visible handle column — the same
+   * chrome as the non-virtualized table.
    */
   dnd?: AppVirtualDataTableDndOptions<TData>;
   emptyMessage?: string;
@@ -162,51 +151,6 @@ type VirtualTableEntry<TData extends RowData> =
       rowIndex: number;
     };
 
-function columnTrack<TData extends RowData>(
-  column: Column<AppTableFeatures, TData>,
-) {
-  const width = column.columnDef.meta?.width;
-  if (typeof width === "number") return `${width}px`;
-  if (typeof width === "string" && width.trim()) return width;
-  return "minmax(0, 1fr)";
-}
-
-function alignToJustify(align?: "left" | "center" | "right") {
-  if (align === "center") return "center";
-  if (align === "right") return "flex-end";
-  return "flex-start";
-}
-
-function getColumnDefId<TData extends RowData>(
-  column: AppVirtualDataTableColumnDef<TData>,
-  index: number,
-) {
-  const candidate = column as {
-    accessorKey?: string | number;
-    id?: string;
-  };
-
-  if (candidate.id) return candidate.id;
-  if (candidate.accessorKey !== undefined) return String(candidate.accessorKey);
-  return `column-${index}`;
-}
-
-function getSortIcon(sortState: false | "asc" | "desc") {
-  if (sortState === "asc") return "mdi:chevron-up";
-  if (sortState === "desc") return "mdi:chevron-down";
-  return "mdi:unfold-more-horizontal";
-}
-
-function areCellRenderKeysEqual(
-  previous: AppDataTableCellRenderKey,
-  next: AppDataTableCellRenderKey,
-) {
-  if (Object.is(previous, next)) return true;
-  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
-  if (previous.length !== next.length) return false;
-  return previous.every((value, index) => Object.is(value, next[index]));
-}
-
 function getCellRenderKey<TData extends RowData>(
   cell: Cell<AppTableFeatures, TData>,
   rowIndex: number,
@@ -216,42 +160,6 @@ function getCellRenderKey<TData extends RowData>(
     ? getExplicitRenderKey(cell.row.original, rowIndex)
     : [cell.row.original, rowIndex];
 }
-
-interface AppVirtualDataTableCellProps<TData extends RowData> {
-  cell: Cell<AppTableFeatures, TData>;
-  renderKey: AppDataTableCellRenderKey;
-}
-
-function AppVirtualDataTableCell<TData extends RowData>({
-  cell,
-}: AppVirtualDataTableCellProps<TData>) {
-  const meta = cell.column.columnDef.meta;
-
-  return (
-    <div
-      className={["app-dt__cell", meta?.className, meta?.cellClassName]
-        .filter(Boolean)
-        .join(" ")}
-      role="cell"
-      style={{
-        justifyContent: alignToJustify(meta?.align),
-        textAlign: meta?.align,
-        ...meta?.style,
-        ...meta?.cellStyle,
-      }}
-    >
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-    </div>
-  );
-}
-
-const MemoizedAppVirtualDataTableCell = memo(
-  AppVirtualDataTableCell,
-  (previous, next) =>
-    previous.cell.id === next.cell.id &&
-    previous.cell.column.columnDef === next.cell.column.columnDef &&
-    areCellRenderKeysEqual(previous.renderKey, next.renderKey),
-) as typeof AppVirtualDataTableCell;
 
 /**
  * Sortable wiring for one virtualized row. The virtualizer owns the outer
@@ -268,11 +176,19 @@ function useVirtualRowReorder<TData extends RowData>(
 ) {
   const isArmed = Boolean(dnd) && dnd?.enabled !== false;
   const itemId = dnd?.getItemId(row);
-  const { isDragging, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: itemId ?? row.id, disabled: !isArmed });
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: itemId ?? row.id, disabled: !isArmed });
 
   if (!dnd || !isArmed) {
     return {
+      handleAttributes: undefined,
+      handleListeners: undefined,
       isReorderEditing: false,
       isReorderPending: false,
       reorderListeners: undefined,
@@ -282,6 +198,10 @@ function useVirtualRowReorder<TData extends RowData>(
   }
 
   return {
+    // The visible handle takes the raw activator, the way the non-virtualized
+    // table wires its handle; the row body keeps the guarded listeners below.
+    handleAttributes: attributes,
+    handleListeners: listeners,
     isReorderEditing: dnd.editing ?? false,
     isReorderPending: dnd.pendingItemId != null && dnd.pendingItemId === itemId,
     // A press on one of the row's own controls is not a drag.
@@ -304,11 +224,11 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
   getRowAttributes?: (
     row: Row<AppTableFeatures, TData>,
   ) => HTMLAttributes<HTMLDivElement>;
+  hasDragColumn: boolean;
   hasExpandColumn: boolean;
   isExpanded: boolean;
   isInteractive: boolean;
   isSelected: boolean;
-  measureElement: (node: HTMLDivElement | null) => void;
   onExpand: (row: Row<AppTableFeatures, TData>) => void;
   onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
   onRowContextMenu?: (
@@ -321,29 +241,29 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
   ) => void;
   row: Row<AppTableFeatures, TData>;
   rowIndex: number;
-  virtualIndex: number;
 }
 
 function AppVirtualDataTableBodyRow<TData extends RowData>({
   canExpand,
   dnd,
   getRowAttributes,
+  hasDragColumn,
   hasExpandColumn,
   isExpanded,
   isInteractive,
   isSelected,
-  measureElement,
   onExpand,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
   row,
   rowIndex,
-  virtualIndex,
 }: AppVirtualDataTableBodyRowProps<TData>) {
   "use no memo";
   const rowAttributes = getRowAttributes?.(row);
   const {
+    handleAttributes,
+    handleListeners,
     isReorderEditing,
     isReorderPending,
     reorderListeners,
@@ -362,91 +282,80 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
 
   return (
     <div
-      className="app-dt__virtual-row"
-      data-index={virtualIndex}
-      ref={measureElement}
+      {...reorderListeners}
+      {...rowAttributes}
+      aria-expanded={canExpand ? isExpanded : undefined}
+      ref={setReorderNodeRef}
+      className={[
+        "app-dt__row",
+        "app-dt__row--body",
+        isInteractive && "app-dt__row--interactive",
+        isSelected && "app-dt__row--selected",
+        rowIndex % 2 === 1 && "app-dt__row--alt",
+        isReorderPending && "app-dt__row--reorder-pending",
+        isReorderEditing && "app-dt__row--reordering",
+        rowAttributes?.className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={(event) => {
+        rowAttributeOnClick?.(event);
+        if (!event.defaultPrevented) onRowClick?.(row, event);
+      }}
+      onContextMenu={(event) => {
+        rowAttributeOnContextMenu?.(event);
+        if (!event.defaultPrevented) onRowContextMenu?.(row, event);
+      }}
+      onDoubleClick={(event) => {
+        rowAttributeOnDoubleClick?.(event);
+        if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+      }}
+      // See AppDataTable: the second mousedown of a double click is what
+      // starts the browser's word selection, which is litter on a table that
+      // means something else by a double click.
+      onMouseDown={(event) => {
+        if (
+          onRowDoubleClick &&
+          event.detail > 1 &&
+          !targetIsRowControl(event.target)
+        ) {
+          event.preventDefault();
+        }
+        reorderOnMouseDown?.(event);
+        rowAttributeOnMouseDown?.(event);
+      }}
+      role="row"
+      style={{ ...rowAttributes?.style, ...reorderStyle }}
     >
-      <div
-        {...reorderListeners}
-        {...rowAttributes}
-        aria-expanded={canExpand ? isExpanded : undefined}
-        ref={setReorderNodeRef}
-        className={[
-          "app-dt__row",
-          "app-dt__row--body",
-          isInteractive && "app-dt__row--interactive",
-          isSelected && "app-dt__row--selected",
-          rowIndex % 2 === 1 && "app-dt__row--alt",
-          isReorderPending && "app-dt__row--reorder-pending",
-          isReorderEditing && "app-dt__row--reordering",
-          rowAttributes?.className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        onClick={(event) => {
-          rowAttributeOnClick?.(event);
-          if (!event.defaultPrevented) onRowClick?.(row, event);
-        }}
-        onContextMenu={(event) => {
-          rowAttributeOnContextMenu?.(event);
-          if (!event.defaultPrevented) onRowContextMenu?.(row, event);
-        }}
-        onDoubleClick={(event) => {
-          rowAttributeOnDoubleClick?.(event);
-          if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
-        }}
-        // See AppDataTable: the second mousedown of a double click is what
-        // starts the browser's word selection, which is litter on a table that
-        // means something else by a double click.
-        onMouseDown={(event) => {
-          if (
-            onRowDoubleClick &&
-            event.detail > 1 &&
-            !targetIsRowControl(event.target)
-          ) {
-            event.preventDefault();
-          }
-          reorderOnMouseDown?.(event);
-          rowAttributeOnMouseDown?.(event);
-        }}
-        role="row"
-        style={{ ...rowAttributes?.style, ...reorderStyle }}
-      >
-        {row.getVisibleCells().map((cell) => (
-          <MemoizedAppVirtualDataTableCell
-            cell={cell}
-            key={cell.id}
-            renderKey={getCellRenderKey(cell, rowIndex)}
-          />
-        ))}
-        {hasExpandColumn && (
-          <div className="app-dt__cell app-dt__cell--expand" role="cell">
-            {canExpand && (
-              <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
-                <AppIconButton
-                  aria-expanded={isExpanded}
-                  aria-label={isExpanded ? "Collapse row" : "Expand row"}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onExpand(row);
-                  }}
-                  size="small"
-                >
-                  <Icon
-                    height={22}
-                    icon="mdi:chevron-down"
-                    style={{
-                      transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: `transform ${DETAIL_ANIMATION_CSS}`,
-                    }}
-                    width={22}
-                  />
-                </AppIconButton>
-              </AppTooltip>
-            )}
-          </div>
-        )}
-      </div>
+      {hasDragColumn && (
+        <div className="app-dt__cell app-dt__cell--drag" role="cell">
+          {handleListeners && (
+            <span
+              {...handleAttributes}
+              {...handleListeners}
+              aria-label={dnd?.handleAriaLabel ?? "Reorder row"}
+              className="app-dt__drag-handle"
+            >
+              <Icon height={20} icon="mdi:drag" width={20} />
+            </span>
+          )}
+        </div>
+      )}
+      {row.getVisibleCells().map((cell) => (
+        <MemoizedAppTableCell
+          cell={cell}
+          columnDef={cell.column.columnDef}
+          key={cell.id}
+          renderKey={getCellRenderKey(cell, rowIndex)}
+        />
+      ))}
+      {hasExpandColumn && (
+        <TableExpandCell
+          canExpand={canExpand}
+          isExpanded={isExpanded}
+          onToggle={() => onExpand(row)}
+        />
+      )}
     </div>
   );
 }
@@ -512,15 +421,6 @@ function AppVirtualDataTable<TData extends RowData>({
 }: AppVirtualDataTableProps<TData>) {
   "use no memo";
 
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-  const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const belowMd = useAppMediaQuery(theme.breakpoints.down("md"));
-  const belowLg = useAppMediaQuery(theme.breakpoints.down("lg"));
-  const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
-
-  const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
-  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
   const expandedRowIdsRef = useRef<Set<string>>(new Set());
@@ -531,70 +431,25 @@ function AppVirtualDataTable<TData extends RowData>({
     new Map(),
   );
   const detailNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  // The table owns the deferred single click, not the row: virtualized rows
-  // unmount as they scroll out, which would drop a pending expand.
-  const pendingExpandRef = useRef<number | null>(null);
   const detailSizesRef = useRef<Map<string, number>>(new Map());
   const latestVirtualEntriesRef = useRef<Array<VirtualTableEntry<TData>>>([]);
   const [mountedDetailRowIds, setMountedDetailRowIds] = useState<Set<string>>(
     () => new Set(),
   );
 
-  const columnVisibility = useMemo<ColumnVisibilityState>(() => {
-    const below: Record<AppVirtualDataTableBreakpoint, boolean> = {
-      sm: belowSm,
-      md: belowMd,
-      lg: belowLg,
-      xl: belowXl,
-    };
-    const next: ColumnVisibilityState = {};
-
-    columns.forEach((column, index) => {
-      const hideBelow = column.meta?.hideBelow;
-      if (!hideBelow) return;
-      next[getColumnDefId(column, index)] = !below[hideBelow];
-    });
-
-    return next;
-  }, [belowLg, belowMd, belowSm, belowXl, columns]);
-
-  const resolvedExpanded = expanded ?? internalExpanded;
-  const resolvedSorting = sorting ?? internalSorting;
-  // A column sort already owns the row order; see AppDataTable for the reasoning.
-  const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
-
-  const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
-    if (expanded === undefined) {
-      setInternalExpanded(updater);
-    }
-    onExpandedChange?.(updater);
-  };
-
-  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
-    if (sorting === undefined) {
-      setInternalSorting(updater);
-    }
-    onSortingChange?.(updater);
-  };
-
-  const table = useTable({
-    features: appTableFeatures,
-    autoResetExpanded: false,
+  const { dndOptions, resolvedExpanded, table } = useAppTableInstance({
     columns,
     data,
+    dnd,
     enableSorting,
-    enableSortingRemoval: false,
-    getRowCanExpand: (row) =>
-      Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
+    expanded,
+    getRowCanExpand,
     getRowId,
     manualSorting,
-    onExpandedChange: handleExpandedChange,
-    onSortingChange: handleSortingChange,
-    state: {
-      columnVisibility,
-      expanded: resolvedExpanded,
-      sorting: resolvedSorting,
-    },
+    onExpandedChange,
+    onSortingChange,
+    renderExpandedContent,
+    sorting,
   });
 
   const rows = table.getRowModel().rows;
@@ -608,29 +463,11 @@ function AppVirtualDataTable<TData extends RowData>({
     return next;
   }, [rows]);
 
-  // Escape peels one layer of row state at a time — see AppDataTable for the
-  // reasoning and `docs/table-row-gestures.md` for the contract.
-  const handleEscapeKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
-    if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
-
-    // Read expansion off the table instance rather than a render-time value:
-    // the listener outlives the render it was created in.
-    if (table.getIsSomeRowsExpanded()) {
-      table.setExpanded({});
-    } else if (onClearSelection) {
-      onClearSelection();
-    } else {
-      return;
-    }
-    event.preventDefault();
+  useTableGestureKeys({
+    hasExpandableRows: Boolean(renderExpandedContent),
+    onClearSelection,
+    table,
   });
-
-  useEffect(() => {
-    if (!renderExpandedContent && !onClearSelection) return;
-    window.addEventListener("keydown", handleEscapeKey);
-    return () => window.removeEventListener("keydown", handleEscapeKey);
-  }, [onClearSelection, renderExpandedContent]);
 
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
     const entries: Array<VirtualTableEntry<TData>> = [];
@@ -688,12 +525,6 @@ function AppVirtualDataTable<TData extends RowData>({
   useLayoutEffect(() => {
     latestVirtualEntriesRef.current = virtualEntries;
   }, [virtualEntries]);
-
-  const cancelPendingExpand = useCallback(() => {
-    if (pendingExpandRef.current === null) return;
-    window.clearTimeout(pendingExpandRef.current);
-    pendingExpandRef.current = null;
-  }, []);
 
   const scheduleMeasure = useCallback(() => {
     if (measureFrameRef.current !== null) return;
@@ -866,7 +697,6 @@ function AppVirtualDataTable<TData extends RowData>({
 
   useEffect(
     () => () => {
-      cancelPendingExpand();
       if (measureFrameRef.current !== null) {
         window.cancelAnimationFrame(measureFrameRef.current);
       }
@@ -877,17 +707,9 @@ function AppVirtualDataTable<TData extends RowData>({
         observer.disconnect();
       }
     },
-    [cancelPendingExpand],
+    [],
   );
 
-  const isEmbedded = variant === "embedded";
-  const headRowBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, 0.08);
-  const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
-  const altBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
   // See AppDataTable: the row itself is the disclosure control unless the table
@@ -896,7 +718,16 @@ function AppVirtualDataTable<TData extends RowData>({
     Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
   const rowClickExpands = hasExpandColumn && !onRowClick && !isReorderEditing;
   const visibleColumns = table.getVisibleLeafColumns();
+  // Only layout mode adds the handle column; an armed-but-idle table keeps its
+  // normal column widths.
   const gridTemplate = [
+    ...(isReorderEditing
+      ? [
+          typeof dndOptions?.handleColumnWidth === "number"
+            ? `${dndOptions.handleColumnWidth}px`
+            : (dndOptions?.handleColumnWidth ?? "32px"),
+        ]
+      : []),
     ...visibleColumns.map((column) => columnTrack(column)),
     ...(hasExpandColumn ? ["40px"] : []),
   ].join(" ");
@@ -912,45 +743,12 @@ function AppVirtualDataTable<TData extends RowData>({
     row.toggleExpanded();
   }, []);
 
-  // Only a table that binds both gestures has to wait out the double-click
-  // window; a click-only table expands on the spot.
-  const expandClickDelayMs =
-    rowClickExpands && onRowDoubleClick ? ROW_DOUBLE_CLICK_MS : 0;
-  const handleExpandOnRowClick = useCallback(
-    (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
-      if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
-
-      cancelPendingExpand();
-      if (!expandClickDelayMs) {
-        handleExpandRow(row);
-        return;
-      }
-      // The second click of a double click carries detail 2 — leave the row
-      // alone and let the double-click handler have it.
-      if (event.detail > 1) return;
-
-      pendingExpandRef.current = window.setTimeout(() => {
-        pendingExpandRef.current = null;
-        handleExpandRow(row);
-      }, expandClickDelayMs);
-    },
-    [cancelPendingExpand, expandClickDelayMs, handleExpandRow],
-  );
-  const handleRowClick = rowClickExpands ? handleExpandOnRowClick : onRowClick;
-  // A double click is how a word gets selected, so the text-selection half of
-  // `clickTargetsRowBody` would veto every one of these — only the control check
-  // applies here.
-  const handleGuardedRowDoubleClick = useCallback(
-    (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
-      cancelPendingExpand();
-      if (targetIsRowControl(event.target)) return;
-      onRowDoubleClick?.(row, event);
-    },
-    [cancelPendingExpand, onRowDoubleClick],
-  );
-  const handleRowDoubleClick = onRowDoubleClick
-    ? handleGuardedRowDoubleClick
-    : undefined;
+  const { handleRowClick, handleRowDoubleClick } = useRowClickGestures({
+    onRowClick,
+    onRowDoubleClick,
+    rowClickExpands,
+    toggleExpanded: handleExpandRow,
+  });
 
   useEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
@@ -958,207 +756,119 @@ function AppVirtualDataTable<TData extends RowData>({
     virtualizer.scrollToIndex(scrollToIndex, { align: "auto" });
   }, [rows.length, scrollToIndex, virtualizer]);
 
-  const content = (
-    <div
-      className={[
-        "app-dt",
-        fillAvailable && "app-dt--fill",
-        isEmbedded && "app-dt--embedded",
-        density === "compact" && "app-dt--compact",
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      role="table"
-      aria-label={ariaLabel}
-      style={
-        {
-          "--app-dt-alt-bg": altBg,
-          "--app-dt-grid": gridTemplate,
-          "--app-dt-head-bg": headRowBg,
-          "--app-dt-selected-bg": selectedBg,
-          "--reorder-hold-color": theme.palette.primary.main,
-          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
-          boxShadow: isEmbedded ? "none" : shadowSm,
-          height: height ?? (fillAvailable ? "100%" : undefined),
-          maxHeight,
-          minHeight: fillAvailable ? 0 : undefined,
-          ...style,
-        } as CSSProperties
-      }
-    >
-      {showHeader && (
-        <div className="app-dt__head" role="rowgroup">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <div
-              className="app-dt__row app-dt__row--head"
-              key={headerGroup.id}
-              role="row"
-            >
-              {headerGroup.headers.map((header) => {
-                const meta = header.column.columnDef.meta;
-                const sortState = header.column.getIsSorted();
-                const canSort = header.column.getCanSort();
+  return (
+    <TableDndBoundary dnd={dndOptions}>
+      <AppTableShell
+        ariaLabel={ariaLabel}
+        className={className}
+        density={density}
+        fillAvailable={fillAvailable}
+        gridTemplate={gridTemplate}
+        height={height}
+        maxHeight={maxHeight}
+        style={style}
+        variant={variant}
+      >
+        {showHeader && (
+          <AppTableHeader
+            hasDragColumn={isReorderEditing}
+            hasExpandColumn={hasExpandColumn}
+            headerGroups={table.getHeaderGroups()}
+          />
+        )}
 
+        <div
+          className="app-dt__scroll custom-scrollbar"
+          onScroll={onScroll}
+          ref={scrollRef}
+          role="presentation"
+        >
+          <div
+            className="app-dt__body"
+            ref={virtualizer.containerRef}
+            role="rowgroup"
+          >
+            {virtualItems.map((virtualRow) => {
+              const entry = virtualEntries[virtualRow.index];
+              const row = entry.row;
+              const isExpanded = row.getIsExpanded();
+
+              if (entry.kind === "detail") {
                 return (
                   <div
-                    className={[
-                      "app-dt__cell",
-                      "app-dt__cell--head",
-                      meta?.className,
-                      meta?.headerClassName,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    key={header.id}
-                    role="columnheader"
-                    style={{
-                      justifyContent: alignToJustify(meta?.align),
-                      textAlign: meta?.align,
-                      ...meta?.style,
-                      ...meta?.headerStyle,
-                    }}
+                    className="app-dt__virtual-row app-dt__virtual-row--detail"
+                    data-index={virtualRow.index}
+                    key={entry.key}
+                    ref={virtualizer.measureElement}
                   >
-                    {header.isPlaceholder ? null : canSort ? (
-                      <button
-                        className="app-dt__sort-button"
-                        onClick={header.column.getToggleSortingHandler()}
-                        type="button"
+                    <div
+                      className="app-dt__detail"
+                      ref={(node) => {
+                        if (node) {
+                          detailNodeRefs.current.set(row.id, node);
+                          node.style.height = `${
+                            detailSizesRef.current.get(row.id) ?? 0
+                          }px`;
+                        } else {
+                          detailNodeRefs.current.delete(row.id);
+                        }
+                      }}
+                      role="row"
+                    >
+                      <div
+                        aria-colspan={
+                          visibleColumns.length + (hasExpandColumn ? 1 : 0)
+                        }
+                        className="app-dt__detail-cell"
+                        ref={(node) => setDetailContentRef(row.id, node)}
+                        role="cell"
                       >
-                        <span className="app-dt__sort-label">
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </span>
-                        <Icon
-                          height={16}
-                          icon={getSortIcon(sortState)}
-                          width={16}
-                        />
-                      </button>
-                    ) : (
-                      flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )
-                    )}
+                        {renderExpandedContent?.(row)}
+                      </div>
+                    </div>
                   </div>
                 );
-              })}
-              {hasExpandColumn && (
-                <div
-                  aria-hidden="true"
-                  className="app-dt__cell app-dt__cell--head app-dt__cell--expand"
-                  role="columnheader"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              }
 
-      <div
-        className="app-dt__scroll custom-scrollbar"
-        onScroll={onScroll}
-        ref={scrollRef}
-        role="presentation"
-      >
-        <div
-          className="app-dt__body"
-          ref={virtualizer.containerRef}
-          role="rowgroup"
-        >
-          {virtualItems.map((virtualRow) => {
-            const entry = virtualEntries[virtualRow.index];
-            const row = entry.row;
-            const isExpanded = row.getIsExpanded();
+              const canExpand = row.getCanExpand();
 
-            if (entry.kind === "detail") {
+              // The measured wrapper lives out here so an index shift alone —
+              // a detail row mounting above — never re-renders the row beneath.
               return (
                 <div
-                  className="app-dt__virtual-row app-dt__virtual-row--detail"
+                  className="app-dt__virtual-row"
                   data-index={virtualRow.index}
                   key={entry.key}
                   ref={virtualizer.measureElement}
                 >
-                  <div
-                    className="app-dt__detail"
-                    ref={(node) => {
-                      if (node) {
-                        detailNodeRefs.current.set(row.id, node);
-                        node.style.height = `${
-                          detailSizesRef.current.get(row.id) ?? 0
-                        }px`;
-                      } else {
-                        detailNodeRefs.current.delete(row.id);
-                      }
-                    }}
-                    role="row"
-                  >
-                    <div
-                      aria-colspan={
-                        visibleColumns.length + (hasExpandColumn ? 1 : 0)
-                      }
-                      className="app-dt__detail-cell"
-                      ref={(node) => setDetailContentRef(row.id, node)}
-                      role="cell"
-                    >
-                      {renderExpandedContent?.(row)}
-                    </div>
-                  </div>
+                  <MemoizedAppVirtualDataTableBodyRow
+                    canExpand={canExpand}
+                    columnVersion={columns}
+                    dnd={dndOptions}
+                    getRowAttributes={getRowAttributes}
+                    hasDragColumn={isReorderEditing}
+                    hasExpandColumn={hasExpandColumn}
+                    isExpanded={isExpanded}
+                    isInteractive={
+                      isInteractive || (rowClickExpands && canExpand)
+                    }
+                    isSelected={row.id === selectedRowId}
+                    onExpand={handleExpandRow}
+                    onRowClick={handleRowClick}
+                    onRowContextMenu={onRowContextMenu}
+                    onRowDoubleClick={handleRowDoubleClick}
+                    row={row}
+                    rowIndex={entry.rowIndex}
+                  />
                 </div>
               );
-            }
-
-            const canExpand = row.getCanExpand();
-
-            return (
-              <MemoizedAppVirtualDataTableBodyRow
-                canExpand={canExpand}
-                columnVersion={columns}
-                dnd={dndOptions}
-                getRowAttributes={getRowAttributes}
-                hasExpandColumn={hasExpandColumn}
-                isExpanded={isExpanded}
-                isInteractive={isInteractive || (rowClickExpands && canExpand)}
-                isSelected={row.id === selectedRowId}
-                key={entry.key}
-                measureElement={virtualizer.measureElement}
-                onExpand={handleExpandRow}
-                onRowClick={handleRowClick}
-                onRowContextMenu={onRowContextMenu}
-                onRowDoubleClick={handleRowDoubleClick}
-                row={row}
-                rowIndex={entry.rowIndex}
-                virtualIndex={virtualRow.index}
-              />
-            );
-          })}
-        </div>
-
-        {rows.length === 0 && (
-          <div className="app-dt__empty">
-            <AppTypography color="text.secondary" variant="body2">
-              {emptyMessage}
-            </AppTypography>
+            })}
           </div>
-        )}
-      </div>
-    </div>
-  );
 
-  if (!dndOptions) return content;
-
-  return (
-    <DndContext {...dndOptions.contextProps}>
-      <SortableContext
-        items={dndOptions.itemIds}
-        strategy={verticalListSortingStrategy}
-      >
-        {content}
-      </SortableContext>
-    </DndContext>
+          {rows.length === 0 && <TableEmptyState message={emptyMessage} />}
+        </div>
+      </AppTableShell>
+    </TableDndBoundary>
   );
 }
 

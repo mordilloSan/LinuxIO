@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -66,7 +66,7 @@ export default function VMListTable({
   pendingActions: ReadonlyMap<string, VMAction>;
   vms: VirtualMachine[];
 }) {
-  const columns = useMemo<AppDataTableColumnDef<VirtualMachine>[]>(
+  const columns = useMemo<AppVirtualDataTableColumnDef<VirtualMachine>[]>(
     () => [
       {
         accessorKey: "name",
@@ -210,17 +210,24 @@ export default function VMListTable({
     surface,
   });
 
+  const handleRowClick = useCallback(
+    ({ original: vm }: { original: VirtualMachine }) => onSelect(vm.name),
+    [onSelect],
+  );
+
   return (
     <FrostedCard style={listPanelStyle}>
-      <AppDataTable
+      <AppVirtualDataTable
         ariaLabel="Virtual machines"
         columns={columns}
         data={surface.items}
         dnd={tableDnd}
         emptyMessage="No virtual machines."
         enableSorting={false}
-        getRowId={(vm) => vm.name}
-        onRowClick={(row) => onSelect(row.original.name)}
+        fillAvailable={false}
+        getRowId={getVirtualMachineId}
+        maxHeight={400}
+        onRowClick={handleRowClick}
         selectedRowId={effectiveSelectedName}
         variant="embedded"
       />

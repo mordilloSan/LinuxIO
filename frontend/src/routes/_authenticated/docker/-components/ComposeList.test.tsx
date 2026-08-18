@@ -6,6 +6,10 @@ import { act, render, screen, waitFor, within } from "@/test/render";
 
 import ComposeList from "./ComposeList";
 
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));

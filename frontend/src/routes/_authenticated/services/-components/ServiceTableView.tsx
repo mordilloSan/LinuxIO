@@ -2,7 +2,7 @@ import { useCallback } from "react";
 
 import type { Service } from "@/api";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import UnitStatusDot from "./UnitStatusDot";
 import { UnitTableView } from "./UnitViews";
@@ -72,7 +72,10 @@ const ServiceTableView = ({
     [onSelect],
   );
 
-  const dnd = useVirtualReorderableTableDnd<Service, Service>({ surface });
+  const dnd = useReorderableTableDnd<Service, Service>({
+    handleAriaLabel: "Reorder service",
+    surface,
+  });
 
   return (
     <UnitTableView

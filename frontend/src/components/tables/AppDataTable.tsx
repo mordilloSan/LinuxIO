@@ -1,16 +1,9 @@
-import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import type { UniqueIdentifier } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { flexRender, useTable } from "@tanstack/react-table";
 import type {
   Cell,
-  Column,
-  ColumnVisibilityState,
   ExpandedState,
   HeaderGroup,
   OnChangeFn,
@@ -22,11 +15,6 @@ import {
   Fragment,
   memo,
   useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
   type CSSProperties,
   type HTMLAttributes,
   type MouseEvent,
@@ -34,34 +22,27 @@ import {
   type Ref,
 } from "react";
 
-import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
-  AppDataTableBreakpoint,
   AppDataTableCellRenderKey,
   AppDataTableColumnDef,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
+import { rowBodyDragListeners, targetIsRowControl } from "@/components/tables/rowInteraction";
 import {
-  ROW_DOUBLE_CLICK_MS,
-  clickTargetsRowBody,
-  rowBodyDragListeners,
-  targetIsRowControl,
-} from "@/components/tables/rowInteraction";
+  AppTableHeader,
+  AppTableShell,
+  MemoizedAppTableCell,
+  TableDndBoundary,
+  TableEmptyState,
+  TableExpandCell,
+  areCellRenderKeysEqual,
+  columnTrack,
+  useAppTableInstance,
+  useRowClickGestures,
+  useTableGestureKeys,
+} from "@/components/tables/tableShared";
 import AppCollapse from "@/components/ui/AppCollapse";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
-import AppTypography from "@/components/ui/AppTypography";
-import { REORDER_HOLD_MS } from "@/constants/reorder";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
-import {
-  EASING_STANDARD_CSS,
-  TRANSITION_DURATION_STANDARD_MS,
-  shadowSm,
-} from "@/theme/constants";
-import { alpha } from "@/utils/color";
-import { isTypingTarget } from "@/utils/keyboardTarget";
 import { mergeRefs } from "@/utils/mergeRefs";
 
 // Shared by both AppDataTable (non-virtualized) and AppVirtualDataTable —
@@ -69,8 +50,6 @@ import { mergeRefs } from "@/utils/mergeRefs";
 // either table alone.
 import "./app-data-table.css";
 import "../reorder/reorder.css";
-
-const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
 export type {
   AppDataTableBreakpoint,
@@ -187,51 +166,6 @@ export interface AppDataTableProps<TData extends RowData> {
   variant?: "default" | "embedded";
 }
 
-function columnTrack<TData extends RowData>(
-  column: Column<AppTableFeatures, TData>,
-) {
-  const width = column.columnDef.meta?.width;
-  if (typeof width === "number") return `${width}px`;
-  if (typeof width === "string" && width.trim()) return width;
-  return "minmax(0, 1fr)";
-}
-
-function alignToJustify(align?: "left" | "center" | "right") {
-  if (align === "center") return "center";
-  if (align === "right") return "flex-end";
-  return "flex-start";
-}
-
-function getColumnDefId<TData extends RowData>(
-  column: AppDataTableColumnDef<TData>,
-  index: number,
-) {
-  const candidate = column as {
-    accessorKey?: string | number;
-    id?: string;
-  };
-
-  if (candidate.id) return candidate.id;
-  if (candidate.accessorKey !== undefined) return String(candidate.accessorKey);
-  return `column-${index}`;
-}
-
-function getSortIcon(sortState: false | "asc" | "desc") {
-  if (sortState === "asc") return "mdi:chevron-up";
-  if (sortState === "desc") return "mdi:chevron-down";
-  return "mdi:unfold-more-horizontal";
-}
-
-function areCellRenderKeysEqual(
-  previous: AppDataTableCellRenderKey,
-  next: AppDataTableCellRenderKey,
-) {
-  if (Object.is(previous, next)) return true;
-  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
-  if (previous.length !== next.length) return false;
-  return previous.every((value, index) => Object.is(value, next[index]));
-}
-
 function areVersionArraysEqual(
   previous: readonly unknown[],
   next: readonly unknown[],
@@ -252,15 +186,12 @@ function getCellRenderKey<TData extends RowData>(
   );
 }
 
-interface AppDataTableCellProps<TData extends RowData> {
+interface AppDataTableCellModel<TData extends RowData> {
   cell: Cell<AppTableFeatures, TData>;
   columnDef: AppDataTableColumnDef<TData>;
   renderKey: AppDataTableCellRenderKey;
   rowIndex: number;
 }
-
-type AppDataTableCellModel<TData extends RowData> =
-  AppDataTableCellProps<TData>;
 
 function areCellModelsEqual<TData extends RowData>(
   previous: AppDataTableCellModel<TData>[],
@@ -277,39 +208,6 @@ function areCellModelsEqual<TData extends RowData>(
     );
   });
 }
-
-function AppDataTableCell<TData extends RowData>({
-  cell,
-  columnDef,
-}: AppDataTableCellProps<TData>) {
-  const meta = columnDef.meta;
-
-  return (
-    <div
-      className={["app-dt__cell", meta?.className, meta?.cellClassName]
-        .filter(Boolean)
-        .join(" ")}
-      role="cell"
-      style={{
-        justifyContent: alignToJustify(meta?.align),
-        textAlign: meta?.align,
-        ...meta?.style,
-        ...meta?.cellStyle,
-      }}
-    >
-      {flexRender(columnDef.cell, cell.getContext())}
-    </div>
-  );
-}
-
-const MemoizedAppDataTableCell = memo(
-  AppDataTableCell,
-  (previous, next) =>
-    previous.cell.id === next.cell.id &&
-    previous.columnDef === next.columnDef &&
-    previous.rowIndex === next.rowIndex &&
-    areCellRenderKeysEqual(previous.renderKey, next.renderKey),
-) as typeof AppDataTableCell;
 
 interface AppDataTableBodyRowProps<TData extends RowData> {
   canExpand: boolean;
@@ -370,7 +268,7 @@ function AppDataTableBodyRow<TData extends RowData>({
         </div>
       )}
       {cells.map((cell) => (
-        <MemoizedAppDataTableCell
+        <MemoizedAppTableCell
           cell={cell.cell}
           columnDef={cell.columnDef}
           key={cell.cell.id}
@@ -379,31 +277,11 @@ function AppDataTableBodyRow<TData extends RowData>({
         />
       ))}
       {hasExpandColumn && (
-        <div className="app-dt__cell app-dt__cell--expand" role="cell">
-          {canExpand && (
-            <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
-              <AppIconButton
-                aria-expanded={isExpanded}
-                aria-label={isExpanded ? "Collapse row" : "Expand row"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  row.toggleExpanded();
-                }}
-                size="small"
-              >
-                <Icon
-                  height={22}
-                  icon="mdi:chevron-down"
-                  style={{
-                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: `transform ${DETAIL_ANIMATION_CSS}`,
-                  }}
-                  width={22}
-                />
-              </AppIconButton>
-            </AppTooltip>
-          )}
-        </div>
+        <TableExpandCell
+          canExpand={canExpand}
+          isExpanded={isExpanded}
+          onToggle={() => row.toggleExpanded()}
+        />
       )}
     </>
   );
@@ -747,81 +625,11 @@ function AppDataTableHeader<TData extends RowData>({
   headerGroups,
 }: AppDataTableHeaderProps<TData>) {
   return (
-    <div className="app-dt__head" role="rowgroup">
-      {headerGroups.map((headerGroup) => (
-        <div
-          className="app-dt__row app-dt__row--head"
-          key={headerGroup.id}
-          role="row"
-        >
-          {hasDragColumn && (
-            <div
-              aria-hidden="true"
-              className="app-dt__cell app-dt__cell--head app-dt__cell--drag"
-              role="columnheader"
-            />
-          )}
-          {headerGroup.headers.map((header) => {
-            const meta = header.column.columnDef.meta;
-            const sortState = header.column.getIsSorted();
-            const canSort = header.column.getCanSort();
-
-            return (
-              <div
-                className={[
-                  "app-dt__cell",
-                  "app-dt__cell--head",
-                  meta?.className,
-                  meta?.headerClassName,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                key={header.id}
-                role="columnheader"
-                style={{
-                  justifyContent: alignToJustify(meta?.align),
-                  textAlign: meta?.align,
-                  ...meta?.style,
-                  ...meta?.headerStyle,
-                }}
-              >
-                {header.isPlaceholder ? null : canSort ? (
-                  <button
-                    className="app-dt__sort-button"
-                    onClick={header.column.getToggleSortingHandler()}
-                    type="button"
-                  >
-                    <span className="app-dt__sort-label">
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                    </span>
-                    <Icon
-                      height={16}
-                      icon={getSortIcon(sortState)}
-                      width={16}
-                    />
-                  </button>
-                ) : (
-                  flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )
-                )}
-              </div>
-            );
-          })}
-          {hasExpandColumn && (
-            <div
-              aria-hidden="true"
-              className="app-dt__cell app-dt__cell--head app-dt__cell--expand"
-              role="columnheader"
-            />
-          )}
-        </div>
-      ))}
-    </div>
+    <AppTableHeader
+      hasDragColumn={hasDragColumn}
+      hasExpandColumn={hasExpandColumn}
+      headerGroups={headerGroups}
+    />
   );
 }
 
@@ -923,141 +731,30 @@ function AppDataTable<TData extends RowData>({
   style,
   variant = "default",
 }: AppDataTableProps<TData>) {
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-  const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const belowMd = useAppMediaQuery(theme.breakpoints.down("md"));
-  const belowLg = useAppMediaQuery(theme.breakpoints.down("lg"));
-  const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
-  const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
-  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
-  // The table owns the deferred single click, not the row: rows are memoized and
-  // remount when column defs are rebuilt, which would drop a pending expand.
-  const pendingExpandRef = useRef<number | null>(null);
-  const cancelPendingExpand = useCallback(() => {
-    if (pendingExpandRef.current === null) return;
-    window.clearTimeout(pendingExpandRef.current);
-    pendingExpandRef.current = null;
-  }, []);
-
-  useEffect(() => cancelPendingExpand, [cancelPendingExpand]);
-
-  const columnVisibility = useMemo<ColumnVisibilityState>(() => {
-    const below: Record<AppDataTableBreakpoint, boolean> = {
-      sm: belowSm,
-      md: belowMd,
-      lg: belowLg,
-      xl: belowXl,
-    };
-    const next: ColumnVisibilityState = {};
-
-    columns.forEach((column, index) => {
-      const hideBelow = column.meta?.hideBelow;
-      if (!hideBelow) return;
-      next[getColumnDefId(column, index)] = !below[hideBelow];
-    });
-
-    return next;
-  }, [belowLg, belowMd, belowSm, belowXl, columns]);
-
-  const resolvedExpanded = expanded ?? internalExpanded;
-  const resolvedSorting = sorting ?? internalSorting;
-  // A column sort already decides the row order, and a saved manual order would
-  // be invisible underneath it. Sorted tables therefore aren't reorderable at
-  // all, rather than accepting drags that appear to do nothing.
-  const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
-
-  const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
-    if (expanded === undefined) {
-      setInternalExpanded(updater);
-    }
-    onExpandedChange?.(updater);
-  };
-
-  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
-    if (sorting === undefined) {
-      setInternalSorting(updater);
-    }
-    onSortingChange?.(updater);
-  };
-
-  const table = useTable({
-    features: appTableFeatures,
-    autoResetExpanded: false,
+  const { dndOptions, resolvedSorting, table } = useAppTableInstance({
     columns,
     data,
+    dnd,
     enableSorting,
-    enableSortingRemoval: false,
-    getRowCanExpand: (row) =>
-      Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
+    expanded,
+    getRowCanExpand,
     getRowId,
     manualSorting,
-    onExpandedChange: handleExpandedChange,
-    onSortingChange: handleSortingChange,
-    state: {
-      columnVisibility,
-      expanded: resolvedExpanded,
-      sorting: resolvedSorting,
-    },
+    onExpandedChange,
+    onSortingChange,
+    renderExpandedContent,
+    sorting,
   });
 
   const rows = table.getRowModel().rows;
 
-  const handleTableKeyDown = useEffectEvent(
-    (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      // A dialog owns the keyboard while it is open, the same guard the
-      // filebrowser keyboard hooks use.
-      if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
+  useTableGestureKeys({
+    hasExpandableRows: Boolean(renderExpandedContent),
+    onClearSelection,
+    onSelectAll,
+    table,
+  });
 
-      // Escape peels one layer of row state at a time: open detail panels
-      // first, then the selection. Pressing it twice therefore gets a table
-      // back to rest. A table with nothing expanded skips straight to clearing
-      // the selection rather than swallowing a press on nothing.
-      if (event.key === "Escape") {
-        // Read expansion off the table instance rather than a render-time
-        // boolean: the listener outlives the render it was created in.
-        if (table.getIsSomeRowsExpanded()) {
-          table.setExpanded({});
-        } else if (onClearSelection) {
-          onClearSelection();
-        } else {
-          return;
-        }
-        // Claim the press so a nested table, or a page-level handler, leaves
-        // it be.
-        event.preventDefault();
-        return;
-      }
-
-      // Ctrl/Cmd-A selects every row the filter and sort leave visible. Shift
-      // and Alt are excluded so combos like Ctrl+Shift+A stay inert, and the
-      // key is lowercased so CapsLock cannot break the match.
-      const isCtrlOrCmd =
-        (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
-      if (!isCtrlOrCmd || event.key.toLowerCase() !== "a") return;
-      // Typing keeps its native select-all.
-      if (!onSelectAll || isTypingTarget(event)) return;
-
-      event.preventDefault();
-      onSelectAll(table.getRowModel().rows.map((row) => row.id));
-    },
-  );
-
-  useEffect(() => {
-    if (!renderExpandedContent && !onClearSelection && !onSelectAll) return;
-    window.addEventListener("keydown", handleTableKeyDown);
-    return () => window.removeEventListener("keydown", handleTableKeyDown);
-  }, [onClearSelection, onSelectAll, renderExpandedContent]);
-
-  const isEmbedded = variant === "embedded";
-  const headRowBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, 0.08);
-  const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
-  const altBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
   // Only layout mode adds the handle column; an armed-but-idle table keeps its
@@ -1069,39 +766,16 @@ function AppDataTable<TData extends RowData>({
   // only target. A table that gives a row click another meaning keeps it —
   // its handler wins — and in layout mode the press belongs to the drag.
   const rowClickExpands = hasExpandColumn && !onRowClick && !hasDragColumn;
-  // Only a table that binds both gestures has to wait out the double-click
-  // window; a click-only table expands on the spot.
-  const expandClickDelayMs =
-    rowClickExpands && onRowDoubleClick ? ROW_DOUBLE_CLICK_MS : 0;
-  const handleRowClick = rowClickExpands
-    ? (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
-        if (!row.getCanExpand() || !clickTargetsRowBody(event.target)) return;
+  const toggleExpanded = useCallback((row: Row<AppTableFeatures, TData>) => {
+    row.toggleExpanded();
+  }, []);
+  const { handleRowClick, handleRowDoubleClick } = useRowClickGestures({
+    onRowClick,
+    onRowDoubleClick,
+    rowClickExpands,
+    toggleExpanded,
+  });
 
-        cancelPendingExpand();
-        if (!expandClickDelayMs) {
-          row.toggleExpanded();
-          return;
-        }
-        // The second click of a double click carries detail 2 — leave the row
-        // alone and let the double-click handler have it.
-        if (event.detail > 1) return;
-
-        pendingExpandRef.current = window.setTimeout(() => {
-          pendingExpandRef.current = null;
-          row.toggleExpanded();
-        }, expandClickDelayMs);
-      }
-    : onRowClick;
-  // A double click is how a word gets selected, so the text-selection half of
-  // `clickTargetsRowBody` would veto every one of these — only the control check
-  // applies here.
-  const handleRowDoubleClick = onRowDoubleClick
-    ? (row: Row<AppTableFeatures, TData>, event: MouseEvent) => {
-        cancelPendingExpand();
-        if (targetIsRowControl(event.target)) return;
-        onRowDoubleClick(row, event);
-      }
-    : undefined;
   const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
   // TanStack can preserve Column objects while swapping their definitions.
@@ -1157,145 +831,110 @@ function AppDataTable<TData extends RowData>({
   }
   const columnCount = visibleColumns.length + (hasExpandColumn ? 1 : 0);
 
-  const content = (
-    <div
-      aria-label={ariaLabel}
-      className={[
-        "app-dt",
-        "app-dt--normal",
-        fillAvailable && "app-dt--fill",
-        isEmbedded && "app-dt--embedded",
-        density === "compact" && "app-dt--compact",
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      role="table"
-      style={
-        {
-          "--app-dt-alt-bg": altBg,
-          "--app-dt-grid": gridTemplate,
-          "--app-dt-head-bg": headRowBg,
-          "--app-dt-selected-bg": selectedBg,
-          "--reorder-hold-color": theme.palette.primary.main,
-          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
-          boxShadow: isEmbedded ? "none" : shadowSm,
-          height: height ?? (fillAvailable ? "100%" : undefined),
-          maxHeight,
-          minHeight: fillAvailable ? 0 : undefined,
-          ...style,
-        } as CSSProperties
-      }
-    >
-      {showHeader && (
-        <MemoizedAppDataTableHeader
-          columnVersion={visibleColumnDefinitions}
-          hasDragColumn={hasDragColumn}
-          hasExpandColumn={hasExpandColumn}
-          headerGroups={headerGroups}
-          sortingVersion={resolvedSorting}
-        />
-      )}
+  return (
+    <TableDndBoundary dnd={dndOptions}>
+      <AppTableShell
+        ariaLabel={ariaLabel}
+        className={["app-dt--normal", className].filter(Boolean).join(" ")}
+        density={density}
+        fillAvailable={fillAvailable}
+        gridTemplate={gridTemplate}
+        height={height}
+        maxHeight={maxHeight}
+        style={style}
+        variant={variant}
+      >
+        {showHeader && (
+          <MemoizedAppDataTableHeader
+            columnVersion={visibleColumnDefinitions}
+            hasDragColumn={hasDragColumn}
+            hasExpandColumn={hasExpandColumn}
+            headerGroups={headerGroups}
+            sortingVersion={resolvedSorting}
+          />
+        )}
 
-      <div className="app-dt__scroll custom-scrollbar" role="presentation">
-        <div className="app-dt__body" role="rowgroup">
-          {bodyGroups.map(({ entries, groupId }) => {
-            if (dndOptions && groupId !== undefined) {
-              return (
-                <AppDataTableSortableBodyGroup
-                  columnCount={columnCount}
-                  dnd={dndOptions}
-                  entries={entries}
-                  getRowAttributes={getRowAttributes}
-                  groupId={groupId}
-                  hasDragColumn={hasDragColumn}
-                  hasExpandColumn={hasExpandColumn}
-                  key={`sortable-group:${String(groupId)}:${entries[0].row.id}`}
-                  onRowClick={handleRowClick}
-                  onRowContextMenu={onRowContextMenu}
-                  onRowDoubleClick={handleRowDoubleClick}
-                  renderExpandedContent={renderExpandedContent}
-                  renderRow={renderRow}
-                />
-              );
-            }
-
-            const entry = entries[0];
-            const { row } = entry;
-            return (
-              <Fragment key={row.id}>
-                {dndOptions && (dndOptions.isRowSortable?.(row) ?? true) ? (
-                  <AppDataTableSortableBodyRow
-                    canExpand={entry.canExpand}
-                    cells={entry.cells}
+        <div className="app-dt__scroll custom-scrollbar" role="presentation">
+          <div className="app-dt__body" role="rowgroup">
+            {bodyGroups.map(({ entries, groupId }) => {
+              if (dndOptions && groupId !== undefined) {
+                return (
+                  <AppDataTableSortableBodyGroup
+                    columnCount={columnCount}
                     dnd={dndOptions}
+                    entries={entries}
                     getRowAttributes={getRowAttributes}
-                    hasExpandColumn={hasExpandColumn}
-                    isExpanded={entry.isExpanded}
-                    isInteractive={entry.isInteractive}
-                    isSelected={entry.isSelected}
-                    onRowClick={handleRowClick}
-                    onRowContextMenu={onRowContextMenu}
-                    onRowDoubleClick={handleRowDoubleClick}
-                    renderRow={renderRow}
-                    row={row}
-                    rowIndex={entry.rowIndex}
-                  />
-                ) : (
-                  <MemoizedAppDataTableBodyRow
-                    canExpand={entry.canExpand}
-                    cells={entry.cells}
-                    getRowAttributes={getRowAttributes}
-                    // A non-sortable row amid sortable ones still renders the
-                    // empty handle cell so its columns stay on the grid.
+                    groupId={groupId}
                     hasDragColumn={hasDragColumn}
                     hasExpandColumn={hasExpandColumn}
-                    isExpanded={entry.isExpanded}
-                    isInteractive={entry.isInteractive}
-                    isSelected={entry.isSelected}
+                    key={`sortable-group:${String(groupId)}:${entries[0].row.id}`}
                     onRowClick={handleRowClick}
                     onRowContextMenu={onRowContextMenu}
                     onRowDoubleClick={handleRowDoubleClick}
-                    renderRow={renderRow}
-                    row={row}
-                    rowIndex={entry.rowIndex}
-                  />
-                )}
-                {renderExpandedContent && (
-                  <MemoizedAppDataTableExpandedRow
-                    columnCount={columnCount}
-                    isExpanded={entry.isExpanded}
                     renderExpandedContent={renderExpandedContent}
-                    row={row}
+                    renderRow={renderRow}
                   />
-                )}
-              </Fragment>
-            );
-          })}
-        </div>
+                );
+              }
 
-        {rows.length === 0 && (
-          <div className="app-dt__empty">
-            <AppTypography color="text.secondary" variant="body2">
-              {emptyMessage}
-            </AppTypography>
+              const entry = entries[0];
+              const { row } = entry;
+              return (
+                <Fragment key={row.id}>
+                  {dndOptions && (dndOptions.isRowSortable?.(row) ?? true) ? (
+                    <AppDataTableSortableBodyRow
+                      canExpand={entry.canExpand}
+                      cells={entry.cells}
+                      dnd={dndOptions}
+                      getRowAttributes={getRowAttributes}
+                      hasExpandColumn={hasExpandColumn}
+                      isExpanded={entry.isExpanded}
+                      isInteractive={entry.isInteractive}
+                      isSelected={entry.isSelected}
+                      onRowClick={handleRowClick}
+                      onRowContextMenu={onRowContextMenu}
+                      onRowDoubleClick={handleRowDoubleClick}
+                      renderRow={renderRow}
+                      row={row}
+                      rowIndex={entry.rowIndex}
+                    />
+                  ) : (
+                    <MemoizedAppDataTableBodyRow
+                      canExpand={entry.canExpand}
+                      cells={entry.cells}
+                      getRowAttributes={getRowAttributes}
+                      // A non-sortable row amid sortable ones still renders the
+                      // empty handle cell so its columns stay on the grid.
+                      hasDragColumn={hasDragColumn}
+                      hasExpandColumn={hasExpandColumn}
+                      isExpanded={entry.isExpanded}
+                      isInteractive={entry.isInteractive}
+                      isSelected={entry.isSelected}
+                      onRowClick={handleRowClick}
+                      onRowContextMenu={onRowContextMenu}
+                      onRowDoubleClick={handleRowDoubleClick}
+                      renderRow={renderRow}
+                      row={row}
+                      rowIndex={entry.rowIndex}
+                    />
+                  )}
+                  {renderExpandedContent && (
+                    <MemoizedAppDataTableExpandedRow
+                      columnCount={columnCount}
+                      isExpanded={entry.isExpanded}
+                      renderExpandedContent={renderExpandedContent}
+                      row={row}
+                    />
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
-        )}
-      </div>
-    </div>
-  );
 
-  if (!dndOptions) return content;
-
-  return (
-    <DndContext {...dndOptions.contextProps}>
-      <SortableContext
-        items={dndOptions.itemIds}
-        strategy={verticalListSortingStrategy}
-      >
-        {content}
-      </SortableContext>
-    </DndContext>
+          {rows.length === 0 && <TableEmptyState message={emptyMessage} />}
+        </div>
+      </AppTableShell>
+    </TableDndBoundary>
   );
 }
 

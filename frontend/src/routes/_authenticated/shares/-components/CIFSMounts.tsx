@@ -3,8 +3,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -552,7 +552,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
     surface,
   });
 
-  const columns = useMemo<AppDataTableColumnDef<CIFSMount>[]>(
+  const columns = useMemo<AppVirtualDataTableColumnDef<CIFSMount>[]>(
     () => [
       {
         accessorKey: "source",
@@ -796,13 +796,15 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         <AppAlert severity="warning">{cifsReason}</AppAlert>
       ) : null}
 
-      <AppDataTable
+      <AppVirtualDataTable
         ariaLabel="SMB mounts"
         columns={columns}
         data={surface.items}
         dnd={tableDnd}
         emptyMessage="No SMB entries found. Click 'Mount SMB' to add one."
+        fillAvailable={false}
         getRowId={(mount) => mount.mountpoint}
+        maxHeight={400}
         renderExpandedContent={({ original: mount }) => (
           <div className="expand-panel">
             <AppTypography gutterBottom variant="subtitle2">

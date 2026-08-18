@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppTypography from "@/components/ui/AppTypography";
 
 import type { SmartAttribute, SmartData } from "../types";
@@ -22,7 +22,7 @@ interface SmartSummaryRow {
   valueStyle?: CSSProperties;
 }
 
-const smartSummaryColumns: AppDataTableColumnDef<SmartSummaryRow>[] = [
+const smartSummaryColumns: AppVirtualDataTableColumnDef<SmartSummaryRow>[] = [
   {
     accessorKey: "attribute",
     header: "Attribute",
@@ -37,7 +37,7 @@ const smartSummaryColumns: AppDataTableColumnDef<SmartSummaryRow>[] = [
   },
 ];
 
-const ataAttributeColumns: AppDataTableColumnDef<SmartAttribute>[] = [
+const ataAttributeColumns: AppVirtualDataTableColumnDef<SmartAttribute>[] = [
   {
     accessorKey: "id",
     header: "#",
@@ -228,12 +228,13 @@ export const SmartAttributesTab = ({
 
     if (rows.length > 0) {
       return (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="NVMe SMART attributes"
           columns={smartSummaryColumns}
           data={rows}
           density="compact"
           emptyMessage="No SMART attributes available for this drive."
+          fillAvailable={false}
           getRowId={(row) => row.id}
           maxHeight={400}
           variant="embedded"
@@ -244,12 +245,13 @@ export const SmartAttributesTab = ({
 
   if (ataAttrs && ataAttrs.length > 0) {
     return (
-      <AppDataTable
+      <AppVirtualDataTable
         ariaLabel="ATA SMART attributes"
         columns={ataAttributeColumns}
         data={ataAttrs}
         density="compact"
         emptyMessage="No SMART attributes available for this drive."
+        fillAvailable={false}
         getRowId={(attr) => String(attr.id)}
         maxHeight={400}
         variant="embedded"

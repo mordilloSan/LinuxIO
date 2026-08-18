@@ -1,5 +1,5 @@
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -50,7 +50,7 @@ interface NvmeSelfTestRow {
   };
 }
 
-const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
+const standardSelfTestColumns: AppVirtualDataTableColumnDef<StandardSelfTestRow>[] = [
   {
     id: "number",
     header: "#",
@@ -85,7 +85,7 @@ const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
   },
 ];
 
-const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
+const nvmeSelfTestColumns: AppVirtualDataTableColumnDef<NvmeSelfTestRow>[] = [
   {
     id: "type",
     header: "Type",
@@ -222,12 +222,13 @@ export const SelfTestsTab = ({
         Self-Test History
       </AppTypography>
       {standardRows.length > 0 ? (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="SMART self-test history"
           columns={standardSelfTestColumns}
           data={standardRows}
           density="compact"
           emptyMessage="No self-test history available."
+          fillAvailable={false}
           getRowId={(entry, index) =>
             String(getSmartNumber(entry.num) ?? index)
           }
@@ -235,12 +236,13 @@ export const SelfTestsTab = ({
           variant="embedded"
         />
       ) : nvmeRows.length > 0 ? (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="NVMe self-test history"
           columns={nvmeSelfTestColumns}
           data={nvmeRows}
           density="compact"
           emptyMessage="No self-test history available."
+          fillAvailable={false}
           getRowId={(_, index) => String(index)}
           maxHeight={400}
           variant="embedded"

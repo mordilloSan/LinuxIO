@@ -8,8 +8,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -56,7 +56,7 @@ interface ConnectedContainerRow {
   name: string;
 }
 
-const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
+const connectedContainerColumns: AppVirtualDataTableColumnDef<ConnectedContainerRow>[] =
   [
     {
       accessorKey: "name",
@@ -565,7 +565,7 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
           <b>Connected Containers:</b>
         </AppTypography>
         {Object.entries(network.Containers ?? {}).length ? (
-          <AppDataTable
+          <AppVirtualDataTable
             ariaLabel="Connected containers"
             columns={connectedContainerColumns}
             data={Object.entries(network.Containers ?? {}).map(
@@ -579,6 +579,7 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
               }),
             )}
             density="compact"
+            fillAvailable={false}
             getRowId={(container) => container.id}
             maxHeight={240}
             style={{
@@ -683,160 +684,173 @@ const NetworkList = ({
     updateFocusedNetwork(null);
   };
 
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      accessorKey: "Name",
-      header: "Network Name",
-      cell: ({ row }) => (
-        <AppTypography
-          fontWeight={500}
-          style={responsiveTextStyles}
-          variant="body2"
-        >
-          {row.original.Name}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "Driver",
-      header: "Driver",
-      cell: ({ row }) => (
-        <Chip
-          label={row.original.Driver}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        width: "120px",
-      },
-    },
-    {
-      accessorKey: "Scope",
-      header: "Scope",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Scope}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "100px",
-      },
-    },
-    {
-      accessorKey: "Internal",
-      header: "Internal",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.Internal ? "warning" : "default"}
-          label={row.original.Internal ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "100px",
-      },
-    },
-    {
-      id: "features",
-      header: "Features",
-      cell: ({ row }) => {
-        const features = [
-          row.original.Attachable && "Attachable",
-          row.original.Ingress && "Ingress",
-          row.original.ConfigOnly && "Config only",
-        ].filter(Boolean);
-        return (
-          <AppTypography style={responsiveTextStyles} variant="body2">
-            {features.length > 0 ? features.join(", ") : "-"}
+  const handleNetworkRowClick = useCallback(
+    ({ original: network }: { original: { Id: string } }) =>
+      updateFocusedNetwork(network.Id),
+    [updateFocusedNetwork],
+  );
+
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<
+    AppVirtualDataTableColumnDef<(typeof filtered)[number]>[]
+  >(
+    () => [
+      {
+        accessorKey: "Name",
+        header: "Network Name",
+        cell: ({ row }) => (
+          <AppTypography
+            fontWeight={500}
+            style={responsiveTextStyles}
+            variant="body2"
+          >
+            {row.original.Name}
           </AppTypography>
-        );
+        ),
+        meta: { align: "left" },
       },
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "150px",
+      {
+        accessorKey: "Driver",
+        header: "Driver",
+        cell: ({ row }) => (
+          <Chip
+            label={row.original.Driver}
+            size="small"
+            style={{ fontSize: "0.75rem" }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          width: "120px",
+        },
       },
-    },
-    {
-      accessorKey: "Created",
-      header: "Created",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Created
-            ? new Date(row.original.Created).toLocaleDateString()
-            : "-"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "120px",
+      {
+        accessorKey: "Scope",
+        header: "Scope",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Scope}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "EnableIPv4",
-      header: "IPv4",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.EnableIPv4 !== false ? "success" : "default"}
-          label={row.original.EnableIPv4 !== false ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "100px",
+      {
+        accessorKey: "Internal",
+        header: "Internal",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.Internal ? "warning" : "default"}
+            label={row.original.Internal ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "EnableIPv6",
-      header: "IPv6",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.EnableIPv6 ? "success" : "default"}
-          label={row.original.EnableIPv6 ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "100px",
+      {
+        id: "features",
+        header: "Features",
+        cell: ({ row }) => {
+          const features = [
+            row.original.Attachable && "Attachable",
+            row.original.Ingress && "Ingress",
+            row.original.ConfigOnly && "Config only",
+          ].filter(Boolean);
+          return (
+            <AppTypography style={responsiveTextStyles} variant="body2">
+              {features.length > 0 ? features.join(", ") : "-"}
+            </AppTypography>
+          );
+        },
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "150px",
+        },
       },
-    },
-    {
-      accessorKey: "Id",
-      header: "Network ID",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.Id?.slice(0, 12)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "140px",
+      {
+        accessorKey: "Created",
+        header: "Created",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Created
+              ? new Date(row.original.Created).toLocaleDateString()
+              : "-"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "120px",
+        },
       },
-    },
-  ];
+      {
+        accessorKey: "EnableIPv4",
+        header: "IPv4",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.EnableIPv4 !== false ? "success" : "default"}
+            label={row.original.EnableIPv4 !== false ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "100px",
+        },
+      },
+      {
+        accessorKey: "EnableIPv6",
+        header: "IPv6",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.EnableIPv6 ? "success" : "default"}
+            label={row.original.EnableIPv6 ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "100px",
+        },
+      },
+      {
+        accessorKey: "Id",
+        header: "Network ID",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{
+              fontFamily: "var(--app-font-mono)",
+              ...responsiveTextStyles,
+            }}
+            variant="body2"
+          >
+            {row.original.Id?.slice(0, 12)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "140px",
+        },
+      },
+    ],
+    [],
+  );
 
   return (
     <div
@@ -915,19 +929,15 @@ const NetworkList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
           dnd={tableDnd}
           emptyMessage="No networks found."
           fillAvailable
-          getRowId={(network) => network.Id}
-          onRowClick={
-            surface.editMode
-              ? undefined
-              : ({ original: network }) => updateFocusedNetwork(network.Id)
-          }
+          getRowId={getNetworkId}
+          onRowClick={surface.editMode ? undefined : handleNetworkRowClick}
           selectedRowId={focusedNetworkId}
         />
       )}

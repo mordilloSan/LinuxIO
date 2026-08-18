@@ -8,8 +8,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -366,135 +366,148 @@ const ImageList = ({
     [],
   );
 
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      accessorKey: "repo",
-      header: "Repository",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+  const handleImageRowClick = useCallback(
+    ({ original: image }: { original: { id: string } }) =>
+      handleOpenImage(image.id),
+    [handleOpenImage],
+  );
+
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<
+    AppVirtualDataTableColumnDef<(typeof filtered)[number]>[]
+  >(
+    () => [
+      {
+        accessorKey: "repo",
+        header: "Repository",
+        cell: ({ row }) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <AppTypography
+              fontWeight={500}
+              style={responsiveTextStyles}
+              variant="body2"
+            >
+              {row.original.repo}
+            </AppTypography>
+            {row.original.repos.length > 1 && (
+              <Chip
+                label={`+${row.original.repos.length - 1}`}
+                size="small"
+                style={{ fontSize: "0.68rem" }}
+                title={row.original.repos.slice(1).join(", ")}
+                variant="soft"
+              />
+            )}
+          </div>
+        ),
+        meta: { align: "left" },
+      },
+      {
+        id: "tags",
+        accessorFn: (image) => image.tags.join(", "),
+        header: "Tags",
+        cell: ({ row }) => (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {row.original.tags.map((tag) => (
+              <Chip
+                key={tag}
+                label={tag}
+                size="small"
+                style={{ fontSize: "0.75rem" }}
+                variant="soft"
+              />
+            ))}
+          </div>
+        ),
+        meta: {
+          align: "left",
+          width: "180px",
+        },
+      },
+      {
+        accessorKey: "id",
+        header: "Full ID",
+        cell: ({ row }) => (
           <AppTypography
-            fontWeight={500}
-            style={responsiveTextStyles}
+            copyText={row.original.id}
+            noWrap
+            style={{
+              ...responsiveTextStyles,
+            }}
+            title={row.original.id}
             variant="body2"
           >
-            {row.original.repo}
+            <span style={{ fontWeight: 700 }}>Full ID: </span>
+            <span
+              style={{
+                color: "var(--app-palette-text-secondary)",
+                fontFamily: "var(--app-font-mono)",
+                fontSize: "0.75rem",
+              }}
+            >
+              {row.original.id}
+            </span>
           </AppTypography>
-          {row.original.repos.length > 1 && (
-            <Chip
-              label={`+${row.original.repos.length - 1}`}
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              title={row.original.repos.slice(1).join(", ")}
-              variant="soft"
-            />
-          )}
-        </div>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "tags",
-      accessorFn: (image) => image.tags.join(", "),
-      header: "Tags",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {row.original.tags.map((tag) => (
-            <Chip
-              key={tag}
-              label={tag}
-              size="small"
-              style={{ fontSize: "0.75rem" }}
-              variant="soft"
-            />
-          ))}
-        </div>
-      ),
-      meta: {
-        align: "left",
-        width: "180px",
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "260px",
+        },
       },
-    },
-    {
-      accessorKey: "id",
-      header: "Full ID",
-      cell: ({ row }) => (
-        <AppTypography
-          copyText={row.original.id}
-          noWrap
-          style={{
-            ...responsiveTextStyles,
-          }}
-          title={row.original.id}
-          variant="body2"
-        >
-          <span style={{ fontWeight: 700 }}>Full ID: </span>
-          <span
+      {
+        accessorKey: "size",
+        header: "Size",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.size} MB
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          width: "100px",
+        },
+      },
+      {
+        accessorKey: "created",
+        header: "Created",
+        cell: ({ row }) => (
+          <AppTypography
             style={{
-              color: "var(--app-palette-text-secondary)",
-              fontFamily: "var(--app-font-mono)",
-              fontSize: "0.75rem",
+              fontSize: "0.85rem",
+              ...responsiveTextStyles,
             }}
+            variant="body2"
           >
-            {row.original.id}
-          </span>
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "260px",
+            {row.original.created}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+        },
       },
-    },
-    {
-      accessorKey: "size",
-      header: "Size",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.size} MB
-        </AppTypography>
-      ),
-      meta: {
-        align: "right",
-        width: "100px",
+      {
+        accessorKey: "containers",
+        header: "Used By",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.containers > 0 ? "success" : "default"}
+            label={row.original.containers}
+            size="small"
+            style={{ minWidth: 40 }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "center",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "created",
-      header: "Created",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontSize: "0.85rem",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.created}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-      },
-    },
-    {
-      accessorKey: "containers",
-      header: "Used By",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.containers > 0 ? "success" : "default"}
-          label={row.original.containers}
-          size="small"
-          style={{ minWidth: 40 }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "center",
-        width: "100px",
-      },
-    },
-  ];
+    ],
+    [],
+  );
   return (
     <div
       style={{
@@ -570,19 +583,15 @@ const ImageList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualDataTable
           ariaLabel="Docker images"
           columns={columns}
           data={filtered}
           dnd={tableDnd}
           emptyMessage="No images found."
           fillAvailable
-          getRowId={(image) => image.id}
-          onRowClick={
-            surface.editMode
-              ? undefined
-              : ({ original: image }) => handleOpenImage(image.id)
-          }
+          getRowId={getImageRowId}
+          onRowClick={surface.editMode ? undefined : handleImageRowClick}
           selectedRowId={focusedImageId ?? null}
         />
       )}

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 
 import type { Timer } from "@/api";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import { formatUsec } from "./unitFormatters";
 import UnitStatusDot from "./UnitStatusDot";
@@ -68,7 +68,10 @@ const TimerTableView = ({ surface, timers, onSelect }: TimerTableViewProps) => {
     [onSelect],
   );
 
-  const dnd = useVirtualReorderableTableDnd<Timer, Timer>({ surface });
+  const dnd = useReorderableTableDnd<Timer, Timer>({
+    handleAriaLabel: "Reorder timer",
+    surface,
+  });
 
   return (
     <UnitTableView
