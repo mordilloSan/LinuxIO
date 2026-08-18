@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -14,11 +15,14 @@ import AppMenu from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { iconSize } from "@/theme/constants";
 
 import IndexerDialog from "./IndexerDialog";
 import type { ViewMode } from "../../types/filebrowser";
@@ -58,6 +62,7 @@ const FileBrowserHeader = ({
 }: FileBrowserHeaderProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const headerActionSlot = useHeaderActionSlot();
   const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
     null,
   );
@@ -99,6 +104,137 @@ const FileBrowserHeader = ({
       trigger.focus();
     }
   }, [mobileSearchAnchorEl]);
+
+  // The app header lends its corner to the condensed trigger so it sits with
+  // the power menu. Without a header (tests, embedded shells) it stays here.
+  const headerActionHost = headerActionSlot?.host ?? null;
+  const closeActionsMenu = () => setActionsAnchorEl(null);
+  // Both layouts draw the same icons from these builders, so the collapsed
+  // menu can never fall out of step with the expanded row.
+  const optionActions = (onDone?: () => void) => (
+    <>
+      <AppActionIconButton
+        icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
+        iconSize={20}
+        label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+        onClick={() => {
+          onDone?.();
+          onToggleHiddenFiles();
+        }}
+      />
+      <AppActionIconButton
+        ariaLabel="Index filesystem"
+        disabled={isIndexing || !indexerEnabled}
+        icon="mdi:sync"
+        iconSize={20}
+        label={
+          isIndexing
+            ? "Indexing..."
+            : !indexerEnabled
+              ? indexerReason
+              : "Index filesystem"
+        }
+        loading={isIndexing}
+        onClick={handleIndexer}
+      />
+    </>
+  );
+  const viewAction = (onDone?: () => void) => (
+    <ViewModeToggle
+      alternateMode="list"
+      onViewModeChange={() => {
+        onDone?.();
+        onSwitchView();
+      }}
+      viewMode={viewMode}
+    />
+  );
+  const desktopActions = (
+    <HeaderActions options={optionActions()} view={viewAction()} />
+  );
+  const mobileActions = (
+    <>
+      <AppIconButton
+        aria-expanded={Boolean(actionsAnchorEl)}
+        aria-label="Actions"
+        color={searchQuery ? "primary" : "secondary"}
+        onClick={(event) => {
+          setMobileSearchAnchorEl(null);
+          setActionsAnchorEl(event.currentTarget);
+        }}
+        ref={handleActionsTriggerRef}
+        // In the header corner the trigger is a peer of the power menu and
+        // takes its metrics; back in this bar it stays a compact control.
+        size={headerActionHost ? "medium" : "small"}
+      >
+        <Icon
+          height={headerActionHost ? iconSize.md : 20}
+          icon="mdi:tune"
+          width={headerActionHost ? iconSize.md : 20}
+        />
+      </AppIconButton>
+      <AppMenu
+        anchorEl={actionsAnchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        minWidth={176}
+        onClose={closeActionsMenu}
+        open={Boolean(actionsAnchorEl)}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <div
+          className="file-browser-header__mobile-actions"
+          style={{
+            display: "flex",
+            flexWrap: "nowrap",
+            gap: 8,
+            padding: "4px 8px",
+          }}
+        >
+          <AppIconButton
+            aria-label="Search"
+            color={searchQuery ? "primary" : "default"}
+            onClick={() => {
+              setMobileSearchAnchorEl(actionsAnchorEl);
+              setActionsAnchorEl(null);
+            }}
+            size="small"
+          >
+            <Icon height={20} icon="mdi:magnify" width={20} />
+          </AppIconButton>
+          <HeaderActions
+            options={optionActions(closeActionsMenu)}
+            view={viewAction(closeActionsMenu)}
+          />
+        </div>
+      </AppMenu>
+      <AppPopover
+        anchorEl={mobileSearchAnchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        keepMounted
+        onClose={handleMobileSearchClose}
+        open={Boolean(mobileSearchAnchorEl)}
+        paperStyle={{
+          width: "min(400px, calc(100vw - 16px))",
+          padding: 8,
+        }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <div
+          className="file-browser-header__mobile-search"
+          ref={mobileSearchRef}
+          role="search"
+          style={{ width: "100%" }}
+        >
+          <AppHeaderSearch
+            onChange={onSearchChange}
+            placeholder="Search files and folders..."
+            value={searchQuery}
+          />
+        </div>
+      </AppPopover>
+    </>
+  );
+
   return (
     <>
       <div
@@ -233,151 +369,12 @@ const FileBrowserHeader = ({
             </>
           )}
 
-          {!showQuickSave && (
-            <>
-              {isMobile ? (
-                <>
-                  <AppIconButton
-                    aria-expanded={Boolean(actionsAnchorEl)}
-                    aria-label="Actions"
-                    color={searchQuery ? "primary" : "default"}
-                    onClick={(event) => {
-                      setMobileSearchAnchorEl(null);
-                      setActionsAnchorEl(event.currentTarget);
-                    }}
-                    ref={handleActionsTriggerRef}
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:tune" width={20} />
-                  </AppIconButton>
-                  <AppMenu
-                    anchorEl={actionsAnchorEl}
-                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                    minWidth={176}
-                    onClose={() => setActionsAnchorEl(null)}
-                    open={Boolean(actionsAnchorEl)}
-                    transformOrigin={{ vertical: "top", horizontal: "right" }}
-                  >
-                    <div
-                      className="file-browser-header__mobile-actions"
-                      style={{
-                        display: "flex",
-                        flexWrap: "nowrap",
-                        gap: 8,
-                        padding: "4px 8px",
-                      }}
-                    >
-                      <AppIconButton
-                        aria-label="Search"
-                        color={searchQuery ? "primary" : "default"}
-                        onClick={() => {
-                          setMobileSearchAnchorEl(actionsAnchorEl);
-                          setActionsAnchorEl(null);
-                        }}
-                        size="small"
-                      >
-                        <Icon height={20} icon="mdi:magnify" width={20} />
-                      </AppIconButton>
-                      <ViewModeToggle
-                        alternateMode="list"
-                        onViewModeChange={() => {
-                          setActionsAnchorEl(null);
-                          onSwitchView();
-                        }}
-                        viewMode={viewMode}
-                      />
-                      <AppActionIconButton
-                        icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
-                        iconSize={20}
-                        label={
-                          showHiddenFiles
-                            ? "Hide hidden files"
-                            : "Show hidden files"
-                        }
-                        onClick={() => {
-                          setActionsAnchorEl(null);
-                          onToggleHiddenFiles();
-                        }}
-                      />
-                      <AppActionIconButton
-                        ariaLabel="Index filesystem"
-                        disabled={isIndexing || !indexerEnabled}
-                        icon="mdi:sync"
-                        iconSize={20}
-                        label={
-                          isIndexing
-                            ? "Indexing..."
-                            : !indexerEnabled
-                              ? indexerReason
-                              : "Index filesystem"
-                        }
-                        loading={isIndexing}
-                        onClick={handleIndexer}
-                      />
-                    </div>
-                  </AppMenu>
-                  <AppPopover
-                    anchorEl={mobileSearchAnchorEl}
-                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                    keepMounted
-                    onClose={handleMobileSearchClose}
-                    open={Boolean(mobileSearchAnchorEl)}
-                    paperStyle={{
-                      width: "min(400px, calc(100vw - 16px))",
-                      padding: 8,
-                    }}
-                    transformOrigin={{ vertical: "top", horizontal: "right" }}
-                  >
-                    <div
-                      className="file-browser-header__mobile-search"
-                      ref={mobileSearchRef}
-                      role="search"
-                      style={{ width: "100%" }}
-                    >
-                      <AppHeaderSearch
-                        onChange={onSearchChange}
-                        placeholder="Search files and folders..."
-                        value={searchQuery}
-                      />
-                    </div>
-                  </AppPopover>
-                </>
-              ) : (
-                <>
-                  <ViewModeToggle
-                    alternateMode="list"
-                    onViewModeChange={onSwitchView}
-                    viewMode={viewMode}
-                  />
-                  <AppActionIconButton
-                    icon={showHiddenFiles ? "mdi:eye" : "mdi:eye-off"}
-                    iconSize={20}
-                    label={
-                      showHiddenFiles
-                        ? "Hide hidden files"
-                        : "Show hidden files"
-                    }
-                    onClick={onToggleHiddenFiles}
-                  />
-                  <AppActionIconButton
-                    ariaLabel="Index filesystem"
-                    disabled={isIndexing || !indexerEnabled}
-                    icon="mdi:sync"
-                    iconSize={20}
-                    label={
-                      isIndexing
-                        ? "Indexing..."
-                        : !indexerEnabled
-                          ? indexerReason
-                          : "Index filesystem"
-                    }
-                    loading={isIndexing}
-                    onClick={handleIndexer}
-                  />
-                </>
-              )}
-            </>
-          )}
+          {!showQuickSave &&
+            (isMobile
+              ? headerActionHost
+                ? createPortal(mobileActions, headerActionHost)
+                : mobileActions
+              : desktopActions)}
         </div>
       </div>
       <IndexerDialog />

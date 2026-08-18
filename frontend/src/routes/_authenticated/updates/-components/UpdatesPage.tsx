@@ -5,6 +5,7 @@ import { linuxio, useCallMutation } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
@@ -73,27 +74,33 @@ const AvailableUpdatesPage = () => {
   const packageOperationPending =
     recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
-    <>
-      <AppActionIconButton
-        ariaLabel="Refresh Sources"
-        disabled={packageOperationPending}
-        icon="mdi:database-refresh"
-        iconSize={20}
-        label={isRefreshingCache ? "Refreshing" : "Refresh Sources"}
-        loading={isRefreshingCache}
-        onClick={() => refreshCache()}
-      />
-      {actionableUpdates.length > 0 ? (
+    <HeaderActions
+      bulk={
+        actionableUpdates.length > 0 ? (
+          <AppActionIconButton
+            ariaLabel={`Update All (${actionableUpdates.length})`}
+            disabled={packageOperationPending}
+            icon="mdi:package-up"
+            iconSize={20}
+            label={`Update All (${actionableUpdates.length})`}
+            onClick={() =>
+              updateAll(actionableUpdates.map((u) => u.package_id))
+            }
+          />
+        ) : null
+      }
+      refresh={
         <AppActionIconButton
-          ariaLabel={`Update All (${actionableUpdates.length})`}
+          ariaLabel="Refresh Sources"
           disabled={packageOperationPending}
-          icon="mdi:refresh"
+          icon="mdi:database-refresh"
           iconSize={20}
-          label={`Update All (${actionableUpdates.length})`}
-          onClick={() => updateAll(actionableUpdates.map((u) => u.package_id))}
+          label={isRefreshingCache ? "Refreshing" : "Refresh Sources"}
+          loading={isRefreshingCache}
+          onClick={() => refreshCache()}
         />
-      ) : null}
-    </>
+      }
+    />
   );
 
   return (

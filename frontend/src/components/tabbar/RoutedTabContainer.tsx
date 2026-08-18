@@ -13,8 +13,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
 import type { FileRouteTypes } from "@/routeTree.gen";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { iconSize } from "@/theme/constants";
 
 import { getTabSelectorThemeVars } from "./TabSelector";
 import AppIconButton from "../ui/AppIconButton";
@@ -238,6 +240,7 @@ const TabSelector = memo(function TabSelector({
 }: TabSelectorProps) {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const headerActionSlot = useHeaderActionSlot();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
@@ -283,6 +286,92 @@ const TabSelector = memo(function TabSelector({
   }, [mobileSearchAnchorEl]);
 
   const hasMobileActions = hasSlotActions || hasSlotSearch;
+  // The app header lends its corner to the condensed trigger so it sits with
+  // the power menu instead of in this bar. Without a header (tests, embedded
+  // shells) the trigger stays here in the strip's own action column.
+  const headerActionHost = headerActionSlot?.host ?? null;
+
+  const mobileActions =
+    isMobile && hasMobileActions ? (
+      <>
+        <AppIconButton
+          aria-expanded={Boolean(anchorEl)}
+          aria-label="Actions"
+          className={
+            hasActiveSlotSearch ? "tab-selector__search-active" : undefined
+          }
+          color="secondary"
+          onClick={(event) => {
+            setMobileSearchAnchorEl(null);
+            setAnchorEl(event.currentTarget);
+          }}
+          ref={handleMenuTriggerRef}
+          // In the header corner the trigger is a peer of the power menu and
+          // takes its metrics; back in the strip it stays a compact control.
+          size={headerActionHost ? "medium" : "small"}
+          style={
+            headerActionHost
+              ? { flexShrink: 0 }
+              : { gridColumn: 2, justifySelf: "end", flexShrink: 0 }
+          }
+        >
+          <Icon
+            height={headerActionHost ? iconSize.md : 20}
+            icon="mdi:tune"
+            width={headerActionHost ? iconSize.md : 20}
+          />
+        </AppIconButton>
+        <AppMenu
+          anchorEl={anchorEl}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          keepMounted
+          minWidth="unset"
+          onClose={() => setAnchorEl(null)}
+          open={Boolean(anchorEl)}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <div className="tab-selector__mobile-actions">
+            {hasSlotSearch ? (
+              <AppIconButton
+                aria-label="Search"
+                className={
+                  hasActiveSlotSearch
+                    ? "tab-selector__search-active"
+                    : undefined
+                }
+                onClick={() => {
+                  setMobileSearchAnchorEl(anchorEl);
+                  setAnchorEl(null);
+                }}
+                size="small"
+              >
+                <Icon height={20} icon="mdi:magnify" width={20} />
+              </AppIconButton>
+            ) : null}
+            {actionHostMountRef && hasSlotActions ? (
+              <div ref={actionHostMountRef} />
+            ) : null}
+          </div>
+        </AppMenu>
+        {searchHostMountRef && hasSlotSearch ? (
+          <AppPopover
+            anchorEl={mobileSearchAnchorEl}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            keepMounted
+            onClose={handleMobileSearchClose}
+            open={Boolean(mobileSearchAnchorEl)}
+            paperClassName="tab-selector__mobile-search-popover"
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+          >
+            <div
+              className="tab-selector__mobile-search"
+              ref={handleMobileSearchRef}
+              role="search"
+            />
+          </AppPopover>
+        ) : null}
+      </>
+    ) : null;
 
   return (
     <div
@@ -302,79 +391,11 @@ const TabSelector = memo(function TabSelector({
       ) : null}
 
       {isMobile ? (
-        hasMobileActions ? (
-          <>
-            <AppIconButton
-              aria-expanded={Boolean(anchorEl)}
-              aria-label="Actions"
-              className={
-                hasActiveSlotSearch ? "tab-selector__search-active" : undefined
-              }
-              onClick={(event) => {
-                setMobileSearchAnchorEl(null);
-                setAnchorEl(event.currentTarget);
-              }}
-              ref={handleMenuTriggerRef}
-              size="small"
-              style={{
-                gridColumn: 2,
-                justifySelf: "end",
-                flexShrink: 0,
-              }}
-            >
-              <Icon height={20} icon="mdi:tune" width={20} />
-            </AppIconButton>
-            <AppMenu
-              anchorEl={anchorEl}
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-              keepMounted
-              minWidth="unset"
-              onClose={() => setAnchorEl(null)}
-              open={Boolean(anchorEl)}
-              transformOrigin={{ vertical: "top", horizontal: "right" }}
-            >
-              <div className="tab-selector__mobile-actions">
-                {hasSlotSearch ? (
-                  <AppIconButton
-                    aria-label="Search"
-                    className={
-                      hasActiveSlotSearch
-                        ? "tab-selector__search-active"
-                        : undefined
-                    }
-                    onClick={() => {
-                      setMobileSearchAnchorEl(anchorEl);
-                      setAnchorEl(null);
-                    }}
-                    size="small"
-                  >
-                    <Icon height={20} icon="mdi:magnify" width={20} />
-                  </AppIconButton>
-                ) : null}
-                {actionHostMountRef && hasSlotActions ? (
-                  <div ref={actionHostMountRef} />
-                ) : null}
-              </div>
-            </AppMenu>
-            {searchHostMountRef && hasSlotSearch ? (
-              <AppPopover
-                anchorEl={mobileSearchAnchorEl}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                keepMounted
-                onClose={handleMobileSearchClose}
-                open={Boolean(mobileSearchAnchorEl)}
-                paperClassName="tab-selector__mobile-search-popover"
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-              >
-                <div
-                  className="tab-selector__mobile-search"
-                  ref={handleMobileSearchRef}
-                  role="search"
-                />
-              </AppPopover>
-            ) : null}
-          </>
-        ) : null
+        mobileActions && headerActionHost ? (
+          createPortal(mobileActions, headerActionHost)
+        ) : (
+          mobileActions
+        )
       ) : actionHostMountRef && hasSlotActions ? (
         <div className="tab-selector__actions" ref={actionHostMountRef} />
       ) : null}

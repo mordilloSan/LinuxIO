@@ -1,4 +1,5 @@
 import { RoutedTabActions } from "@/components/tabbar";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -10,14 +11,16 @@ const DockerContainersPage = () => {
     useDockerUpdateCheck();
   const [containerView, setContainerView] = useViewMode("docker.containers");
   const actions = (
-    <>
-      {checkUpdatesButton}
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setContainerView}
-        viewMode={containerView}
-      />
-    </>
+    <HeaderActions
+      refresh={checkUpdatesButton}
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setContainerView}
+          viewMode={containerView}
+        />
+      }
+    />
   );
 
   return (

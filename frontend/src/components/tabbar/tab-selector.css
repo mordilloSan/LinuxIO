@@ -71,9 +71,12 @@
 /* While the collapsed search field carries a query, the mobile trigger and
    the menu's search entry take the theme accent so a filtered list isn't
    mistaken for the full one. Doubled with .app-icon-btn to outrank the
-   button's own color variants; the menu entry renders in a portal, so no
-   .tab-selector ancestor is available to scope by. */
-.app-icon-btn.tab-selector__search-active {
+   button's own color variants, and repeated with :hover so it also beats
+   .app-icon-btn--secondary:hover whichever order the stylesheets bundle in;
+   the menu entry renders in a portal, so no .tab-selector ancestor is
+   available to scope by. */
+.app-icon-btn.tab-selector__search-active,
+.app-icon-btn.tab-selector__search-active:hover {
   color: var(--app-palette-primary-main);
 }
 

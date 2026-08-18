@@ -6,6 +6,7 @@ import PruneDialog, {
 } from "@/components/docker/PruneDialog";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -43,31 +44,37 @@ const DockerNetworksPage = () => {
   }, []);
 
   const actions = (
-    <>
-      <AppActionIconButton
-        ariaLabel="Prune All"
-        disabled={isPruning}
-        icon="mdi:broom"
-        iconSize={20}
-        label="Prune All"
-        loading={isPruning}
-        onClick={() => setPruneDialogOpen(true)}
-      />
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setNetworksView}
-        viewMode={networksView}
-      />
-      {createNetworkHandler && (
+    <HeaderActions
+      create={
+        createNetworkHandler && (
+          <AppActionIconButton
+            ariaLabel="Add Network"
+            icon="mdi:plus"
+            iconSize={20}
+            label="Add Network"
+            onClick={createNetworkHandler}
+          />
+        )
+      }
+      maintenance={
         <AppActionIconButton
-          ariaLabel="Add Network"
-          icon="mdi:plus"
+          ariaLabel="Prune All"
+          disabled={isPruning}
+          icon="mdi:broom"
           iconSize={20}
-          label="Add Network"
-          onClick={createNetworkHandler}
+          label="Prune All"
+          loading={isPruning}
+          onClick={() => setPruneDialogOpen(true)}
         />
-      )}
-    </>
+      }
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setNetworksView}
+          viewMode={networksView}
+        />
+      }
+    />
   );
 
   return (

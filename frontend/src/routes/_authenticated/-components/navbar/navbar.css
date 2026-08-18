@@ -274,3 +274,11 @@
     padding: 0 16px;
   }
 }
+
+/* Host for the active route's condensed actions trigger on small screens.
+   Created by HeaderActionSlotProvider and appended into .app-navbar__actions,
+   so it sits immediately left of the power menu. */
+.app-navbar__route-actions {
+  display: flex;
+  align-items: center;
+}

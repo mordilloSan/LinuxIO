@@ -38,6 +38,7 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import HeaderActions from "@/components/ui/HeaderActions";
 import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -1203,20 +1204,24 @@ const SharesPage = () => {
   );
 
   const sharesActions = (
-    <>
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setViewMode}
-        viewMode={viewMode}
-      />
-      <AppActionIconButton
-        ariaLabel="Add Share"
-        icon="mdi:plus"
-        iconSize={20}
-        label="Add Share"
-        onClick={() => setCreateDialogOpen(true)}
-      />
-    </>
+    <HeaderActions
+      create={
+        <AppActionIconButton
+          ariaLabel="Add Share"
+          icon="mdi:plus"
+          iconSize={20}
+          label="Add Share"
+          onClick={() => setCreateDialogOpen(true)}
+        />
+      }
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setViewMode}
+          viewMode={viewMode}
+        />
+      }
+    />
   );
 
   const content = (

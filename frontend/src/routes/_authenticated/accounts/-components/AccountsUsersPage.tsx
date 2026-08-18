@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -19,22 +20,26 @@ const AccountsUsersPage = () => {
   const isUserDetailOpen = typeof search.user === "string";
 
   const actions = isUserDetailOpen ? null : (
-    <>
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setUsersView}
-        viewMode={usersView}
-      />
-      {createUserHandler && (
-        <AppActionIconButton
-          ariaLabel="Add User"
-          icon="mdi:plus"
-          iconSize={20}
-          label="Add User"
-          onClick={createUserHandler}
+    <HeaderActions
+      create={
+        createUserHandler && (
+          <AppActionIconButton
+            ariaLabel="Add User"
+            icon="mdi:plus"
+            iconSize={20}
+            label="Add User"
+            onClick={createUserHandler}
+          />
+        )
+      }
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setUsersView}
+          viewMode={usersView}
         />
-      )}
-    </>
+      }
+    />
   );
 
   return (
