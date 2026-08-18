@@ -30,6 +30,11 @@ const breadcrumbStyles = `
     align-items: center;
     gap: 1rem;
     flex-wrap: nowrap;
+    /* Stretch to the header column. Shrink-to-fit would make the list's
+       percentage max-width resolve against the trail's own width, so any
+       reservation subtracted from it clips the trail no matter how short. */
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   @media (max-width: 600px) {
@@ -116,7 +121,6 @@ const breadcrumbStyles = `
 
   @media (max-width: 600px) {
     .linuxio-breadcrumb-list {
-      max-width: calc(100% - 8rem);
       overflow: hidden;
     }
   }
