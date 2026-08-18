@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { type DockerVolume, linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
@@ -60,6 +60,139 @@ const formatDockerValue = (value: unknown) => {
     return "Unavailable";
   }
 };
+
+const VolumeDetailsContent = ({ volume }: { volume: DockerVolume }) => (
+  <div className="expand-panel">
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Full Mountpoint:</b>
+      </AppTypography>
+      <AppTypography
+        className="expand-panel__mono"
+        style={longTextStyles}
+        variant="body2"
+      >
+        {volume.Mountpoint || "-"}
+      </AppTypography>
+    </div>
+    {volume.CreatedAt && (
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Created:</b>
+        </AppTypography>
+        <AppTypography className="expand-panel__mono" variant="body2">
+          {new Date(volume.CreatedAt).toLocaleString()}
+        </AppTypography>
+      </div>
+    )}
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Usage:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        <Chip
+          label={`Size: ${formatVolumeSize(volume.UsageData?.Size)}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`References: ${formatReferenceCount(volume.UsageData?.RefCount)}`}
+          size="small"
+          variant="soft"
+        />
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Labels:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
+          Object.entries(volume.Labels).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no labels)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Options:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Options && Object.keys(volume.Options).length > 0 ? (
+          Object.entries(volume.Options).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no options)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Driver Status:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Status && Object.keys(volume.Status).length > 0 ? (
+          Object.entries(volume.Status).map(([key, value]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${formatDockerValue(value)}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no driver status)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    {volume.ClusterVolume && (
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Cluster Volume:</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {Object.entries(volume.ClusterVolume).map(([key, value]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${formatDockerValue(value)}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -352,139 +485,6 @@ const VolumeList = ({
     ],
     [],
   );
-  // Shared by the focused details layout; table expansion retains its existing
-  // markup below so its inline expansion behavior remains unchanged.
-  const renderExpandedContent = (volume: (typeof volumesList)[number]) => (
-    <div className="expand-panel">
-      <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Full Mountpoint:</b>
-        </AppTypography>
-        <AppTypography
-          className="expand-panel__mono"
-          style={longTextStyles}
-          variant="body2"
-        >
-          {volume.Mountpoint || "-"}
-        </AppTypography>
-      </div>
-      {volume.CreatedAt && (
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Created:</b>
-          </AppTypography>
-          <AppTypography className="expand-panel__mono" variant="body2">
-            {new Date(volume.CreatedAt).toLocaleString()}
-          </AppTypography>
-        </div>
-      )}
-      <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Usage:</b>
-        </AppTypography>
-        <div className="expand-panel__chips">
-          <Chip
-            label={`Size: ${formatVolumeSize(volume.UsageData?.Size)}`}
-            size="small"
-            variant="soft"
-          />
-          <Chip
-            label={`References: ${formatReferenceCount(volume.UsageData?.RefCount)}`}
-            size="small"
-            variant="soft"
-          />
-        </div>
-      </div>
-      <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Labels:</b>
-        </AppTypography>
-        <div className="expand-panel__chips">
-          {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
-            Object.entries(volume.Labels).map(([key, val]) => (
-              <Chip
-                key={key}
-                label={`${key}: ${val}`}
-                size="small"
-                style={wrappableChipStyle}
-                labelStyle={wrappableChipLabelStyle}
-                variant="soft"
-              />
-            ))
-          ) : (
-            <AppTypography color="text.secondary" variant="body2">
-              (no labels)
-            </AppTypography>
-          )}
-        </div>
-      </div>
-      <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Options:</b>
-        </AppTypography>
-        <div className="expand-panel__chips">
-          {volume.Options && Object.keys(volume.Options).length > 0 ? (
-            Object.entries(volume.Options).map(([key, val]) => (
-              <Chip
-                key={key}
-                label={`${key}: ${val}`}
-                size="small"
-                style={wrappableChipStyle}
-                labelStyle={wrappableChipLabelStyle}
-                variant="soft"
-              />
-            ))
-          ) : (
-            <AppTypography color="text.secondary" variant="body2">
-              (no options)
-            </AppTypography>
-          )}
-        </div>
-      </div>
-      <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Driver Status:</b>
-        </AppTypography>
-        <div className="expand-panel__chips">
-          {volume.Status && Object.keys(volume.Status).length > 0 ? (
-            Object.entries(volume.Status).map(([key, value]) => (
-              <Chip
-                key={key}
-                label={`${key}: ${formatDockerValue(value)}`}
-                size="small"
-                style={wrappableChipStyle}
-                labelStyle={wrappableChipLabelStyle}
-                variant="soft"
-              />
-            ))
-          ) : (
-            <AppTypography color="text.secondary" variant="body2">
-              (no driver status)
-            </AppTypography>
-          )}
-        </div>
-      </div>
-      {volume.ClusterVolume && (
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Cluster Volume:</b>
-          </AppTypography>
-          <div className="expand-panel__chips">
-            {Object.entries(volume.ClusterVolume).map(([key, value]) => (
-              <Chip
-                key={key}
-                label={`${key}: ${formatDockerValue(value)}`}
-                size="small"
-                style={wrappableChipStyle}
-                labelStyle={wrappableChipLabelStyle}
-                variant="soft"
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div
@@ -528,7 +528,7 @@ const VolumeList = ({
           }
           title={focusedVolume.Name}
         >
-          {renderExpandedContent(focusedVolume)}
+          <VolumeDetailsContent volume={focusedVolume} />
         </DockerResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (

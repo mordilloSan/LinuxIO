@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { type DockerImage, linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
@@ -49,6 +49,75 @@ const splitImageRef = (ref: string) => {
   }
   return { repo: ref || "<none>", tag: "<none>" };
 };
+
+const ImageDetailsContent = ({
+  image,
+}: {
+  image: { id: string; raw: DockerImage };
+}) => (
+  <div className="expand-panel">
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Full Image ID:</b>
+      </AppTypography>
+      <AppTypography
+        className="expand-panel__mono"
+        style={longTextStyles}
+        variant="body2"
+      >
+        {image.id}
+      </AppTypography>
+    </div>
+
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Labels:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
+          Object.entries(image.raw.Labels).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no labels)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Image Digests:</b>
+      </AppTypography>
+      <div>
+        {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
+          image.raw.RepoDigests.map((digest) => (
+            <AppTypography
+              key={digest}
+              className="expand-panel__mono"
+              style={longTextStyles}
+              variant="body2"
+            >
+              {digest}
+            </AppTypography>
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no digests)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -298,74 +367,6 @@ const ImageList = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [clearFocusedImage, focusedImage]);
-  const renderExpandedContent = useCallback(
-    (image: (typeof imageRows)[number]) => (
-      <div className="expand-panel">
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Full Image ID:</b>
-          </AppTypography>
-          <AppTypography
-            className="expand-panel__mono"
-            style={longTextStyles}
-            variant="body2"
-          >
-            {image.id}
-          </AppTypography>
-        </div>
-
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Labels:</b>
-          </AppTypography>
-          <div className="expand-panel__chips">
-            {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
-              Object.entries(image.raw.Labels).map(([key, val]) => (
-                <Chip
-                  key={key}
-                  label={`${key}: ${val}`}
-                  size="small"
-                  style={wrappableChipStyle}
-                  labelStyle={wrappableChipLabelStyle}
-                  variant="soft"
-                />
-              ))
-            ) : (
-              <AppTypography color="text.secondary" variant="body2">
-                (no labels)
-              </AppTypography>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Image Digests:</b>
-          </AppTypography>
-          <div>
-            {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
-              image.raw.RepoDigests.map((digest) => (
-                <AppTypography
-                  key={digest}
-                  className="expand-panel__mono"
-                  style={longTextStyles}
-                  variant="body2"
-                >
-                  {digest}
-                </AppTypography>
-              ))
-            ) : (
-              <AppTypography color="text.secondary" variant="body2">
-                (no digests)
-              </AppTypography>
-            )}
-          </div>
-        </div>
-      </div>
-    ),
-    [],
-  );
-
   const handleImageRowClick = useCallback(
     ({ original: image }: { original: { id: string } }) =>
       handleOpenImage(image.id),
@@ -548,7 +549,7 @@ const ImageList = ({
           }
           title={focusedImage.repo}
         >
-          {renderExpandedContent(focusedImage)}
+          <ImageDetailsContent image={focusedImage} />
         </DockerResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (

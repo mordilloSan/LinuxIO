@@ -798,7 +798,7 @@ const ComposeList = ({
     [isLoading],
   );
 
-  const renderExpandedContent = useCallback(
+  const renderStackContainers = useCallback(
     (project: ComposeProject) => {
       const containers = containersByProject.get(project.name) ?? [];
 
@@ -879,7 +879,7 @@ const ComposeList = ({
           }
           title={focusedProject.name}
         >
-          {renderExpandedContent(focusedProject)}
+          {renderStackContainers(focusedProject)}
         </DockerResourceDetailsLayout>
         {containerDialogs}
       </div>
@@ -965,7 +965,7 @@ const ComposeList = ({
             : ({ original: project }) => updateFocusedProject(project.name)
         }
         renderExpandedContent={({ original: project }) =>
-          renderExpandedContent(project)
+          renderStackContainers(project)
         }
       />
       {containerDialogs}
