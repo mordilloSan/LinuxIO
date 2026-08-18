@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import { render, screen } from "@/test/render";
+import { TABLE_ROW_MIN_HEIGHT } from "@/theme/constants";
 
 const virtualizerSpies = vi.hoisted(() => ({
   measure: vi.fn(),
@@ -121,17 +122,20 @@ function TestTable({
   persistExpandedKey,
   selectedRowId,
   tableColumns = columns,
+  estimateRowHeight,
 }: {
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   persistExpandedKey?: string;
   selectedRowId?: string;
   tableColumns?: AppDataTableColumnDef<TableRow>[];
+  estimateRowHeight?: number;
 }) {
   return (
     <AppDataTable
       columns={tableColumns}
       data={data}
+      estimateRowHeight={estimateRowHeight}
       fillAvailable={false}
       getRowId={(row) => row.id}
       height={200}
@@ -143,6 +147,21 @@ function TestTable({
 }
 
 describe("AppDataTable", () => {
+  it("exposes the canonical row floor and clamps low virtual estimates", () => {
+    const view = render(<TestTable estimateRowHeight={40} />);
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveStyle(
+      `--app-dt-row-min-height: ${TABLE_ROW_MIN_HEIGHT}px`,
+    );
+    expect(virtualizerSpies.options?.estimateSize(0)).toBe(
+      TABLE_ROW_MIN_HEIGHT,
+    );
+
+    view.rerender(<TestTable estimateRowHeight={72} />);
+    expect(virtualizerSpies.options?.estimateSize(0)).toBe(72);
+  });
+
   it("renders only cells whose field render key changed", () => {
     const view = render(<TestTable />);
 

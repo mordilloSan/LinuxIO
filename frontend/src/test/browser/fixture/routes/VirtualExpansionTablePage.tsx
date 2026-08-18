@@ -57,7 +57,6 @@ export default function VirtualExpansionTablePage() {
           ariaLabel="Virtual expansion table"
           columns={columns}
           data={rows}
-          estimateRowHeight={44}
           fillAvailable={false}
           getRowAttributes={(row) => ({ id: row.id })}
           getRowCanExpand={() => true}

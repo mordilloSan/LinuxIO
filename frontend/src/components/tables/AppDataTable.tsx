@@ -48,7 +48,10 @@ import {
   useTableGestureKeys,
 } from "@/components/tables/tableShared";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
+import {
+  TABLE_ROW_MIN_HEIGHT,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
 
 // The app-dt__* chrome; see the note at the top of the stylesheet.
 import "./app-data-table.css";
@@ -598,7 +601,7 @@ function AppDataTable<TData extends RowData>({
   emptyMessage = "No data available.",
   estimateExpandedRowHeight = 0,
   enableSorting = false,
-  estimateRowHeight = 48,
+  estimateRowHeight = TABLE_ROW_MIN_HEIGHT,
   fillAvailable = true,
   getRowCanExpand,
   getRowAttributes,
@@ -677,6 +680,10 @@ function AppDataTable<TData extends RowData>({
   });
 
   const hasExpandedContent = Boolean(renderExpandedContent);
+  const resolvedEstimateRowHeight = Math.max(
+    TABLE_ROW_MIN_HEIGHT,
+    estimateRowHeight,
+  );
 
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
     const entries: Array<VirtualTableEntry<TData>> = [];
@@ -725,10 +732,10 @@ function AppDataTable<TData extends RowData>({
   const virtualMeasurementInputs = useMemo(
     () => ({
       estimateExpandedRowHeight,
-      estimateRowHeight,
+      estimateRowHeight: resolvedEstimateRowHeight,
       virtualEntries,
     }),
-    [estimateExpandedRowHeight, estimateRowHeight, virtualEntries],
+    [estimateExpandedRowHeight, resolvedEstimateRowHeight, virtualEntries],
   );
 
   const estimateVirtualItemSize = useCallback(

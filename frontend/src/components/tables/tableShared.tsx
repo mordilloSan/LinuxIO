@@ -51,6 +51,7 @@ import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
   EASING_STANDARD_CSS,
+  TABLE_ROW_MIN_HEIGHT,
   TRANSITION_DURATION_STANDARD_MS,
   shadowSm,
 } from "@/theme/constants";
@@ -349,6 +350,7 @@ export function AppTableShell({
           "--app-dt-alt-bg": altBg,
           "--app-dt-grid": gridTemplate,
           "--app-dt-head-bg": headRowBg,
+          "--app-dt-row-min-height": `${TABLE_ROW_MIN_HEIGHT}px`,
           "--app-dt-selected-bg": selectedBg,
           "--reorder-hold-color": theme.palette.primary.main,
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,

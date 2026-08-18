@@ -83,6 +83,11 @@ export const CARD_LIFT_SHADOW_GUTTER = 12;
    cannot drift apart. Equivalent to theme.spacing(2.5). */
 export const DETAIL_PANEL_GAP = 10;
 
+// The smallest rendered table row. Rows may grow with their content, but every
+// table surface keeps this floor so virtual estimates and real geometry share
+// one baseline.
+export const TABLE_ROW_MIN_HEIGHT = 48;
+
 // Icon sizes
 export const iconSize = {
   sm: 18,

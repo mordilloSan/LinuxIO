@@ -48,6 +48,7 @@
   --app-dt-row-bg: transparent;
   display: grid;
   grid-template-columns: var(--app-dt-grid);
+  min-height: var(--app-dt-row-min-height);
   min-width: 100%;
   color: inherit;
   background-color: var(--app-dt-row-bg);

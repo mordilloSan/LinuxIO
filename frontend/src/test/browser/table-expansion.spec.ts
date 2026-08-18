@@ -45,6 +45,11 @@ test.describe("virtual native table expansion", () => {
     const count = await visibleRows.count();
     expect(count).toBeGreaterThan(0);
     expect(count).toBeLessThan(40);
+    const visibleRowHeights = await visibleRows.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().height),
+    );
+    expect(visibleRowHeights.length).toBeGreaterThan(0);
+    expect(Math.min(...visibleRowHeights)).toBeGreaterThanOrEqual(48);
 
     const before = await scrollMetrics(page);
     expect(before.scrollHeight).toBeGreaterThan(before.clientHeight * 8);
