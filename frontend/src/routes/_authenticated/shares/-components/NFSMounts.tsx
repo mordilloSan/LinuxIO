@@ -1125,6 +1125,7 @@ const NFSMountTable = ({
       fillAvailable={false}
       getRowId={(mount) => mount.mountpoint}
       maxHeight={400}
+      persistExpandedKey="nfs-mounts"
       renderExpandedContent={({ original: mount }) => (
         <div className="expand-panel">
           <AppTypography gutterBottom variant="subtitle2">

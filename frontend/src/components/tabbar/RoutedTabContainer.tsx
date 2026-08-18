@@ -129,7 +129,10 @@ export const RoutedTabSearch = ({
   return createPortal(children, parentSearchSlot.host);
 };
 
-export const RoutedTabLayout = ({ children, tabs }: RoutedTabContainerProps) => {
+export const RoutedTabLayout = ({
+  children,
+  tabs,
+}: RoutedTabContainerProps) => {
   // Keep the portal targets for the layout's lifetime so moving route content
   // does not reset state held by its header controls.
   const [actionHost] = useState(() => {

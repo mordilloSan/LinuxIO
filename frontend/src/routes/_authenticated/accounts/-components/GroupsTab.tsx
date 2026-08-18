@@ -288,6 +288,7 @@ const GroupsTab = ({
           emptyMessage="No groups found."
           fillAvailable
           getRowId={getAccountGroupId}
+          persistExpandedKey="account-groups"
           renderExpandedContent={renderGroupExpandedContent}
         />
       )}

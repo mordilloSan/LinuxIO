@@ -89,6 +89,16 @@ guard the filebrowser keyboard hooks use) or when the press is already
 `defaultPrevented`, and marks the press handled once it acts so nested tables and
 page-level handlers leave it alone.
 
+**Expansion can outlive the page.** `persistExpandedKey` mirrors the expansion
+record to localStorage (`linuxio.tableExpanded:<key>`), so a panel the user
+opened is still open after switching tabs or reloading. It is opt-in because it
+is only correct when `getRowId` is stable across sessions — a name, a
+mountpoint, an id. An index or per-session synthetic id re-expands the *wrong*
+row next load, which is why the logs table does not persist (its fallback ids
+are a per-session counter). Keys must be unique app-wide; stale ids left in the
+stored record are harmless because expansion is keyed by row id and an id with
+no row never renders.
+
 **Binding a double click costs the word-selection gesture.** On a table that
 binds `onRowDoubleClick`, the row default-prevents the *second* mousedown of a
 double click, which is what would start the browser's word selection — otherwise
@@ -115,6 +125,8 @@ does. `meta.getCellRenderKey` then narrows which cells re-render.
 
 1. Pick the click action: `renderExpandedContent` for an inline panel, or
    `onRowClick` for a detail view. Not both.
+   With `renderExpandedContent`, also pass `persistExpandedKey` — unless the
+   table's row ids don't survive a reload.
 2. Add `dnd` only if the row order is the user's to save.
 3. Add `onRowDoubleClick` only if the table has a genuine second row action, and
    accept the click delay and the loss of word selection.

@@ -1,10 +1,17 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu from "@/components/ui/AppMenu";
+import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
@@ -54,6 +61,9 @@ const FileBrowserHeader = ({
   const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
     null,
   );
+  const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
+    useState<HTMLElement | null>(null);
+  const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const { isEnabled: indexerEnabled, reason: indexerReason } =
     useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
@@ -64,6 +74,31 @@ const FileBrowserHeader = ({
     openIndexerDialog();
     void startIndexer({});
   }, [openIndexerDialog, startIndexer]);
+  const handleActionsTriggerRef = useCallback(
+    (element: HTMLButtonElement | null) => {
+      if (!element) {
+        setActionsAnchorEl(null);
+        setMobileSearchAnchorEl(null);
+      }
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    if (!mobileSearchAnchorEl) return;
+
+    mobileSearchRef.current
+      ?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea")
+      ?.focus();
+  }, [mobileSearchAnchorEl]);
+  const handleMobileSearchClose = useCallback(() => {
+    const focusedElement = document.activeElement;
+    const trigger = mobileSearchAnchorEl;
+
+    setMobileSearchAnchorEl(null);
+    if (trigger && mobileSearchRef.current?.contains(focusedElement)) {
+      trigger.focus();
+    }
+  }, [mobileSearchAnchorEl]);
   return (
     <>
       <div
@@ -72,11 +107,11 @@ const FileBrowserHeader = ({
           display: isBrowsing ? "grid" : "flex",
           // The desktop columns mirror .tab-selector (tab-selector.css), so
           // the search sits at the same screen-centered spot here as on tab
-          // routes. Mobile keeps a wider minimum so the inline field stays
-          // usable.
+          // routes. Mobile collapses the field into the actions menu, matching
+          // the routed tab headers.
           gridTemplateColumns: isBrowsing
             ? isMobile
-              ? "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)"
+              ? "minmax(0, 1fr) auto"
               : "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)"
             : undefined,
           gap: isBrowsing ? 6 : undefined,
@@ -142,25 +177,25 @@ const FileBrowserHeader = ({
             >
               {breadcrumbs}
             </div>
-            <div
-              className="file-browser-header__search"
-              style={{
-                flex: 1,
-                gridColumn: isBrowsing ? 2 : undefined,
-                minWidth: 0,
-                display: "flex",
-                justifyContent: "center",
-                marginInline: isBrowsing ? 0 : 8,
-              }}
-            >
-              <AppHeaderSearch
-                onChange={onSearchChange}
-                placeholder={
-                  isMobile ? "Search..." : "Search files and folders..."
-                }
-                value={searchQuery}
-              />
-            </div>
+            {!isMobile ? (
+              <div
+                className="file-browser-header__search"
+                style={{
+                  flex: 1,
+                  gridColumn: isBrowsing ? 2 : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                  justifyContent: "center",
+                  marginInline: isBrowsing ? 0 : 8,
+                }}
+              >
+                <AppHeaderSearch
+                  onChange={onSearchChange}
+                  placeholder="Search files and folders..."
+                  value={searchQuery}
+                />
+              </div>
+            ) : null}
           </>
         )}
         {/* Right section - Action buttons */}
@@ -169,7 +204,7 @@ const FileBrowserHeader = ({
           style={{
             display: "flex",
             alignItems: "center",
-            gridColumn: isBrowsing ? 3 : undefined,
+            gridColumn: isBrowsing ? (isMobile ? 2 : 3) : undefined,
             justifySelf: isBrowsing ? "end" : undefined,
             marginLeft: isBrowsing ? 0 : "auto",
           }}
@@ -203,8 +238,14 @@ const FileBrowserHeader = ({
               {isMobile ? (
                 <>
                   <AppIconButton
+                    aria-expanded={Boolean(actionsAnchorEl)}
                     aria-label="Actions"
-                    onClick={(e) => setActionsAnchorEl(e.currentTarget)}
+                    color={searchQuery ? "primary" : "default"}
+                    onClick={(event) => {
+                      setMobileSearchAnchorEl(null);
+                      setActionsAnchorEl(event.currentTarget);
+                    }}
+                    ref={handleActionsTriggerRef}
                     size="small"
                   >
                     <Icon height={20} icon="mdi:tune" width={20} />
@@ -212,14 +253,31 @@ const FileBrowserHeader = ({
                   <AppMenu
                     anchorEl={actionsAnchorEl}
                     anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                    minWidth="unset"
+                    minWidth={176}
                     onClose={() => setActionsAnchorEl(null)}
                     open={Boolean(actionsAnchorEl)}
                     transformOrigin={{ vertical: "top", horizontal: "right" }}
                   >
                     <div
-                      style={{ display: "flex", gap: 8, padding: "4px 8px" }}
+                      className="file-browser-header__mobile-actions"
+                      style={{
+                        display: "flex",
+                        flexWrap: "nowrap",
+                        gap: 8,
+                        padding: "4px 8px",
+                      }}
                     >
+                      <AppIconButton
+                        aria-label="Search"
+                        color={searchQuery ? "primary" : "default"}
+                        onClick={() => {
+                          setMobileSearchAnchorEl(actionsAnchorEl);
+                          setActionsAnchorEl(null);
+                        }}
+                        size="small"
+                      >
+                        <Icon height={20} icon="mdi:magnify" width={20} />
+                      </AppIconButton>
                       <ViewModeToggle
                         alternateMode="list"
                         onViewModeChange={() => {
@@ -258,6 +316,31 @@ const FileBrowserHeader = ({
                       />
                     </div>
                   </AppMenu>
+                  <AppPopover
+                    anchorEl={mobileSearchAnchorEl}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                    keepMounted
+                    onClose={handleMobileSearchClose}
+                    open={Boolean(mobileSearchAnchorEl)}
+                    paperStyle={{
+                      width: "min(400px, calc(100vw - 16px))",
+                      padding: 8,
+                    }}
+                    transformOrigin={{ vertical: "top", horizontal: "right" }}
+                  >
+                    <div
+                      className="file-browser-header__mobile-search"
+                      ref={mobileSearchRef}
+                      role="search"
+                      style={{ width: "100%" }}
+                    >
+                      <AppHeaderSearch
+                        onChange={onSearchChange}
+                        placeholder="Search files and folders..."
+                        value={searchQuery}
+                      />
+                    </div>
+                  </AppPopover>
                 </>
               ) : (
                 <>

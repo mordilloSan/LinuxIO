@@ -964,6 +964,7 @@ const ComposeList = ({
             ? undefined
             : ({ original: project }) => updateFocusedProject(project.name)
         }
+        persistExpandedKey="compose-stacks"
         renderExpandedContent={({ original: project }) =>
           renderStackContainers(project)
         }

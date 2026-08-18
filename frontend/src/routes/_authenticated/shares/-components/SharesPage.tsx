@@ -1269,6 +1269,7 @@ const SharesPage = () => {
           emptyMessage="No shares configured. Add a folder share to get started."
           fillAvailable
           getRowId={getShareGroupId}
+          persistExpandedKey="folder-shares"
           renderExpandedContent={renderShareExpandedContent}
         />
       )}

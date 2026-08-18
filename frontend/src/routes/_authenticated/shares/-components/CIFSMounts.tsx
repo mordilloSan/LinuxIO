@@ -805,6 +805,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         fillAvailable={false}
         getRowId={(mount) => mount.mountpoint}
         maxHeight={400}
+        persistExpandedKey="cifs-mounts"
         renderExpandedContent={({ original: mount }) => (
           <div className="expand-panel">
             <AppTypography gutterBottom variant="subtitle2">

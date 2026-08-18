@@ -142,6 +142,13 @@ export interface AppDataTableProps<TData extends RowData> {
   onClearSelection?: () => void;
   onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
+  /**
+   * Persist which rows are expanded to localStorage under this app-unique
+   * key, so expansion survives navigation and reloads. Only for tables whose
+   * `getRowId` is stable across sessions (a name, an id) — an index or a
+   * per-session synthetic id would re-expand the wrong row next load.
+   */
+  persistExpandedKey?: string;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   scrollElementRef?: RefObject<HTMLDivElement | null>;
@@ -606,6 +613,7 @@ function AppDataTable<TData extends RowData>({
   onRowDoubleClick,
   onSortingChange,
   overscan = 12,
+  persistExpandedKey,
   renderExpandedContent,
   renderRow,
   scrollElementRef,
@@ -642,6 +650,7 @@ function AppDataTable<TData extends RowData>({
     getRowId,
     manualSorting,
     onSortingChange,
+    persistExpandedKey,
     renderExpandedContent,
     sorting,
   });

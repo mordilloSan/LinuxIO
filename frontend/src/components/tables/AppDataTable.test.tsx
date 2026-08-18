@@ -80,11 +80,13 @@ const initialRows: TableRow[] = [
 function TestTable({
   data = initialRows,
   expandedContent,
+  persistExpandedKey,
   selectedRowId,
   tableColumns = columns,
 }: {
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
+  persistExpandedKey?: string;
   selectedRowId?: string;
   tableColumns?: AppDataTableColumnDef<TableRow>[];
 }) {
@@ -95,6 +97,7 @@ function TestTable({
       fillAvailable={false}
       getRowId={(row) => row.id}
       height={200}
+      persistExpandedKey={persistExpandedKey}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
     />
@@ -198,5 +201,62 @@ describe("AppDataTable", () => {
     expect(screen.getByText("Newest")).toBeInTheDocument();
     expect(renderName).toHaveBeenCalledTimes(3);
     expect(renderStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("restores persisted expansion on a fresh mount", async () => {
+    const expandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+
+    await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    view.unmount();
+
+    render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Alpha").closest('[role="row"]')).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.queryByText("Details for Beta")).not.toBeInTheDocument();
+  });
+
+  it("persists a collapse, not just an expand", async () => {
+    const expandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
+
+    await view.user.click(row);
+    await view.user.click(row);
+    view.unmount();
+
+    render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+    expect(screen.getByText("Alpha").closest('[role="row"]')).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

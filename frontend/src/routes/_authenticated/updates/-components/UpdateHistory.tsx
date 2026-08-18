@@ -118,8 +118,12 @@ const UpdateHistory = () => {
       data={rows}
       emptyMessage="No update history available."
       fillAvailable
-      getRowId={(_, index) => String(index)}
+      // `date` is the backend's history-map key, so it is unique per row and
+      // stable across reloads — unlike the array index, which shifts as new
+      // entries arrive and would re-expand the wrong row.
+      getRowId={(row) => row.date}
       getRowCanExpand={(row) => row.original.upgrades.length > 0}
+      persistExpandedKey="update-history"
       renderExpandedContent={({ original: row }) => (
         <>
           <AppTypography gutterBottom variant="subtitle2">

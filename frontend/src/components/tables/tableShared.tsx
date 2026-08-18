@@ -55,6 +55,10 @@ import {
   shadowSm,
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
 
 // The table layer below AppDataTable: chrome, header, cells, and the gesture
 // contract from `docs/table-row-gestures.md`. Like the app-dt__* CSS, nothing
@@ -384,6 +388,28 @@ export function TableDndBoundary({ children, dnd }: TableDndBoundaryProps) {
   );
 }
 
+// One localStorage entry per table surface, so clearing or inspecting one
+// table's saved expansion never touches another's.
+const expandedStorageKey = (key: string) => `linuxio.tableExpanded:${key}`;
+
+// Persisted expansion is only ever the record form: our tables expand rows
+// one at a time and collapse with `setExpanded({})`, never the `true`
+// (expand-all) form — and only truthy ids are worth storing.
+const isExpandedRecord = (value: unknown): value is Record<string, true> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every((entry) => entry === true);
+
+function persistableExpanded(expanded: ExpandedState): Record<string, true> {
+  if (expanded === true) return {};
+  const next: Record<string, true> = {};
+  for (const [id, isExpanded] of Object.entries(expanded)) {
+    if (isExpanded) next[id] = true;
+  }
+  return next;
+}
+
 export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
   columns: AppDataTableColumnDef<TData>[];
   data: TData[];
@@ -397,6 +423,7 @@ export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
   ) => string;
   manualSorting: boolean;
   onSortingChange?: OnChangeFn<SortingState>;
+  persistExpandedKey?: string;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   sorting?: SortingState;
 }
@@ -404,7 +431,10 @@ export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
 /**
  * The TanStack instance both tables build: internal expansion and sorting,
  * breakpoint-driven column visibility from `meta.hideBelow`, and
- * the sort/reorder exclusion.
+ * the sort/reorder exclusion. `persistExpandedKey` mirrors the expansion
+ * record to localStorage so it survives navigation and reloads; stale ids in
+ * the stored record are harmless because expansion is keyed by row id and an
+ * id with no row never renders.
  */
 export function useAppTableInstance<TData extends RowData, TDnd>({
   columns,
@@ -415,6 +445,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   getRowId,
   manualSorting,
   onSortingChange,
+  persistExpandedKey,
   renderExpandedContent,
   sorting,
 }: UseAppTableInstanceOptions<TData, TDnd>) {
@@ -423,8 +454,26 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   const belowMd = useAppMediaQuery(theme.breakpoints.down("md"));
   const belowLg = useAppMediaQuery(theme.breakpoints.down("lg"));
   const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
-  const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
+  // The lazy initializer reads storage once, so the key is fixed for the
+  // life of the table — a key that changes identity mid-flight is a bug at
+  // the call site, not a supported way to swap stores.
+  const [internalExpanded, setInternalExpanded] = useState<ExpandedState>(() =>
+    persistExpandedKey
+      ? (readPersistedState(
+          expandedStorageKey(persistExpandedKey),
+          isExpandedRecord,
+        ) ?? {})
+      : {},
+  );
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+
+  useEffect(() => {
+    if (!persistExpandedKey) return;
+    writePersistedState(
+      expandedStorageKey(persistExpandedKey),
+      persistableExpanded(internalExpanded),
+    );
+  }, [internalExpanded, persistExpandedKey]);
 
   const columnVisibility = useMemo<ColumnVisibilityState>(() => {
     const below: Record<AppDataTableBreakpoint, boolean> = {

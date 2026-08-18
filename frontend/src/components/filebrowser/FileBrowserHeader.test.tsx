@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
@@ -36,6 +37,20 @@ const mockMobileViewport = () => {
         onchange: null,
         removeEventListener: vi.fn(),
       }) as unknown as MediaQueryList,
+  );
+};
+
+const SearchableMobileHeader = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  return (
+    <FileBrowserHeader
+      {...defaultProps}
+      breadcrumbs={<div>Home</div>}
+      onSearchChange={setSearchQuery}
+      searchQuery={searchQuery}
+      showQuickSave={false}
+    />
   );
 };
 
@@ -115,33 +130,63 @@ describe("FileBrowserHeader", () => {
     ).toBeVisible();
   });
 
-  it("centers the visible search between equal mobile side columns", () => {
+  it("opens and focuses search from the mobile actions menu", async () => {
     mockMobileViewport();
-    const { container } = render(
-      <FileBrowserHeader
-        {...defaultProps}
-        breadcrumbs={<div>Home</div>}
-        showQuickSave={false}
-      />,
-    );
+    const { container, user } = render(<SearchableMobileHeader />);
 
     expect(container.querySelector(".file-browser-header")).toHaveStyle({
       display: "grid",
-      gridTemplateColumns:
-        "minmax(0, 1fr) clamp(260px, 40vw, 420px) minmax(0, 1fr)",
+      gridTemplateColumns: "minmax(0, 1fr) auto",
     });
     expect(
       container.querySelector(".file-browser-header__breadcrumbs"),
     ).toHaveStyle({ gridColumn: "1" });
-    expect(container.querySelector(".file-browser-header__search")).toHaveStyle(
-      { gridColumn: "2" },
-    );
     expect(
       container.querySelector(".file-browser-header__actions"),
     ).toHaveStyle({
-      gridColumn: "3",
+      gridColumn: "2",
       justifySelf: "end",
     });
-    expect(screen.getByRole("textbox", { name: "Search..." })).toBeVisible();
+    expect(
+      screen.queryByRole("textbox", { name: "Search files and folders..." }),
+    ).not.toBeInTheDocument();
+
+    const actionsTrigger = screen.getByRole("button", { name: "Actions" });
+    await user.click(actionsTrigger);
+    expect(screen.getByRole("menu").parentElement).toHaveStyle({
+      minWidth: "176px",
+    });
+    expect(
+      document.querySelector(".file-browser-header__mobile-actions"),
+    ).toHaveStyle({
+      display: "flex",
+      flexWrap: "nowrap",
+      gap: "8px",
+    });
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    const search = await screen.findByRole("textbox", {
+      name: "Search files and folders...",
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(search).toHaveFocus();
+    expect(
+      document.querySelector(".file-browser-header__mobile-search"),
+    ).toContainElement(search);
+
+    await user.type(search, "notes");
+    expect(actionsTrigger).toHaveClass("app-icon-btn--primary");
+    await user.keyboard("{Escape}");
+
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("textbox", { name: "Search files and folders..." }),
+    ).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveFocus();
   });
 });
