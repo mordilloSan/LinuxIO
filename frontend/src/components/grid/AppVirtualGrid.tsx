@@ -1,7 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   memo,
+  useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   type CSSProperties,
   type Key,
@@ -93,6 +95,27 @@ function AppVirtualGrid<TItem>({
   });
 
   const rowCount = Math.ceil(items.length / columnCount);
+  const estimateRowSize = useCallback(
+    () => estimateItemHeight + gap,
+    [estimateItemHeight, gap],
+  );
+  const virtualMeasurementInputs = useMemo(
+    () => ({ columnCount, estimateRowSize, getItemKey, items }),
+    [columnCount, estimateRowSize, getItemKey, items],
+  );
+  const getVirtualRowKey = useCallback(
+    (rowIndex: number) => {
+      const firstItemIndex = rowIndex * virtualMeasurementInputs.columnCount;
+      const item = virtualMeasurementInputs.items[firstItemIndex];
+      return item
+        ? virtualMeasurementInputs.getItemKey(item, firstItemIndex)
+        : rowIndex;
+    },
+    // TanStack does not track estimateSize as a measurement dependency. A new
+    // key callback shares the estimate callback's input snapshot, recalculating
+    // unmeasured offsets while keeping actual keyed row measurements.
+    [virtualMeasurementInputs],
+  );
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -102,12 +125,8 @@ function AppVirtualGrid<TItem>({
     // instead of re-rendering. The outer padding rides along as
     // paddingStart/paddingEnd so row starts already include it.
     directDomUpdates: true,
-    estimateSize: () => estimateItemHeight + gap,
-    getItemKey: (rowIndex) => {
-      const firstItemIndex = rowIndex * columnCount;
-      const item = items[firstItemIndex];
-      return item ? getItemKey(item, firstItemIndex) : rowIndex;
-    },
+    estimateSize: estimateRowSize,
+    getItemKey: getVirtualRowKey,
     getScrollElement: () => scrollRef.current,
     overscan,
     paddingEnd: padding,
@@ -121,8 +140,11 @@ function AppVirtualGrid<TItem>({
   const virtualRows = virtualizer.getVirtualItems();
 
   useLayoutEffect(() => {
+    // Count/key changes already rebuild offsets while preserving keyed sizes.
+    // Column membership and the inter-row gap change every row's real box, so
+    // those layout changes still require clearing measured heights.
     virtualizer.measure();
-  }, [columnCount, items.length, virtualizer]);
+  }, [columnCount, gap, virtualizer]);
 
   useLayoutEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;

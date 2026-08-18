@@ -9,7 +9,7 @@ import type {
   RowData,
   SortingState,
 } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useEffect,
@@ -636,7 +636,7 @@ function AppDataTable<TData extends RowData>({
   );
   const detailNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const detailSizesRef = useRef<Map<string, number>>(new Map());
-  const latestVirtualEntriesRef = useRef<Array<VirtualTableEntry<TData>>>([]);
+  const latestDetailIndicesRef = useRef<Map<string, number>>(new Map());
   const [mountedDetailRowIds, setMountedDetailRowIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -672,6 +672,8 @@ function AppDataTable<TData extends RowData>({
     table,
   });
 
+  const hasExpandedContent = Boolean(renderExpandedContent);
+
   const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
     const entries: Array<VirtualTableEntry<TData>> = [];
     const getSortableGroupId = dndOptions?.getSortableGroupId;
@@ -701,7 +703,7 @@ function AppDataTable<TData extends RowData>({
       });
 
       if (
-        renderExpandedContent &&
+        hasExpandedContent &&
         (row.getIsExpanded() || mountedDetailRowIds.has(row.id))
       ) {
         entries.push({
@@ -714,7 +716,76 @@ function AppDataTable<TData extends RowData>({
     });
 
     return entries;
-  }, [dndOptions, mountedDetailRowIds, renderExpandedContent, rows]);
+  }, [dndOptions, hasExpandedContent, mountedDetailRowIds, rows]);
+
+  const virtualMeasurementInputs = useMemo(
+    () => ({
+      estimateExpandedRowHeight,
+      estimateRowHeight,
+      virtualEntries,
+    }),
+    [estimateExpandedRowHeight, estimateRowHeight, virtualEntries],
+  );
+
+  const estimateVirtualItemSize = useCallback(
+    (index: number) => {
+      const entry = virtualMeasurementInputs.virtualEntries[index];
+      if (entry?.kind === "detail") {
+        return (
+          detailSizesRef.current.get(entry.row.id) ??
+          virtualMeasurementInputs.estimateExpandedRowHeight
+        );
+      }
+      if (entry?.kind === "group") {
+        return (
+          entry.members.length * virtualMeasurementInputs.estimateRowHeight
+        );
+      }
+      return virtualMeasurementInputs.estimateRowHeight;
+    },
+    [virtualMeasurementInputs],
+  );
+
+  const getVirtualItemKey = useCallback(
+    (index: number) =>
+      virtualMeasurementInputs.virtualEntries[index]?.key ?? index,
+    // TanStack keys its offset calculation by this callback, but not by
+    // estimateSize. Both callbacks share one input snapshot so estimate changes
+    // recalculate unmeasured offsets without discarding measured row sizes.
+    [virtualMeasurementInputs],
+  );
+
+  const shouldAdjustScrollPositionOnItemSizeChange = useCallback<
+    NonNullable<
+      Virtualizer<
+        HTMLDivElement,
+        Element
+      >["shouldAdjustScrollPositionOnItemSizeChange"]
+    >
+  >((item, delta, instance) => {
+    const cachedSize = instance.itemSizeCache.get(item.key);
+    const scrollOffset =
+      (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+
+    // Preserve TanStack Virtual's default first-measure behavior.
+    if (cachedSize === undefined) return item.start < scrollOffset;
+
+    const entirelyAboveViewport = item.start + cachedSize <= scrollOffset;
+    const isCollapsingDetail =
+      delta < 0 &&
+      typeof item.key === "string" &&
+      item.key.endsWith(":detail") &&
+      !expandedRowIdsRef.current.has(item.key.slice(0, -":detail".length));
+
+    // A controlled detail collapse animates through several resizeItem calls.
+    // Preserve the visible anchor even when the virtualizer interprets its own
+    // compensating scroll writes as backward scrolling. Ordinary measurements
+    // retain the library's backward-scroll guard.
+    return (
+      entirelyAboveViewport &&
+      (isCollapsingDetail || instance.scrollDirection !== "backward")
+    );
+  }, []);
 
   const virtualizer = useVirtualizer({
     count: virtualEntries.length,
@@ -723,46 +794,58 @@ function AppDataTable<TData extends RowData>({
     // which calls resizeItem every frame) are written straight to the DOM
     // instead of re-rendering. Rows must not set their own translateY.
     directDomUpdates: true,
-    estimateSize: (index) => {
-      const entry = virtualEntries[index];
-      if (entry?.kind === "detail") {
-        return (
-          detailSizesRef.current.get(entry.row.id) ?? estimateExpandedRowHeight
-        );
-      }
-      if (entry?.kind === "group") {
-        return entry.members.length * estimateRowHeight;
-      }
-      return estimateRowHeight;
-    },
-    getItemKey: (index) => virtualEntries[index]?.key ?? index,
+    estimateSize: estimateVirtualItemSize,
+    getItemKey: getVirtualItemKey,
     getScrollElement: () => scrollRef.current,
     overscan,
     useAnimationFrameWithResizeObserver: true,
   });
 
   useLayoutEffect(() => {
+    const previous = virtualizer.shouldAdjustScrollPositionOnItemSizeChange;
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange =
+      shouldAdjustScrollPositionOnItemSizeChange;
+
+    return () => {
+      if (
+        virtualizer.shouldAdjustScrollPositionOnItemSizeChange ===
+        shouldAdjustScrollPositionOnItemSizeChange
+      ) {
+        virtualizer.shouldAdjustScrollPositionOnItemSizeChange = previous;
+      }
+    };
+  }, [shouldAdjustScrollPositionOnItemSizeChange, virtualizer]);
+
+  useLayoutEffect(() => {
     expandedRowIdsRef.current = expandedRowIds;
   }, [expandedRowIds]);
 
   useLayoutEffect(() => {
-    latestVirtualEntriesRef.current = virtualEntries;
+    const detailIndices = latestDetailIndicesRef.current;
+    detailIndices.clear();
+    virtualEntries.forEach((entry, index) => {
+      if (entry.kind === "detail") {
+        detailIndices.set(entry.row.id, index);
+      }
+    });
   }, [virtualEntries]);
 
   const setDetailSize = useCallback(
     (rowId: string, size: number) => {
       const normalizedSize = Math.max(0, Math.round(size));
+      const node = detailNodeRefs.current.get(rowId);
+      if (detailSizesRef.current.get(rowId) === normalizedSize) {
+        if (node) node.style.height = `${normalizedSize}px`;
+        return;
+      }
       detailSizesRef.current.set(rowId, normalizedSize);
 
-      const node = detailNodeRefs.current.get(rowId);
       if (node) {
         node.style.height = `${normalizedSize}px`;
       }
 
-      const detailIndex = latestVirtualEntriesRef.current.findIndex(
-        (entry) => entry.kind === "detail" && entry.row.id === rowId,
-      );
-      if (detailIndex >= 0) {
+      const detailIndex = latestDetailIndicesRef.current.get(rowId);
+      if (detailIndex !== undefined) {
         virtualizer.resizeItem(detailIndex, normalizedSize);
       }
     },
@@ -791,6 +874,8 @@ function AppDataTable<TData extends RowData>({
             next.delete(rowId);
             return next;
           });
+          detailSizesRef.current.delete(rowId);
+          detailContentHeightsRef.current.delete(rowId);
         }
         return;
       }
@@ -823,6 +908,7 @@ function AppDataTable<TData extends RowData>({
             return next;
           });
           detailSizesRef.current.delete(rowId);
+          detailContentHeightsRef.current.delete(rowId);
         }
       };
 

@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   memo,
+  useCallback,
   useLayoutEffect,
   useMemo,
   type MouseEvent,
@@ -181,6 +182,23 @@ const VirtualDirectoryItems = ({
     [columnCount, files, folders, viewMode],
   );
 
+  const estimateSize = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (row?.type === "sectionHeader") {
+        return SECTION_HEADER_ESTIMATE + rowGap;
+      }
+      return (
+        (viewMode === "card" ? CARD_ROW_ESTIMATE : LIST_ROW_ESTIMATE) + rowGap
+      );
+    },
+    [rowGap, rows, viewMode],
+  );
+  const getItemKey = useCallback(
+    (index: number) => rows[index]?.key ?? index,
+    [rows],
+  );
+
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -190,16 +208,8 @@ const VirtualDirectoryItems = ({
     // instead of re-rendering. The outer padding rides along as
     // paddingStart/paddingEnd so row starts already include it.
     directDomUpdates: true,
-    estimateSize: (index) => {
-      const row = rows[index];
-      if (row?.type === "sectionHeader") {
-        return SECTION_HEADER_ESTIMATE + rowGap;
-      }
-      return (
-        (viewMode === "card" ? CARD_ROW_ESTIMATE : LIST_ROW_ESTIMATE) + rowGap
-      );
-    },
-    getItemKey: (index) => rows[index]?.key ?? index,
+    estimateSize,
+    getItemKey,
     getScrollElement: () => containerRef.current,
     overscan: 6,
     paddingEnd: horizontalPadding,
@@ -209,8 +219,10 @@ const VirtualDirectoryItems = ({
   const virtualRows = virtualizer.getVirtualItems();
 
   useLayoutEffect(() => {
+    // Row-count/key changes retain valid keyed sizes. Switching layout or the
+    // number of cards per row changes every row's actual geometry.
     virtualizer.measure();
-  }, [columnCount, rows.length, viewMode, virtualizer]);
+  }, [columnCount, viewMode, virtualizer]);
 
   useLayoutEffect(() => {
     if (revealIndex < 0) return;

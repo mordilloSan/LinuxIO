@@ -7,31 +7,42 @@ import { render, screen } from "@/test/render";
 
 const virtualizerSpies = vi.hoisted(() => ({
   measure: vi.fn(),
+  options: undefined as
+    | {
+        estimateSize: (index: number) => number;
+        getItemKey: (index: number) => string | number;
+      }
+    | undefined,
 }));
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({
     count,
+    estimateSize,
     getItemKey,
   }: {
     count: number;
+    estimateSize: (index: number) => number;
     getItemKey: (index: number) => string | number;
-  }) => ({
-    getTotalSize: () => count * 48,
-    getVirtualItems: () =>
-      Array.from({ length: count }, (_, index) => ({
-        end: (index + 1) * 48,
-        index,
-        key: getItemKey(index),
-        lane: 0,
-        size: 48,
-        start: index * 48,
-      })),
-    measure: virtualizerSpies.measure,
-    measureElement: vi.fn(),
-    resizeItem: vi.fn(),
-    scrollToIndex: vi.fn(),
-  }),
+  }) => {
+    virtualizerSpies.options = { estimateSize, getItemKey };
+    return {
+      getTotalSize: () => count * 48,
+      getVirtualItems: () =>
+        Array.from({ length: count }, (_, index) => ({
+          end: (index + 1) * 48,
+          index,
+          key: getItemKey(index),
+          lane: 0,
+          size: 48,
+          start: index * 48,
+        })),
+      measure: virtualizerSpies.measure,
+      measureElement: vi.fn(),
+      resizeItem: vi.fn(),
+      scrollToIndex: vi.fn(),
+    };
+  },
 }));
 
 interface TableRow {
@@ -162,6 +173,18 @@ describe("AppDataTable", () => {
     await view.user.click(row);
     expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
     expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps virtualizer callbacks stable across unrelated table renders", () => {
+    const view = render(<TestTable />);
+    const firstOptions = virtualizerSpies.options;
+
+    view.rerender(<TestTable selectedRowId="two" />);
+
+    expect(virtualizerSpies.options?.estimateSize).toBe(
+      firstOptions?.estimateSize,
+    );
+    expect(virtualizerSpies.options?.getItemKey).toBe(firstOptions?.getItemKey);
   });
 
   it("toggles detail entries without resetting the virtualizer", async () => {
