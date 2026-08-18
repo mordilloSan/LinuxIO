@@ -1,8 +1,8 @@
 import type { Row, RowData } from "@tanstack/react-table";
 import { useMemo } from "react";
 
-import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
 import type { AppTableFeatures } from "@/components/tables/AppDataTable.types";
+import type { AppVirtualDataTableDndOptions } from "@/components/tables/AppVirtualDataTable";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 interface ReorderableTableDndOptions<TData extends RowData, TItem> {
@@ -30,7 +30,7 @@ export function useReorderableTableDnd<TData extends RowData, TItem>({
   handleAriaLabel,
   handleColumnWidth,
   surface,
-}: ReorderableTableDndOptions<TData, TItem>): AppDataTableDndOptions<TData> {
+}: ReorderableTableDndOptions<TData, TItem>): AppVirtualDataTableDndOptions<TData> {
   return useMemo(
     () => ({
       contextProps: surface.dndContextProps,

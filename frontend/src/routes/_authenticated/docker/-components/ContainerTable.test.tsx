@@ -3,11 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
-import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
+import type { AppVirtualDataTableDndOptions } from "@/components/tables/AppVirtualDataTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
 import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
+
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
 
 const media = vi.hoisted(() => ({ compact: false }));
 
@@ -137,7 +141,7 @@ function StatefulStackTable({ containers }: { containers: ContainerInfo[] }) {
   );
 }
 
-const reorderDnd: AppDataTableDndOptions<ContainerTableRow> = {
+const reorderDnd: AppVirtualDataTableDndOptions<ContainerTableRow> = {
   contextProps: {} as never,
   editing: true,
   getItemId: (row) => row.id,

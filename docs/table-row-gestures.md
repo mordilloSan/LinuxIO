@@ -1,18 +1,16 @@
 # Table Row Gestures
 
-One row-interaction contract for every data table in the app. It lives in the two
-table primitives — [`AppDataTable`](../frontend/src/components/tables/AppDataTable.tsx)
-and [`AppVirtualDataTable`](../frontend/src/components/tables/AppVirtualDataTable.tsx) —
+One row-interaction contract for every data table in the app. It lives in the
+one table primitive —
+[`AppVirtualDataTable`](../frontend/src/components/tables/AppVirtualDataTable.tsx) —
 so a table declares which gestures it supports and gets the behaviour, the
 guards and the animations for free. Do not re-implement any of this in a route
 component.
 
-The implementation is shared: the gesture handlers, header, cells and table
-chrome live in
+The gesture handlers, header, cells and table chrome live in
 [`tableShared.tsx`](../frontend/src/components/tables/tableShared.tsx), and the
 event predicates in
-[`rowInteraction.ts`](../frontend/src/components/tables/rowInteraction.ts). The
-two primitives own only what genuinely differs — body and row rendering.
+[`rowInteraction.ts`](../frontend/src/components/tables/rowInteraction.ts).
 
 ## The gestures
 
@@ -22,20 +20,14 @@ two primitives own only what genuinely differs — body and row rendering.
 | Click | Instead runs the table's own row action (open a detail view, select) | passing `onRowClick` |
 | Long press | Enters layout mode, then drags to reorder | passing `dnd` |
 | Double click | The table's second row action — normally toggling that row's selection | passing `onRowDoubleClick` |
-| Ctrl/Cmd-A | Selects every row the filter and sort leave visible | passing `onSelectAll` |
 | Escape | Collapses every expanded row | passing `renderExpandedContent` |
 | Escape again | Clears the selection | passing `onClearSelection` |
 
-Ctrl/Cmd-A stands down while the user is typing, so a search field keeps its
-native select-all (`isTypingTarget`), and it ignores Shift and Alt so combos like
-Ctrl+Shift+A stay inert. It reads the visible rows off the table instance and
-hands their ids to `onSelectAll`; the page owns the selection.
-
 ## Showing selection
 
-Selected rows are tinted, not checkboxed. `selectedRowIds` takes the whole
-selected set and `selectedRowId` the single open/focused row; both paint the same
-`--app-dt-selected-bg`, which is the theme's `primary.main` at 10% (15% in dark).
+Selected rows are tinted, not checkboxed. `selectedRowId` names the open or
+focused row, which paints `--app-dt-selected-bg` — the theme's `primary.main`
+at 10% (15% in dark). The page owns the selection state.
 
 The tint is applied as the row's *own* surface rather than an overlay, so zebra
 striping stays legible underneath it and hover brightens the tinted surface
@@ -47,10 +39,10 @@ A checkbox column is not the way to do this. It costs a column of width on every
 row, and its cell has to close over the selection — which makes the column defs
 volatile and reintroduces the remount hazard below.
 
-Dropping the checkbox does cost the affordance, though: double click and
-Ctrl/Cmd-A leave nothing on screen to find, and the tint is only feedback once
-you know the gesture. That is an open tradeoff — a selectable table currently
-teaches its gestures nowhere.
+Dropping the checkbox does cost the affordance, though: a double-click gesture
+leaves nothing on screen to find, and the tint is only feedback once you know
+the gesture. That is an open tradeoff — a selectable table currently teaches
+its gestures nowhere.
 
 ## Rules, and why they are rules
 
@@ -126,7 +118,7 @@ does. `meta.getCellRenderKey` then narrows which cells re-render.
 2. Add `dnd` only if the row order is the user's to save.
 3. Add `onRowDoubleClick` only if the table has a genuine second row action, and
    accept the click delay and the loss of word selection.
-4. If rows can be selected, pass `selectedRowIds` so the selection is visible,
-   `onSelectAll` for Ctrl/Cmd-A, and `onClearSelection` so Escape can clear it.
+4. If a row can be selected, pass `selectedRowId` so the selection is visible
+   and `onClearSelection` so Escape can clear it.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.

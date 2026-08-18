@@ -23,13 +23,13 @@ import {
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
-import AppDataTable from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
 import type {
-  AppDataTableColumnDef,
-  AppDataTableDndOptions,
-  AppDataTableRowAttributes,
-  AppDataTableRowRenderProps,
-} from "@/components/tables/AppDataTable";
+  AppVirtualDataTableColumnDef,
+  AppVirtualDataTableDndOptions,
+  AppVirtualDataTableRowAttributes,
+  AppVirtualDataTableRowRenderProps,
+} from "@/components/tables/AppVirtualDataTable";
 import type {
   AppDataTableCellRenderKey,
   AppTableFeatures,
@@ -1117,7 +1117,7 @@ interface ContainerTableProps {
   collapsedStackIds?: ReadonlySet<string>;
   containers: ContainerInfo[];
   /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
-  dnd?: AppDataTableDndOptions<ContainerTableRow>;
+  dnd?: AppVirtualDataTableDndOptions<ContainerTableRow>;
   onSelectContainer?: (containerId: string) => void;
   onToggleStack?: (project: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
@@ -1226,7 +1226,7 @@ const ContainerTable = ({
   const getRowAttributes = useCallback(
     (
       row: Row<AppTableFeatures, ContainerTableRow>,
-    ): AppDataTableRowAttributes => ({
+    ): AppVirtualDataTableRowAttributes => ({
       className: !isStackHeaderRow(row.original)
         ? stackMemberRowClasses.get(row.original.Id)
         : undefined,
@@ -1239,7 +1239,7 @@ const ContainerTable = ({
       dragHandle,
       row,
       rowProps,
-    }: AppDataTableRowRenderProps<ContainerTableRow>) => {
+    }: AppVirtualDataTableRowRenderProps<ContainerTableRow>) => {
       const original = row.original;
       if (isStackHeaderRow(original)) {
         return (
@@ -1314,7 +1314,7 @@ const ContainerTable = ({
     },
     [onSelectContainer, onToggleStack],
   );
-  const columns = useMemo<AppDataTableColumnDef<ContainerTableRow>[]>(
+  const columns = useMemo<AppVirtualDataTableColumnDef<ContainerTableRow>[]>(
     () => [
       {
         id: "name",
@@ -1557,7 +1557,7 @@ const ContainerTable = ({
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
         <CheckingUpdatesContext.Provider value={checkingUpdates}>
-          <AppDataTable
+          <AppVirtualDataTable
             ariaLabel="Docker containers"
             columns={columns}
             data={rows}

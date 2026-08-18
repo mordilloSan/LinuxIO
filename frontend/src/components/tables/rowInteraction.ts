@@ -52,8 +52,9 @@ export function clickTargetsRowBody(target: EventTarget | null): boolean {
  *
  * Arming is not free: the hold puts the surface into a pending state, which
  * re-renders the page — and a table whose column defs are rebuilt on that
- * render replaces the pressed control's DOM node (see AppDataTable's cell
- * memoization), so the click never completes and a checkbox never toggles.
+ * render replaces the pressed control's DOM node (see the shared cell
+ * memoization in tableShared), so the click never completes and a checkbox
+ * never toggles.
  * A press on a control is not a drag anyway.
  */
 export function rowBodyDragListeners(

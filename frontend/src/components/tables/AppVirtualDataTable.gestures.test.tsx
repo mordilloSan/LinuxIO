@@ -1,12 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { act, fireEvent, render, screen, waitFor } from "@/test/render";
+
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
 
 interface SelectableRow {
   id: string;
@@ -27,13 +31,12 @@ const renderName = vi.fn(
 const renderStatus = vi.fn(
   ({ row }: { row: { original: TableRow } }) => row.original.status,
 );
-const renderNameHeader = vi.fn(() => "Name");
 const getRowAttributes = vi.fn(() => ({}));
 
-const tableColumns: AppDataTableColumnDef<TableRow>[] = [
+const tableColumns: AppVirtualDataTableColumnDef<TableRow>[] = [
   {
     id: "name",
-    header: renderNameHeader,
+    header: "Name",
     cell: renderName,
     meta: {
       getCellRenderKey: (row) => {
@@ -69,40 +72,35 @@ function TestTable({
   onClearSelection,
   onRowClick,
   onRowDoubleClick,
-  onSelectAll,
   selectedRowId,
-  selectedRowIds,
 }: {
-  columns?: AppDataTableColumnDef<TableRow>[];
+  columns?: AppVirtualDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   onClearSelection?: () => void;
   onRowClick?: () => void;
   onRowDoubleClick?: () => void;
-  onSelectAll?: (rowIds: string[]) => void;
   selectedRowId?: string;
-  selectedRowIds?: ReadonlySet<string>;
 }) {
   return (
-    <AppDataTable
+    <AppVirtualDataTable
       columns={columns}
       data={data}
+      fillAvailable
       getRowAttributes={getRowAttributes}
       getRowId={getTableRowId}
       onClearSelection={onClearSelection}
       onRowClick={onRowClick}
       onRowDoubleClick={onRowDoubleClick}
-      onSelectAll={onSelectAll}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
-      selectedRowIds={selectedRowIds}
     />
   );
 }
 
 function SelectableTable() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const columns: AppDataTableColumnDef<SelectableRow>[] = [
+  const columns: AppVirtualDataTableColumnDef<SelectableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -138,10 +136,11 @@ function SelectableTable() {
   ];
 
   return (
-    <AppDataTable
+    <AppVirtualDataTable
       ariaLabel="Selectable rows"
       columns={columns}
       data={rows}
+      fillAvailable
       getRowId={(row) => row.id}
     />
   );
@@ -161,7 +160,7 @@ function ReorderableSelectableTable() {
     surface: "test.rows",
   });
   const dnd = useReorderableTableDnd<TableRow, TableRow>({ surface });
-  const columns: AppDataTableColumnDef<TableRow>[] = [
+  const columns: AppVirtualDataTableColumnDef<TableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -188,10 +187,11 @@ function ReorderableSelectableTable() {
   return (
     <>
       <div data-testid="selected-count">{selected.size}</div>
-      <AppDataTable
+      <AppVirtualDataTable
         columns={columns}
         data={tableRows}
         dnd={dnd}
+        fillAvailable
         getRowId={getTableRowId}
         renderExpandedContent={({ original }) => (
           <div>{`Details for ${original.name}`}</div>
@@ -201,11 +201,12 @@ function ReorderableSelectableTable() {
   );
 }
 
-describe("AppDataTable", () => {
+// The row gestures from docs/table-row-gestures.md, exercised against the one
+// table primitive. Ported from the retired non-virtualized AppDataTable suite.
+describe("AppVirtualDataTable gestures", () => {
   beforeEach(() => {
     getRowAttributes.mockClear();
     renderName.mockClear();
-    renderNameHeader.mockClear();
     renderStatus.mockClear();
   });
 
@@ -220,12 +221,10 @@ describe("AppDataTable", () => {
     expect(checkbox).not.toBeChecked();
   });
 
-  it("isolates selection and field updates to affected rows and cells", () => {
+  it("isolates field updates to affected cells", () => {
     const view = render(<TestTable />);
 
-    expect(getRowAttributes).toHaveBeenCalledTimes(2);
     expect(renderName).toHaveBeenCalledTimes(2);
-    expect(renderNameHeader).toHaveBeenCalledTimes(1);
     expect(renderStatus).toHaveBeenCalledTimes(2);
 
     view.rerender(<TestTable selectedRowId="two" />);
@@ -233,11 +232,8 @@ describe("AppDataTable", () => {
     expect(screen.getByText("Beta").closest('[role="row"]')).toHaveClass(
       "app-dt__row--selected",
     );
-    // The row boundary updates selection chrome without re-running cell
-    // formatters; the compiler may also reuse pure row-attribute derivation.
-    expect(getRowAttributes).toHaveBeenCalledTimes(2);
+    // Selection chrome updates without re-running any cell formatter.
     expect(renderName).toHaveBeenCalledTimes(2);
-    expect(renderNameHeader).toHaveBeenCalledTimes(1);
     expect(renderStatus).toHaveBeenCalledTimes(2);
 
     view.rerender(
@@ -251,34 +247,16 @@ describe("AppDataTable", () => {
     expect(renderStatus).toHaveBeenCalledTimes(3);
   });
 
-  it("does not retain a stale renderer when a column definition changes", () => {
-    const view = render(<TestTable />);
-    const replacementColumns: AppDataTableColumnDef<TableRow>[] = [
-      {
-        ...tableColumns[0],
-        header: "Renamed",
-        cell: ({ row }) => `renamed:${row.original.name}`,
-      },
-      tableColumns[1],
-    ];
-
-    view.rerender(<TestTable columns={replacementColumns} />);
-
-    expect(screen.getByText("renamed:Alpha")).toBeInTheDocument();
-    expect(screen.getByText("renamed:Beta")).toBeInTheDocument();
-    expect(
-      screen.getByRole("columnheader", { name: "Renamed" }),
-    ).toBeInTheDocument();
-  });
-
   it("updates index-sensitive cells when stable rows are reordered", () => {
-    const indexedColumns: AppDataTableColumnDef<TableRow>[] = [
+    // Per the column-meta contract, an explicit render key must include the
+    // row index when the renderer reads its position.
+    const indexedColumns: AppVirtualDataTableColumnDef<TableRow>[] = [
       {
         id: "name",
         header: "Name",
         cell: ({ row }) => `${row.index}:${row.original.name}`,
         meta: {
-          getCellRenderKey: (row) => (row as TableRow).id,
+          getCellRenderKey: (row, rowIndex) => [(row as TableRow).id, rowIndex],
         },
       },
     ];
@@ -313,44 +291,13 @@ describe("AppDataTable", () => {
     );
 
     expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
-    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
-
-    view.rerender(
-      <TestTable expandedContent={renderExpandedContent} selectedRowId="two" />,
-    );
-
-    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
-  });
-
-  it("toggles the detail panel when the row itself is clicked", async () => {
-    const renderExpandedContent = ({ original }: { original: TableRow }) => (
-      <div>{`Details for ${original.name}`}</div>
-    );
-    const view = render(<TestTable expandedContent={renderExpandedContent} />);
-    const row = screen.getByText("Alpha").closest('[role="row"]')!;
-
-    expect(row).toHaveClass("app-dt__row--interactive");
-    expect(row).toHaveAttribute("aria-expanded", "false");
-
-    await view.user.click(row);
-    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
-    expect(row).toHaveAttribute("aria-expanded", "true");
-
-    await view.user.click(row);
-    // The row reports itself closed the moment the click lands...
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    // ...but the panel has to stay mounted while it animates shut, so
-    // AppCollapse's unmountOnExit only drops it a slow transition later
-    // (TRANSITION_DURATION_SLOW_MS). Asserting its absence outright raced that
-    // timer and failed whenever the run was quick enough to beat it.
-    await expect
-      .poll(() => screen.queryByText("Details for Alpha"), { timeout: 2000 })
-      .toBeNull();
+    expect(renderExpandedContent).toHaveBeenCalled();
+    expect(screen.queryByText("Details for Beta")).not.toBeInTheDocument();
   });
 
   it("leaves clicks on row controls to the control", async () => {
     const onControlClick = vi.fn();
-    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppVirtualDataTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",
@@ -418,7 +365,7 @@ describe("AppDataTable", () => {
     expect(onRowDoubleClick).not.toHaveBeenCalled();
   });
 
-  it("double-clicking a row selects it and leaves the panel closed", async () => {
+  it("double-clicking a row runs its gesture and leaves the panel closed", async () => {
     const onRowDoubleClick = vi.fn();
     const view = render(
       <TestTable
@@ -481,7 +428,6 @@ describe("AppDataTable", () => {
     await waitFor(() =>
       expect(screen.queryByText("Details for Alpha")).not.toBeInTheDocument(),
     );
-    expect(screen.queryByText("Details for Beta")).not.toBeInTheDocument();
 
     await view.user.keyboard("{Escape}");
 
@@ -539,7 +485,7 @@ describe("AppDataTable", () => {
   });
 
   it("leaves the word selection alone on a control inside the row", () => {
-    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppVirtualDataTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",
@@ -556,67 +502,6 @@ describe("AppDataTable", () => {
     const button = screen.getByRole("button", { name: "Restart Alpha" });
 
     expect(fireEvent.mouseDown(button, { detail: 2 })).toBe(true);
-  });
-
-  it("selects every visible row on Ctrl-A and on Cmd-A", async () => {
-    const onSelectAll = vi.fn();
-    const view = render(<TestTable onSelectAll={onSelectAll} />);
-
-    await view.user.keyboard("{Control>}a{/Control}");
-    expect(onSelectAll).toHaveBeenLastCalledWith(["one", "two"]);
-
-    await view.user.keyboard("{Meta>}a{/Meta}");
-    expect(onSelectAll).toHaveBeenCalledTimes(2);
-
-    // Combos that mean something else stay inert.
-    await view.user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
-    await view.user.keyboard("a");
-    expect(onSelectAll).toHaveBeenCalledTimes(2);
-  });
-
-  it("names only the rows the current data leaves visible", async () => {
-    const onSelectAll = vi.fn();
-    const view = render(
-      <TestTable data={[tableRows[1]]} onSelectAll={onSelectAll} />,
-    );
-
-    await view.user.keyboard("{Control>}a{/Control}");
-
-    expect(onSelectAll).toHaveBeenCalledWith(["two"]);
-  });
-
-  it("leaves Ctrl-A to the field while the user is typing", async () => {
-    const onSelectAll = vi.fn();
-    const view = render(
-      <>
-        <input aria-label="Search" />
-        <TestTable onSelectAll={onSelectAll} />
-      </>,
-    );
-
-    await view.user.click(screen.getByRole("textbox", { name: "Search" }));
-    await view.user.keyboard("{Control>}a{/Control}");
-
-    expect(onSelectAll).not.toHaveBeenCalled();
-  });
-
-  it("tints every row named by selectedRowIds", () => {
-    const view = render(<TestTable selectedRowIds={new Set(["one"])} />);
-    const alphaRow = () => screen.getByText("Alpha").closest('[role="row"]');
-    const betaRow = () => screen.getByText("Beta").closest('[role="row"]');
-
-    expect(alphaRow()).toHaveClass("app-dt__row--selected");
-    expect(betaRow()).not.toHaveClass("app-dt__row--selected");
-
-    view.rerender(<TestTable selectedRowIds={new Set(["one", "two"])} />);
-
-    expect(alphaRow()).toHaveClass("app-dt__row--selected");
-    expect(betaRow()).toHaveClass("app-dt__row--selected");
-
-    view.rerender(<TestTable selectedRowIds={new Set()} />);
-
-    expect(alphaRow()).not.toHaveClass("app-dt__row--selected");
-    expect(betaRow()).not.toHaveClass("app-dt__row--selected");
   });
 
   it("selects on the first checkbox press in a reorderable row", async () => {

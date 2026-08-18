@@ -52,7 +52,6 @@ import {
   shadowSm,
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
-import { isTypingTarget } from "@/utils/keyboardTarget";
 
 // The layer AppDataTable (non-virtualized) and AppVirtualDataTable share:
 // chrome, header, cells, and the gesture contract from
@@ -60,7 +59,7 @@ import { isTypingTarget } from "@/utils/keyboardTarget";
 // specific to either table — body/row rendering is where they differ, and
 // that stays in each component.
 
-export const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
+const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 
 export function columnTrack<TData extends RowData>(
   column: Column<AppTableFeatures, TData>,
@@ -97,7 +96,7 @@ function getSortIcon(sortState: false | "asc" | "desc") {
   return "mdi:unfold-more-horizontal";
 }
 
-export function areCellRenderKeysEqual(
+function areCellRenderKeysEqual(
   previous: AppDataTableCellRenderKey,
   next: AppDataTableCellRenderKey,
 ) {
@@ -107,7 +106,7 @@ export function areCellRenderKeysEqual(
   return previous.every((value, index) => Object.is(value, next[index]));
 }
 
-export interface AppTableCellProps<TData extends RowData> {
+interface AppTableCellProps<TData extends RowData> {
   cell: Cell<AppTableFeatures, TData>;
   // A snapshot of the definition at render time: TanStack can preserve Column
   // objects while swapping their definitions, so comparing the live
@@ -117,7 +116,7 @@ export interface AppTableCellProps<TData extends RowData> {
   rowIndex?: number;
 }
 
-export function AppTableCell<TData extends RowData>({
+function AppTableCell<TData extends RowData>({
   cell,
   columnDef,
 }: AppTableCellProps<TData>) {
@@ -490,20 +489,18 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
 interface UseTableGestureKeysOptions<TData extends RowData> {
   hasExpandableRows: boolean;
   onClearSelection?: () => void;
-  onSelectAll?: (rowIds: string[]) => void;
   table: Table<AppTableFeatures, TData>;
 }
 
-/** The window-level half of the gesture contract: Escape and Ctrl/Cmd-A. */
+/** The window-level half of the gesture contract: Escape peeling. */
 export function useTableGestureKeys<TData extends RowData>({
   hasExpandableRows,
   onClearSelection,
-  onSelectAll,
   table,
 }: UseTableGestureKeysOptions<TData>) {
   const handleTableKeyDown = useEffectEvent(
     (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // A dialog owns the keyboard while it is open, the same guard the
       // filebrowser keyboard hooks use.
       if (document.querySelector(OVERLAY_ROOT_SELECTOR)) return;
@@ -512,37 +509,22 @@ export function useTableGestureKeys<TData extends RowData>({
       // first, then the selection. Pressing it twice therefore gets a table
       // back to rest. A table with nothing expanded skips straight to clearing
       // the selection rather than swallowing a press on nothing.
-      if (event.key === "Escape") {
-        // Read expansion off the table instance rather than a render-time
-        // boolean: the listener outlives the render it was created in.
-        if (table.getIsSomeRowsExpanded()) {
-          table.setExpanded({});
-        } else if (onClearSelection) {
-          onClearSelection();
-        } else {
-          return;
-        }
-        // Claim the press so a nested table, or a page-level handler, leaves
-        // it be.
-        event.preventDefault();
+      // Read expansion off the table instance rather than a render-time
+      // boolean: the listener outlives the render it was created in.
+      if (table.getIsSomeRowsExpanded()) {
+        table.setExpanded({});
+      } else if (onClearSelection) {
+        onClearSelection();
+      } else {
         return;
       }
-
-      // Ctrl/Cmd-A selects every row the filter and sort leave visible. Shift
-      // and Alt are excluded so combos like Ctrl+Shift+A stay inert, and the
-      // key is lowercased so CapsLock cannot break the match.
-      const isCtrlOrCmd =
-        (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey;
-      if (!isCtrlOrCmd || event.key.toLowerCase() !== "a") return;
-      // Typing keeps its native select-all.
-      if (!onSelectAll || isTypingTarget(event)) return;
-
+      // Claim the press so a nested table, or a page-level handler, leaves
+      // it be.
       event.preventDefault();
-      onSelectAll(table.getRowModel().rows.map((row) => row.id));
     },
   );
 
-  const isActive = Boolean(hasExpandableRows || onClearSelection || onSelectAll);
+  const isActive = Boolean(hasExpandableRows || onClearSelection);
 
   useEffect(() => {
     if (!isActive) return;
