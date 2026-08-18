@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 /**
  * jsdom has no layout, so the real virtualizer measures a zero-height viewport
- * and mounts no rows. A test that renders an `AppVirtualDataTable` (or
+ * and mounts no rows. A test that renders an `AppDataTable` (or
  * `AppVirtualGrid`) consumer mocks the virtualizer with this factory so every
  * row mounts — the same rows a real browser shows for lists this small:
  *

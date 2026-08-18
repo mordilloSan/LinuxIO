@@ -29,9 +29,7 @@ import {
 } from "react";
 
 import type {
-  AppDataTableBreakpoint,
   AppDataTableColumnDef,
-  AppDataTableColumnMeta,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
 import {
@@ -53,19 +51,14 @@ import {
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
 import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
 
-// Shared with the non-virtualized AppDataTable too — see the same note
-// over there.
+// The app-dt__* chrome; see the note at the top of the stylesheet.
 import "./app-data-table.css";
 import "../reorder/reorder.css";
 
-export type AppVirtualDataTableBreakpoint = AppDataTableBreakpoint;
-export type AppVirtualDataTableColumnMeta = AppDataTableColumnMeta;
-export type AppVirtualDataTableColumnDef<
-  TData extends RowData,
-  TValue = unknown,
-> = AppDataTableColumnDef<TData, TValue>;
+// Call sites import the column type from the component, not the registry.
+export type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 
-export interface AppVirtualDataTableDndOptions<TData extends RowData> {
+export interface AppDataTableDndOptions<TData extends RowData> {
   contextProps: ReorderableSurfaceDndProps;
   getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
   /**
@@ -91,31 +84,30 @@ export interface AppVirtualDataTableDndOptions<TData extends RowData> {
   pendingItemId?: UniqueIdentifier | null;
 }
 
-export type AppVirtualDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
+export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
   ref?: Ref<HTMLDivElement>;
 };
 
-export interface AppVirtualDataTableRowRenderProps<TData extends RowData> {
+export interface AppDataTableRowRenderProps<TData extends RowData> {
   cells: ReactNode;
   dragHandle?: ReactNode;
   isSelected: boolean;
   row: Row<AppTableFeatures, TData>;
   rowIndex: number;
-  rowProps: AppVirtualDataTableRowAttributes;
+  rowProps: AppDataTableRowAttributes;
 }
 
-export interface AppVirtualDataTableProps<TData extends RowData> {
+export interface AppDataTableProps<TData extends RowData> {
   ariaLabel?: string;
   className?: string;
-  columns: AppVirtualDataTableColumnDef<TData>[];
+  columns: AppDataTableColumnDef<TData>[];
   data: TData[];
   density?: "comfortable" | "compact";
   /**
    * Hold-to-reorder wiring from `useReorderableTableDnd`. Rows drag from the
-   * row body, and layout mode adds the visible handle column — the same
-   * chrome as the non-virtualized table.
+   * row body, and layout mode adds the visible handle column.
    */
-  dnd?: AppVirtualDataTableDndOptions<TData>;
+  dnd?: AppDataTableDndOptions<TData>;
   emptyMessage?: string;
   estimateExpandedRowHeight?: number;
   enableSorting?: boolean;
@@ -157,7 +149,7 @@ export interface AppVirtualDataTableProps<TData extends RowData> {
   onSortingChange?: OnChangeFn<SortingState>;
   overscan?: number;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
-  renderRow?: (props: AppVirtualDataTableRowRenderProps<TData>) => ReactNode;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   scrollElementRef?: RefObject<HTMLDivElement | null>;
   scrollToIndex?: number | null;
   selectedRowId?: string | null;
@@ -186,9 +178,9 @@ type VirtualTableEntry<TData extends RowData> =
       rowIndex: number;
     }
   // A sortable group is one virtual entry: the virtualizer measures and
-  // positions the whole block, so its rows can share one dnd transform the
-  // way the non-virtualized table's groups do. Rows inside a group don't get
-  // detail entries — no table combines groups with `renderExpandedContent`.
+  // positions the whole block, so its rows share one dnd transform. Rows
+  // inside a group don't get detail entries — no table combines groups with
+  // `renderExpandedContent`.
   | {
       kind: "group";
       key: string;
@@ -216,7 +208,7 @@ function getCellRenderKey<TData extends RowData>(
  * as you go.
  */
 function useVirtualRowReorder<TData extends RowData>(
-  dnd: AppVirtualDataTableDndOptions<TData> | undefined,
+  dnd: AppDataTableDndOptions<TData> | undefined,
   row: Row<AppTableFeatures, TData>,
 ) {
   const isSortableRow = dnd?.isRowSortable?.(row) ?? true;
@@ -244,8 +236,8 @@ function useVirtualRowReorder<TData extends RowData>(
   }
 
   return {
-    // The visible handle takes the raw activator, the way the non-virtualized
-    // table wires its handle; the row body keeps the guarded listeners below.
+    // The visible handle takes the raw activator; the row body keeps the
+    // guarded listeners below.
     handleAttributes: attributes,
     handleListeners: listeners,
     isReorderEditing: dnd.editing ?? false,
@@ -261,12 +253,12 @@ function useVirtualRowReorder<TData extends RowData>(
   } as const;
 }
 
-interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
+interface AppDataTableBodyRowProps<TData extends RowData> {
   canExpand: boolean;
-  dnd?: AppVirtualDataTableDndOptions<TData>;
+  dnd?: AppDataTableDndOptions<TData>;
   // Invalidate a memoized row when same-ID columns replace their renderer or
   // metadata; the row reads the actual visible cells from TanStack Table.
-  columnVersion: AppVirtualDataTableColumnDef<TData>[];
+  columnVersion: AppDataTableColumnDef<TData>[];
   /** A group leader's handle, when the group owns the sortable transform. */
   dragHandle?: ReactNode;
   getRowAttributes?: (
@@ -287,14 +279,14 @@ interface AppVirtualDataTableBodyRowProps<TData extends RowData> {
     row: Row<AppTableFeatures, TData>,
     event: MouseEvent,
   ) => void;
-  renderRow?: (props: AppVirtualDataTableRowRenderProps<TData>) => ReactNode;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   row: Row<AppTableFeatures, TData>;
   /** Group-supplied attributes; when present, `getRowAttributes` stands down. */
-  rowAttributes?: AppVirtualDataTableRowAttributes;
+  rowAttributes?: AppDataTableRowAttributes;
   rowIndex: number;
 }
 
-function AppVirtualDataTableBodyRow<TData extends RowData>({
+function AppDataTableBodyRow<TData extends RowData>({
   canExpand,
   dnd,
   dragHandle,
@@ -312,7 +304,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   row,
   rowAttributes: providedRowAttributes,
   rowIndex,
-}: AppVirtualDataTableBodyRowProps<TData>) {
+}: AppDataTableBodyRowProps<TData>) {
   "use no memo";
   const rowAttributes = providedRowAttributes ?? getRowAttributes?.(row);
   const {
@@ -371,7 +363,7 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
     </>
   );
 
-  const rowProps: AppVirtualDataTableRowAttributes = {
+  const rowProps: AppDataTableRowAttributes = {
     ...reorderListeners,
     ...rowAttributes,
     "aria-expanded": canExpand ? isExpanded : undefined,
@@ -432,13 +424,13 @@ function AppVirtualDataTableBodyRow<TData extends RowData>({
   return <div {...rowProps}>{renderedCells}</div>;
 }
 
-const MemoizedAppVirtualDataTableBodyRow = memo(
-  AppVirtualDataTableBodyRow,
-) as typeof AppVirtualDataTableBodyRow;
+const MemoizedAppDataTableBodyRow = memo(
+  AppDataTableBodyRow,
+) as typeof AppDataTableBodyRow;
 
-interface AppVirtualDataTableSortableBodyGroupProps<TData extends RowData> {
-  columnVersion: AppVirtualDataTableColumnDef<TData>[];
-  dnd: AppVirtualDataTableDndOptions<TData>;
+interface AppDataTableSortableBodyGroupProps<TData extends RowData> {
+  columnVersion: AppDataTableColumnDef<TData>[];
+  dnd: AppDataTableDndOptions<TData>;
   getRowAttributes?: (
     row: Row<AppTableFeatures, TData>,
   ) => HTMLAttributes<HTMLDivElement>;
@@ -457,18 +449,18 @@ interface AppVirtualDataTableSortableBodyGroupProps<TData extends RowData> {
     row: Row<AppTableFeatures, TData>,
     event: MouseEvent,
   ) => void;
-  renderRow?: (props: AppVirtualDataTableRowRenderProps<TData>) => ReactNode;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   rowClickExpands: boolean;
   selectedRowId?: string | null;
 }
 
 /**
- * One sortable node containing a leader row and its inert followers — the
- * virtualized mirror of AppDataTable's body group. The group is a single
- * virtual entry, so the virtualizer measures the block while dnd-kit
- * translates it; member rows render with their own indexes and surfaces.
+ * One sortable node containing a leader row and its inert followers. The
+ * group is a single virtual entry, so the virtualizer measures the block
+ * while dnd-kit translates it; member rows render with their own indexes and
+ * surfaces.
  */
-function AppVirtualDataTableSortableBodyGroup<TData extends RowData>({
+function AppDataTableSortableBodyGroup<TData extends RowData>({
   columnVersion,
   dnd,
   getRowAttributes,
@@ -484,7 +476,7 @@ function AppVirtualDataTableSortableBodyGroup<TData extends RowData>({
   renderRow,
   rowClickExpands,
   selectedRowId,
-}: AppVirtualDataTableSortableBodyGroupProps<TData>) {
+}: AppDataTableSortableBodyGroupProps<TData>) {
   "use no memo";
   const leaderIndex = members.findIndex(
     ({ row }) => dnd.isRowSortable?.(row) ?? true,
@@ -551,7 +543,7 @@ function AppVirtualDataTableSortableBodyGroup<TData extends RowData>({
         const canExpand = row.getCanExpand();
 
         return (
-          <MemoizedAppVirtualDataTableBodyRow
+          <MemoizedAppDataTableBodyRow
             canExpand={canExpand}
             columnVersion={columnVersion}
             dragHandle={isLeader && isEditing ? dragHandle : undefined}
@@ -595,7 +587,7 @@ function observeDetailContent(
 // (no compiler-compatible release exists); Table itself is v9 and fine.
 // Manual memoization stays load-bearing here.
 // oxlint-disable-next-line react/react-compiler
-function AppVirtualDataTable<TData extends RowData>({
+function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,
   columns,
@@ -631,7 +623,7 @@ function AppVirtualDataTable<TData extends RowData>({
   sorting,
   style,
   variant = "default",
-}: AppVirtualDataTableProps<TData>) {
+}: AppDataTableProps<TData>) {
   "use no memo";
 
   const internalScrollRef = useRef<HTMLDivElement>(null);
@@ -1035,7 +1027,7 @@ function AppVirtualDataTable<TData extends RowData>({
                     key={entry.key}
                     ref={virtualizer.measureElement}
                   >
-                    <AppVirtualDataTableSortableBodyGroup
+                    <AppDataTableSortableBodyGroup
                       columnVersion={columns}
                       dnd={dndOptions}
                       getRowAttributes={getRowAttributes}
@@ -1107,7 +1099,7 @@ function AppVirtualDataTable<TData extends RowData>({
                   key={entry.key}
                   ref={virtualizer.measureElement}
                 >
-                  <MemoizedAppVirtualDataTableBodyRow
+                  <MemoizedAppDataTableBodyRow
                     canExpand={canExpand}
                     columnVersion={columns}
                     dnd={dndOptions}
@@ -1139,8 +1131,8 @@ function AppVirtualDataTable<TData extends RowData>({
   );
 }
 
-const MemoizedAppVirtualDataTable = memo(
-  AppVirtualDataTable,
-) as typeof AppVirtualDataTable;
+const MemoizedAppDataTable = memo(
+  AppDataTable,
+) as typeof AppDataTable;
 
-export default MemoizedAppVirtualDataTable;
+export default MemoizedAppDataTable;

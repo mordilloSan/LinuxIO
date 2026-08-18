@@ -14,11 +14,11 @@ import type { UnitListItem } from "@/components/cards/UnitCard";
 import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
 import type {
-  AppVirtualDataTableColumnDef,
-  AppVirtualDataTableDndOptions,
-} from "@/components/tables/AppVirtualDataTable";
+  AppDataTableColumnDef,
+  AppDataTableDndOptions,
+} from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -51,7 +51,7 @@ const SERVICES_TOAST_META = {
 
 interface UnitTableViewProps<T extends RowData> {
   data: T[];
-  dnd?: AppVirtualDataTableDndOptions<T>;
+  dnd?: AppDataTableDndOptions<T>;
   desktopColumns: UnitTableColumn[];
   emptyMessage: string;
   getRowKey: (row: T, index: number) => string | number;
@@ -410,7 +410,7 @@ export function UnitTableView<T extends RowData>({
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
-  const columns = useMemo<AppVirtualDataTableColumnDef<T>[]>(() => {
+  const columns = useMemo<AppDataTableColumnDef<T>[]>(() => {
     const renderedCellCache = new Map<
       string,
       { cells: ReactNode[]; original: T; rowIndex: number }
@@ -457,7 +457,7 @@ export function UnitTableView<T extends RowData>({
     [getRowKey, onSelect],
   );
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="Units"
       columns={columns}
       data={data}

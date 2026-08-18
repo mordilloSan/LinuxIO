@@ -12,8 +12,8 @@ import {
 import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -377,7 +377,7 @@ const DeleteLVDialog = ({
   );
 };
 const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
-  const columns: AppVirtualDataTableColumnDef<PhysicalVolume>[] = [
+  const columns: AppDataTableColumnDef<PhysicalVolume>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -414,7 +414,7 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
   ];
 
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="LVM physical volumes"
       columns={columns}
       data={data}
@@ -428,7 +428,7 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
   );
 };
 const VGTable = ({ data }: { data: VolumeGroup[] }) => {
-  const columns: AppVirtualDataTableColumnDef<VolumeGroup>[] = [
+  const columns: AppDataTableColumnDef<VolumeGroup>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -463,7 +463,7 @@ const VGTable = ({ data }: { data: VolumeGroup[] }) => {
   ];
 
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="LVM volume groups"
       columns={columns}
       data={data}
@@ -482,7 +482,7 @@ interface LVTableProps {
   onResize: (lv: LogicalVolume) => void;
 }
 const LVTable = ({ data, onResize, onDelete }: LVTableProps) => {
-  const columns: AppVirtualDataTableColumnDef<LogicalVolume>[] = [
+  const columns: AppDataTableColumnDef<LogicalVolume>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -583,7 +583,7 @@ const LVTable = ({ data, onResize, onDelete }: LVTableProps) => {
   ];
 
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="LVM logical volumes"
       columns={columns}
       data={data}

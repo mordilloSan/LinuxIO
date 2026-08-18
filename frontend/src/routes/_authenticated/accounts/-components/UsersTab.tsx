@@ -11,8 +11,8 @@ import {
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import type { UserLockAction } from "@/components/cards/UserCard";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -209,7 +209,7 @@ const UsersTab = ({
   // Stable column defs: cells render through flexRender, so a rebuilt array
   // remounts every cell subtree — including on the press that arms a
   // reorder hold. See docs/table-row-gestures.md.
-  const columns = useMemo<AppVirtualDataTableColumnDef<AccountUser>[]>(
+  const columns = useMemo<AppDataTableColumnDef<AccountUser>[]>(
     () => [
       {
         accessorKey: "username",
@@ -467,7 +467,7 @@ const UsersTab = ({
           users={filtered}
         />
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Users"
           columns={columns}
           data={filtered}

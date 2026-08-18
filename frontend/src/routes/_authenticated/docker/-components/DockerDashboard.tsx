@@ -9,8 +9,8 @@ import DockerSectionCard from "@/components/cards/DockerSectionCard";
 import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -239,7 +239,7 @@ const DockerDashboard = ({
   }, [images, imageSort]);
 
   const containerColumns = useMemo<
-    AppVirtualDataTableColumnDef<(typeof previewContainers)[number]>[]
+    AppDataTableColumnDef<(typeof previewContainers)[number]>[]
   >(
     () => [
       {
@@ -354,7 +354,7 @@ const DockerDashboard = ({
     [stoppingContainerIds],
   );
   const imageColumns = useMemo<
-    AppVirtualDataTableColumnDef<(typeof previewImages)[number]>[]
+    AppDataTableColumnDef<(typeof previewImages)[number]>[]
   >(
     () => [
       {
@@ -787,7 +787,7 @@ const DockerDashboard = ({
                 }
                 title="Containers"
               >
-                <AppVirtualDataTable
+                <AppDataTable
                   ariaLabel="Docker dashboard containers"
                   columns={containerColumns}
                   data={previewContainers}
@@ -840,7 +840,7 @@ const DockerDashboard = ({
                 }
                 title="Images"
               >
-                <AppVirtualDataTable
+                <AppDataTable
                   ariaLabel="Docker dashboard images"
                   columns={imageColumns}
                   data={previewImages}

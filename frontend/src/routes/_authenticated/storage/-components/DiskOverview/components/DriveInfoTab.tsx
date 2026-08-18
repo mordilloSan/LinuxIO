@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
@@ -20,7 +20,7 @@ interface DriveInfoRow {
   valueStyle?: CSSProperties;
 }
 
-const driveInfoColumns: AppVirtualDataTableColumnDef<DriveInfoRow>[] = [
+const driveInfoColumns: AppDataTableColumnDef<DriveInfoRow>[] = [
   {
     accessorKey: "property",
     header: "Property",
@@ -106,7 +106,7 @@ export const DriveInfoTab = ({
   });
 
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="Drive information"
       columns={driveInfoColumns}
       data={rows}

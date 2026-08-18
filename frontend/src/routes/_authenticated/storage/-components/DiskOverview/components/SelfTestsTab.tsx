@@ -1,5 +1,5 @@
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -50,7 +50,7 @@ interface NvmeSelfTestRow {
   };
 }
 
-const standardSelfTestColumns: AppVirtualDataTableColumnDef<StandardSelfTestRow>[] = [
+const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
   {
     id: "number",
     header: "#",
@@ -85,7 +85,7 @@ const standardSelfTestColumns: AppVirtualDataTableColumnDef<StandardSelfTestRow>
   },
 ];
 
-const nvmeSelfTestColumns: AppVirtualDataTableColumnDef<NvmeSelfTestRow>[] = [
+const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
   {
     id: "type",
     header: "Type",
@@ -222,7 +222,7 @@ export const SelfTestsTab = ({
         Self-Test History
       </AppTypography>
       {standardRows.length > 0 ? (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="SMART self-test history"
           columns={standardSelfTestColumns}
           data={standardRows}
@@ -236,7 +236,7 @@ export const SelfTestsTab = ({
           variant="embedded"
         />
       ) : nvmeRows.length > 0 ? (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="NVMe self-test history"
           columns={nvmeSelfTestColumns}
           data={nvmeRows}

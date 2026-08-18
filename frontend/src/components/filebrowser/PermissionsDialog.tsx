@@ -3,8 +3,8 @@ import { useCallback, useState } from "react";
 
 import { type CountProgress, linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -194,7 +194,7 @@ const PermissionsDialog = ({
   }, [groupInput, isPending, onConfirm, ownerInput, permissions, recursive]);
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const permissionColumns: AppVirtualDataTableColumnDef<PermissionMatrixRow>[] = [
+  const permissionColumns: AppDataTableColumnDef<PermissionMatrixRow>[] = [
     {
       accessorKey: "label",
       header: "",
@@ -204,7 +204,7 @@ const PermissionsDialog = ({
         </AppTypography>
       ),
     },
-    ...permissionFlags.map<AppVirtualDataTableColumnDef<PermissionMatrixRow>>(
+    ...permissionFlags.map<AppDataTableColumnDef<PermissionMatrixRow>>(
       (flag) => ({
         id: flag,
         header: flag[0].toUpperCase() + flag.slice(1),
@@ -311,7 +311,7 @@ const PermissionsDialog = ({
           />
         </div>
 
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="File permissions matrix"
           columns={permissionColumns}
           data={permissionRows}

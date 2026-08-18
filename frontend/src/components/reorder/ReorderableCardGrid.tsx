@@ -67,7 +67,7 @@ interface ReorderableCardGridProps<TItem> {
   dense?: boolean;
   /**
    * Scroll the cards inside the grid rather than growing the page, the way
-   * `fillAvailable` works on AppVirtualGrid and AppVirtualDataTable. Set it where the
+   * `fillAvailable` works on AppVirtualGrid and AppDataTable. Set it where the
    * grid is a route's whole surface — a tab panel — so its chrome stays put and
    * the view reads the same as the table it toggles with. Leave it off where
    * the grid is one section stacked among others, which scrolls with the page.

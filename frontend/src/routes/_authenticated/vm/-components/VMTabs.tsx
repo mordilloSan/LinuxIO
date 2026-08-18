@@ -2,8 +2,8 @@ import type { CSSProperties } from "react";
 
 import type { VMPreflight, VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -184,7 +184,7 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
     })),
   );
 
-  const columns: AppVirtualDataTableColumnDef<VMNetworkRow>[] = [
+  const columns: AppDataTableColumnDef<VMNetworkRow>[] = [
     {
       accessorKey: "vmName",
       header: "VM",
@@ -236,7 +236,7 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
   return (
     <div style={tabPanelStyle(theme)}>
       <FrostedCard style={tableCardStyle}>
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Virtual machine networks"
           columns={columns}
           data={rows}

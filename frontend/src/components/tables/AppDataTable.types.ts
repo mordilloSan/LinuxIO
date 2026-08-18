@@ -38,10 +38,10 @@ export interface AppDataTableColumnMeta {
   width?: string | number;
 }
 
-// v9 tree-shakeable feature registry, shared by AppDataTable and
-// AppVirtualDataTable: only sorting, expanding, and responsive column
-// visibility ship in the bundle. The type-only `columnMeta` slot replaces the
-// v8 `declare module` ColumnMeta augmentation.
+// v9 tree-shakeable feature registry for AppDataTable: only sorting,
+// expanding, and responsive column visibility ship in the bundle. The
+// type-only `columnMeta` slot replaces the v8 `declare module` ColumnMeta
+// augmentation.
 
 export const appTableFeatures = tableFeatures({
   columnVisibilityFeature,

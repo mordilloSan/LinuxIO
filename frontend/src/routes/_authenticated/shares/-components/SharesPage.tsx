@@ -20,11 +20,11 @@ import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
 import type {
-  AppVirtualDataTableColumnDef,
-  AppVirtualDataTableProps,
-} from "@/components/tables/AppVirtualDataTable";
+  AppDataTableColumnDef,
+  AppDataTableProps,
+} from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -113,7 +113,7 @@ const protocolSectionStyle: CSSProperties = {
   background: "rgba(255,255,255,0.03)",
 };
 
-const tableColumns: AppVirtualDataTableColumnDef<ShareGroup>[] = [
+const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -1192,7 +1192,7 @@ const SharesPage = () => {
     surface: sharesSurface,
   });
   const renderShareExpandedContent = useCallback<
-    NonNullable<AppVirtualDataTableProps<ShareGroup>["renderExpandedContent"]>
+    NonNullable<AppDataTableProps<ShareGroup>["renderExpandedContent"]>
   >(
     ({ original: group }) =>
       renderExpandedContent(
@@ -1263,7 +1263,7 @@ const SharesPage = () => {
           </div>
         )
       ) : (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="Folder shares"
           columns={tableColumns}
           data={sharesSurface.items}

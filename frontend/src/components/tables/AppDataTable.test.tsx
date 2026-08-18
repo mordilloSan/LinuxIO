@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import { render, screen } from "@/test/render";
 
 vi.mock("@tanstack/react-virtual", () => ({
@@ -43,7 +43,7 @@ const renderStatus = vi.fn(
   ({ row }: { row: { original: TableRow } }) => row.original.status,
 );
 
-const columns: AppVirtualDataTableColumnDef<TableRow>[] = [
+const columns: AppDataTableColumnDef<TableRow>[] = [
   {
     id: "name",
     header: "Name",
@@ -82,10 +82,10 @@ function TestTable({
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   selectedRowId?: string;
-  tableColumns?: AppVirtualDataTableColumnDef<TableRow>[];
+  tableColumns?: AppDataTableColumnDef<TableRow>[];
 }) {
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       columns={tableColumns}
       data={data}
       fillAvailable={false}
@@ -97,7 +97,7 @@ function TestTable({
   );
 }
 
-describe("AppVirtualDataTable", () => {
+describe("AppDataTable", () => {
   it("renders only cells whose field render key changed", () => {
     const view = render(<TestTable />);
 
@@ -125,7 +125,7 @@ describe("AppVirtualDataTable", () => {
 
   it("does not retain a stale renderer when a column definition changes", () => {
     const view = render(<TestTable />);
-    const replacementColumns: AppVirtualDataTableColumnDef<TableRow>[] = [
+    const replacementColumns: AppDataTableColumnDef<TableRow>[] = [
       {
         ...columns[0],
         cell: ({ row }) => `renamed:${row.original.name}`,

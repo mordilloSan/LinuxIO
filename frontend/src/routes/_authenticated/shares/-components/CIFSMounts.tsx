@@ -3,8 +3,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type CIFSMount, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -552,7 +552,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
     surface,
   });
 
-  const columns = useMemo<AppVirtualDataTableColumnDef<CIFSMount>[]>(
+  const columns = useMemo<AppDataTableColumnDef<CIFSMount>[]>(
     () => [
       {
         accessorKey: "source",
@@ -796,7 +796,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
         <AppAlert severity="warning">{cifsReason}</AppAlert>
       ) : null}
 
-      <AppVirtualDataTable
+      <AppDataTable
         ariaLabel="SMB mounts"
         columns={columns}
         data={surface.items}

@@ -53,11 +53,10 @@ import {
 } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
-// The layer AppDataTable (non-virtualized) and AppVirtualDataTable share:
-// chrome, header, cells, and the gesture contract from
-// `docs/table-row-gestures.md`. Like the app-dt__* CSS, nothing here is
-// specific to either table — body/row rendering is where they differ, and
-// that stays in each component.
+// The table layer below AppDataTable: chrome, header, cells, and the gesture
+// contract from `docs/table-row-gestures.md`. Like the app-dt__* CSS, nothing
+// here knows about virtualization — body/row rendering stays in the
+// component.
 
 const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
 

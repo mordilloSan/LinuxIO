@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -33,7 +33,7 @@ const renderStatus = vi.fn(
 );
 const getRowAttributes = vi.fn(() => ({}));
 
-const tableColumns: AppVirtualDataTableColumnDef<TableRow>[] = [
+const tableColumns: AppDataTableColumnDef<TableRow>[] = [
   {
     id: "name",
     header: "Name",
@@ -74,7 +74,7 @@ function TestTable({
   onRowDoubleClick,
   selectedRowId,
 }: {
-  columns?: AppVirtualDataTableColumnDef<TableRow>[];
+  columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   onClearSelection?: () => void;
@@ -83,7 +83,7 @@ function TestTable({
   selectedRowId?: string;
 }) {
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       columns={columns}
       data={data}
       fillAvailable
@@ -100,7 +100,7 @@ function TestTable({
 
 function SelectableTable() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const columns: AppVirtualDataTableColumnDef<SelectableRow>[] = [
+  const columns: AppDataTableColumnDef<SelectableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -136,7 +136,7 @@ function SelectableTable() {
   ];
 
   return (
-    <AppVirtualDataTable
+    <AppDataTable
       ariaLabel="Selectable rows"
       columns={columns}
       data={rows}
@@ -160,7 +160,7 @@ function ReorderableSelectableTable() {
     surface: "test.rows",
   });
   const dnd = useReorderableTableDnd<TableRow, TableRow>({ surface });
-  const columns: AppVirtualDataTableColumnDef<TableRow>[] = [
+  const columns: AppDataTableColumnDef<TableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -187,7 +187,7 @@ function ReorderableSelectableTable() {
   return (
     <>
       <div data-testid="selected-count">{selected.size}</div>
-      <AppVirtualDataTable
+      <AppDataTable
         columns={columns}
         data={tableRows}
         dnd={dnd}
@@ -202,8 +202,8 @@ function ReorderableSelectableTable() {
 }
 
 // The row gestures from docs/table-row-gestures.md, exercised against the one
-// table primitive. Ported from the retired non-virtualized AppDataTable suite.
-describe("AppVirtualDataTable gestures", () => {
+// table primitive.
+describe("AppDataTable gestures", () => {
   beforeEach(() => {
     getRowAttributes.mockClear();
     renderName.mockClear();
@@ -250,7 +250,7 @@ describe("AppVirtualDataTable gestures", () => {
   it("updates index-sensitive cells when stable rows are reordered", () => {
     // Per the column-meta contract, an explicit render key must include the
     // row index when the renderer reads its position.
-    const indexedColumns: AppVirtualDataTableColumnDef<TableRow>[] = [
+    const indexedColumns: AppDataTableColumnDef<TableRow>[] = [
       {
         id: "name",
         header: "Name",
@@ -297,7 +297,7 @@ describe("AppVirtualDataTable gestures", () => {
 
   it("leaves clicks on row controls to the control", async () => {
     const onControlClick = vi.fn();
-    const columnsWithAction: AppVirtualDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",
@@ -485,7 +485,7 @@ describe("AppVirtualDataTable gestures", () => {
   });
 
   it("leaves the word selection alone on a control inside the row", () => {
-    const columnsWithAction: AppVirtualDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",

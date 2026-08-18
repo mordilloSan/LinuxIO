@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppTypography from "@/components/ui/AppTypography";
 
 import type { SmartAttribute, SmartData } from "../types";
@@ -22,7 +22,7 @@ interface SmartSummaryRow {
   valueStyle?: CSSProperties;
 }
 
-const smartSummaryColumns: AppVirtualDataTableColumnDef<SmartSummaryRow>[] = [
+const smartSummaryColumns: AppDataTableColumnDef<SmartSummaryRow>[] = [
   {
     accessorKey: "attribute",
     header: "Attribute",
@@ -37,7 +37,7 @@ const smartSummaryColumns: AppVirtualDataTableColumnDef<SmartSummaryRow>[] = [
   },
 ];
 
-const ataAttributeColumns: AppVirtualDataTableColumnDef<SmartAttribute>[] = [
+const ataAttributeColumns: AppDataTableColumnDef<SmartAttribute>[] = [
   {
     accessorKey: "id",
     header: "#",
@@ -228,7 +228,7 @@ export const SmartAttributesTab = ({
 
     if (rows.length > 0) {
       return (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="NVMe SMART attributes"
           columns={smartSummaryColumns}
           data={rows}
@@ -245,7 +245,7 @@ export const SmartAttributesTab = ({
 
   if (ataAttrs && ataAttrs.length > 0) {
     return (
-      <AppVirtualDataTable
+      <AppDataTable
         ariaLabel="ATA SMART attributes"
         columns={ataAttributeColumns}
         data={ataAttrs}

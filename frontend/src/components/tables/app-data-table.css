@@ -1,6 +1,5 @@
-/* Shared by AppDataTable (non-virtualized) and AppVirtualDataTable — the
-   app-dt__* classes and --app-dt-* custom properties are not specific to
-   either table, so don't re-narrow this file to just one of them. */
+/* The app-dt__* classes and --app-dt-* custom properties: table chrome,
+   header, cells, and rows. Loaded by AppDataTable. */
 
 .app-dt {
   display: flex;

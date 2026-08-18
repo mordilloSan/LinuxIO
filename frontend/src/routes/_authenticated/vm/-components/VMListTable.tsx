@@ -3,8 +3,8 @@ import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -66,7 +66,7 @@ export default function VMListTable({
   pendingActions: ReadonlyMap<string, VMAction>;
   vms: VirtualMachine[];
 }) {
-  const columns = useMemo<AppVirtualDataTableColumnDef<VirtualMachine>[]>(
+  const columns = useMemo<AppDataTableColumnDef<VirtualMachine>[]>(
     () => [
       {
         accessorKey: "name",
@@ -217,7 +217,7 @@ export default function VMListTable({
 
   return (
     <FrostedCard style={listPanelStyle}>
-      <AppVirtualDataTable
+      <AppDataTable
         ariaLabel="Virtual machines"
         columns={columns}
         data={surface.items}
