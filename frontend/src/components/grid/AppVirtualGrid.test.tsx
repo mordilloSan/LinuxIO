@@ -150,5 +150,20 @@ describe("AppVirtualGrid", () => {
     );
 
     expect(virtualizerState.measure).toHaveBeenCalledTimes(2);
+
+    view.rerender(
+      <AppVirtualGrid
+        estimateItemHeight={100}
+        gap={20}
+        getItemKey={getItemKey}
+        height={200}
+        items={[{ id: "one" }, { id: "two" }, { id: "three" }]}
+        minItemWidth={1}
+        padding={8}
+        renderItem={(item) => <span>{item.id}</span>}
+      />,
+    );
+
+    expect(virtualizerState.measure).toHaveBeenCalledTimes(3);
   });
 });

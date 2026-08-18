@@ -665,6 +665,10 @@ function AppDataTable<TData extends RowData>({
     }
     return next;
   }, [rows]);
+  const expandedRowIdsKey = useMemo(
+    () => JSON.stringify([...expandedRowIds].sort()),
+    [expandedRowIds],
+  );
 
   useTableGestureKeys({
     hasExpandableRows: Boolean(renderExpandedContent),
@@ -971,10 +975,10 @@ function AppDataTable<TData extends RowData>({
   );
 
   useLayoutEffect(() => {
-    if (!renderExpandedContent) return;
+    if (!hasExpandedContent) return;
 
     for (const rowId of mountedDetailRowIds) {
-      if (expandedRowIds.has(rowId)) {
+      if (expandedRowIdsRef.current.has(rowId)) {
         animateDetailSize(
           rowId,
           detailContentHeightsRef.current.get(rowId) ?? 0,
@@ -985,9 +989,9 @@ function AppDataTable<TData extends RowData>({
     }
   }, [
     animateDetailSize,
-    expandedRowIds,
+    expandedRowIdsKey,
+    hasExpandedContent,
     mountedDetailRowIds,
-    renderExpandedContent,
   ]);
 
   useEffect(

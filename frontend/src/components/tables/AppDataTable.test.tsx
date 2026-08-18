@@ -15,35 +15,62 @@ const virtualizerSpies = vi.hoisted(() => ({
     | undefined,
 }));
 
-vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: ({
-    count,
-    estimateSize,
-    getItemKey,
-  }: {
-    count: number;
-    estimateSize: (index: number) => number;
-    getItemKey: (index: number) => string | number;
-  }) => {
-    virtualizerSpies.options = { estimateSize, getItemKey };
-    return {
-      getTotalSize: () => count * 48,
-      getVirtualItems: () =>
-        Array.from({ length: count }, (_, index) => ({
-          end: (index + 1) * 48,
-          index,
-          key: getItemKey(index),
-          lane: 0,
-          size: 48,
-          start: index * 48,
-        })),
-      measure: virtualizerSpies.measure,
-      measureElement: vi.fn(),
-      resizeItem: vi.fn(),
-      scrollToIndex: vi.fn(),
-    };
-  },
-}));
+vi.mock("@tanstack/react-virtual", async () => {
+  const { useRef } = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    useVirtualizer: ({
+      count,
+      estimateSize,
+      getItemKey,
+    }: {
+      count: number;
+      estimateSize: (index: number) => number;
+      getItemKey: (index: number) => string | number;
+    }) => {
+      const optionsRef = useRef({ count, estimateSize, getItemKey });
+      optionsRef.current = { count, estimateSize, getItemKey };
+      virtualizerSpies.options = { estimateSize, getItemKey };
+
+      const virtualizerRef = useRef<{
+        getTotalSize: () => number;
+        getVirtualItems: () => Array<{
+          end: number;
+          index: number;
+          key: string | number;
+          lane: number;
+          size: number;
+          start: number;
+        }>;
+        measure: typeof virtualizerSpies.measure;
+        measureElement: ReturnType<typeof vi.fn>;
+        resizeItem: ReturnType<typeof vi.fn>;
+        scrollToIndex: ReturnType<typeof vi.fn>;
+      } | null>(null);
+
+      if (!virtualizerRef.current) {
+        virtualizerRef.current = {
+          getTotalSize: () => optionsRef.current.count * 48,
+          getVirtualItems: () =>
+            Array.from({ length: optionsRef.current.count }, (_, index) => ({
+              end: (index + 1) * 48,
+              index,
+              key: optionsRef.current.getItemKey(index),
+              lane: 0,
+              size: 48,
+              start: index * 48,
+            })),
+          measure: virtualizerSpies.measure,
+          measureElement: vi.fn(),
+          resizeItem: vi.fn(),
+          scrollToIndex: vi.fn(),
+        };
+      }
+
+      return virtualizerRef.current;
+    },
+  };
+});
 
 interface TableRow {
   id: string;
@@ -204,6 +231,43 @@ describe("AppDataTable", () => {
 
     await view.user.click(row);
     expect(virtualizerSpies.measure).not.toHaveBeenCalled();
+  });
+
+  it("does not restart detail animation for a new renderer identity", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ height: 100 }) as DOMRect);
+    const frameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 1);
+
+    try {
+      const view = render(
+        <TestTable
+          expandedContent={({ original }) => (
+            <div>{`Details for ${original.name}`}</div>
+          )}
+        />,
+      );
+      await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+      const framesAfterExpand = frameSpy.mock.calls.length;
+
+      view.rerender(
+        <TestTable
+          expandedContent={({ original }) => (
+            <div>{`Updated details for ${original.name}`}</div>
+          )}
+        />,
+      );
+
+      expect(screen.getByText("Updated details for Alpha")).toBeInTheDocument();
+      expect(frameSpy).toHaveBeenCalledTimes(framesAfterExpand);
+
+      view.unmount();
+    } finally {
+      frameSpy.mockRestore();
+      rectSpy.mockRestore();
+    }
   });
 
   it("does not rerender stable explicit-key cells when live rows prepend", () => {

@@ -141,10 +141,10 @@ function AppVirtualGrid<TItem>({
 
   useLayoutEffect(() => {
     // Count/key changes already rebuild offsets while preserving keyed sizes.
-    // Column membership and the inter-row gap change every row's real box, so
-    // those layout changes still require clearing measured heights.
+    // Column membership, the inter-row gap, and outer padding change row
+    // geometry, so those layout changes still require clearing measured heights.
     virtualizer.measure();
-  }, [columnCount, gap, virtualizer]);
+  }, [columnCount, gap, padding, virtualizer]);
 
   useLayoutEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
