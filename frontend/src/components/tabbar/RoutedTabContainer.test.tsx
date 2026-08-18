@@ -431,9 +431,7 @@ describe("RoutedTabContainer", () => {
 
     await user.click(actionsTrigger);
 
-    const mobileActions = document.querySelector(
-      ".tab-selector__mobile-actions",
-    );
+    const mobileActions = document.querySelector(".app-mobile-actions-menu");
     const searchAction = screen.getByRole("button", { name: "Search" });
     expect(mobileActions).toContainElement(searchAction);
     expect(mobileActions).toContainElement(

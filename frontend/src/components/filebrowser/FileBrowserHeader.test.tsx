@@ -153,16 +153,19 @@ describe("FileBrowserHeader", () => {
 
     const actionsTrigger = screen.getByRole("button", { name: "Actions" });
     await user.click(actionsTrigger);
-    expect(screen.getByRole("menu").parentElement).toHaveStyle({
-      minWidth: "176px",
-    });
-    expect(
-      document.querySelector(".file-browser-header__mobile-actions"),
-    ).toHaveStyle({
-      display: "flex",
-      flexWrap: "nowrap",
-      gap: "8px",
-    });
+    const mobileActions = document.querySelector(".app-mobile-actions-menu");
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Search" }),
+    );
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Switch to card view" }),
+    );
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Show hidden files" }),
+    );
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Index filesystem" }),
+    );
     await user.click(screen.getByRole("button", { name: "Search" }));
 
     const search = await screen.findByRole("textbox", {

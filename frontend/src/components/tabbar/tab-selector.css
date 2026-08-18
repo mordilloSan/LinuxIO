@@ -112,15 +112,6 @@
   display: contents;
 }
 
-.tab-selector__mobile-actions {
-  display: flex;
-  flex-direction: row;
-}
-
-.tab-selector__mobile-actions > div {
-  display: flex;
-}
-
 .app-popover__paper.tab-selector__mobile-search-popover {
   width: min(400px, calc(100vw - 16px));
   padding: 8px;

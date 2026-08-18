@@ -20,7 +20,7 @@ import { iconSize } from "@/theme/constants";
 
 import { getTabSelectorThemeVars } from "./TabSelector";
 import AppIconButton from "../ui/AppIconButton";
-import AppMenu from "../ui/AppMenu";
+import AppMobileActionsMenu from "../ui/AppMobileActionsMenu";
 import AppPopover from "../ui/AppPopover";
 
 import "./tab-container.css";
@@ -321,38 +321,30 @@ const TabSelector = memo(function TabSelector({
             width={headerActionHost ? iconSize.md : 20}
           />
         </AppIconButton>
-        <AppMenu
+        <AppMobileActionsMenu
           anchorEl={anchorEl}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          keepMounted
-          minWidth="unset"
           onClose={() => setAnchorEl(null)}
           open={Boolean(anchorEl)}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
         >
-          <div className="tab-selector__mobile-actions">
-            {hasSlotSearch ? (
-              <AppIconButton
-                aria-label="Search"
-                className={
-                  hasActiveSlotSearch
-                    ? "tab-selector__search-active"
-                    : undefined
-                }
-                onClick={() => {
-                  setMobileSearchAnchorEl(anchorEl);
-                  setAnchorEl(null);
-                }}
-                size="small"
-              >
-                <Icon height={20} icon="mdi:magnify" width={20} />
-              </AppIconButton>
-            ) : null}
-            {actionHostMountRef && hasSlotActions ? (
-              <div ref={actionHostMountRef} />
-            ) : null}
-          </div>
-        </AppMenu>
+          {hasSlotSearch ? (
+            <AppIconButton
+              aria-label="Search"
+              className={
+                hasActiveSlotSearch ? "tab-selector__search-active" : undefined
+              }
+              onClick={() => {
+                setMobileSearchAnchorEl(anchorEl);
+                setAnchorEl(null);
+              }}
+              size="small"
+            >
+              <Icon height={20} icon="mdi:magnify" width={20} />
+            </AppIconButton>
+          ) : null}
+          {actionHostMountRef && hasSlotActions ? (
+            <div ref={actionHostMountRef} />
+          ) : null}
+        </AppMobileActionsMenu>
         {searchHostMountRef && hasSlotSearch ? (
           <AppPopover
             anchorEl={mobileSearchAnchorEl}

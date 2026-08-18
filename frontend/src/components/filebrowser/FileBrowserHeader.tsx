@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppMenu from "@/components/ui/AppMenu";
+import AppMobileActionsMenu from "@/components/ui/AppMobileActionsMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -173,40 +173,27 @@ const FileBrowserHeader = ({
           width={headerActionHost ? iconSize.md : 20}
         />
       </AppIconButton>
-      <AppMenu
+      <AppMobileActionsMenu
         anchorEl={actionsAnchorEl}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        minWidth={176}
         onClose={closeActionsMenu}
         open={Boolean(actionsAnchorEl)}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <div
-          className="file-browser-header__mobile-actions"
-          style={{
-            display: "flex",
-            flexWrap: "nowrap",
-            gap: 8,
-            padding: "4px 8px",
+        <AppIconButton
+          aria-label="Search"
+          color={searchQuery ? "primary" : "default"}
+          onClick={() => {
+            setMobileSearchAnchorEl(actionsAnchorEl);
+            setActionsAnchorEl(null);
           }}
+          size="small"
         >
-          <AppIconButton
-            aria-label="Search"
-            color={searchQuery ? "primary" : "default"}
-            onClick={() => {
-              setMobileSearchAnchorEl(actionsAnchorEl);
-              setActionsAnchorEl(null);
-            }}
-            size="small"
-          >
-            <Icon height={20} icon="mdi:magnify" width={20} />
-          </AppIconButton>
-          <HeaderActions
-            options={optionActions(closeActionsMenu)}
-            view={viewAction(closeActionsMenu)}
-          />
-        </div>
-      </AppMenu>
+          <Icon height={20} icon="mdi:magnify" width={20} />
+        </AppIconButton>
+        <HeaderActions
+          options={optionActions(closeActionsMenu)}
+          view={viewAction(closeActionsMenu)}
+        />
+      </AppMobileActionsMenu>
       <AppPopover
         anchorEl={mobileSearchAnchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
