@@ -75,6 +75,20 @@ const nativeControlExceptions: ReviewedException[] = [
     reason: "hidden native color picker input",
     protects: "native color-picker integration",
   },
+  {
+    file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
+    pattern:
+      /<input\s+aria-label="(?:Start|End) color for the full dock gradient"[\s\S]{0,300}?type="color"/,
+    reason: "visible dock gradient endpoint picker",
+    protects: "native color selection with a direct visual swatch",
+  },
+  {
+    file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
+    pattern:
+      /<input\s+aria-label="(?:Start|End) of dock palette range"[\s\S]{0,700}?type="range"/,
+    reason: "dual-ended dock palette range control",
+    protects: "continuous pointer and keyboard adjustment of both range ends",
+  },
 ];
 
 const buttonRoleExceptions: ReviewedException[] = [

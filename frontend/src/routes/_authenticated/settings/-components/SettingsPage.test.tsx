@@ -41,3 +41,24 @@ describe("SettingsPage navigation options", () => {
     );
   });
 });
+
+describe("SettingsPage dock colors", () => {
+  it("shows the palette editor only for the accent family", () => {
+    const { unmount } = render(<SettingsPage />, {
+      appSettings: { dockTileColors: "accent" },
+    });
+
+    expect(
+      screen.getByRole("slider", { name: "Start of dock palette range" }),
+    ).toBeInTheDocument();
+
+    unmount();
+    render(<SettingsPage />, {
+      appSettings: { dockTileColors: "mono" },
+    });
+
+    expect(
+      screen.queryByRole("slider", { name: "Start of dock palette range" }),
+    ).not.toBeInTheDocument();
+  });
+});

@@ -50,3 +50,34 @@
   padding: 12px;
   overflow-y: auto;
 }
+
+.settings-page__dock-colors-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-page__dock-colors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-page__dock-colors-select {
+  width: 220px;
+  min-width: 220px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 599.95px) {
+  .settings-page__dock-colors-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-page__dock-colors-select {
+    width: 100%;
+    min-width: 0;
+  }
+}

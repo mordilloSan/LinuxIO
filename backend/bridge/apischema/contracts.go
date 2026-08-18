@@ -472,6 +472,7 @@ type ConfigAppSettingsPayload struct {
 	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitempty"`
 	NavigationMode          *string                         `json:"navigationMode,omitempty"`
 	DockTileColors          *string                         `json:"dockTileColors,omitempty"`
+	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
 	ShowHiddenFiles         *bool                           `json:"showHiddenFiles,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
@@ -480,6 +481,13 @@ type ConfigAppSettingsPayload struct {
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
 	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
+}
+
+type ConfigDockAccentGradient struct {
+	StartColor *string `json:"startColor,omitempty"`
+	EndColor   *string `json:"endColor,omitempty"`
+	RangeStart int     `json:"rangeStart"`
+	RangeEnd   int     `json:"rangeEnd"`
 }
 
 type ConfigThemeColorsByModePayload struct {

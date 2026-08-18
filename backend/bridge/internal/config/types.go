@@ -70,6 +70,15 @@ type ThemeColors struct {
 	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
+// DockAccentGradient controls the generated accent palette used by dock tiles.
+// Empty colors derive their values from the active theme accent.
+type DockAccentGradient struct {
+	StartColor CSSColor `json:"startColor,omitempty" yaml:"startColor,omitempty"`
+	EndColor   CSSColor `json:"endColor,omitempty" yaml:"endColor,omitempty"`
+	RangeStart int      `json:"rangeStart" yaml:"rangeStart"`
+	RangeEnd   int      `json:"rangeEnd" yaml:"rangeEnd"`
+}
+
 // PersistedAppSettings holds UI-related settings.
 type PersistedAppSettings struct {
 	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
@@ -78,6 +87,7 @@ type PersistedAppSettings struct {
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	NavigationMode          string                   `json:"navigationMode,omitempty" yaml:"navigationMode,omitempty"`
 	DockTileColors          string                   `json:"dockTileColors,omitempty" yaml:"dockTileColors,omitempty"`
+	DockAccentGradient      DockAccentGradient       `json:"dockAccentGradient" yaml:"dockAccentGradient"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
@@ -153,6 +163,27 @@ func IsValidDockTileColors(s string) bool {
 	default:
 		return false
 	}
+}
+
+// ValidateDockAccentGradient returns validation errors for a dock gradient.
+func ValidateDockAccentGradient(value DockAccentGradient) []string {
+	var errs []string
+	if value.StartColor != "" && !IsValidCSSColor(string(value.StartColor)) {
+		errs = append(errs, "appSettings.dockAccentGradient.startColor must be a valid CSS color or empty")
+	}
+	if value.EndColor != "" && !IsValidCSSColor(string(value.EndColor)) {
+		errs = append(errs, "appSettings.dockAccentGradient.endColor must be a valid CSS color or empty")
+	}
+	if value.RangeStart < 0 || value.RangeStart > 100 {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeStart must be between 0 and 100")
+	}
+	if value.RangeEnd < 0 || value.RangeEnd > 100 {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeEnd must be between 0 and 100")
+	}
+	if value.RangeStart > value.RangeEnd {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeStart must not exceed rangeEnd")
+	}
+	return errs
 }
 
 // PersistedTheme represents a validated theme value (LIGHT or DARK).

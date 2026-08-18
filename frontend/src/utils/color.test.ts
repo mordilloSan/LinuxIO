@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { alpha, darken, fromHsl, lighten, toHsl } from "@/utils/color";
+import {
+  alpha,
+  darken,
+  fromHsl,
+  interpolateHsl,
+  lighten,
+  toHexColor,
+  toHsl,
+} from "@/utils/color";
 
 describe("color utilities", () => {
   it("applies alpha to supported CSS color formats", () => {
@@ -30,6 +38,18 @@ describe("color utilities", () => {
     const hsl = toHsl("#2196f3");
     expect(hsl).not.toBeNull();
     expect(fromHsl(hsl!.h, hsl!.s, hsl!.l)).toBe("rgb(33, 150, 243)");
+  });
+
+  it("formats picker-compatible hex colors", () => {
+    expect(toHexColor("#abc")).toBe("#aabbcc");
+    expect(toHexColor("rgb(33, 150, 243)")).toBe("#2196f3");
+    expect(toHexColor("var(--brand)")).toBeNull();
+  });
+
+  it("interpolates colors along the shortest HSL path", () => {
+    expect(interpolateHsl("#ff0000", "#0000ff", 0)).toBe("rgb(255, 0, 0)");
+    expect(interpolateHsl("#ff0000", "#0000ff", 0.5)).toBe("rgb(255, 0, 255)");
+    expect(interpolateHsl("#ff0000", "#0000ff", 1)).toBe("rgb(0, 0, 255)");
   });
 
   it("wraps and clamps HSL components", () => {

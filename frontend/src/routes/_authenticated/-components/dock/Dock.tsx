@@ -1,20 +1,19 @@
 import type { CSSProperties } from "react";
 
-import type { DockTileColors } from "@/api";
+import type { ConfigDockAccentGradient, DockTileColors } from "@/api";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
 import { useAppTheme } from "@/theme";
 import { fromHsl, lighten, toHsl } from "@/utils/color";
 
 import DockItem from "./DockItem";
+import { sampleDockAccentColor, type TileGradient } from "./dockPalette";
 import {
   DockMagnificationProvider,
   useDockPointerLiveness,
 } from "./useDockMagnification";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
 import "./dock.css";
-
-type TileGradient = readonly [string, string];
 
 /* Fixed per-route gradients (top → bottom), macOS-app-icon style. Routes
    without an entry fall back to cycling through this palette. Owes nothing to
@@ -37,11 +36,6 @@ const VIBRANT_GRADIENTS: Record<string, TileGradient> = {
 };
 
 const VIBRANT_FALLBACK = Object.values(VIBRANT_GRADIENTS);
-
-/* Total hue arc the accent palette spans, centered on the accent. Wide enough
-   to tell one tile from the next, narrow enough that every tile still reads as
-   the same color family. */
-const ACCENT_HUE_SPREAD = 60;
 
 /* Neutral tiles keep a trace of the accent hue rather than being flat gray, and
    are clamped to a lightness band that keeps a white icon legible whatever
@@ -68,23 +62,20 @@ const neutralBase = (accent: string) => {
   );
 };
 
-/* Fanned left to right across the arc so the row reads as a ramp through one
-   family. Hue is the only component that moves — saturation and lightness are
-   what make a palette look noisy, and those come from the accent unchanged. */
 const accentFamilyGradient = (
   accent: string,
+  gradient: ConfigDockAccentGradient | undefined,
   index: number,
   count: number,
 ): TileGradient => {
-  const hsl = toHsl(accent);
-  if (!hsl || count < 2) return tileGradient(accent);
-  const offset = (index / (count - 1) - 0.5) * ACCENT_HUE_SPREAD;
-  return tileGradient(fromHsl(hsl.h + offset, hsl.s, hsl.l));
+  const position = count < 2 ? 0.5 : index / (count - 1);
+  return tileGradient(sampleDockAccentColor(accent, gradient, position));
 };
 
 const gradientFor = (
   palette: DockTileColors,
   accent: string,
+  accentGradient: ConfigDockAccentGradient | undefined,
   to: string,
   index: number,
   count: number,
@@ -100,7 +91,7 @@ const gradientFor = (
     case "neutral":
       return tileGradient(neutralBase(accent));
     default:
-      return accentFamilyGradient(accent, index, count);
+      return accentFamilyGradient(accent, accentGradient, index, count);
   }
 };
 
@@ -109,6 +100,7 @@ const Dock = () => {
   const canNavigate = useUpdateCanNavigate();
   const theme = useAppTheme();
   const [dockTileColors] = useConfigValue("dockTileColors");
+  const [dockAccentGradient] = useConfigValue("dockAccentGradient");
   const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
     useDockPointerLiveness();
 
@@ -146,6 +138,7 @@ const Dock = () => {
             gradient={gradientFor(
               palette,
               accent,
+              dockAccentGradient,
               page.to,
               index,
               items.length,

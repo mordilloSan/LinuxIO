@@ -24,6 +24,9 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *api
 	if err := applyDockTileColorsSetting(app, payload.DockTileColors); err != nil {
 		return err
 	}
+	if err := applyDockAccentGradientSetting(app, payload.DockAccentGradient); err != nil {
+		return err
+	}
 	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
@@ -35,6 +38,30 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *api
 		return err
 	}
 	return applyTerminalFontSizeSetting(app, payload.TerminalFontSize)
+}
+
+func applyDockAccentGradientSetting(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigDockAccentGradient) error {
+	if payload == nil {
+		return nil
+	}
+	gradient := bridgeconfig.DockAccentGradient{
+		StartColor: bridgeconfig.CSSColor(trimmedOptionalString(payload.StartColor)),
+		EndColor:   bridgeconfig.CSSColor(trimmedOptionalString(payload.EndColor)),
+		RangeStart: payload.RangeStart,
+		RangeEnd:   payload.RangeEnd,
+	}
+	if errs := bridgeconfig.ValidateDockAccentGradient(gradient); len(errs) > 0 {
+		return fmt.Errorf("invalid dockAccentGradient: %s", strings.Join(errs, "; "))
+	}
+	app.DockAccentGradient = gradient
+	return nil
+}
+
+func trimmedOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) error {

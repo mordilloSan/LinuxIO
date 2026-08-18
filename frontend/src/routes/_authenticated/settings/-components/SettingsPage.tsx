@@ -22,6 +22,7 @@ import UpdateSettings, {
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
+import DockAccentGradientEditor from "./DockAccentGradientEditor";
 import "./settings-page.css";
 
 type SettingsTab =
@@ -40,6 +41,8 @@ const SettingsPage = () => {
   const { privileged } = useAuth();
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
+  const [dockAccentGradient, setDockAccentGradient] =
+    useConfigValue("dockAccentGradient");
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const effectiveTab =
     !privileged &&
@@ -170,39 +173,41 @@ const SettingsPage = () => {
                 </FrostedCard>
 
                 <FrostedCard
-                  hoverLift
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: theme.spacing(1.5),
-                  }}
+                  className="settings-page__dock-colors-card"
+                  style={{ padding: theme.spacing(1.5) }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <AppTypography fontWeight={600} variant="body2">
-                      Dock tile colors
-                    </AppTypography>
-                    <AppTypography color="text.secondary" variant="caption">
-                      How dock tiles take their color from the accent.
-                    </AppTypography>
+                  <div className="settings-page__dock-colors-header">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <AppTypography fontWeight={600} variant="body2">
+                        Dock tile colors
+                      </AppTypography>
+                      <AppTypography color="text.secondary" variant="caption">
+                        Choose a coordinated palette or a distinct color per
+                        app.
+                      </AppTypography>
+                    </div>
+                    <AppSelect
+                      className="settings-page__dock-colors-select"
+                      onChange={(event) =>
+                        setDockTileColors(event.target.value as DockTileColors)
+                      }
+                      size="small"
+                      value={dockTileColors ?? "accent"}
+                    >
+                      <option value="accent">Accent family</option>
+                      <option value="mono">Single accent</option>
+                      <option value="neutral">Neutral, accent on active</option>
+                      <option value="vibrant">Vibrant (per app)</option>
+                    </AppSelect>
                   </div>
-                  <AppSelect
-                    onChange={(event) =>
-                      setDockTileColors(event.target.value as DockTileColors)
-                    }
-                    size="small"
-                    style={{
-                      flexShrink: 0,
-                      marginLeft: theme.spacing(1.5),
-                      minWidth: 190,
-                    }}
-                    value={dockTileColors ?? "accent"}
-                  >
-                    <option value="accent">Accent family</option>
-                    <option value="mono">Single accent</option>
-                    <option value="neutral">Neutral, accent on active</option>
-                    <option value="vibrant">Vibrant (per app)</option>
-                  </AppSelect>
+
+                  {(dockTileColors ?? "accent") === "accent" ? (
+                    <DockAccentGradientEditor
+                      accent={theme.palette.primary.main}
+                      onChange={setDockAccentGradient}
+                      value={dockAccentGradient}
+                    />
+                  ) : null}
                 </FrostedCard>
               </div>
             ) : null}

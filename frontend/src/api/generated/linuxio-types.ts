@@ -137,6 +137,7 @@ export interface AppConfig {
 export interface AppSettings {
   chunkSizeMB?: number;
   dockTileColors?: DockTileColors;
+  dockAccentGradient?: ConfigDockAccentGradient;
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
@@ -387,6 +388,7 @@ export interface ConfigAppSettingsPayload {
   sidebarCollapsed?: boolean;
   navigationMode?: string;
   dockTileColors?: string;
+  dockAccentGradient?: ConfigDockAccentGradient;
   showHiddenFiles?: boolean;
   hiddenCards?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
@@ -400,6 +402,13 @@ export interface ConfigAppSettingsPayload {
 export interface ConfigDismissalsPayload {
   uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
+}
+
+export interface ConfigDockAccentGradient {
+  startColor?: string;
+  endColor?: string;
+  rangeStart: number;
+  rangeEnd: number;
 }
 
 export interface ConfigDockerDashboardSections {

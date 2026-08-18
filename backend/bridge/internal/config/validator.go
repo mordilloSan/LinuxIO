@@ -76,6 +76,10 @@ func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
 		cfg.AppSettings.DockTileColors = defaults.AppSettings.DockTileColors
 		changed = true
 	}
+	if gradientErrs := ValidateDockAccentGradient(cfg.AppSettings.DockAccentGradient); len(gradientErrs) > 0 {
+		cfg.AppSettings.DockAccentGradient = defaults.AppSettings.DockAccentGradient
+		changed = true
+	}
 	if themeColorsNeedReset(cfg.AppSettings.ThemeColors) {
 		cfg.AppSettings.ThemeColors = nil
 		changed = true
@@ -168,6 +172,10 @@ func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, default
 	changed := false
 	if !hasMapKey(appSettings, "themeColors") {
 		cfg.AppSettings.ThemeColors = cloneThemeColorsByMode(defaults.AppSettings.ThemeColors)
+		changed = true
+	}
+	if !hasMapKey(appSettings, "dockAccentGradient") {
+		cfg.AppSettings.DockAccentGradient = defaults.AppSettings.DockAccentGradient
 		changed = true
 	}
 	if !hasMapKey(appSettings, "dockerDashboardSections") {
@@ -388,6 +396,7 @@ func ValidateConfig(cfg *Settings) []string {
 	if !IsValidDockTileColors(cfg.AppSettings.DockTileColors) {
 		errs = append(errs, "appSettings.dockTileColors must be accent, mono, neutral or vibrant")
 	}
+	errs = append(errs, ValidateDockAccentGradient(cfg.AppSettings.DockAccentGradient)...)
 
 	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
 	if byMode := cfg.AppSettings.ThemeColors; byMode != nil {

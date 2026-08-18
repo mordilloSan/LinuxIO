@@ -14,6 +14,7 @@ func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 
 	require.Equal(t, ThemeDark, app.Theme)
 	require.Equal(t, CSSColor("#2196f3"), app.PrimaryColor)
+	require.Equal(t, DockAccentGradient{RangeStart: 0, RangeEnd: 100}, app.DockAccentGradient)
 	require.True(t, app.ShowHiddenFiles)
 	require.Empty(t, app.LayoutOrders)
 	require.Equal(t, 1, app.ChunkSizeMB)
@@ -69,6 +70,7 @@ jobs:
 	cfg, err := readConfigStrict(cfgPath)
 	require.NoError(t, err)
 	require.NotNil(t, cfg.AppSettings.ThemeColors)
+	require.Equal(t, DockAccentGradient{RangeStart: 0, RangeEnd: 100}, cfg.AppSettings.DockAccentGradient)
 	require.Empty(t, cfg.AppSettings.LayoutOrders)
 	require.NotNil(t, cfg.AppSettings.DockerDashboardSections)
 	require.NotNil(t, cfg.AppSettings.HardwareSections)
@@ -78,6 +80,19 @@ jobs:
 	require.Equal(t, 1000, cfg.Jobs.NotificationMinIntervalMs)
 	require.Equal(t, 16, cfg.Jobs.ProgressMinBytesMB)
 	require.Equal(t, 1, cfg.Jobs.HeavyArchiveConcurrency)
+}
+
+func TestValidateDockAccentGradient(t *testing.T) {
+	require.Empty(t, ValidateDockAccentGradient(DockAccentGradient{
+		StartColor: "#123456", EndColor: "rgb(1, 2, 3)", RangeStart: 15, RangeEnd: 85,
+	}))
+
+	errs := ValidateDockAccentGradient(DockAccentGradient{
+		StartColor: "not-a-color", RangeStart: 90, RangeEnd: 10,
+	})
+	require.Len(t, errs, 2)
+	require.Contains(t, errs[0], "startColor")
+	require.Contains(t, errs[1], "must not exceed")
 }
 
 func TestRepairConfigFoldsLegacyOrdersIntoLayoutOrders(t *testing.T) {

@@ -3,12 +3,13 @@ package config
 // DefaultAppSettings returns sane UI defaults.
 func DefaultAppSettings() PersistedAppSettings {
 	return PersistedAppSettings{
-		Theme:            ThemeDark,
-		PrimaryColor:     "#2196f3",
-		ThemeColors:      defaultThemeColors(),
-		SidebarCollapsed: false,
-		ShowHiddenFiles:  true,
-		HiddenCards:      []string{},
+		Theme:              ThemeDark,
+		PrimaryColor:       "#2196f3",
+		ThemeColors:        defaultThemeColors(),
+		SidebarCollapsed:   false,
+		DockAccentGradient: DockAccentGradient{RangeStart: 0, RangeEnd: 100},
+		ShowHiddenFiles:    true,
+		HiddenCards:        []string{},
 		DockerDashboardSections: &DockerDashboardSections{
 			Overview:  true,
 			Daemon:    true,

@@ -1413,6 +1413,7 @@ type AppConfig struct {
 type AppSettings struct {
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
 	DockTileColors          DockTileColors                  `json:"dockTileColors,omitempty"`
+	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`

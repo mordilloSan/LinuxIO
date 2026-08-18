@@ -42,6 +42,13 @@ import { readConfigCache, writeConfigCache } from "@/utils/configCache";
 
 type AppViewModes = Record<string, TableCardViewMode>;
 
+const DEFAULT_DOCK_ACCENT_GRADIENT = {
+  startColor: "",
+  endColor: "",
+  rangeStart: 0,
+  rangeEnd: 100,
+} as const;
+
 const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
   mode === "card" || mode === "table";
 
@@ -110,6 +117,7 @@ const defaultConfig: AppConfig = {
     sidebarCollapsed: false,
     navigationMode: "sidebar",
     dockTileColors: "accent",
+    dockAccentGradient: { ...DEFAULT_DOCK_ACCENT_GRADIENT },
     showHiddenFiles: true,
     hiddenCards: [],
     dockerDashboardSections: {
@@ -229,6 +237,10 @@ const applyDefaults = (
         app.navigationMode ?? defaultConfig.appSettings.navigationMode,
       dockTileColors:
         app.dockTileColors ?? defaultConfig.appSettings.dockTileColors,
+      dockAccentGradient: {
+        ...DEFAULT_DOCK_ACCENT_GRADIENT,
+        ...app.dockAccentGradient,
+      },
       showHiddenFiles:
         app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
       hiddenCards:
@@ -297,6 +309,9 @@ const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig => {
   // update; keep the previous object when the patch didn't touch it.
   if (!patch.appSettings || !("themeColors" in patch.appSettings)) {
     next.appSettings.themeColors = prev.appSettings.themeColors;
+  }
+  if (!patch.appSettings || !("dockAccentGradient" in patch.appSettings)) {
+    next.appSettings.dockAccentGradient = prev.appSettings.dockAccentGradient;
   }
   return next;
 };

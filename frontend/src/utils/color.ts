@@ -104,6 +104,16 @@ function formatRgb({ r, g, b }: RgbColor) {
   return `rgb(${clampChannel(r)}, ${clampChannel(g)}, ${clampChannel(b)})`;
 }
 
+/** Converts a parsed RGB/hex color to the six-digit format native pickers use. */
+export function toHexColor(color: string): string | null {
+  const parsed = parseColor(color);
+  if (!parsed) return null;
+
+  const channel = (value: number) =>
+    clampChannel(value).toString(16).padStart(2, "0");
+  return `#${channel(parsed.r)}${channel(parsed.g)}${channel(parsed.b)}`;
+}
+
 function mix(color: string, target: RgbColor, amount: number) {
   const parsed = parseColor(color);
 
@@ -204,4 +214,35 @@ export function fromHsl(h: number, s: number, l: number): string {
     g: (g + m) * 255,
     b: (b + m) * 255,
   });
+}
+
+/**
+ * Samples the shortest HSL path between two colors. This keeps colorful
+ * palettes vivid where straight RGB interpolation can pass through gray.
+ */
+export function interpolateHsl(
+  start: string,
+  end: string,
+  amount: number,
+): string {
+  const from = toHsl(start);
+  const to = toHsl(end);
+  const position = Math.min(1, Math.max(0, amount));
+
+  if (!from || !to) {
+    const endShare = Math.round(position * 100);
+    return `color-mix(in srgb, ${start} ${100 - endShare}%, ${end} ${endShare}%)`;
+  }
+
+  // Hue has no visual meaning at zero saturation. Borrow the colorful end's
+  // hue so a neutral endpoint fades cleanly instead of taking a detour via 0°.
+  const startHue = from.s === 0 && to.s > 0 ? to.h : from.h;
+  const endHue = to.s === 0 && from.s > 0 ? from.h : to.h;
+  const hueDelta = ((endHue - startHue + 540) % 360) - 180;
+
+  return fromHsl(
+    startHue + hueDelta * position,
+    from.s + (to.s - from.s) * position,
+    from.l + (to.l - from.l) * position,
+  );
 }
