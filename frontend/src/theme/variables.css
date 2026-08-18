@@ -24,6 +24,23 @@
   --app-tile-gloss:
     inset 0 1px 1px rgba(255, 255, 255, 0.4),
     inset 0 -2px 4px rgba(0, 0, 0, 0.15);
+  /* The one scrim color, drawn behind dialogs and the mobile sidebar. */
+  --app-backdrop-overlay: rgba(0, 0, 0, 0.5);
+  /* Stock MUI elevation shadows kept by the app-* controls that replaced
+     their MUI counterparts: 1 switch thumb, 4 raised button hover, 8 select
+     menu, 24 dialog paper. */
+  --app-elevation-1:
+    0 2px 1px -1px rgba(0, 0, 0, 0.2), 0 1px 1px 0 rgba(0, 0, 0, 0.14),
+    0 1px 3px 0 rgba(0, 0, 0, 0.12);
+  --app-elevation-4:
+    0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14),
+    0 1px 10px 0 rgba(0, 0, 0, 0.12);
+  --app-elevation-8:
+    0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14),
+    0 3px 14px 2px rgba(0, 0, 0, 0.12);
+  --app-elevation-24:
+    0 11px 15px -7px rgba(0, 0, 0, 0.2), 0 24px 38px 3px rgba(0, 0, 0, 0.14),
+    0 9px 46px 8px rgba(0, 0, 0, 0.12);
   /* Kept in sync with FONT_FAMILY_MONO in theme/index.ts — see font-loading
      tests. Machine values (paths, addresses, port maps) use this; prose does
      not. */

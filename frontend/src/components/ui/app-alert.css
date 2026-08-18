@@ -62,7 +62,7 @@
 
 .app-alert__close:hover {
   opacity: 1;
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: var(--app-palette-action-hover);
 }
 
 :root[data-tab-navigation] .app-alert__close:focus-visible {

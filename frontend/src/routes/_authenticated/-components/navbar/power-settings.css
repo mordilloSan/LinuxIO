@@ -126,7 +126,7 @@
   grid-column: 1 / -1;
 }
 
-@media (max-width: 599px) {
+@media (max-width: 599.95px) {
   .power-settings__profile-control {
     align-items: stretch;
     grid-template-columns: 1fr;

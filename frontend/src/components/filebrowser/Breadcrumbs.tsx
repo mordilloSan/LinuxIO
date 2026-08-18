@@ -37,7 +37,7 @@ const breadcrumbStyles = `
     min-width: 0;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 599.95px) {
     .linuxio-breadcrumb-container {
       gap: 0.75rem;
     }
@@ -119,7 +119,7 @@ const breadcrumbStyles = `
     max-width: 100%;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 599.95px) {
     .linuxio-breadcrumb-list {
       overflow: hidden;
     }

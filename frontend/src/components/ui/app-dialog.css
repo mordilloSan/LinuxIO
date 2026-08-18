@@ -25,7 +25,7 @@ body.dialog-open #root {
 .app-dialog__backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--app-backdrop-overlay);
   animation: app-dialog-fadein var(--app-transition-duration-standard)
     var(--app-easing-decelerate);
 }
@@ -81,42 +81,14 @@ body.dialog-open #root {
   flex-direction: column;
   max-height: inherit;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
   border-radius: 4px;
   background-color: var(--app-palette-background-paper);
   color: var(--app-palette-text-primary);
-  box-shadow:
-    0px 11px 15px -7px rgba(0, 0, 0, 0.2),
-    0px 24px 38px 3px rgba(0, 0, 0, 0.14),
-    0px 9px 46px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--app-elevation-24);
 }
 
-/* scrollbar styling shared by paper and content */
-
-.app-dialog__paper::-webkit-scrollbar,
-.app-dialog-content::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.app-dialog__paper::-webkit-scrollbar-thumb,
-.app-dialog-content::-webkit-scrollbar-thumb {
-  background-color: rgba(127, 127, 127, 0.5);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
-.app-dialog__paper::-webkit-scrollbar-thumb:hover,
-.app-dialog-content::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(127, 127, 127, 0.7);
-}
-
-.app-dialog__paper::-webkit-scrollbar-track,
-.app-dialog-content::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scroll chrome comes from .custom-scrollbar (variables.css), which AppDialog
+   puts on the paper and content nodes. */
 
 /* ── title ─────────────────────────────────── */
 
@@ -136,8 +108,6 @@ body.dialog-open #root {
   padding: 20px 24px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
 }
 
 /* reduce top padding when preceded by title */
@@ -165,7 +135,7 @@ body.dialog-open #root {
 
 /* ── responsive ────────────────────────────── */
 
-@media (max-width: 600px) {
+@media (max-width: 599.95px) {
   .app-dialog {
     max-height: calc(100% - 32px);
     margin: 16px;

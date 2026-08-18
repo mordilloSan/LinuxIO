@@ -5,11 +5,11 @@
   min-width: 0;
   padding: 0;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--app-backdrop-overlay);
 }
 
 .app-sidebar-backdrop.app-btn:hover {
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--app-backdrop-overlay);
 }
 
 :root[data-tab-navigation] .app-sidebar-backdrop.app-btn:focus-visible {

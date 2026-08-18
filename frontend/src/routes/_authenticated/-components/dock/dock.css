@@ -183,8 +183,9 @@
 }
 
 /* When the header row gets tight, drop out of absolute centering and share
-   the row with the search field and actions. */
-@media (max-width: 1279.95px) {
+   the row with the search field and actions. Content-tuned threshold, not a
+   theme breakpoint. */
+@media (max-width: 1280px) {
   .app-dock {
     position: static;
     transform: none;
@@ -196,7 +197,7 @@
 
 /* Production switches back to the sidebar before this width. Keep the resting
    row scrollable for narrow standalone fixtures and defensive reuse. */
-@media (max-width: 767.95px) {
+@media (max-width: 769.95px) {
   .app-dock__list {
     gap: 4px;
     overflow-x: auto;

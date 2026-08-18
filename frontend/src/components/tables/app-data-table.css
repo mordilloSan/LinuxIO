@@ -226,7 +226,7 @@
   padding-block: 16px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 599.95px) {
   .app-dt__cell {
     padding: 8px 4px;
     font-size: 0.75rem;

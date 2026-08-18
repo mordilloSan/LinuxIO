@@ -100,7 +100,7 @@
   }
 }
 
-@media (max-width: 599px) {
+@media (max-width: 599.95px) {
   .capability-manager__header,
   .capability-manager__row-header,
   .capability-manager__detail {
