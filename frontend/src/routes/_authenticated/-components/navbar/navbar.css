@@ -275,10 +275,15 @@
   }
 }
 
-/* Host for the active route's condensed actions trigger on small screens.
-   Created by HeaderActionSlotProvider and appended into .app-navbar__actions,
-   so it sits immediately left of the power menu. */
+/* Where the active route parks its condensed actions trigger on small
+   screens: rendered by HeaderActionSlotHost immediately left of the power
+   menu. The portal target the provider appends inside carries no box of its
+   own, matching .tab-selector__action-portal. */
 .app-navbar__route-actions {
   display: flex;
   align-items: center;
+}
+
+.app-navbar__route-actions-portal {
+  display: contents;
 }

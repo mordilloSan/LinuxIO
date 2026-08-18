@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from "react";
@@ -33,7 +35,7 @@ export const HeaderActionSlotProvider = ({ children }: PropsWithChildren) => {
   // the state its trigger holds when the route re-renders.
   const [host] = useState(() => {
     const element = document.createElement("div");
-    element.className = "app-navbar__route-actions";
+    element.className = "app-navbar__route-actions-portal";
     return element;
   });
   const [mountedHost, setMountedHost] = useState<HTMLElement | null>(null);
@@ -56,6 +58,29 @@ export const HeaderActionSlotProvider = ({ children }: PropsWithChildren) => {
   return (
     <HeaderActionSlotContext value={value}>{children}</HeaderActionSlotContext>
   );
+};
+
+/**
+ * The corner itself. The header renders this where the trigger should land;
+ * attaching the portal target is a layout effect rather than a callback ref so
+ * the host element is never read out of context during render.
+ */
+export const HeaderActionSlotHost = () => {
+  const slot = useContext(HeaderActionSlotContext);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const mount = slot?.mount;
+
+  useLayoutEffect(() => {
+    if (!mount) return;
+    mount(anchorRef.current);
+    return () => mount(null);
+  }, [mount]);
+
+  if (!slot) {
+    return null;
+  }
+
+  return <div className="app-navbar__route-actions" ref={anchorRef} />;
 };
 
 export const useHeaderActionSlot = () => useContext(HeaderActionSlotContext);

@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { memo, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
+import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotContext";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
@@ -19,7 +19,6 @@ interface NavbarProps {
 
 const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
   const theme = useAppTheme();
-  const headerActionSlot = useHeaderActionSlot();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
 
   return (
@@ -48,7 +47,7 @@ const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
             actions trigger to its left, so every header control shares one
             corner. */}
         <div className="app-navbar__actions">
-          {headerActionSlot ? <div ref={headerActionSlot.mount} /> : null}
+          <HeaderActionSlotHost />
           <NavbarUserDropdown />
         </div>
       </div>
