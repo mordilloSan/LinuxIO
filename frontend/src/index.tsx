@@ -8,8 +8,10 @@ import "./icons/shell";
 import App from "./App";
 import { applyCssVariables } from "./theme";
 import { MOTION_CSS_VARS } from "./theme/constants";
+import { installTabNavigationIntent } from "./utils/tabNavigation";
 
 applyCssVariables(document.documentElement, MOTION_CSS_VARS);
+installTabNavigationIntent();
 const container = document.getElementById("root");
 const root = createRoot(container!);
 

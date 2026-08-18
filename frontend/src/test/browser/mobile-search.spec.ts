@@ -17,10 +17,12 @@ test("restores focus to the Actions trigger when mobile search closes", async ({
   await expect(search).toBeFocused();
   await search.pressSequentially("apparmor");
   await page.keyboard.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Escape");
 
-  // Escape put the user on the keyboard, so the restored focus wears the
-  // designed icon-button ring — an intentional indicator, not an artifact.
+  // Focus returns to its stable owner, but Escape does not opt into navigation
+  // presentation. Only a prior Tab press may paint the trigger ring.
   await expect(actions).toBeFocused();
-  await expect(actions).toHaveCSS("outline-style", "solid");
-  await expect(actions).toHaveCSS("outline-width", "2px");
+  await expect(actions).toHaveCSS("outline-style", "none");
 });

@@ -15,7 +15,7 @@ const pressEscape = () => {
 };
 
 describe("useCardSelectionEscape", () => {
-  it("clears selection and claims an unguarded Escape", () => {
+  it("clears selection, claims Escape, and leaves focus ownership alone", () => {
     const onClearSelection = vi.fn();
     const onExitReordering = vi.fn();
     renderHook(() =>
@@ -37,7 +37,7 @@ describe("useCardSelectionEscape", () => {
     expect(onClearSelection).toHaveBeenCalledOnce();
     expect(onExitReordering).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(true);
-    expect(card).not.toHaveFocus();
+    expect(card).toHaveFocus();
     card.remove();
   });
 
@@ -92,7 +92,7 @@ describe("useCardSelectionEscape", () => {
     expect(onClearSelection).not.toHaveBeenCalled();
     expect(onExitReordering).toHaveBeenCalledOnce();
     expect(firstEscape.defaultPrevented).toBe(true);
-    expect(card).not.toHaveFocus();
+    expect(card).toHaveFocus();
 
     rerender({ isReordering: false });
     const secondEscape = pressEscape();

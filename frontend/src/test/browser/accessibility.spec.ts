@@ -26,6 +26,32 @@ test.describe("accessibility fixture controls", () => {
     }
   });
 
+  test("keeps pointer focus silent through commands and window return", async ({
+    page,
+  }) => {
+    const button = page.getByRole("button", { name: "Activate button" });
+
+    await button.click();
+    await expect(button).toBeFocused();
+    await expect(button).toHaveCSS("outline-style", "none");
+
+    for (const key of ["Escape", "ArrowDown", "a"]) {
+      await page.keyboard.press(key);
+      await expect(button).toHaveCSS("outline-style", "none");
+    }
+
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect(page.locator("html")).not.toHaveAttribute(
+      "data-tab-navigation",
+    );
+    await expect(button).toHaveCSS("outline-style", "none");
+
+    await page.keyboard.press("Tab");
+    await expect(
+      page.getByRole("button", { name: "Activate icon button" }),
+    ).toHaveCSS("outline-style", "solid");
+  });
+
   test("activates each control with Enter and Space", async ({ page }) => {
     for (const name of controls) {
       await page.keyboard.press("Tab");
@@ -242,8 +268,8 @@ test.describe("accessibility fixture controls", () => {
     ).toBeFocused();
     await expect(page.getByRole("tooltip")).toHaveText("Collapse row");
 
-    // Text entry is excluded: it matches :focus-visible on any focus by
-    // design, and a bubble parked over the caret helps nobody.
+    // Text entry is excluded even during Tab navigation: a bubble parked over
+    // the caret helps nobody.
     await page.keyboard.press("Tab");
     await expect(
       page.getByRole("textbox", { name: "Tooltip query" }),
@@ -264,15 +290,14 @@ test.describe("accessibility fixture controls", () => {
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(trigger).toBeFocused();
 
-    // A later keystroke may make the trigger match :focus-visible, but no
-    // focus event fires, so nothing summons the bubble.
+    // A later non-Tab keystroke does not opt into navigation presentation.
     await page.keyboard.press("Shift");
     await page.waitForTimeout(250);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
     // Programmatic restoration after pointer interaction — a closing dialog.
-    // Script focus inherits the non-matching :focus-visible state, so no
-    // bubble appears with the pointer somewhere else entirely.
+    // Script focus does not change that intent, so no bubble appears with the
+    // pointer somewhere else entirely.
     await page.getByRole("button", { name: "Activate button" }).click();
     await page.mouse.move(0, 0);
     await trigger.evaluate((element) => (element as HTMLElement).focus());
@@ -284,9 +309,8 @@ test.describe("accessibility fixture controls", () => {
   test("summons the tooltip for focus restored after keyboard interaction", async ({
     page,
   }) => {
-    // Tab somewhere (keyboard modality), then restore focus to the trigger the
-    // way a closing dialog would. The user is on the keyboard — a blur is
-    // coming — so the bubble may appear; this is accepted behavior, not a bug.
+    // Tab opts into navigation presentation. A later focus restore keeps that
+    // intent and may show the tooltip at the restored destination.
     await page.keyboard.press("Tab");
     const trigger = page.getByRole("button", { name: "Tooltip button" });
     await trigger.evaluate((element) => (element as HTMLElement).focus());

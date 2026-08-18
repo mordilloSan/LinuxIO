@@ -67,7 +67,7 @@
   background-color: color-mix(in srgb, var(--_btn-main), transparent 96%);
 }
 
-.app-btn:focus-visible {
+:root[data-tab-navigation] .app-btn:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

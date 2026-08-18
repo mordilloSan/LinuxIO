@@ -61,7 +61,7 @@
 }
 
 /* Covers both pill kinds: TabSelector's <button> and the routed <a>. */
-.tab-selector__pill:focus-visible {
+:root[data-tab-navigation] .tab-selector__pill:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

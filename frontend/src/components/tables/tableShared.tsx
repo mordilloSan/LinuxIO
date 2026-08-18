@@ -1,5 +1,8 @@
 import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
 import { flexRender, useTable } from "@tanstack/react-table";
 import type {
@@ -250,7 +253,11 @@ export function AppTableHeader<TData extends RowData>({
                         header.getContext(),
                       )}
                     </span>
-                    <Icon height={16} icon={getSortIcon(sortState)} width={16} />
+                    <Icon
+                      height={16}
+                      icon={getSortIcon(sortState)}
+                      width={16}
+                    />
                   </button>
                 ) : (
                   flexRender(

@@ -21,10 +21,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type {
-  AppDataTableColumnDef,
-  AppDataTableProps,
-} from "@/components/tables/AppDataTable";
+import type { AppDataTableProps } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";

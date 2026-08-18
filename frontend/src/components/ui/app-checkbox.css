@@ -40,7 +40,8 @@
 
 /* The focusable element is the transparent native input, so its UA ring is
    invisible — the wrapper paints the designed ring for it. */
-.app-checkbox:has(.app-checkbox__input:focus-visible) {
+:root[data-tab-navigation]
+  .app-checkbox:has(.app-checkbox__input:focus-visible) {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

@@ -7,7 +7,7 @@
 }
 
 /* Inset so the ring survives the container's own scrollport clipping. */
-.directory-tree:focus-visible {
+:root[data-tab-navigation] .directory-tree:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: -2px;
 }
@@ -67,7 +67,7 @@
   cursor: default;
 }
 
-.directory-tree__toggle:focus-visible {
+:root[data-tab-navigation] .directory-tree__toggle:focus-visible {
   outline: 1px solid currentColor;
   outline-offset: 2px;
 }

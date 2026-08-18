@@ -65,7 +65,7 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
-.app-alert__close:focus-visible {
+:root[data-tab-navigation] .app-alert__close:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

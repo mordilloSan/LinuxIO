@@ -48,8 +48,11 @@
 }
 
 .app-autocomplete__tag-remove:hover,
-.app-autocomplete__tag-remove:focus-visible {
+:root[data-tab-navigation] .app-autocomplete__tag-remove:focus-visible {
   color: var(--app-palette-primary-main);
+}
+
+.app-autocomplete__tag-remove:focus-visible {
   outline: none;
 }
 

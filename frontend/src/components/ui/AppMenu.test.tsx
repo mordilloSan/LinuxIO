@@ -1,8 +1,31 @@
 import { screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import { render } from "@/test/render";
+
+const MenuHarness = () => {
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+
+  return (
+    <>
+      <button
+        onClick={(event) => setAnchorEl(event.currentTarget)}
+        type="button"
+      >
+        Open menu
+      </button>
+      <AppMenu
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        open={Boolean(anchorEl)}
+      >
+        <AppMenuItem>Action</AppMenuItem>
+      </AppMenu>
+    </>
+  );
+};
 
 describe("AppMenu", () => {
   it("names the menu and provides shared keyboard navigation", async () => {
@@ -33,5 +56,18 @@ describe("AppMenu", () => {
 
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("restores its connected trigger when closing owned focus", async () => {
+    const { user } = render(<MenuHarness />);
+    const trigger = screen.getByRole("button", { name: "Open menu" });
+
+    await user.click(trigger);
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "Action" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

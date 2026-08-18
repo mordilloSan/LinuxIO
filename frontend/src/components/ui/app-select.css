@@ -53,7 +53,7 @@
 }
 
 .app-select__input--open,
-.app-select__input:focus-visible {
+:root[data-tab-navigation] .app-select__input:focus-visible {
   border-color: var(--app-palette-primary-main);
   border-width: 2px;
   padding: 15.5px 35px 15.5px 13px;
@@ -73,7 +73,9 @@
 }
 
 .app-select--small .app-select__input--open,
-.app-select--small .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--small
+  .app-select__input:focus-visible {
   padding: 7.5px 35px 7.5px 13px;
 }
 
@@ -118,7 +120,9 @@
   border-bottom-color: currentColor;
 }
 
-.app-select--standard .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--standard
+  .app-select__input:focus-visible {
   border: none;
   border-bottom: 2px solid var(--app-palette-primary-main);
   padding-left: 0;
@@ -126,7 +130,9 @@
   padding-bottom: 4px;
 }
 
-.app-select--standard.app-select--small .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--standard.app-select--small
+  .app-select__input:focus-visible {
   padding-bottom: 4px;
 }
 
@@ -142,14 +148,18 @@
 
 /* No underline to repaint on focus, so this variant gets the standard ring —
    without it keyboard focus on the inline sort selects is invisible. */
-.app-select--no-underline .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--no-underline
+  .app-select__input:focus-visible {
   border-bottom: none !important;
   padding-bottom: 5px;
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }
 
-.app-select--small.app-select--no-underline .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--small.app-select--no-underline
+  .app-select__input:focus-visible {
   padding-bottom: 5px;
 }
 
@@ -158,7 +168,8 @@
   padding: 0 1.5em 0 0;
 }
 
-.app-select--standard.app-select--no-underline
+:root[data-tab-navigation]
+  .app-select--standard.app-select--no-underline
   .app-select__input:focus-visible {
   padding: 0 1.5em 0 0;
 }

@@ -1,5 +1,7 @@
 /* Section headers: reveal toggle icon on hover or keyboard-visible focus */
 .section-header:hover .section-toggle,
-.section-header:focus-visible .section-toggle {
+:root[data-tab-navigation]
+  .section-header:focus-visible
+  .section-toggle {
   opacity: 1 !important;
 }

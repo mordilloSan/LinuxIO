@@ -8,10 +8,8 @@
   color: var(--ab-hover-color);
 }
 
-/* The designed focus ring, matching .app-btn / .app-icon-btn. Without it the
-   UA default ring shows — the global outline kill rule is gone on purpose
-   (native :focus-visible semantics), so every control styles its own ring. */
-.app-action-icon-button:focus-visible {
+/* The designed Tab-navigation ring, matching .app-btn / .app-icon-btn. */
+:root[data-tab-navigation] .app-action-icon-button:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

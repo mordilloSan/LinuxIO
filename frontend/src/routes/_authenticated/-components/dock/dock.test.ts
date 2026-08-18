@@ -20,7 +20,7 @@ describe("dock labels", () => {
       ".app-dock[data-dock-pointer] .app-dock-link:hover .app-dock__label",
     );
     expect(stylesheet).toContain(
-      ".app-dock-link:focus-visible .app-dock__label",
+      ":root[data-tab-navigation]\n  .app-dock-link:focus-visible\n  .app-dock__label",
     );
     expect(stylesheet).not.toContain("\n.app-dock-link:hover .app-dock__label");
     expect(stylesheet).not.toContain(":focus-within");
@@ -33,7 +33,7 @@ describe("dock labels", () => {
       ".app-dock-link:focus-visible {\n  outline: none;",
     );
     expect(stylesheet).toContain(
-      ".app-dock-link:focus-visible .app-dock__tile",
+      ":root[data-tab-navigation]\n  .app-dock-link:focus-visible\n  .app-dock__tile",
     );
   });
 });

@@ -9,16 +9,6 @@ interface UseCardSelectionEscapeOptions {
   onExitReordering: () => void;
 }
 
-const blurFocusedSelectableCard = () => {
-  const focused = document.activeElement;
-  if (
-    focused instanceof HTMLButtonElement &&
-    focused.classList.contains("selectable-card-button")
-  ) {
-    focused.blur();
-  }
-};
-
 /**
  * Clears card selection with the same ownership guards used by data tables.
  * Reorder mode is the card view's preceding Escape layer: its first Escape
@@ -50,10 +40,6 @@ export function useCardSelectionEscape({
       } else {
         clearSelection();
       }
-      // Escape changes the browser to keyboard modality. A card focused by a
-      // prior pointer gesture would otherwise acquire a focus-visible outline
-      // after the gesture is over, including on the first of the two presses.
-      blurFocusedSelectableCard();
       event.preventDefault();
     };
 

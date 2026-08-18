@@ -146,7 +146,7 @@
 }
 
 /* dnd-kit puts the handle in the tab order (tabIndex 0). */
-.app-dt__drag-handle:focus-visible {
+:root[data-tab-navigation] .app-dt__drag-handle:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }
@@ -167,7 +167,7 @@
   cursor: pointer;
 }
 
-.app-dt__sort-button:focus-visible {
+:root[data-tab-navigation] .app-dt__sort-button:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import AppTooltip from "@/components/ui/AppTooltip";
 import { render } from "@/test/render";
@@ -13,6 +13,11 @@ const rect = (left: number, top: number, width: number, height: number) =>
     top,
     width,
   }) as DOMRect;
+
+afterEach(() => {
+  document.documentElement.removeAttribute("data-tab-navigation");
+  vi.useRealTimers();
+});
 
 describe("AppTooltip", () => {
   it("keeps a tooltip anchored near the right edge inside the viewport", async () => {
@@ -91,9 +96,28 @@ describe("AppTooltip", () => {
     vi.useRealTimers();
   });
 
-  // Focus behavior is intentionally untested here: the bubble is summoned by
-  // event.target.matches(":focus-visible"), and jsdom parses that selector but
-  // never matches it, even for a focused element. The browser suite covers the
-  // real Chromium heuristic (keyboard focus, pointer focus, programmatic
-  // restoration, and the text-entry exclusion).
+  it("shows on focus only while Tab navigation is active", async () => {
+    vi.useFakeTimers();
+    render(
+      <AppTooltip title="Keyboard tooltip">
+        <button type="button">Target</button>
+      </AppTooltip>,
+    );
+    const target = screen.getByRole("button", { name: "Target" });
+
+    fireEvent.focus(target);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.blur(target);
+    document.documentElement.setAttribute("data-tab-navigation", "true");
+    fireEvent.focus(target);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Keyboard tooltip");
+  });
 });

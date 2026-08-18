@@ -48,7 +48,8 @@
 }
 
 .container-stack-band__header:hover,
-.container-stack-band__header:focus-visible {
+:root[data-tab-navigation]
+  .container-stack-band__header:focus-visible {
   background: color-mix(
     in srgb,
     transparent,
@@ -56,7 +57,7 @@
   );
 }
 
-.container-stack-band__header:focus-visible {
+:root[data-tab-navigation] .container-stack-band__header:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

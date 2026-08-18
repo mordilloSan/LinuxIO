@@ -18,55 +18,26 @@ afterEach(() => {
 });
 
 describe("AppDialog focus restore", () => {
-  it("restores the trigger without a ring after a pointer-driven close", () => {
+  it("restores the connected trigger independently of close input", () => {
     mountFocusedTrigger();
     const { rerender } = render(<AppDialog open>Dialog</AppDialog>);
 
     document.dispatchEvent(new Event("pointerdown"));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     rerender(<AppDialog open={false}>Dialog</AppDialog>);
 
-    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: false });
-  });
-
-  it("restores the trigger with a ring after a keyboard-driven close", () => {
-    mountFocusedTrigger();
-    const { rerender } = render(<AppDialog open>Dialog</AppDialog>);
-
-    document.dispatchEvent(new Event("pointerdown"));
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-    rerender(<AppDialog open={false}>Dialog</AppDialog>);
-
-    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true });
-  });
-
-  it("does not count bare modifier presses as keyboard input", () => {
-    mountFocusedTrigger();
-    const { rerender } = render(<AppDialog open>Dialog</AppDialog>);
-
-    document.dispatchEvent(new Event("pointerdown"));
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Control" }));
-    rerender(<AppDialog open={false}>Dialog</AppDialog>);
-
-    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: false });
-  });
-
-  it("keeps the ring when the dialog saw no input at all", () => {
-    mountFocusedTrigger();
-    const { rerender } = render(<AppDialog open>Dialog</AppDialog>);
-
-    rerender(<AppDialog open={false}>Dialog</AppDialog>);
-
-    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: true });
+    expect(focusSpy).toHaveBeenCalledOnce();
+    expect(focusSpy).toHaveBeenCalledWith();
   });
 
   it("restores on unmount while open", () => {
     mountFocusedTrigger();
     const { unmount } = render(<AppDialog open>Dialog</AppDialog>);
 
-    document.dispatchEvent(new Event("pointerdown"));
     unmount();
 
-    expect(focusSpy).toHaveBeenCalledWith({ focusVisible: false });
+    expect(focusSpy).toHaveBeenCalledOnce();
+    expect(focusSpy).toHaveBeenCalledWith();
   });
 
   it("does not focus a trigger that left the document", () => {

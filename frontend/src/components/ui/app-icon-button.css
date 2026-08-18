@@ -39,7 +39,7 @@
   pointer-events: none;
 }
 
-.app-icon-btn:focus-visible {
+:root[data-tab-navigation] .app-icon-btn:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

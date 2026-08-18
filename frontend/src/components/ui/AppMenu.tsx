@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useRef,
   type ButtonHTMLAttributes,
@@ -70,6 +71,18 @@ const AppMenu = ({
     firstItem?.focus();
   }, [autoFocus, open]);
 
+  const handleClose = useCallback(() => {
+    const focusedElement = document.activeElement;
+    if (
+      anchorEl?.isConnected &&
+      focusedElement instanceof Node &&
+      menuRef.current?.contains(focusedElement)
+    ) {
+      anchorEl.focus();
+    }
+    onClose();
+  }, [anchorEl, onClose]);
+
   const focusRelativeItem = (direction: 1 | -1) => {
     const items = Array.from(
       menuRef.current?.querySelectorAll<HTMLButtonElement>(focusableSelector) ??
@@ -118,7 +131,7 @@ const AppMenu = ({
         break;
       }
       case "Tab":
-        onClose();
+        handleClose();
         break;
       default:
         break;
@@ -131,7 +144,7 @@ const AppMenu = ({
       anchorOrigin={anchorOrigin}
       anchorPosition={anchorPosition}
       keepMounted={keepMounted}
-      onClose={onClose}
+      onClose={handleClose}
       open={open}
       paperClassName={`app-menu ${className || ""}`.trim()}
       paperStyle={{

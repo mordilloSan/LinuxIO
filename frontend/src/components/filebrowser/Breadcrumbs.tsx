@@ -172,7 +172,7 @@ const breadcrumbStyles = `
     accent-color: var(--app-palette-primary-main);
   }
 
-  .linuxio-range-input:focus-visible {
+  :root[data-tab-navigation] .linuxio-range-input:focus-visible {
     outline: 2px solid var(--app-palette-primary-main);
     outline-offset: 2px;
   }

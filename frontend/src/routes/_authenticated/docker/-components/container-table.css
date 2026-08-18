@@ -45,7 +45,8 @@
 }
 
 .container-table__stack-toggle:hover,
-.container-table__stack-toggle:focus-visible {
+:root[data-tab-navigation]
+  .container-table__stack-toggle:focus-visible {
   color: var(--app-palette-text-primary);
 }
 
@@ -204,11 +205,13 @@
 }
 
 .container-table__stack-group-toggle:hover,
-.container-table__stack-group-toggle:focus-visible {
+:root[data-tab-navigation]
+  .container-table__stack-group-toggle:focus-visible {
   color: var(--app-palette-text-primary);
 }
 
-.container-table__stack-group-toggle:focus-visible {
+:root[data-tab-navigation]
+  .container-table__stack-group-toggle:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 1px;
 }

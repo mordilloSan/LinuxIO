@@ -218,7 +218,7 @@ describe("useReorderableSurface", () => {
     expect(result.current.editMode).toBe(false);
   });
 
-  it("drops the focus a press took, so Escape leaves no focus ring", () => {
+  it("leaves focus ownership untouched when Escape exits layout mode", () => {
     const pressed = document.createElement("button");
     document.body.append(pressed);
     pressed.focus();
@@ -236,34 +236,9 @@ describe("useReorderableSurface", () => {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
       });
 
-      expect(document.activeElement).toBe(document.body);
+      expect(document.activeElement).toBe(pressed);
     } finally {
       pressed.remove();
-    }
-  });
-
-  it("keeps focus when the keyboard opened layout mode", () => {
-    const focused = document.createElement("button");
-    document.body.append(focused);
-    focused.focus();
-
-    try {
-      const { result } = renderSurface();
-
-      act(() => {
-        result.current.dndContextProps.onDragStart(
-          dragStart("a", new KeyboardEvent("keydown", { key: " " })),
-        );
-        result.current.dndContextProps.onDragEnd(dragEnd("a", "a"));
-      });
-
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      });
-
-      expect(document.activeElement).toBe(focused);
-    } finally {
-      focused.remove();
     }
   });
 

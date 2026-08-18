@@ -11,8 +11,11 @@ import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
+import { installTabNavigationIntent } from "@/utils/tabNavigation";
 
 import "@/theme/variables.css";
+
+installTabNavigationIntent();
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));

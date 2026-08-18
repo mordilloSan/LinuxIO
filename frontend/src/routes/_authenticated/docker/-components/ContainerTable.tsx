@@ -25,13 +25,13 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import AppDataTable from "@/components/tables/AppDataTable";
 import type {
-  AppDataTableColumnDef,
   AppDataTableDndOptions,
   AppDataTableRowAttributes,
   AppDataTableRowRenderProps,
 } from "@/components/tables/AppDataTable";
 import type {
   AppDataTableCellRenderKey,
+  AppDataTableColumnDef,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";

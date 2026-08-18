@@ -15,10 +15,8 @@ import UnitCard from "@/components/cards/UnitCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type {
-  AppDataTableColumnDef,
-  AppDataTableDndOptions,
-} from "@/components/tables/AppDataTable";
+import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTooltip from "@/components/ui/AppTooltip";

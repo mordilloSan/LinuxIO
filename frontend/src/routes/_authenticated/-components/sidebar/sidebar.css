@@ -12,7 +12,7 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
-.app-sidebar-backdrop.app-btn:focus-visible {
+:root[data-tab-navigation] .app-sidebar-backdrop.app-btn:focus-visible {
   outline-offset: -2px;
 }
 
@@ -85,7 +85,7 @@
 }
 
 /* Inset so the ring clears the link's flush left edge and the sidebar wall. */
-.app-sidebar-link:focus-visible {
+:root[data-tab-navigation] .app-sidebar-link:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: -2px;
 }

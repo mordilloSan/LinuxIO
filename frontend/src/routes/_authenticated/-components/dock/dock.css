@@ -128,7 +128,9 @@
    authored ×1.6 like the tile shadows above — the layer's 0.625 resting scale
    renders them at 2px/1px — and the ring magnifies with its tile. The light
    half is an outline rather than a shadow so forced-colors mode keeps it. */
-.app-dock-link:focus-visible .app-dock__tile {
+:root[data-tab-navigation]
+  .app-dock-link:focus-visible
+  .app-dock__tile {
   outline: 3.2px solid #fff;
   outline-offset: 1.6px;
   box-shadow:
@@ -145,7 +147,9 @@
    the magnification pointer (useDockPointerLiveness), so both always reset
    together. Keyboard focus also shows the label, captioning the tile ring. */
 .app-dock[data-dock-pointer] .app-dock-link:hover .app-dock__label,
-.app-dock-link:focus-visible .app-dock__label {
+:root[data-tab-navigation]
+  .app-dock-link:focus-visible
+  .app-dock__label {
   opacity: 1;
   transform: translate(-50%, 0);
 }
