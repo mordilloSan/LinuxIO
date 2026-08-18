@@ -101,15 +101,3 @@ export function sampleDockAccentColor(
 
   return sampleFullDockAccentGradient(accent, value, fullGradientPosition);
 }
-
-/** A multi-stop rail that matches the same HSL sampling used by dock tiles. */
-export function dockAccentGradientCss(
-  accent: string,
-  value?: ConfigDockAccentGradient,
-): string {
-  const stops = Array.from({ length: 13 }, (_, index) => {
-    const position = index / 12;
-    return `${sampleFullDockAccentGradient(accent, value, position)} ${Math.round(position * 100)}%`;
-  });
-  return `linear-gradient(90deg, ${stops.join(", ")})`;
-}

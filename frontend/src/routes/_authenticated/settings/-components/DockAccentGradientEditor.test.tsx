@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from "@/test/render";
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
 
 describe("DockAccentGradientEditor", () => {
-  it("names both color endpoints and both range handles", () => {
+  it("names both color endpoints and marks the kept palette tiles", () => {
     render(
       <DockAccentGradientEditor
         accent="#2196f3"
@@ -25,18 +25,21 @@ describe("DockAccentGradientEditor", () => {
     expect(
       screen.getByLabelText("End color for the full dock gradient"),
     ).toHaveValue("#212df3");
-    const startRange = screen.getByRole("slider", {
-      name: "Start of dock palette range",
-    });
-    const endRange = screen.getByRole("slider", {
-      name: "End of dock palette range",
-    });
-    expect(startRange).toHaveValue("10");
-    expect(endRange).toHaveValue("90");
-    expect(startRange).toHaveAttribute("min", "0");
-    expect(startRange).toHaveAttribute("max", "100");
-    expect(endRange).toHaveAttribute("min", "0");
-    expect(endRange).toHaveAttribute("max", "100");
+
+    const tiles = screen.getAllByRole("button", { name: /^Palette stop / });
+    expect(tiles).toHaveLength(11);
+    expect(
+      screen.getByRole("button", { name: "Palette stop 0%" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: "Palette stop 10%" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "Palette stop 90%" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "Palette stop 100%" }),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   it("emits complete values when an endpoint or range changes", () => {
@@ -64,19 +67,47 @@ describe("DockAccentGradientEditor", () => {
       rangeStart: 20,
       rangeEnd: 80,
     });
-    onChange.mockClear();
+  });
 
-    const startRange = screen.getByRole("slider", {
-      name: "Start of dock palette range",
-    });
-    fireEvent.change(startRange, { target: { value: "35" } });
-    expect(onChange).not.toHaveBeenCalled();
+  it("moves the nearest range boundary to the clicked tile", async () => {
+    const onChange = vi.fn();
+    const { user } = render(
+      <DockAccentGradientEditor
+        accent="#2196f3"
+        onChange={onChange}
+        value={{
+          startColor: "#ff0000",
+          endColor: "#0000ff",
+          rangeStart: 20,
+          rangeEnd: 80,
+        }}
+      />,
+    );
 
-    fireEvent.pointerUp(startRange);
+    // Inside the range and closer to the start boundary.
+    await user.click(screen.getByRole("button", { name: "Palette stop 40%" }));
     expect(onChange).toHaveBeenLastCalledWith({
       startColor: "#ff0000",
       endColor: "#0000ff",
-      rangeStart: 35,
+      rangeStart: 40,
+      rangeEnd: 80,
+    });
+
+    // Outside the range, past the end boundary.
+    await user.click(screen.getByRole("button", { name: "Palette stop 90%" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      startColor: "#ff0000",
+      endColor: "#0000ff",
+      rangeStart: 20,
+      rangeEnd: 90,
+    });
+
+    // Outside the range, before the start boundary.
+    await user.click(screen.getByRole("button", { name: "Palette stop 0%" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      startColor: "#ff0000",
+      endColor: "#0000ff",
+      rangeStart: 0,
       rangeEnd: 80,
     });
   });

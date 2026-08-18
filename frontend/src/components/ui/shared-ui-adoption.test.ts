@@ -85,9 +85,10 @@ const nativeControlExceptions: ReviewedException[] = [
   {
     file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
     pattern:
-      /<input\s+aria-label="(?:Start|End) of dock palette range"[\s\S]{0,700}?type="range"/,
-    reason: "dual-ended dock palette range control",
-    protects: "continuous pointer and keyboard adjustment of both range ends",
+      /<button\s+aria-label=\{`Palette stop \$\{tile\.percent\}%`\}\s+aria-pressed=\{tile\.included\}/,
+    reason: "dock palette range tile",
+    protects:
+      "each gradient stop is a pressable swatch whose entire face is the color being chosen, which no shared button offers",
   },
 ];
 

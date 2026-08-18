@@ -6,20 +6,31 @@
   border-top: 1px solid var(--app-palette-divider);
 }
 
-.dock-accent-editor__intro,
-.dock-accent-editor__endpoints,
-.dock-accent-editor__range-heading {
+.dock-accent-editor__intro {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.dock-accent-editor__preview {
+.dock-accent-editor__intro-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.dock-accent-editor__intro-actions output {
+  font-family: var(--app-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--app-palette-text-secondary);
+}
+
+.dock-accent-editor__panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--app-palette-divider), transparent 25%);
@@ -32,6 +43,15 @@
   overflow: hidden;
 }
 
+.dock-accent-editor__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .dock-accent-editor__preview-tile {
   position: relative;
   flex: 1 1 30px;
@@ -39,11 +59,14 @@
   min-width: 18px;
   max-width: 32px;
   aspect-ratio: 1;
+  padding: 0;
+  border: 0;
   border-radius: clamp(5px, 22%, var(--app-tile-radius));
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.4),
     inset 0 -2px 4px rgba(0, 0, 0, 0.15),
     0 5px 10px -6px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
 }
 
 .dock-accent-editor__preview-tile::after {
@@ -59,40 +82,13 @@
   transform: translate(-50%, -50%);
 }
 
-.dock-accent-editor__endpoints {
-  min-width: 0;
+.dock-accent-editor__preview-tile--muted::after {
+  background: rgba(120, 128, 138, 0.75);
 }
 
-.dock-accent-editor__endpoint {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.dock-accent-editor__endpoint--end {
-  text-align: right;
-}
-
-.dock-accent-editor__endpoint-label,
-.dock-accent-editor__endpoint-value {
-  display: block;
-  white-space: nowrap;
-}
-
-.dock-accent-editor__endpoint-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--app-palette-text-primary);
-}
-
-.dock-accent-editor__endpoint-value {
-  margin-top: 1px;
-  font-family: var(--app-font-mono);
-  font-size: 0.66rem;
-  color: var(--app-palette-text-secondary);
-  text-transform: lowercase;
+.dock-accent-editor__preview-tile:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
 .dock-accent-editor__color-input {
@@ -128,171 +124,13 @@
   outline-offset: 2px;
 }
 
-.dock-accent-editor__blend-line {
-  height: 1px;
-  flex: 1 1 auto;
-  min-width: 24px;
-  background: var(--app-palette-divider);
-}
-
-.dock-accent-editor__range-fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.dock-accent-editor__range-heading {
-  width: 100%;
-  padding: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--app-palette-text-primary);
-}
-
-.dock-accent-editor__range-heading output {
-  font-family: var(--app-font-mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--app-palette-text-secondary);
-}
-
-.dock-accent-editor__range-help {
-  display: block;
-  margin-top: 2px;
-}
-
-.dock-accent-editor__range {
-  position: relative;
-  height: 38px;
-  margin-top: 8px;
-}
-
-.dock-accent-editor__range-rail {
-  position: absolute;
-  top: 11px;
-  right: 0;
-  bottom: 11px;
-  left: 0;
-  border: 1px solid color-mix(in srgb, var(--app-palette-text-primary), transparent 72%);
-  border-radius: 999px;
-  box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.25),
-    0 1px 0 rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.dock-accent-editor__range-muted,
-.dock-accent-editor__range-selection {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-
-.dock-accent-editor__range-muted {
-  background: color-mix(
-    in srgb,
-    var(--app-palette-background-paper),
-    transparent 22%
-  );
-}
-
-.dock-accent-editor__range-muted--start {
-  left: 0;
-}
-
-.dock-accent-editor__range-muted--end {
-  right: 0;
-}
-
-.dock-accent-editor__range-selection {
-  border-inline: 2px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
-}
-
-.dock-accent-editor__range-input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 38px;
-  margin: 0;
-  appearance: none;
-  background: transparent;
-  pointer-events: none;
-}
-
-.dock-accent-editor__range-input::-webkit-slider-runnable-track {
-  height: 16px;
-  background: transparent;
-}
-
-.dock-accent-editor__range-input::-moz-range-track {
-  height: 16px;
-  background: transparent;
-}
-
-.dock-accent-editor__range-input::-webkit-slider-thumb {
-  width: 22px;
-  height: 22px;
-  margin-top: -3px;
-  appearance: none;
-  border: 3px solid #fff;
-  border-radius: 50%;
-  background: var(--dock-accent-handle-color);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.36),
-    0 4px 10px -4px rgba(0, 0, 0, 0.8);
-  cursor: grab;
-  pointer-events: auto;
-}
-
-.dock-accent-editor__range-input::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 3px solid #fff;
-  border-radius: 50%;
-  background: var(--dock-accent-handle-color);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.36),
-    0 4px 10px -4px rgba(0, 0, 0, 0.8);
-  cursor: grab;
-  pointer-events: auto;
-}
-
-.dock-accent-editor__range-input:active::-webkit-slider-thumb {
-  cursor: grabbing;
-}
-
-.dock-accent-editor__range-input:active::-moz-range-thumb {
-  cursor: grabbing;
-}
-
-.dock-accent-editor__range-input:focus-visible {
-  outline: none;
-}
-
-.dock-accent-editor__range-input:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 2px var(--app-palette-background-paper),
-    0 0 0 4px var(--app-palette-primary-main),
-    0 4px 10px -4px rgba(0, 0, 0, 0.8);
-}
-
-.dock-accent-editor__range-input:focus-visible::-moz-range-thumb {
-  box-shadow:
-    0 0 0 2px var(--app-palette-background-paper),
-    0 0 0 4px var(--app-palette-primary-main),
-    0 4px 10px -4px rgba(0, 0, 0, 0.8);
-}
-
 @media (max-width: 599.95px) {
-  .dock-accent-editor__preview {
-    gap: 4px;
+  .dock-accent-editor__panel {
+    gap: 10px;
     padding-inline: 8px;
   }
 
-  .dock-accent-editor__endpoint-value,
-  .dock-accent-editor__range-help {
-    display: none;
+  .dock-accent-editor__preview {
+    gap: 4px;
   }
 }

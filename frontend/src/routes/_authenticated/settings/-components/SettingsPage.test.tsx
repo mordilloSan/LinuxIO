@@ -49,7 +49,7 @@ describe("SettingsPage dock colors", () => {
     });
 
     expect(
-      screen.getByRole("slider", { name: "Start of dock palette range" }),
+      screen.getByRole("group", { name: "Palette range" }),
     ).toBeInTheDocument();
 
     unmount();
@@ -58,7 +58,7 @@ describe("SettingsPage dock colors", () => {
     });
 
     expect(
-      screen.queryByRole("slider", { name: "Start of dock palette range" }),
+      screen.queryByRole("group", { name: "Palette range" }),
     ).not.toBeInTheDocument();
   });
 });
