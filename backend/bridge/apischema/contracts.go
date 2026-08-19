@@ -738,7 +738,7 @@ type MonitoringConfigPatch struct {
 	CollectorInterval    *string              `json:"collector_interval,omitempty"`
 	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
 	History              *string              `json:"history,omitempty"`
-	CacheTTL             map[string]string    `json:"cache_ttl,omitempty"`
+	HistoryRetention     *string              `json:"history_retention,omitempty"`
 	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
 	Listeners            []MonitoringListener `json:"listeners,omitempty"`
 }

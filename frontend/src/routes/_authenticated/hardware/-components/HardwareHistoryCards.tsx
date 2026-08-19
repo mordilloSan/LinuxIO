@@ -351,14 +351,19 @@ export const GPUInfoCard = () => {
 
 type HardwareHistoryRange = (typeof HARDWARE_HISTORY_RANGES)[number];
 
-// Each resolution's retention window is the range: 1m→1h, 10m→12h, 20m→24h,
-// 120m→7d, 480m→30d. Asking for up to `limit` points without `from` therefore
-// returns exactly the retained window with a cache-stable request.
+// Query-time downsampling uses the selected range as an explicit time window.
+// Keep the request bounded independently of the agent's retention policy.
 const HISTORY_REQUEST_LIMIT = 400;
 
 const rangeById = (id: HardwareHistoryRangeId): HardwareHistoryRange =>
   HARDWARE_HISTORY_RANGES.find((range) => range.id === id) ??
   HARDWARE_HISTORY_RANGES[0];
+
+const historyRequest = (range: HardwareHistoryRange) => ({
+  resolution: range.resolution,
+  window_ms: range.windowMs,
+  limit: HISTORY_REQUEST_LIMIT,
+});
 
 const useHistoryTimestampFormatter = (range: HardwareHistoryRange) =>
   useMemo(
@@ -524,12 +529,12 @@ const historyCardMessage = (
 const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_cpu_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -601,12 +606,12 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_memory_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -682,12 +687,12 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_diskio_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -734,12 +739,12 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
 const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_network_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,

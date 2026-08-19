@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -21,7 +23,7 @@ func statusResponseWithListeners(listeners string) string {
 			"db_path": "/var/lib/go-monitoring/metrics.db",
 			"collector_interval": "15s",
 			"listeners": [` + listeners + `],
-			"config": {"path": "", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "cache_ttl": {}},
+			"config": {"path": "", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "history_retention": "720h"},
 			"retention": {"1m": "1h0m0s"}
 		}
 	}`
@@ -258,6 +260,45 @@ func TestFetchHistoryNormalizesWildcardTCPHost(t *testing.T) {
 
 func TestFetchHistoryRejectsInvalidResolution(t *testing.T) {
 	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "5m"})
+	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+		t.Fatalf("err = %v, want ErrInvalidArgs", err)
+	}
+}
+
+func TestFetchHistoryResolvesRollingWindowAtRequestTime(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:45876", "effective_address": "127.0.0.1:45876", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	wantFrom := time.Now().Add(-time.Hour).UnixMilli()
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		from, err := strconv.ParseInt(req.URL.Query().Get("from"), 10, 64)
+		if err != nil {
+			t.Fatalf("from query: %v", err)
+		}
+		if delta := from - wantFrom; delta < 0 || delta > 5_000 {
+			t.Fatalf("from = %d, want within 5s of %d", from, wantFrom)
+		}
+		return jsonResponse(http.StatusOK, `{"resolution":"1m","items":[]}`), nil
+	})
+
+	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{
+		Resolution: "1m",
+		WindowMs:   int64(time.Hour / time.Millisecond),
+	})
+	if err != nil {
+		t.Fatalf("FetchCPUHistory: %v", err)
+	}
+}
+
+func TestFetchHistoryRejectsFromAndWindowTogether(t *testing.T) {
+	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{
+		Resolution: "1m",
+		FromMs:     1,
+		WindowMs:   60_000,
+	})
 	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
 		t.Fatalf("err = %v, want ErrInvalidArgs", err)
 	}

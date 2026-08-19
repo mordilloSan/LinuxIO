@@ -82,7 +82,7 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 				"smart_refresh_interval": "1h",
 				"history": "cpu,mem",
 				"allow_remote_commands": true,
-				"cache_ttl": {"cpu": "2s"},
+				"history_retention": "720h",
 				"listeners": [{"name": "metrics", "address": "127.0.0.1:45876", "apis": ["metrics"]}]
 			}
 		}`), nil
@@ -95,11 +95,12 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 	if cfg.CollectorInterval != "15s" ||
 		cfg.SmartRefreshInterval != "1h" ||
 		cfg.History != "cpu,mem" ||
+		cfg.HistoryRetention != "720h" ||
 		!cfg.AllowRemoteCommands {
 		t.Fatalf("config = %#v", cfg)
 	}
-	if cfg.CacheTTL["cpu"] != "2s" {
-		t.Fatalf("cache_ttl = %#v", cfg.CacheTTL)
+	if cfg.HistoryRetention != "720h" {
+		t.Fatalf("history_retention = %q", cfg.HistoryRetention)
 	}
 	if len(cfg.Listeners) != 1 || cfg.Listeners[0].Name != "metrics" {
 		t.Fatalf("listeners = %#v", cfg.Listeners)
@@ -125,7 +126,7 @@ func TestRunCommandRetriesTransientSocketErrors(t *testing.T) {
 				"version": 1,
 				"collector_interval": "15s",
 				"history": "cpu",
-				"cache_ttl": {},
+				"history_retention": "720h",
 				"listeners": []
 			}
 		}`), nil
@@ -156,7 +157,7 @@ func TestUpdateConfigSendsPatchAndReadsRestartRequired(t *testing.T) {
 			"ok": true,
 			"command": "config.set",
 			"restart_required": true,
-			"data": {"version": 1, "collector_interval": "30s", "history": "cpu", "cache_ttl": {}, "listeners": []}
+			"data": {"version": 1, "collector_interval": "30s", "history": "cpu", "history_retention": "720h", "listeners": []}
 		}`), nil
 	})
 
@@ -191,7 +192,7 @@ func TestUpdateConfigSendsSmartRefreshIntervalPatch(t *testing.T) {
 		return jsonResponse(http.StatusOK, `{
 			"ok": true,
 			"command": "config.set",
-			"data": {"version": 1, "collector_interval": "30s", "smart_refresh_interval": "2h", "history": "cpu", "cache_ttl": {}, "listeners": []}
+			"data": {"version": 1, "collector_interval": "30s", "smart_refresh_interval": "2h", "history": "cpu", "history_retention": "720h", "listeners": []}
 		}`), nil
 	})
 
@@ -227,7 +228,7 @@ func TestUpdateConfigSendsListenersPatch(t *testing.T) {
 				"version": 1,
 				"collector_interval": "30s",
 				"history": "cpu",
-				"cache_ttl": {},
+				"history_retention": "720h",
 				"listeners": [{"name": "metrics", "address": "0.0.0.0:45876", "apis": ["metrics"]}]
 			}
 		}`), nil
@@ -294,7 +295,7 @@ func TestFetchStatusDecodesMeta(t *testing.T) {
 				"collector_interval": "15s",
 				"smart_refresh_interval": "12h",
 				"listeners": [{"name": "control", "address": "unix:/run/go-monitoring/agent.sock", "effective_address": "unix:/run/go-monitoring/agent.sock", "apis": ["commands"], "active": true}],
-				"config": {"path": "/etc/go-monitoring/config.json", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "cache_ttl": {"cpu": "2s"}},
+				"config": {"path": "/etc/go-monitoring/config.json", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "history_retention": "720h"},
 				"retention": {"raw": "48h"}
 			}
 		}`), nil

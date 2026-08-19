@@ -38,15 +38,15 @@ interface DraftConfig {
   collector_interval: string;
   smart_refresh_interval: string;
   history: string;
+  history_retention: string;
   allow_remote_commands: boolean;
-  cache_ttl: Record<string, string>;
   listeners: MonitoringListener[];
 }
 
 interface DraftErrors {
   collector_interval?: string;
   smart_refresh_interval?: string;
-  cache_ttl?: Partial<Record<string, string>>;
+  history_retention?: string;
   listener_addresses?: Partial<Record<number, string>>;
 }
 
@@ -54,13 +54,8 @@ const toDraft = (config: MonitoringConfig): DraftConfig => ({
   collector_interval: compactGoDuration(config.collector_interval),
   smart_refresh_interval: compactGoDuration(config.smart_refresh_interval),
   history: config.history,
+  history_retention: compactGoDuration(config.history_retention),
   allow_remote_commands: config.allow_remote_commands,
-  cache_ttl: Object.fromEntries(
-    Object.entries(config.cache_ttl ?? {}).map(([key, value]) => [
-      key,
-      compactGoDuration(value),
-    ]),
-  ),
   listeners: (config.listeners ?? []).map((listener) => ({
     ...listener,
     apis: [...listener.apis],
@@ -97,14 +92,8 @@ const toPatchPayload = (
     payload.listeners = normalizeListeners(draft.listeners);
   }
 
-  const changedTTLs: Record<string, string> = {};
-  for (const [key, value] of Object.entries(draft.cache_ttl)) {
-    if (value !== saved.cache_ttl[key]) {
-      changedTTLs[key] = value.trim();
-    }
-  }
-  if (Object.keys(changedTTLs).length > 0) {
-    payload.cache_ttl = changedTTLs;
+  if (draft.history_retention !== saved.history_retention) {
+    payload.history_retention = draft.history_retention.trim();
   }
 
   return payload;
@@ -142,16 +131,11 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
     errors.smart_refresh_interval = "Use a duration like 1h, 30m, or 12h.";
   }
 
-  const ttlErrors: Partial<Record<string, string>> = {};
-  for (const [key, value] of Object.entries(draft.cache_ttl)) {
-    if (!value.trim()) {
-      ttlErrors[key] = "Required.";
-    } else if (!isGoDuration(value)) {
-      ttlErrors[key] = "Use a duration like 2s or 0.";
-    }
-  }
-  if (Object.keys(ttlErrors).length > 0) {
-    errors.cache_ttl = ttlErrors;
+  const historyRetention = draft.history_retention.trim();
+  if (!historyRetention) {
+    errors.history_retention = "History retention is required.";
+  } else if (!isGoDuration(historyRetention) || historyRetention === "0") {
+    errors.history_retention = "Use a duration like 336h or 720h.";
   }
 
   const listenerErrors: Partial<Record<number, string>> = {};
@@ -173,7 +157,7 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
 const hasErrors = (errors: DraftErrors) =>
   Boolean(errors.collector_interval) ||
   Boolean(errors.smart_refresh_interval) ||
-  Object.values(errors.cache_ttl ?? {}).some(Boolean) ||
+  Boolean(errors.history_retention) ||
   Object.values(errors.listener_addresses ?? {}).some(Boolean);
 
 const mergeMonitoringDraft = (
@@ -182,18 +166,15 @@ const mergeMonitoringDraft = (
 ): DraftConfig => ({
   ...saved,
   ...patch,
-  cache_ttl: { ...saved.cache_ttl, ...patch.cache_ttl },
 });
-
-const formatTTLLabel = (key: string) =>
-  key
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 
 const getConfigSchemaError = (config: MonitoringConfig): string | null => {
   const data = config as unknown as Record<string, unknown>;
-  const requiredDurations = ["collector_interval", "smart_refresh_interval"];
+  const requiredDurations = [
+    "collector_interval",
+    "smart_refresh_interval",
+    "history_retention",
+  ];
   for (const key of requiredDurations) {
     const value = data[key];
     if (typeof value !== "string") {
@@ -210,15 +191,6 @@ const getConfigSchemaError = (config: MonitoringConfig): string | null => {
 
   if (typeof data.history !== "string") {
     return `monitoring.get_config is missing required string field "history".`;
-  }
-
-  if (!data.cache_ttl || typeof data.cache_ttl !== "object") {
-    return `monitoring.get_config is missing required object field "cache_ttl".`;
-  }
-  for (const [key, value] of Object.entries(data.cache_ttl)) {
-    if (typeof value !== "string") {
-      return `monitoring.get_config field "cache_ttl.${key}" must be a string.`;
-    }
   }
 
   if (!Array.isArray(data.listeners)) {
@@ -316,29 +288,6 @@ const MonitoringSettingsSection = () => {
     if (key === "collector_interval" || key === "smart_refresh_interval") {
       setErrors((prev) => ({ ...prev, [key]: undefined }));
     }
-  };
-
-  const updateCacheTTL = (key: string, value: string) => {
-    setDraftPatch((prev) => {
-      if (!savedDraft) return prev;
-      const nextTTLs = { ...prev.cache_ttl };
-      if (savedDraft.cache_ttl[key] === value) {
-        delete nextTTLs[key];
-      } else {
-        nextTTLs[key] = value;
-      }
-      if (Object.keys(nextTTLs).length === 0) {
-        const next = { ...prev };
-        delete next.cache_ttl;
-        return next;
-      }
-      return { ...prev, cache_ttl: nextTTLs };
-    });
-    setErrors((prev) => ({
-      ...prev,
-      cache_ttl: { ...prev.cache_ttl, [key]: undefined },
-    }));
-    setRestartRequired(false);
   };
 
   const updateListenerAddress = (index: number, address: string) => {
@@ -529,7 +478,6 @@ const MonitoringSettingsSection = () => {
     );
   }
 
-  const ttlKeys = Object.keys(draft.cache_ttl).sort();
   const editableListeners = draft.listeners
     .map((listener, index) => ({ listener, index }))
     .filter(({ listener }) => listener.apis.includes("metrics"));
@@ -648,35 +596,23 @@ const MonitoringSettingsSection = () => {
                 value={draft.history}
               />
             </AppTooltip>
+            <AppTooltip title="How long one-minute history is retained">
+              <AppTextField
+                disabled={busy}
+                error={Boolean(errors.history_retention)}
+                fullWidth
+                helperText={errors.history_retention}
+                label="History retention"
+                onChange={(event) =>
+                  updateDraft("history_retention", event.target.value)
+                }
+                size="small"
+                value={draft.history_retention}
+              />
+            </AppTooltip>
           </>
         </SettingsGrid>
       </SectionCard>
-
-      {ttlKeys.length > 0 ? (
-        <SectionCard
-          collapsible
-          defaultCollapsed
-          icon="mdi:cached"
-          subtitle="How long live readings are cached per plugin"
-          title="Cache TTLs"
-        >
-          <SettingsGrid minColumnWidth={140} rowGap={2.75}>
-            {ttlKeys.map((key) => (
-              <AppTextField
-                disabled={busy}
-                error={Boolean(errors.cache_ttl?.[key])}
-                fullWidth
-                helperText={errors.cache_ttl?.[key]}
-                key={key}
-                label={formatTTLLabel(key)}
-                onChange={(event) => updateCacheTTL(key, event.target.value)}
-                size="small"
-                value={draft.cache_ttl[key]}
-              />
-            ))}
-          </SettingsGrid>
-        </SectionCard>
-      ) : null}
 
       <SettingsSaveFooter
         busy={busy}

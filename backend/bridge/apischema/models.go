@@ -1079,8 +1079,8 @@ type MonitoringListener struct {
 
 type MonitoringConfig struct {
 	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
-	CacheTTL             map[string]string    `json:"cache_ttl"`
 	CollectorInterval    string               `json:"collector_interval"`
+	HistoryRetention     string               `json:"history_retention"`
 	SmartRefreshInterval string               `json:"smart_refresh_interval"`
 	History              string               `json:"history"`
 	Listeners            []MonitoringListener `json:"listeners"`
@@ -1096,6 +1096,7 @@ type MonitoringHistoryRequest struct {
 	Resolution MonitoringHistoryResolution `json:"resolution"`
 	FromMs     int64                       `json:"from_ms,omitempty"`
 	ToMs       int64                       `json:"to_ms,omitempty"`
+	WindowMs   int64                       `json:"window_ms,omitempty"`
 	Limit      int                         `json:"limit,omitempty"`
 }
 
@@ -1149,12 +1150,12 @@ type MonitoringListenerStatus struct {
 }
 
 type MonitoringConfigMeta struct {
-	CacheTTL          map[string]string `json:"cache_ttl"`
-	CollectorInterval string            `json:"collector_interval"`
-	HistoryPlugins    []string          `json:"history_plugins"`
-	Path              string            `json:"path"`
-	Source            string            `json:"source"`
-	Version           int               `json:"version"`
+	CollectorInterval string   `json:"collector_interval"`
+	HistoryRetention  string   `json:"history_retention"`
+	HistoryPlugins    []string `json:"history_plugins"`
+	Path              string   `json:"path"`
+	Source            string   `json:"source"`
+	Version           int      `json:"version"`
 }
 
 type MonitoringStatus struct {

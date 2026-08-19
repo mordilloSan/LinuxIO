@@ -1424,8 +1424,8 @@ export interface MonitoringCPUHistoryPoint {
 
 export interface MonitoringConfig {
   allow_remote_commands: boolean;
-  cache_ttl: Record<string, string>;
   collector_interval: string;
+  history_retention: string;
   smart_refresh_interval: string;
   history: string;
   listeners: MonitoringListener[];
@@ -1433,8 +1433,8 @@ export interface MonitoringConfig {
 }
 
 export interface MonitoringConfigMeta {
-  cache_ttl: Record<string, string>;
   collector_interval: string;
+  history_retention: string;
   history_plugins: string[];
   path: string;
   source: string;
@@ -1445,7 +1445,7 @@ export interface MonitoringConfigPatch {
   collector_interval?: string;
   smart_refresh_interval?: string;
   history?: string;
-  cache_ttl?: Record<string, string>;
+  history_retention?: string;
   allow_remote_commands?: boolean;
   listeners?: MonitoringListener[];
 }
@@ -1465,6 +1465,7 @@ export interface MonitoringHistoryRequest {
   resolution: MonitoringHistoryResolution;
   from_ms?: number;
   to_ms?: number;
+  window_ms?: number;
   limit?: number;
 }
 
