@@ -121,7 +121,10 @@ describe("SettingsPage theme mode", () => {
   });
 
   it("shows light as selected once it is the saved mode", () => {
-    const { unmount } = renderWithConfigSpy({ theme: "LIGHT" }, createSetKeySpy());
+    const { unmount } = renderWithConfigSpy(
+      { theme: "LIGHT" },
+      createSetKeySpy(),
+    );
 
     expect(screen.getByRole("tab", { name: "Light" })).toHaveAttribute(
       "aria-selected",
