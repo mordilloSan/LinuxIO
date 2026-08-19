@@ -32,9 +32,11 @@ beforeEach(() => {
 
 // The shared render helper hands every tree an inert setKey; an inner provider
 // overrides it so a write can be observed without reaching for the real one.
+const createSetKeySpy = () => vi.fn<(key: string, value: unknown) => void>();
+
 const renderWithConfigSpy = (
   appSettings: Parameters<typeof createConfigContextValue>[0],
-  setKey: ReturnType<typeof vi.fn>,
+  setKey: ReturnType<typeof createSetKeySpy>,
 ) =>
   render(
     <ConfigContext.Provider
@@ -105,7 +107,7 @@ describe("SettingsPage dock colors", () => {
 
 describe("SettingsPage theme mode", () => {
   it("reflects the saved mode and persists a switch", async () => {
-    const setKey = vi.fn();
+    const setKey = createSetKeySpy();
     const { user } = renderWithConfigSpy({ theme: "DARK" }, setKey);
 
     expect(screen.getByRole("tab", { name: "Dark" })).toHaveAttribute(
@@ -119,7 +121,7 @@ describe("SettingsPage theme mode", () => {
   });
 
   it("shows light as selected once it is the saved mode", () => {
-    const { unmount } = renderWithConfigSpy({ theme: "LIGHT" }, vi.fn());
+    const { unmount } = renderWithConfigSpy({ theme: "LIGHT" }, createSetKeySpy());
 
     expect(screen.getByRole("tab", { name: "Light" })).toHaveAttribute(
       "aria-selected",

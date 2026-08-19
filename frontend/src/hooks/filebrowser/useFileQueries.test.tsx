@@ -20,24 +20,37 @@ describe("useFileQueries", () => {
   it("structurally shares unchanged normalized directory items", async () => {
     const queryClient = createTestQueryClient();
     const queryKey = ["filebrowser", "listing-identity"] as const;
-    const initial = {
+    const initial: ExtendedFileInfo = {
       files: [
         {
+          hasPreview: false,
+          hidden: false,
           modified: "2026-08-19T10:00:00Z",
           name: "stable.txt",
+          size: 1,
+          symlink: false,
           type: "file",
         },
         {
+          hasPreview: false,
+          hidden: false,
           modified: "2026-08-19T10:00:00Z",
           name: "changed.txt",
+          size: 1,
+          symlink: false,
           type: "file",
         },
       ],
       folders: [],
+      hasPreview: false,
+      hidden: false,
+      modified: "2026-08-19T10:00:00Z",
       name: "files",
       path: "/files/",
+      size: 2,
+      symlink: false,
       type: "directory",
-    } as ExtendedFileInfo;
+    };
     queryClient.setQueryData(queryKey, initial);
     const listingQueryOptions = {
       queryFn: async () => initial,
