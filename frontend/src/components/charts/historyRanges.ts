@@ -1,4 +1,9 @@
-export const HARDWARE_HISTORY_RANGES = [
+/**
+ * Time windows offered by every history card. `resolution` picks the agent's
+ * pre-rolled bucket size, `windowMs` is the x-axis span, and `refetchMs` is
+ * the poll cadence a window of that length deserves.
+ */
+export const HISTORY_RANGES = [
   {
     id: "1h",
     label: "1 Hour",
@@ -36,5 +41,5 @@ export const HARDWARE_HISTORY_RANGES = [
   },
 ] as const;
 
-export type HardwareHistoryRangeId =
-  (typeof HARDWARE_HISTORY_RANGES)[number]["id"];
+export type HistoryRange = (typeof HISTORY_RANGES)[number];
+export type HistoryRangeId = HistoryRange["id"];

@@ -1602,18 +1602,36 @@ export interface NameRequest {
 export type NavigationMode = "sidebar" | "dock";
 
 export interface NetworkInterface {
+  carrier?: boolean;
+  config_backend?: string;
+  counters: NetworkInterfaceCounters;
   dns: string[];
+  driver?: string;
   duplex: string;
   gateway: string;
   ipv4: string[];
   ipv4_method?: string;
+  log_unit?: string;
   mac: string;
+  mtu: number;
   name: string;
+  operstate: string;
   rx_speed: number;
   speed: string;
   state: number;
   tx_speed: number;
   type: string;
+}
+
+export interface NetworkInterfaceCounters {
+  rx_bytes: number;
+  rx_dropped: number;
+  rx_errors: number;
+  rx_packets: number;
+  tx_bytes: number;
+  tx_dropped: number;
+  tx_errors: number;
+  tx_packets: number;
 }
 
 export interface OfflineUpdatesResponse {

@@ -5,22 +5,13 @@ import DockerStatCard from "@/components/cards/DockerStatCard";
 import DriveCard from "@/components/cards/DriveCard";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
+import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen } from "@/test/render";
 
+// Filled in below, once the fixture import has evaluated: the mocked useQuery
+// only dereferences it when a card renders.
 const mocks = vi.hoisted(() => ({
-  networkInterface: {
-    dns: [],
-    duplex: "full",
-    gateway: "",
-    ipv4: ["192.0.2.1"],
-    mac: "00:00:00:00:00:01",
-    name: "eth0",
-    rx_speed: 0,
-    speed: "1000",
-    state: 100,
-    tx_speed: 0,
-    type: "ethernet",
-  },
+  networkInterface: undefined as NetworkInterface | undefined,
 }));
 
 vi.mock("@iconify/react", () => ({
@@ -35,7 +26,11 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
-const networkInterface = mocks.networkInterface as NetworkInterface;
+const networkInterface = testNetworkInterface({
+  ipv4: ["192.0.2.1"],
+  mac: "00:00:00:00:00:01",
+});
+mocks.networkInterface = networkInterface;
 
 const wireguardInterface: WireGuardInterface = {
   address: "10.0.0.1/24",

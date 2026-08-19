@@ -67,8 +67,10 @@ func collectSimpleNetStats(
 	return infos
 }
 
+// Never nil, for the same reason as the network.get_network_info variant: the
+// field is typed as an array on the wire.
 func collectInterfaceIPv4s(iface gopsnet.InterfaceStat) []string {
-	var ipv4s []string
+	ipv4s := []string{}
 	for _, addr := range iface.Addrs {
 		ip, _, _ := net.ParseCIDR(addr.Addr)
 		if ip != nil && ip.To4() != nil {

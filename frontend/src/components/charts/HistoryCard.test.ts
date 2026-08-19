@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { HistoryHoverStore } from "./HardwareHistoryCards";
+import { HistoryHoverStore } from "./HistoryCard";
 
 describe("HistoryHoverStore", () => {
   it("notifies subscribers only when the synchronized timestamp changes", () => {

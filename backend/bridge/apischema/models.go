@@ -307,18 +307,49 @@ type DiskThroughputResponse struct {
 }
 
 type NetworkInterface struct {
-	DNS        []string `json:"dns"`
-	Duplex     string   `json:"duplex"`
-	Gateway    string   `json:"gateway"`
-	IPv4       []string `json:"ipv4"`
-	IPv4Method *string  `json:"ipv4_method,omitempty"`
-	MAC        string   `json:"mac"`
-	Name       string   `json:"name"`
-	RXSpeed    float64  `json:"rx_speed"`
-	Speed      string   `json:"speed"`
-	State      int      `json:"state"`
-	TXSpeed    float64  `json:"tx_speed"`
-	Type       string   `json:"type"`
+	// Carrier is nil when the kernel will not answer: virtual interfaces have
+	// no carrier attribute, and reading it on a down link fails. Nil means
+	// "unknown", never "no link".
+	Carrier *bool `json:"carrier,omitempty"`
+	// ConfigBackend names the on-disk configuration source the bridge detected
+	// for this interface (netplan, nmconnection, systemd-networkd, ifupdown,
+	// ifcfg). Empty when no backend claims it.
+	ConfigBackend string                   `json:"config_backend,omitempty"`
+	Counters      NetworkInterfaceCounters `json:"counters"`
+	DNS           []string                 `json:"dns"`
+	Driver        string                   `json:"driver,omitempty"`
+	Duplex        string                   `json:"duplex"`
+	Gateway       string                   `json:"gateway"`
+	IPv4          []string                 `json:"ipv4"`
+	IPv4Method    *string                  `json:"ipv4_method,omitempty"`
+	// LogUnit is the installed systemd unit whose journal covers this
+	// interface's stack, resolved from ConfigBackend. Empty when none of the
+	// candidate units exist, which is the signal to offer no log view.
+	LogUnit   string  `json:"log_unit,omitempty"`
+	MAC       string  `json:"mac"`
+	MTU       int     `json:"mtu"`
+	Name      string  `json:"name"`
+	OperState string  `json:"operstate"`
+	RXSpeed   float64 `json:"rx_speed"`
+	Speed     string  `json:"speed"`
+	State     int     `json:"state"`
+	TXSpeed   float64 `json:"tx_speed"`
+	Type      string  `json:"type"`
+}
+
+// NetworkInterfaceCounters carries the kernel's cumulative per-interface
+// counters. They count from boot but the kernel resets them with the device,
+// so a link that has been down and back up starts over. Rates live in
+// RXSpeed/TXSpeed; these are the totals the rates are derived from.
+type NetworkInterfaceCounters struct {
+	RXBytes   uint64 `json:"rx_bytes"`
+	RXDropped uint64 `json:"rx_dropped"`
+	RXErrors  uint64 `json:"rx_errors"`
+	RXPackets uint64 `json:"rx_packets"`
+	TXBytes   uint64 `json:"tx_bytes"`
+	TXDropped uint64 `json:"tx_dropped"`
+	TXErrors  uint64 `json:"tx_errors"`
+	TXPackets uint64 `json:"tx_packets"`
 }
 
 type FilesystemInfo struct {

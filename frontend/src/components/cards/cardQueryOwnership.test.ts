@@ -328,13 +328,13 @@ const hookContracts: HookContract[] = [
     hooks: { useQuery: 1 },
   },
 
-  // History chrome and its four independently polling live bodies.
+  // Shared history chrome and the four independently polling hardware bodies.
   {
-    file: "routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx",
+    file: "components/charts/HistoryCard.tsx",
     name: "HistoryCardShell",
   },
   {
-    file: "routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx",
+    file: "components/charts/HistoryCard.tsx",
     name: "HistoryCardBody",
   },
   ...[
@@ -356,6 +356,28 @@ const hookContracts: HookContract[] = [
     name,
     hooks: { useQuery: 1 },
   })),
+
+  // Network detail cards: the interface list owns the polling, each card
+  // observes the one interface it renders.
+  {
+    file: "routes/_authenticated/network/-components/NetworkTrafficHistoryCard.tsx",
+    name: "NetworkTrafficHistoryCard",
+  },
+  {
+    file: "routes/_authenticated/network/-components/NetworkTrafficHistoryCard.tsx",
+    name: "NetworkTrafficHistoryLive",
+    hooks: { useQuery: 1 },
+  },
+  {
+    file: "routes/_authenticated/network/-components/NetworkInterfaceStatsCard.tsx",
+    name: "NetworkInterfaceStatsCard",
+    hooks: { useQuery: 1 },
+  },
+  {
+    file: "routes/_authenticated/network/-components/NetworkInterfaceLogsCard.tsx",
+    name: "NetworkInterfaceLogsCard",
+    hooks: { useQuery: 1 },
+  },
 
   // Active NFS view polling and the selected card cache observer.
   {
@@ -610,9 +632,19 @@ const edgeContracts: EdgeContract[] = [
     renders: ["HistoryCardShell", live],
   })),
   {
-    file: "routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx",
+    file: "components/charts/HistoryCard.tsx",
     name: "HistoryCardShell",
     renders: ["FrostedCard"],
+  },
+  {
+    file: "routes/_authenticated/network/-components/NetworkTrafficHistoryCard.tsx",
+    name: "NetworkTrafficHistoryCard",
+    renders: ["HistoryCardShell", "NetworkTrafficHistoryLive"],
+  },
+  {
+    file: "routes/_authenticated/network/-components/NetworkInterfaceLogsCard.tsx",
+    name: "NetworkInterfaceLogsCard",
+    renders: ["UnitLogsCard"],
   },
   {
     file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
@@ -773,6 +805,10 @@ describe("card query ownership", () => {
         name,
       })),
       {
+        file: "routes/_authenticated/network/-components/NetworkTrafficHistoryCard.tsx",
+        name: "NetworkTrafficHistoryLive",
+      },
+      {
         file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
         name: "NFSMountCardGrid",
       },
@@ -877,8 +913,7 @@ describe("card query ownership", () => {
       );
     }
 
-    const historyFile =
-      "routes/_authenticated/hardware/-components/HardwareHistoryCards.tsx";
+    const historyFile = "components/charts/HistoryCard.tsx";
     for (const name of ["HistoryCardShell", "HistoryCardBody"]) {
       const component = findNamedFunction({ file: historyFile, name });
       expect(
@@ -896,13 +931,14 @@ describe("card query ownership", () => {
     );
     expect(page.sourceFile.getText()).not.toContain("historyHoverTime");
 
+    const chartFile = "components/charts/HistoryCard.tsx";
     const synchronizedChart = findNamedFunction({
-      file: hardwareFile,
+      file: chartFile,
       name: "SynchronizedHistoryAreaChart",
     });
     expect(
       directCalls(synchronizedChart, new Set(["useHistoryHover"])),
-      `${hardwareFile}:SynchronizedHistoryAreaChart`,
+      `${chartFile}:SynchronizedHistoryAreaChart`,
     ).toHaveLength(1);
     expect(renderedJsxNames(synchronizedChart).has("HistoryAreaChart")).toBe(
       true,

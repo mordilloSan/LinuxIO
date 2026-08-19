@@ -6,6 +6,8 @@ import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import { SensorEmptyCard } from "@/components/cards/SensorEmptyCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
+import { HistoryHoverProvider } from "@/components/charts/HistoryCard";
+import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -25,12 +27,10 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
-  HistoryHoverProvider,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "./HardwareHistoryCards";
-import type { HardwareHistoryRangeId } from "./hardwareHistoryRanges";
 import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,
@@ -246,8 +246,7 @@ function PciDevicesTable() {
 
 const HardwarePage = () => {
   // ── history range & synchronized crosshair ──
-  const [historyRange, setHistoryRange] =
-    useState<HardwareHistoryRangeId>("1h");
+  const [historyRange, setHistoryRange] = useState<HistoryRangeId>("1h");
 
   const systemInfoSurface = useReorderableSurface({
     getId: getSystemInfoCardId,

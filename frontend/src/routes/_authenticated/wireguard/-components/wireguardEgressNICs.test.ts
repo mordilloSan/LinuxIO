@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { NetworkInterface } from "@/api";
+import { testNetworkInterface } from "@/test/networkInterface";
 
 import { getEgressNICOptions } from "./wireguardEgressNICs";
 
 const networkInterface = (
   overrides: Partial<NetworkInterface>,
-): NetworkInterface => ({
-  dns: [],
-  duplex: "full",
-  gateway: "",
-  ipv4: [],
-  mac: "00:11:22:33:44:55",
-  name: "enp1s0",
-  rx_speed: 0,
-  speed: "1 Gbps",
-  state: 100,
-  tx_speed: 0,
-  type: "ethernet",
-  ...overrides,
-});
+): NetworkInterface =>
+  testNetworkInterface({ name: "enp1s0", speed: "1 Gbps", ...overrides });
 
 describe("getEgressNICOptions", () => {
   it("includes wireless and conventionally named Ethernet interfaces", () => {

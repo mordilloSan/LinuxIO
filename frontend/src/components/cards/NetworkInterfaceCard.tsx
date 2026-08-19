@@ -4,22 +4,15 @@ import { memo, useCallback } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import {
+  getNetworkStateColor,
+  getNetworkStateLabel,
+} from "@/components/network/networkInterfaceState";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM } from "@/theme/constants";
-
-const getStatusTooltip = (state: number) => {
-  if (state === 100) return "Connected";
-  if (state === 110) return "Deactivating";
-  if (state >= 40 && state <= 90) return "Connecting";
-  if (state === 30) return "Disconnected";
-  if (state === 20) return "Unavailable";
-  if (state === 120) return "Failed";
-  if (state === 10) return "Unmanaged";
-  return "Unknown";
-};
 
 const getInterfaceIcon = (type?: string) => {
   if (type === "wifi") return "mdi:wifi";
@@ -103,18 +96,10 @@ const NetworkInterfaceCardContent = ({
     <>
       <StatusDot
         absolute
-        color={
-          iface.state === 100
-            ? theme.palette.success.main
-            : iface.state >= 40 && iface.state <= 90
-              ? theme.palette.warning.main
-              : iface.state === 30 || iface.state === 120
-                ? theme.palette.error.main
-                : theme.palette.text.disabled
-        }
+        color={getNetworkStateColor(iface.state, theme)}
         size={10}
         style={{ top: 16, right: 8 }}
-        tooltip={getStatusTooltip(iface.state)}
+        tooltip={getNetworkStateLabel(iface.state)}
       />
 
       <AppButton
