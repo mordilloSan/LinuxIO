@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +30,6 @@ vi.mock("@tanstack/react-router", async () => {
 const { default: ApplicationRouterProvider } = await import("./provider");
 
 function ProviderHarness() {
-  const [queryClient] = useState(() => new QueryClient());
   const [auth, setAuth] = useState(() =>
     createAuthContextValue({
       isAuthenticated: true,
@@ -41,26 +39,24 @@ function ProviderHarness() {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={auth}>
-        <button
-          onClick={() =>
-            setAuth(
-              createAuthContextValue({
-                dockerAvailable: true,
-                isAuthenticated: true,
-                isInitialized: true,
-                user: { id: "root", name: "root" },
-              }),
-            )
-          }
-          type="button"
-        >
-          update auth
-        </button>
-        <ApplicationRouterProvider />
-      </AuthContext.Provider>
-    </QueryClientProvider>
+    <AuthContext.Provider value={auth}>
+      <button
+        onClick={() =>
+          setAuth(
+            createAuthContextValue({
+              dockerAvailable: true,
+              isAuthenticated: true,
+              isInitialized: true,
+              user: { id: "root", name: "root" },
+            }),
+          )
+        }
+        type="button"
+      >
+        update auth
+      </button>
+      <ApplicationRouterProvider />
+    </AuthContext.Provider>
   );
 }
 
@@ -72,19 +68,17 @@ describe("ApplicationRouterProvider", () => {
 
   it("waits for auth initialization before mounting the router", () => {
     render(
-      <QueryClientProvider client={new QueryClient()}>
-        <AuthContext.Provider
-          value={createAuthContextValue({ isInitialized: false })}
-        >
-          <ApplicationRouterProvider />
-        </AuthContext.Provider>
-      </QueryClientProvider>,
+      <AuthContext.Provider
+        value={createAuthContextValue({ isInitialized: false })}
+      >
+        <ApplicationRouterProvider />
+      </AuthContext.Provider>,
     );
 
     expect(screen.queryByTestId("router-provider")).not.toBeInTheDocument();
   });
 
-  it("injects live auth, access, and Query context into the singleton", async () => {
+  it("injects live auth and access context into the singleton", async () => {
     render(<ProviderHarness />);
 
     expect(screen.getByTestId("router-provider")).toBeInTheDocument();
@@ -95,8 +89,8 @@ describe("ApplicationRouterProvider", () => {
         isInitialized: true,
         user: { id: "root", name: "root" },
       },
-      queryClient: expect.any(QueryClient),
     });
+    expect(routerMocks.contexts.at(-1)).not.toHaveProperty("queryClient");
     expect(routerMocks.invalidate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "update auth" }));

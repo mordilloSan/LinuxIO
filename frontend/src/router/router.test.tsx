@@ -5,6 +5,7 @@ import PageLoader from "@/components/loaders/PageLoader";
 import NotFoundPage from "@/routes/-components/NotFoundPage";
 import RouteError from "@/routes/-components/RouteError";
 
+import AppQueryClientProvider, { appQueryClient } from "./query-client";
 import { router } from "./router";
 
 const applicationRoutes = Object.values(router.routesById).filter(
@@ -21,6 +22,11 @@ function routeOrAncestorHasLoader(route: AnyRoute): boolean {
 }
 
 describe("generated application router", () => {
+  it("owns one QueryClient for loader context and mounted observers", () => {
+    expect(router.options.context?.queryClient).toBe(appQueryClient);
+    expect(router.options.Wrap).toBe(AppQueryClientProvider);
+  });
+
   it("uses one global intent-preload policy", () => {
     expect(router.options.defaultPreload).toBe("intent");
     expect(router.options.defaultPreloadDelay).toBe(50);

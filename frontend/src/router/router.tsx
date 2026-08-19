@@ -8,6 +8,8 @@ import NotFoundPage from "@/routes/-components/NotFoundPage";
 import RouteError from "@/routes/-components/RouteError";
 import { routeTree } from "@/routeTree.gen";
 
+import AppQueryClientProvider, { appQueryClient } from "./query-client";
+
 interface RouteNavigation {
   icon: ComponentType | string;
   params?: { _splat: string };
@@ -20,7 +22,7 @@ export const router = createRouter({
     access: undefined!,
     auth: undefined!,
     isUpdateBlocked: undefined!,
-    queryClient: undefined!,
+    queryClient: appQueryClient,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,
   defaultNotFoundComponent: NotFoundPage,
@@ -32,6 +34,7 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   routeTree,
   search: { strict: true },
+  Wrap: AppQueryClientProvider,
 });
 
 declare module "@tanstack/react-router" {

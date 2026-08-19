@@ -51,13 +51,14 @@ route is not showing up in autocomplete, run any test and re-check.
 
 ## Router Setup
 
-Three files in `frontend/src/router/`:
+Four files in `frontend/src/router/`:
 
 | File | Role |
 |------|------|
-| `router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations. |
-| `provider.tsx` | Injects live auth/capability/query context and keeps it fresh. |
-| `query-client.tsx` | Owns the browser QueryClient singleton that loaders and components share. |
+| `router.tsx` | Creates the singleton router, installs the Query provider through `Wrap`, sets every global default, declares the two type augmentations. |
+| `provider.tsx` | Injects live auth/capability context and keeps it fresh. |
+| `query-client-core.ts` | Creates QueryClient instances and owns the browser singleton. |
+| `query-client.tsx` | Exports the router-owned browser client and its `QueryClientProvider`. |
 
 ### Global defaults
 
@@ -72,7 +73,7 @@ export const router = createRouter({
     access: undefined!,
     auth: undefined!,
     isUpdateBlocked: undefined!,
-    queryClient: undefined!,
+    queryClient: appQueryClient,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,
   defaultNotFoundComponent: NotFoundPage,
@@ -84,11 +85,13 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   routeTree,
   search: { strict: true },
+  Wrap: AppQueryClientProvider,
 });
 ```
 
-The `undefined!` context values are deliberate placeholders — they satisfy the
-type while the real values arrive per render from `RouterProvider`.
+The three `undefined!` context values are deliberate placeholders — they satisfy
+the type while live auth and capability values arrive per render from
+`RouterProvider`. The QueryClient is concrete from router creation onward.
 
 `defaultPreloadStaleTime: 0` hands freshness decisions to TanStack Query rather
 than the router cache.
@@ -146,15 +149,18 @@ auth, `RouterAuthSnapshot` can narrow `isInitialized: true`.
 `UpdateProvider`, so it cannot consume that context directly. That is why
 `-loader.ts` takes a getter rather than a boolean.
 
-Mount chain: `index.tsx` → `App.tsx` → `AuthProvider` > `AppQueryClientProvider`
-> `ApplicationRouterProvider`.
+Mount chain: `index.tsx` → `App.tsx` → `AuthProvider` >
+`ApplicationRouterProvider`. The router's `Wrap` option mounts
+`AppQueryClientProvider` around its context provider and route matches.
 
 ### The shared QueryClient
 
-`router/query-client.tsx` exports `getAppQueryClient()`, the browser singleton.
-This is *the* reason a route loader and a mounted `useSuspenseQuery` hit the same
-cache entry instead of firing two requests. `createQueryClient()` is the
-isolated variant for tests and SSR.
+`router/query-client-core.ts` owns `getAppQueryClient()`, while
+`router/query-client.tsx` resolves that singleton once as `appQueryClient` and
+provides it through the router's `Wrap`. The same object is placed directly in
+router context. This is *the* reason a route loader and a mounted
+`useSuspenseQuery` hit the same cache entry instead of firing two requests.
+`createQueryClient()` is the isolated variant for tests and server renders.
 
 It also owns the global error toast, and skips it for queries tagged `silent`:
 
@@ -945,7 +951,7 @@ traffic — the doc-level distinction matters when debugging:
    route work while the update is active and resume when it finishes. Router
    cancellation aborts a superseded wait.
 2. **Mounted queries pause.** `UpdateContext` flips the stream multiplexer's
-   updating flag; `isRequestAvailable()` goes false; `query-client.tsx` feeds that
+   updating flag; `isRequestAvailable()` goes false; `query-client-core.ts` feeds that
    into `onlineManager`, so React Query treats the app as offline. The
    multiplexer itself does not reject calls.
 

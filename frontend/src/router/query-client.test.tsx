@@ -9,7 +9,7 @@ const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("sonner", () => ({ toast: toastMocks }));
 
-import AppQueryClientProvider from "./query-client";
+import AppQueryClientProvider, { appQueryClient } from "./query-client";
 import { createQueryClient, getAppQueryClient } from "./query-client-core";
 
 describe("AppQueryClientProvider", () => {
@@ -17,7 +17,7 @@ describe("AppQueryClientProvider", () => {
     toastMocks.error.mockReset();
   });
 
-  it("provides the stable browser client returned to router infrastructure", async () => {
+  it("provides the exact client owned by the router", async () => {
     let observedClient: ReturnType<typeof getAppQueryClient> | undefined;
 
     function Observer() {
@@ -35,8 +35,8 @@ describe("AppQueryClientProvider", () => {
     );
 
     await Promise.resolve();
-    expect(observedClient).toBe(getAppQueryClient());
-    expect(getAppQueryClient()).toBe(observedClient);
+    expect(observedClient).toBe(appQueryClient);
+    expect(appQueryClient).toBe(getAppQueryClient());
   });
 
   it("keeps explicitly created clients isolated for tests and server renders", () => {
